@@ -67,7 +67,7 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Hello! ", "I can help you ", "with that.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Hello! ", "I can help you ", "with that.")
 
             val agent = makeAgent(agentId, mockChatClient, instructions = "You are a helpful assistant.")
 
@@ -101,8 +101,8 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns
-                Flux.just(
+            every { mockStreamSpec.chatResponse() } returns
+                chatResponseFlux(
                     "Based on our ",
                     "previous conversation, ",
                     "here's my response.",
@@ -143,7 +143,7 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.error(RuntimeException("API Error"))
+            every { mockStreamSpec.chatResponse() } returns Flux.error(RuntimeException("API Error"))
 
             val agent = makeAgent(agentId, mockChatClient)
 
@@ -165,7 +165,7 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Response considering ", "other agent's input")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Response considering ", "other agent's input")
 
             val agent = makeAgent(agentId, mockChatClient)
 
@@ -209,7 +209,7 @@ class AgentSimpleUnitSpec :
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             // LLM wraps its own answer in an agent tag
-            every { mockStreamSpec.content() } returns Flux.just("""<agent name="SimpleAgent">""", "Hello!", "</agent>")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("""<agent name="SimpleAgent">""", "Hello!", "</agent>")
 
             val agent = makeAgent(agentId, mockChatClient, name = "SimpleAgent")
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "Hi"))).toList()
@@ -233,7 +233,7 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Hello!")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Hello!")
 
             val agent = makeAgent(agentId, mockChatClient)
 
@@ -295,7 +295,7 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("ok")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
 
             val agent = makeAgent(agentId, mockChatClient)
             val msgWithContext = MessageEvent(
@@ -336,7 +336,7 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("ok")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
 
             val agent = makeAgent(agentId, mockChatClient)
             val firstMsg = MessageEvent(
@@ -378,7 +378,7 @@ class AgentSimpleUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("ok")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
 
             val agent = makeAgent(agentId, mockChatClient)
 
@@ -407,7 +407,7 @@ class AgentSimpleUnitSpec :
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             // Provide 5 chunks — only the first 2 should ever be collected
-            every { mockStreamSpec.content() } returns Flux.just("A ", "B ", "C ", "D ", "E")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("A ", "B ", "C ", "D ", "E")
 
             val agent = makeAgent(agentId, mockChatClient)
 

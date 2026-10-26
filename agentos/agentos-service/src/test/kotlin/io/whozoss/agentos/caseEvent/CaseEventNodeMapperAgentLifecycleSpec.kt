@@ -93,5 +93,22 @@ class CaseEventNodeMapperAgentLifecycleSpec :
             roundTripped.agentName shouldBe "WorkerAgent"
             roundTripped.llmProvider shouldBe "anthropic"
             roundTripped.llmModel shouldBe "claude-sonnet-4-20250514"
+            roundTripped.maxIterationsReached shouldBe null
+        }
+
+        "AgentFinishedEvent keeps the iteration limit it reached, also through a soft delete" {
+            val original =
+                AgentFinishedEvent(
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    agentId = UUID.randomUUID(),
+                    agentName = "WorkerAgent",
+                    maxIterationsReached = 20,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+
+            (nodeMapper.toDomain(node) as AgentFinishedEvent).maxIterationsReached shouldBe 20
+            (nodeMapper.toDomain(nodeMapper.withRemoved(node, true)) as AgentFinishedEvent).maxIterationsReached shouldBe 20
         }
     })

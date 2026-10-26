@@ -550,6 +550,74 @@ class AgentAdvancedSpec :
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
+        // -------------------------------------------------------------------------
+        // Iteration limit
+        // -------------------------------------------------------------------------
+
+        /** Runs an agent with [maxIterations] = 2 whose generator returns [intentions] in order. */
+        suspend fun runWithIterationLimit(vararg intentions: String): List<CaseEvent> {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Final answer.")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+            val listTool = mockk<StandardTool<String>>(relaxed = true)
+            every { listTool.name } returns "FILES__List"
+            every { listTool.description } returns "List files"
+            every { listTool.inputSchema } returns "{}"
+            every { listTool.paramType } returns String::class.java
+            coEvery { listTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("listing")
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+                intentions.map { toolName ->
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = UUID.randomUUID(),
+                        intention = "Next step.",
+                        toolName = toolName,
+                    )
+                }
+            val agentId = UUID.randomUUID()
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "LimitedAgent",
+                    context =
+                        AgentAdvancedContext(
+                            chatClient = mockChatClient,
+                            tools = listOf(listTool),
+                            instructions = null,
+                            agentId = agentId,
+                            confirmationManager = mockk(relaxed = true),
+                        ),
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 2,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+            return agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+        }
+
+        "at the iteration limit the agent still answers and reports the limit it reached" {
+            val events = runWithIterationLimit("FILES__List", "FILES__List")
+
+            events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 2
+            events.filterIsInstance<WarnEvent>().single().message shouldContain "maximum iterations (2)"
+            events.filterIsInstance<MessageEvent>().single().content.single() shouldBe MessageContent.Text("Final answer.")
+            (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe 2
+        }
+
+        "an answer chosen at the last iteration completes the run without reporting the limit" {
+            val events = runWithIterationLimit("FILES__List", "Answer")
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe null
+        }
+
         "tool result images are copied onto the emitted ToolResponseEvent" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()

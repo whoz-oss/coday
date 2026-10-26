@@ -118,6 +118,7 @@ class AgentFinishedEventNode(
     val usageCacheWriteTokens: Long? = null,
     val usageTotalTokens: Long? = null,
     val usageEstimatedCostUsd: Double? = null,
+    val maxIterationsReached: Int? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

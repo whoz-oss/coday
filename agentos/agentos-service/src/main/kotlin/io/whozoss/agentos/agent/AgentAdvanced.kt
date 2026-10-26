@@ -200,7 +200,9 @@ class AgentAdvanced(
                 }
 
                 if (!hasUnresolvedConfirmation) {
-                    if (iteration >= maxIterations) {
+                    // An answer chosen at the last iteration ends the loop too: that run completed.
+                    val maxIterationsReached = maxIterations.takeIf { continueLoop && iteration >= maxIterations }
+                    if (maxIterationsReached != null) {
                         emit(
                             WarnEvent(
                                 namespaceId = namespaceId,
@@ -227,6 +229,7 @@ class AgentAdvanced(
                             agentName = name,
                             llmProvider = llmProvider,
                             llmModel = llmModel,
+                            maxIterationsReached = maxIterationsReached,
                         ),
                     )
                 }

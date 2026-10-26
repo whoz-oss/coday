@@ -4,6 +4,7 @@ import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentInterrupt
@@ -14,6 +15,7 @@ import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.CostRunStopped
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.metadata.ChatResponseMetadata
 import org.springframework.ai.chat.metadata.DefaultUsage
@@ -31,6 +33,7 @@ import java.util.UUID
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration.Companion.seconds
 
@@ -46,11 +49,12 @@ class UsageTrackingChatModelSpec :
         fun response(
             tool: Boolean = false,
             withUsage: Boolean = true,
+            text: String = "Done",
         ): ChatResponse {
             val message =
                 AssistantMessage
                     .builder()
-                    .content(if (tool) "" else "Done")
+                    .content(if (tool) "" else text)
                     .toolCalls(if (tool) listOf(AssistantMessage.ToolCall("call-1", "function", "testTool", "{}")) else emptyList())
                     .build()
             val metadata = ChatResponseMetadata.builder()
@@ -272,14 +276,79 @@ class UsageTrackingChatModelSpec :
             accumulator.recordGroups().sumOf { it.totalTokens } shouldBe 30L
         }
 
-        "tool round limit retains usage and marks a failed invocation" {
+        listOf(false, true).forEach { streaming ->
+            val mode = if (streaming) "stream" else "call"
+
+            /** A model that always wants a tool; [summary] answers the request made at the limit, if any. */
+            fun loopingRun(summary: ChatResponse?): LoopingRun {
+                val toolsExecuted = AtomicInteger()
+                val options = ToolCallingChatOptions.builder().toolCallbacks(toolCallback { "ok".also { toolsExecuted.incrementAndGet() } }).build()
+                val prompts = CopyOnWriteArrayList<Prompt>()
+                fun answer(prompt: Prompt): ChatResponse {
+                    prompts.add(prompt)
+                    val messages = prompt.instructions
+                    val atLimit = messages.last() is UserMessage && messages.getOrNull(messages.size - 2) is ToolResponseMessage
+                    return if (atLimit && summary != null) summary else response(tool = true)
+                }
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns options
+                every { raw.call(any<Prompt>()) } answers { answer(firstArg()) }
+                every { raw.stream(any<Prompt>()) } answers { Flux.just(answer(firstArg())) }
+                val accumulator = UsageAccumulator()
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model, maxToolRounds = 2)
+                val prompt = Prompt(listOf(UserMessage("Hello")), options)
+                val responses =
+                    if (streaming) {
+                        tracked.stream(prompt).collectList().block(Duration.ofSeconds(3))!!
+                    } else {
+                        listOf(tracked.call(prompt))
+                    }
+                return LoopingRun(responses, prompts, toolsExecuted.get(), accumulator)
+            }
+
+            "$mode: at the tool round limit the model is asked to summarize, and the run completes" {
+                val (responses, prompts, toolsExecuted, accumulator) = loopingRun(summary = response(text = "Summary of the work"))
+
+                responses.joinToString("") { it.result?.output?.text.orEmpty() } shouldBe "Summary of the work"
+                responses.last().metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe 2
+                toolsExecuted shouldBe 2
+                // The summary request replaces the next round: no request is wasted.
+                prompts.size shouldBe 3
+                (prompts.last().instructions.last() as UserMessage).text shouldContain "Do not call any tool"
+                accumulator.snapshot().calls shouldBe 3L
+                accumulator.total.totalTokens shouldBe 45L
+                accumulator.failed shouldBe false
+            }
+
+            "$mode: tool calls in the summary answer are not executed and a missing text gets a fallback" {
+                val (responses, prompts, toolsExecuted, accumulator) = loopingRun(summary = null)
+
+                responses.joinToString("") { it.result?.output?.text.orEmpty() } shouldContain
+                    "maximum number of tool rounds (2)"
+                responses.last().metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe 2
+                toolsExecuted shouldBe 2
+                prompts.size shouldBe 3
+                accumulator.failed shouldBe false
+            }
+        }
+
+        "a run that answers before the limit carries no limit marker" {
             val raw = mockk<ChatModel>()
             every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
-            every { raw.stream(any<Prompt>()) } returns Flux.just(response(tool = true))
-            val accumulator = UsageAccumulator()
-            val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model, maxToolRounds = 0)
-            shouldThrow<IllegalStateException> { tracked.stream(Prompt("Hello")).blockLast(Duration.ofSeconds(2)) }
-            accumulator.failed shouldBe true
-            accumulator.total.totalTokens shouldBe 15L
+            every { raw.stream(any<Prompt>()) } returns Flux.just(response())
+            val responses =
+                UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, maxToolRounds = 2)
+                    .stream(Prompt("Hello"))
+                    .collectList()
+                    .block(Duration.ofSeconds(2))!!
+            responses.single().result.output.text shouldBe "Done"
+            responses.single().metadata.containsKey(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe false
         }
     })
+
+private data class LoopingRun(
+    val responses: List<ChatResponse>,
+    val prompts: List<Prompt>,
+    val toolsExecuted: Int,
+    val accumulator: UsageAccumulator,
+)

@@ -4086,6 +4086,9 @@ components:
             type: string
           llmUsage:
             $ref: "#/components/schemas/LlmUsage"
+          maxIterationsReached:
+            type: integer
+            format: int32
       required:
       - agentId
       - agentName

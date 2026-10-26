@@ -175,6 +175,13 @@ data class AgentFinishedEvent(
     /** Aggregated token usage for this agent run. Null when tracking is not configured. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val llmUsage: LlmUsage? = null,
+    /**
+     * The iteration limit (`agentos.limits.agent-max-iterations`) this run reached before it
+     * finished on its own. Its last message then summarizes the work done so far, and a new
+     * message lets it continue. Null when the run ended before the limit.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val maxIterationsReached: Int? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }
