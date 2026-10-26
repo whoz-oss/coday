@@ -59,8 +59,9 @@ overrides, keeping inherited agents portable between environments.
 ## Activity, nested delegations and expiration
 
 The timer measures inactivity, not elapsed time. Every event the child case emits
-restarts it: a tool call or its result, a reasoning step, a streamed text chunk, a
-message, a status change. Activity is sampled once a second. A child that keeps
+restarts it: the start of an LLM call, a tool call or its result, a streamed text
+chunk, a message, a status change. The model's reasoning within a call emits nothing
+(see below). Activity is sampled once a second. A child that keeps
 working is never cut off by this timer; its run stays bounded by
 `agentos.limits.agent-max-iterations` and `agentos.limits.case-max-iterations`.
 
