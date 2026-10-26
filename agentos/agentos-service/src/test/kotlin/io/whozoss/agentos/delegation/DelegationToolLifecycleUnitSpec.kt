@@ -44,7 +44,7 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
             resumed = true
             return runtime
         }
-        override fun killCase(caseId: UUID) = Unit
+        override fun interruptCase(caseId: UUID) = Unit
         override fun emitParentEvent(event: CaseEvent) {
             parentEvents += event
             if (event is SubCaseStartedEvent) startedEmitted.complete(Unit)
@@ -54,6 +54,7 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
     fun runtime(id: UUID): CaseRuntime = mockk<CaseRuntime> {
         every { this@mockk.id } returns id
         every { statusFlow } returns MutableStateFlow(CaseStatus.IDLE)
+        every { activityCount } returns 0L
     }
     fun tool(manager: SubCaseManager, events: List<CaseEvent>) = DelegationTool(
         manager, parentCaseId, namespaceId, listOf("researcher"), { events }, timeoutMs = 1_000,
@@ -116,6 +117,7 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
         val running = mockk<CaseRuntime> {
             every { this@mockk.id } returns subCaseId
             every { statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+            every { activityCount } returns 0L
         }
         val manager = RecordingManager(running)
         val outcome = CompletableDeferred<Throwable?>()

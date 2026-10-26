@@ -308,9 +308,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 val manager = mockk<SubCaseManager>(relaxed = true)
                 val runtime = mockk<CaseRuntime>()
                 val childId = UUID.randomUUID()
+                val status = MutableStateFlow(CaseStatus.RUNNING)
                 every { runtime.id } returns childId
-                every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+                every { runtime.statusFlow } returns status
+                every { runtime.activityCount } returns 0L
+                every { runtime.isRunning() } returns false
                 every { manager.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+                every { manager.interruptCase(childId) } answers { status.value = CaseStatus.IDLE }
                 val agent = agentService.findAgentByName("timeout-parent", context, manager)
                 val field = AgentSimple::class.java.getDeclaredField("tools").apply { isAccessible = true }
                 val tool = (field.get(agent) as Collection<*>).filterIsInstance<DelegationTool>().single()
@@ -328,9 +332,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                             ),
                         )
                     result.success shouldBe false
-                    result.output shouldContain "Sub-case timed out after ${expectedSeconds}s of active execution."
+                    result.output shouldContain "Sub-case showed no activity for ${expectedSeconds}s and was stopped."
                     (testScheduler.currentTime - started) shouldBe expectedSeconds * 1000L
-                    verify(exactly = 1) { manager.killCase(childId) }
+                    verify(exactly = 1) { manager.interruptCase(childId) }
                 }
             }
         }
