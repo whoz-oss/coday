@@ -690,6 +690,18 @@
     word-break: break-word;
   }
 
+  &__execution-notice-action {
+    align-self: flex-start;
+    margin-top: 0.3rem;
+    padding: 0.3rem 0.75rem;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 0.4rem;
+    cursor: pointer;
+  }
+
   &__log {
     flex-shrink: 0;
     align-self: flex-start;
