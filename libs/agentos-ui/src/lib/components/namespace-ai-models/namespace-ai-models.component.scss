@@ -1,1 +1,85 @@
-// Layout and grid fully delegated to ds-entity-list.
+.ai-models__new {
+  padding: 7px 12px;
+  border: 1px solid var(--color-accent);
+  border-radius: 0;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+}
+.ai-models__status {
+  margin: 20px 8px;
+  color: var(--color-text-secondary);
+}
+.ai-models__table-wrap {
+  overflow-x: auto;
+}
+table.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.ds-table th {
+  padding: 7px;
+  border-bottom: 1px solid var(--color-divider);
+  color: var(--color-neutral-600);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+table.ds-table td {
+  padding: 7px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+table.ds-table tbody tr:hover {
+  background: var(--color-bg-hover);
+}
+.ai-models__name {
+  font-weight: 500;
+}
+.ai-models__secondary {
+  color: var(--color-text-secondary);
+}
+.ai-models__tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ai-models__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+.ai-models__actions button {
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+}
+.ai-models__actions button:hover:not(:disabled) {
+  background: var(--color-accent-100);
+}
+.ai-models__actions button:disabled {
+  color: var(--color-neutral-600);
+  cursor: default;
+}
+.ai-models__actions .ai-models__delete {
+  color: var(--color-error);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

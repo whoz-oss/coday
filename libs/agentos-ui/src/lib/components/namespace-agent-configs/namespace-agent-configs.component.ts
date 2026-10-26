@@ -1,31 +1,17 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { BehaviorSubject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
-import { AgentConfigItemComponent } from '../agent-config-item/agent-config-item.component'
-
-const GROUP_NAMESPACE = 'namespace'
-const GROUP_PLATFORM = 'platform'
-
-/**
- * NamespaceAgentConfigsComponent — list view for agent configs of a namespace.
- *
- * Loaded at /:namespaceId/agent-configs. Responsibilities:
- * - Load and display namespace-level AND platform-level agent configs
- * - Merge both levels into a grouped ds-entity-list (namespace / platform)
- * - Platform-level configs are displayed read-only (no edit/delete actions)
- * - Navigate back to the namespace list
- * - Navigate to the create form (/:namespaceId/agent-configs/new)
- * - Deletion with inline confirmation (delegated to AgentConfigItemComponent)
- *
- * Create and edit are handled by AgentConfigFormComponent on dedicated routes.
- */
+import { AgentConfig, AgentConfigControllerService, AgentConfigExecutionModeEnum } from '@whoz-oss/agentos-api-client'
+import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
+interface AgentConfigRow {
+  key: string
+  config: AgentConfig
+  scope: 'platform' | 'namespace'
+}
 @Component({
   selector: 'agentos-namespace-agent-configs',
-  imports: [AsyncPipe, EntityListComponent, AgentConfigItemComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent],
   templateUrl: './namespace-agent-configs.component.html',
   styleUrl: './namespace-agent-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,90 +20,73 @@ export class NamespaceAgentConfigsComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly agentConfigController = inject(AgentConfigControllerService)
-
+  private readonly controller = inject(AgentConfigControllerService)
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
-
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
-
   protected readonly isLoading = signal(true)
-
-  /**
-   * Fetches both namespace-level and platform-level configs in parallel.
-   * Platform configs are appended with a groupKey so ds-entity-list renders them
-   * in a separate collapsed-by-default group.
-   */
+  protected readonly rows = signal<AgentConfigRow[]>([])
   private readonly allConfigs$ = this.refresh$.pipe(
     switchMap(() => {
       this.isLoading.set(true)
       return forkJoin({
-        namespace: this.agentConfigController.listByParentAgentConfig(this.namespaceId),
-        platform: this.agentConfigController
-          .listPlatformAgentsAgentConfig()
-          .pipe(catchError(() => of([] as AgentConfig[]))),
+        namespace: this.controller.listByParentAgentConfig(this.namespaceId),
+        platform: this.controller.listPlatformAgentsAgentConfig().pipe(catchError(() => of([] as AgentConfig[]))),
       })
     })
   )
-
-  /** Mapped to EntityListItem[] for ds-entity-list, grouped by level. */
-  protected readonly configItems$ = this.allConfigs$.pipe(
-    map(({ namespace, platform }) => [
-      ...platform.map(
-        (c: AgentConfig): EntityListItem => ({
-          id: c.id ?? '',
-          name: c.name,
-          description: c.description,
-          groupKey: GROUP_PLATFORM,
-          groupLabel: 'Platform (read-only)',
-        })
-      ),
-      ...namespace.map(
-        (c: AgentConfig): EntityListItem => ({
-          id: c.id ?? '',
-          name: c.name,
-          description: c.description,
-          groupKey: GROUP_NAMESPACE,
-          groupLabel: 'Namespace',
-        })
-      ),
-    ])
-  )
-
-  /** Full config objects indexed by id — used to resolve itemTemplate events. */
-  private namespaceConfigsById = new Map<string, AgentConfig>()
-  private platformConfigsById = new Map<string, AgentConfig>()
-
   constructor() {
     this.allConfigs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: ({ namespace, platform }) => {
-        this.namespaceConfigsById = new Map(namespace.map((c: AgentConfig) => [c.id ?? '', c]))
-        this.platformConfigsById = new Map(platform.map((c: AgentConfig) => [c.id ?? '', c]))
+        this.rows.set([
+          ...platform.map((config, index) => ({
+            key: `platform:${config.id ?? index}`,
+            config,
+            scope: 'platform' as const,
+          })),
+          ...namespace.map((config, index) => ({
+            key: `namespace:${config.id ?? index}`,
+            config,
+            scope: 'namespace' as const,
+          })),
+        ])
         this.isLoading.set(false)
       },
       error: () => this.isLoading.set(false),
     })
   }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'namespaces'])
-  }
-
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', 'new'])
+    void this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', 'new'])
   }
-
-  protected deleteConfig(config: AgentConfig): void {
-    this.agentConfigController
-      .deleteAgentConfig(config.id ?? '')
+  protected inspect(row: AgentConfigRow): void {
+    if (!row.config.id) return
+    void this.router.navigate(
+      row.scope === 'platform'
+        ? ['/agentos', 'admin', 'agent-configs', row.config.id, 'inspect']
+        : ['/agentos', this.namespaceId, 'agent-configs', row.config.id, 'inspect']
+    )
+  }
+  protected launch(row: AgentConfigRow): void {
+    if (row.scope === 'platform' || !row.config.id) return
+    void this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', row.config.id, 'launch'])
+  }
+  protected edit(row: AgentConfigRow): void {
+    if (row.scope === 'platform' || !row.config.id) return
+    void this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', row.config.id, 'edit'])
+  }
+  protected delete(row: AgentConfigRow): void {
+    if (row.scope === 'platform' || !row.config.id || !confirm(`Delete agent config “${row.config.name}”?`)) return
+    this.controller
+      .deleteAgentConfig(row.config.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }
-
-  protected resolveConfig(id: string): AgentConfig | null {
-    return this.namespaceConfigsById.get(id) ?? this.platformConfigsById.get(id) ?? null
+  protected canLaunch(row: AgentConfigRow): boolean {
+    return row.scope === 'namespace' && row.config.executionMode === AgentConfigExecutionModeEnum.LOOP
   }
-
-  protected isPlatformConfig(id: string): boolean {
-    return this.platformConfigsById.has(id)
+  protected mode(row: AgentConfigRow): string {
+    return (
+      row.config.executionMode ??
+      (row.config.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
+    )
   }
 }
