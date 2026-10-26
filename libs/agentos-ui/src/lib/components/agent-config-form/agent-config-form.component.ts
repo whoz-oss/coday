@@ -386,6 +386,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.subAgentRows.set(
             (config.subAgents ?? []).map((p) => ({ control: new FormControl<string>(p, { nonNullable: true }) }))
           )
+          this.allSkillsSelected.set(grantsAllSkills(config.skillSelectors))
           this.skillRows.set(this.buildSkillRows(skillCatalogue, config.skillSelectors))
           this.isLoading.set(false)
         },
@@ -415,6 +416,7 @@ export class AgentConfigFormComponent implements OnInit {
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, existingIntegrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, existingIntegrations ?? undefined))
+          this.allSkillsSelected.set(false)
           this.skillRows.set(this.buildSkillRows(skillCatalogue, undefined))
         },
       })
@@ -466,11 +468,12 @@ export class AgentConfigFormComponent implements OnInit {
    * silent edit of someone else's configuration.
    *
    * Matching is case-insensitive, like the shadowing rule server-side.
+   *
+   * The `*` grant is not a row: the caller reads it from the same selectors into
+   * [allSkillsSelected], so this method only maps the named ones.
    */
   private buildSkillRows(catalogue: SkillSummary[], selectors: AgentConfig['skillSelectors']): SkillRow[] {
     const declared = (selectors ?? []).map((s) => s.trim()).filter((s) => s.length > 0)
-    this.allSkillsSelected.set(grantsAllSkills(declared))
-
     const named = declared.filter((s) => s !== ALL_SKILLS_SELECTOR)
     const declaredKeys = namedSelectorKeys(named)
     const catalogueKeys = new Set(catalogue.map((s) => s.name.toLowerCase()))

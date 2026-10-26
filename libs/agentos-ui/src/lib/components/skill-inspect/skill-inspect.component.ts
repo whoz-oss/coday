@@ -108,6 +108,11 @@ export class SkillInspectComponent implements OnInit {
    * every namespace, and listing its consumers would mean walking all of them. The
    * namespace list is paired with the platform agents, which deploy into the namespace
    * and can name the skill too.
+   *
+   * Only the platform call is fail-safe, and that asymmetry is deliberate: reading the
+   * platform agents is a super-admin's privilege, so a refusal there still leaves a
+   * complete namespace answer. A namespace that cannot be read leaves the question open,
+   * which has to show as unknown rather than as "no agent uses this".
    */
   private loadConsumers(skillName: string): void {
     if (!this.namespaceId) return

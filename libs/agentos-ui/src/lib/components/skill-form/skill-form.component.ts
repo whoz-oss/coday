@@ -88,40 +88,40 @@ export class SkillFormComponent implements OnInit {
 
   ngOnInit(): void {
     const skillId = this.route.snapshot.paramMap.get('skillId')
-    if (!skillId) return
-
-    this.isEditMode.set(true)
-    this.isLoading.set(true)
-    this.skillState
-      .getById(skillId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (skill) => {
-          // A filesystem skill cannot be written through the API: send the user to
-          // the read-only view rather than to a form whose save would be refused.
-          if (skill.readOnly) {
-            this.router.navigate(this.inspectRoute())
-            return
-          }
-          this.existingSkill = skill
-          this.form.patchValue({
-            name: skill.name,
-            description: skill.description,
-            body: skill.body,
-          })
-          this.resourceRows.set(
-            Object.entries(skill.resources ?? {}).map(([path, content]) => ({
-              path: new FormControl<string>(path, { nonNullable: true }),
-              content: new FormControl<string>(content, { nonNullable: true }),
-            }))
-          )
-          this.isLoading.set(false)
-        },
-        error: () => {
-          this.isLoading.set(false)
-          this.navigateBack()
-        },
-      })
+    if (skillId) {
+      this.isEditMode.set(true)
+      this.isLoading.set(true)
+      this.skillState
+        .getById(skillId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (skill) => {
+            // A filesystem skill cannot be written through the API: send the user to
+            // the read-only view rather than to a form whose save would be refused.
+            if (skill.readOnly) {
+              this.router.navigate(this.inspectRoute())
+              return
+            }
+            this.existingSkill = skill
+            this.form.patchValue({
+              name: skill.name,
+              description: skill.description,
+              body: skill.body,
+            })
+            this.resourceRows.set(
+              Object.entries(skill.resources ?? {}).map(([path, content]) => ({
+                path: new FormControl<string>(path, { nonNullable: true }),
+                content: new FormControl<string>(content, { nonNullable: true }),
+              }))
+            )
+            this.isLoading.set(false)
+          },
+          error: () => {
+            this.isLoading.set(false)
+            this.navigateBack()
+          },
+        })
+    }
   }
 
   protected addResource(): void {

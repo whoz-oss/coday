@@ -46,7 +46,8 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
+    // Not uppercased, unlike the word badges of the other list items: this one is a file name.
+    text-transform: none;
     border-radius: 0;
     padding: 0.15rem 0.5rem;
     white-space: nowrap;
