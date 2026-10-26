@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing'
-import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
+import { Case, CaseControllerService, CaseReasoningEffortEnum } from '@whoz-oss/agentos-api-client'
 import { of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from './case-state.service'
 
@@ -11,6 +11,7 @@ describe('CaseStateService', () => {
     starCase: jest.Mock
     unstarCase: jest.Mock
     updateCase: jest.Mock
+    setReasoningEffortCase: jest.Mock
   }
 
   function makeService(listMineMock?: jest.Mock): CaseStateService {
@@ -20,6 +21,11 @@ describe('CaseStateService', () => {
       starCase: jest.fn().mockReturnValue(of(undefined)),
       unstarCase: jest.fn().mockReturnValue(of(undefined)),
       updateCase: jest.fn().mockImplementation((_id: string, body: Case) => of(body)),
+      setReasoningEffortCase: jest
+        .fn()
+        .mockImplementation((id: string, body: { reasoningEffort?: string }) =>
+          of({ id, namespaceId: 'ns', favorite: false, reasoningEffort: body.reasoningEffort } as unknown as Case)
+        ),
     }
     TestBed.configureTestingModule({
       providers: [CaseStateService, { provide: CaseControllerService, useValue: controllerMock }],
@@ -341,6 +347,63 @@ describe('CaseStateService', () => {
 
       expect(failed).toBe(true)
       expect(controllerMock.updateCase).not.toHaveBeenCalled()
+    })
+  })
+  describe('setReasoningEffort', () => {
+    const effortCase = (id: string, extra: Partial<Case> = {}): Case =>
+      ({ id, namespaceId: 'ns', favorite: false, title: 't', ...extra }) as unknown as Case
+
+    it('patches the effort optimistically and sends the level to the dedicated endpoint', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([effortCase('a')])))
+      svc.loadCases('ns')
+
+      svc.setReasoningEffort('a', CaseReasoningEffortEnum.HIGH).subscribe()
+
+      expect(controllerMock.setReasoningEffortCase).toHaveBeenCalledWith('a', { reasoningEffort: 'HIGH' })
+      expect(controllerMock.updateCase).not.toHaveBeenCalled()
+      expect(svc.cases()[0].reasoningEffort).toBe(CaseReasoningEffortEnum.HIGH)
+    })
+
+    it('removes the override with null by omitting the level', () => {
+      const svc = makeService(
+        jest.fn().mockReturnValue(of([effortCase('a', { reasoningEffort: CaseReasoningEffortEnum.LOW })]))
+      )
+      svc.loadCases('ns')
+
+      svc.setReasoningEffort('a', null).subscribe()
+
+      expect(controllerMock.setReasoningEffortCase).toHaveBeenCalledWith('a', { reasoningEffort: undefined })
+      expect(svc.cases()[0].reasoningEffort).toBeUndefined()
+    })
+
+    it('reverts the optimistic effort when the request fails', () => {
+      const svc = makeService(
+        jest.fn().mockReturnValue(of([effortCase('a', { reasoningEffort: CaseReasoningEffortEnum.LOW })]))
+      )
+      svc.loadCases('ns')
+      controllerMock.setReasoningEffortCase.mockReturnValue(throwError(() => new Error('boom')))
+
+      svc.setReasoningEffort('a', CaseReasoningEffortEnum.MAX).subscribe({ error: () => undefined })
+
+      expect(svc.cases()[0].reasoningEffort).toBe(CaseReasoningEffortEnum.LOW)
+    })
+
+    it('waits for a pending rename and keeps the new effort after the rename settles', () => {
+      const rename = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([effortCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(rename)
+
+      svc.renameCase('a', 'renamed').subscribe()
+      svc.setReasoningEffort('a', CaseReasoningEffortEnum.XHIGH).subscribe()
+      expect(controllerMock.setReasoningEffortCase).not.toHaveBeenCalled()
+
+      rename.next(effortCase('a', { title: 'renamed' }))
+      rename.complete()
+
+      expect(controllerMock.setReasoningEffortCase).toHaveBeenCalledTimes(1)
+      expect(svc.cases()[0].title).toBe('renamed')
+      expect(svc.cases()[0].reasoningEffort).toBe(CaseReasoningEffortEnum.XHIGH)
     })
   })
 })

@@ -1,5 +1,11 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { Case, CaseControllerService, MessageEvent } from '@whoz-oss/agentos-api-client'
+import {
+  Case,
+  CaseControllerService,
+  CaseReasoningEffortEnum,
+  CaseReasoningEffortRequestReasoningEffortEnum,
+  MessageEvent,
+} from '@whoz-oss/agentos-api-client'
 import {
   catchError,
   concatMap,
@@ -116,6 +122,19 @@ export class CaseStateService {
    * request also lets the next queued save await it without issuing it twice.
    */
   updateCaseFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): Observable<Case> {
+    return this.enqueueSave(caseId, (state) => this.saveCaseFields(caseId, patch, state))
+  }
+
+  /**
+   * Set the case-level reasoning effort, or remove it with null so each agent uses the effort of its
+   * model again. Queued with the other saves of the case: the server rewrites the whole case on each
+   * save, so a rename sent at the same time could otherwise restore the previous effort.
+   */
+  setReasoningEffort(caseId: string, effort: CaseReasoningEffortEnum | null): Observable<Case> {
+    return this.enqueueSave(caseId, (state) => this.saveReasoningEffort(caseId, effort, state))
+  }
+
+  private enqueueSave(caseId: string, save: (state: { confirmed: Case }) => Observable<Case>): Observable<Case> {
     return defer(() => {
       const pending = this.pendingUpdates.get(caseId)
       const existing = this.cases().find((c) => c.id === caseId)
@@ -133,7 +152,7 @@ export class CaseStateService {
           )
         : of(undefined)
       const request = ready.pipe(
-        concatMap(() => this.saveCaseFields(caseId, patch, state)),
+        concatMap(() => save(state)),
         finalize(() => {
           if (this.pendingUpdates.get(caseId)?.request === request) this.pendingUpdates.delete(caseId)
         }),
@@ -189,6 +208,35 @@ export class CaseStateService {
         })
       )
     })
+  }
+
+  private saveReasoningEffort(
+    caseId: string,
+    effort: CaseReasoningEffortEnum | null,
+    state: { confirmed: Case }
+  ): Observable<Case> {
+    return defer(() => {
+      const previous = state.confirmed.reasoningEffort
+      this.patchReasoningEffort(caseId, effort ?? undefined)
+      // Both generated enums carry the same values; an omitted field removes the override.
+      const reasoningEffort = (effort ?? undefined) as string | undefined as
+        | CaseReasoningEffortRequestReasoningEffortEnum
+        | undefined
+      return this.caseController.setReasoningEffortCase(caseId, { reasoningEffort }).pipe(
+        tap((updated) => {
+          state.confirmed = { ...state.confirmed, reasoningEffort: updated.reasoningEffort }
+          this.patchReasoningEffort(caseId, updated.reasoningEffort)
+        }),
+        catchError((err) => {
+          this.patchReasoningEffort(caseId, previous)
+          return throwError(() => err)
+        })
+      )
+    })
+  }
+
+  private patchReasoningEffort(caseId: string, reasoningEffort: CaseReasoningEffortEnum | undefined): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, reasoningEffort } : c)))
   }
 
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */

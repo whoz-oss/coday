@@ -29,6 +29,7 @@ import {
   AgentSelectedEvent,
   AnswerEvent,
   CaseEvent,
+  CaseReasoningEffortEnum,
   CaseStatusEnum,
   CaseStatusEvent,
   CaseUpdatedEvent,
@@ -300,6 +301,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether the kill confirmation dialog is showing. */
   protected readonly confirmingKill = signal(false)
+
+  /** Effort levels offered for the case; the empty option removes the override. */
+  protected readonly reasoningEffortOptions = Object.values(CaseReasoningEffortEnum)
 
   /** Which panel is active in the right drawer: files exchange or case members. */
   protected readonly drawerPanel = signal<'files' | 'members'>('files')
@@ -1141,6 +1145,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       error: (err) => console.error('[CaseChat] Failed to kill case', err),
     })
     this.confirmingKill.set(false)
+  }
+
+  /** Set or remove the case-level reasoning effort; it applies from the next message on. */
+  protected onReasoningEffortChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value
+    const effort = value ? (value as CaseReasoningEffortEnum) : null
+    this.caseState.setReasoningEffort(this.caseId, effort).subscribe({
+      error: (err) => console.error('[CaseChat] Failed to set the reasoning effort', err),
+    })
   }
 
   protected reopen(): void {

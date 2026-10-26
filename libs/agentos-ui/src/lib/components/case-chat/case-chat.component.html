@@ -478,6 +478,20 @@
               (action)="attachmentsUi.openPicker()"
             />
           }
+          <select
+            class="case-chat__effort"
+            aria-label="Reasoning effort"
+            title="Reasoning effort of the agents from the next message on. Model default keeps each agent's model setting; ignored for Anthropic providers."
+            [disabled]="isTerminal()"
+            (change)="onReasoningEffortChange($event)"
+          >
+            <option value="" [selected]="!activeCase()?.reasoningEffort">effort: model default</option>
+            @for (effort of reasoningEffortOptions; track effort) {
+              <option [value]="effort" [selected]="activeCase()?.reasoningEffort === effort">
+                effort: {{ effort.toLowerCase() }}
+              </option>
+            }
+          </select>
           <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 
           @if (isRunning()) {
