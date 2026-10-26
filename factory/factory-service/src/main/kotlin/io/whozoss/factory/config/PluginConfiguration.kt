@@ -17,7 +17,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
+import java.security.CodeSource
 
 /**
  * Configuration of the PF4J plugin system.
@@ -30,11 +30,15 @@ import java.nio.file.Paths
 @Configuration
 class PluginConfiguration {
     @Bean
+    fun factoryPluginsDirectory(): FactoryPluginsDirectory =
+        FactoryPluginsDirectory { factoryInstallationRoot().resolve("plugins") }
+
+    @Bean
     fun pluginManager(
-        pluginsConfigProperties: FactoryPluginConfigProperties,
+        pluginsDirectory: FactoryPluginsDirectory,
         applicationContext: ApplicationContext,
     ): PluginManager {
-        val pluginPath = Paths.get(pluginsConfigProperties.dir)
+        val pluginPath = pluginsDirectory.path().toAbsolutePath().normalize()
 
         if (!Files.exists(pluginPath)) {
             Files.createDirectories(pluginPath)
@@ -44,7 +48,25 @@ class PluginConfiguration {
         return NullSafeSpringPluginManager(pluginPath).also { it.applicationContext = applicationContext }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private fun factoryInstallationRoot(): Path {
+            val location = codeSourceLocation()
+            return when {
+                Files.isRegularFile(location) -> location.parent
+                location.fileName?.toString() == "main" && location.parent?.fileName?.toString() == "classes" ->
+                    location.parent.parent.parent
+                else -> location
+            }
+        }
+
+        private fun codeSourceLocation(): Path =
+            runCatching {
+                val source: CodeSource = PluginConfiguration::class.java.protectionDomain.codeSource
+                Path.of(source.location.toURI())
+            }.getOrElse { cause ->
+                throw IllegalStateException("Cannot resolve the Factory installation root", cause)
+            }
+    }
 }
 
 /**
