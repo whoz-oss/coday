@@ -234,6 +234,11 @@ paths:
       summary: List the workflows of the configured workstream.
       operationId: listWorkflowsWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: state
         in: query
         required: false
@@ -263,6 +268,11 @@ paths:
       summary: Create a workflow run. Factory owns its identity and execution.
       operationId: startWorkflowWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: Idempotency-Key
         in: header
         required: false
@@ -288,6 +298,11 @@ paths:
       summary: Request a governed retry of a blocked step.
       operationId: requestRetryWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: workflowId
         in: path
         required: true
@@ -310,8 +325,8 @@ paths:
     get:
       tags:
       - workflows
-      summary: List workflow projections of the caller's tenant scope (optionally
-        filtered by namespace).
+      summary: List workflow projections in an explicit namespace; an unmapped namespace
+        returns an empty collection.
       operationId: listWorkflow
       parameters:
       - name: namespaceId
@@ -377,6 +392,41 @@ paths:
       - name: workflowId
         in: path
         required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/steps/{stepId}/research-resumptions:
+    post:
+      tags:
+      - workflows
+      summary: Resume a NEEDS_RESEARCH step as a new attempt.
+      operationId: resumeResearchWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: stepId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: false
         schema:
           type: string
       requestBody:
@@ -756,6 +806,11 @@ paths:
         required: true
         schema:
           type: string
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -777,6 +832,11 @@ paths:
       parameters:
       - name: workflowId
         in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
         required: true
         schema:
           type: string
@@ -1744,6 +1804,11 @@ paths:
       summary: Read the bounded aggregated projection of the configured workstream.
       operationId: getWorkstreamWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: workstreamId
         in: path
         required: true
@@ -1769,6 +1834,11 @@ paths:
       summary: Read the authoritative state of one workflow.
       operationId: getWorkflowWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: workflowId
         in: path
         required: true
@@ -1789,6 +1859,11 @@ paths:
         \ they are answered in Factory."
       operationId: getRequiredHumanActionsWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: workflowId
         in: path
         required: true
@@ -1808,6 +1883,11 @@ paths:
       summary: List the active blockers of a workflow.
       operationId: getBlockersWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: workflowId
         in: path
         required: true
@@ -1827,6 +1907,11 @@ paths:
       summary: "List the durable attempts of a workflow, optionally of one step."
       operationId: getStepAttemptsWorkstreamService
       parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
       - name: workflowId
         in: path
         required: true
@@ -1977,6 +2062,11 @@ paths:
       parameters:
       - name: workflowId
         in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
         required: true
         schema:
           type: string
@@ -3230,6 +3320,18 @@ components:
         startedAt:
           type: string
           format: date-time
+        activeDurationMs:
+          type: integer
+          format: int64
+        activeSince:
+          type: string
+          format: date-time
+        waitingDurationMs:
+          type: integer
+          format: int64
+        waitingSince:
+          type: string
+          format: date-time
         completedAt:
           type: string
           format: date-time
@@ -3238,6 +3340,7 @@ components:
         sealingClass:
           type: string
       required:
+      - activeDurationMs
       - agentName
       - attemptId
       - attemptNumber
@@ -3248,6 +3351,7 @@ components:
       - status
       - stepId
       - terminal
+      - waitingDurationMs
     WorkflowDataEnvelopeListDurableAgentAttemptDto:
       type: object
       properties:

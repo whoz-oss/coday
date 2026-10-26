@@ -2213,9 +2213,9 @@ paths:
       - namespace-permission-endpoints
   /api/namespaces/{namespaceId}/case-invalidation:
     get:
-      description: "Each 'namespace-case-invalidation' event has no data payload.\
-        \ Reload GET /api/cases/by-parentId/{namespaceId}/mine when it arrives or\
-        \ when the stream reconnects."
+      description: "Each 'namespace-case-invalidation' event carries the neutral JSON\
+        \ payload '{}', with no business data. Reload GET /api/cases/by-parentId/{namespaceId}/mine\
+        \ when it arrives or when the stream reconnects."
       operationId: streamCaseInvalidationsNamespaceCaseInvalidationSse
       parameters:
       - in: path
@@ -2228,7 +2228,8 @@ paths:
         "200":
           content:
             text/event-stream: {}
-          description: SSE stream of payload-free namespace case-list invalidations.
+          description: "SSE stream of namespace case-list invalidations carrying data:\
+            \ {}."
       summary: Stream namespace case-list invalidations via SSE
       tags:
       - sse
