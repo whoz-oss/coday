@@ -1,13 +1,15 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { catchError, of } from 'rxjs'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   AiProvider,
+  AiProviderApiTypeEnum,
   AiProviderControllerService,
   AiModel,
   AiModelControllerService,
+  AiModelReasoningEffortEnum,
   ModelPricing,
 } from '@whoz-oss/agentos-api-client'
 
@@ -83,6 +85,7 @@ export class AiModelFormComponent implements OnInit {
     temperature: new FormControl<number | null>(null),
     contextWindow: new FormControl<number | null>(null),
     maxCompletionTokens: new FormControl<number | null>(null),
+    reasoningEffort: new FormControl<AiModelReasoningEffortEnum | null>(null),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),
@@ -123,9 +126,28 @@ export class AiModelFormComponent implements OnInit {
     return this.form.controls.maxCompletionTokens
   }
 
+  protected get reasoningEffortControl() {
+    return this.form.controls.reasoningEffort
+  }
+
   protected get pricingGroup() {
     return this.form.controls.pricing
   }
+
+  /** Effort levels offered in the select; the empty option (null) keeps the provider default. */
+  protected readonly reasoningEffortOptions = Object.values(AiModelReasoningEffortEnum)
+
+  private readonly selectedProviderId = toSignal(this.form.controls.aiProviderId.valueChanges, {
+    initialValue: this.form.controls.aiProviderId.value,
+  })
+
+  /**
+   * True when the selected provider is Anthropic: the backend rejects a reasoning effort there
+   * until it can send Anthropic's native effort, so the select is cleared and disabled.
+   */
+  protected readonly reasoningEffortUnsupported = computed(
+    () => this.providers().find((p) => p.id === this.selectedProviderId())?.apiType === AiProviderApiTypeEnum.Anthropic
+  )
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
@@ -144,6 +166,17 @@ export class AiModelFormComponent implements OnInit {
 
   /** Kept for the update payload (preserves server-side fields). */
   private existingModel: AiModel | null = null
+
+  constructor() {
+    effect(() => {
+      if (this.reasoningEffortUnsupported()) {
+        this.reasoningEffortControl.setValue(null)
+        this.reasoningEffortControl.disable()
+      } else {
+        this.reasoningEffortControl.enable()
+      }
+    })
+  }
 
   ngOnInit(): void {
     const modelId = this.route.snapshot.paramMap.get('modelId')
@@ -171,6 +204,7 @@ export class AiModelFormComponent implements OnInit {
           this.temperatureControl.setValue(model.temperature ?? null)
           this.contextWindowControl.setValue(model.contextWindow ?? null)
           this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
+          this.reasoningEffortControl.setValue(model.reasoningEffort ?? null)
           this.pricingGroup.setValue({
             inputMTokens: model.pricing?.inputMTokens ?? null,
             outputMTokens: model.pricing?.outputMTokens ?? null,
@@ -224,6 +258,7 @@ export class AiModelFormComponent implements OnInit {
       temperature: raw.temperature ?? undefined,
       contextWindow: raw.contextWindow ?? undefined,
       maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
+      reasoningEffort: raw.reasoningEffort ?? undefined,
       pricing,
     }
 

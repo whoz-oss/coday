@@ -121,6 +121,11 @@
     font-size: 0.8125rem;
   }
 
+  &__hint {
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+  }
+
   &__input--readonly {
     color: var(--color-text-secondary);
     cursor: default;

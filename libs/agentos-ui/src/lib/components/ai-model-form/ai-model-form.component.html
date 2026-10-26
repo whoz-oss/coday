@@ -124,6 +124,24 @@
         />
       </div>
 
+      <div class="ai-model-form__field">
+        <label class="ai-model-form__label" for="model-reasoning-effort">Reasoning effort</label>
+        <select id="model-reasoning-effort" class="ai-model-form__select" [formControl]="reasoningEffortControl">
+          <option [ngValue]="null">Provider default</option>
+          @for (effort of reasoningEffortOptions; track effort) {
+            <option [ngValue]="effort">{{ effort.toLowerCase() }}</option>
+          }
+        </select>
+        @if (reasoningEffortUnsupported()) {
+          <span class="ai-model-form__hint">Not supported yet for Anthropic providers.</span>
+        } @else {
+          <span class="ai-model-form__hint">
+            Sent as is to OpenAI-compatible providers, which reject levels the model does not support. Through Requesty,
+            Claude models do not apply it faithfully.
+          </span>
+        }
+      </div>
+
       <!-- Pricing section (all values per million tokens) -->
       <fieldset class="ai-model-form__section" [formGroup]="pricingGroup">
         <legend class="ai-model-form__section-title">
