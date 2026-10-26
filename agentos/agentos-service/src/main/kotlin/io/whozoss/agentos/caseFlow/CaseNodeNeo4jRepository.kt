@@ -253,7 +253,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (u:User {id: $userId})
+        $$"""MATCH (u:User{id: $userId})
             MATCH (u)-[:ADMIN|MEMBER]->(c:Case)-[:BELONGS_TO]->(:Namespace {id: $namespaceId})
             WHERE coalesce(c.removed, false) = false AND c.status <> 'CREATED'
             WITH DISTINCT u, c
