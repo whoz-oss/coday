@@ -597,6 +597,14 @@ class AiModelServiceImplSpec : StringSpec() {
             service.findByParent(aiProviderId).shouldBeEmpty()
         }
 
+        "create rejects a reasoning effort under a Gemini provider" {
+            val (service, aiProviderId) = newService(apiType = AiApiType.Gemini)
+
+            shouldThrow<BadRequestException> {
+                service.create(modelConfig(aiProviderId = aiProviderId).copy(reasoningEffort = ReasoningEffort.LOW))
+            }
+        }
+
         "update rejects a reasoning effort under an Anthropic provider and keeps the stored model" {
             val (service, aiProviderId) = newService(apiType = AiApiType.Anthropic)
             val original = service.create(modelConfig(aiProviderId = aiProviderId))

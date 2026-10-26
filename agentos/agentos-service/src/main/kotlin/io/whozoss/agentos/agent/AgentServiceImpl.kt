@@ -645,6 +645,7 @@ class AgentServiceImpl(
                     maxIterations = limitsConfig.agentMaxIterations,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
+                    reasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                 )
             }
@@ -669,6 +670,7 @@ class AgentServiceImpl(
                     caseEventsProvider = context.caseEventsProvider,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
+                    reasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )

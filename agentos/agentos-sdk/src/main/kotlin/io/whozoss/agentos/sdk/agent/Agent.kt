@@ -1,5 +1,6 @@
 package io.whozoss.agentos.sdk.agent
 
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.entity.Entity
 import kotlinx.coroutines.flow.Flow
@@ -8,6 +9,10 @@ interface Agent : Entity {
     val name: String
     val llmProvider: String
     val llmModel: String
+
+    /** Reasoning effort sent with this agent's model requests, or null when none is sent. */
+    val reasoningEffort: ReasoningEffort?
+        get() = null
 
     /**
      * Run the agent with the given case events.

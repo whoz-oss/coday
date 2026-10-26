@@ -8,6 +8,7 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
@@ -57,6 +58,8 @@ class AgentAdvanced(
     private val maxIterations: Int = 20,
     override val llmProvider: String,
     override val llmModel: String,
+    /** Effective reasoning effort of the model, carried on the agent's messages. */
+    override val reasoningEffort: ReasoningEffort? = null,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
 ) : Agent {
@@ -558,6 +561,7 @@ class AgentAdvanced(
                         content = listOf(MessageContent.Text(question)),
                         llmProvider = llmProvider,
                         llmModel = llmModel,
+                        reasoningEffort = reasoningEffort,
                     ),
                 )
                 emitEvent(
@@ -688,6 +692,7 @@ class AgentAdvanced(
                 content = listOf(MessageContent.Text(errorText)),
                 llmProvider = llmProvider,
                 llmModel = llmModel,
+                reasoningEffort = reasoningEffort,
             ),
             WarnEvent(
                 namespaceId = namespaceId,
@@ -790,6 +795,7 @@ class AgentAdvanced(
                                         content = listOf(MessageContent.Text(clarificationQuestion)),
                                         llmProvider = llmProvider,
                                         llmModel = llmModel,
+                                        reasoningEffort = reasoningEffort,
                                     )
                                 emitEvent(clarification)
                                 appendTo += clarification
@@ -911,6 +917,7 @@ class AgentAdvanced(
                 content = listOf(MessageContent.Text("$decisionPrefix$resultText")),
                 llmProvider = llmProvider,
                 llmModel = llmModel,
+                reasoningEffort = reasoningEffort,
             )
         emitEvent(resolutionMessage)
         appendTo += resolutionMessage
@@ -1100,6 +1107,7 @@ class AgentAdvanced(
                     content = listOf(MessageContent.Text(content)),
                     llmProvider = llmProvider,
                     llmModel = llmModel,
+                    reasoningEffort = reasoningEffort,
                 )
             emitEvent(msg)
         }

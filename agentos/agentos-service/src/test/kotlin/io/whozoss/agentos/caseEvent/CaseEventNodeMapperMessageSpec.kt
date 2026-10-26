@@ -7,6 +7,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -85,6 +86,7 @@ class CaseEventNodeMapperMessageSpec :
                     content = listOf(MessageContent.Text("Done")),
                     llmProvider = "anthropic",
                     llmModel = "claude-sonnet",
+                    reasoningEffort = ReasoningEffort.XHIGH,
                 )
 
             val copied = nodeMapper.withRemoved(nodeMapper.fromDomain(original), true)
@@ -92,6 +94,7 @@ class CaseEventNodeMapperMessageSpec :
 
             roundTripped.llmProvider shouldBe "anthropic"
             roundTripped.llmModel shouldBe "claude-sonnet"
+            roundTripped.reasoningEffort shouldBe ReasoningEffort.XHIGH
             roundTripped.metadata.removed shouldBe true
         }
 

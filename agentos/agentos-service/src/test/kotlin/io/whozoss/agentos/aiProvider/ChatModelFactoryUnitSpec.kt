@@ -15,7 +15,6 @@ import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.google.genai.GoogleGenAiChatModel
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions
-import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel
 import org.springframework.ai.ollama.api.OllamaChatOptions
 import org.springframework.ai.ollama.api.ThinkOption
 import org.springframework.ai.openai.OpenAiChatModel
@@ -186,19 +185,10 @@ class ChatModelFactoryUnitSpec : StringSpec({
         }
     }
 
-    "Gemini maps LOW to the low thinking level, higher levels to the high one, and NONE to a zero budget" {
-        val none = optionsFor(AiApiType.Gemini, ReasoningEffort.NONE) as GoogleGenAiChatOptions
-        none.thinkingBudget shouldBe 0
-        none.thinkingLevel.shouldBeNull()
-        (optionsFor(AiApiType.Gemini, ReasoningEffort.LOW) as GoogleGenAiChatOptions).thinkingLevel shouldBe
-            GoogleGenAiThinkingLevel.LOW
-        listOf(ReasoningEffort.MEDIUM, ReasoningEffort.HIGH, ReasoningEffort.XHIGH, ReasoningEffort.MAX).forEach { effort ->
-            (optionsFor(AiApiType.Gemini, effort) as GoogleGenAiChatOptions).thinkingLevel shouldBe
-                GoogleGenAiThinkingLevel.HIGH
-        }
-        val default = optionsFor(AiApiType.Gemini, null) as GoogleGenAiChatOptions
-        default.thinkingLevel.shouldBeNull()
-        default.thinkingBudget.shouldBeNull()
+    "Gemini ignores the reasoning effort and keeps its thinking settings unset" {
+        val options = optionsFor(AiApiType.Gemini, ReasoningEffort.HIGH) as GoogleGenAiChatOptions
+        options.thinkingLevel.shouldBeNull()
+        options.thinkingBudget.shouldBeNull()
     }
 
     "Anthropic ignores the reasoning effort and keeps thinking unset" {

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonValue
 import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -214,6 +215,11 @@ data class MessageEvent(
     val llmProvider: String? = null,
     /** Durable execution attribution for agent-authored messages; null for user messages. */
     val llmModel: String? = null,
+    /**
+     * Reasoning effort the agent's model ran with for this message; null for user messages and when
+     * no effort was sent (the provider default applied).
+     */
+    val reasoningEffort: ReasoningEffort? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }

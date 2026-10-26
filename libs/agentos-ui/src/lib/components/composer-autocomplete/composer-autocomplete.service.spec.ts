@@ -5,6 +5,7 @@ import { of, throwError } from 'rxjs'
 import { AgentStateService } from '../../services/agent-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { ComposerAutocompleteService } from './composer-autocomplete.service'
 
@@ -155,6 +156,66 @@ describe('ComposerAutocompleteService', () => {
   // -------------------------------------------------------------------------
   // Slash-command pipeline
   // -------------------------------------------------------------------------
+
+  describe('/effort command', () => {
+    it('is not offered until the host enables it', fakeAsync(() => {
+      const { service } = setup()
+
+      service.onInput('/effort', { set: jest.fn() })
+      tick(60)
+
+      expect(service.effortSuggestions()).toEqual([])
+    }))
+
+    it('lists the levels instead of the prompts whose name starts the same way', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('efficiency')]))
+      service.enableEffortCommand(() => true)
+
+      service.onInput('/e', { set: jest.fn() })
+      service.onInput('/ef', { set: jest.fn() })
+      tick(60)
+
+      expect(service.effortSuggestions().map((o) => o.label)).toContain('high')
+      expect(service.slashSuggestions()).toEqual([])
+    }))
+
+    it('stays closed while the host says the effort cannot be saved', fakeAsync(() => {
+      const { service } = setup()
+      service.enableEffortCommand(() => false)
+
+      service.onInput('/effort', { set: jest.fn() })
+      tick(60)
+
+      expect(service.effortSuggestions()).toEqual([])
+    }))
+
+    it('closes when the value is no longer an /effort command', fakeAsync(() => {
+      const { service } = setup()
+      service.enableEffortCommand(() => true)
+
+      service.onInput('/effort', { set: jest.fn() })
+      service.onInput('hello', { set: jest.fn() })
+      tick(60)
+
+      expect(service.effortSuggestions()).toEqual([])
+    }))
+
+    it('takes the keyboard: Enter delegates to the effort picker, Escape closes it', fakeAsync(() => {
+      const { service } = setup()
+      service.enableEffortCommand(() => true)
+      const effortRef = refSignal({ navigate: jest.fn() } as unknown as EffortAutocompleteComponent)
+      service.onInput('/effort h', { set: jest.fn() })
+
+      const enter = new KeyboardEvent('keydown', { key: 'Enter' })
+      expect(service.onKeydown(enter, mockPromptRef(), mockAgentRef(), effortRef)).toBe(true)
+      expect(effortRef()?.navigate).toHaveBeenCalledWith('Enter')
+
+      const escape = new KeyboardEvent('keydown', { key: 'Escape' })
+      expect(service.onKeydown(escape, mockPromptRef(), mockAgentRef(), effortRef)).toBe(true)
+      expect(service.effortSuggestions()).toEqual([])
+    }))
+  })
 
   describe('slash-command autocomplete (/)', () => {
     it('triggers an HTTP call on the first slash and caches the result', fakeAsync(() => {

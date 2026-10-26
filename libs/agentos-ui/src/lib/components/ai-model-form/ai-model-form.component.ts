@@ -26,6 +26,12 @@ import {
  *
  * On success or cancel, navigates back to /:namespaceId/ai-models.
  */
+/** API types where the backend rejects a reasoning effort (mirrors `AiApiType.supportsReasoningEffort`). */
+const NO_REASONING_EFFORT_API_TYPES: readonly AiProviderApiTypeEnum[] = [
+  AiProviderApiTypeEnum.Anthropic,
+  AiProviderApiTypeEnum.Gemini,
+]
+
 @Component({
   selector: 'agentos-ai-model-form',
   imports: [ReactiveFormsModule],
@@ -142,12 +148,27 @@ export class AiModelFormComponent implements OnInit {
   })
 
   /**
-   * True when the selected provider is Anthropic: the backend rejects a reasoning effort there
-   * until it can send Anthropic's native effort, so the select is cleared and disabled.
+   * True when the selected provider cannot take a reasoning effort yet (the backend rule is
+   * `AiApiType.supportsReasoningEffort`): the select is cleared and disabled.
    */
-  protected readonly reasoningEffortUnsupported = computed(
-    () => this.providers().find((p) => p.id === this.selectedProviderId())?.apiType === AiProviderApiTypeEnum.Anthropic
-  )
+  protected readonly reasoningEffortUnsupported = computed(() => {
+    const apiType = this.providers().find((p) => p.id === this.selectedProviderId())?.apiType
+    return apiType !== undefined && NO_REASONING_EFFORT_API_TYPES.includes(apiType)
+  })
+
+  private readonly temperatureValue = toSignal(this.form.controls.temperature.valueChanges, {
+    initialValue: this.form.controls.temperature.value,
+  })
+
+  private readonly reasoningEffortValue = toSignal(this.form.controls.reasoningEffort.valueChanges, {
+    initialValue: this.form.controls.reasoningEffort.value,
+  })
+
+  /** OpenAI reasoning models (GPT-5.1 and later) refuse a temperature other than 1 together with an effort. */
+  protected readonly temperatureMayConflictWithEffort = computed(() => {
+    const temperature = this.temperatureValue()
+    return this.reasoningEffortValue() != null && temperature != null && temperature !== 1
+  })
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)

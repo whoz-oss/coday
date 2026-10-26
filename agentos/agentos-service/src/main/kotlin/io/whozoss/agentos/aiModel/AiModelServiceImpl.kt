@@ -26,7 +26,7 @@ import java.util.UUID
  *   fallback) can coexist without conflicting with each other.
  *
  * [create] and [update] reject an [AiModel.reasoningEffort] under an API type without
- * [AiApiType.supportsReasoningEffort] (Anthropic): the setting would be silently ignored.
+ * [AiApiType.supportsReasoningEffort] (Anthropic, Gemini): the setting would be ignored or refused.
  */
 @Service
 class AiModelServiceImpl(

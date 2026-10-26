@@ -911,17 +911,10 @@
     flex-shrink: 0;
     padding: 2px 6px;
     border: 1px solid var(--color-divider);
-    border-radius: 0;
-    background: var(--color-surface);
-    color: var(--color-text);
+    color: var(--color-neutral-700);
     font-family: var(--font-body);
     font-size: 11px;
-    cursor: pointer;
-
-    &:disabled {
-      cursor: default;
-      color: var(--color-neutral-700);
-    }
+    white-space: nowrap;
   }
 
   &__actions-hint {

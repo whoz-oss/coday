@@ -160,6 +160,8 @@ class MessageEventNode(
     val contextJson: String? = null,
     val llmProvider: String? = null,
     val llmModel: String? = null,
+    /** Enum name of the [io.whozoss.agentos.sdk.aiProvider.ReasoningEffort] the agent ran with. */
+    val reasoningEffort: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

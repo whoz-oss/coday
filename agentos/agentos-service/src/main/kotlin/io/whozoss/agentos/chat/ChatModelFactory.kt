@@ -63,7 +63,7 @@ class ChatModelFactory(
         /** Maximum tokens to generate in the completion. Does not affect the input context window. */
         maxCompletionTokens: Int? = null,
         headers: Map<String, String> = emptyMap(),
-        /** Null keeps the provider default; ignored for Anthropic, where it is rejected at save time. */
+        /** Null keeps the provider default; ignored for Anthropic and Gemini, where it is rejected at save time. */
         reasoningEffort: ReasoningEffort? = null,
     ): ChatModel {
         val resolvedApiKey = apiKey ?: ""
@@ -107,7 +107,6 @@ class ChatModelFactory(
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
                     maxCompletionTokens = maxCompletionTokens,
-                    reasoningEffort = reasoningEffort,
                 )
             }
 
@@ -246,7 +245,6 @@ class ChatModelFactory(
         model: String,
         temp: Double,
         maxCompletionTokens: Int?,
-        reasoningEffort: ReasoningEffort?,
     ): ChatModel {
         val api = Client.builder().apiKey(apiKey).build()
 
@@ -258,7 +256,7 @@ class ChatModelFactory(
         if (maxCompletionTokens != null) {
             optionsBuilder.maxOutputTokens(maxCompletionTokens)
         }
-        val options = optionsBuilder.applyReasoningEffort(reasoningEffort).build()
+        val options = optionsBuilder.build()
 
         return GoogleGenAiChatModel(
             api,
