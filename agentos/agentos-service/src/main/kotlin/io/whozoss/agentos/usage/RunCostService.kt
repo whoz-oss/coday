@@ -3,6 +3,7 @@ package io.whozoss.agentos.usage
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.caseFlow.saveChange
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
@@ -163,7 +164,7 @@ class RunCostService(
         if (!next.isFinite() || next <= 0 || next <= expectedThreshold) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Set a positive, higher threshold before continuing")
         }
-        cases.save(case.copy(runCostThreshold = next))
+        cases.saveChange(case) { it.copy(runCostThreshold = next) }
         session.threshold = next
         // One click = one doubling. If a response overshot more than 2x, another
         // explicit confirmation is needed; never silently multiply several times.

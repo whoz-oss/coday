@@ -41,7 +41,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class AgentConfigProperties(
     val agentName: String? = null,
     /** Default active-time budget for each outgoing delegation, in seconds, excluding cost confirmation. */
-    val delegationTimeoutSeconds: Int = 300,
+    val delegationTimeoutSeconds: Int = 600,
     /**
      * Char-equivalent cost of one attached image against the detailed-tool budget.
      * Derived from the legacy Coday estimate: (width * height) / 750 tokens at

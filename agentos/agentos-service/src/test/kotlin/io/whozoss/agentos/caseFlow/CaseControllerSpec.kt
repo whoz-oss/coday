@@ -985,9 +985,8 @@ class CaseControllerSpec :
                 caseResource(id = existing.metadata.id, title = "renamed")
                     .copy(namespaceId = otherNs, status = CaseStatus.RUNNING)
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } answers {
-                val saved = firstArg<Case>()
+            every { caseService.edit(existing.metadata.id, any()) } answers {
+                val saved = secondArg<(Case) -> Case>()(existing)
                 saved.namespaceId shouldBe namespaceId
                 saved.status shouldBe existing.status
                 saved.title shouldBe "renamed"
@@ -996,12 +995,13 @@ class CaseControllerSpec :
 
             controller.update(existing.metadata.id, payload)
 
-            verify(exactly = 1) { caseService.update(any()) }
+            verify(exactly = 1) { caseService.edit(existing.metadata.id, any()) }
         }
 
         "update throws 404 when the Case does not exist" {
             val id = UUID.randomUUID()
-            every { caseService.findById(id) } returns null
+            every { caseService.edit(id, any()) } throws
+                io.whozoss.agentos.exception.ResourceNotFoundException("Case not found: $id")
 
             shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
                 controller.update(id, caseResource(id = id))
@@ -1012,8 +1012,7 @@ class CaseControllerSpec :
             val existing = caseEntity()
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } returns existing
+            every { caseService.edit(existing.metadata.id, any()) } returns existing
             every {
                 caseEventService.findLastMessageTimestamps(listOf(existing.id))
             } returns mapOf(existing.id to msgTimestamp)
@@ -1026,8 +1025,7 @@ class CaseControllerSpec :
         "update populates favorite and role from favoriteService" {
             val existing = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } returns existing
+            every { caseService.edit(existing.metadata.id, any()) } returns existing
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns
