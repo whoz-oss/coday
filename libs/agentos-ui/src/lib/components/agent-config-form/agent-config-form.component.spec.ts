@@ -9,9 +9,11 @@ import {
   AgentConfigDefaultsControllerService,
   AgentConfigExportService,
   IntegrationTypeControllerService,
+  SkillSummary,
 } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
+import { SkillStateService } from '../../services/skill-state.service'
 import { AgentConfigFormComponent } from './agent-config-form.component'
 
 /**
@@ -32,6 +34,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   let defaultsController: { getAgentConfigDefaults: jest.Mock }
   let integrationState: { loadNamespaceConfigs: jest.Mock; loadPlatformConfigs: jest.Mock }
   let integrationType: { listTypesIntegrationType: jest.Mock }
+  let skillState: { listEffective: jest.Mock; listPlatform: jest.Mock }
   let router: { navigate: jest.Mock }
   let routeAgentConfigId: string | null
   let fixture: ComponentFixture<AgentConfigFormComponent>
@@ -75,8 +78,29 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
         state: { (): BuiltInState; set: (v: BuiltInState) => void }
         restrictedTools: string[] | null
       }>
+      skillRows: () => Array<{
+        selector: string
+        name: string
+        unresolved: boolean
+        platform: boolean
+        selected: { (): boolean; set: (v: boolean) => void }
+      }>
+      allSkillsSelected: { (): boolean; set: (v: boolean) => void }
+      skillCatalogueUnavailable: () => boolean
+      namedSkillSelectionDropped: () => boolean
       submit: () => void
     }
+
+  function skill(name: string, overrides: Partial<SkillSummary> = {}): SkillSummary {
+    return {
+      id: `skill-${name}`,
+      name,
+      description: `${name} description`,
+      namespaceId: 'ns-1',
+      readOnly: false,
+      ...overrides,
+    }
+  }
 
   function editConfig(overrides: Partial<AgentConfig>): AgentConfig {
     return {
@@ -105,6 +129,10 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
     integrationType = {
       listTypesIntegrationType: jest.fn().mockReturnValue(of(builtInTypes)),
     }
+    skillState = {
+      listEffective: jest.fn().mockReturnValue(of([])),
+      listPlatform: jest.fn().mockReturnValue(of([])),
+    }
     router = { navigate: jest.fn() }
     const activatedRoute = {
       snapshot: {
@@ -122,6 +150,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
         { provide: AgentConfigControllerService, useValue: controller },
         { provide: IntegrationConfigStateService, useValue: integrationState },
         { provide: IntegrationTypeControllerService, useValue: integrationType },
+        { provide: SkillStateService, useValue: skillState },
         { provide: AgentConfigExportService, useValue: { exportAsYaml: jest.fn() } },
       ],
     })
@@ -349,6 +378,141 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
     })
   })
 
+  describe('skill selectors', () => {
+    it('offers the effective catalogue of the namespace and selects what the agent declares', () => {
+      routeAgentConfigId = 'a-1'
+      skillState.listEffective.mockReturnValue(of([skill('deploy'), skill('migrate')]))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ skillSelectors: ['deploy'] })))
+
+      component.ngOnInit()
+
+      expect(skillState.listEffective).toHaveBeenCalledWith('ns-1')
+      const rows = internals().skillRows()
+      expect(rows.map((r) => r.name)).toEqual(['deploy', 'migrate'])
+      expect(rows.find((r) => r.name === 'deploy')?.selected()).toBe(true)
+      expect(rows.find((r) => r.name === 'migrate')?.selected()).toBe(false)
+    })
+
+    it('matches a selector written as a path or in another case against the catalogue', () => {
+      // Mirrors the normalisation findSkills applies, so a YAML-authored selector does not
+      // show up as unknown and get offered for removal.
+      routeAgentConfigId = 'a-1'
+      skillState.listEffective.mockReturnValue(of([skill('deploy'), skill('migrate')]))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ skillSelectors: ['deploy/SKILL.md', 'MIGRATE'] })))
+
+      component.ngOnInit()
+
+      const rows = internals().skillRows()
+      expect(rows.every((r) => r.selected())).toBe(true)
+      expect(rows.some((r) => r.unresolved)).toBe(false)
+    })
+
+    it('keeps a selector nothing matches, flagged, and writes it back verbatim', () => {
+      // The regression this guards: saving an unrelated change must not drop a selector naming
+      // a skill that was renamed, deleted, or lives in another namespace.
+      routeAgentConfigId = 'a-1'
+      skillState.listEffective.mockReturnValue(of([skill('deploy')]))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ skillSelectors: ['deploy', 'ghost-skill'] })))
+
+      component.ngOnInit()
+      const ghost = internals()
+        .skillRows()
+        .find((r) => r.name === 'ghost-skill')
+      expect(ghost?.unresolved).toBe(true)
+      expect(ghost?.selected()).toBe(true)
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].skillSelectors).toEqual(['deploy', 'ghost-skill'])
+    })
+
+    it('writes the star selector alone, and warns that it replaces the named selection', () => {
+      routeAgentConfigId = 'a-1'
+      skillState.listEffective.mockReturnValue(of([skill('deploy')]))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ skillSelectors: ['deploy'] })))
+
+      component.ngOnInit()
+      expect(internals().namedSkillSelectionDropped()).toBe(false)
+      internals().allSkillsSelected.set(true)
+      expect(internals().namedSkillSelectionDropped()).toBe(true)
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].skillSelectors).toEqual(['*'])
+    })
+
+    it('hydrates the star selector from the agent', () => {
+      routeAgentConfigId = 'a-1'
+      skillState.listEffective.mockReturnValue(of([skill('deploy')]))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ skillSelectors: ['*'] })))
+
+      component.ngOnInit()
+
+      expect(internals().allSkillsSelected()).toBe(true)
+      // `*` is not a named row: it must not surface as an unknown selector.
+      expect(internals().skillRows().length).toBe(1)
+      expect(internals().skillRows()[0].unresolved).toBe(false)
+    })
+
+    it('clears the field when the user deselects everything', () => {
+      routeAgentConfigId = 'a-1'
+      skillState.listEffective.mockReturnValue(of([skill('deploy')]))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ skillSelectors: ['deploy'] })))
+
+      component.ngOnInit()
+      internals().skillRows()[0].selected.set(false)
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].skillSelectors).toBeUndefined()
+    })
+
+    it('writes the selected names on create', () => {
+      skillState.listEffective.mockReturnValue(of([skill('deploy'), skill('migrate')]))
+
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+      internals()
+        .skillRows()
+        .find((r) => r.name === 'migrate')!
+        .selected.set(true)
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].skillSelectors).toEqual(['migrate'])
+    })
+
+    it('stays fail-safe when the catalogue call errors, and preserves the declared selectors', () => {
+      routeAgentConfigId = 'a-1'
+      skillState.listEffective.mockReturnValue(throwError(() => new Error('boom')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ skillSelectors: ['deploy'] })))
+
+      component.ngOnInit()
+
+      expect(internals().skillCatalogueUnavailable()).toBe(true)
+      expect(
+        internals()
+          .skillRows()
+          .map((r) => r.selector)
+      ).toEqual(['deploy'])
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].skillSelectors).toEqual(['deploy'])
+    })
+
+    it('renders the catalogue in the skills section', () => {
+      skillState.listEffective.mockReturnValue(of([skill('deploy')]))
+
+      fixture.detectChanges()
+
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? ''
+      expect(text).toContain('Skills')
+      expect(text).toContain('deploy')
+      expect(text).toContain('Every skill in the catalogue')
+    })
+  })
+
   describe('tri-state select (template)', () => {
     const selectFor = (type: string): HTMLSelectElement => {
       const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(`#built-in-${type}`)
@@ -491,6 +655,8 @@ describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
           useValue: { loadNamespaceConfigs: () => of([]), loadPlatformConfigs: () => of([]) },
         },
         { provide: IntegrationTypeControllerService, useValue: { listTypesIntegrationType: () => of([]) } },
+        // Stubbed so the only outstanding request this test verifies is the defaults one.
+        { provide: SkillStateService, useValue: { listEffective: () => of([]), listPlatform: () => of([]) } },
       ],
     })
     const fixture = TestBed.createComponent(AgentConfigFormComponent)
@@ -507,5 +673,84 @@ describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
     expect(fixture.nativeElement.querySelector('#delegation-timeout-hint').textContent).toContain('1800 s (30 min)')
     expect(fixture.nativeElement.querySelector('#delegation-timeout').value).toBe('')
     http.verify()
+  })
+})
+
+/**
+ * Platform scope has no namespace to resolve an effective catalogue against, so the form
+ * falls back to the platform skills. A selector naming a namespace skill cannot be verified
+ * here and must survive the round-trip untouched.
+ */
+describe('AgentConfigFormComponent (platform-scope skills)', () => {
+  const platformSkill = {
+    id: 'skill-shared',
+    name: 'shared',
+    description: 'shared description',
+    namespaceId: null,
+    readOnly: false,
+    body: '# shared',
+  }
+
+  function setUp(config: Partial<AgentConfig> | null) {
+    const controller = {
+      getByIdAgentConfig: jest.fn().mockReturnValue(of({ id: 'a-1', name: 'agent', ...config })),
+      createAgentConfig: jest.fn().mockReturnValue(of({})),
+      updateAgentConfig: jest.fn().mockReturnValue(of({})),
+    }
+    const skillState = {
+      listEffective: jest.fn().mockReturnValue(of([])),
+      listPlatform: jest.fn().mockReturnValue(of([platformSkill])),
+    }
+    TestBed.configureTestingModule({
+      imports: [AgentConfigFormComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            // No namespaceId segment: this is /admin/agent-configs/...
+            snapshot: { params: {}, paramMap: { get: (k: string) => (k === 'agentConfigId' ? 'a-1' : null) } },
+          },
+        },
+        { provide: Router, useValue: { navigate: jest.fn() } },
+        {
+          provide: AgentConfigDefaultsControllerService,
+          useValue: { getAgentConfigDefaults: jest.fn().mockReturnValue(of(null)) },
+        },
+        { provide: AgentConfigControllerService, useValue: controller },
+        { provide: IntegrationConfigStateService, useValue: { loadPlatformConfigs: () => of([]) } },
+        { provide: IntegrationTypeControllerService, useValue: { listTypesIntegrationType: () => of([]) } },
+        { provide: SkillStateService, useValue: skillState },
+        { provide: AgentConfigExportService, useValue: {} },
+      ],
+    })
+    const fixture = TestBed.createComponent(AgentConfigFormComponent)
+    return { fixture, controller, skillState }
+  }
+
+  it('offers the platform skills instead of an effective catalogue', () => {
+    const { fixture, skillState } = setUp({ skillSelectors: ['shared'] })
+
+    fixture.componentInstance.ngOnInit()
+
+    expect(skillState.listPlatform).toHaveBeenCalled()
+    expect(skillState.listEffective).not.toHaveBeenCalled()
+    const rows = (
+      fixture.componentInstance as unknown as {
+        skillRows: () => Array<{ name: string; platform: boolean; selected: () => boolean }>
+      }
+    ).skillRows()
+    expect(rows.map((r) => r.name)).toEqual(['shared'])
+    expect(rows[0].platform).toBe(true)
+    expect(rows[0].selected()).toBe(true)
+  })
+
+  it('preserves a namespace-scoped selector it cannot verify at platform level', () => {
+    const { fixture, controller } = setUp({ skillSelectors: ['shared', 'namespace-only'] })
+    const component = fixture.componentInstance as unknown as { ngOnInit: () => void; submit: () => void }
+
+    component.ngOnInit()
+    component.submit()
+
+    expect(controller.updateAgentConfig.mock.calls[0][1].skillSelectors).toEqual(['shared', 'namespace-only'])
   })
 })
