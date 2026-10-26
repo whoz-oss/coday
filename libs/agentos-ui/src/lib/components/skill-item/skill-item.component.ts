@@ -34,6 +34,13 @@ export class SkillItemComponent {
   readonly platformMode = input(false)
   /** When true, the skill is shown read-only because of its scope (platform seen from a namespace). */
   readonly readOnly = input(false)
+  /**
+   * How many agents name this skill in their selectors, so the deletion prompt can say what
+   * it would break. Agents that take the whole catalogue through `*` are not counted: they
+   * keep working with one skill less. Left at 0 where the count cannot be computed, such as
+   * the platform list, whose consumers span every namespace.
+   */
+  readonly namedByAgents = input(0)
 
   readonly deleteRequested = output<Skill>()
 

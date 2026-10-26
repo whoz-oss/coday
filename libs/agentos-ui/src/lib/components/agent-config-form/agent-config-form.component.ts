@@ -31,30 +31,16 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { catchError, forkJoin, map, Observable, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
+import {
+  ALL_SKILLS_SELECTOR,
+  grantsAllSkills,
+  namedSelectorKeys,
+  normalizeSkillSelector,
+} from '../../services/skill-selector.utils'
 import { SkillStateService } from '../../services/skill-state.service'
 
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
-
-/**
- * The selector that grants the whole resolved catalogue, as read by
- * `SkillServiceImpl.findSkills` server-side.
- */
-const ALL_SKILLS_SELECTOR = '*'
-
-/**
- * Canonical form of a skill selector, mirroring the normalisation
- * `SkillServiceImpl.findSkills` applies before matching names. Keeping the two in
- * step is what makes a YAML-authored `my-skill/SKILL.md` show up as the catalogue
- * entry it resolves to, rather than as an unknown selector.
- */
-function normalizeSelector(selector: string): string {
-  return selector
-    .trim()
-    .replace(/\/SKILL\.md$/, '')
-    .replace(/\/$/, '')
-    .replace(/^\/+/, '')
-}
 
 /** Represents one sub-agent glob pattern entry in the list. */
 interface SubAgentRow {
@@ -483,10 +469,10 @@ export class AgentConfigFormComponent implements OnInit {
    */
   private buildSkillRows(catalogue: SkillSummary[], selectors: AgentConfig['skillSelectors']): SkillRow[] {
     const declared = (selectors ?? []).map((s) => s.trim()).filter((s) => s.length > 0)
-    this.allSkillsSelected.set(declared.includes(ALL_SKILLS_SELECTOR))
+    this.allSkillsSelected.set(grantsAllSkills(declared))
 
     const named = declared.filter((s) => s !== ALL_SKILLS_SELECTOR)
-    const declaredKeys = new Set(named.map((s) => normalizeSelector(s).toLowerCase()))
+    const declaredKeys = namedSelectorKeys(named)
     const catalogueKeys = new Set(catalogue.map((s) => s.name.toLowerCase()))
 
     const rows: SkillRow[] = catalogue.map((s) => ({
@@ -500,7 +486,7 @@ export class AgentConfigFormComponent implements OnInit {
 
     const seen = new Set<string>()
     for (const selector of named) {
-      const key = normalizeSelector(selector).toLowerCase()
+      const key = normalizeSkillSelector(selector).toLowerCase()
       if (catalogueKeys.has(key) || seen.has(key)) continue
       seen.add(key)
       rows.push({

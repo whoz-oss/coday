@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Skill } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { BehaviorSubject, map, shareReplay, switchMap } from 'rxjs'
 import { SkillStateService } from '../../services/skill-state.service'
 import { SkillItemComponent } from '../skill-item/skill-item.component'
 
@@ -34,12 +34,18 @@ export class PlatformSkillsComponent {
 
   protected readonly isLoading = signal(true)
 
+  /** Set when a deletion is refused, so the failure is not swallowed. */
+  protected readonly errorMessage = signal<string | null>(null)
+
   /** Raw platform skills, kept for delete lookups. */
   private readonly skills$ = this.refresh$.pipe(
     switchMap(() => {
       this.isLoading.set(true)
       return this.skillState.listPlatform()
-    })
+    }),
+    // Subscribed twice — by the async pipe and by the constructor, which keeps the full
+    // objects for the item template — so without this the list is fetched twice per refresh.
+    shareReplay({ bufferSize: 1, refCount: true })
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
@@ -77,10 +83,19 @@ export class PlatformSkillsComponent {
   }
 
   protected deleteSkill(skill: Skill): void {
+    this.errorMessage.set(null)
     this.skillState
       .delete(skill.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+      .subscribe({
+        next: () => this.refresh$.next(),
+        error: (err: { status?: number }) =>
+          this.errorMessage.set(
+            err.status === 403
+              ? `Deleting "${skill.name}" requires platform administrator rights.`
+              : `Deleting "${skill.name}" failed.`
+          ),
+      })
   }
 
   protected resolveSkill(id: string): Skill | null {

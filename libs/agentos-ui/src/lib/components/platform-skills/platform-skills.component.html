@@ -1,3 +1,7 @@
+@if (errorMessage()) {
+  <p class="platform-skills__error" role="alert">{{ errorMessage() }}</p>
+}
+
 <ds-entity-list
   title="Platform Skills"
   [items]="(skillItems$ | async) ?? []"

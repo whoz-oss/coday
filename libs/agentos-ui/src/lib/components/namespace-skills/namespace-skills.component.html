@@ -1,3 +1,7 @@
+@if (errorMessage()) {
+  <p class="namespace-skills__error" role="alert">{{ errorMessage() }}</p>
+}
+
 <ds-entity-list
   title="Skills"
   [items]="(skillItems$ | async) ?? []"
@@ -18,6 +22,7 @@
       [skill]="skill"
       [namespaceId]="namespaceId"
       [readOnly]="isPlatformSkill(item.id)"
+      [namedByAgents]="namedByAgents(skill)"
       (deleteRequested)="deleteSkill($event)"
     />
   }

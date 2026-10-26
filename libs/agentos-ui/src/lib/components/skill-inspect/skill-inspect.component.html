@@ -54,6 +54,48 @@
         </dl>
       </section>
 
+      <!-- Which agents reference this skill, computed from their selectors -->
+      <section class="skill-inspect__section">
+        <h2 class="skill-inspect__section-title">
+          Used by
+          @if (!isPlatformMode && !consumersLoading() && !consumersUnavailable()) {
+            <span class="skill-inspect__count">({{ consumers().length }})</span>
+          }
+        </h2>
+
+        @if (isPlatformMode) {
+          <p class="skill-inspect__empty">
+            A platform skill is offered to every namespace. Open it from a namespace to see which of its agents use it.
+          </p>
+        } @else if (consumersLoading()) {
+          <p class="skill-inspect__empty">Loading&hellip;</p>
+        } @else if (consumersUnavailable()) {
+          <p class="skill-inspect__error" role="alert">
+            The agent configs could not be read, so it is unknown whether any agent uses this skill.
+          </p>
+        } @else if (consumers().length === 0) {
+          <p class="skill-inspect__empty">No agent references this skill.</p>
+        } @else {
+          <ul class="skill-inspect__consumers">
+            @for (consumer of consumers(); track consumer.name + consumer.grant) {
+              <li class="skill-inspect__consumer">
+                <span class="skill-inspect__consumer-name">{{ consumer.name }}</span>
+                @if (consumer.platform) {
+                  <span class="skill-inspect__badge">platform agent</span>
+                }
+                @if (consumer.grant === 'all') {
+                  <span class="skill-inspect__badge">via *</span>
+                }
+              </li>
+            }
+          </ul>
+          <p class="skill-inspect__consumers-hint">
+            An agent listed <code>via *</code> takes the whole catalogue and keeps working without this skill. The
+            others name it, so deleting the skill leaves their selector resolving to nothing.
+          </p>
+        }
+      </section>
+
       <!-- Body -->
       <section class="skill-inspect__section">
         <button
