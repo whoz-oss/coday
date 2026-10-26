@@ -453,6 +453,33 @@ class DelegationToolUnitSpec :
             }
         }
 
+        "returns the answer of a sub-case that hands back as its budget runs out, without stopping it" {
+            runTest {
+                val launcher = mockk<SubCaseManager>()
+                val status = MutableStateFlow(CaseStatus.RUNNING)
+                var pauseChecks = 0
+                // The sub-case hands back right after the last sample of its budget, before any stop.
+                every { launcher.isCostPaused(any()) } answers {
+                    if (++pauseChecks == 2) status.value = CaseStatus.IDLE
+                    false
+                }
+                val runtime = mockk<CaseRuntime>()
+                every { runtime.id } returns subCaseId
+                every { runtime.statusFlow } returns status
+                every { runtime.activityCount } returns 0L
+                every { runtime.isRunning() } returns false
+                every { launcher.interruptCase(subCaseId) } returns Unit
+                every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+                val tool = makeTool(launcher, events = listOf(agentMessage("just in time")), timeoutMs = 1_000)
+
+                val result = tool.execute(singleDelegation(), toolContext)
+
+                result.success shouldBe true
+                jacksonObjectMapper().readTree(result.output)[0].get("result").asText() shouldBe "just in time"
+                verify(exactly = 0) { launcher.interruptCase(any()) }
+            }
+        }
+
         "keeps waiting while the sub-case shows activity, and relays it to the delegating case" {
             runTest {
                 val launcher = mockk<SubCaseManager>()

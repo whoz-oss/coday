@@ -407,6 +407,7 @@ internal suspend fun awaitDelegationStatus(
     onActivity: () -> Unit = {},
     isPaused: () -> Boolean,
 ): CaseStatus? {
+    val handedBack = { status: CaseStatus -> status == CaseStatus.IDLE || status.isTerminal() }
     var remaining = timeoutMs
     var lastActivity = runtime.activityCount
     while (remaining > 0) {
@@ -414,7 +415,7 @@ internal suspend fun awaitDelegationStatus(
         val slice = minOf(remaining, 1000L)
         val status =
             withTimeoutOrNull(slice) {
-                runtime.statusFlow.filter { it == CaseStatus.IDLE || it.isTerminal() }.first()
+                runtime.statusFlow.filter(handedBack).first()
             }
         if (status != null) return status
         val activity = runtime.activityCount
@@ -426,5 +427,6 @@ internal suspend fun awaitDelegationStatus(
             remaining -= slice
         }
     }
-    return null
+    // A sub-case that hands back right after the last sample has answered: report it rather than stop it.
+    return runtime.statusFlow.value.takeIf(handedBack)
 }
