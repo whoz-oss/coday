@@ -478,11 +478,13 @@
               (action)="attachmentsUi.openPicker()"
             />
           }
+          <!-- Changed between messages only: a run reads it at its start.
+               A case missing from the list cannot be saved. -->
           <select
             class="case-chat__effort"
             aria-label="Reasoning effort"
-            title="Reasoning effort of the agents from the next message on. Model default keeps each agent's model setting; ignored for Anthropic providers."
-            [disabled]="isTerminal()"
+            title="Effort from the next message on, for agents whose model has an effort set"
+            [disabled]="isTerminal() || isRunning() || !activeCase()"
             (change)="onReasoningEffortChange($event)"
           >
             <option value="" [selected]="!activeCase()?.reasoningEffort">effort: model default</option>

@@ -33,7 +33,6 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.RedirectToolPlugin
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
-import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
@@ -518,8 +517,10 @@ class AgentServiceImpl(
      * fetches all four overlay layers in a single query and folds them by precedence.
      * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
      *
-     * A non-null [caseReasoningEffort] replaces the model's reasoning effort, except on an Anthropic
-     * provider, where the service cannot send the effort yet: the model is then kept as is.
+     * A non-null [caseReasoningEffort] replaces the model's reasoning effort only when the model has
+     * one configured: setting it on the model is how an admin declares that the model accepts an
+     * effort, so a case-level choice cannot break a model that does not take one (nor an Anthropic
+     * model, which never has one).
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -537,9 +538,10 @@ class AgentServiceImpl(
         val modelConfig =
             when {
                 caseReasoningEffort == null -> baseModel
-                providerConfig.apiType == AiApiType.Anthropic -> {
+                baseModel.reasoningEffort == null -> {
                     logger.info {
-                        "Case reasoning effort $caseReasoningEffort ignored for Anthropic provider '${providerConfig.name}'"
+                        "Case reasoning effort $caseReasoningEffort ignored: model " +
+                            "'${baseModel.alias ?: baseModel.apiModelName}' has no reasoning effort configured"
                     }
                     baseModel
                 }

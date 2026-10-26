@@ -7,6 +7,7 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ReasoningEffort } from './reasoning-effort'
 
 export interface Case {
   created?: string
@@ -21,9 +22,9 @@ export interface Case {
    */
   readAt?: string
   /**
-   * Per-case override of the reasoning effort of the agents running in the case. Null means each agent uses the effort of its model. Ignored for Anthropic providers.
+   * Per-case override of the reasoning effort of the agents running in the case. Null means each agent uses the effort of its model. Applies only to agents whose model has a reasoning effort configured.
    */
-  reasoningEffort?: CaseReasoningEffortEnum
+  reasoningEffort?: ReasoningEffort
   removed: boolean
   /**
    * The caller\'s direct relation on this case
@@ -36,14 +37,6 @@ export interface Case {
   scheduledPromptId?: string
   status: CaseStatusEnum
   title?: string
-}
-export enum CaseReasoningEffortEnum {
-  NONE = 'NONE',
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
-  XHIGH = 'XHIGH',
-  MAX = 'MAX',
 }
 export enum CaseRoleEnum {
   ADMIN = 'ADMIN',

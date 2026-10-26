@@ -938,13 +938,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
         }
 
-        "findAgentByName ignores the case reasoning effort for an Anthropic provider" {
-            val config = agentConfig(name = "my-agent", modelName = "opus")
-            val model = modelConfig(apiName = "claude-opus-5-5", alias = "opus")
-            val provider = providerConfig(apiType = AiApiType.Anthropic)
+        "findAgentByName ignores the case reasoning effort when the model has none configured" {
+            // A model without an effort may not accept one (gpt-4.x, GPT-6 with tools on OpenAI, Anthropic).
+            val config = agentConfig(name = "my-agent", modelName = "gpt-4.1")
+            val model = modelConfig(apiName = "gpt-4.1", alias = "gpt-4.1")
+            val provider = providerConfig(apiType = AiApiType.OpenAI)
 
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "opus") } returns model
+            every { aiModelService.findAiModel(namespaceId, "gpt-4.1") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
 

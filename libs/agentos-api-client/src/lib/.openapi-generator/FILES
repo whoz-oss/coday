@@ -122,6 +122,7 @@ model/prompt-translate-request.ts
 model/prompt-translation.ts
 model/prompt.ts
 model/question-event.ts
+model/reasoning-effort.ts
 model/recurrence.ts
 model/run-cost-dto.ts
 model/scheduled-prompt-effective-request.ts

@@ -258,10 +258,7 @@ class CaseController(
         @PathVariable id: UUID,
         @RequestBody request: CaseReasoningEffortRequest,
     ): CaseDto {
-        val existing =
-            caseService.findById(id)
-                ?: throw ResourceNotFoundException("Case not found: $id")
-        val updated = caseService.update(existing.copy(reasoningEffort = request.reasoningEffort))
+        val updated = caseService.setReasoningEffort(id, request.reasoningEffort)
         logger.info { "Case $id reasoning effort set to ${request.reasoningEffort}" }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }

@@ -25,9 +25,8 @@ import java.util.UUID
  *   unconstrained so that provider-level "anonymous" configs (resolved only by apiName
  *   fallback) can coexist without conflicting with each other.
  *
- * [create] and [update] reject an [AiModel.reasoningEffort] on an Anthropic provider: Spring AI
- * 1.1.2 cannot send Anthropic's native effort and current Claude models reject a thinking
- * budget, so the setting would be silently ignored.
+ * [create] and [update] reject an [AiModel.reasoningEffort] under an API type without
+ * [AiApiType.supportsReasoningEffort] (Anthropic): the setting would be silently ignored.
  */
 @Service
 class AiModelServiceImpl(
@@ -120,8 +119,8 @@ class AiModelServiceImpl(
         effort: ReasoningEffort?,
         apiType: AiApiType,
     ) {
-        if (effort != null && apiType == AiApiType.Anthropic) {
-            throw BadRequestException("reasoningEffort is not supported yet for Anthropic providers")
+        if (effort != null && !apiType.supportsReasoningEffort) {
+            throw BadRequestException("reasoningEffort is not supported yet for $apiType providers")
         }
     }
 

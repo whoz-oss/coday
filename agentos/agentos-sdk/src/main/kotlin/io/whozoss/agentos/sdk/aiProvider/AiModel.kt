@@ -70,8 +70,8 @@ data class AiModel(
      */
     val pricing: ModelPricing? = null,
     /**
-     * Reasoning effort sent to the provider. Null = provider default. Not supported yet for
-     * [AiApiType.Anthropic] providers (rejected when the model is saved).
+     * Reasoning effort sent to the provider. Null = provider default. Rejected when the model is
+     * saved under an API type without [AiApiType.supportsReasoningEffort] (Anthropic).
      */
     val reasoningEffort: ReasoningEffort? = null,
 ) : Entity

@@ -1657,9 +1657,9 @@ paths:
     put:
       description: "PUT /api/cases/{id}/reasoning-effort — set the case-level override\
         \ of the reasoning effort of the agents running in the case, or remove it\
-        \ with a null value so each agent uses the effort of its model again. Applies\
-        \ from the next run. Ignored for Anthropic providers. Returns the updated\
-        \ Case DTO."
+        \ with a null value so each agent uses the effort of its model again. Read\
+        \ at the start of each agent run. Applies only to agents whose model has a\
+        \ reasoning effort configured. Returns the updated Case DTO."
       operationId: setReasoningEffortCase
       parameters:
       - in: path
@@ -4204,14 +4204,7 @@ components:
           type: integer
           format: int32
         reasoningEffort:
-          type: string
-          enum:
-          - NONE
-          - LOW
-          - MEDIUM
-          - HIGH
-          - XHIGH
-          - MAX
+          $ref: "#/components/schemas/ReasoningEffort"
         temperature:
           type: number
           format: double
@@ -4414,17 +4407,10 @@ components:
           format: date-time
           description: Timestamp of the caller's last read. Null = never read (unread).
         reasoningEffort:
-          type: string
+          $ref: "#/components/schemas/ReasoningEffort"
           description: Per-case override of the reasoning effort of the agents running
-            in the case. Null means each agent uses the effort of its model. Ignored
-            for Anthropic providers.
-          enum:
-          - NONE
-          - LOW
-          - MEDIUM
-          - HIGH
-          - XHIGH
-          - MAX
+            in the case. Null means each agent uses the effort of its model. Applies
+            only to agents whose model has a reasoning effort configured.
         removed:
           type: boolean
         role:
@@ -4513,14 +4499,7 @@ components:
       type: object
       properties:
         reasoningEffort:
-          type: string
-          enum:
-          - NONE
-          - LOW
-          - MEDIUM
-          - HIGH
-          - XHIGH
-          - MAX
+          $ref: "#/components/schemas/ReasoningEffort"
     CaseStatusEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -5905,6 +5884,15 @@ components:
       - questionType
       - timestamp
       - type
+    ReasoningEffort:
+      type: string
+      enum:
+      - NONE
+      - LOW
+      - MEDIUM
+      - HIGH
+      - XHIGH
+      - MAX
     Recurrence:
       type: object
       properties:

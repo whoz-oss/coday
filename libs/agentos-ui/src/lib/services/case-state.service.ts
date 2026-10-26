@@ -1,11 +1,5 @@
 import { inject, Injectable, signal } from '@angular/core'
-import {
-  Case,
-  CaseControllerService,
-  CaseReasoningEffortEnum,
-  CaseReasoningEffortRequestReasoningEffortEnum,
-  MessageEvent,
-} from '@whoz-oss/agentos-api-client'
+import { Case, CaseControllerService, MessageEvent, ReasoningEffort } from '@whoz-oss/agentos-api-client'
 import {
   catchError,
   concatMap,
@@ -130,7 +124,7 @@ export class CaseStateService {
    * model again. Queued with the other saves of the case: the server rewrites the whole case on each
    * save, so a rename sent at the same time could otherwise restore the previous effort.
    */
-  setReasoningEffort(caseId: string, effort: CaseReasoningEffortEnum | null): Observable<Case> {
+  setReasoningEffort(caseId: string, effort: ReasoningEffort | null): Observable<Case> {
     return this.enqueueSave(caseId, (state) => this.saveReasoningEffort(caseId, effort, state))
   }
 
@@ -212,17 +206,14 @@ export class CaseStateService {
 
   private saveReasoningEffort(
     caseId: string,
-    effort: CaseReasoningEffortEnum | null,
+    effort: ReasoningEffort | null,
     state: { confirmed: Case }
   ): Observable<Case> {
     return defer(() => {
       const previous = state.confirmed.reasoningEffort
       this.patchReasoningEffort(caseId, effort ?? undefined)
-      // Both generated enums carry the same values; an omitted field removes the override.
-      const reasoningEffort = (effort ?? undefined) as string | undefined as
-        | CaseReasoningEffortRequestReasoningEffortEnum
-        | undefined
-      return this.caseController.setReasoningEffortCase(caseId, { reasoningEffort }).pipe(
+      // An omitted field removes the override.
+      return this.caseController.setReasoningEffortCase(caseId, { reasoningEffort: effort ?? undefined }).pipe(
         tap((updated) => {
           state.confirmed = { ...state.confirmed, reasoningEffort: updated.reasoningEffort }
           this.patchReasoningEffort(caseId, updated.reasoningEffort)
@@ -235,7 +226,7 @@ export class CaseStateService {
     })
   }
 
-  private patchReasoningEffort(caseId: string, reasoningEffort: CaseReasoningEffortEnum | undefined): void {
+  private patchReasoningEffort(caseId: string, reasoningEffort: ReasoningEffort | undefined): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, reasoningEffort } : c)))
   }
 

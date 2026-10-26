@@ -60,8 +60,9 @@ data class Case(
      * Per-case override of the reasoning effort of the agents that run in this case.
      *
      * **`null` means "use the effort of each agent's model"** ([io.whozoss.agentos.sdk.aiProvider.AiModel.reasoningEffort]).
-     * Read at the start of every run, so a change applies from the next message on. Ignored for agents
-     * on an Anthropic provider, where the service cannot send the effort yet. Sub-cases do not inherit it.
+     * Read at the start of each agent run (each step of a message, redirects included), never during one.
+     * Applies only to agents whose model has a reasoning effort configured: setting one on the model is how
+     * an admin declares that the model accepts it, which also rules out Anthropic. Sub-cases do not inherit it.
      */
     val reasoningEffort: ReasoningEffort? = null,
 ) : Entity

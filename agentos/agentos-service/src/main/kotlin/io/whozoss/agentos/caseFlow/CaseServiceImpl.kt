@@ -25,6 +25,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -215,6 +216,16 @@ class CaseServiceImpl(
         } else {
             caseRepository.save(entity)
         }
+    }
+
+    override fun setReasoningEffort(
+        caseId: UUID,
+        reasoningEffort: ReasoningEffort?,
+    ): Case {
+        val current =
+            findById(caseId)
+                ?: throw ResourceNotFoundException("Case not found: $caseId")
+        return caseRepository.save(current.copy(reasoningEffort = reasoningEffort))
     }
 
     override fun findById(
@@ -705,7 +716,7 @@ class CaseServiceImpl(
                     saved
                 },
                 usageAccumulator = usageAccumulator,
-                // Read at every run so a change made in the UI applies from the next message on.
+                // Read at every agent run, so a change applies from the next run on, never during one.
                 reasoningEffort = findById(caseId)?.reasoningEffort,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.

@@ -9,8 +9,8 @@ import {
   AiProviderControllerService,
   AiModel,
   AiModelControllerService,
-  AiModelReasoningEffortEnum,
   ModelPricing,
+  ReasoningEffort,
 } from '@whoz-oss/agentos-api-client'
 
 /**
@@ -85,7 +85,7 @@ export class AiModelFormComponent implements OnInit {
     temperature: new FormControl<number | null>(null),
     contextWindow: new FormControl<number | null>(null),
     maxCompletionTokens: new FormControl<number | null>(null),
-    reasoningEffort: new FormControl<AiModelReasoningEffortEnum | null>(null),
+    reasoningEffort: new FormControl<ReasoningEffort | null>(null),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),
@@ -135,7 +135,7 @@ export class AiModelFormComponent implements OnInit {
   }
 
   /** Effort levels offered in the select; the empty option (null) keeps the provider default. */
-  protected readonly reasoningEffortOptions = Object.values(AiModelReasoningEffortEnum)
+  protected readonly reasoningEffortOptions = Object.values(ReasoningEffort)
 
   private readonly selectedProviderId = toSignal(this.form.controls.aiProviderId.valueChanges, {
     initialValue: this.form.controls.aiProviderId.value,

@@ -64,3 +64,9 @@ class ChatClientProvider(
         const val X_SESSION_ID = "X-Session-Id"
     }
 }
+
+/**
+ * The model without its reasoning effort, for short utility calls (case naming, prompt translation)
+ * that should not pay for the effort configured for agents. Returns the model itself when it has none.
+ */
+internal fun AiModel.withoutReasoningEffort(): AiModel = if (reasoningEffort == null) this else copy(reasoningEffort = null)

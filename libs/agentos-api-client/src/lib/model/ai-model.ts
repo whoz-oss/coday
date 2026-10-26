@@ -8,6 +8,7 @@
  * Do not edit the class manually.
  */
 import { ModelPricing } from './model-pricing'
+import { ReasoningEffort } from './reasoning-effort'
 
 export interface AiModel {
   aiProviderId: string
@@ -20,15 +21,7 @@ export interface AiModel {
   namespaceId?: string
   pricing?: ModelPricing
   priority: number
-  reasoningEffort?: AiModelReasoningEffortEnum
+  reasoningEffort?: ReasoningEffort
   temperature?: number
   userId?: string
-}
-export enum AiModelReasoningEffortEnum {
-  NONE = 'NONE',
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
-  XHIGH = 'XHIGH',
-  MAX = 'MAX',
 }

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing'
-import { Case, CaseControllerService, CaseReasoningEffortEnum } from '@whoz-oss/agentos-api-client'
+import { Case, CaseControllerService, ReasoningEffort } from '@whoz-oss/agentos-api-client'
 import { of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from './case-state.service'
 
@@ -357,16 +357,16 @@ describe('CaseStateService', () => {
       const svc = makeService(jest.fn().mockReturnValue(of([effortCase('a')])))
       svc.loadCases('ns')
 
-      svc.setReasoningEffort('a', CaseReasoningEffortEnum.HIGH).subscribe()
+      svc.setReasoningEffort('a', ReasoningEffort.HIGH).subscribe()
 
       expect(controllerMock.setReasoningEffortCase).toHaveBeenCalledWith('a', { reasoningEffort: 'HIGH' })
       expect(controllerMock.updateCase).not.toHaveBeenCalled()
-      expect(svc.cases()[0].reasoningEffort).toBe(CaseReasoningEffortEnum.HIGH)
+      expect(svc.cases()[0].reasoningEffort).toBe(ReasoningEffort.HIGH)
     })
 
     it('removes the override with null by omitting the level', () => {
       const svc = makeService(
-        jest.fn().mockReturnValue(of([effortCase('a', { reasoningEffort: CaseReasoningEffortEnum.LOW })]))
+        jest.fn().mockReturnValue(of([effortCase('a', { reasoningEffort: ReasoningEffort.LOW })]))
       )
       svc.loadCases('ns')
 
@@ -378,14 +378,14 @@ describe('CaseStateService', () => {
 
     it('reverts the optimistic effort when the request fails', () => {
       const svc = makeService(
-        jest.fn().mockReturnValue(of([effortCase('a', { reasoningEffort: CaseReasoningEffortEnum.LOW })]))
+        jest.fn().mockReturnValue(of([effortCase('a', { reasoningEffort: ReasoningEffort.LOW })]))
       )
       svc.loadCases('ns')
       controllerMock.setReasoningEffortCase.mockReturnValue(throwError(() => new Error('boom')))
 
-      svc.setReasoningEffort('a', CaseReasoningEffortEnum.MAX).subscribe({ error: () => undefined })
+      svc.setReasoningEffort('a', ReasoningEffort.MAX).subscribe({ error: () => undefined })
 
-      expect(svc.cases()[0].reasoningEffort).toBe(CaseReasoningEffortEnum.LOW)
+      expect(svc.cases()[0].reasoningEffort).toBe(ReasoningEffort.LOW)
     })
 
     it('waits for a pending rename and keeps the new effort after the rename settles', () => {
@@ -395,7 +395,7 @@ describe('CaseStateService', () => {
       controllerMock.updateCase.mockReturnValueOnce(rename)
 
       svc.renameCase('a', 'renamed').subscribe()
-      svc.setReasoningEffort('a', CaseReasoningEffortEnum.XHIGH).subscribe()
+      svc.setReasoningEffort('a', ReasoningEffort.XHIGH).subscribe()
       expect(controllerMock.setReasoningEffortCase).not.toHaveBeenCalled()
 
       rename.next(effortCase('a', { title: 'renamed' }))
@@ -403,7 +403,7 @@ describe('CaseStateService', () => {
 
       expect(controllerMock.setReasoningEffortCase).toHaveBeenCalledTimes(1)
       expect(svc.cases()[0].title).toBe('renamed')
-      expect(svc.cases()[0].reasoningEffort).toBe(CaseReasoningEffortEnum.XHIGH)
+      expect(svc.cases()[0].reasoningEffort).toBe(ReasoningEffort.XHIGH)
     })
   })
 })

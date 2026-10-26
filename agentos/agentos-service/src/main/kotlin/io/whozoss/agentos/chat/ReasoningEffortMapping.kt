@@ -11,8 +11,8 @@ import org.springframework.ai.openai.OpenAiChatOptions
  * [ChatModelFactory] on the default options of the chat model. A null effort always keeps the
  * behaviour the factory had before the setting existed.
  *
- * Anthropic has no entry: Spring AI 1.1.2 cannot send `output_config.effort`, and
- * [io.whozoss.agentos.aiModel.AiModelServiceImpl] rejects an effort on Anthropic providers.
+ * Anthropic has no entry: it does not have [io.whozoss.agentos.sdk.aiProvider.AiApiType.supportsReasoningEffort],
+ * and [io.whozoss.agentos.aiModel.AiModelServiceImpl] rejects an effort on its models.
  */
 
 /**
@@ -25,13 +25,19 @@ internal fun OpenAiChatOptions.Builder.applyReasoningEffort(effort: ReasoningEff
 
 /**
  * vLLM serves models whose chat template switches thinking on and off (`enable_thinking`), and
- * some of them also read `reasoning_effort`. Thinking stays off for a null or [ReasoningEffort.NONE]
- * effort, as before. When it is on, the server must split the reasoning out of the content
- * (reasoning parser), otherwise it ends up in the agent's answer.
+ * some of them also read `reasoning_effort`, which vLLM limits to low, medium and high: XHIGH and
+ * MAX are sent as high. Thinking stays off for a null or [ReasoningEffort.NONE] effort, as before.
+ * When it is on, the server must split the reasoning out of the content (reasoning parser),
+ * otherwise it ends up in the agent's answer.
  */
 internal fun OpenAiChatOptions.Builder.applyVllmReasoningEffort(effort: ReasoningEffort?): OpenAiChatOptions.Builder {
-    val level = effort?.takeIf { it != ReasoningEffort.NONE }
-    level?.let { reasoningEffort(it.wireValue()) }
+    val level =
+        when (effort) {
+            null, ReasoningEffort.NONE -> null
+            ReasoningEffort.LOW, ReasoningEffort.MEDIUM, ReasoningEffort.HIGH -> effort.wireValue()
+            ReasoningEffort.XHIGH, ReasoningEffort.MAX -> ReasoningEffort.HIGH.wireValue()
+        }
+    level?.let { reasoningEffort(it) }
     return extraBody(mapOf("chat_template_kwargs" to mapOf("enable_thinking" to (level != null))))
 }
 

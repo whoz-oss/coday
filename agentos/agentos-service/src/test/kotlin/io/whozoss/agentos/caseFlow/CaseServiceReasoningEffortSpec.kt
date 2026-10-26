@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
@@ -14,6 +15,7 @@ import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -57,6 +59,34 @@ class CaseServiceReasoningEffortSpec :
                 fixture.service.shutdown()
             }
         }
+
+        "setReasoningEffort changes only the effort and keeps a status changed since the caller's read" {
+            val fixture = ReasoningEffortFixture()
+            try {
+                val callerCopy = fixture.storedCase()
+                fixture.forceStatus(CaseStatus.KILLED)
+
+                val updated = fixture.service.setReasoningEffort(callerCopy.id, ReasoningEffort.HIGH)
+
+                updated.reasoningEffort shouldBe ReasoningEffort.HIGH
+                updated.status shouldBe CaseStatus.KILLED
+                fixture.storedCase().status shouldBe CaseStatus.KILLED
+                fixture.storedCase().reasoningEffort shouldBe ReasoningEffort.HIGH
+            } finally {
+                fixture.service.shutdown()
+            }
+        }
+
+        "setReasoningEffort rejects an unknown case" {
+            val fixture = ReasoningEffortFixture()
+            try {
+                shouldThrow<ResourceNotFoundException> {
+                    fixture.service.setReasoningEffort(UUID.randomUUID(), ReasoningEffort.LOW)
+                }
+            } finally {
+                fixture.service.shutdown()
+            }
+        }
     })
 
 /** Real [CaseServiceImpl] on in-memory stores; the agent only records the context it is built with. */
@@ -67,6 +97,7 @@ private class ReasoningEffortFixture {
     private val agentId = UUID.randomUUID()
     private val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
     val effortsSeenByRuns = CopyOnWriteArrayList<ReasoningEffort?>()
+    private val cases = InMemoryCaseRepository()
     private val agents =
         mockk<AgentService> {
             every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -106,7 +137,7 @@ private class ReasoningEffortFixture {
                         listOf(AgentConfig(namespaceId = namespaceId, name = agentName))
                 },
             agentConfigProperties = AgentConfigProperties(),
-            caseRepository = InMemoryCaseRepository(),
+            caseRepository = cases,
             caseEventService = events,
             userService =
                 mockk<UserService> {
@@ -130,7 +161,14 @@ private class ReasoningEffortFixture {
     private val case = service.create(Case(namespaceId = namespaceId))
 
     fun setCaseEffort(effort: ReasoningEffort?) {
-        service.update(checkNotNull(service.findById(case.id)).copy(reasoningEffort = effort))
+        service.setReasoningEffort(case.id, effort)
+    }
+
+    fun storedCase(): Case = checkNotNull(service.findById(case.id))
+
+    /** Write a status straight to the store, as a run ending between two reads would. */
+    fun forceStatus(status: CaseStatus) {
+        cases.save(storedCase().copy(status = status))
     }
 
     suspend fun sendAndAwaitIdle() =

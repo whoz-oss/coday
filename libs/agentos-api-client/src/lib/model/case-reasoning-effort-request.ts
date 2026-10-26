@@ -7,15 +7,8 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ReasoningEffort } from './reasoning-effort'
 
 export interface CaseReasoningEffortRequest {
-  reasoningEffort?: CaseReasoningEffortRequestReasoningEffortEnum
-}
-export enum CaseReasoningEffortRequestReasoningEffortEnum {
-  NONE = 'NONE',
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
-  XHIGH = 'XHIGH',
-  MAX = 'MAX',
+  reasoningEffort?: ReasoningEffort
 }

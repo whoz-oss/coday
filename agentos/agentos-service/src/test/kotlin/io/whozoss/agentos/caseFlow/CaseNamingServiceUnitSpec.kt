@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -252,6 +253,24 @@ class CaseNamingServiceUnitSpec :
 
             saved.single().title shouldBe "Kotlin Coroutines Explained"
             emitted.filterIsInstance<CaseUpdatedEvent>().single().title shouldBe "Kotlin Coroutines Explained"
+        }
+
+        "names the case without the reasoning effort configured on the default model" {
+            val chatClientProvider = mockk<ChatClientProvider>()
+            chatClientProvider.stub(stubbedChatClient("Effort title"))
+            val effortModel = model.copy(reasoningEffort = ReasoningEffort.MAX)
+            val service =
+                buildService(
+                    aiModelService = mockk { every { findAiModel(any()) } returns effortModel },
+                    chatClientProvider = chatClientProvider,
+                )
+
+            val case = makeCase()
+            service.nameCase(case, listOf(messageEvent("Plan the migration", case.id))) {}
+
+            verify(exactly = 1) {
+                chatClientProvider.getChatClient(effortModel.copy(reasoningEffort = null), provider, case.id.toString())
+            }
         }
 
         // -------------------------------------------------------------------------

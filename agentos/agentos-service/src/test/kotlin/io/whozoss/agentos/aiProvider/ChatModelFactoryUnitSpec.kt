@@ -161,9 +161,15 @@ class ChatModelFactoryUnitSpec : StringSpec({
             off.extraBody shouldBe mapOf("chat_template_kwargs" to mapOf("enable_thinking" to false))
         }
 
-        val on = optionsFor(AiApiType.vLLM, ReasoningEffort.HIGH) as OpenAiChatOptions
-        on.reasoningEffort shouldBe "high"
+        val on = optionsFor(AiApiType.vLLM, ReasoningEffort.MEDIUM) as OpenAiChatOptions
+        on.reasoningEffort shouldBe "medium"
         on.extraBody shouldBe mapOf("chat_template_kwargs" to mapOf("enable_thinking" to true))
+    }
+
+    "vLLM sends XHIGH and MAX as high, the highest level its request schema accepts" {
+        listOf(ReasoningEffort.HIGH, ReasoningEffort.XHIGH, ReasoningEffort.MAX).forEach { effort ->
+            (optionsFor(AiApiType.vLLM, effort) as OpenAiChatOptions).reasoningEffort shouldBe "high"
+        }
     }
 
     "Ollama keeps thinking off by default and for NONE, and maps the other levels to its three levels" {
