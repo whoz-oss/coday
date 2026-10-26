@@ -19,7 +19,12 @@ import io.whozoss.agentos.git.core.GitRemoteUrlValidator
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
+import io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy
 import io.whozoss.agentos.integrationConfig.IntegrationConfigServiceImpl
+import io.whozoss.agentos.integrationConfig.IntegrationsProperties
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.user.UserService
 import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import java.util.UUID
 
@@ -102,6 +107,15 @@ class GitServiceAccountResolverSpec : StringSpec({
             context.beanFactory.registerSingleton("gitProperties", GitExecutionProperties())
             context.beanFactory.registerSingleton("urlValidator", mockk<GitRemoteUrlValidator>())
             context.beanFactory.registerSingleton("gitAvailability", mockk<GitAvailability>(relaxed = true))
+            // IntegrationConfigServiceImpl now requires PermissionService, UserService,
+            // NamespaceService and IntegrationConfigScopePolicy. This test only exercises
+            // the Git association path (findActiveNamespaceSingleton) which never calls the
+            // authorized surface, so relaxed mocks satisfy all three service dependencies
+            // and the scope policy is instantiated with its default properties.
+            context.beanFactory.registerSingleton("permissionService", mockk<PermissionService>(relaxed = true))
+            context.beanFactory.registerSingleton("userService", mockk<UserService>(relaxed = true))
+            context.beanFactory.registerSingleton("namespaceService", mockk<NamespaceService>(relaxed = true))
+            context.beanFactory.registerSingleton("integrationConfigScopePolicy", IntegrationConfigScopePolicy(IntegrationsProperties()))
             context.register(
                 GitServiceAccountResolver::class.java,
                 GitRepositoryAssociationService::class.java,
