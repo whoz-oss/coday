@@ -1,0 +1,152 @@
+<section class="config-change" aria-label="Configuration plan">
+  @if (view(); as plan) {
+    <header class="config-change__header">
+      <span class="config-change__title">Configuration plan</span>
+      <span class="config-change__meta"
+        >{{ plan.operations.length }} operation(s) · proposed by {{ plan.agentName }}</span
+      >
+    </header>
+
+    @for (warning of plan.warnings; track warning) {
+      <p class="config-change__warning">{{ warning }}</p>
+    }
+
+    <ol class="config-change__operations">
+      @for (op of plan.operations; track op.ref) {
+        <li class="config-change__op" [class.config-change__op--highlight]="isHighlighted(op)">
+          <div class="config-change__op-head">
+            <span class="config-change__op-title">{{ op.order }}. {{ title(op) }}</span>
+            <span class="config-change__badge">{{ scopeLabel(op) }}</span>
+            <span
+              class="config-change__status"
+              [class.config-change__status--done]="op.status === 'APPLIED' || op.status === 'ALREADY_APPLIED'"
+              [class.config-change__status--problem]="op.status === 'CONFLICT' || op.status === 'NOT_VISIBLE'"
+              >{{ resultLabel(op.ref) ?? statusLabel(op) }}</span
+            >
+          </div>
+
+          @if (op.action === 'CREATE' && op.value) {
+            <pre class="config-change__json">{{ json(op.value) }}</pre>
+          }
+          @if (op.deployTo === 'NAMESPACE') {
+            <p class="config-change__note">Deployed on the namespace so its members can use it.</p>
+          } @else if (op.deployTo === 'NONE') {
+            <p class="config-change__note">Not deployed: members of the namespace will not see it.</p>
+          }
+
+          @if (op.changes.length > 0) {
+            <table class="config-change__diff">
+              <thead>
+                <tr>
+                  <th scope="col">Field</th>
+                  <th scope="col">Current</th>
+                  <th scope="col">Proposed</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (change of op.changes; track change.path) {
+                  <tr>
+                    <td>
+                      <code>{{ change.path }}</code>
+                    </td>
+                    <td>
+                      <pre class="config-change__json">{{ json(change.before) }}</pre>
+                    </td>
+                    <td>
+                      @if (change.remove) {
+                        <em>removed</em>
+                      } @else {
+                        <pre class="config-change__json">{{ json(change.after) }}</pre>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+
+          @if (op.status === 'PENDING' && plan.canApply) {
+            @for (secret of op.secretInputs; track secret.key) {
+              <label class="config-change__secret">
+                <span>{{ secret.label }}</span>
+                <input
+                  type="password"
+                  autocomplete="off"
+                  [attr.aria-label]="secret.label"
+                  [disabled]="busy()"
+                  (input)="onSecretInput(secret.key, $event)"
+                />
+              </label>
+            }
+          }
+        </li>
+      }
+    </ol>
+
+    @if (report(); as result) {
+      <p class="config-change__report" role="status">Result: {{ result.decision.toLowerCase() }}</p>
+    }
+    @if (errorMessage(); as message) {
+      <p class="config-change__error" role="alert">{{ message }}</p>
+    }
+
+    @if (stateLabel(); as label) {
+      <p class="config-change__state">{{ label }}</p>
+    } @else if (rejecting()) {
+      <div class="config-change__reject">
+        <textarea
+          class="config-change__comment"
+          rows="2"
+          aria-label="Why do you reject this plan? (optional)"
+          placeholder="Why do you reject this plan? (optional)"
+          [value]="rejectComment()"
+          (input)="onRejectCommentInput($event)"
+        ></textarea>
+        <div class="config-change__actions">
+          <button
+            class="config-change__btn config-change__btn--secondary"
+            type="button"
+            [disabled]="busy()"
+            (click)="cancelReject()"
+          >
+            Back
+          </button>
+          <button
+            class="config-change__btn config-change__btn--danger"
+            type="button"
+            [disabled]="busy()"
+            (click)="confirmReject()"
+          >
+            Reject the plan
+          </button>
+        </div>
+      </div>
+    } @else {
+      <div class="config-change__actions">
+        <button
+          class="config-change__btn config-change__btn--secondary"
+          type="button"
+          [disabled]="busy()"
+          (click)="startReject()"
+        >
+          Reject
+        </button>
+        <button
+          class="config-change__btn config-change__btn--primary"
+          type="button"
+          [disabled]="!canApply()"
+          (click)="apply()"
+        >
+          {{ busy() ? 'Applying…' : 'Apply' }}
+        </button>
+      </div>
+      @if (!secretsComplete()) {
+        <p class="config-change__note">Fill in the secrets above to apply.</p>
+      }
+    }
+  } @else if (errorMessage(); as message) {
+    <p class="config-change__error" role="alert">{{ message }}</p>
+  } @else {
+    <p class="config-change__note">Loading the plan…</p>
+  }
+</section>
