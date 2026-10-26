@@ -33,6 +33,15 @@ data class Case(
      */
     val scheduledPromptId: UUID? = null,
     /**
+     * Id of the case whose agent started this one with the `FreeCaseStarter` tool
+     * ([io.whozoss.agentos.casePlugin.CaseStarterService]). Null for cases started otherwise.
+     *
+     * A trace of provenance, unlike [parentCaseId]: a started case is a top-level case in every other
+     * respect (own lifecycle, workspace, cost and delegation depth). The only thing that reads it is the rule
+     * that keeps a started case, and the cases delegated from it, from starting another one.
+     */
+    val originCaseId: UUID? = null,
+    /**
      * Per-case override of the run cost threshold, expressed in the platform's currency unit.
      *
      * **`null` means "inherit from the namespace or platform default", never "no limit" or "zero".**

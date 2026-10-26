@@ -10,6 +10,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
@@ -52,6 +53,7 @@ class CaseControllerSpec :
         val permissionService = mockk<PermissionService>()
         val favoriteService = mockk<FavoriteService>()
         val caseReadService = mockk<CaseReadService>()
+        val caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true)
         val controller =
             CaseController(
                 caseService,
@@ -61,6 +63,7 @@ class CaseControllerSpec :
                 permissionService,
                 favoriteService,
                 caseReadService,
+                caseListUpdateBroadcaster,
             )
 
         val callerId = UUID.randomUUID()
@@ -180,6 +183,7 @@ class CaseControllerSpec :
                     PermissionRelation.ADMIN,
                 )
             }
+            verify(exactly = 1) { caseListUpdateBroadcaster.publishCaseCreated(namespaceId) }
         }
 
         "create preserves runCostThreshold from the request" {
@@ -257,6 +261,7 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe null
             verify(exactly = 1) { caseService.create(any()) }
             verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
+            verify(exactly = 0) { caseListUpdateBroadcaster.publishCaseCreated(any()) }
         }
 
         "create under a parent case requires WRITE on that parent" {

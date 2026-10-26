@@ -12,8 +12,8 @@ import java.util.UUID
  * for a given end-user.
  *
  * Shared by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] and
- * [io.whozoss.agentos.workflow.LoopWorkflowRunnerService] so that both code paths produce
- * identical context enrichment:
+ * [io.whozoss.agentos.casePlugin.CaseStarterService] (the `FreeCaseStarter` tool, hence AgentLoop) so that
+ * both code paths produce identical context enrichment:
  * 1. Call the optional [UserContextProvider] plugin — returns business context (e.g. talent profile).
  * 2. Overlay [preferredLanguage] on top: the user's stored language preference is the authoritative
  *    source and always wins over anything the provider may put under the same key.
@@ -36,8 +36,9 @@ class UserSessionContextResolver(
      *
      * Pure — no side effects. The caller is responsible for acting on the outcome:
      * - [UserContextResult.Success]: call [mergePreferredLanguage] to produce the effective map.
-     * - [UserContextResult.PermanentFailure]: skip this user permanently (mark FAILED).
-     * - [UserContextResult.TransientFailure]: leave for retry (lease expiry / next tick).
+     * - [UserContextResult.PermanentFailure] and [UserContextResult.TransientFailure]: the caller decides.
+     *   The scheduler marks a permanent failure FAILED and retries a transient one (lease expiry, next tick);
+     *   `CaseStarterService` fails the start for both.
      */
     fun resolve(
         userExternalId: String,

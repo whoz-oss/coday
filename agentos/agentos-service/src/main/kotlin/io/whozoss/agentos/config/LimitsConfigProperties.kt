@@ -81,7 +81,7 @@ data class LimitsConfigProperties(
     /**
      * Maximum number of entities processed by a single [io.whozoss.agentos.agent.AgentLoop] run.
      *
-     * Each processed entity launches one case immediately, so this bounds the number of
+     * Each processed entity starts one case immediately, so this bounds the number of
      * agent runs started concurrently by one loop. Entities beyond the limit are ignored
      * and reported in the loop summary.
      *
