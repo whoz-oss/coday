@@ -1,0 +1,86 @@
+.auth-settings__new {
+  padding: 7px 12px;
+  border: 1px solid var(--color-accent);
+  border-radius: 0;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+}
+.auth-settings__status {
+  margin: 20px 8px;
+  color: var(--color-text-secondary);
+}
+.auth-settings__table-wrap {
+  overflow-x: auto;
+}
+table.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.ds-table th {
+  padding: 7px;
+  border-bottom: 1px solid var(--color-divider);
+  color: var(--color-neutral-600);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+table.ds-table td {
+  padding: 7px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+table.ds-table tbody tr:hover {
+  background: var(--color-bg-hover);
+}
+.auth-settings__name {
+  font-weight: 500;
+}
+.auth-settings__type {
+  color: var(--color-text-secondary);
+}
+.auth-settings__tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.auth-settings__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+.auth-settings__actions button {
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+}
+.auth-settings__actions button:hover:not(:disabled) {
+  background: var(--color-accent-100);
+}
+.auth-settings__actions button:disabled {
+  color: var(--color-neutral-600);
+  cursor: default;
+}
+.auth-settings__actions .auth-settings__delete {
+  color: var(--color-error);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

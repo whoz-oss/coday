@@ -7,6 +7,16 @@
 
 .ac {
   @include ds.surface-card;
+  height: 100%;
+  border-radius: 0;
+  background: var(--color-bg);
+  border-color: var(--color-divider);
+  box-shadow: none;
+
+  &:hover {
+    border-color: var(--color-accent);
+    box-shadow: none;
+  }
 
   // Override: dropdown must not be clipped by the card
   overflow: visible;
@@ -15,6 +25,9 @@
     @include ds.button-reset;
     @include ds.surface-card;
     @include ds.surface-card-clickable;
+    border-radius: 0;
+    background: var(--color-bg);
+    box-shadow: none;
     overflow: visible;
     width: 100%;
     height: 100%;
@@ -48,6 +61,14 @@
   &__mark {
     @include ds.surface-mark;
     @include ds.text-mark;
+    width: 36px;
+    height: 36px;
+    border-radius: 0;
+    background: var(--color-accent-900);
+    color: var(--color-accent-100);
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 600;
     align-self: flex-start;
 
     &--logo {
@@ -95,6 +116,11 @@
     @include ds.text-title;
 
     display: block;
+    color: var(--color-text);
+    font-family: var(--font-heading);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.2;
     word-break: break-word;
     text-align: left;
 
@@ -113,6 +139,12 @@
     flex-wrap: wrap;
     gap: 6px;
     padding: 0 14px 16px;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 8px;
+    padding: 0 18px 18px;
   }
 }
 
