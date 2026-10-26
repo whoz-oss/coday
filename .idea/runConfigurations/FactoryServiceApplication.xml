@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="FactoryServiceApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
+    <option name="ACTIVE_PROFILES" value="development" />
+    <module name="factory-service.main" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.factory.FactoryServiceApplication" />
+    <option name="WORKING_DIRECTORY" value="file://factory" />
+    <method v="2">
+      <option name="Gradle.BeforeRunTask" enabled="false" tasks="clean" externalProjectPath="$PROJECT_DIR$/factory" vmOptions="" scriptParameters="" />
+      <option name="Gradle.BeforeRunTask" enabled="true" tasks="cleanPlugins" externalProjectPath="$PROJECT_DIR$/factory" vmOptions="" scriptParameters="" />
+      <option name="Gradle.BeforeRunTask" enabled="true" tasks="deployPlugins" externalProjectPath="$PROJECT_DIR$/factory" vmOptions="" scriptParameters="" />
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

@@ -1,3 +1,13 @@
+## 3.40.0 (2026-10-22)
+
+### 🚀 Features
+
+- reopen a terminated case (service + API) ([#1476](https://github.com/whoz-oss/coday/pull/1476))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.39.0 (2026-10-21)
 
 ### 🚀 Features
@@ -7076,4 +7086,3 @@ This was a version bump only, there were no code changes.
 ### ❤️ Thank You
 
 - vincent.audibert
-

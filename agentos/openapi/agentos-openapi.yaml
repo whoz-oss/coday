@@ -1354,6 +1354,29 @@ paths:
       summary: Mark case as read
       tags:
       - case-controller
+  /api/cases/{caseId}/reopen:
+    post:
+      description: "POST /api/cases/{caseId}/reopen — reopen a terminated case by\
+        \ transitioning it back to IDLE. Only cases in a terminal status (KILLED or\
+        \ ERROR) can be reopened. Returns the updated Case DTO."
+      operationId: reopenCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Reopen a case
+      tags:
+      - case-controller
   /api/cases/{caseId}/run-cost:
     get:
       operationId: getRunCost
@@ -2188,6 +2211,28 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/namespaces/{namespaceId}/case-invalidation:
+    get:
+      description: "Each 'namespace-case-invalidation' event carries the neutral JSON\
+        \ payload '{}', with no business data. Reload GET /api/cases/by-parentId/{namespaceId}/mine\
+        \ when it arrives or when the stream reconnects."
+      operationId: streamCaseInvalidationsNamespaceCaseInvalidationSse
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            text/event-stream: {}
+          description: "SSE stream of namespace case-list invalidations carrying data:\
+            \ {}."
+      summary: Stream namespace case-list invalidations via SSE
+      tags:
+      - sse
   /api/namespaces/{namespaceId}/case-list-updates:
     get:
       description: "Each 'namespace-case-list-updated' event carries the neutral JSON\

@@ -34,9 +34,9 @@ class PolicyDnsUnitSpec : StringSpec({
         ex.message shouldContain "disallowed"
     }
 
-    "keeps loopback when the policy allows it for tests" {
-        val dns = PolicyDns(OutboundUrlPolicy(allowLoopbackForTests = true), delegate(loopback))
-        dns.lookup("localhost") shouldBe listOf(loopback)
+    "unsecure opt-in allows DNS names resolving to private and loopback addresses" {
+        val dns = PolicyDns(OutboundUrlPolicy(allowUnsecure = true), delegate(private, loopback, public))
+        dns.lookup("whatever.lan") shouldBe listOf(private, loopback, public)
     }
 
     "propagates the delegate failure" {

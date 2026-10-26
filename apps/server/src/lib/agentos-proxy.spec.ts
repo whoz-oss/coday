@@ -2,6 +2,7 @@ import express from 'express'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createAgentOsProxy } from './agentos-proxy'
+import { applyProxyIdentity, decideProxyIdentity } from './proxy-identity'
 
 type UpstreamEnding = 'end' | 'destroy'
 
@@ -102,6 +103,44 @@ describe('createAgentOsProxy', () => {
     const outcome = await readThroughProxy(proxyPort, upstream.release, 2000)
 
     expect(outcome).toEqual({ frames: 2, ended: false, closed: true })
+  })
+
+  it('forwards the resolved caller identity as x-external-user-id, overwriting a client-sent value', async () => {
+    let received: http.IncomingHttpHeaders = {}
+    const upstream = http.createServer((req, res) => {
+      received = req.headers
+      res.end('ok')
+    })
+    servers.push(upstream)
+    const upstreamPort = await listen(upstream)
+    const app = express()
+    app.use(
+      '/api/agentos',
+      createAgentOsProxy(() => `http://localhost:${upstreamPort}`, {
+        onProxyReq: (proxyReq) =>
+          applyProxyIdentity(
+            proxyReq,
+            decideProxyIdentity({ authEnabled: true, resolveUser: () => 'alice@example.com' })
+          ),
+      })
+    )
+    const proxy = http.createServer(app)
+    servers.push(proxy)
+    const proxyPort = await listen(proxy)
+
+    await new Promise<void>((resolve, reject) => {
+      http
+        .get(
+          { port: proxyPort, path: '/api/agentos/api/cases', headers: { 'X-External-User-Id': 'spoofed' } },
+          (res) => {
+            res.resume()
+            res.on('end', () => resolve())
+          }
+        )
+        .on('error', reject)
+    })
+
+    expect(received['x-external-user-id']).toBe('alice@example.com')
   })
 
   it('passes a stream that ends normally through to its end, with the AgentOS path rewritten', async () => {

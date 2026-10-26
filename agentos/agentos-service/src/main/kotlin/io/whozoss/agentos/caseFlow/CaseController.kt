@@ -343,6 +343,20 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
+    /** POST /api/cases/{caseId}/reopen — reopen a terminal case, transitioning it back to IDLE. */
+    @PostMapping("/{caseId}/reopen")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'DELETE')")
+    override fun reopenCase(
+        @PathVariable caseId: UUID,
+    ): CaseDto {
+        logger.info { "Reopening case: $caseId" }
+        val userId = userService.getCurrentUser().id.toString()
+        val reopened = caseService.reopenCase(caseId)
+        logger.info { "Case reopened: $caseId" }
+        return reopened.withCallerMeta(userId)
+    }
+
     /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
     @PostMapping("/{caseId}/read", consumes = [MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE])
     @ResponseStatus(HttpStatus.OK)

@@ -65,23 +65,23 @@ class AuthSecurityServiceUnitSpec : StringSpec({
         service.resolveCurrentIdentity() shouldBe "alice@example.com"
     }
 
-    "resolveCurrentIdentity prefers X-External-User-Id over CF_Authorization" {
+    "resolveCurrentIdentity prefers X-External-User-Id over Cf-Access-Jwt-Assertion" {
         val cfJwt = buildJwt(mapOf("email" to "cf@example.com"))
         setRequest {
             addHeader(AuthSecurityService.X_EXTERNAL_USER_ID_HEADER, "gateway@example.com")
-            addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, cfJwt)
+            addHeader(AuthSecurityService.CF_ACCESS_JWT_ASSERTION_HEADER, cfJwt)
         }
 
         service.resolveCurrentIdentity() shouldBe "gateway@example.com"
     }
 
     // -------------------------------------------------------------------------
-    // resolveCurrentIdentity — CF_Authorization header
+    // resolveCurrentIdentity — Cf-Access-Jwt-Assertion header
     // -------------------------------------------------------------------------
 
     "resolveCurrentIdentity returns email from CF JWT header" {
         val jwt = buildJwt(mapOf("email" to "bob@example.com"))
-        setRequest { addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt) }
+        setRequest { addHeader(AuthSecurityService.CF_ACCESS_JWT_ASSERTION_HEADER, jwt) }
 
         service.resolveCurrentIdentity() shouldBe "bob@example.com"
     }
@@ -97,11 +97,11 @@ class AuthSecurityServiceUnitSpec : StringSpec({
         service.resolveCurrentIdentity() shouldBe "dave@example.com"
     }
 
-    "resolveCurrentIdentity prefers CF_Authorization over Authorization header" {
+    "resolveCurrentIdentity prefers Cf-Access-Jwt-Assertion over Authorization header" {
         val cfJwt = buildJwt(mapOf("email" to "cf@example.com"))
         val authJwt = buildJwt(mapOf("preferred_username" to "auth@example.com"))
         setRequest {
-            addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, cfJwt)
+            addHeader(AuthSecurityService.CF_ACCESS_JWT_ASSERTION_HEADER, cfJwt)
             addHeader(AuthSecurityService.AUTHORIZATION_HEADER, "Bearer $authJwt")
         }
 
