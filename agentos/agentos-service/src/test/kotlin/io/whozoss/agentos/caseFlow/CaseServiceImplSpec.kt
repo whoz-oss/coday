@@ -26,6 +26,8 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
@@ -86,6 +88,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import org.springframework.dao.OptimisticLockingFailureException
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -372,7 +375,7 @@ class CaseServiceImplSpec :
                         )
                     try {
                         if (withWorkspace) {
-                            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                            shouldThrow<ConflictException> {
                                 service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do more work")))
                             }
                             events.findByParent(case.id) shouldBe emptyList()
@@ -2527,14 +2530,14 @@ class CaseServiceImplSpec :
             verify(exactly = 1) { repository.countAncestorDepth(parent.id) }
         }
 
-        "create refuses the id of a soft-deleted case" {
-            val service = buildService()
-            val deleted = service.create(Case(namespaceId = namespaceId))
-            service.delete(deleted.id)
+        "create reports an id the storage refuses as a conflict" {
+            // Neo4j refuses a versioned node whose id exists, soft-deleted cases included
+            // (EmbeddedNeo4jCaseVersionSpec): the service only translates that refusal.
+            val repository = spyk(InMemoryCaseRepository())
+            every { repository.save(any()) } throws OptimisticLockingFailureException("id taken")
+            val service = buildService(caseRepository = repository)
 
-            shouldThrow<IllegalArgumentException> {
-                service.create(Case(metadata = EntityMetadata(id = deleted.id), namespaceId = namespaceId))
-            }
+            shouldThrow<ConflictException> { service.create(Case(namespaceId = namespaceId)) }
         }
 
         "create refuses a soft-deleted parent as if it did not exist" {
@@ -3221,8 +3224,7 @@ class CaseServiceImplSpec :
             val throwingPromptService =
                 mockk<PromptService>(relaxed = true) {
                     every { findEffective(any(), any()) } throws
-                        io.whozoss.agentos.exception
-                            .PromptResolutionException("cycle detected")
+                            PromptResolutionException("cycle detected")
                 }
 
             val namespace =
@@ -3547,7 +3549,7 @@ class CaseServiceImplSpec :
             // We inject LLM usage so hasData=true, then make the service throw.
             val llmUsage = LlmUsage(totalTokens = 50L, estimatedCostUsd = 0.001)
             val failingUsageRecordService =
-                mockk<io.whozoss.agentos.usage.UsageRecordService> {
+                mockk<UsageRecordService> {
                     every { create(any()) } throws RuntimeException("Neo4j unavailable")
                 }
             val namespace =
@@ -3927,6 +3929,85 @@ class CaseServiceImplSpec :
             records.size shouldBe 1
             records[0].outcome shouldBe UsageOutcome.FAILED
             records[0].totalTokens shouldBe 80L
+        }
+
+        // -------------------------------------------------------------------------
+        // edit: a user edit lands on the fresh case when a concurrent write wins
+        // -------------------------------------------------------------------------
+
+        "edit applies the change again to a case written concurrently, keeping that write" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "draft"))
+                var raced = false
+                every { repository.save(match { it.title == "renamed" }) } answers {
+                    if (raced) {
+                        callOriginal()
+                    } else {
+                        raced = true
+                        // A status change commits between the edit's read and its save, which is refused.
+                        repository.save(service.getById(case.id).copy(status = CaseStatus.RUNNING))
+                        throw OptimisticLockingFailureException("stale")
+                    }
+                }
+
+                service.edit(case.id) { it.copy(title = "renamed") }
+
+                val saved = service.getById(case.id)
+                saved.title shouldBe "renamed"
+                saved.status shouldBe CaseStatus.RUNNING
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "edit answers 409 once concurrent writes have won every attempt" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "draft"))
+                every { repository.save(match { it.title == "renamed" }) } throws
+                    OptimisticLockingFailureException("stale")
+
+                shouldThrow<ConflictException> { service.edit(case.id) { it.copy(title = "renamed") } }
+
+                verify(exactly = CHANGE_ATTEMPTS) { repository.save(match { it.title == "renamed" }) }
+                service.getById(case.id).title shouldBe "draft"
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "edit keeps the status and namespace a change tries to set" {
+            val service = buildService()
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "draft"))
+
+                val saved =
+                    service.edit(case.id) {
+                        it.copy(title = "renamed", status = CaseStatus.RUNNING, namespaceId = UUID.randomUUID())
+                    }
+
+                saved.title shouldBe "renamed"
+                saved.status shouldBe case.status
+                saved.namespaceId shouldBe namespaceId
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "edit of an unknown or deleted case is a 404" {
+            val service = buildService()
+            try {
+                val deleted = service.create(Case(namespaceId = namespaceId, title = "gone"))
+                service.delete(deleted.id)
+
+                shouldThrow<ResourceNotFoundException> { service.edit(UUID.randomUUID()) { it.copy(title = "x") } }
+                shouldThrow<ResourceNotFoundException> { service.edit(deleted.id) { it.copy(title = "x") } }
+            } finally {
+                service.shutdown()
+            }
         }
 
         // -------------------------------------------------------------------------
