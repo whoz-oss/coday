@@ -33,8 +33,10 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.RedirectToolPlugin
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
@@ -240,6 +242,7 @@ class AgentServiceImpl(
                 baseModel = baseModel,
                 namespaceId = context.namespaceId,
                 userId = context.userId,
+                caseReasoningEffort = context.reasoningEffort,
             )
         val effectiveIntegrationConfigs =
             runIntegrationCustomizers.fold(
@@ -514,11 +517,15 @@ class AgentServiceImpl(
      * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
      * fetches all four overlay layers in a single query and folds them by precedence.
      * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
+     *
+     * A non-null [caseReasoningEffort] replaces the model's reasoning effort, except on an Anthropic
+     * provider, where the service cannot send the effort yet: the model is then kept as is.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
         namespaceId: UUID,
         userId: UUID?,
+        caseReasoningEffort: ReasoningEffort? = null,
     ): Pair<AiModel, AiProvider> {
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
         val providerConfig =
@@ -527,14 +534,25 @@ class AgentServiceImpl(
             } else {
                 baseProvider
             }
+        val modelConfig =
+            when {
+                caseReasoningEffort == null -> baseModel
+                providerConfig.apiType == AiApiType.Anthropic -> {
+                    logger.info {
+                        "Case reasoning effort $caseReasoningEffort ignored for Anthropic provider '${providerConfig.name}'"
+                    }
+                    baseModel
+                }
+                else -> baseModel.copy(reasoningEffort = caseReasoningEffort)
+            }
 
         logger.info {
             "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
                 "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
-                "reasoningEffort=${baseModel.reasoningEffort}, " +
+                "reasoningEffort=${modelConfig.reasoningEffort}, " +
                 "provider='${providerConfig.name}', userId=$userId)"
         }
-        return baseModel to providerConfig
+        return modelConfig to providerConfig
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)

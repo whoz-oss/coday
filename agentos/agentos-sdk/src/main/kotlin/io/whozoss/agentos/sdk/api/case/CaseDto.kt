@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.case
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
@@ -39,6 +40,9 @@ import java.util.UUID
  *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement
  *   mechanism when the user chooses to continue after a breach. A stored value is always absolute
  *   and independent of platform or namespace config changes.
+ * @property reasoningEffort Per-case override of the reasoning effort of the agents running in the
+ *   case. Null means each agent uses the effort of its model. Accepted on create; changed afterwards
+ *   through `PUT /api/cases/{id}/reasoning-effort` only (`PUT /api/cases/{id}` ignores it).
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -58,6 +62,12 @@ data class CaseDto(
     )
     @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,
+    @field:Schema(
+        description =
+            "Per-case override of the reasoning effort of the agents running in the case. " +
+                "Null means each agent uses the effort of its model. Ignored for Anthropic providers.",
+    )
+    val reasoningEffort: ReasoningEffort? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**

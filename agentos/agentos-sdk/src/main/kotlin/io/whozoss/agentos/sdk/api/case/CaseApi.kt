@@ -109,4 +109,17 @@ interface CaseApi : EntityCrudApi<CaseDto> {
                 "Requires a direct user↔case relation, otherwise the call is rejected.",
     )
     fun unstarCase(id: UUID)
+
+    @Operation(
+        summary = "Set the reasoning effort of a case",
+        description =
+            "PUT /api/cases/{id}/reasoning-effort — set the case-level override of the reasoning effort " +
+                "of the agents running in the case, or remove it with a null value so each agent uses the " +
+                "effort of its model again. Applies from the next run. Ignored for Anthropic providers. " +
+                "Returns the updated Case DTO.",
+    )
+    fun setReasoningEffort(
+        id: UUID,
+        request: CaseReasoningEffortRequest,
+    ): CaseDto
 }

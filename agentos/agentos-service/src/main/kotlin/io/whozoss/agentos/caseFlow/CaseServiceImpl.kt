@@ -705,6 +705,8 @@ class CaseServiceImpl(
                     saved
                 },
                 usageAccumulator = usageAccumulator,
+                // Read at every run so a change made in the UI applies from the next message on.
+                reasoningEffort = findById(caseId)?.reasoningEffort,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agent = agentService.findAgentByName(agentName, context, this)
