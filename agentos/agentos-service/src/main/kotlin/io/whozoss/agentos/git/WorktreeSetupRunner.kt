@@ -63,6 +63,9 @@ class WorktreeSetupRunner(
                     env["PATH"] = System.getenv("PATH") ?: DEFAULT_PATH
                     env["HOME"] = home.toString()
                     env["XDG_CACHE_HOME"] = cache.toString()
+                    // pnpm derives its default store from HOME and may fall back to a location outside the
+                    // workspace support directory: pin it inside, so it is removed with the workspace.
+                    env["npm_config_store_dir"] = home.resolve(PNPM_STORE_DIRECTORY).toString()
                     env["LANG"] = "C"
                     env["LC_ALL"] = "C"
                     env["CI"] = "true"
@@ -90,5 +93,8 @@ class WorktreeSetupRunner(
 
     companion object : KLogging() {
         private const val DEFAULT_PATH = "/usr/local/bin:/usr/bin:/bin"
+
+        /** Name, under the setup home, of the directory holding the pnpm content-addressable store. */
+        const val PNPM_STORE_DIRECTORY = ".pnpm-store"
     }
 }

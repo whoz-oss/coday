@@ -27,7 +27,7 @@ describe('SupervisorCaseFacade', () => {
     expect(TestBed.inject(SupervisorCaseFacade).restore(run)).toEqual({
       caseId: 'case-1',
       namespaceId: 'ns-1',
-      agentOsUrl: 'https://agentos.example/agentos/home?ns=ns-1&case=case-1',
+      agentOsUrl: '/agentos/home?ns=ns-1&case=case-1',
     })
   })
 
