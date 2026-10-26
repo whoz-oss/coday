@@ -82,10 +82,8 @@ class WorktreeSetupRunner(
             }
 
         if (result.exitCode != 0) {
-            // The output stays out of the message: a setup script can print secrets, and callers
-            // log this exception with its stack trace.
-            logger.error { result.stderr }
-            logger.error { result.stdout }
+            // The output stays out of the message and the logs: a setup script can print secrets,
+            // and callers log this exception with its stack trace.
             throw IllegalStateException("Setup command failed (exit ${result.exitCode})")
         }
         logger.info { "Setup completed for namespace ${settings.namespaceId}" }
