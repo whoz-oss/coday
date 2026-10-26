@@ -50,6 +50,12 @@ interface NamespaceService : EntityService<Namespace, String> {
     fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>)
 
     /**
+     * Ids of the agents deployed directly on namespace [namespaceId] (a `DEPLOYED_TO` edge to the
+     * namespace itself, not to one of its user groups). Empty when none or the namespace is unknown.
+     */
+    fun findDeployedAgentIds(namespaceId: UUID): Set<UUID>
+
+    /**
      * Resolves the effective [io.whozoss.agentos.namespace.Namespace.runCostThreshold] for
      * [namespaceId] following the chain: `Namespace.runCostThreshold ?: platform default`.
      *
