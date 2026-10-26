@@ -3,8 +3,8 @@ package io.whozoss.agentos.integrationConfig
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.JsonNode
-import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.entity.ScopedEntity
 import java.util.UUID
 
 /**
@@ -35,8 +35,8 @@ import java.util.UUID
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class IntegrationConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val namespaceId: UUID? = null,
-    val userId: UUID? = null,
+    override val namespaceId: UUID? = null,
+    override val userId: UUID? = null,
     val name: String,
     val integrationType: String,
     val description: String? = null,
@@ -65,5 +65,5 @@ data class IntegrationConfig(
      * deployment sees no change.
      */
     val autoGrant: Boolean = false,
-) : Entity {
+) : ScopedEntity {
 }
