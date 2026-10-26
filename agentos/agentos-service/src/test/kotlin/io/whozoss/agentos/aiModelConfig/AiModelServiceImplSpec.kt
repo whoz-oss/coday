@@ -15,7 +15,9 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import java.util.UUID
 
@@ -32,19 +34,23 @@ class AiModelServiceImplSpec : StringSpec() {
         aiProviderId: UUID,
         nsId: UUID = namespaceId,
         userId: UUID? = null,
+        apiType: AiApiType = AiApiType.Anthropic,
     ): AiProvider =
         AiProvider(
             metadata = EntityMetadata(id = aiProviderId),
             namespaceId = nsId,
             userId = userId,
-            name = "anthropic",
-            apiType = AiApiType.Anthropic,
+            name = apiType.name.lowercase(),
+            apiType = apiType,
         )
 
-    private fun newService(aiProviderId: UUID = UUID.randomUUID()): Pair<AiModelServiceImpl, UUID> {
+    private fun newService(
+        aiProviderId: UUID = UUID.randomUUID(),
+        apiType: AiApiType = AiApiType.Anthropic,
+    ): Pair<AiModelServiceImpl, UUID> {
         val aiProviderService = mockk<AiProviderService>()
         every { aiProviderService.getById(any()) } answers {
-            stubAiProvider(firstArg())
+            stubAiProvider(firstArg(), apiType = apiType)
         }
         return AiModelServiceImpl(InMemoryAiModelRepository(), aiProviderService) to aiProviderId
     }
@@ -568,6 +574,46 @@ class AiModelServiceImplSpec : StringSpec() {
             shouldThrow<ConflictException> {
                 service.update(toUpdate.copy(alias = "big"))
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // Reasoning effort
+        // -------------------------------------------------------------------------
+
+        "create keeps the reasoning effort of a model under an OpenAI provider" {
+            val (service, aiProviderId) = newService(apiType = AiApiType.OpenAI)
+
+            val created = service.create(modelConfig(aiProviderId = aiProviderId).copy(reasoningEffort = ReasoningEffort.XHIGH))
+
+            service.findById(created.metadata.id)?.reasoningEffort shouldBe ReasoningEffort.XHIGH
+        }
+
+        "create rejects a reasoning effort under an Anthropic provider" {
+            val (service, aiProviderId) = newService(apiType = AiApiType.Anthropic)
+
+            shouldThrow<BadRequestException> {
+                service.create(modelConfig(aiProviderId = aiProviderId).copy(reasoningEffort = ReasoningEffort.HIGH))
+            }
+            service.findByParent(aiProviderId).shouldBeEmpty()
+        }
+
+        "update rejects a reasoning effort under an Anthropic provider and keeps the stored model" {
+            val (service, aiProviderId) = newService(apiType = AiApiType.Anthropic)
+            val original = service.create(modelConfig(aiProviderId = aiProviderId))
+
+            shouldThrow<BadRequestException> {
+                service.update(original.copy(reasoningEffort = ReasoningEffort.LOW))
+            }
+            service.findById(original.metadata.id)?.reasoningEffort.shouldBeNull()
+        }
+
+        "update clears the reasoning effort when it is set back to null" {
+            val (service, aiProviderId) = newService(apiType = AiApiType.OpenAI)
+            val original = service.create(modelConfig(aiProviderId = aiProviderId).copy(reasoningEffort = ReasoningEffort.LOW))
+
+            service.update(original.copy(reasoningEffort = null))
+
+            service.findById(original.metadata.id)?.reasoningEffort.shouldBeNull()
         }
     }
 }

@@ -15,6 +15,7 @@ import io.whozoss.agentos.config.Neo4jPersistenceConfiguration
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
@@ -123,6 +124,19 @@ abstract class AbstractAiModelPersistenceSpec : StringSpec() {
             found.first().id shouldBe saved.id
             found.first().apiModelName shouldBe "claude-haiku-4-5"
             found.first().alias shouldBe "small"
+        }
+
+        "save and findByIds round-trips reasoningEffort stored as its enum name, absent by default" {
+            val provider = providerRepo.save(aiProvider())
+            val withEffort = repo.save(aiModel(aiProviderId = provider.id).copy(reasoningEffort = ReasoningEffort.XHIGH))
+            val withoutEffort = repo.save(aiModel(aiProviderId = provider.id, apiName = "claude-opus-4-6"))
+
+            val found = repo.findByIds(listOf(withEffort.id, withoutEffort.id)).associateBy { it.id }
+
+            found.getValue(withEffort.id).reasoningEffort shouldBe ReasoningEffort.XHIGH
+            found.getValue(withoutEffort.id).reasoningEffort.shouldBeNull()
+            neo4jClient.query("MATCH (m:AiModel {id: \$id}) RETURN m.reasoningEffort AS effort")
+                .bind(withEffort.id.toString()).to("id").fetch().one().orElseThrow()["effort"] shouldBe "XHIGH"
         }
 
         // -------------------------------------------------------------------------

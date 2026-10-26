@@ -20,6 +20,15 @@ export interface AiModel {
   namespaceId?: string
   pricing?: ModelPricing
   priority: number
+  reasoningEffort?: AiModelReasoningEffortEnum
   temperature?: number
   userId?: string
+}
+export enum AiModelReasoningEffortEnum {
+  NONE = 'NONE',
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  XHIGH = 'XHIGH',
+  MAX = 'MAX',
 }
