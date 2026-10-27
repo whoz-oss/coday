@@ -2,6 +2,7 @@ package io.whozoss.agentos.integrationConfig
 
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -50,6 +51,7 @@ class IntegrationConfigServiceImpl(
     }
 
     override fun update(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
+        requireMutable(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -61,6 +63,12 @@ class IntegrationConfigServiceImpl(
         assertConsistentIntegrationTypeAcrossLayers(entity)
         saveOrConflict(entity).also { saved ->
             policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
+    }
+
+    private fun requireMutable(entity: IntegrationConfig) {
+        if (entity.source == IntegrationConfigSource.FILESYSTEM) {
+            throw UnprocessableEntityException("Filesystem IntegrationConfig '${entity.name}' is read-only")
         }
     }
 
@@ -78,7 +86,10 @@ class IntegrationConfigServiceImpl(
 
     override fun findByParent(parentId: UUID): List<IntegrationConfig> = repository.findByParent(parentId)
 
-    override fun delete(id: UUID): Boolean = repository.delete(id)
+    override fun delete(id: UUID): Boolean {
+        findByIds(listOf(id)).firstOrNull()?.let(::requireMutable)
+        return repository.delete(id)
+    }
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 

@@ -29,6 +29,11 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class IntegrationConfigDto(
     val id: UUID? = null,
+    @field:Schema(
+        description = "Configuration origin. FILESYSTEM entries are read-only; no local path is exposed.",
+        accessMode = Schema.AccessMode.READ_ONLY,
+    )
+    val source: IntegrationConfigSource = IntegrationConfigSource.NEO4J,
     @field:Schema(types = ["string", "null"], format = "uuid")
     val namespaceId: UUID? = null,
     @field:Schema(types = ["string", "null"], format = "uuid")

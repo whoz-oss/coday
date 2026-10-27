@@ -524,6 +524,23 @@ The plugin test suite reads the document it produces for that example (`converte
   `[A-Za-z0-9_-]` or containing `__`) exposes no tools; the message is logged at ERROR and shown in the
   namespace description.
 
+## Optional unsecure HTTP
+
+HTTP API destinations remain HTTPS-only by default. An administrator may set
+`AGENTOS_HTTP_API_ALLOW_UNSECURE=true` before starting AgentOS to allow plain HTTP to any hostname or IP,
+including localhost, loopback addresses, private/LAN DNS names and private network ranges. The setting
+applies to every `HTTP_API` integration, including base URLs, OpenAPI document URLs and final operation
+URLs; it does not depend on an integration name, port or route.
+
+The option accepts only the explicit value `true` (case-insensitive). An absent, blank, malformed or false
+value keeps the strict default. HTTPS URL validation continues to reject localhost and private, loopback, link-local, CGNAT, unique-local
+and unspecified IP literals. Enabling the option relaxes the shared DNS filter so private/LAN hostnames can
+resolve for HTTP; consequently, use only in trusted network environments because DNS resolution cannot apply
+different policies by URL scheme. Userinfo, malformed URLs, unsupported schemes, redirects and automatic retries
+remain refused for both HTTP and HTTPS. The former `AGENTOS_HTTP_API_ALLOW_LOCAL_HTTP` variable is removed
+rather than retained as an alias because its loopback-only semantics are materially narrower; deployments
+must opt in explicitly to the broader unsecure behavior.
+
 ## Deployment
 
 The plugin is built and deployed like the other bundled plugins:

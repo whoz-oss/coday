@@ -1,0 +1,10 @@
+# Profile for container deployments.
+# Activate with: --spring.profiles.active=docker (or SPRING_PROFILES_ACTIVE=docker)
+#
+# Same convention as agentos-service's application-docker.yml: log levels are
+# overridable through environment variables. Other logging settings from
+# application.yml (e.g. org.springframework.data.neo4j.cypher: WARN) still apply.
+logging:
+  level:
+    root: ${LOGGING_LEVEL_ROOT:INFO}
+    io.whozoss.factory: ${LOGGING_LEVEL_IO_WHOZOSS_FACTORY:INFO}

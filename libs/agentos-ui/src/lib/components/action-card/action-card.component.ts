@@ -6,8 +6,12 @@ import { BlueprintDirective, KebabMenuComponent, KebabMenuItem } from '@whoz-oss
 export type { KebabMenuItem as ActionCardMenuItem }
 
 /** Slot chips — projeter les boutons d'actions rapides */
-@Directive({ selector: '[agentosCardChips]', standalone: true })
+@Directive({ selector: '[agentosCardChips]' })
 export class ActionCardChipsDirective {}
+
+/** Slot for a small set of prominent card actions. */
+@Directive({ selector: '[agentosCardActions]' })
+export class ActionCardActionsDirective {}
 
 @Component({
   selector: 'agentos-action-card',
@@ -29,6 +33,7 @@ export class ActionCardComponent {
   readonly menuAction = output<string>()
 
   protected readonly chipsSlot = contentChild(ActionCardChipsDirective)
+  protected readonly actionsSlot = contentChild(ActionCardActionsDirective)
 
   protected get resolvedMark(): string {
     return this.mark() ?? (this.name().charAt(0).toUpperCase() || '?')
@@ -36,6 +41,10 @@ export class ActionCardComponent {
 
   protected get hasChips(): boolean {
     return this.chipsSlot() !== undefined
+  }
+
+  protected get hasActions(): boolean {
+    return this.actionsSlot() !== undefined
   }
 
   protected get hasMenu(): boolean {

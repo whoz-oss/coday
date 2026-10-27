@@ -21,11 +21,14 @@ import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.ResultActions
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.request
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 import kotlin.io.path.writeText
@@ -509,5 +512,166 @@ class SkillControllerPermissionIntegrationSpec : StringSpec() {
             mockMvc.perform(get("/api/skills/$fsSkillId"))
                 .andExpect(status().isNotFound)
         }
+
+        // -------------------------------------------------------------------------
+        // Writes on filesystem-backed skills — the canWrite/canDelete SpEL fallback must let the
+        // request through to SkillService's informative 400 instead of being masked as a 404 by
+        // @HideOnAccessDenied, while staying non-widening for persisted skills.
+        // -------------------------------------------------------------------------
+
+        "PUT /{id} returns 400 read-only for a REAL filesystem-backed skill for namespace ADMIN" {
+            val fsSkillId = createFilesystemSkill("fs-put", grantTo = alice, relation = PermissionRelation.ADMIN)
+
+            mockMvc.perform(
+                put("/api/skills/$fsSkillId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                            "id": "$fsSkillId",
+                            "name": "fs-put",
+                            "description": "attempted update",
+                            "body": "attempted body"
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "DELETE /{id} returns 400 read-only for a REAL filesystem-backed skill for namespace ADMIN" {
+            val fsSkillId = createFilesystemSkill("fs-delete", grantTo = alice, relation = PermissionRelation.ADMIN)
+
+            mockMvc.perform(delete("/api/skills/$fsSkillId"))
+                .andExpect(status().isBadRequest)
+        }
+
+        "PUT /{id} returns 404 for a REAL filesystem-backed skill for namespace MEMBER (WRITE required)" {
+            val fsSkillId = createFilesystemSkill("fs-put-member", grantTo = alice, relation = PermissionRelation.MEMBER)
+
+            mockMvc.perform(
+                put("/api/skills/$fsSkillId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                            "id": "$fsSkillId",
+                            "name": "fs-put-member",
+                            "description": "attempted update",
+                            "body": "attempted body"
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isNotFound)
+        }
+
+        "PUT /{id} returns 404 for a REAL filesystem-backed skill for a foreign-namespace user" {
+            val fsSkillId = createFilesystemSkill("fs-put-foreign", grantTo = null, relation = null)
+
+            mockMvc.perform(
+                put("/api/skills/$fsSkillId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                            "id": "$fsSkillId",
+                            "name": "fs-put-foreign",
+                            "description": "attempted update",
+                            "body": "attempted body"
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isNotFound)
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/skills/effective
+        // -------------------------------------------------------------------------
+
+        "GET /effective returns 200 for namespace MEMBER" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            val name = "effective-member-${UUID.randomUUID()}"
+            skillService.create(
+                Skill(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = name,
+                    description = "desc",
+                    body = "body",
+                ),
+            )
+
+            performEffective(namespace.id)
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$name')]", org.hamcrest.Matchers.hasSize<Any>(1)))
+        }
+
+        "GET /effective returns 403 for a user with no namespace permission" {
+            performEffective(namespace.id)
+                .andExpect(status().isForbidden)
+        }
+    }
+
+    /**
+     * `GET /api/skills/effective` is a `suspend` handler: Spring MVC starts it on the initial
+     * dispatch and completes it on the async one, so both the status and the body must be asserted
+     * on the dispatched result — including an `AccessDeniedException` raised by `@PreAuthorize`.
+     */
+    private fun performEffective(namespaceId: UUID): ResultActions {
+        val started =
+            mockMvc
+                .perform(get("/api/skills/effective").param("namespaceId", namespaceId.toString()))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+        return mockMvc.perform(asyncDispatch(started))
+    }
+
+    /**
+     * Writes a real `SKILL.md` in a fresh namespace's configPath and returns the deterministic id
+     * the filesystem decorator will assign it, optionally granting [grantTo] a [relation] on that
+     * namespace.
+     */
+    private fun createFilesystemSkill(
+        skillName: String,
+        grantTo: User?,
+        relation: PermissionRelation?,
+    ): UUID {
+        val configRoot = java.nio.file.Files.createTempDirectory("skill-fs-write-test")
+        val skillDir = configRoot.resolve("skills").resolve(skillName)
+        java.nio.file.Files.createDirectories(skillDir)
+        skillDir.resolve("SKILL.md").writeText(
+            """
+            ---
+            name: $skillName
+            description: Filesystem-backed skill for write-path tests
+            ---
+            Body content
+            """.trimIndent(),
+        )
+
+        val fsNamespace = namespaceService.create(
+            Namespace(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                externalId = "test-fs-ns-$skillName-${UUID.randomUUID()}",
+                name = "FS Namespace $skillName",
+                configPath = configRoot.toString(),
+            ),
+        )
+
+        if (grantTo != null && relation != null) {
+            permissionService.grantPermission(
+                grantTo.id.toString(),
+                EntityType.NAMESPACE,
+                fsNamespace.id.toString(),
+                relation,
+            )
+        }
+
+        return FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, skillName)
     }
 }

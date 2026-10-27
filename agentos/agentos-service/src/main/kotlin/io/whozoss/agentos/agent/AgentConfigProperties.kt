@@ -40,8 +40,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties(prefix = "agentos.defaults")
 data class AgentConfigProperties(
     val agentName: String? = null,
-    /** Default active-time budget for each outgoing delegation, in seconds, excluding cost confirmation. */
-    val delegationTimeoutSeconds: Int = 300,
+    /**
+     * Default inactivity budget for each outgoing delegation, in seconds: how long it waits without activity
+     * from its sub-case, or from the sub-case's own delegations, before stopping it. Cost confirmation does
+     * not count.
+     */
+    val delegationTimeoutSeconds: Int = 600,
     /**
      * Char-equivalent cost of one attached image against the detailed-tool budget.
      * Derived from the legacy Coday estimate: (width * height) / 750 tokens at

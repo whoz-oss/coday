@@ -34,6 +34,7 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /** Holds a pending command to be executed sequentially after the current agent turn. */
@@ -147,6 +148,16 @@ class CaseRuntime(
      * the second invocation returns immediately without doing any work.
      */
     private val runInFlight = AtomicBoolean(false)
+
+    /**
+     * Monotonic start time of the latest user turn. It is recorded before persistence so the
+     * resulting duration includes the full locally observable path: message storage, scheduling,
+     * orchestration, LLM calls, tools, and final status publication.
+     */
+    private val userTurnStartedAtNanos = AtomicLong(0)
+
+    /** Backs [activityCount]. */
+    private val activity = AtomicLong(0)
 
     /**
      * Job of the turn executing inside [run]: from the user's message until the agents hand back to
@@ -287,12 +298,15 @@ class CaseRuntime(
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
-     * Claim the [CaseStatus.PENDING] (gated-hold) transition atomically, in memory only.
+     * Claim the [CaseStatus.PENDING] transition atomically, in memory only: a turn is queued and has not
+     * started. [GatedRunLauncher] claims it for a turn its gate holds back, then publishes it.
+     * [CaseServiceImpl.resumeSubCase] claims it without a gate and does not publish it: [run] replaces it
+     * with RUNNING as soon as the turn starts.
      *
-     * Must be called under this instance's monitor (the admission lock). Returns the
-     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
-     * already running or already PENDING. The caller is responsible for calling
-     * [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
+     * Takes this instance's monitor (the admission lock); a caller that claims together with its own
+     * state holds the monitor around the call. Returns the [CaseStatus] to publish if the claim succeeded,
+     * or `null` if the runtime is already running or already PENDING. The caller is responsible for
+     * calling [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
      */
     fun claimPending(): CaseStatus? = synchronized(this) {
         if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
@@ -332,6 +346,21 @@ class CaseRuntime(
     /** Monotonic count of non-blocking live emissions rejected by the runtime buffer. */
     val deliveryFailureCount get() = emitter.deliveryFailureCount
 
+    /**
+     * Monotonic count of this case's activity: every event it emits and every [recordActivity].
+     * Only its changes matter: a delegation waiting on this case compares two readings to tell a
+     * sub-case that is working from a silent one.
+     */
+    val activityCount: Long get() = activity.get()
+
+    /**
+     * Record activity without an event. A delegation relays the activity of the sub-case it waits on
+     * to its own case this way, so that a delegation waiting on that case sees it working too.
+     */
+    fun recordActivity() {
+        activity.incrementAndGet()
+    }
+
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
     }
@@ -358,6 +387,12 @@ class CaseRuntime(
         emit(event)
     }
 
+    /** Every live emission, stored or not, is activity of the case (see [activityCount]). */
+    override fun emit(event: CaseEvent) {
+        recordActivity()
+        emitter.emit(event)
+    }
+
     // -------------------------------------------------------------------------
     // User message entry point
     // -------------------------------------------------------------------------
@@ -376,9 +411,12 @@ class CaseRuntime(
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
     ) {
-        logger.info {
-            "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
-                "content: ${content.size} part(s), answerTo: $answerToEventId"
+        if (logger.isDebugEnabled) {
+            userTurnStartedAtNanos.set(System.nanoTime())
+            logger.debug {
+                "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
+                    "content: ${content.size} part(s), answerTo: $answerToEventId"
+            }
         }
 
         if (answerToEventId != null) {
@@ -480,7 +518,14 @@ class CaseRuntime(
      */
     private suspend fun executeTurn() {
         logger.info { "[CaseRuntime $id] run() started" }
+        val statusUpdateStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
         updateStatus(CaseStatus.RUNNING)
+        if (statusUpdateStartedAtNanos != 0L) {
+            logger.debug {
+                "[CaseRuntime $id] RUNNING status persistence and publication completed in " +
+                    "${(System.nanoTime() - statusUpdateStartedAtNanos) / 1_000_000}ms"
+            }
+        }
         iterationCount = 0
 
         try {
@@ -499,6 +544,7 @@ class CaseRuntime(
             logger.info { "[CaseRuntime $id] Exited loop → $finalStatus, iterations: $iterationCount" }
             if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
             updateStatus(finalStatus)
+            logResponseFinished(finalStatus)
         } catch (e: CancellationException) {
             // Cancelled by a Stop, a Kill, a shutdown stop or a cancelled caller: close the turn before
             // rethrowing, so the case is never left RUNNING with a dangling AgentRunningEvent.
@@ -514,12 +560,24 @@ class CaseRuntime(
                     .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not close the cancelled turn" } }
                 runCatching { updateStatus(status) }
                     .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not publish status $status" } }
+                logResponseFinished(status)
             }
             throw e
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
             commandQueue.clear()
             updateStatus(CaseStatus.ERROR)
+            logResponseFinished(CaseStatus.ERROR)
+        }
+    }
+
+    private fun logResponseFinished(status: CaseStatus) {
+        if (!logger.isDebugEnabled) return
+        val startedAtNanos = userTurnStartedAtNanos.getAndSet(0)
+        if (startedAtNanos == 0L) return
+        logger.debug {
+            "[CaseRuntime $id] response finished in " +
+                "${(System.nanoTime() - startedAtNanos) / 1_000_000}ms (status=$status)"
         }
     }
 

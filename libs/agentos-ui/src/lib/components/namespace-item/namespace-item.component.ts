@@ -1,18 +1,23 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
-import { ActionCardChipsDirective, ActionCardComponent, ActionCardMenuItem } from '../action-card/action-card.component'
+import {
+  ActionCardActionsDirective,
+  ActionCardComponent,
+  ActionCardMenuItem,
+} from '../action-card/action-card.component'
 import { UsageConfigurationService } from '../../services/usage-configuration.service'
 
 @Component({
   selector: 'agentos-namespace-item',
-  imports: [ActionCardComponent, ActionCardChipsDirective, IconButtonComponent],
+  imports: [ActionCardComponent, ActionCardActionsDirective, IconButtonComponent],
   templateUrl: './namespace-item.component.html',
   styleUrl: './namespace-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  readonly usageConfiguration = inject(UsageConfigurationService)
+  private readonly usageConfiguration = inject(UsageConfigurationService)
+
   readonly namespace = input.required<Namespace>()
   /** Git settings exist only while the GIT plugin is loaded on the server. */
   readonly gitAvailable = input(false)
@@ -24,6 +29,7 @@ export class NamespaceItemComponent {
   readonly aiModelsRequested = output<Namespace>()
   readonly agentConfigsRequested = output<Namespace>()
   readonly promptsRequested = output<Namespace>()
+  readonly skillsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
   readonly usageRequested = output<Namespace>()
@@ -35,11 +41,14 @@ export class NamespaceItemComponent {
 
   protected readonly pendingDelete = signal(false)
 
-  protected readonly menuItems: ActionCardMenuItem[] = [
-    { key: 'edit', label: 'Edit namespace' },
+  protected readonly menuItems = computed<ActionCardMenuItem[]>(() => [
+    { key: 'members', label: 'Members' },
+    ...(this.gitAvailable() ? [{ key: 'git', label: 'Git' }] : []),
+    ...(this.usageConfiguration.enabled() ? [{ key: 'usage', label: 'Usage and costs' }] : []),
     { key: 'separator', label: '', variant: 'separator' },
+    { key: 'edit', label: 'Edit namespace' },
     { key: 'delete', label: 'Delete namespace', variant: 'danger' },
-  ]
+  ])
 
   protected onSelect(): void {
     this.selected.emit(this.namespace())
@@ -58,6 +67,9 @@ export class NamespaceItemComponent {
   }
   protected onPrompts(): void {
     this.promptsRequested.emit(this.namespace())
+  }
+  protected onSkills(): void {
+    this.skillsRequested.emit(this.namespace())
   }
   protected onScheduledPrompts(): void {
     this.scheduledPromptsRequested.emit(this.namespace())
@@ -80,6 +92,42 @@ export class NamespaceItemComponent {
 
   protected onMenuAction(key: string): void {
     switch (key) {
+      case 'integrations':
+        this.onIntegrations()
+        break
+      case 'ai-providers':
+        this.onAiProviders()
+        break
+      case 'ai-models':
+        this.onAiModels()
+        break
+      case 'agent-configs':
+        this.onAgentConfigs()
+        break
+      case 'prompts':
+        this.onPrompts()
+        break
+      case 'scheduled-prompts':
+        this.onScheduledPrompts()
+        break
+      case 'user-groups':
+        this.onUserGroups()
+        break
+      case 'members':
+        this.onMembers()
+        break
+      case 'auth-settings':
+        this.onAuthSettings()
+        break
+      case 'tool-invoke':
+        this.onToolInvoke()
+        break
+      case 'usage':
+        this.usageRequested.emit(this.namespace())
+        break
+      case 'git':
+        this.onGit()
+        break
       case 'edit':
         this.editRequested.emit(this.namespace())
         break

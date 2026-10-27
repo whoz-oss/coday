@@ -94,7 +94,7 @@ jobs:
             echo "## 🏷️ Release v${{ steps.release.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
           else
             echo "## ⏭️ No release needed" >> $GITHUB_STEP_SUMMARY
-            echo "No releasable commits (\`feat:\`, \`fix:\`, \`feat!:\` / \`fix!:\`, or \`BREAKING CHANGE:\` in commit body) touching files of a releasable project (\`tag:platform:npm\` or \`tag:platform:jvm\`) found since the last release tag." >> $GITHUB_STEP_SUMMARY
+            echo "No releasable commits (\`feat:\`, \`fix:\`, \`feat!:\` / \`fix!:\`, or \`BREAKING CHANGE:\` in commit body) touching files of a releasable project (\`tag:platform:npm\`, \`tag:platform:jvm-agentos\`, or \`tag:platform:jvm-factory\`) found since the last release tag." >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Details" >> $GITHUB_STEP_SUMMARY
@@ -219,7 +219,7 @@ jobs:
             echo "Warning: Coday Twin PKG not found"
           fi
 
-  # Job 3: Build and upload AgentOS JARs as GitHub Release assets
+  # Job 3a: Build and upload AgentOS JARs as GitHub Release assets
   upload-agentos-jars:
     runs-on: ubuntu-latest
     needs: release
@@ -290,8 +290,65 @@ jobs:
             /tmp/agentos-jars/checksums.sha256 \
             --clobber
 
-  # Job 4: Resolve the list of JVM projects to publish from the platform:jvm tag
-  compute-jvm-projects:
+  # Job 3b: Build and upload Factory JARs as GitHub Release assets
+  upload-factory-jars:
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_version
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        working-directory: factory
+        run: chmod +x gradlew
+
+      - name: Build Factory JARs
+        working-directory: factory
+        run: |
+          ./gradlew :factory-service:bootJar :factory-forge-plugin:jar --no-daemon
+
+      - name: Upload JARs to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="release/${{ needs.release.outputs.new_version }}"
+          VERSION="${{ needs.release.outputs.new_version }}"
+
+          # Naming contract: "<artifactId>-<version>.jar" -- same as agentos convention.
+          # factory-service: bootJar produces factory-service.jar (no version) -> rename explicitly.
+          # factory-forge-plugin: jar produces factory-forge-plugin-<version>.jar -> copy as-is.
+          mkdir -p /tmp/factory-jars
+          cp factory/factory-service/build/libs/factory-service.jar "/tmp/factory-jars/factory-service-${VERSION}.jar"
+          cp factory/factory-forge-plugin/build/libs/factory-forge-plugin-*.jar /tmp/factory-jars/
+
+          cd /tmp/factory-jars
+          sha256sum *.jar > checksums.sha256
+          cat checksums.sha256
+          cd -
+
+          gh release upload "$TAG" \
+            "/tmp/factory-jars/factory-service-${VERSION}.jar" \
+            /tmp/factory-jars/factory-forge-plugin-*.jar \
+            /tmp/factory-jars/checksums.sha256 \
+            --clobber
+
+  # Jobs 4a / 4b: Resolve the list of JVM projects to publish, per platform.
+  #
+  # Two lightweight jobs (no JDK, no Gradle) running in parallel after release.
+  # Each resolves its own platform tag so the downstream publish jobs are
+  # fully isolated: agentos and factory never share a Gradle invocation.
+  compute-agentos-projects:
     runs-on: ubuntu-latest
     needs: release
     if: needs.release.outputs.new_version
@@ -314,18 +371,50 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve JVM projects from tag
+      - name: Resolve AgentOS JVM projects from tag
         id: resolve
         # --json --quiet mirrors validate.yml to avoid output pollution from the nx daemon/cache
         run: |
-          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.' || echo '[]')
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-agentos" --json --quiet | jq -c '.' || echo '[]')
           echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
 
-  # Job 5: Publish all JVM artifacts to GitHub Packages
-  publish-agentos-artifacts:
-    name: publish ${{ matrix.project }} to github packages
+  compute-factory-projects:
     runs-on: ubuntu-latest
-    needs: [release, compute-jvm-projects]
+    needs: release
+    if: needs.release.outputs.new_version
+    outputs:
+      projects: ${{ steps.resolve.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Factory JVM projects from tag
+        id: resolve
+        run: |
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-factory" --json --quiet | jq -c '.' || echo '[]')
+          echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
+
+  # Jobs 5a / 5b: Publish all JVM artifacts to GitHub Packages, per platform.
+  #
+  # Two independent matrix jobs — agentos and factory runners never share a
+  # Gradle daemon. Each stamps only its own libs.versions.toml catalog.
+  publish-agentos-artifacts:
+    name: publish ${{ matrix.project }} (agentos) to github packages
+    runs-on: ubuntu-latest
+    needs: [release, compute-agentos-projects]
     if: needs.release.outputs.new_version
 
     permissions:
@@ -335,7 +424,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ fromJson(needs.compute-jvm-projects.outputs.projects) }}
+        project: ${{ fromJson(needs.compute-agentos-projects.outputs.projects) }}
 
     steps:
       - name: Checkout repository
@@ -364,6 +453,56 @@ jobs:
 
       - name: Grant execute permission for gradlew
         working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Publish to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: pnpm nx publish ${{ matrix.project }}
+
+  publish-factory-artifacts:
+    name: publish ${{ matrix.project }} (factory) to github packages
+    runs-on: ubuntu-latest
+    needs: [release, compute-factory-projects]
+    if: needs.release.outputs.new_version
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.compute-factory-projects.outputs.projects) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: factory
         run: chmod +x gradlew
 
       - name: Publish to GitHub Packages

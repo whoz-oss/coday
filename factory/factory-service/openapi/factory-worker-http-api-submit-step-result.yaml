@@ -1,0 +1,112 @@
+openapi: 3.0.3
+info:
+  title: Factory worker result submission
+  version: 0.1.0
+servers:
+  - url: https://factory.example.invalid
+paths:
+  /api/factory/agent-step-results:
+    post:
+      operationId: submitStepResult
+      summary: Submit the structured result of one Factory attempt
+      description: >-
+        Submit only after completing the current Factory step. Use the Factory-issued
+        attemptId and Idempotency-Key from the execution brief. Neither value is a secret.
+        The bearer is a Factory-issued JWT (optional when Factory runs in local security mode, FACTORY_SECURITY_MODE=local).
+        The workflow, step and namespace are resolved by Factory from the attempt.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Factory-issued submission identifier from the execution brief.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [attemptId, result]
+              properties:
+                attemptId:
+                  type: string
+                  minLength: 1
+                  description: Factory-issued public attempt identifier from the execution brief.
+                result:
+                  type: object
+                  additionalProperties: false
+                  required: [status, summary, claims]
+                  properties:
+                    status:
+                      type: string
+                      enum: [PASS, FAIL, NEEDS_RESEARCH]
+                    summary:
+                      type: string
+                      minLength: 1
+                      maxLength: 2000
+                    claims:
+                      type: object
+                      additionalProperties: false
+                      required: [modifiedFiles]
+                      properties:
+                        modifiedFiles:
+                          type: array
+                          maxItems: 1000
+                          items: { type: string, minLength: 1, maxLength: 1024 }
+                        deliveryAnalysis:
+                          type: object
+                          additionalProperties: false
+                          required: [changeType, ticket, title]
+                          properties:
+                            changeType: { type: string, enum: [feature, bugfix] }
+                            ticket:
+                              type: string
+                              pattern: '^(#[1-9][0-9]*|[A-Z][A-Z0-9]{1,15}-[1-9][0-9]*)$'
+                              description: GitHub issue shorthand such as #123 or Jira-style key such as ABC-123.
+                            title: { type: string, minLength: 1, maxLength: 200 }
+                            baseBranch: { type: string, minLength: 1, maxLength: 255 }
+                    artifacts:
+                      type: array
+                      maxItems: 8
+                      items:
+                        type: object
+                        additionalProperties: false
+                        required: [kind, encoding, content]
+                        properties:
+                          kind: { type: string, minLength: 1, maxLength: 128 }
+                          encoding: { type: string, enum: [markdown] }
+                          content: { type: string, minLength: 1, maxLength: 262144 }
+                    findings:
+                      type: array
+                      maxItems: 100
+                      items:
+                        type: object
+                        additionalProperties: false
+                        required: [severity, code, summary]
+                        properties:
+                          severity: { type: string, enum: [info, warning, error, blocking] }
+                          code: { type: string, minLength: 1, maxLength: 128 }
+                          summary: { type: string, minLength: 1, maxLength: 1000 }
+                          file: { type: string, minLength: 1, maxLength: 1024 }
+                          line: { type: integer, minimum: 1 }
+                    expected_amendment_seq:
+                      type: integer
+                      format: int64
+                      minimum: 0
+      responses:
+        '200':
+          description: Identical idempotent replay accepted
+        '201':
+          description: Result accepted
+        '400':
+          description: Invalid schema or inconsistent attempt data
+        '401':
+          description: Missing or invalid credential in auth security mode (never returned in local mode)
+        '404':
+          description: No such attempt
+        '409':
+          description: Idempotency or semantic collision

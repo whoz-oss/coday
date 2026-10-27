@@ -18,6 +18,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.logging.LogContext
 import io.whozoss.agentos.logging.withLogContext
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -62,6 +63,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
@@ -98,6 +100,7 @@ class CaseServiceImpl(
      * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
      * in tests so all coroutines run on the test scheduler and virtual time applies.
      */
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
     coroutineContext: CoroutineContext = Dispatchers.IO,
 ) : CaseService,
     SubCaseManager {
@@ -153,7 +156,7 @@ class CaseServiceImpl(
     override fun create(entity: Case): Case = caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
 
     private fun createCase(entity: Case): Case {
-        checkCaseCreationPreconditions(entity)
+        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -166,7 +169,7 @@ class CaseServiceImpl(
         val caseToSave =
             entity.copy(runCostThreshold = resolvedThreshold)
 
-        val saved = caseRepository.save(caseToSave)
+        val saved = saveNewCase(caseToSave)
         // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
         // transaction, so a failed link rolls the case back instead of leaving an orphan.
         saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
@@ -178,15 +181,15 @@ class CaseServiceImpl(
     }
 
     /**
-     * Guards case creation: rejects duplicate ids (including soft-deleted ones) and
-     * validates the parent when one is provided.
+     * Inserts a new case. A versioned node is only created when its id is free, soft-deleted
+     * cases included, so a client-supplied id can neither overwrite nor resurrect another case.
      */
-    private fun checkCaseCreationPreconditions(entity: Case) {
-        // Soft-deleted ids count: reusing one would resurrect the old node with its existing
-        // relationships, including its place in another family.
-        require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
-        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
-    }
+    private fun saveNewCase(case: Case): Case =
+        try {
+            caseRepository.save(case)
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Duplicate entity id: ${case.id}", e)
+        }
 
     /** A sub-case needs an existing parent in its namespace, below the depth limit, that still accepts input. */
     private fun requireValidParent(
@@ -215,9 +218,31 @@ class CaseServiceImpl(
             // handleStatusChange already persisted the new status; return fresh view.
             findById(entity.id) ?: entity
         } else {
-            caseRepository.save(entity)
+            saveEdit(entity)
         }
     }
+
+    override fun edit(
+        id: UUID,
+        change: (Case) -> Case,
+    ): Case {
+        val current = findById(id) ?: throw ResourceNotFoundException("Case not found: $id")
+        return try {
+            caseRepository.saveChange(current) { case ->
+                change(case).copy(status = case.status, namespaceId = case.namespaceId)
+            }
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Case $id kept changing concurrently, retry", e)
+        }
+    }
+
+    /** An edit read before a concurrent write is refused rather than overwriting it: the client reloads. */
+    private fun saveEdit(entity: Case): Case =
+        try {
+            caseRepository.save(entity)
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Case ${entity.id} was changed concurrently, reload it and retry", e)
+        }
 
     override fun findById(
         id: UUID,
@@ -712,7 +737,14 @@ class CaseServiceImpl(
                 usageAccumulator = usageAccumulator,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
+        val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
         val agent = agentService.findAgentByName(agentName, context, this)
+        if (agentResolutionStartedAtNanos != 0L) {
+            logger.debug {
+                "Case $caseId: agent $agentName resolved in " +
+                    "${(System.nanoTime() - agentResolutionStartedAtNanos) / 1_000_000}ms"
+            }
+        }
         var outcome = UsageOutcome.COMPLETED
         val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         try {
@@ -865,7 +897,7 @@ class CaseServiceImpl(
     ) {
         val case = getById(caseId)
         val oldStatus = case.status
-        val updated = caseRepository.save(case.copy(status = newStatus))
+        val updated = caseRepository.saveChange(case) { it.copy(status = newStatus) }
 
         if (newStatus == CaseStatus.ERROR) {
             logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
@@ -965,6 +997,10 @@ class CaseServiceImpl(
 
     override fun isCostPaused(caseId: UUID): Boolean = usageConfig.enabled && runCostService?.isPaused(caseId) == true
 
+    override fun recordActivity(caseId: UUID) {
+        activeRuntimes[caseId]?.recordActivity()
+    }
+
     override fun emitParentEvent(event: CaseEvent) {
         require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {
             "emitParentEvent is reserved for sub-case observation events; got ${event.type}."
@@ -1039,8 +1075,17 @@ class CaseServiceImpl(
 
         val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
+        // 6. The previous turn persists IDLE before it releases the runtime: a turn launched until then
+        //    would be skipped, and the delegation would return the previous answer.
+        check(!runtime.isRunning()) {
+            "Cannot resume sub-case $subCaseId: its previous turn is still ending, try again."
+        }
         caseLaunchGate?.requireAccepting(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
+        // A launch gate marks the queued turn PENDING itself. Without one, the turn starts asynchronously:
+        // mark it queued now, in memory (run() publishes RUNNING), so that the delegation waiting on this
+        // sub-case does not take the IDLE left by its previous turn for the end of this one.
+        if (gatedRuns == null) runtime.claimPending()
         launchRun(runtime)
         logger.info { "Sub-case $subCaseId resumed under parent $parentCaseId, agent=$agentName" }
         return runtime
@@ -1094,6 +1139,7 @@ class CaseServiceImpl(
                 }
             throw AccessDeniedException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
+        caseListUpdateBroadcaster.publishCaseCreated(subCase.namespaceId)
 
         val runtime = activeRuntimes[subCase.id]!!
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
@@ -1108,7 +1154,20 @@ class CaseServiceImpl(
 
     /** Start an agent turn: now without a [caseLaunchGate], once it admits the turn with one. */
     private fun launchRun(runtime: CaseRuntime) {
-        if (gatedRuns != null) gatedRuns.launch(runtime) else scope.launch { runtime.run() }
+        if (gatedRuns != null) {
+            gatedRuns.launch(runtime)
+        } else {
+            val scheduledAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
+            scope.launch {
+                if (scheduledAtNanos != 0L) {
+                    logger.debug {
+                        "Case ${runtime.id}: coroutine dispatch delayed by " +
+                            "${(System.nanoTime() - scheduledAtNanos) / 1_000_000}ms"
+                    }
+                }
+                runtime.run()
+            }
+        }
     }
 
     override fun resumeIfPending(caseId: UUID) {

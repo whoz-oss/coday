@@ -90,6 +90,35 @@
         </section>
       }
 
+      <!-- Skills resolved from the agent's skillSelectors -->
+      <section class="agent-config-inspect__section">
+        <h2 class="agent-config-inspect__section-title">
+          Skills
+          <span class="agent-config-inspect__count">({{ resolvedSkills().length }})</span>
+        </h2>
+
+        @if (resolvedSkills().length === 0) {
+          <p class="agent-config-inspect__empty">
+            This agent declares no skill, so it gets no skill tools. Attach skills from the edit form.
+          </p>
+        } @else {
+          <ul class="agent-config-inspect__skills">
+            @for (skill of resolvedSkills(); track skill.id) {
+              <li class="agent-config-inspect__skill">
+                <span class="agent-config-inspect__skill-name">{{ skill.name }}</span>
+                @if (!skill.namespaceId) {
+                  <span class="agent-config-inspect__skill-badge">platform</span>
+                }
+                @if (skill.readOnly) {
+                  <span class="agent-config-inspect__skill-badge">SKILL.md</span>
+                }
+                <p class="agent-config-inspect__skill-desc">{{ skill.description }}</p>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
       <!-- Tools -->
       <section class="agent-config-inspect__section">
         <h2 class="agent-config-inspect__section-title">

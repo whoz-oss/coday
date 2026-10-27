@@ -42,4 +42,10 @@
       <ng-content select="[agentosCardChips]" />
     </div>
   }
+
+  @if (hasActions) {
+    <div class="ac__actions">
+      <ng-content select="[agentosCardActions]" />
+    </div>
+  }
 </ng-template>

@@ -1,29 +1,61 @@
-<ds-entity-list
-  title="AI Providers"
-  [items]="(listItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No AI providers available."
-  cardMinWidth="400px"
-  [itemTemplate]="aiProviderItemTpl"
-  (createRequested)="openCreateForm()"
+<ds-section-header
+  title="AI providers"
+  description="AI providers available in this namespace, including inherited platform and personal entries."
+  ><button class="ai-providers__new" type="button" (click)="openCreateForm()">
+    New AI provider
+  </button></ds-section-header
 >
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<!-- Item template: synthetic '__empty__*' rows render a placeholder line; everything else
-     is delegated to AiProviderItemComponent. -->
-<ng-template #aiProviderItemTpl let-item>
-  @if (isEmptyPlaceholder(item.id)) {
-    <p class="ai-providers-all-scopes__empty">{{ item.name }}</p>
-  } @else if (resolve(item.id); as resolved) {
-    <agentos-ai-provider-item
-      [config]="resolved.config"
-      [scope]="resolved.scope"
-      [readOnly]="resolved.scope === 'platform' || (resolved.scope === 'namespace' && !isAdmin())"
-      (editRequested)="onEdit(resolved)"
-      (deleteRequested)="onDelete(resolved)"
-      (duplicateRequested)="onDuplicate(resolved)"
-    />
-  }
-</ng-template>
+@if (isLoading()) {
+  <p class="ai-providers__status" role="status">Loading AI providers…</p>
+} @else if (rows().length === 0) {
+  <p class="ai-providers__status">No AI providers available.</p>
+} @else {
+  <agentos-table-filter
+    label="Filter AI providers"
+    placeholder="Filter AI providers…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <div class="ai-providers__table-wrap">
+    <table dsTable>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>API type</th>
+          <th>Scope</th>
+          <th><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rowFilter.filteredRows(); track row.key) {
+          <tr>
+            <td class="ai-providers__name">{{ row.config.name }}</td>
+            <td class="ai-providers__type">{{ row.config.apiType }}</td>
+            <td>
+              <div class="ai-providers__tags">
+                <ds-tag
+                  [variant]="
+                    row.scopeLabel === 'Platform' ? 'neutral' : row.scopeLabel === 'Personal' ? 'outline' : 'accent'
+                  "
+                  >{{ row.scopeLabel }}</ds-tag
+                >
+                @if (!row.canMutate) {
+                  <ds-tag variant="outline">Read-only</ds-tag>
+                }
+              </div>
+            </td>
+            <td class="ai-providers__actions">
+              <button type="button" (click)="duplicate(row)">Duplicate</button>
+              @if (row.canMutate) {
+                <button type="button" (click)="edit(row)">Edit</button
+                ><button class="ai-providers__delete" type="button" (click)="delete(row)">Delete</button>
+              } @else {
+                <button type="button" disabled>Inherited</button>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

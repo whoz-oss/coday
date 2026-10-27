@@ -1,26 +1,61 @@
-<ds-entity-list
-  title="Agent Configs"
-  [items]="(configItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No agent configs defined yet. Add one above."
-  cardMinWidth="400px"
-  [itemTemplate]="agentConfigItemTpl"
-  (createRequested)="openCreateForm()"
+<ds-section-header
+  title="Agent configs"
+  description="Agent configurations available in this namespace, including configurations inherited from the platform."
+  ><button class="agent-configs__new" type="button" (click)="openCreateForm()">
+    New agent config
+  </button></ds-section-header
 >
-  <button toolbar-start class="namespace-agent-configs__back" type="button" (click)="goBack()">
-    &#8592; Namespaces
-  </button>
-</ds-entity-list>
-
-<!-- Item template: renders AgentConfigItemComponent for each entity-list card slot -->
-<ng-template #agentConfigItemTpl let-item>
-  @if (resolveConfig(item.id); as config) {
-    <agentos-agent-config-item
-      [config]="config"
-      [namespaceId]="namespaceId"
-      [readOnly]="isPlatformConfig(item.id)"
-      (deleteRequested)="deleteConfig($event)"
-    />
-  }
-</ng-template>
+@if (isLoading()) {
+  <p class="agent-configs__status" role="status">Loading agent configs…</p>
+} @else if (rows().length === 0) {
+  <p class="agent-configs__status">No agent configs available.</p>
+} @else {
+  <agentos-table-filter
+    label="Filter agent configs"
+    placeholder="Filter agent configs…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <div class="agent-configs__table-wrap">
+    <table dsTable>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Execution mode</th>
+          <th>Scope</th>
+          <th><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rowFilter.filteredRows(); track row.key) {
+          <tr>
+            <td class="agent-configs__name">{{ row.config.name }}</td>
+            <td class="agent-configs__description">{{ row.config.description || '—' }}</td>
+            <td>{{ mode(row) }}</td>
+            <td>
+              <div class="agent-configs__tags">
+                <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
+                  row.scope === 'platform' ? 'Platform' : 'Namespace'
+                }}</ds-tag>
+                @if (row.scope === 'platform') {
+                  <ds-tag variant="outline">Read-only</ds-tag>
+                }
+              </div>
+            </td>
+            <td class="agent-configs__actions">
+              <button type="button" (click)="inspect(row)">Inspect</button>
+              @if (canLaunch(row)) {
+                <button type="button" (click)="launch(row)">Launch</button>
+              }
+              @if (row.scope === 'namespace') {
+                <button type="button" (click)="edit(row)">Edit</button
+                ><button class="agent-configs__delete" type="button" (click)="delete(row)">Delete</button>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
