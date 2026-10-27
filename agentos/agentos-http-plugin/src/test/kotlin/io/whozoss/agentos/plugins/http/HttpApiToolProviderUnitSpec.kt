@@ -270,7 +270,7 @@ class HttpApiToolProviderUnitSpec : StringSpec({
         server.requests.single { it.path.startsWith("/v1/") }.header("Authorization") shouldBe "Bearer late"
     }
 
-    "invalid arguments are refused before the credential is asked" {
+    "a call refused for its arguments or its URL never asks for the credential" {
         servePetstoreApi()
         val calls = AtomicInteger()
         val tools = provider.provideTools(
@@ -282,10 +282,13 @@ class HttpApiToolProviderUnitSpec : StringSpec({
             },
         )
 
-        val result = tools.named("showPetById").executeWithJson("{}", context())
+        val missingArgument = tools.named("showPetById").executeWithJson("{}", context())
+        val leavingBaseUrl = tools.named("showPetById").executeWithJson("""{"petId":".."}""", context())
 
-        result.errorType shouldBe "INVALID_INPUT"
+        missingArgument.errorType shouldBe "INVALID_INPUT"
+        leavingBaseUrl.errorType shouldBe "URL_POLICY_REJECTED"
         calls.get() shouldBe 0
+        server.requests.none { it.path.startsWith("/v1/") } shouldBe true
     }
 
     listOf<Credential?>(bearer("t"), null).forEach { answer ->
