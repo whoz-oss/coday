@@ -32,4 +32,16 @@ object IntegrationTypeConstraints {
 
     /** The USER_GROUP integration (membership + deployment queries). See `io.whozoss.agentos.userGroup.UserGroupToolPlugin`. */
     const val USER_GROUP_TYPE: String = "USER_GROUP"
+
+    /**
+     * The self-service configuration integration: an agent managing the **calling user's own**
+     * [IntegrationConfig] overlays. See `io.whozoss.agentos.selfConfig.SelfConfigToolPlugin`.
+     *
+     * Deliberately absent from both [io.whozoss.agentos.integrationConfig.IntegrationsProperties.autoGrantableTypes]
+     * and [io.whozoss.agentos.integrationConfig.IntegrationsProperties.userScopeDeniedTypes]:
+     * an agent able to rewrite configuration must be an explicit, reviewed per-agent assignment
+     * (so never auto-granted), but the type names no endpoint and carries no parameters, so a
+     * user-scoped row of it redirects nothing (so no reason to deny the user scope either).
+     */
+    const val SELF_CONFIG_TYPE: String = "SELF_CONFIG"
 }
