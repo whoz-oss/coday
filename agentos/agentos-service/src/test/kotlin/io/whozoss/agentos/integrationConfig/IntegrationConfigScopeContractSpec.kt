@@ -8,6 +8,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.user.User
@@ -60,7 +61,12 @@ class IntegrationConfigScopeContractSpec : StringSpec({
             val repository = InMemoryIntegrationConfigRepository()
             listOf(platform, namespace, userGlobal, userNamespace, userOtherNamespace, otherUser, otherUserNamespace)
                 .forEach { repository.save(it) }
-            val service = IntegrationConfigServiceImpl(repository, IntegrationConfigMergeStrategy())
+
+            val permissionService = mockk<PermissionService>()
+            every {
+                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+            } returns case.canReadNamespace
+
             val userService = mockk<UserService>()
             every { userService.getCurrentUser() } returns User(
                 metadata = EntityMetadata(id = callerId),
@@ -68,16 +74,18 @@ class IntegrationConfigScopeContractSpec : StringSpec({
                 email = "alice@example.com",
                 isAdmin = false,
             )
-            val permissionService = mockk<PermissionService>()
-            every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-            } returns case.canReadNamespace
+
+            val service = IntegrationConfigServiceImpl(
+                repository,
+                IntegrationConfigMergeStrategy(),
+                scopedAccessPolicy = ScopedAccessPolicy(permissionService),
+                namespaceService = mockk<NamespaceService>(relaxed = true),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+            )
+
             val controller = IntegrationConfigController(
                 service,
-                mockk<NamespaceService>(),
                 userService,
-                permissionService,
-                IntegrationConfigScopePolicy(IntegrationsProperties()),
                 yamlExportMapper(),
             )
 

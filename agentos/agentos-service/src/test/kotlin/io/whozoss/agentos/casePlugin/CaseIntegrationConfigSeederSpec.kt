@@ -19,6 +19,12 @@ import java.util.UUID
 /**
  * Unit tests for [CaseIntegrationConfigSeeder]: the reconciliation of the platform-scoped `CASE`
  * configuration declared by [CasePluginConfigProperties.enabledByDefault].
+ *
+ * The seeder writes through [IntegrationConfigService.unsecuredCreate], not the authorized
+ * `*ForCaller` surface: it runs at startup, on behalf of no user, so there is no caller whose
+ * privilege could be checked. The `unsecured` prefix is what makes that visible here and at the
+ * call site. These expectations name that method deliberately — stubbing or verifying the
+ * inherited `create` would pass vacuously while asserting nothing about what the seeder does.
  */
 class CaseIntegrationConfigSeederSpec :
     StringSpec({
@@ -51,7 +57,7 @@ class CaseIntegrationConfigSeederSpec :
             val service = mockk<IntegrationConfigService>()
             every { service.findByTriple(null, null, name) } returns null
             val created = slot<IntegrationConfig>()
-            every { service.create(capture(created)) } answers { created.captured }
+            every { service.unsecuredCreate(capture(created)) } answers { created.captured }
 
             seeder(enabledByDefault = true, service = service).seed()
 
@@ -71,7 +77,7 @@ class CaseIntegrationConfigSeederSpec :
             val service = mockk<IntegrationConfigService>()
             every { service.findByTriple(null, null, name) } returns null
             val created = slot<IntegrationConfig>()
-            every { service.create(capture(created)) } answers { created.captured }
+            every { service.unsecuredCreate(capture(created)) } answers { created.captured }
 
             seeder(enabledByDefault = true, service = service).seed()
 
@@ -85,6 +91,8 @@ class CaseIntegrationConfigSeederSpec :
 
             seeder(enabledByDefault = true, service = service).seed()
 
+            verify(exactly = 0) { service.unsecuredCreate(any()) }
+            verify(exactly = 0) { service.unsecuredUpdate(any()) }
             verify(exactly = 0) { service.create(any()) }
             verify(exactly = 0) { service.update(any()) }
         }
@@ -94,7 +102,7 @@ class CaseIntegrationConfigSeederSpec :
             // constraint elects one winner and the others get a 409. Losing is the expected outcome.
             val service = mockk<IntegrationConfigService>()
             every { service.findByTriple(null, null, name) } returns null
-            every { service.create(any()) } throws ConflictException("already exists")
+            every { service.unsecuredCreate(any()) } throws ConflictException("already exists")
 
             seeder(enabledByDefault = true, service = service).seed()
         }
@@ -102,7 +110,7 @@ class CaseIntegrationConfigSeederSpec :
         "a non-conflict failure still propagates" {
             val service = mockk<IntegrationConfigService>()
             every { service.findByTriple(null, null, name) } returns null
-            every { service.create(any()) } throws ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "bad")
+            every { service.unsecuredCreate(any()) } throws ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "bad")
 
             shouldThrow<ResponseStatusException> {
                 seeder(enabledByDefault = true, service = service).seed()
@@ -119,6 +127,7 @@ class CaseIntegrationConfigSeederSpec :
 
             seeder(enabledByDefault = false, service = service).seed()
 
+            verify(exactly = 0) { service.unsecuredCreate(any()) }
             verify(exactly = 0) { service.create(any()) }
         }
 
@@ -129,6 +138,8 @@ class CaseIntegrationConfigSeederSpec :
             seeder(enabledByDefault = false, service = service).seed()
 
             verify(exactly = 0) { service.delete(any()) }
+            verify(exactly = 0) { service.unsecuredUpdate(any()) }
+            verify(exactly = 0) { service.unsecuredCreate(any()) }
             verify(exactly = 0) { service.update(any()) }
             verify(exactly = 0) { service.create(any()) }
         }
