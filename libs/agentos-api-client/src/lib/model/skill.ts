@@ -16,6 +16,10 @@ export interface Skill {
   id?: string
   name: string
   namespaceId?: string | null
+  /**
+   * True when this skill is backed by a filesystem SKILL.md file and therefore cannot be modified or deleted through the API. Always present in responses, ignored on write. Reflects the storage origin, NOT the caller\'s permissions: a false value does not by itself mean the caller may write.
+   */
+  readOnly?: boolean
   resources?: { [key: string]: string }
   updatedBy?: string
   updatedOn?: string

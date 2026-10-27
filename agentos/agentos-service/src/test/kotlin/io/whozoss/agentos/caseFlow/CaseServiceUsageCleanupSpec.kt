@@ -17,6 +17,7 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptService
@@ -161,6 +162,7 @@ private class UsageCleanupFixture(
         usageRecordService = usageService,
         runCostService = costs,
         usageConfig = config,
+        caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
     )
     val case = service.create(Case(namespaceId = namespaceId, title = "Usage cleanup", runCostThreshold = 10.0))
 

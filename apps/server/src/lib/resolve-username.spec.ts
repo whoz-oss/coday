@@ -48,7 +48,7 @@ describe('resolveUsername', () => {
   })
 
   describe('when auth is enabled', () => {
-    it('uses the Cloudflare Access JWT email (path 1)', () => {
+    it('uses Cf-Access-Jwt-Assertion JWT email (path 1)', () => {
       const token = buildJwt({ email: 'cf-user@example.com' })
       const headers = { 'cf-access-jwt-assertion': token }
       expect(resolveUsername(headers, true)).toBe('cf-user@example.com')

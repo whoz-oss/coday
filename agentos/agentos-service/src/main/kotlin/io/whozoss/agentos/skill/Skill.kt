@@ -29,4 +29,25 @@ data class Skill(
     val description: String,
     val body: String,
     val resources: Map<String, String> = emptyMap(),
-) : Entity
+) : Entity {
+    /**
+     * True when this skill is backed by a filesystem `SKILL.md` rather than a persisted Neo4j node.
+     *
+     * [SkillRepository] is implemented by [FilesystemSkillRepository] — a composite/decorator over
+     * the Neo4j repository — so `findByIds(...)` ALWAYS resolves filesystem-backed skills too
+     * (that's the whole point of the decorator). Checking "is the id absent from a findByIds()
+     * call through that same composite" is therefore never true for a filesystem-backed skill,
+     * and the read-only guard on [SkillService.update]/[SkillService.delete] would be silently
+     * bypassed.
+     *
+     * The reliable discriminator is [EntityMetadata.version]: filesystem skills are built
+     * in-memory on every read and never go through Spring Data Neo4j's `save()`, so
+     * `metadata.version` — set to a non-null value by SDN on first persistence — stays null for
+     * their entire lifetime. This is an explicit, named proxy for that fact, mirroring
+     * [io.whozoss.agentos.agentConfig.AgentConfig.isFilesystemOnly] and
+     * [io.whozoss.agentos.prompt.PromptServiceImpl.rejectIfFilesystemBacked]: callers should read
+     * this property rather than re-deriving the same check at each call site.
+     */
+    val isFilesystemBacked: Boolean
+        get() = metadata.version == null
+}

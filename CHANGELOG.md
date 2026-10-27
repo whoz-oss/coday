@@ -1,3 +1,20 @@
+## 3.40.1 (2026-10-26)
+
+### 🩹 Fixes
+
+- trigger release for WZ-35787 ([11e62cc7d](https://github.com/whoz-oss/coday/commit/11e62cc7d))
+- trigger release for WZ-35787 ([#1491](https://github.com/whoz-oss/coday/pull/1491))
+
+### 🔥 Performance
+
+- WZ-35787 - anchor unread count query on User ([c6dcd2f77](https://github.com/whoz-oss/coday/commit/c6dcd2f77))
+- WZ-35787 - anchor unread count query on User ([#1489](https://github.com/whoz-oss/coday/pull/1489))
+
+### ❤️ Thank You
+
+- mbarroux @mickael-barroux-whoz
+- Mickaël Barroux @mickael-barroux-whoz
+
 ## 3.40.0 (2026-10-22)
 
 ### 🚀 Features
@@ -7086,4 +7103,3 @@ This was a version bump only, there were no code changes.
 ### ❤️ Thank You
 
 - vincent.audibert
-

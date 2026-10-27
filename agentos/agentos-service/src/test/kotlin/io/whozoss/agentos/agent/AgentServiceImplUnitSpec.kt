@@ -313,9 +313,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 val manager = mockk<SubCaseManager>(relaxed = true)
                 val runtime = mockk<CaseRuntime>()
                 val childId = UUID.randomUUID()
+                val status = MutableStateFlow(CaseStatus.RUNNING)
                 every { runtime.id } returns childId
-                every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+                every { runtime.statusFlow } returns status
+                every { runtime.activityCount } returns 0L
+                every { runtime.isRunning() } returns false
                 every { manager.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+                every { manager.interruptCase(childId) } answers { status.value = CaseStatus.IDLE }
                 val agent = agentService.findAgentByName("timeout-parent", context, manager)
                 val field = AgentSimple::class.java.getDeclaredField("tools").apply { isAccessible = true }
                 val tool = (field.get(agent) as Collection<*>).filterIsInstance<DelegationTool>().single()
@@ -333,9 +337,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                             ),
                         )
                     result.success shouldBe false
-                    result.output shouldContain "Sub-case timed out after ${expectedSeconds}s of active execution."
+                    result.output shouldContain "Sub-case showed no activity for ${expectedSeconds}s and was stopped."
                     (testScheduler.currentTime - started) shouldBe expectedSeconds * 1000L
-                    verify(exactly = 1) { manager.killCase(childId) }
+                    verify(exactly = 1) { manager.interruptCase(childId) }
                 }
             }
         }
@@ -2227,6 +2231,42 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // redirectGuideline extraction — resolveDefinition seam
         // -------------------------------------------------------------------------
+
+        "resolveDefinition exposes the resolved skills, the same list that feeds the instructions" {
+            val skill =
+                Skill(
+                    metadata = EntityMetadata(),
+                    namespaceId = namespaceId,
+                    name = "Review",
+                    description = "Code review",
+                    body = "## Body",
+                )
+            val config =
+                agentConfig(name = "skills-definition-agent", modelName = "sonnet")
+                    .copy(skillSelectors = listOf("*"))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            coEvery { skillService.findSkills(any<UUID>(), eq(listOf("*"))) } returns listOf(skill)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.skills shouldBe listOf(skill)
+            // Same list, one resolution: it is also what the catalogue block was rendered from.
+            result.instructions shouldContain "- **Review**: Code review"
+        }
+
+        "resolveDefinition exposes no skills when the agent declares no selectors" {
+            val config = agentConfig(name = "no-skills-definition-agent", modelName = "sonnet")
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            coEvery { skillService.findSkills(any<UUID>(), null) } returns emptyList()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.skills.shouldBeEmpty()
+        }
 
         "resolveDefinition extracts redirectGuideline from a REDIRECT integration config referenced by the agent" {
             val redirectConfig =

@@ -1,29 +1,54 @@
-<ds-entity-list
-  title="Auth Settings"
-  [items]="(listItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No auth settings available."
-  cardMinWidth="400px"
-  [itemTemplate]="authSettingItemTpl"
-  (createRequested)="openCreateForm()"
+<ds-section-header
+  title="Auth settings"
+  description="Authentication settings available in this namespace, including inherited platform and personal entries."
 >
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<!-- Item template: synthetic '__empty__*' rows render a placeholder line; everything else
-     is delegated to AuthSettingItemComponent. -->
-<ng-template #authSettingItemTpl let-item>
-  @if (isEmptyPlaceholder(item.id)) {
-    <p class="auth-settings-all-scopes__empty">{{ item.name }}</p>
-  } @else if (resolve(item.id); as resolved) {
-    <agentos-auth-setting-item
-      [config]="resolved.config"
-      [scope]="resolved.scope"
-      [readOnly]="resolved.scope === 'platform' || (resolved.scope === 'namespace' && !isAdmin())"
-      (editRequested)="onEdit(resolved)"
-      (deleteRequested)="onDelete(resolved)"
-      (duplicateRequested)="onDuplicate(resolved)"
-    />
-  }
-</ng-template>
+  <button class="auth-settings__new" type="button" (click)="openCreateForm()">New auth setting</button>
+</ds-section-header>
+@if (isLoading()) {
+  <p class="auth-settings__status" role="status">Loading auth settings…</p>
+} @else if (rows().length === 0) {
+  <p class="auth-settings__status">No auth settings available.</p>
+} @else {
+  <div class="auth-settings__table-wrap">
+    <table dsTable>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Authentication type</th>
+          <th>Scope</th>
+          <th><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.key) {
+          <tr>
+            <td class="auth-settings__name">{{ row.config.name }}</td>
+            <td class="auth-settings__type">{{ row.config.authType }}</td>
+            <td>
+              <div class="auth-settings__tags">
+                <ds-tag
+                  [variant]="
+                    row.scopeLabel === 'Platform' ? 'neutral' : row.scopeLabel === 'Personal' ? 'outline' : 'accent'
+                  "
+                  >{{ row.scopeLabel }}</ds-tag
+                >
+                @if (!row.canMutate) {
+                  <ds-tag variant="outline">Read-only</ds-tag>
+                }
+              </div>
+            </td>
+            <td class="auth-settings__actions">
+              <button type="button" (click)="duplicate(row)">Duplicate</button>
+              @if (row.canMutate) {
+                <button type="button" (click)="edit(row)">Edit</button
+                ><button class="auth-settings__delete" type="button" (click)="delete(row)">Delete</button>
+              } @else {
+                <button type="button" disabled>Inherited</button>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

@@ -2,7 +2,7 @@
  * Resolves the authenticated username from an incoming HTTP request.
  *
  * Resolution order when `--auth` is enabled:
- *  1. `CF_Authorization` header — Cloudflare Access JWT. The payload (middle
+ *  1. `Cf-Access-Jwt-Assertion` header — Cloudflare Access JWT. The payload (middle
  *     base64 segment) is decoded and the `email` claim is extracted. No
  *     signature verification is performed here: Cloudflare already validated
  *     the token at the edge before forwarding the request.
@@ -25,7 +25,7 @@ const EMAIL_HEADER = 'x-forwarded-email'
  * We only decode it — signature verification is intentionally skipped because
  * Cloudflare validates the token before forwarding.
  *
- * @param token - Raw JWT string from the `CF_Authorization` header.
+ * @param token - Raw JWT string from the `Cf-Access-Jwt-Assertion` header.
  * @returns The email string, or `null` if the token is absent / malformed.
  */
 export function extractEmailFromCfJwt(token: string | undefined): string | null {
@@ -71,7 +71,7 @@ export function resolveUsername(headers: Record<string, string | string[] | unde
   // 3. No valid identity found
   throw new Error(
     'Authentication required but no valid identity header found. ' +
-      'Expected either a CF_Authorization JWT (Cloudflare Access) or ' +
+      'Expected either a Cf-Access-Jwt-Assertion JWT (Cloudflare Access) or ' +
       'an x-forwarded-email header from the upstream auth proxy.'
   )
 }

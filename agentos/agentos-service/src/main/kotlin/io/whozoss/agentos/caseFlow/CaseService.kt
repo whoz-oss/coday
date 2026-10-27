@@ -38,6 +38,18 @@ interface CaseService : EntityService<Case, UUID> {
      */
     override fun findById(id: UUID, withRemoved: Boolean): Case?
 
+    /**
+     * Applies a user edit to case [id]. [change] returns the edited case; status and namespace are kept
+     * as they are, since the runtime drives the status and the namespace carries the permissions.
+     *
+     * When a concurrent write wins, such as a status change or a generated title, the case is read again
+     * and [change] applied to that copy, so [change] must be side-effect-free.
+     *
+     * @throws io.whozoss.agentos.exception.ResourceNotFoundException if the case does not exist
+     * @throws io.whozoss.agentos.exception.ConflictException if concurrent writes keep winning
+     */
+    fun edit(id: UUID, change: (Case) -> Case): Case
+
     // ========================================
     // Permission-filtered listing
     // ========================================
@@ -182,11 +194,12 @@ interface CaseService : EntityService<Case, UUID> {
     /**
      * Set the case-level reasoning effort ([Case.reasoningEffort]), or remove it with null.
      *
-     * Changes that field only, on a fresh read of the case. Unlike [update], it never routes a status
-     * difference: a copy read by a caller can carry a status that a run has changed since, and
-     * passing it to [update] would write that stale status back.
+     * Goes through [edit], so only that field changes: the status stays as the runtime left it, and
+     * the change is applied again to a fresh read when a concurrent write wins (a run ending, a
+     * generated title).
      *
      * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if concurrent writes keep winning
      */
     fun setReasoningEffort(
         caseId: UUID,

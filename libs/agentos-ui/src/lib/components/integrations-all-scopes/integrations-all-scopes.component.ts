@@ -1,9 +1,8 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { IntegrationConfig, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
   IntegrationConfigStateService,
@@ -12,41 +11,20 @@ import {
 } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
-import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
-const SECTION_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
-  platform: 'Configurations plateforme',
-  namespace: 'Configurations du namespace',
-  userOnNs: 'Mes overrides sur ce namespace',
-  userGlobal: 'Mes overrides globaux',
-})
-
-const EMPTY_PREFIX = '__empty__'
-
-type AnyConfig = IntegrationConfig
-
-interface ResolvedItem {
-  config: AnyConfig
-  scope: IntegrationScope
+interface IntegrationRow {
+  readonly key: string
+  readonly config: IntegrationConfig
+  readonly scope: IntegrationScope
+  readonly scopeLabel: 'Platform' | 'Namespace' | 'Personal'
+  readonly source: 'NEO4J' | 'FILESYSTEM'
+  readonly canEdit: boolean
+  readonly canDelete: boolean
 }
 
-/**
- * IntegrationsAllScopesComponent — unified 3-section view for the Integrations page (story 6.5).
- *
- * Replaces `NamespaceIntegrationsComponent`. Renders three sections grouped via `ds-entity-list`:
- *   1. NS-shared configs        (groupKey: 'namespace')
- *   2. user × current namespace (groupKey: 'userOnNs')
- *   3. user-global              (groupKey: 'userGlobal')
- *
- * Empty sections show a discreet placeholder row (synthetic `__empty__*` items in the list,
- * detected in the item template) — see decision in story Dev Notes.
- *
- * All API calls are routed through `IntegrationConfigStateService`. The component never
- * touches `*ControllerService` directly, per `apps/client/docs/entity-crud-pattern.md`.
- */
 @Component({
   selector: 'agentos-integrations-all-scopes',
-  imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent, IconButtonComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent],
   templateUrl: './integrations-all-scopes.component.html',
   styleUrl: './integrations-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -57,149 +35,107 @@ export class IntegrationsAllScopesComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(IntegrationConfigStateService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
+  private readonly namespaceApi = inject(NamespaceControllerService)
 
   protected namespaceId = this.route.snapshot.params['namespaceId'] as string
-
-  /**
-   * Whether the current user can administrate this namespace's configs (super-admin OR
-   * namespace ADMIN by relation). Drives [readOnly] on the namespace section.
-   */
+  protected readonly namespaceName = signal('this namespace')
   protected readonly isAdmin = signal(false)
-
-  protected readonly listItems$ = this.state.vm$.pipe(map((vm) => this.toListItems(vm)))
-
-  /** True until the first vm$ emission resolves. */
   protected readonly isLoading = signal(true)
-
-  /**
-   * Index resolving a composite key (`<scope>:<id>`) → (config, scope) so the item template
-   * can render the right component variant. The composite key prevents cross-scope collisions
-   * when the same id exists in two scopes (theoretically possible across NS-shared and
-   * user-overlay tables — UUIDs make it improbable, but the contract doesn't guarantee it).
-   */
-  private resolved = new Map<string, ResolvedItem>()
+  protected readonly rows = signal<IntegrationRow[]>([])
 
   ngOnInit(): void {
-    // Reactive on namespaceId — protects against route param changes if RouteReuseStrategy
-    // is later customized to keep the component mounted across navigations.
-    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
-      const ns = params.get('namespaceId') ?? ''
-      if (ns && ns !== this.namespaceId) this.namespaceId = ns
-      this.state.setNamespace(ns)
-    })
+    this.state.setNamespace(this.namespaceId)
+    if (this.namespaceId) {
+      this.namespaceApi
+        .getByIdNamespace(this.namespaceId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({ next: (namespace) => this.namespaceName.set(namespace.name) })
+    }
 
     this.route.paramMap
       .pipe(
         map((params) => params.get('namespaceId') ?? ''),
-        switchMap((ns) => (ns ? this.namespaceRole.isAdminOfNamespace$(ns) : of(false))),
+        switchMap((namespaceId) => (namespaceId ? this.namespaceRole.isAdminOfNamespace$(namespaceId) : of(false))),
         takeUntilDestroyed(this.destroyRef)
       )
-      .subscribe((v) => this.isAdmin.set(v))
+      .subscribe((isAdmin) => this.isAdmin.set(isAdmin))
 
-    this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
-      this.isLoading.set(false)
-      const next = new Map<string, ResolvedItem>()
-      vm.platform.forEach((c) => {
-        if (c.id) next.set(this.itemKey('platform', c.id), { config: c, scope: 'platform' })
-      })
-      vm.namespace.forEach((c) => {
-        if (c.id) next.set(this.itemKey('namespace', c.id), { config: c, scope: 'namespace' })
-      })
-      vm.userOnNs.forEach((c) => {
-        if (c.id) next.set(this.itemKey('userOnNs', c.id), { config: c, scope: 'userOnNs' })
-      })
-      vm.userGlobal.forEach((c) => {
-        if (c.id) next.set(this.itemKey('userGlobal', c.id), { config: c, scope: 'userGlobal' })
-      })
-      this.resolved = next
+    this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (viewModel) => {
+        this.rows.set(this.toRows(viewModel))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 
-  protected isEmptyPlaceholder(id: string): boolean {
-    return id.startsWith(EMPTY_PREFIX)
-  }
-
-  protected resolve(id: string): ResolvedItem | null {
-    return this.resolved.get(id) ?? null
-  }
-
-  private itemKey(scope: IntegrationScope, id: string): string {
-    return `${scope}:${id}`
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'namespaces'])
-  }
-
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
+    void this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
       queryParams: { scope: defaultCreateScope(this.isAdmin()) },
     })
   }
 
-  protected onEdit(item: ResolvedItem): void {
-    const id = item.config.id ?? ''
-    this.router.navigate(['/agentos', this.namespaceId, 'integrations', id, 'edit'], {
-      queryParams: { scope: item.scope },
+  protected view(row: IntegrationRow): void {
+    if (!row.config.id) return
+    void this.router.navigate(['/agentos', this.namespaceId, 'integrations', row.config.id, 'view'])
+  }
+
+  protected edit(row: IntegrationRow): void {
+    if (!row.canEdit || !row.config.id) return
+    void this.router.navigate(['/agentos', this.namespaceId, 'integrations', row.config.id, 'edit'], {
+      queryParams: { scope: row.scope },
     })
   }
 
-  protected onDelete(item: ResolvedItem): void {
-    const id = item.config.id
-    if (!id) return
-    this.state
-      .delete(id, item.scope)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: (err) => {
-          console.error(`[IntegrationsAllScopes] Delete failed for ${item.scope}:${id}:`, err)
-        },
-      })
-  }
-
-  protected onDuplicate(item: ResolvedItem): void {
-    // Default destination scope = source scope (clone strict). The form's radio lets the
-    // user pick any other destination. `templateScope` tells the form which controller to
-    // use to load the source config for hydration.
-    //
-    // Smart-redirect for non-admins: cloning a NS or platform item into those scopes would
-    // 403 at submit. Steer directly to `userOnNs` so the user lands on a usable scope.
-    if (!item.config.id) return
-    const isPrivilegedScope = item.scope === 'namespace' || item.scope === 'platform'
-    const destinationScope = isPrivilegedScope && !this.isAdmin() ? 'userOnNs' : item.scope
-    this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
-      queryParams: { scope: destinationScope, template: item.config.id, templateScope: item.scope },
+  protected duplicate(row: IntegrationRow): void {
+    // FILESYSTEM values may contain deployment-only paths or credentials. Do not seed a
+    // writable form until the backend exposes an explicitly safe duplication contract.
+    if (row.source === 'FILESYSTEM') return
+    if (!row.config.id) return
+    const privileged = row.scope === 'platform' || row.scope === 'namespace'
+    const destinationScope = privileged && !this.isAdmin() ? 'userOnNs' : row.scope
+    void this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
+      queryParams: { scope: destinationScope, template: row.config.id, templateScope: row.scope },
     })
   }
 
-  private toListItems(vm: IntegrationConfigViewModel): EntityListItem[] {
-    const items: EntityListItem[] = []
-    items.push(...this.sectionItems('platform', vm.platform))
-    items.push(...this.sectionItems('namespace', vm.namespace))
-    items.push(...this.sectionItems('userOnNs', vm.userOnNs))
-    items.push(...this.sectionItems('userGlobal', vm.userGlobal))
-    return items
+  protected delete(row: IntegrationRow): void {
+    if (!row.canDelete || !row.config.id || !confirm(`Delete integration “${row.config.name}”?`)) return
+    this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
   }
 
-  private sectionItems(scope: IntegrationScope, configs: AnyConfig[]): EntityListItem[] {
-    if (configs.length === 0) {
-      return [
-        {
-          id: `${EMPTY_PREFIX}${scope}`,
-          name: 'Aucune configuration',
-          groupKey: scope,
-          groupLabel: SECTION_LABEL[scope],
-        },
-      ]
-    }
-    return configs
-      .filter((c): c is AnyConfig & { id: string } => !!c.id)
-      .map((c) => ({
-        id: this.itemKey(scope, c.id),
-        name: c.name,
-        description: c.integrationType,
-        groupKey: scope,
-        groupLabel: SECTION_LABEL[scope],
-      }))
+  private toRows(viewModel: IntegrationConfigViewModel): IntegrationRow[] {
+    return [
+      ...this.mapScope(viewModel.platform, 'platform', 'Platform', true),
+      ...this.mapScope(viewModel.namespace, 'namespace', 'Namespace', !this.isAdmin()),
+      ...this.mapScope(viewModel.userOnNs, 'userOnNs', 'Personal', false),
+      ...this.mapScope(viewModel.userGlobal, 'userGlobal', 'Personal', false),
+    ]
+  }
+
+  private mapScope(
+    configs: IntegrationConfig[],
+    scope: IntegrationScope,
+    scopeLabel: IntegrationRow['scopeLabel'],
+    readOnly: boolean
+  ): IntegrationRow[] {
+    return configs.map((config, index) => {
+      const source = this.sourceOf(config)
+      const mutable = source === 'NEO4J' && !readOnly
+      return {
+        key: `${scope}:${config.id ?? index}`,
+        config,
+        scope,
+        scopeLabel,
+        source,
+        canEdit: mutable,
+        canDelete: mutable,
+      }
+    })
+  }
+
+  /** Temporary compatibility boundary until agentos-api-client is regenerated from OpenAPI. */
+  private sourceOf(config: IntegrationConfig): IntegrationRow['source'] {
+    return (config as IntegrationConfig & { source?: IntegrationRow['source'] }).source ?? 'NEO4J'
   }
 }

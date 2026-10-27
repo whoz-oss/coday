@@ -17,7 +17,7 @@ import java.util.UUID
  * [resources] stores optional auxiliary files (templates, references, scripts) as a path-to-content map.
  *
  * [createdBy], [createdOn], [updatedBy], [updatedOn] are read-only audit fields
- * present in GET responses; ignored on write.
+ * present in GET responses; ignored on write. [readOnly] follows the same convention.
  */
 @Schema(name = "Skill")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,4 +37,11 @@ data class SkillDto(
     val createdOn: Instant? = null,
     val updatedBy: String? = null,
     val updatedOn: Instant? = null,
+    @field:Schema(
+        description = "True when this skill is backed by a filesystem SKILL.md file and therefore " +
+            "cannot be modified or deleted through the API. Always present in responses, ignored on " +
+            "write. Reflects the storage origin, NOT the caller's permissions: a false value does not " +
+            "by itself mean the caller may write.",
+    )
+    val readOnly: Boolean? = null,
 )

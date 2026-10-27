@@ -56,6 +56,13 @@ export class AdminHomeComponent {
       path: '/agentos/admin/ai-models',
     },
     {
+      key: 'skills',
+      mark: '\u{1F9E9}',
+      name: 'Platform skills',
+      description: 'Manage skills shared across all namespaces.',
+      path: '/agentos/admin/skills',
+    },
+    {
       key: 'prompts',
       mark: '\u{1F4C4}',
       name: 'Platform prompts',

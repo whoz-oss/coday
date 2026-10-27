@@ -28,6 +28,11 @@ import java.util.UUID
  * same `WRITE` gate. Super-admins retain access to all namespaces via the standard permission
  * bypass.
  *
+ * The optional `userId` becomes the [io.whozoss.agentos.sdk.tool.ToolContext.userId] the tools act
+ * for, so it must be the caller's own id: only a super-admin may name another user. Without this
+ * guard a namespace admin could run a tool with the rights of a super-admin. Omitting `userId` stays
+ * allowed and runs the tool with no user.
+ *
  * Both endpoints bypass the normal agent-run permission model and operate with a synthetic
  * [io.whozoss.agentos.sdk.tool.ToolContext] (no case events, no credential provider, no agent
  * name). They are intended exclusively for development and troubleshooting.
@@ -49,11 +54,15 @@ class ToolInvokeController(
      * integration surface, so it requires the same namespace WRITE gate as [invoke].
      *
      * @param namespaceId Required. Namespace used to resolve effective integration configs.
-     * @param userId Optional. When provided, user-scoped overlay layers are included.
+     * @param userId Optional. When provided, user-scoped overlay layers are included. Must be the
+     *   caller's own id unless the caller is a super-admin.
      * @return List of [ToolSummary] sorted by name.
      */
     @GetMapping
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    @PreAuthorize(
+        "hasPermission(#namespaceId, 'Namespace', 'WRITE') and " +
+            "(#userId == null or hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name)",
+    )
     fun list(
         @RequestParam namespaceId: UUID,
         @RequestParam(required = false) userId: UUID?,
@@ -71,9 +80,14 @@ class ToolInvokeController(
      * The error message intentionally includes the full list of available tool names for
      * the resolved namespace/user context — this enumeration is acceptable because the
      * endpoint requires namespace WRITE (admin rights) on the target namespace.
+     *
+     * [ToolInvokeRequest.userId] must be the caller's own id unless the caller is a super-admin.
      */
     @PostMapping("/invoke", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
+    @PreAuthorize(
+        "hasPermission(#request.namespaceId, 'Namespace', 'WRITE') and " +
+            "(#request.userId == null or hasRole('SUPER_ADMIN') or #request.userId.toString() == authentication.name)",
+    )
     suspend fun invoke(
         @RequestBody request: ToolInvokeRequest,
     ): ToolInvokeResponse {

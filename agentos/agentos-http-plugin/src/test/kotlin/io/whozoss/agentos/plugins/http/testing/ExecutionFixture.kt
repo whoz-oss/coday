@@ -90,7 +90,7 @@ object ExecutionFixture {
               responses: { '200': { description: Nested } }
     """.trimIndent()
 
-    val policy = OutboundUrlPolicy(allowLoopbackForTests = true)
+    val policy = OutboundUrlPolicy(allowUnsecure = true)
 
     fun context(): ToolContext =
         ToolContext(namespaceId = UUID.randomUUID(), userId = null, userExternalId = null, caseEvents = emptyList())

@@ -157,6 +157,7 @@ private class ReasoningEffortFixture {
             limitsConfig = LimitsConfigProperties(),
             usageRecordService = mockk(relaxed = true),
             usageConfig = UsageConfigProperties(enabled = false),
+            caseListUpdateBroadcaster = mockk(relaxed = true),
         )
     private val case = service.create(Case(namespaceId = namespaceId))
 

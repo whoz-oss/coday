@@ -10,6 +10,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
@@ -52,6 +53,7 @@ class CaseControllerSpec :
         val permissionService = mockk<PermissionService>()
         val favoriteService = mockk<FavoriteService>()
         val caseReadService = mockk<CaseReadService>()
+        val caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true)
         val controller =
             CaseController(
                 caseService,
@@ -61,6 +63,7 @@ class CaseControllerSpec :
                 permissionService,
                 favoriteService,
                 caseReadService,
+                caseListUpdateBroadcaster,
             )
 
         val callerId = UUID.randomUUID()
@@ -180,6 +183,7 @@ class CaseControllerSpec :
                     PermissionRelation.ADMIN,
                 )
             }
+            verify(exactly = 1) { caseListUpdateBroadcaster.publishCaseCreated(namespaceId) }
         }
 
         "create preserves runCostThreshold from the request" {
@@ -257,6 +261,7 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe null
             verify(exactly = 1) { caseService.create(any()) }
             verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
+            verify(exactly = 0) { caseListUpdateBroadcaster.publishCaseCreated(any()) }
         }
 
         "create under a parent case requires WRITE on that parent" {
@@ -980,9 +985,8 @@ class CaseControllerSpec :
                 caseResource(id = existing.metadata.id, title = "renamed")
                     .copy(namespaceId = otherNs, status = CaseStatus.RUNNING)
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } answers {
-                val saved = firstArg<Case>()
+            every { caseService.edit(existing.metadata.id, any()) } answers {
+                val saved = secondArg<(Case) -> Case>()(existing)
                 saved.namespaceId shouldBe namespaceId
                 saved.status shouldBe existing.status
                 saved.title shouldBe "renamed"
@@ -991,12 +995,13 @@ class CaseControllerSpec :
 
             controller.update(existing.metadata.id, payload)
 
-            verify(exactly = 1) { caseService.update(any()) }
+            verify(exactly = 1) { caseService.edit(existing.metadata.id, any()) }
         }
 
         "update throws 404 when the Case does not exist" {
             val id = UUID.randomUUID()
-            every { caseService.findById(id) } returns null
+            every { caseService.edit(id, any()) } throws
+                io.whozoss.agentos.exception.ResourceNotFoundException("Case not found: $id")
 
             shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
                 controller.update(id, caseResource(id = id))
@@ -1007,8 +1012,7 @@ class CaseControllerSpec :
             val existing = caseEntity()
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } returns existing
+            every { caseService.edit(existing.metadata.id, any()) } returns existing
             every {
                 caseEventService.findLastMessageTimestamps(listOf(existing.id))
             } returns mapOf(existing.id to msgTimestamp)
@@ -1021,8 +1025,7 @@ class CaseControllerSpec :
         "update populates favorite and role from favoriteService" {
             val existing = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } returns existing
+            every { caseService.edit(existing.metadata.id, any()) } returns existing
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns

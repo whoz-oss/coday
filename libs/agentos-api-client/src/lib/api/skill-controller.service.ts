@@ -10,13 +10,15 @@
 /* tslint:disable:no-unused-variable member-ordering */
 
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
 // @ts-ignore
 import { Skill } from '../model/skill'
+// @ts-ignore
+import { SkillSummary } from '../model/skill-summary'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -389,6 +391,81 @@ export class SkillControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<Skill>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Effective skills for a namespace
+   * Returns the skill catalogue a \&#39;*\&#39; selector resolves in this namespace: persisted and filesystem namespace skills merged with platform skills, namespace skills shadowing platform skills of the same name (case-insensitive). Summary projection — no body, no resources.
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public listEffectiveSkill(
+    namespaceId: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Array<SkillSummary>>
+  public listEffectiveSkill(
+    namespaceId: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Array<SkillSummary>>>
+  public listEffectiveSkill(
+    namespaceId: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Array<SkillSummary>>>
+  public listEffectiveSkill(
+    namespaceId: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling listEffectiveSkill.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/skills/effective`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Array<SkillSummary>>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

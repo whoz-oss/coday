@@ -61,6 +61,42 @@ describe('CaseStateService', () => {
     expect(svc.cases()).toEqual([]) // NOT ns-1's cases
   })
 
+  it('coalesces refresh bursts into one trailing request without losing the last update', () => {
+    const first = new Subject<Case[]>()
+    const second = new Subject<Case[]>()
+    const listMine = jest.fn().mockReturnValueOnce(first).mockReturnValueOnce(second)
+    const svc = makeService(listMine)
+
+    svc.loadCases('ns-1')
+    svc.refreshCases('ns-1')
+    svc.refreshCases('ns-1')
+    expect(listMine).toHaveBeenCalledTimes(1)
+
+    first.next([caseWith('old')])
+    first.complete()
+    expect(listMine).toHaveBeenCalledTimes(2)
+    second.next([caseWith('fresh')])
+    second.complete()
+    expect(svc.cases()).toEqual([caseWith('fresh')])
+  })
+
+  it('cancels stale namespace responses and ignores updates from the old namespace', () => {
+    const oldLoad = new Subject<Case[]>()
+    const newLoad = new Subject<Case[]>()
+    const listMine = jest.fn().mockReturnValueOnce(oldLoad).mockReturnValueOnce(newLoad)
+    const svc = makeService(listMine)
+
+    svc.loadCases('ns-1')
+    svc.loadCases('ns-2')
+    svc.refreshCases('ns-1')
+    oldLoad.next([caseWith('stale')])
+    newLoad.next([caseWith('current')])
+    newLoad.complete()
+
+    expect(listMine).toHaveBeenCalledTimes(2)
+    expect(svc.cases()).toEqual([caseWith('current')])
+  })
+
   it('keeps the previous list on a same-namespace reload until the new data arrives', () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined)
     const listMine = jest

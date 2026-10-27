@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -68,6 +69,7 @@ class CaseController(
     private val permissionService: PermissionService,
     private val favoriteService: FavoriteService,
     private val caseReadService: CaseReadService,
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
@@ -210,6 +212,9 @@ class CaseController(
                         "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
                 }
             }.isSuccess
+        if (granted) {
+            caseListUpdateBroadcaster.publishCaseCreated(saved.namespaceId)
+        }
 
         // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
         // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
@@ -225,15 +230,12 @@ class CaseController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
-        val existing =
-            caseService.findById(id)
-                ?: throw ResourceNotFoundException("Case not found: $id")
+        // namespaceId and status are mass-assignment-guarded by edit: namespaceId is the
+        // transitivity key for permissions; status is driven by the runtime lifecycle, not PUT.
+        // The change is applied again to the fresh case if a concurrent write wins.
         val updated =
-            caseService.update(
+            caseService.edit(id) { existing ->
                 existing.copy(
-                    // namespaceId and status are mass-assignment-guarded:
-                    // namespaceId is the transitivity key for permissions;
-                    // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
                     // runCostThreshold: keep the existing value when the caller omits the field
                     // (null in DTO = not provided, not an explicit reset). An explicit reset to
@@ -243,8 +245,8 @@ class CaseController(
                     runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                     // reasoningEffort is not changed here: an absent field must not erase the
                     // override, and null is a meaningful value. See setReasoningEffort.
-                ),
-            )
+                )
+            }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 

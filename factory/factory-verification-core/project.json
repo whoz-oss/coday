@@ -1,0 +1,7 @@
+{
+  "name": "factory-verification-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "factory/factory-verification-core/src",
+  "tags": ["type:lib", "platform:jvm-factory", "scope:lib"]
+}

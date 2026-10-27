@@ -1,0 +1,97 @@
+.skill-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+  background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+  backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    border-color: var(--color-primary, #007aff);
+  }
+
+  &__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  &__name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  &__name {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--color-text, #1d1d1f);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__badge {
+    flex-shrink: 0;
+    font-family: var(--font-heading);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    // Not uppercased, unlike the word badges of the other list items: this one is a file name.
+    text-transform: none;
+    border-radius: 0;
+    padding: 0.15rem 0.5rem;
+    white-space: nowrap;
+
+    &[data-variant='neutral'] {
+      border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.12));
+      color: var(--color-neutral-600, #6e6e73);
+      background: transparent;
+    }
+  }
+
+  &__description {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary, #6e6e73);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__meta {
+    font-size: 0.7rem;
+    color: var(--color-text-tertiary, #8e8e93);
+  }
+
+  &__actions {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  &:hover &__actions,
+  &:focus-within &__actions,
+  &--pending-delete &__actions {
+    opacity: 1;
+  }
+
+  &__confirm-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-error, #ff3b30);
+    margin-right: 0.25rem;
+    white-space: nowrap;
+  }
+}

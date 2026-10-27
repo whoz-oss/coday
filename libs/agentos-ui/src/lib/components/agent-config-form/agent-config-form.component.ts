@@ -27,9 +27,17 @@ import {
   IntegrationConfig,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
+  SkillSummary,
 } from '@whoz-oss/agentos-api-client'
 import { catchError, forkJoin, map, Observable, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
+import {
+  ALL_SKILLS_SELECTOR,
+  grantsAllSkills,
+  namedSelectorKeys,
+  normalizeSkillSelector,
+} from '../../services/skill-selector.utils'
+import { SkillStateService } from '../../services/skill-state.service'
 
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
@@ -83,6 +91,25 @@ interface BuiltInIntegrationRow {
 }
 
 /**
+ * One line of the skills section: a skill the agent may be granted.
+ *
+ * [selector] is what gets written back, [name] what gets displayed. They differ for
+ * an [unresolved] row, where the persisted selector is kept verbatim rather than
+ * rewritten into a canonical form the form cannot verify.
+ */
+interface SkillRow {
+  /** Value written to AgentConfig.skillSelectors when the row is selected. */
+  selector: string
+  name: string
+  description: string
+  /** Platform-level skill, i.e. offered to every namespace. */
+  platform: boolean
+  /** The agent declares this selector but no catalogue entry matches it. */
+  unresolved: boolean
+  selected: WritableSignal<boolean>
+}
+
+/**
  * AgentConfigFormComponent — full-page create / edit form for an agent config.
  *
  * Mode is determined by the presence of `:agentConfigId` in the route params:
@@ -101,6 +128,17 @@ interface BuiltInIntegrationRow {
  * This maps directly to AgentConfig.integrations:
  *   { integrationName: string[] | null }
  * where null means all tools of that integration are allowed.
+ *
+ * ## Skills section
+ *
+ * Attaches skills to the agent through AgentConfig.skillSelectors. The candidate list
+ * is the catalogue the backend would resolve for this agent — `GET /api/skills/effective`
+ * in namespace mode, the platform skills in platform mode — so a name offered here
+ * cannot resolve differently at run time.
+ *
+ * No tool toggle accompanies it: `SkillToolGrantService` grants `readSkill` and
+ * `readSkillResource` exactly when the resolved catalogue is non-empty, so selecting a
+ * skill is the whole opt-in.
  */
 @Component({
   selector: 'agentos-agent-config-form',
@@ -120,6 +158,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly exportService = inject(AgentConfigExportService)
   private readonly integrationConfigState = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
+  private readonly skillState = inject(SkillStateService)
 
   /**
    * namespaceId from the route, or undefined when operating in platform mode
@@ -262,6 +301,30 @@ export class AgentConfigFormComponent implements OnInit {
   /** Integration rows built from the namespace's IntegrationConfig list. */
   protected readonly integrationRows = signal<IntegrationRow[]>([])
 
+  // ── Skills ────────────────────────────────────────────────────────────────
+
+  /** One row per candidate skill, plus one per selector no catalogue entry matches. */
+  protected readonly skillRows = signal<SkillRow[]>([])
+
+  /** The `*` selector: grant whatever the catalogue resolves to, now and later. */
+  protected readonly allSkillsSelected = signal(false)
+
+  /**
+   * True when the catalogue could not be loaded. The rows then come from the agent's
+   * own selectors alone, so they must not be labelled unknown — the form simply has
+   * nothing to check them against this session.
+   */
+  protected readonly skillCatalogueUnavailable = signal(false)
+
+  /**
+   * True when saving would replace a named selection with `*`. Surfaced in the
+   * template so the trade is visible before the user commits to it, rather than
+   * discovered after the selectors are gone.
+   */
+  protected readonly namedSkillSelectionDropped = computed(
+    () => this.allSkillsSelected() && this.skillRows().some((r) => r.selected())
+  )
+
   /** Kept for the update payload (preserves server-side fields). */
   private existingConfig: AgentConfig | null = null
 
@@ -299,10 +362,11 @@ export class AgentConfigFormComponent implements OnInit {
         : of([]),
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
       builtInTypes: this.loadBuiltInTypes(),
+      skillCatalogue: this.loadSkillCatalogue(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ config, namespaceIntegrations, platformIntegrations, builtInTypes }) => {
+        next: ({ config, namespaceIntegrations, platformIntegrations, builtInTypes, skillCatalogue }) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
@@ -322,6 +386,8 @@ export class AgentConfigFormComponent implements OnInit {
           this.subAgentRows.set(
             (config.subAgents ?? []).map((p) => ({ control: new FormControl<string>(p, { nonNullable: true }) }))
           )
+          this.allSkillsSelected.set(grantsAllSkills(config.skillSelectors))
+          this.skillRows.set(this.buildSkillRows(skillCatalogue, config.skillSelectors))
           this.isLoading.set(false)
         },
         error: () => {
@@ -342,15 +408,127 @@ export class AgentConfigFormComponent implements OnInit {
         : of([]),
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
       builtInTypes: this.loadBuiltInTypes(),
+      skillCatalogue: this.loadSkillCatalogue(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ namespaceIntegrations, platformIntegrations, builtInTypes }) => {
+        next: ({ namespaceIntegrations, platformIntegrations, builtInTypes, skillCatalogue }) => {
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, existingIntegrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, existingIntegrations ?? undefined))
+          this.allSkillsSelected.set(false)
+          this.skillRows.set(this.buildSkillRows(skillCatalogue, undefined))
         },
       })
+  }
+
+  /**
+   * The candidate skills for this config's scope.
+   *
+   * Namespace mode asks the backend for the effective catalogue, resolved by the same
+   * function the agent runtime uses. Platform mode has no namespace to resolve against,
+   * so it can only offer the platform skills: a platform agent's run resolves namespace
+   * skills per namespace, and those names surface here as unresolved rows.
+   *
+   * Fail-safe like [loadBuiltInTypes]: an error yields an empty catalogue and flags
+   * [skillCatalogueUnavailable] rather than blocking the whole form.
+   */
+  private loadSkillCatalogue(): Observable<SkillSummary[]> {
+    const catalogue$ = this.namespaceId
+      ? this.skillState.listEffective(this.namespaceId)
+      : this.skillState.listPlatform().pipe(
+          map((skills) =>
+            skills.map(
+              (s): SkillSummary => ({
+                id: s.id ?? '',
+                name: s.name,
+                description: s.description,
+                namespaceId: s.namespaceId ?? null,
+                readOnly: s.readOnly === true,
+              })
+            )
+          )
+        )
+    return catalogue$.pipe(
+      catchError((err) => {
+        console.error('[agent-config-form] failed to load the skill catalogue', err)
+        this.skillCatalogueUnavailable.set(true)
+        return of([] as SkillSummary[])
+      })
+    )
+  }
+
+  /**
+   * Build one row per catalogue skill, pre-selected from the agent's selectors, then one
+   * extra row per selector nothing matched.
+   *
+   * Those extra rows are the point of the method: a selector naming a skill that was
+   * renamed or deleted, or a namespace skill seen from a platform config, stays visible
+   * and selected so an unrelated save preserves it verbatim. Dropping it would be a
+   * silent edit of someone else's configuration.
+   *
+   * Matching is case-insensitive, like the shadowing rule server-side.
+   *
+   * The `*` grant is not a row: the caller reads it from the same selectors into
+   * [allSkillsSelected], so this method only maps the named ones.
+   */
+  private buildSkillRows(catalogue: SkillSummary[], selectors: AgentConfig['skillSelectors']): SkillRow[] {
+    const declared = (selectors ?? []).map((s) => s.trim()).filter((s) => s.length > 0)
+    const named = declared.filter((s) => s !== ALL_SKILLS_SELECTOR)
+    const declaredKeys = namedSelectorKeys(named)
+    const catalogueKeys = new Set(catalogue.map((s) => s.name.toLowerCase()))
+
+    const rows: SkillRow[] = catalogue.map((s) => ({
+      selector: s.name,
+      name: s.name,
+      description: s.description,
+      platform: s.namespaceId == null,
+      unresolved: false,
+      selected: signal(declaredKeys.has(s.name.toLowerCase())),
+    }))
+
+    const seen = new Set<string>()
+    for (const selector of named) {
+      const key = normalizeSkillSelector(selector).toLowerCase()
+      if (catalogueKeys.has(key) || seen.has(key)) continue
+      seen.add(key)
+      rows.push({
+        selector,
+        name: selector,
+        description: '',
+        platform: false,
+        unresolved: true,
+        selected: signal(true),
+      })
+    }
+    return rows
+  }
+
+  protected toggleSkill(row: SkillRow): void {
+    row.selected.update((v) => !v)
+  }
+
+  protected toggleAllSkills(): void {
+    this.allSkillsSelected.update((v) => !v)
+  }
+
+  /**
+   * Convert the skills section into the AgentConfig.skillSelectors payload.
+   *
+   * `*` wins alone: the backend short-circuits on it, so emitting it next to names
+   * would store a list whose names cannot be read as having any effect. The template
+   * warns while a named selection is about to be replaced this way.
+   *
+   * Nothing selected → undefined, which clears the field: the section renders every
+   * selector the agent has, including the ones it could not resolve, so an empty
+   * selection is a choice the user can see having made.
+   */
+  protected buildSkillSelectorsPayload(): AgentConfig['skillSelectors'] {
+    if (this.allSkillsSelected()) return [ALL_SKILLS_SELECTOR]
+    const selected = this.skillRows()
+      .filter((r) => r.selected())
+      .map((r) => r.selector)
+    return selected.length > 0 ? selected : undefined
   }
 
   /**
@@ -547,6 +725,7 @@ export class AgentConfigFormComponent implements OnInit {
       advancedExecution: this.executionModeControl.value === AgentConfigExecutionModeEnum.ADVANCED,
       enabled: this.enabledControl.value,
       subAgents: this.buildSubAgentsPayload(),
+      skillSelectors: this.buildSkillSelectorsPayload(),
       delegationTimeoutSeconds: this.delegationTimeoutControl.value,
       loopConfig: this.buildLoopConfigPayload(),
     } as AgentConfig

@@ -1,0 +1,11 @@
+{
+  "name": "@factory/factory-service",
+  "version": "3.40.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}
