@@ -24,6 +24,10 @@ import mu.KLogging
  * builds a new [RunAuth] (`CaseRuntime` -> `AgentServiceImpl.findAgentByName` ->
  * `ToolResolverService.resolveToolsForRun` -> `provideTools`).
  *
+ * While the user is asked to authorize, the call holds one `Dispatchers.IO` thread, on top of the one the
+ * service's OAuth flow holds until the answer or its timeout (see the bounded capacity noted on the
+ * service's `OAuthPendingRegistry`). Only a run that calls the integration's tools pays it, at most once.
+ *
  * @param resolve Builds the spec. The credential provider is not suspending and may block until the user
  *   answers, so it runs on the IO dispatcher, interrupted when the run is cancelled.
  */
