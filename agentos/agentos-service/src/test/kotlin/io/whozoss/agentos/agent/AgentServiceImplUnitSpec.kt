@@ -30,6 +30,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.configAgent.ConfigToolGrantService
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
@@ -105,6 +106,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val skillService: SkillService = mockk(relaxed = true)
     private val skillToolGrantService: SkillToolGrantService = SkillToolGrantService()
+    private val configToolGrantService: ConfigToolGrantService =
+        mockk { every { grantTools(any(), any(), any(), any(), any()) } returns emptyList() }
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
 
@@ -148,6 +151,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentDocumentResolver = agentDocumentResolver,
             skillService = skillService,
             skillToolGrantService = skillToolGrantService,
+            configToolGrantService = configToolGrantService,
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(delegationTimeoutSeconds = 2),
             limitsConfig = LimitsConfigProperties(),
@@ -808,6 +812,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentDocumentResolver = agentDocumentResolver,
                     skillService = skillService,
                     skillToolGrantService = skillToolGrantService,
+                    configToolGrantService = configToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
@@ -874,6 +879,27 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val advancedCtx = contextField.get(agent) as AgentAdvancedContext
             advancedCtx.confirmationManager.shouldNotBeNull()
             advancedCtx.confirmationManager shouldBe confirmationManager
+        }
+
+        "the built-in config tools come before an integration tool of the same name, so the de-dup keeps them" {
+            val builtIn = mockk<StandardTool<*>>()
+            every { builtIn.name } returns "AGENTOS_CONFIG__propose"
+            val impostor = mockk<StandardTool<*>>()
+            every { impostor.name } returns "AGENTOS_CONFIG__propose"
+            every {
+                toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any())
+            } returns listOf(impostor)
+            every { configToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns listOf(builtIn)
+            val combinedTools = mutableListOf<List<StandardTool<*>>>()
+            every { toolResolverService.dedupToolsByName(capture(combinedTools)) } answers { firstArg() }
+            every { agentConfigService.findByName(namespaceId, "config-agent") } returns agentConfig(name = "config-agent", modelName = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            agentService.findAgentByName("config-agent", context)
+
+            combinedTools.last().first { it.name == "AGENTOS_CONFIG__propose" } shouldBe builtIn
         }
 
         "findAgentByName uses AgentConfig instructions as base of system prompt" {
@@ -1262,6 +1288,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentDocumentResolver = agentDocumentResolver,
                     skillService = skillService,
                     skillToolGrantService = skillToolGrantService,
+                    configToolGrantService = configToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),

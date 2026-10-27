@@ -38,6 +38,7 @@ import {
   normalizeSkillSelector,
 } from '../../services/skill-selector.utils'
 import { SkillStateService } from '../../services/skill-state.service'
+import { CONFIG_AGENT_TYPE, isConfigAgentExposed } from './config-agent-exposure'
 
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
@@ -297,6 +298,17 @@ export class AgentConfigFormComponent implements OnInit {
     }
     return ['/agentos', this.namespaceId!, 'agent-configs', agentConfigId, 'inspect']
   }
+
+  /** Whether to warn that this config agent could send what it reads elsewhere: see {@link isConfigAgentExposed}. */
+  protected readonly configAgentExposureWarning = computed(() =>
+    isConfigAgentExposed({
+      configEnabled: this.builtInRows().some((row) => row.type === CONFIG_AGENT_TYPE && row.state() === 'on'),
+      integrationTypes: this.integrationRows()
+        .filter((row) => row.enabled())
+        .map((row) => row.config.integrationType),
+      hasSubAgents: this.subAgentRows().length > 0,
+    })
+  )
 
   /** Integration rows built from the namespace's IntegrationConfig list. */
   protected readonly integrationRows = signal<IntegrationRow[]>([])

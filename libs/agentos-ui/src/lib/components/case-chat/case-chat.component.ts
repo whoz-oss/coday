@@ -56,6 +56,7 @@ import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
+import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
@@ -84,6 +85,7 @@ import { findLegitimateAnswer } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import { configChangeQuestionIds } from './config-change-questions'
 
 export interface ToolCall {
   requestId: string
@@ -174,6 +176,7 @@ function hasActiveSelection(): boolean {
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
+    ConfigChangeCardComponent,
     DelegationCardComponent,
     ConfirmDialogComponent,
     AgentActivityComponent,
@@ -614,6 +617,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     return items
   })
+
+  /** Questions answered through a configuration card: see {@link configChangeQuestionIds}. */
+  protected readonly configChangeQuestionIds = computed(() => configChangeQuestionIds(this.events()))
 
   /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
   protected readonly timeline = computed<TimelineItem[]>(() => {

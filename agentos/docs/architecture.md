@@ -19,6 +19,7 @@ The SDK is the stable public API. Plugins depend only on `agentos-sdk` (via `com
 | `caseFlow` | `Case` / `CaseService` / `CaseController` — case (conversation) lifecycle |
 | `caseEvent` | `CaseEvent` subtypes, emitter, SSE controller — event streaming |
 | `chat` | `ChatClientProvider` / `ChatModelFactory` — Spring AI client construction |
+| `configAgent` | Built-in `AGENTOS_CONFIG` integration: read and propose tools, frozen plans, server-side apply (see `config-agent.md`) |
 | `entity` | `EntityController` — abstract CRUD base for all REST resources |
 | `namespace` | `Namespace` / `NamespaceController` — multi-tenancy grouping |
 | `plugin` | `PluginService` — PF4J plugin loading and management |

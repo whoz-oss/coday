@@ -1075,6 +1075,93 @@ paths:
       summary: Count unread cases
       tags:
       - case-controller
+  /api/cases/{caseId}/config-changes/{questionId}:
+    get:
+      operationId: viewConfigChange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: questionId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigChangeViewDto"
+          description: OK
+      summary: "View a configuration plan proposed by an agent, with the live status\
+        \ of each operation"
+      tags:
+      - config-change-controller
+  /api/cases/{caseId}/config-changes/{questionId}/apply:
+    post:
+      operationId: applyConfigChange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: questionId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigChangeApplyRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigChangeReportDto"
+          description: OK
+      summary: "Apply a configuration plan with the rights of the calling user, then\
+        \ answer the agent"
+      tags:
+      - config-change-controller
+  /api/cases/{caseId}/config-changes/{questionId}/reject:
+    post:
+      operationId: rejectConfigChange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: questionId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigChangeRejectRequest"
+      responses:
+        "204":
+          description: No Content
+      summary: "Reject a configuration plan, then answer the agent"
+      tags:
+      - config-change-controller
   /api/cases/{caseId}/events:
     get:
       description: Every SSE frame uses the stable event name 'case-event'. Its JSON
@@ -4662,6 +4749,258 @@ components:
           - REMOVED
       required:
       - equipped
+    ConfigChangeApplyRequest:
+      type: object
+      properties:
+        expectedPlanHash:
+          type: string
+          description: planHash of the view the user approved; the server refuses
+            to apply anything else.
+        secrets:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Secret values typed by the user, keyed '<ref>.<path>'."
+      required:
+      - expectedPlanHash
+      - secrets
+    ConfigChangeRejectRequest:
+      type: object
+      properties:
+        comment:
+          type: string
+    ConfigChangeReportDto:
+      type: object
+      properties:
+        answerPosted:
+          type: boolean
+          description: False when the configuration was written but the agent could
+            not be told; applying again re-sends it.
+        appliedBy:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          enum:
+          - APPLIED
+          - PARTIAL
+          - FAILED
+          - REJECTED
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigOperationResultDto"
+      required:
+      - answerPosted
+      - appliedBy
+      - decision
+      - results
+    ConfigChangeViewDto:
+      type: object
+      description: "A frozen configuration plan as the viewer may see it, with the\
+        \ live status of each operation."
+      properties:
+        agentName:
+          type: string
+        canApply:
+          type: boolean
+          description: True when the viewer is the recipient and the plan is open.
+        canReject:
+          type: boolean
+          description: "True when the viewer is the recipient and the plan is open\
+            \ or expired: rejecting an expired plan still answers the agent."
+        caseId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigOperationViewDto"
+        planHash:
+          type: string
+        questionId:
+          type: string
+          format: uuid
+        recipientUserId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+          - OPEN
+          - IN_PROGRESS
+          - ANSWERED
+          - EXPIRED
+          - SUPERSEDED
+        summary:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+      - agentName
+      - canApply
+      - canReject
+      - caseId
+      - createdAt
+      - expiresAt
+      - operations
+      - planHash
+      - questionId
+      - recipientUserId
+      - state
+      - summary
+      - warnings
+    ConfigFieldChangeDto:
+      type: object
+      properties:
+        after:
+          $ref: "#/components/schemas/JsonNode"
+        before:
+          $ref: "#/components/schemas/JsonNode"
+          description: "Current value, masked; null when absent or not visible to\
+            \ the viewer."
+        path:
+          type: string
+        remove:
+          type: boolean
+      required:
+      - path
+      - remove
+    ConfigOperationResultDto:
+      type: object
+      properties:
+        entityId:
+          type: string
+          format: uuid
+        message:
+          type: string
+        ref:
+          type: string
+        status:
+          type: string
+          enum:
+          - APPLIED
+          - ALREADY_APPLIED
+          - DENIED
+          - NOT_FOUND
+          - CONFLICT
+          - INVALID
+          - FAILED
+          - NOT_RUN
+      required:
+      - ref
+      - status
+    ConfigOperationViewDto:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - CREATE
+          - UPDATE
+          - ENABLE
+          - DISABLE
+          - DEPLOY
+          - UNDEPLOY
+        affects:
+          type: string
+          enum:
+          - CALLER_ONLY
+          - NAMESPACE_MEMBERS
+          - PLATFORM
+        changes:
+          type: array
+          description: "UPDATE only: each field with its current value (masked) and\
+            \ the proposed one."
+          items:
+            $ref: "#/components/schemas/ConfigFieldChangeDto"
+        copyFrom:
+          type: string
+          description: "Name of the integration this CREATE copies; the server reads\
+            \ its fields at apply time, and value only overrides some of them."
+        deployTo:
+          type: string
+          enum:
+          - NAMESPACE
+          - NONE
+        kind:
+          type: string
+          enum:
+          - AGENT
+          - SKILL
+          - PROMPT
+          - INTEGRATION
+          - AUTH_SETTING
+          - NAMESPACE
+        name:
+          type: string
+          description: Name of the entity created or targeted.
+        namespaceId:
+          type: string
+          format: uuid
+          description: "Scope of the entity: null namespaceId and userId mean platform."
+        namespaceName:
+          type: string
+          description: "Name of the namespace the operation acts in when it is not\
+            \ the case's: one the plan creates or another one the user administers."
+        order:
+          type: integer
+          format: int32
+        ref:
+          type: string
+        secretInputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigSecretInputDto"
+        status:
+          type: string
+          enum:
+          - PENDING
+          - APPLIED
+          - ALREADY_APPLIED
+          - CONFLICT
+          - NOT_VISIBLE
+        targetId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        value:
+          $ref: "#/components/schemas/JsonNode"
+          description: "CREATE only: the fields of the new entity, secrets excluded."
+      required:
+      - action
+      - affects
+      - changes
+      - kind
+      - name
+      - order
+      - ref
+      - secretInputs
+      - status
+    ConfigSecretInputDto:
+      type: object
+      properties:
+        key:
+          type: string
+          description: "Key to send in ConfigChangeApplyRequest.secrets: '<ref>.<path>'."
+        label:
+          type: string
+        path:
+          type: string
+      required:
+      - key
+      - label
+      - path
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

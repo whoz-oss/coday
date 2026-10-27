@@ -1,0 +1,230 @@
+<section class="config-change" aria-label="Configuration plan">
+  @if (view(); as plan) {
+    <header class="config-change__header">
+      <div class="config-change__heading">
+        <span class="config-change__title">Configuration plan</span>
+        <span class="config-change__meta">proposed by {{ plan.agentName }}</span>
+      </div>
+      <p class="config-change__summary">{{ plan.summary }}</p>
+      <p class="config-change__counts">
+        {{ plan.operations.length }} {{ plan.operations.length === 1 ? 'step' : 'steps' }}
+        @if (counts().pending > 0) {
+          · {{ counts().pending }} to apply
+        }
+        @if (counts().done > 0) {
+          · {{ counts().done }} done
+        }
+        @if (counts().blocked > 0) {
+          · <span class="config-change__counts-problem">{{ counts().blocked }} blocked</span>
+        }
+      </p>
+    </header>
+
+    @for (warning of plan.warnings; track warning) {
+      <p class="config-change__warning">{{ warning }}</p>
+    }
+
+    <ol class="config-change__operations">
+      @for (op of plan.operations; track op.ref) {
+        <li class="config-change__op" [class.config-change__op--highlight]="isHighlighted(op)">
+          <details class="config-change__details">
+            <summary class="config-change__op-head">
+              <span class="config-change__chevron" aria-hidden="true"></span>
+              <span class="config-change__op-main">
+                <span class="config-change__op-title">
+                  {{ op.order }}. {{ actionLabel(op) }} <strong>{{ op.name }}</strong>
+                </span>
+                <span class="config-change__badge">{{ scopeLabel(op) }}</span>
+                @if (needsSecret(op)) {
+                  <span class="config-change__badge config-change__badge--secret">Secret needed</span>
+                }
+              </span>
+              <span
+                class="config-change__status"
+                [class.config-change__status--done]="isDone(op)"
+                [class.config-change__status--problem]="isProblem(op)"
+                >{{ statusLabel(op) }}</span
+              >
+            </summary>
+
+            <div class="config-change__body">
+              @if (op.copyFrom) {
+                <p class="config-change__note">
+                  Copy of <strong>{{ op.copyFrom }}</strong
+                  >: AgentOS copies its settings when you apply, without showing them to the agent. The fields below
+                  replace some of them.
+                </p>
+              }
+              @if (op.action === 'CREATE' && op.value) {
+                <dl class="config-change__fields">
+                  @for (field of fields(op); track field.key) {
+                    <dt>{{ field.key }}</dt>
+                    <dd>
+                      @if (field.block) {
+                        <pre class="config-change__json">{{ field.text }}</pre>
+                      } @else {
+                        {{ field.text }}
+                      }
+                    </dd>
+                  }
+                </dl>
+              }
+
+              @if (op.changes.length > 0) {
+                <table class="config-change__diff">
+                  <thead>
+                    <tr>
+                      <th scope="col">Field</th>
+                      <th scope="col">Current</th>
+                      <th scope="col">Proposed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (change of op.changes; track change.path) {
+                      <tr>
+                        <td>
+                          <code>{{ change.path }}</code>
+                        </td>
+                        <td>
+                          <pre class="config-change__json">{{ display(change.before) }}</pre>
+                        </td>
+                        <td>
+                          @if (change.remove) {
+                            <em>removed</em>
+                          } @else {
+                            <pre class="config-change__json">{{ proposedValue(change) }}</pre>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
+
+              @if (op.action !== 'CREATE' && op.changes.length === 0) {
+                <p class="config-change__note">No field to show for this step.</p>
+              }
+            </div>
+          </details>
+
+          @if (op.deployTo === 'NAMESPACE') {
+            <p class="config-change__note">
+              Deployed on {{ op.namespaceName ?? 'the namespace' }} so its members can use it.
+            </p>
+          } @else if (op.deployTo === 'NONE') {
+            <p class="config-change__note">Not deployed: members of the namespace will not see it.</p>
+          }
+          @if (failureMessage(op.ref); as message) {
+            <p class="config-change__op-error">{{ message }}</p>
+          }
+        </li>
+      }
+    </ol>
+
+    @if (plan.canApply && pendingSecrets().length > 0) {
+      <fieldset class="config-change__secrets" [disabled]="busy()">
+        <legend>{{ pendingSecrets().length === 1 ? 'A secret is needed' : 'Secrets are needed' }}</legend>
+        <p class="config-change__note">Typed here and sent to AgentOS only: the agent never sees it.</p>
+        @for (secret of pendingSecrets(); track secret.input.key) {
+          <label class="config-change__secret">
+            <span class="config-change__secret-label">
+              {{ secret.input.label }}
+              <span class="config-change__secret-for">for step {{ secret.op.order }} · {{ secret.op.name }}</span>
+            </span>
+            <input
+              type="password"
+              autocomplete="off"
+              [attr.aria-label]="secret.input.label"
+              [placeholder]="'Type the ' + secret.input.label"
+              [value]="secrets()[secret.input.key] ?? ''"
+              (input)="onSecretInput(secret.input.key, $event)"
+            />
+          </label>
+        }
+      </fieldset>
+    }
+
+    @if (report(); as result) {
+      <p class="config-change__report" role="status">{{ decisionLabel(result.decision) }}</p>
+      @if (result.answerPosted === false) {
+        <p class="config-change__error" role="alert">
+          The configuration was changed but the agent could not be told. Click Apply again to send it the result.
+        </p>
+      }
+    }
+    @if (errorMessage(); as message) {
+      <p class="config-change__error" role="alert">{{ message }}</p>
+    }
+
+    @if (stateLabel(); as label) {
+      <p class="config-change__state">{{ label }}</p>
+    }
+    @if (rejecting()) {
+      <div class="config-change__reject">
+        <textarea
+          class="config-change__comment"
+          rows="2"
+          aria-label="Why do you reject this plan? (optional)"
+          placeholder="Why do you reject this plan? (optional)"
+          [value]="rejectComment()"
+          (input)="onRejectCommentInput($event)"
+        ></textarea>
+        <div class="config-change__actions">
+          <button
+            class="config-change__btn config-change__btn--secondary"
+            type="button"
+            [disabled]="busy()"
+            (click)="cancelReject()"
+          >
+            Back
+          </button>
+          <button
+            class="config-change__btn config-change__btn--danger"
+            type="button"
+            [disabled]="busy() || disabled()"
+            (click)="confirmReject()"
+          >
+            Reject the plan
+          </button>
+        </div>
+      </div>
+    } @else if (plan.canApply) {
+      <div class="config-change__actions">
+        @if (applyHint(); as hint) {
+          <p class="config-change__hint" role="status">{{ hint }}</p>
+        }
+        <button
+          class="config-change__btn config-change__btn--secondary"
+          type="button"
+          [disabled]="busy() || disabled()"
+          (click)="startReject()"
+        >
+          Reject
+        </button>
+        <button
+          class="config-change__btn config-change__btn--primary"
+          type="button"
+          [disabled]="!canApply()"
+          (click)="apply()"
+        >
+          {{ busy() ? 'Applying…' : 'Apply' }}
+        </button>
+      </div>
+    } @else if (plan.canReject) {
+      <div class="config-change__actions">
+        <button
+          class="config-change__btn config-change__btn--secondary"
+          type="button"
+          [disabled]="busy() || disabled()"
+          (click)="startReject()"
+        >
+          Reject
+        </button>
+      </div>
+    }
+  } @else if (errorMessage(); as message) {
+    <p class="config-change__error" role="alert">{{ message }}</p>
+  } @else {
+    <p class="config-change__note">Loading the plan…</p>
+  }
+</section>
