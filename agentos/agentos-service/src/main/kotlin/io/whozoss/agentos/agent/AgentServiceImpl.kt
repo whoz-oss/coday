@@ -16,6 +16,7 @@ import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.chat.sentTo
 import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.configAgent.ConfigToolGrantService
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -92,6 +93,7 @@ class AgentServiceImpl(
     private val agentDocumentResolver: AgentDocumentResolver,
     private val skillService: SkillService,
     private val skillToolGrantService: SkillToolGrantService,
+    private val configToolGrantService: ConfigToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val limitsConfig: LimitsConfigProperties,
     private val exchangeRootResolver: ExchangeRootResolver,
@@ -407,9 +409,20 @@ class AgentServiceImpl(
                 emptyList()
             }
         val exchangeTools = grantExchangeTools(exchangeScopes, toolContext)
+        val configTools =
+            configToolGrantService.grantTools(
+                integrations = agentConfig.integrations,
+                agentName = agentConfig.name,
+                namespaceId = context.namespaceId,
+                userId = context.userId,
+                caseId = context.caseId,
+            )
+        // The config tools go first so the de-dup keeps them over an integration of the same name: a
+        // configuration named AGENTOS_CONFIG must not stand in for the tool that freezes plans.
         val tools =
             toolResolverService.dedupToolsByName(
-                baseTools +
+                configTools +
+                    baseTools +
                     listOfNotNull(
                         subCaseManager?.let {
                             buildDelegationTools(

@@ -13,6 +13,7 @@ api/case-controller.service.ts
 api/case-event-rest-controller.service.ts
 api/case-membership-controller.service.ts
 api/case-workspace-controller.service.ts
+api/config-change-controller.service.ts
 api/exchange-controller.service.ts
 api/feedback-controller.service.ts
 api/git-workspaces-configuration-controller.service.ts
@@ -61,6 +62,14 @@ model/case-status-event.ts
 model/case-updated-event.ts
 model/case-workspace-view.ts
 model/case.ts
+model/config-change-apply-request.ts
+model/config-change-reject-request.ts
+model/config-change-report-dto.ts
+model/config-change-view-dto.ts
+model/config-field-change-dto.ts
+model/config-operation-result-dto.ts
+model/config-operation-view-dto.ts
+model/config-secret-input-dto.ts
 model/confirmation-resolved-event.ts
 model/continue-cost-request.ts
 model/enrichment-phase-trace.ts

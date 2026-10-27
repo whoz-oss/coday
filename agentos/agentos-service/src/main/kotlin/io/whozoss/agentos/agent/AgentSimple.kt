@@ -601,6 +601,7 @@ class AgentSimple(
                                         toolName = tool.name,
                                         output = MessageContent.Text(message),
                                         success = true,
+                                        structuredOutput = (e as? AgentInterrupt.AwaitAnswer)?.structuredOutput,
                                     ),
                                 )
                                 throw e

@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.util.unwrapToProviderAiException
 import kotlinx.coroutines.flow.FlowCollector
 import mu.KLogger
@@ -173,6 +174,7 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
             logger.info { "[${agent.name}] awaiting user answer: ${e.question}" }
             emit(
                 QuestionEvent(
+                    metadata = EntityMetadata(id = e.questionId),
                     namespaceId = namespaceId,
                     caseId = caseId,
                     agentId = agent.id,

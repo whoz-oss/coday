@@ -64,4 +64,12 @@ interface NamespaceNodeNeo4jRepository : Neo4jRepository<NamespaceNode, String> 
         namespaceId: String,
         agentIds: List<String>,
     )
+
+    @Query(
+        $$"""
+        MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(n:Namespace {id: $namespaceId})
+        RETURN a.id
+        """,
+    )
+    fun findDeployedAgentIds(namespaceId: String): List<String>
 }

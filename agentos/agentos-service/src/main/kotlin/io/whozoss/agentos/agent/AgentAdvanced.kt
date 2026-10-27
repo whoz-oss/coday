@@ -457,6 +457,7 @@ class AgentAdvanced(
                                         },
                                     ),
                                 success = true,
+                                structuredOutput = (e as? AgentInterrupt.AwaitAnswer)?.structuredOutput,
                             )
                         }
                     emitEvent(response)
