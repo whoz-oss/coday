@@ -117,8 +117,8 @@ agentos:
       # runs exactly as without Git, whatever the namespace's Git association.
       enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
   encryption:
-    key: ${AGENTOS_ENCRYPTION_KEY}
-    salt: ${AGENTOS_ENCRYPTION_SALT}
+    key: ${AGENTOS_ENCRYPTION_KEY:NONE}
+    salt: ${AGENTOS_ENCRYPTION_SALT:NONE}
   case:
   # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
   # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
@@ -129,7 +129,7 @@ agentos:
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT
-    mount-root: ${AGENTOS_EXCHANGE_MOUNT_ROOT:data/exchange/}
+    mount-root: ${AGENTOS_EXCHANGE_MOUNT_ROOT:${user.home}/coday/agentos/data/exchange}
     # Comma-separated file extensions allowed for user uploads (lowercase, no dot). The default
     # covers text/doc/data/image/code; empty allows any. Expected to differ per AgentOS instance.
     # Override with env var: AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS
@@ -254,17 +254,17 @@ agentos:
   # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
   # threshold across the full session without triggering it within a single turn.
   # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
-  # case-max-iterations: 100
+  case-max-iterations: ${AGENTOS_LIMITS_CASE_MAX_ITERATIONS:100}
   # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
   # Each iteration consists of one intention-generation call followed by zero or one tool
   # executions. When this limit is reached the agent emits a WarnEvent and breaks out
   # of the loop, producing its final response based on what it has gathered so far.
   # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
-  # agent-max-iterations: 20
+  agent-max-iterations: ${AGENTOS_LIMITS_AGENT_MAX_ITERATIONS:100}
   # Maximum number of entities processed by one AgentLoop run. Each entity starts one case
   # immediately, so this bounds concurrent agent runs started by a single loop.
   # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
-  agent-loop-max-items: 50
+  agent-loop-max-items: ${AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS:50}
   # Maximum amount the platform accepts spending without a human check-in, in the platform's
   # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
   # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
@@ -303,14 +303,14 @@ agentos:
     # local: uses the OS username; auto-creates a User record on first access.
     # auth:  decodes the Cloudflare JWT (Cf-Access-Jwt-Assertion header) or falls back
     #        to x-forwarded-email; requires the User to be pre-registered.
-    # Override with env var: FACTORY_SECURITY_MODE
-    mode: local
+    # Override with env var: AGENTOS_SECURITY_MODE
+    mode: ${AGENTOS_SECURITY_MODE:local}
   oauth:
     # Absolute redirect URI sent to the OAuth provider as redirect_uri.
     # Must match the frontend OAuth callback page URL exactly.
     # In production, set to the deployed frontend callback URL (e.g. https://app.example.com/oauth/callback).
     # Override with env var: AGENTOS_OAUTH_REDIRECT_URI
-    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:http://localhost:4100/agentos/oauth/callback}
+    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:}
     # Maximum time in minutes to wait for the user to complete browser authorization.
     # Each pending flow holds one Dispatchers.IO thread for this duration; lower values
     # reduce the maximum blocking window. Default: 2 minutes.
@@ -330,7 +330,7 @@ agentos:
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
-    data-dir: ${AGENTOS_PERSISTENCE_DATA_DIR:data}
+    data-dir: ${AGENTOS_PERSISTENCE_DATA_DIR:${user.home}/coday/agentos/data/database}
     # Persistence mode:
     #   embedded-neo4j (default) - embedded Neo4j engine, no Docker required;
     #                              database stored under data-dir/neo4j/

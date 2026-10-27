@@ -276,10 +276,6 @@ export async function startAgentos(
     // Inherit the environment, then apply explicit fallbacks for managed settings.
     env: {
       ...process.env,
-      // Fallback to NONE only if not already set — real values from the environment
-      // take precedence (production deployments with actual encryption keys).
-      AGENTOS_ENCRYPTION_KEY: process.env.AGENTOS_ENCRYPTION_KEY ?? 'NONE',
-      AGENTOS_ENCRYPTION_SALT: process.env.AGENTOS_ENCRYPTION_SALT ?? 'NONE',
       // Derive the OAuth redirect URI from the actual Express port so the
       // browser callback URL is correct regardless of which port was assigned.
       // An existing env var takes precedence (e.g. production reverse-proxy URL).
