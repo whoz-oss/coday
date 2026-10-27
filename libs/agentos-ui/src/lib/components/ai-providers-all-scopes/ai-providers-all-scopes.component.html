@@ -10,6 +10,12 @@
 } @else if (rows().length === 0) {
   <p class="ai-providers__status">No AI providers available.</p>
 } @else {
+  <agentos-table-filter
+    label="Filter AI providers"
+    placeholder="Filter AI providers…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
   <div class="ai-providers__table-wrap">
     <table dsTable>
       <thead>
@@ -21,7 +27,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (row of rows(); track row.key) {
+        @for (row of rowFilter.filteredRows(); track row.key) {
           <tr>
             <td class="ai-providers__name">{{ row.config.name }}</td>
             <td class="ai-providers__type">{{ row.config.apiType }}</td>

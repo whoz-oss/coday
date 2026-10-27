@@ -8,6 +8,12 @@
 } @else if (rows().length === 0) {
   <p class="prompts__status">No prompts available.</p>
 } @else {
+  <agentos-table-filter
+    label="Filter prompts"
+    placeholder="Filter prompts…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
   <div class="prompts__table-wrap">
     <table dsTable>
       <thead>
@@ -19,7 +25,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (row of rows(); track row.key) {
+        @for (row of rowFilter.filteredRows(); track row.key) {
           <tr>
             <td class="prompts__name">{{ row.prompt.name }}</td>
             <td class="prompts__description">{{ row.prompt.description || '—' }}</td>
