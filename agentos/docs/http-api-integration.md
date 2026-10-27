@@ -155,14 +155,16 @@ Rules that follow from the service behaviour:
 - **A provider that yields nothing usable is `AUTH_MISSING` before any request.** When the provider is
   present but returns no credential or a credential without material (blank token, key or password), the
   tools are still listed (so the definition preview shows them) but the call fails fast with
-  `AUTH_MISSING` and no request is sent. The next call asks the provider again, so an authorization
-  declined or timed out can be given later in the same run. A provider that throws is `AUTH_MISSING` too,
-  the detail staying in the service logs.
-- Once obtained, the credential is kept for the rest of the run, and concurrent calls wait for a single
-  resolution. A `401` is reported as `UNAUTHORIZED` with an instruction not to retry; the agent cannot
-  refresh a token mid-run. Between runs, the service refreshes an expired OAuth token with its refresh
-  token; the authorization request asks for offline access (`access_type=offline`) so that Google issues
-  one.
+  `AUTH_MISSING` and no request is sent. A provider that throws is `AUTH_MISSING` too, the detail staying
+  in the service logs.
+- The outcome of that first resolution is kept for the rest of the run, `AUTH_MISSING` included: an
+  authorization declined or timed out is not asked again by every later call, and the user's next message
+  (a new run) asks again. Concurrent calls wait for the single resolution. A call whose arguments are
+  invalid is refused before the credential is asked. A `401` is reported as `UNAUTHORIZED` with an
+  instruction not to retry; the agent cannot refresh a token mid-run. Between runs, the service refreshes
+  an expired OAuth token with its refresh token, keeping the current one when the server does not issue
+  a new one; the authorization request asks for offline access (`access_type=offline`, unless the
+  authorization endpoint already sets `access_type`) so that Google issues one.
 - API key placement is a property of the called API, hence configured on the integration (`auth`), not
   on the Auth Setting.
 - **The document can supply the placement.** When the `auth` block is absent or left at its defaults and
@@ -351,7 +353,7 @@ Error types returned by the tools (`errorType`), stable so prompts can rely on t
 | `errorType` | When | Agent guidance in the message |
 |---|---|---|
 | `INVALID_INPUT` | Arguments are not a JSON object, a required path or header parameter or body is missing, a header value is not a single printable line, a form body is not an object | Fix the arguments; no request was sent |
-| `AUTH_MISSING` | An Auth Setting is bound but no usable credential was resolved | Ask an administrator; no request was sent |
+| `AUTH_MISSING` | An Auth Setting is bound but no usable credential was resolved | Do not retry in the run; the user's next message asks again, otherwise ask an administrator; no request was sent |
 | `URL_POLICY_REJECTED` | The final URL would leave `baseUrl` or violates the policy | No request was sent |
 | `HTTP_CLIENT_ERROR` | `400`, `404`, `409`, `422` and other `4xx` (body capped at 2000 characters) | Correct the call |
 | `UNAUTHORIZED` | `401` | Do not retry; ask an administrator to check the Auth Setting |

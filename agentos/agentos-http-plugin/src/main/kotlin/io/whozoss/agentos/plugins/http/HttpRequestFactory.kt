@@ -26,9 +26,10 @@ sealed interface RequestPlan {
  * The URL is assembled with [HttpUrl.Builder] from the normalised base URL: each segment of the path
  * template has its `{name}` placeholders replaced by the argument value and is added as one path segment,
  * so `/` and other reserved characters are percent-encoded rather than spliced; a `.` or `..` segment is
- * refused since the builder would resolve it. Query parameters follow, the query-placed API key last.
- * The final URL must share the origin of the base URL, extend its path and pass the outbound policy.
- * Header parameters become request headers (see [buildHeaders]).
+ * refused since the builder would resolve it. Query parameters follow. The URL must share the origin of
+ * the base URL, extend its path and pass the outbound policy. Header parameters become request headers
+ * (see [buildHeaders]). The run's authentication comes last ([authenticate]), the query-placed API key
+ * after the query parameters.
  */
 object HttpRequestFactory {
 
@@ -47,9 +48,9 @@ object HttpRequestFactory {
         class Rejected(val message: String) : HeadersBuild
     }
 
-    /** [auth] is the run's authentication, already resolved by the caller. */
-    fun build(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode, auth: AuthHeaderSpec): RequestPlan {
-        val url = when (val built = buildUrl(descriptor, runtime, args, auth)) {
+    /** Builds the request without its authentication, which [authenticate] adds once the arguments are valid. */
+    fun build(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode): RequestPlan {
+        val url = when (val built = buildUrl(descriptor, runtime, args)) {
             is UrlBuild.Ok -> built.url
             is UrlBuild.Rejected -> return RequestPlan.Rejected(errorType = built.errorType, message = built.message)
         }
@@ -58,7 +59,7 @@ object HttpRequestFactory {
             is BodyBuild.Rejected ->
                 return RequestPlan.Rejected(errorType = HttpApiErrors.INVALID_INPUT, message = built.message)
         }
-        val headers = when (val built = buildHeaders(descriptor, runtime, args, auth)) {
+        val headers = when (val built = buildHeaders(descriptor, runtime, args)) {
             is HeadersBuild.Ok -> built.headers
             is HeadersBuild.Rejected ->
                 return RequestPlan.Rejected(errorType = HttpApiErrors.INVALID_INPUT, message = built.message)
@@ -71,12 +72,21 @@ object HttpRequestFactory {
         return RequestPlan.Ready(request)
     }
 
-    private fun buildUrl(
-        descriptor: OperationDescriptor,
-        runtime: HttpApiRuntime,
-        args: JsonNode,
-        auth: AuthHeaderSpec,
-    ): UrlBuild {
+    /**
+     * Adds the run's authentication to a request [build] accepted: the header replaces any header of the same
+     * name, the query-placed API key comes after the query parameters. Neither changes the origin nor the path
+     * the URL checks of [build] accepted.
+     */
+    fun authenticate(request: Request, auth: AuthHeaderSpec): Request =
+        when (auth) {
+            is AuthHeaderSpec.Header -> request.newBuilder().header(name = auth.name, value = auth.value).build()
+            is AuthHeaderSpec.Query -> request.newBuilder()
+                .url(request.url.newBuilder().addQueryParameter(name = auth.name, value = auth.value).build())
+                .build()
+            AuthHeaderSpec.None, is AuthHeaderSpec.Missing -> request
+        }
+
+    private fun buildUrl(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode): UrlBuild {
         val builder = runtime.baseUrl.newBuilder()
         for (template in descriptor.pathTemplate.split('/').filter { it.isNotEmpty() }) {
             val segment = when (val resolved = resolveSegment(template, args)) {
@@ -93,7 +103,6 @@ object HttpRequestFactory {
                     builder.addQueryParameter(name = parameter.name, value = value)
                 }
             }
-        if (auth is AuthHeaderSpec.Query) builder.addQueryParameter(name = auth.name, value = auth.value)
         val url = builder.build()
         if (!isUnder(url, base = runtime.baseUrl)) {
             return UrlBuild.Rejected(
@@ -160,18 +169,13 @@ object HttpRequestFactory {
         if (node.isValueNode) node.asText() else HttpApiJson.mapper.writeValueAsString(node)
 
     /**
-     * Default headers, then the header arguments of the call, then the auth header (which therefore wins),
-     * `Accept` unless a default header sets it, and the user agent. A header argument named like a default
-     * header is ignored: the administrator value is sent (the curator normally leaves no such argument). A
-     * header argument must be a single line of printable ASCII: anything else (CR, LF, control or non-ASCII
-     * characters) is refused before any request.
+     * Default headers, then the header arguments of the call, `Accept` unless a default header sets it, and
+     * the user agent; [authenticate] then sets the auth header, which therefore wins. A header argument named
+     * like a default header is ignored: the administrator value is sent (the curator normally leaves no such
+     * argument). A header argument must be a single line of printable ASCII: anything else (CR, LF, control or
+     * non-ASCII characters) is refused before any request.
      */
-    private fun buildHeaders(
-        descriptor: OperationDescriptor,
-        runtime: HttpApiRuntime,
-        args: JsonNode,
-        auth: AuthHeaderSpec,
-    ): HeadersBuild {
+    private fun buildHeaders(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode): HeadersBuild {
         val headers = LinkedHashMap(runtime.defaultHeaders)
         for (parameter in descriptor.parameters.filter { it.location == ParameterLocation.HEADER }) {
             if (headers.keys.any { it.equals(parameter.name, ignoreCase = true) }) continue
@@ -187,7 +191,6 @@ object HttpRequestFactory {
             }
             headers[parameter.name] = node.asText()
         }
-        if (auth is AuthHeaderSpec.Header) headers[auth.name] = auth.value
         if (headers.keys.none { it.equals(ACCEPT, ignoreCase = true) }) headers[ACCEPT] = ACCEPT_JSON
         headers[USER_AGENT] = "AgentOS-HTTP_API/${HttpApiTool.VERSION}"
         return HeadersBuild.Ok(headers)

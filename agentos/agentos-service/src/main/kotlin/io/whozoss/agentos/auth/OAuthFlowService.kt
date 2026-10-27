@@ -77,7 +77,10 @@ class OAuthFlowService(
                     if (refreshed != null) {
                         logger.debug { "[OAuth] resolveOAuthCredential: token refreshed successfully for ${authSetting.name}" }
                         val dynamicInfo = extractDynamicClientInfo(existing)
-                        return credentialService.store(buildCredential(userId, authSettingId, refreshed, dynamicInfo))
+                        // A refresh response may omit the refresh token (Google always does): the current one
+                        // stays valid and is kept, otherwise the next expiry would ask the user again.
+                        val kept = refreshed.copy(refreshToken = refreshed.refreshToken ?: refreshToken)
+                        return credentialService.store(buildCredential(userId, authSettingId, kept, dynamicInfo))
                     } else {
                         logger.warn {
                             "[OAuth] resolveOAuthCredential: token refresh failed for ${authSetting.name}, falling through to interactive flow"
@@ -546,14 +549,18 @@ class OAuthFlowService(
                 if (!resource.isNullOrBlank()) add("resource=${encodeUtf8(resource)}")
                 // Google only returns a refresh token for offline access; other servers must ignore an
                 // unknown parameter (RFC 6749, section 3.1), and without a refresh token the user is asked
-                // again once the access token expires.
-                add(OFFLINE_ACCESS)
+                // again once the access token expires. An endpoint that already sets it keeps its own value:
+                // a parameter must not be sent twice.
+                if (ACCESS_TYPE !in queryNamesOf(authorizationEndpoint)) add("$ACCESS_TYPE=offline")
             }
         val separator = if (authorizationEndpoint.contains('?')) "&" else "?"
         return "$authorizationEndpoint$separator${params.joinToString("&")}"
     }
 
     private fun encodeUtf8(v: String): String = URLEncoder.encode(v, "UTF-8")
+
+    private fun queryNamesOf(url: String): Set<String> =
+        url.substringAfter('?', "").substringBefore('#').split('&').map { it.substringBefore('=') }.toSet()
 
     internal fun isExpired(credential: Credential): Boolean {
         val expiration = credential.data["expiresAt"] ?: return true
@@ -619,7 +626,7 @@ class OAuthFlowService(
         }
 
     companion object : KLogging() {
-        private const val OFFLINE_ACCESS = "access_type=offline"
+        private const val ACCESS_TYPE = "access_type"
     }
 }
 

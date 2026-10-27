@@ -2,9 +2,11 @@ package io.whozoss.agentos.plugins.http.auth
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import mu.KLogging
 
 /**
@@ -13,12 +15,13 @@ import mu.KLogging
  * authorize and wait for the answer, which must only happen when one of the integration's tools is
  * actually called, never on a run that does not use them.
  *
- * A usable spec is kept for the rest of the run. A [AuthHeaderSpec.Missing] one is not, so the next call
- * asks again. Concurrent calls of the run wait for one resolution instead of starting one each. A
- * resolution that throws is answered as [AuthHeaderSpec.Missing], the detail staying in the logs.
+ * The spec is resolved once and kept for the rest of the run, [AuthHeaderSpec.Missing] included: an
+ * authorization declined or timed out is not asked again by every later call of the run, the next run asks
+ * again. Concurrent calls of the run wait for that single resolution. A resolution that throws is answered
+ * as [AuthHeaderSpec.Missing], the detail staying in the logs.
  *
  * @param resolve Builds the spec. The credential provider is not suspending and may block until the user
- *   answers, so it runs on the IO dispatcher.
+ *   answers, so it runs on the IO dispatcher, interrupted when the run is cancelled.
  */
 class RunAuth(
     private val configName: String,
@@ -29,19 +32,20 @@ class RunAuth(
     @Volatile
     private var resolved: AuthHeaderSpec? = null
 
-    suspend fun spec(): AuthHeaderSpec = resolved ?: mutex.withLock { resolved ?: resolveOnce() }
+    suspend fun spec(): AuthHeaderSpec = resolved ?: mutex.withLock { resolved ?: resolveOnce().also { resolved = it } }
 
     private suspend fun resolveOnce(): AuthHeaderSpec {
         val spec =
             try {
-                withContext(Dispatchers.IO) { resolve() }
-            } catch (e: CancellationException) {
-                throw e
+                runInterruptible(Dispatchers.IO) { resolve() }
             } catch (e: Exception) {
+                // A cancellation is the run's only when the run is cancelled; any other is a failed resolution.
+                if (e is CancellationException) currentCoroutineContext().ensureActive()
                 logger.error(e) { "HTTP_API integration '$configName': credential resolution failed: ${e.message}" }
                 AuthHeaderSpec.Missing(RESOLUTION_FAILED)
             }
-        if (spec !is AuthHeaderSpec.Missing) resolved = spec
+        val line = "HTTP_API integration '$configName': auth=$spec for the rest of the run"
+        if (spec is AuthHeaderSpec.Missing) logger.warn { line } else logger.info { line }
         return spec
     }
 

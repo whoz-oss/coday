@@ -21,9 +21,9 @@ import java.util.UUID
  * [provideTools] parses the config, obtains the catalogue from the plugin-wide cache (fetching and curating
  * the document only when needed) and builds the tools. It never resolves the credential of the bound Auth
  * Setting: the first call of one of the tools does ([RunAuth]), since for an OAuth Auth Setting that may ask
- * the user to authorize, which a run that never calls them must not do. Every failure is logged, recorded in the [LastFailureRegistry] (scoped to the namespace
- * of the run) for [describeNamespace] and answered with an empty list: nothing escapes, not even a plugin
- * that is not started.
+ * the user to authorize, which a run that never calls them must not do. Every failure is logged, recorded
+ * in the [LastFailureRegistry] (scoped to the namespace of the run) for [describeNamespace] and answered with
+ * an empty list: nothing escapes, not even a plugin that is not started.
  *
  * [describeNamespace] is called for every config of a namespace with a context that carries no credential
  * provider: it answers from the cache and the registry only, without network access.
@@ -94,8 +94,9 @@ class HttpApiToolProvider @JvmOverloads constructor(
                     "identity): calls are sent unauthenticated"
             }
         }
+        val authConfig = catalogue.auth
         val auth = RunAuth(configName) {
-            AuthHeaderSpec.from(provider?.invoke(), catalogue.auth, providerBound = provider != null)
+            AuthHeaderSpec.from(provider?.invoke(), authConfig, providerBound = provider != null)
         }
         val runtime = HttpApiRuntime(
             configName = configName,

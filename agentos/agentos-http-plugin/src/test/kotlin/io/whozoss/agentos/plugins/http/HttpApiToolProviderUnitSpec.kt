@@ -6,6 +6,7 @@ import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -25,16 +26,24 @@ import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CancellationException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.system.measureTimeMillis
 
 class HttpApiToolProviderUnitSpec : StringSpec({
     isolationMode = IsolationMode.InstancePerLeaf
@@ -221,7 +230,14 @@ class HttpApiToolProviderUnitSpec : StringSpec({
     "resolves the credential on the first call of a tool, then once for the whole run" {
         servePetstoreApi()
         val calls = AtomicInteger()
-        val tools = provider.provideTools(specConfig(), "PETS", context { calls.incrementAndGet(); bearer("t") })
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context {
+                calls.incrementAndGet()
+                bearer("t")
+            },
+        )
         tools.size shouldBe 3
         calls.get() shouldBe 0
 
@@ -233,34 +249,106 @@ class HttpApiToolProviderUnitSpec : StringSpec({
             listOf("Bearer t", "Bearer t")
     }
 
-    "a credential that could not be obtained is asked again on the next call" {
+    "a credential that could not be obtained is not asked again in the run, the next run asks again" {
         servePetstoreApi()
+        CapturedLogs.clear()
         val answers = ArrayDeque(listOf(null, bearer("late")))
-        val tools = provider.provideTools(specConfig(), "PETS", context { answers.removeFirst() })
+        val askingContext = context { answers.removeFirst() }
+        val tools = provider.provideTools(specConfig(), "PETS", askingContext)
 
         val refused = tools.named("listPets").executeWithJson("{}", context())
-        val accepted = tools.named("listPets").executeWithJson("{}", context())
+        val again = tools.named("showPetById").executeWithJson("""{"petId":"1"}""", context())
 
-        refused.errorType shouldBe "AUTH_MISSING"
-        refused.output shouldContain "the next call asks for the credential again"
-        accepted.success shouldBe true
+        listOf(refused, again).map { it.errorType } shouldContainExactly listOf("AUTH_MISSING", "AUTH_MISSING")
+        answers.size shouldBe 1
+        refused.output shouldContain "no credential available for the bound Auth Setting"
+        refused.output shouldContain "do not retry"
+        refused.output shouldContain "an administrator"
+        CapturedLogs.lines.joinToString("\n") shouldContain "no credential available for the bound Auth Setting"
+        server.requests.none { it.path.startsWith("/v1/") } shouldBe true
+
+        val nextRun = provider.provideTools(specConfig(), "PETS", askingContext)
+        nextRun.named("listPets").executeWithJson("{}", context()).success shouldBe true
         server.requests.single { it.path.startsWith("/v1/") }.header("Authorization") shouldBe "Bearer late"
     }
 
-    "concurrent calls of a run resolve the credential once" {
+    "invalid arguments are refused before the credential is asked" {
         servePetstoreApi()
         val calls = AtomicInteger()
         val tools = provider.provideTools(
             specConfig(),
             "PETS",
-            context { calls.incrementAndGet(); Thread.sleep(200); bearer("t") },
+            context {
+                calls.incrementAndGet()
+                bearer("t")
+            },
+        )
+
+        val result = tools.named("showPetById").executeWithJson("{}", context())
+
+        result.errorType shouldBe "INVALID_INPUT"
+        calls.get() shouldBe 0
+    }
+
+    listOf<Credential?>(bearer("t"), null).forEach { answer ->
+        "concurrent calls of a run resolve the credential once (provider answers ${answer?.credentialType})" {
+            servePetstoreApi()
+            val calls = AtomicInteger()
+            val tools = provider.provideTools(
+                specConfig(),
+                "PETS",
+                context {
+                    calls.incrementAndGet()
+                    Thread.sleep(200)
+                    answer
+                },
+            )
+
+            coroutineScope {
+                (1..4).map { async { tools.named("listPets").executeWithJson("{}", context()) } }.awaitAll()
+            }.all { it.success } shouldBe (answer != null)
+
+            calls.get() shouldBe 1
+        }
+    }
+
+    "a cancellation thrown by the provider while the run goes on is AUTH_MISSING" {
+        servePetstoreApi()
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context { throw CancellationException("flow cancelled") },
+        )
+
+        tools.named("listPets").executeWithJson("{}", context()).errorType shouldBe "AUTH_MISSING"
+    }
+
+    "cancelling the run interrupts a provider waiting for the user" {
+        servePetstoreApi()
+        val started = CountDownLatch(1)
+        val interrupted = CountDownLatch(1)
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context {
+                started.countDown()
+                try {
+                    Thread.sleep(10_000)
+                } catch (e: InterruptedException) {
+                    interrupted.countDown()
+                    throw e
+                }
+                bearer("t")
+            },
         )
 
         coroutineScope {
-            (1..4).map { async { tools.named("listPets").executeWithJson("{}", context()) } }.awaitAll()
-        }.all { it.success } shouldBe true
-
-        calls.get() shouldBe 1
+            val call = launch(Dispatchers.Default) { tools.named("listPets").executeWithJson("{}", context()) }
+            runInterruptible(Dispatchers.IO) { started.await(5, TimeUnit.SECONDS) } shouldBe true
+            val elapsed = measureTimeMillis { call.cancelAndJoin() }
+            elapsed shouldBeLessThan 2_000L
+        }
+        interrupted.count shouldBe 0L
     }
 
     "a failing credential provider never escapes: the call fails and the message stays in the logs" {
