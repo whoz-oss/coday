@@ -3,7 +3,6 @@ package io.whozoss.agentos.integrationConfig
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
-import org.springframework.beans.factory.annotation.Qualifier
 import io.whozoss.agentos.entity.ScopeParams
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
@@ -11,14 +10,19 @@ import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -36,18 +40,18 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * Unified REST API for [IntegrationConfig] entities — covers the **four scopes**
  * (platform, NS-shared, user × namespace, user-global) under a single set of routes.
  *
- * Authorization and scope rules (platform guard, user-scope type denial, namespace
- * permission checks, mass-assignment guards) are fully enforced by
- * [IntegrationConfigService]'s `*ForCaller` methods. This controller only maps HTTP
- * requests to that authorized surface and decides how a refusal is rendered:
- * [HideOnAccessDenied] on [getById], [update], [delete], and [export] converts an
- * [org.springframework.security.access.AccessDeniedException] into 404 instead of 403.
+ * A class-level `@PreAuthorize("isAuthenticated()")` ensures every handler requires an
+ * authenticated principal — `callerOf()` then converts it to a typed [Caller] for the
+ * service layer. Authorization (beyond authentication) is delegated to [IntegrationConfigService]'s
+ * `*ForCaller` methods. [HideOnAccessDenied] on [getById], [update], [delete], and [export]
+ * converts an [org.springframework.security.access.AccessDeniedException] into 404 instead of 403.
  */
 @RestController
 @RequestMapping(
     "/api/integration-configs",
     produces = [MediaType.APPLICATION_JSON_VALUE],
 )
+@PreAuthorize("isAuthenticated()")
 class IntegrationConfigController(
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
@@ -60,7 +64,9 @@ class IntegrationConfigController(
         @PathVariable id: UUID,
     ): IntegrationConfigDto {
         val caller = callerOf()
-        return toDto(integrationConfigService.getByIdForCaller(caller, id))
+        // withRemoved=true: parity with the old EntityCrudDelegate.getById contract, which
+        // included soft-deleted rows so callers can inspect or audit a removed record via REST.
+        return toDto(integrationConfigService.getByIdForCaller(caller, id, withRemoved = true))
     }
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -194,7 +200,8 @@ class IntegrationConfigController(
         @PathVariable id: UUID,
     ): ResponseEntity<String> {
         val caller = callerOf()
-        val entity = integrationConfigService.getByIdForCaller(caller, id, Action.WRITE)
+        // withRemoved=false: the export path must not serve deleted configs in clear text.
+        val entity = integrationConfigService.getByIdForCaller(caller, id, Action.WRITE, withRemoved = false)
         val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
         return ResponseEntity
@@ -204,7 +211,23 @@ class IntegrationConfigController(
             .body(yaml)
     }
 
-    private fun callerOf(): Caller = userService.getCurrentUser().let { Caller.Human(it.id, it.isAdmin) }
+    /**
+     * Builds the [Caller] for the current request.
+     *
+     * Reads from [AgentOsAuthentication] in the [SecurityContextHolder] when available —
+     * the filter already resolved the [User] and stored it as the principal, so there is
+     * no second `findByExternalId` round-trip. Falls back to `userService.getCurrentUser()`
+     * for unit tests that construct the controller directly without a Spring context.
+     */
+    private fun callerOf(): Caller {
+        val auth = SecurityContextHolder.getContext().authentication as? AgentOsAuthentication
+        return if (auth != null) {
+            val user = auth.principal as User
+            Caller.Human(user.id, user.isAdmin)
+        } else {
+            userService.getCurrentUser().let { Caller.Human(it.id, it.isAdmin) }
+        }
+    }
 
     companion object : KLogging() {
         /**

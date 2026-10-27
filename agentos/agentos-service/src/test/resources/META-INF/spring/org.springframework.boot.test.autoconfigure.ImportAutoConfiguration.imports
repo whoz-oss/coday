@@ -1,4 +1,0 @@
-# Auto-registers TestConfiguration for all @SpringBootTest contexts.
-# This ensures the no-op LoopConfigResolver bean is available whenever the scheduler
-# is disabled (agentos.prompt.scheduler.enabled=false, the default in tests).
-io.whozoss.agentos.config.TestConfiguration

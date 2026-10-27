@@ -4,9 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.Caller
-import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.reconciliation.ConfigLookup
-import io.whozoss.agentos.security.declarative.OwnershipAware
 import java.util.UUID
 
 /**
@@ -61,11 +59,7 @@ data class IntegrationConfigUpdate(
  */
 interface IntegrationConfigService :
     EntityService<IntegrationConfig, UUID>,
-    ConfigLookup<IntegrationConfig>,
-    OwnershipAware {
-    override val ownershipEntityType: EntityType get() = EntityType.INTEGRATION_CONFIG
-
-    override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
+    ConfigLookup<IntegrationConfig> {
 
     /**
      * Explicit override of [ConfigLookup.findByTriple] with a precise return type.
@@ -175,18 +169,22 @@ interface IntegrationConfigService :
     // -------------------------------------------------------------------------
 
     /**
-     * Read one config, enforcing authorization.
+     * Read one config, enforcing authorization and access control.
      *
-     * Loads the entity including soft-deleted rows (same as the old `EntityCrudDelegate.getById`
-     * which used `withRemoved = true`). Throws [io.whozoss.agentos.exception.ResourceNotFoundException]
-     * when not found, and [org.springframework.security.access.AccessDeniedException] when the
-     * caller lacks the required [action].
+     * When [withRemoved] is `false` (the default), only live (non-deleted) rows are returned —
+     * the export path uses this to avoid serving deleted configs in clear text.
+     * Pass `withRemoved = true` for the normal GET path, to match the old `EntityCrudDelegate.getById`
+     * contract that included soft-deleted rows so callers could inspect or audit a removed record.
+     *
+     * Throws [io.whozoss.agentos.exception.ResourceNotFoundException] when not found, and
+     * [org.springframework.security.access.AccessDeniedException] when the caller lacks [action].
      *
      * @param caller the authenticated principal
      * @param id the entity to load
      * @param action permission required — use [Action.READ] for a normal read, [Action.WRITE] for export
+     * @param withRemoved when true, includes soft-deleted entities (default false)
      */
-    fun getByIdForCaller(caller: Caller, id: UUID, action: Action = Action.READ): IntegrationConfig
+    fun getByIdForCaller(caller: Caller, id: UUID, action: Action = Action.READ, withRemoved: Boolean = false): IntegrationConfig
 
     /**
      * Batch read, permission-filtered. Never throws on denial — inaccessible ids are silently
