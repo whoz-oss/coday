@@ -33,6 +33,10 @@ export class NamespaceSettingsLayoutComponent {
 
   protected readonly groups: readonly NamespaceSettingsGroup[] = [
     {
+      label: 'General',
+      items: [{ label: 'Edit namespace', path: 'edit' }],
+    },
+    {
       label: 'Access',
       items: [
         { label: 'Members', path: 'members' },

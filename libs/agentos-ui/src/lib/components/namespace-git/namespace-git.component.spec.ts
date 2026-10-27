@@ -1,7 +1,7 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { ActivatedRoute, convertToParamMap, Router } from '@angular/router'
+import { ActivatedRoute, convertToParamMap } from '@angular/router'
 import {
   AuthSettingDto,
   Configuration,
@@ -42,7 +42,6 @@ describe('NamespaceGitComponent loading and safe updates', () => {
         provideHttpClientTesting(),
         { provide: Configuration, useValue: new Configuration({ basePath: '/agentos-api' }) },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ namespaceId: 'ns-1' }) } } },
-        { provide: Router, useValue: { navigate: jest.fn() } },
         { provide: AuthSettingConfigStateService, useValue: authSettings },
       ],
     })
