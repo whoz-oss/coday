@@ -14,28 +14,6 @@ import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog'
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar'
 import { provideApi } from '@whoz-oss/agentos-api-client'
 import { appRoutes } from './app.routes'
-import { ProjectStateService } from './core/services/project-state.service'
-import { OAuthService } from './core/services/oauth.service'
-
-/**
- * Initialize default project selection at app startup
- */
-function initializeDefaultProject(projectState: ProjectStateService) {
-  return () => projectState.initializeDefaultProject()
-}
-
-/**
- * Initialize OAuth service at app startup
- * This ensures the service subscribes to OAuth events even if not directly used by components
- */
-function initializeOAuthService(_oauthService: OAuthService) {
-  return () => {
-    // The underscore prefix indicates intentional non-usage
-    // Simply injecting the service is enough to initialize its subscriptions
-    // The service constructor subscribes to events automatically
-    console.log('[APP_INIT] OAuthService initialized')
-  }
-}
 
 /**
  * Load the current user once at app startup so that UserStateService.currentUser() is
@@ -76,18 +54,6 @@ export const appConfig: ApplicationConfig = {
     // the full MatSnackBarModule into the root bundle — components that use
     // MatSnackBar will still get it via their own imports.
     { provide: MAT_SNACK_BAR_DEFAULT_OPTIONS, useValue: { duration: 3000 } },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: initializeDefaultProject,
-      deps: [ProjectStateService],
-      multi: true,
-    },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: initializeOAuthService,
-      deps: [OAuthService],
-      multi: true,
-    },
     {
       provide: APP_INITIALIZER,
       useFactory: initializeCurrentUser,

@@ -1,6 +1,5 @@
-import { Component, inject, OnInit, ChangeDetectionStrategy } from '@angular/core'
+import { Component, ChangeDetectionStrategy } from '@angular/core'
 import { RouterModule } from '@angular/router'
-import { ThemeService } from './core/services/theme.service'
 
 @Component({
   imports: [RouterModule],
@@ -9,13 +8,6 @@ import { ThemeService } from './core/services/theme.service'
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
 })
-export class App implements OnInit {
+export class App {
   protected title = 'client'
-
-  private themeService = inject(ThemeService)
-
-  ngOnInit(): void {
-    // S'assurer que le thème est appliqué dès le démarrage
-    console.log('[APP] Application initialized with theme:', this.themeService.getCurrentTheme())
-  }
 }
