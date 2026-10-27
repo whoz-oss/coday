@@ -8,15 +8,12 @@
     "_bump": "4",
     "client": "nx run client:serve",
     "coday": "source .env && pnpm dlx @whoz-oss/coday-web@workstream-forge",
-    "desktop": "nx run desktop:serve",
-    "desktop-twin": "nx run desktop-twin:serve",
     "factory-cockpit": "nx run factory-cockpit:serve",
     "husky-setup": "husky",
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",
     "regen": "nx run agentos-service:regenerate",
     "server": "nx run server:serve",
-    "sync-deps": "tsx scripts/sync-project-dependencies.ts",
     "test": "nx run-many --target=test",
     "web": "npx --yes @whoz-oss/coday-web",
     "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2",
@@ -34,9 +31,7 @@
   },
   "dependencies": {
     "@angular/core": "catalog:",
-    "diff2html": "3.4.56",
-    "glob": "catalog:",
-    "yargs": "catalog:"
+    "diff2html": "3.4.56"
   },
   "devDependencies": {
     "@angular/build": "catalog:dev",
@@ -85,9 +80,7 @@
     "json-sort-cli": "catalog:dev",
     "jsonc-eslint-parser": "catalog:dev",
     "lint-staged": "catalog:dev",
-    "nodemon": "catalog:dev",
     "nx": "catalog:dev",
-    "opn-cli": "catalog:dev",
     "prettier": "catalog:dev",
     "swc-loader": "catalog:dev",
     "ts-jest": "catalog:dev",
