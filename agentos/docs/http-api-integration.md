@@ -129,8 +129,11 @@ work once the service synthesises the credential from the Auth Setting itself an
 which is not part of this plugin. Until it ships, bind an OAuth Auth Setting or expect `AUTH_MISSING`.
 
 The service resolves the credential of the Auth Setting named by `authSettingName` for the user
-running the agent, and hands the plugin a credential provider. The plugin invokes it **once per
-run** (`provideTools`) and maps the credential by its `CredentialType`:
+running the agent, and hands the plugin a credential provider. The plugin invokes it **on the first
+call of one of the integration's tools in a run**, never while it lists them (`provideTools`), and maps
+the credential by its `CredentialType`. For an OAuth Auth Setting without a valid stored token, that
+first call is where the user is asked to authorize: a run that never calls the integration's tools never
+shows the authorization card nor waits for it.
 
 | Auth Setting type | Credential type | What the plugin sends |
 |---|---|---|
@@ -151,10 +154,15 @@ Rules that follow from the service behaviour:
   `auth`, or one taken from the document) and no provider is bound.
 - **A provider that yields nothing usable is `AUTH_MISSING` before any request.** When the provider is
   present but returns no credential or a credential without material (blank token, key or password), the
-  tools are still listed (so the definition preview shows them) but every call fails fast with
-  `AUTH_MISSING` and no request is sent. Fix the Auth Setting or the user's credential.
-- The token is frozen for the run, like `MCP_HTTP`. A `401` is reported as `UNAUTHORIZED` with an
-  instruction not to retry; the agent cannot refresh a token mid-run.
+  tools are still listed (so the definition preview shows them) but the call fails fast with
+  `AUTH_MISSING` and no request is sent. The next call asks the provider again, so an authorization
+  declined or timed out can be given later in the same run. A provider that throws is `AUTH_MISSING` too,
+  the detail staying in the service logs.
+- Once obtained, the credential is kept for the rest of the run, and concurrent calls wait for a single
+  resolution. A `401` is reported as `UNAUTHORIZED` with an instruction not to retry; the agent cannot
+  refresh a token mid-run. Between runs, the service refreshes an expired OAuth token with its refresh
+  token; the authorization request asks for offline access (`access_type=offline`) so that Google issues
+  one.
 - API key placement is a property of the called API, hence configured on the integration (`auth`), not
   on the Auth Setting.
 - **The document can supply the placement.** When the `auth` block is absent or left at its defaults and

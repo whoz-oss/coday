@@ -544,6 +544,10 @@ class OAuthFlowService(
                 add("code_challenge_method=S256")
                 if (!scopes.isNullOrBlank()) add("scope=${encodeUtf8(scopes)}")
                 if (!resource.isNullOrBlank()) add("resource=${encodeUtf8(resource)}")
+                // Google only returns a refresh token for offline access; other servers must ignore an
+                // unknown parameter (RFC 6749, section 3.1), and without a refresh token the user is asked
+                // again once the access token expires.
+                add(OFFLINE_ACCESS)
             }
         val separator = if (authorizationEndpoint.contains('?')) "&" else "?"
         return "$authorizationEndpoint$separator${params.joinToString("&")}"
@@ -614,7 +618,9 @@ class OAuthFlowService(
             else -> null
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private const val OFFLINE_ACCESS = "access_type=offline"
+    }
 }
 
 private data class OAuthEndpoints(
