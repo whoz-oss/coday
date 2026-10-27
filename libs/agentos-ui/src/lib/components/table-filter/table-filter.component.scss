@@ -1,0 +1,59 @@
+:host {
+  display: block;
+  margin: 0 0 1rem;
+}
+
+.table-filter {
+  position: relative;
+  display: block;
+  max-width: 28rem;
+}
+
+.table-filter__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.table-filter__icon {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  color: var(--text-muted, #64748b);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.table-filter__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 2.5rem;
+  color: var(--text-color, #0f172a);
+  font: inherit;
+  background: var(--surface-color, #fff);
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 0.5rem;
+
+  &:focus {
+    outline: 2px solid var(--accent-color, #2563eb);
+    outline-offset: 1px;
+  }
+}
+
+.table-filter__clear {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  transform: translateY(-50%);
+}

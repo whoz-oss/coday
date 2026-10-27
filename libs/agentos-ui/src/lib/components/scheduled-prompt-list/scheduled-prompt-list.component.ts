@@ -5,6 +5,8 @@ import { DAY_OF_WEEK_FULL_LABELS, ScheduledPrompt, SchedulerUnit } from '@whoz-o
 import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { catchError, forkJoin, of } from 'rxjs'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 interface ScheduledPromptRow {
   key: string
   prompt: ScheduledPrompt
@@ -12,7 +14,7 @@ interface ScheduledPromptRow {
 }
 @Component({
   selector: 'agentos-scheduled-prompt-list',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './scheduled-prompt-list.component.html',
   styleUrl: './scheduled-prompt-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -25,6 +27,17 @@ export class ScheduledPromptListComponent {
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   protected readonly rows = signal<ScheduledPromptRow[]>([])
   protected readonly isLoading = signal(true)
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [
+      row.prompt.name,
+      row.prompt.description,
+      this.scheduleLabel(row.prompt),
+      row.prompt.enabled ? 'Enabled' : 'Disabled',
+      row.scope,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  )
   constructor() {
     forkJoin({
       platform: this.state.listPlatform().pipe(catchError(() => of([] as ScheduledPrompt[]))),

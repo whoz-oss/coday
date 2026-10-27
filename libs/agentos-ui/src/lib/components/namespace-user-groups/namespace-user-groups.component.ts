@@ -5,11 +5,13 @@ import { UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
 import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { catchError, Observable, of, tap } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /** Namespace-scoped user-group settings page. */
 @Component({
   selector: 'agentos-namespace-user-groups',
-  imports: [SectionHeaderComponent, TableDirective],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
   templateUrl: './namespace-user-groups.component.html',
   styleUrl: './namespace-user-groups.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -24,6 +26,7 @@ export class NamespaceUserGroupsComponent {
   protected readonly isLoading = signal(true)
   protected readonly pendingDeleteId = signal<string | null>(null)
   protected readonly groups = signal<UserGroupSearchResult[]>([])
+  protected readonly groupFilter = createRowFilter(this.groups, (group) => group.name)
 
   constructor() {
     this.refresh()

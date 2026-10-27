@@ -16,7 +16,8 @@ import { UsageConfigurationService } from '../../services/usage-configuration.se
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  readonly usageConfiguration = inject(UsageConfigurationService)
+  private readonly usageConfiguration = inject(UsageConfigurationService)
+
   readonly namespace = input.required<Namespace>()
   /** Git settings exist only while the GIT plugin is loaded on the server. */
   readonly gitAvailable = input(false)
@@ -40,29 +41,14 @@ export class NamespaceItemComponent {
 
   protected readonly pendingDelete = signal(false)
 
-  private readonly baseMenuItems: ActionCardMenuItem[] = [
-    { key: 'integrations', label: 'Integrations' },
-    { key: 'ai-providers', label: 'AI providers' },
-    { key: 'ai-models', label: 'AI models' },
-    { key: 'agent-configs', label: 'Agent configs' },
-    { key: 'prompts', label: 'Prompts' },
-    { key: 'scheduled-prompts', label: 'Schedulers' },
-    { key: 'user-groups', label: 'User groups' },
+  protected readonly menuItems = computed<ActionCardMenuItem[]>(() => [
     { key: 'members', label: 'Members' },
-    { key: 'auth-settings', label: 'Auth settings' },
-    { key: 'tool-invoke', label: 'Tool invoke' },
-    { key: 'edit', label: 'Edit namespace' },
+    ...(this.gitAvailable() ? [{ key: 'git', label: 'Git' }] : []),
+    ...(this.usageConfiguration.enabled() ? [{ key: 'usage', label: 'Usage and costs' }] : []),
     { key: 'separator', label: '', variant: 'separator' },
+    { key: 'edit', label: 'Edit namespace' },
     { key: 'delete', label: 'Delete namespace', variant: 'danger' },
-  ]
-
-  protected readonly menuItems = computed<ActionCardMenuItem[]>(() => {
-    const pluginItems: ActionCardMenuItem[] = []
-    if (this.usageConfiguration.enabled()) pluginItems.push({ key: 'usage', label: 'Usage and costs' })
-    if (this.gitAvailable()) pluginItems.push({ key: 'git', label: 'Git' })
-
-    return [...this.baseMenuItems.slice(0, 10), ...pluginItems, ...this.baseMenuItems.slice(10)]
-  })
+  ])
 
   protected onSelect(): void {
     this.selected.emit(this.namespace())

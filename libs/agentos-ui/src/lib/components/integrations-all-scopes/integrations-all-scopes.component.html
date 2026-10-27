@@ -10,6 +10,12 @@
 } @else if (rows().length === 0) {
   <p class="integrations__status">No integrations available.</p>
 } @else {
+  <agentos-table-filter
+    label="Filter integrations"
+    placeholder="Filter integrations…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
   <div class="integrations__table-wrap">
     <table dsTable>
       <thead>
@@ -21,7 +27,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (row of rows(); track row.key) {
+        @for (row of rowFilter.filteredRows(); track row.key) {
           <tr>
             <td class="integrations__name">{{ row.config.name }}</td>
             <td class="integrations__type">{{ row.config.integrationType }}</td>

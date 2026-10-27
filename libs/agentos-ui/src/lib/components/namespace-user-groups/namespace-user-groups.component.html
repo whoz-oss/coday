@@ -10,6 +10,12 @@
 } @else if (groups().length === 0) {
   <p class="user-groups__status">No user groups configured.</p>
 } @else {
+  <agentos-table-filter
+    label="Filter user groups"
+    placeholder="Filter user groups…"
+    [query]="groupFilter.query()"
+    (queryChange)="groupFilter.query.set($event)"
+  />
   <div class="user-groups__table-wrap">
     <table dsTable>
       <thead>
@@ -21,7 +27,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (group of groups(); track group.userGroupId) {
+        @for (group of groupFilter.filteredRows(); track group.userGroupId) {
           <tr>
             <td class="user-groups__name">{{ group.name }}</td>
             <td>{{ group.agentIds.length }}</td>
