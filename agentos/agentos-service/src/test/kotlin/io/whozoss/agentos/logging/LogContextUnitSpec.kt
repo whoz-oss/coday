@@ -5,6 +5,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.slf4j.MDCContext
 import kotlinx.coroutines.withContext
 import org.slf4j.MDC
@@ -43,7 +44,9 @@ class LogContextUnitSpec :
             withContext(MDCContext(emptyMap())) {
                 withLogContext(LogContext.CASE_ID to "case-io") {
                     withContext(Dispatchers.IO) { MDC.get(LogContext.CASE_ID) } shouldBe "case-io"
-                    async(Dispatchers.Default) { MDC.get(LogContext.CASE_ID) }.await() shouldBe "case-io"
+                    // coroutineScope: the block of withLogContext has no CoroutineScope receiver, so a bare
+                    // async would bind to the enclosing withContext scope and miss the log context.
+                    coroutineScope { async(Dispatchers.Default) { MDC.get(LogContext.CASE_ID) }.await() } shouldBe "case-io"
                 }
             }
         }

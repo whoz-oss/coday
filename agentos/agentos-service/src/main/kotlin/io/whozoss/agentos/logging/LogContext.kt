@@ -44,7 +44,13 @@ object LogContext {
     fun mdcContext(vararg entries: Pair<String, Any?>): MDCContext = MDCContext(merged(*entries))
 }
 
-/** Runs [block] with [entries] added to the MDC, propagated across suspensions and dispatchers. */
+/**
+ * Runs [block] with [entries] added to the MDC, propagated across suspensions and dispatchers.
+ *
+ * [block] has no CoroutineScope receiver: to start child coroutines that inherit the log context,
+ * open one with `coroutineScope { ... }` inside it. A bare `launch`/`async` would bind to an
+ * enclosing scope, whose context does not carry these entries.
+ */
 suspend fun <T> withLogContext(
     vararg entries: Pair<String, Any?>,
     block: suspend () -> T,
