@@ -87,12 +87,9 @@ The OpenAPI document is `factory/factory-service/openapi/factory-workstream-http
 
 ## AgentOS
 
-Restart AgentOS with its generic HTTP_API loopback exception enabled:
-
-```bash
-export AGENTOS_HTTP_API_ALLOW_LOCAL_HTTP=true
-# start AgentOS with your usual command
-```
+AgentOS allows plain HTTP and loopback destinations for `HTTP_API` by default, so the `http://127.0.0.1:8141`
+URLs below need no environment variable. They will not work if AgentOS runs with
+`AGENTOS_HTTP_API_DISALLOW_UNSECURE=true` (strict HTTPS-only policy): unset it for a local trial.
 
 Factory exposes these two read-only spec URLs without a bearer (they are on the authentication filter's public
 allow-list):
@@ -131,5 +128,4 @@ In the AgentOS UI:
   `nx run factory-service:generate-openapi-spec` (needs a forked boot, so it is not part of the unit tests).
 - A non-assigned integration exposing no tools is AgentOS agent-binding behaviour; verify it with one agent that
   has the integration and one that does not.
-- Direct local HTTP is loopback-only and must be explicitly enabled in AgentOS with
-  `AGENTOS_HTTP_API_ALLOW_LOCAL_HTTP=true`.
+- Direct local HTTP works by default in AgentOS; it is refused when `AGENTOS_HTTP_API_DISALLOW_UNSECURE=true`.
