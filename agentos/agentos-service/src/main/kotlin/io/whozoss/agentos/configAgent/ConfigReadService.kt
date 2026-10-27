@@ -10,6 +10,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.integrationConfig.IntegrationsProperties
+import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -25,6 +26,7 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 import io.whozoss.agentos.agentConfig.toDto as agentToDto
 import io.whozoss.agentos.authSetting.toDto as authSettingToDto
+import io.whozoss.agentos.namespace.toDto as namespaceToDto
 import io.whozoss.agentos.prompt.toDto as promptToDto
 import io.whozoss.agentos.skill.toDto as skillToDto
 
@@ -37,7 +39,11 @@ import io.whozoss.agentos.skill.toDto as skillToDto
  *
  * Reads are bounded to the platform, the current namespace and the caller's own overlays: an
  * entity owned by another user is never returned, even to a super-admin, because what the config
- * agent reads ends up in the case history, readable by every member of the case.
+ * agent reads ends up in the case history, readable by every member of the case. The statuses of a
+ * plan's operations in a namespace that plan creates are read with that namespace as the bound.
+ *
+ * Namespaces are platform-level entities, looked up by name only, to tell whether a planned one
+ * already exists; `AGENTOS_CONFIG__read` does not list them.
  */
 @Service
 class ConfigReadService(
@@ -167,6 +173,7 @@ class ConfigReadService(
             ConfigKind.PROMPT -> EntityType.PROMPT
             ConfigKind.INTEGRATION -> EntityType.INTEGRATION_CONFIG
             ConfigKind.AUTH_SETTING -> EntityType.AUTH_SETTING
+            ConfigKind.NAMESPACE -> EntityType.NAMESPACE
         }
 
     private fun load(
@@ -179,6 +186,7 @@ class ConfigReadService(
             ConfigKind.PROMPT -> promptService.findById(id)?.let(::fromPrompt)
             ConfigKind.INTEGRATION -> integrationConfigService.findById(id)?.let(::fromIntegration)
             ConfigKind.AUTH_SETTING -> authSettingService.findById(id)?.let(::fromAuthSetting)
+            ConfigKind.NAMESPACE -> namespaceService.findById(id)?.let(::fromNamespace)
         }
 
     private fun loadScope(
@@ -207,6 +215,7 @@ class ConfigReadService(
                     userId == null -> authSettingService.findByNamespaceId(namespaceId!!).filter { it.userId == null }
                     else -> authSettingService.findByUserId(userId).filter { it.namespaceId == namespaceId }
                 }.map(::fromAuthSetting)
+            ConfigKind.NAMESPACE -> if (namespaceId == null && userId == null) namespaceService.findAll().map(::fromNamespace) else emptyList()
         }
 
     /** The caller's own overlays of [kind]: user-global and user x current namespace. */
@@ -280,5 +289,15 @@ class ConfigReadService(
             namespaceId = setting.namespaceId,
             userId = setting.userId,
             dto = objectMapper.valueToTree(authSettingToDto(setting)),
+        )
+
+    private fun fromNamespace(namespace: Namespace) =
+        ConfigEntity(
+            kind = ConfigKind.NAMESPACE,
+            id = namespace.metadata.id,
+            name = namespace.name,
+            namespaceId = null,
+            userId = null,
+            dto = objectMapper.valueToTree(namespace.namespaceToDto()),
         )
 }

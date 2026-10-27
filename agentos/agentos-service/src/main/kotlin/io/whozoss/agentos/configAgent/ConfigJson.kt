@@ -116,7 +116,8 @@ internal object ConfigJson {
             else -> false
         }
 
-    private fun opRefOf(node: JsonNode): String? =
+    /** The ref [node] names when it is a `{"$op": "<ref>"}` object, else null. */
+    fun opRefOf(node: JsonNode): String? =
         if (node is ObjectNode && node.size() == 1 && node.get(OP_REF_KEY)?.isTextual == true) {
             node.get(OP_REF_KEY).textValue()
         } else {

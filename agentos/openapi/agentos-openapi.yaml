@@ -4844,6 +4844,7 @@ components:
           - PROMPT
           - INTEGRATION
           - AUTH_SETTING
+          - NAMESPACE
         name:
           type: string
           description: Name of the entity created or targeted.
@@ -4851,6 +4852,10 @@ components:
           type: string
           format: uuid
           description: "Scope of the entity: null namespaceId and userId mean platform."
+        namespaceName:
+          type: string
+          description: "Name of the namespace this plan creates, when the operation\
+            \ writes into it or deploys on it."
         order:
           type: integer
           format: int32

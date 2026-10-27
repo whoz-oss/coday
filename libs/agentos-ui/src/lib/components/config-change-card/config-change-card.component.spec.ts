@@ -87,6 +87,45 @@ describe('ConfigChangeCardComponent', () => {
     expect(button(root, 'Apply').disabled).toBe(false)
   })
 
+  it('names the namespace the plan creates on the operations that go into it', () => {
+    const root = render(
+      plan({
+        operations: [
+          {
+            ref: 'ns',
+            order: 1,
+            kind: 'NAMESPACE',
+            action: 'CREATE',
+            name: 'Copy',
+            affects: 'PLATFORM',
+            value: { name: 'Copy' },
+            changes: [],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+          {
+            ref: 'sup',
+            order: 2,
+            kind: 'AGENT',
+            action: 'CREATE',
+            name: 'support',
+            affects: 'NAMESPACE_MEMBERS',
+            namespaceName: 'Copy',
+            deployTo: 'NAMESPACE',
+            value: { name: 'support' },
+            changes: [],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+        ],
+      } as Partial<ConfigChangeViewDto>)
+    )
+
+    expect(root.textContent).toContain('create namespace Copy')
+    expect(root.textContent).toContain('Members of Copy')
+    expect(root.textContent).toContain('Deployed on Copy so its members can use it.')
+  })
+
   it('applies the displayed plan with its hash and the typed secrets', () => {
     service.applyConfigChange.mockReturnValue(of({ decision: 'APPLIED', appliedBy: 'u-1', results: [] }))
     const root = render(plan())

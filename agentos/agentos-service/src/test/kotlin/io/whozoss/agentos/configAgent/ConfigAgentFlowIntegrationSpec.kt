@@ -8,6 +8,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
@@ -107,10 +108,16 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
     private lateinit var devAgent: AgentConfig
     private lateinit var suffix: String
 
-    private fun user(): User {
+    private fun user(isAdmin: Boolean = false): User {
         val id = UUID.randomUUID()
-        return User(metadata = EntityMetadata(id = id), externalId = "cfg-$id@example.com", email = "cfg-$id@example.com", isAdmin = false)
+        return User(metadata = EntityMetadata(id = id), externalId = "cfg-$id@example.com", email = "cfg-$id@example.com", isAdmin = isAdmin)
     }
+
+    private fun superAdmin(): User =
+        user(isAdmin = true).also { root ->
+            userRepository.save(root)
+            every { userService.findById(root.id) } returns root
+        }
 
     private fun actAs(user: User) {
         every { userService.getCurrentUser() } returns user
@@ -177,6 +184,23 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                           "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
                       ] }
                     """.trimIndent()
+
+    /** A new namespace with an integration and an agent in it, and a platform agent deployed on it. */
+    private fun namespacePlan(platformAgent: AgentConfig) =
+        """
+        { "summary": "Copy the setup into a new namespace",
+          "operations": [
+            { "ref": "dev", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
+              "value": { "name": "dev-copy-$suffix", "instructions": "Help the user" }, "deployTo": "NAMESPACE" },
+            { "ref": "shared", "kind": "AGENT", "action": "DEPLOY", "id": "${platformAgent.id}", "scope": { "namespaceId": { "${'$'}op": "ns" } } },
+            { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
+              "value": { "name": "ACME_$suffix", "integrationType": "JIRA" } },
+            { "ref": "ns", "kind": "NAMESPACE", "action": "CREATE", "value": { "name": "Copy $suffix", "description": "Copied" } }
+          ] }
+        """.trimIndent()
+
+    private fun platformAgent(): AgentConfig =
+        agentConfigRepository.save(AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, name = "shared-$suffix", enabled = true))
 
     private fun promptPlan(name: String) =
         """
@@ -295,6 +319,68 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             view(proposal.questionId)["state"].asText() shouldBe "ANSWERED"
             val reapplied = applied(again.questionId, view(again.questionId)["planHash"].asText())
             reapplied["results"].map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
+        }
+
+        "a super-admin's plan creates a namespace and configures it, not the case's namespace; proposing it again converges" {
+            val root = superAdmin()
+            val shared = platformAgent()
+            actAs(root)
+            val proposal = propose(root, namespacePlan(shared))
+
+            val shown = view(proposal.questionId)
+            shown["operations"].map { it["ref"].asText() } shouldContainExactly listOf("ns", "acme", "dev", "shared")
+            shown["operations"].map { it["status"].asText() }.toSet() shouldBe setOf("PENDING")
+            shown["operations"].drop(1).map { it["namespaceName"].asText() }.toSet() shouldBe setOf("Copy $suffix")
+
+            val report = applied(proposal.questionId, shown["planHash"].asText())
+
+            report["decision"].asText() shouldBe "APPLIED"
+            val created = namespaceService.findAll().single { it.name == "Copy $suffix" }
+            integrationConfigService.findByNamespaceShared(created.id).map { it.name } shouldContainExactly listOf("ACME_$suffix")
+            val dev = agentConfigService.findByNamespace(created.id).single { it.name == "dev-copy-$suffix" }
+            namespaceService.findDeployedAgentIds(created.id) shouldBe setOf(dev.id, shared.id)
+            agentConfigService.findByNamespace(namespace.id).map { it.name } shouldNotContain "dev-copy-$suffix"
+            namespaceService.findDeployedAgentIds(namespace.id) shouldNotContain shared.id
+            report["results"].single { it["ref"].asText() == "ns" }["entityId"].asText() shouldBe created.id.toString()
+
+            val again = propose(root, namespacePlan(shared))
+            val reapplied = applied(again.questionId, view(again.questionId)["planHash"].asText())
+            reapplied["results"].map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
+            namespaceService.findAll().count { it.name == "Copy $suffix" } shouldBe 1
+        }
+
+        "a namespace admin's plan that creates a namespace is refused by the REST rules, and nothing after it runs" {
+            val proposal = propose(alice, namespacePlan(platformAgent()))
+
+            val report = applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())
+
+            report["decision"].asText() shouldBe "FAILED"
+            report["results"].associate { it["ref"].asText() to it["status"].asText() } shouldBe
+                mapOf("ns" to "DENIED", "acme" to "NOT_RUN", "dev" to "NOT_RUN", "shared" to "NOT_RUN")
+            namespaceService.findAll().none { it.name == "Copy $suffix" } shouldBe true
+        }
+
+        "a scope names this namespace, the platform or a namespace the same plan creates, nothing else" {
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "ns", "kind": "NAMESPACE", "action": "CREATE", "scope": { "namespaceId": "current" }, "value": { "name": "N-$suffix" } },
+                        { "ref": "p", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "q" } },
+                          "value": { "name": "P-$suffix", "content": ["x"] } },
+                        { "ref": "q", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "Q-$suffix", "content": ["x"] } },
+                        { "ref": "d", "kind": "AGENT", "action": "DEPLOY", "id": "${devAgent.id}", "scope": { "namespaceId": null } },
+                        { "ref": "u", "kind": "NAMESPACE", "action": "UPDATE", "id": "${namespace.id}" } ] }
+                    """.trimIndent(),
+                    ToolContext(namespaceId = namespace.id, userId = alice.id, userExternalId = null, caseEvents = emptyList()),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "ns: a namespace has no scope"
+            result.output shouldContain "p: scope.namespaceId {\"${'$'}op\": \"q\"} must name an operation of this plan that creates a NAMESPACE"
+            result.output shouldContain "d: a deployment needs a namespace"
+            result.output shouldContain "u: UPDATE is not supported for NAMESPACE"
         }
 
         "a newer plan supersedes an older one for good, even once answered" {

@@ -156,7 +156,7 @@ export class ConfigChangeCardComponent implements OnInit {
       case 'PLATFORM':
         return 'Whole platform'
       default:
-        return 'Namespace members'
+        return op.namespaceName ? `Members of ${op.namespaceName}` : 'Namespace members'
     }
   }
 

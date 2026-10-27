@@ -39,10 +39,13 @@ class ConfigProposeTool(
         (the same fields as the AgentOS REST API: e.g. an agent has name, description, instructions, modelName,
         integrations {"INTEGRATION_NAME": null or ["tool"]}, subAgents; a prompt has name, content [..], agentConfigId;
         an integration has name, integrationType, description, parameters, authSettingName; an API key auth setting
-        has name, authType "API_KEY", apiKey; a skill has name, description, body).
+        has name, authType "API_KEY", apiKey; a skill has name, description, body; a namespace has name, description).
         To use the id of an entity created earlier in the same plan, write {"${'$'}op": "<ref>"}.
         Never write a secret (API key, token, password): declare its path in 'secrets' and the user types it in the card.
         A new agent needs 'deployTo': NAMESPACE so members can use it, or NONE.
+        Entities live on the platform, in this namespace, or in a namespace the same plan creates (CREATE NAMESPACE, then
+        scope.namespaceId {"${'$'}op": "<its ref>"} on the entities created in it and on the DEPLOY of existing platform agents).
+        No other namespace can be read or changed from here.
         """.trimIndent()
 
     override val inputSchema: String =
@@ -59,14 +62,14 @@ class ConfigProposeTool(
                 "type": "object",
                 "properties": {
                   "ref": { "type": "string", "description": "Short unique name of this operation, used by {\"${'$'}op\": ref}." },
-                  "kind": { "type": "string", "enum": ["AGENT", "SKILL", "PROMPT", "INTEGRATION", "AUTH_SETTING"] },
+                  "kind": { "type": "string", "enum": ["AGENT", "SKILL", "PROMPT", "INTEGRATION", "AUTH_SETTING", "NAMESPACE"] },
                   "action": { "type": "string", "enum": ["CREATE", "UPDATE", "ENABLE", "DISABLE", "DEPLOY", "UNDEPLOY"] },
                   "id": { "type": "string", "description": "Target id, for every action but CREATE." },
                   "scope": {
                     "type": "object",
-                    "description": "CREATE only. namespaceId: the namespace id (or \"current\"), null for platform. userId: \"me\" for a personal entity, null for a shared one.",
+                    "description": "CREATE (but not of a NAMESPACE), and DEPLOY or UNDEPLOY on a namespace the plan creates. namespaceId: \"current\" for this namespace, {\"${'$'}op\": \"<ref>\"} for a namespace created by this plan, null for platform. userId: \"me\" for a personal entity, null for a shared one.",
                     "properties": {
-                      "namespaceId": { "type": ["string", "null"] },
+                      "namespaceId": { "type": ["string", "object", "null"] },
                       "userId": { "type": ["string", "null"] }
                     }
                   },

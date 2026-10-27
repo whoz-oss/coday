@@ -27,6 +27,10 @@ export interface ConfigOperationViewDto {
    * Scope of the entity: null namespaceId and userId mean platform.
    */
   namespaceId?: string
+  /**
+   * Name of the namespace this plan creates, when the operation writes into it or deploys on it.
+   */
+  namespaceName?: string
   order: number
   ref: string
   secretInputs: Array<ConfigSecretInputDto>
@@ -58,6 +62,7 @@ export enum ConfigOperationViewDtoKindEnum {
   PROMPT = 'PROMPT',
   INTEGRATION = 'INTEGRATION',
   AUTH_SETTING = 'AUTH_SETTING',
+  NAMESPACE = 'NAMESPACE',
 }
 export enum ConfigOperationViewDtoStatusEnum {
   PENDING = 'PENDING',

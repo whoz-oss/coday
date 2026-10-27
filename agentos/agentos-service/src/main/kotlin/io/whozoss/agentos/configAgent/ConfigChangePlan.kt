@@ -28,4 +28,18 @@ data class ConfigChangePlan(
     val planHash: String = "",
 ) {
     fun operation(ref: String): PlannedOperation? = operations.firstOrNull { it.ref == ref }
+
+    /**
+     * The namespace [op] deploys on (a `DEPLOY`, `UNDEPLOY`, or an agent created with
+     * `deployTo: NAMESPACE`): the one its scope names, else this plan's. Null while the namespace a
+     * plan creates does not exist yet.
+     */
+    fun deploymentNamespaceOf(
+        op: PlannedOperation,
+        createdIds: Map<String, UUID>,
+    ): UUID? =
+        when (val scope = op.scope) {
+            null -> namespaceId
+            else -> if (scope.namespaceRef == null) scope.namespaceId ?: namespaceId else scope.namespaceIn(createdIds)
+        }
 }
