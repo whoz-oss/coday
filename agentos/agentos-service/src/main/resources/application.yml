@@ -247,6 +247,27 @@ agentos:
     # to it. A user may also create one for themselves, to narrow their own runs.
     # Override with env var: AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT
     enabled-by-default: ${AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT:true}
+  self-config:
+    # Declare that a platform-scoped 'SELF_CONFIG' integration configuration should exist. When true
+    # (shipped default), SelfConfigIntegrationConfigSeeder creates it at startup if absent, so an
+    # agent only has to name 'SELF_CONFIG' in its integrations to let the user manage their OWN
+    # personal integration configurations: listIntegrationTypes, listIntegrations,
+    # createIntegration, updateIntegration, deleteIntegration.
+    #
+    # The seeded configuration is NOT auto-granted, and SELF_CONFIG is not in
+    # agentos.integrations.auto-grantable-types either, so it can never be: an agent able to rewrite
+    # a user's configuration is an explicit, reviewed assignment. Narrow it to the read tools with
+    # SELF_CONFIG: [listIntegrationTypes, listIntegrations] for an agent that should only explain.
+    #
+    # The tools only ever reach configurations OWNED BY THE CALLING USER. Shared ones (namespace or
+    # platform) are read-only to them, whatever rights the user holds elsewhere, and a run with no
+    # identified user (webhook, scheduled prompt) is refused outright.
+    #
+    # This declares EXISTENCE, not content: once it exists it belongs to the administrator and
+    # startup never rewrites it. It is create-only: setting this back to false does NOT delete an
+    # already-seeded configuration (a warning is logged instead).
+    # Override with env var: AGENTOS_SELF_CONFIG_ENABLED_BY_DEFAULT
+    enabled-by-default: ${AGENTOS_SELF_CONFIG_ENABLED_BY_DEFAULT:true}
   limits:
   # Maximum number of internal steps per user message in the CaseRuntime before the case
   # transitions to ERROR status. A "step" is one processNextStep() call covering agent
