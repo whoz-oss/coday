@@ -59,6 +59,8 @@ import { QuestionPanelComponent, questionElementId } from '../question-panel/que
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
+import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
+import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
 import {
   buildDelegations,
   DelegationPresentation,
@@ -168,6 +170,7 @@ function hasActiveSelection(): boolean {
     ConfigChangeCardComponent,
     DelegationCardComponent,
     ConfirmDialogComponent,
+    AgentActivityComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -377,6 +380,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   readonly showToolCallsOverride = input(true)
   protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
+
+  /**
+   * What the agent is doing right now — shown in place of a spinner while the turn runs.
+   * Derived from the event stream, so it follows the turn without any extra bookkeeping.
+   */
+  protected readonly activity = computed<AgentActivity>(() => describeAgentActivity(this.events()))
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')

@@ -1,0 +1,9 @@
+<div class="agent-activity" role="status" aria-live="polite" [attr.title]="activity().detail">
+  <span class="agent-activity__pulse" aria-hidden="true"></span>
+  @for (line of lines(); track line.label) {
+    <span class="agent-activity__label">{{ line.label }}</span>
+  }
+  @if (elapsed(); as seconds) {
+    <span class="agent-activity__elapsed">{{ seconds }}</span>
+  }
+</div>
