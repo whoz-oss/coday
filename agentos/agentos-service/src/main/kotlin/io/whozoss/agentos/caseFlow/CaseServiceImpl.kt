@@ -163,7 +163,9 @@ class CaseServiceImpl(
             throw BadRequestException("A sub-case shares its root case's worktree and cannot choose one")
         }
         if (worktree == true && caseWorkspaceProvisioning == null) {
-            throw ConflictException("Cannot create a worktree for this case: Git workspaces are not enabled on this instance")
+            throw ConflictException(
+                "Cannot create a worktree for this case: Git workspaces are not enabled on this instance",
+            )
         }
         return caseWorkspaceProvisioning?.aroundCreation(entity, worktree) { createCase(entity, worktree) }
             ?: createCase(entity, worktree)

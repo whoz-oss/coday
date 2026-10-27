@@ -16,6 +16,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import {
   catchError,
   combineLatest,
+  defer,
   filter,
   firstValueFrom,
   map,
@@ -62,9 +63,8 @@ const GIT_INTEGRATION_TYPE = 'GIT'
  * 4. POST /api/cases/:id/messages sends the first message
  * 5. Only then does the app navigate to the case chat
  *
- * When this instance has Git workspaces and the GIT plugin, and the namespace a repository, a
- * top-level case may get its own worktree: the choice starts from the namespace's setting and is
- * sent with the creation.
+ * When this instance has Git workspaces and the GIT plugin, and the namespace creates a worktree
+ * for every top-level case, the composer offers it checked: unchecking it creates the case without Git.
  *
  * The first message is never stored in router state to avoid re-sending on refresh.
  * The created case id is remembered in [pendingCaseId] so a failed upload/send retries
@@ -122,20 +122,22 @@ export class CaseHomeComponent implements OnInit {
   /** Case created by a previous failed submit — reused on retry, never duplicated. */
   protected readonly pendingCaseId = signal<string | null>(null)
 
-  /** Offered with Git workspaces and the GIT plugin on this instance, and a repository on the namespace. */
+  /** Offered with Git workspaces and the GIT plugin, where the namespace gives every top-level case a worktree. */
   protected readonly worktreeOffered = signal(false)
-  /** Whether the new case gets a worktree, starting from the namespace's setting for every top-level case. */
-  protected readonly worktree = signal(false)
+  /** False once the creator declines the worktree the namespace gives the new case. */
+  protected readonly worktree = signal(true)
   private readonly worktreeNamespace = new Subject<string>()
-  /** Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows. */
+  /**
+   * Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows.
+   * A failure is not kept: the next namespace asks again.
+   */
   private readonly gitWorkspaces$ = combineLatest([
     this.workspaces.enabled$,
-    this.integrationTypeApi
-      .listTypesIntegrationType()
-      .pipe(map((types) => types.some((type) => type.type === GIT_INTEGRATION_TYPE))),
+    defer(() => this.integrationTypeApi.listTypesIntegrationType()).pipe(
+      map((types) => types.some((type) => type.type === GIT_INTEGRATION_TYPE))
+    ),
   ]).pipe(
     map(([enabled, gitPlugin]) => enabled && gitPlugin),
-    catchError(() => of(false)),
     shareReplay({ bufferSize: 1, refCount: false })
   )
 
@@ -180,21 +182,25 @@ export class CaseHomeComponent implements OnInit {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
     this.autocomplete.init(this.namespaceId)
 
-    // A namespace switch drops the answer still pending for the previous one.
+    // A namespace switch drops the answer still pending for the previous one. A sub-case shares its
+    // root's worktree, so its composer asks nothing.
     this.worktreeNamespace
       .pipe(
         switchMap((namespaceId) =>
-          this.gitWorkspaces$.pipe(
-            switchMap((available) => (available ? this.gitApi.getAssociationNamespaceGit(namespaceId) : of(null))),
-            // An association that cannot be read offers nothing: the composer stays as it is without Git.
-            catchError(() => of(null))
-          )
+          this.parentCaseId()
+            ? of(null)
+            : this.gitWorkspaces$.pipe(
+                switchMap((available) => (available ? this.gitApi.getAssociationNamespaceGit(namespaceId) : of(null))),
+                // Nothing readable offers nothing: the composer stays as it is without Git.
+                catchError(() => of(null))
+              )
         ),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe((association) => {
-        this.worktreeOffered.set(!!association?.associated)
-        this.worktree.set(!!association?.autoWorktreeForRootCases)
+        // Only an associated namespace creates worktrees; an unusable association reports false.
+        this.worktreeOffered.set(association?.autoWorktreeForRootCases === true)
+        this.worktree.set(true)
       })
 
     // Track both the value and the view query. This covers programmatic writes
@@ -289,7 +295,8 @@ export class CaseHomeComponent implements OnInit {
           this.caseApi.createCase({
             namespaceId,
             ...(parentCaseId ? { parentCaseId } : {}),
-            ...(this.worktreeOffered() && !parentCaseId ? { worktree: this.worktree() } : {}),
+            // Only a declined worktree is sent: left checked, the namespace's setting applies as before.
+            ...(this.worktreeOffered() && !parentCaseId && !this.worktree() ? { worktree: false } : {}),
             status: CaseStatusEnum.PENDING,
             favorite: false,
             removed: false,

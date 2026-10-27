@@ -17,15 +17,15 @@ import org.springframework.stereotype.Component
  * and persisted as a binding rather than re-derived later from the namespace's configuration —
  * re-deriving would make the automation switch retroactive in both directions.
  *
- * The creator may decide for the root case: a declined worktree is never created, and a requested
- * one is created even when automation is off, or the creation is refused, never silently made
- * without it. Without a choice, the namespace's automation decides.
+ * The namespace's automation decides; the creator can only decline it, never equip a root case the
+ * namespace would not. A creator who requires the worktree gets it, or the creation is refused:
+ * the case is never silently made without it.
  *
  * This records the intent only. Cloning, worktree creation and setup happen in
  * [CaseWorktreeProvisioner], driven separately, so creating a case stays fast and a failed
  * preparation never turns into a failure to create the conversation. Invalid namespace settings do
- * refuse a root case that should be equipped: the family could never be equipped later, and only a
- * namespace admin can fix them.
+ * refuse a root case that automation should equip: the family could never be equipped later, and
+ * only a namespace admin can fix them.
  *
  * Installed only with `agentos.git.workspaces.enabled`. No family is equipped while the worker is
  * disabled: nothing would prepare its workspace, and its turns would wait forever.
@@ -38,32 +38,50 @@ class GitCaseWorkspaceProvisioning(
     private val gitAvailability: GitAvailability,
     private val worker: ObjectProvider<CaseWorkspaceWorker>,
 ) : CaseWorkspaceProvisioning {
-    override fun <T> aroundCreation(case: Case, worktree: Boolean?, action: () -> T): T =
-        // Only a root case that gets a worktree has settings to freeze: creations elsewhere never wait.
-        if (case.parentCaseId == null && (worktree ?: associationService.automationEnabled(case.namespaceId))) {
-            WorkspaceLifecycleLocks.withNamespace(case.namespaceId, action)
-        } else {
-            action()
-        }
+    override fun <T> aroundCreation(case: Case, worktree: Boolean?, action: () -> T): T {
+        if (case.parentCaseId != null || worktree == false) return action()
+        val automation = associationService.automationEnabled(case.namespaceId)
+        if (worktree == true) requireWorktreePossible(automation)
+        // Only a namespace that equips new families has settings to freeze: creations elsewhere never wait.
+        return if (automation) WorkspaceLifecycleLocks.withNamespace(case.namespaceId, action) else action()
+    }
 
     override fun onCaseCreated(case: Case, worktree: Boolean?) {
+        if (case.parentCaseId != null || worktree == false) return
         // Equip only a creation that [aroundCreation] serialized with settings saves. Taking the lock
         // now, after the case write, could deadlock with a save waiting for that write's database lock.
-        if (case.parentCaseId == null && worktree != false && WorkspaceLifecycleLocks.holdsNamespace(case.namespaceId)) {
-            allocate(case, requested = worktree == true)
+        if (WorkspaceLifecycleLocks.holdsNamespace(case.namespaceId)) {
+            allocate(case, required = worktree == true)
+        } else {
+            check(worktree != true) { "Case ${case.id} requires a worktree but was not created through aroundCreation" }
         }
     }
 
-    private fun allocate(case: Case, requested: Boolean) {
-        equippingSettings(case, requested)?.let { settings ->
+    /** Refuses a required worktree before the case is written when this instance or namespace cannot create it. */
+    private fun requireWorktreePossible(automation: Boolean) {
+        val reason =
+            when {
+                !gitAvailability.isAvailable() -> "Git is not available on this instance"
+                worker.getIfAvailable() == null -> "the Git worker is disabled on this instance"
+                !automation -> NAMESPACE_WITHOUT_WORKTREES
+                else -> null
+            }
+        reason?.let { throw ConflictException("$WORKTREE_REFUSED: $it") }
+    }
+
+    private fun allocate(case: Case, required: Boolean) {
+        val settings = equippingSettings(case)
+        // A settings save this creation waited for may have turned automation off.
+        if (settings == null && required) throw ConflictException("$WORKTREE_REFUSED: $NAMESPACE_WITHOUT_WORKTREES")
+        settings?.let {
             val binding =
                 bindingService.create(
                     CaseResourceBinding(
                         rootCaseId = case.id,
                         namespaceId = case.namespaceId,
-                        integrationConfigId = settings.configId,
+                        integrationConfigId = it.configId,
                         status = CaseResourceStatus.REQUESTED,
-                        settings = settings,
+                        settings = it,
                     ),
                 )
             logger.info { "Case ${case.id} equipped with workspace ${binding.id} (title '${case.title}')" }
@@ -71,34 +89,22 @@ class GitCaseWorkspaceProvisioning(
     }
 
     /** The settings a new root case is equipped with, or null when this instance or namespace equips nothing. */
-    private fun equippingSettings(case: Case, requested: Boolean): GitRepositorySettings? =
+    private fun equippingSettings(case: Case): GitRepositorySettings? =
         when {
             // Without the GIT plugin no new family is equipped; families equipped earlier keep working.
-            !gitAvailability.isAvailable() -> {
-                refuseIfRequested(requested, "Git is not available on this instance")
-                null
-            }
+            !gitAvailability.isAvailable() -> null
             worker.getIfAvailable() == null -> {
-                refuseIfRequested(requested, "the Git worker is disabled on this instance")
                 // Allocation only runs where automation is on: this case would have been equipped.
                 logger.warn { "Case ${case.id} not equipped: Git workspaces are enabled but the Git worker is disabled" }
                 null
             }
-            else -> namespaceSettings(case, requested)
+            else -> automaticSettings(case)
         }
 
-    /**
-     * The settings [case] is equipped with: the namespace's own when the creator asked for a worktree,
-     * otherwise those of its automation. Invalid ones are the admin's to fix, not the caller's.
-     */
-    private fun namespaceSettings(case: Case, requested: Boolean): GitRepositorySettings? =
+    /** The settings automation equips [case] with. Invalid ones are the admin's to fix, not the caller's. */
+    private fun automaticSettings(case: Case): GitRepositorySettings? =
         try {
-            if (requested) {
-                associationService.findSettings(case.namespaceId)
-                    ?: throw ConflictException("Cannot create a worktree for this case: its namespace has no Git repository")
-            } else {
-                associationService.findAutomaticSettings(case.namespaceId)
-            }
+            associationService.findAutomaticSettings(case.namespaceId)
         } catch (e: BadRequestException) {
             throw ConflictException(
                 "The namespace Git settings are invalid (${e.message}): " +
@@ -107,10 +113,8 @@ class GitCaseWorkspaceProvisioning(
             )
         }
 
-    /** A requested worktree is created or the creation refused: the case is never made silently without it. */
-    private fun refuseIfRequested(requested: Boolean, reason: String) {
-        if (requested) throw ConflictException("Cannot create a worktree for this case: $reason")
+    companion object : KLogging() {
+        private const val WORKTREE_REFUSED = "Cannot create a worktree for this case"
+        private const val NAMESPACE_WITHOUT_WORKTREES = "its namespace does not create worktrees"
     }
-
-    companion object : KLogging()
 }
