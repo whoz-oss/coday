@@ -6,9 +6,10 @@ import com.fasterxml.jackson.databind.JsonNode
  * One frozen operation.
  *
  * - `CREATE`: [scope] and [value] (the DTO fields, `{"$op": "<ref>"}` standing for the id an
- *   earlier operation created), plus [deployTo] for an agent.
+ *   earlier operation created), plus [deployTo] for an agent. A namespace has [value] only.
  * - `UPDATE`: [target] and [changes], merged by the server onto the full DTO it re-reads.
- * - `ENABLE`, `DISABLE`, `DEPLOY`, `UNDEPLOY`: [target] only.
+ * - `ENABLE`, `DISABLE`: [target] only.
+ * - `DEPLOY`, `UNDEPLOY`: [target], plus [scope] when the namespace is one the plan creates.
  *
  * [secrets] are paths whose values the user types into the card; they never come from the LLM.
  */

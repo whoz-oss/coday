@@ -29,7 +29,9 @@
             <pre class="config-change__json">{{ json(op.value) }}</pre>
           }
           @if (op.deployTo === 'NAMESPACE') {
-            <p class="config-change__note">Deployed on the namespace so its members can use it.</p>
+            <p class="config-change__note">
+              Deployed on {{ op.namespaceName ?? 'the namespace' }} so its members can use it.
+            </p>
           } @else if (op.deployTo === 'NONE') {
             <p class="config-change__note">Not deployed: members of the namespace will not see it.</p>
           }

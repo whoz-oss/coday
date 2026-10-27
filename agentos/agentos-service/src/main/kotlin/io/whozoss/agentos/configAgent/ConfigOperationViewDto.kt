@@ -15,6 +15,8 @@ data class ConfigOperationViewDto(
     @field:Schema(description = "Scope of the entity: null namespaceId and userId mean platform.")
     val namespaceId: UUID?,
     val userId: UUID?,
+    @field:Schema(description = "Name of the namespace this plan creates, when the operation writes into it or deploys on it.")
+    val namespaceName: String? = null,
     val affects: ConfigAffects,
     val deployTo: ConfigDeployTarget?,
     @field:Schema(description = "CREATE only: the fields of the new entity, secrets excluded.")

@@ -12,6 +12,8 @@ import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.common.EntityCrudApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
+import io.whozoss.agentos.sdk.api.namespace.NamespaceApi
+import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
 import io.whozoss.agentos.sdk.api.prompt.PromptApi
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.skill.SkillApi
@@ -40,6 +42,7 @@ class ApiBeanConfigWriter(
     private val promptApi: PromptApi,
     private val integrationConfigApi: IntegrationConfigApi,
     private val authSettingApi: AuthSettingApi,
+    private val namespaceApi: NamespaceApi,
     private val namespaceController: NamespaceController,
     private val objectMapper: ObjectMapper,
     private val validator: Validator,
@@ -54,6 +57,7 @@ class ApiBeanConfigWriter(
             ConfigKind.PROMPT -> promptApi.create(read(dto, PromptDto::class.java)).id
             ConfigKind.INTEGRATION -> integrationConfigApi.create(read(dto, IntegrationConfigDto::class.java)).id
             ConfigKind.AUTH_SETTING -> authSettingApi.create(read(dto, AuthSettingDto::class.java)).id
+            ConfigKind.NAMESPACE -> namespaceApi.create(read(dto, NamespaceDto::class.java)).id
         } ?: throw IllegalStateException("The REST API created a $kind without returning its id")
 
     override fun update(
@@ -67,6 +71,7 @@ class ApiBeanConfigWriter(
             ConfigKind.PROMPT -> update(promptApi, id, PromptDto::class.java, change)
             ConfigKind.INTEGRATION -> update(integrationConfigApi, id, IntegrationConfigDto::class.java, change)
             ConfigKind.AUTH_SETTING -> update(authSettingApi, id, AuthSettingDto::class.java, change)
+            ConfigKind.NAMESPACE -> update(namespaceApi, id, NamespaceDto::class.java, change)
         }
     }
 

@@ -49,12 +49,11 @@ class ConfigChangeService(
         val plan = loaded.plan
         val state = stateOf(loaded, claimedByCaller = false)
         val createdIds = mutableMapOf<String, UUID>()
-        val deployed = configReadService.deployedAgentIds(plan.namespaceId)
         val operations =
             plan.order.mapNotNull(plan::operation).mapIndexed { index, op ->
-                val evaluation = configChangeStatus.evaluate(op, plan, viewer.id, createdIds, deployed)
+                val evaluation = configChangeStatus.evaluate(op, plan, viewer.id, createdIds)
                 evaluation.entityId?.let { createdIds[op.ref] = it }
-                viewOf(op, index, evaluation)
+                viewOf(op, index, evaluation, plan, createdIds)
             }
         return ConfigChangeViewDto(
             questionId = questionId,
@@ -133,9 +132,8 @@ class ConfigChangeService(
         secrets: Map<String, String>,
     ): List<String> {
         val createdIds = mutableMapOf<String, UUID>()
-        val deployed = configReadService.deployedAgentIds(plan.namespaceId)
         return plan.order.mapNotNull(plan::operation).flatMap { op ->
-            val evaluation = configChangeStatus.evaluate(op, plan, callerId, createdIds, deployed)
+            val evaluation = configChangeStatus.evaluate(op, plan, callerId, createdIds)
             evaluation.entityId?.let { createdIds[op.ref] = it }
             val needsWrite = evaluation.status == ConfigOperationStatus.PENDING && !(op.action == ConfigAction.CREATE && evaluation.entityId != null)
             op.secrets.map { secretKey(op, it) }.filter { needsWrite && secrets[it].isNullOrEmpty() }
@@ -149,12 +147,11 @@ class ConfigChangeService(
         secrets: Map<String, String>,
     ): ConfigChangeReportDto {
         val createdIds = mutableMapOf<String, UUID>()
-        val deployed = configReadService.deployedAgentIds(plan.namespaceId)
         val results =
             plan.order.mapNotNull(plan::operation).fold(emptyList<ConfigOperationResultDto>()) { done, op ->
                 done +
                     if (done.all { it.status.isSuccess }) {
-                        applyOperation(op, plan, caller, secrets, createdIds, deployed)
+                        applyOperation(op, plan, caller, secrets, createdIds)
                     } else {
                         ConfigOperationResultDto(op.ref, ConfigResultStatus.NOT_RUN)
                     }
@@ -176,10 +173,9 @@ class ConfigChangeService(
         caller: User,
         secrets: Map<String, String>,
         createdIds: MutableMap<String, UUID>,
-        deployed: Set<UUID>,
     ): ConfigOperationResultDto {
         val evaluation =
-            runCatching { configChangeStatus.evaluate(op, plan, caller.id, createdIds, deployed) }
+            runCatching { configChangeStatus.evaluate(op, plan, caller.id, createdIds) }
                 .onFailure { logger.warn(it) { "[ConfigChange] could not evaluate ${op.ref}" } }
                 .getOrNull()
         evaluation?.entityId?.let { createdIds[op.ref] = it }
@@ -212,7 +208,7 @@ class ConfigChangeService(
                         val id = evaluation.entityId ?: configWriter.create(op.kind, createPayload(op, secrets, createdIds))
                         createdId = id
                         if (op.kind == ConfigKind.AGENT && op.deployTo == ConfigDeployTarget.NAMESPACE) {
-                            configWriter.setDeployed(op.scope?.namespaceId ?: plan.namespaceId, id, deployed = true)
+                            configWriter.setDeployed(deploymentNamespace(op, plan, createdIds), id, deployed = true)
                         }
                         id
                     }
@@ -226,7 +222,7 @@ class ConfigChangeService(
                         op.target.id
                     }
                     ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> {
-                        configWriter.setDeployed(plan.namespaceId, op.target!!.id, deployed = op.action == ConfigAction.DEPLOY)
+                        configWriter.setDeployed(deploymentNamespace(op, plan, createdIds), op.target!!.id, deployed = op.action == ConfigAction.DEPLOY)
                         op.target.id
                     }
                 }
@@ -241,6 +237,13 @@ class ConfigChangeService(
             )
         }
     }
+
+    /** Operations run in dependency order and stop at the first failure, so a namespace the plan creates exists by then. */
+    private fun deploymentNamespace(
+        op: PlannedOperation,
+        plan: ConfigChangePlan,
+        createdIds: Map<String, UUID>,
+    ): UUID = checkNotNull(plan.deploymentNamespaceOf(op, createdIds)) { "The namespace ${op.scope?.namespaceRef} of ${op.ref} was not created" }
 
     private fun failureOf(
         op: PlannedOperation,
@@ -267,8 +270,10 @@ class ConfigChangeService(
     ): ObjectNode {
         val payload = (ConfigJson.resolveOpRefs(op.value, createdIds) as ObjectNode).deepCopy()
         injectSecrets(payload, op, secrets)
+        val namespaceId = op.scope?.namespaceIn(createdIds)
+        check(op.scope?.namespaceRef == null || namespaceId != null) { "The namespace ${op.scope?.namespaceRef} of ${op.ref} was not created" }
         // Last, so nothing in the plan can move the entity away from the scope the card shows.
-        payload.put("namespaceId", op.scope?.namespaceId?.toString())
+        payload.put("namespaceId", namespaceId?.toString())
         payload.put("userId", op.scope?.userId?.toString())
         return payload
     }
@@ -306,6 +311,8 @@ class ConfigChangeService(
         op: PlannedOperation,
         index: Int,
         evaluation: OperationEvaluation,
+        plan: ConfigChangePlan,
+        createdIds: Map<String, UUID>,
     ): ConfigOperationViewDto {
         val masked = evaluation.entity?.let(configReadService::masked)
         return ConfigOperationViewDto(
@@ -315,8 +322,9 @@ class ConfigChangeService(
             action = op.action,
             name = op.target?.name ?: op.value?.path("name")?.asText().orEmpty(),
             targetId = op.target?.id ?: evaluation.entityId,
-            namespaceId = op.target?.namespaceId ?: op.scope?.namespaceId,
+            namespaceId = op.target?.namespaceId ?: op.scope?.namespaceIn(createdIds),
             userId = op.target?.userId ?: op.scope?.userId,
+            namespaceName = op.scope?.namespaceRef?.let { plan.operation(it)?.value?.path("name")?.asText() },
             affects = op.affects,
             deployTo = op.deployTo,
             value = op.value,

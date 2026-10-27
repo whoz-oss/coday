@@ -20,39 +20,66 @@ class ConfigChangeStatus(
 ) {
     /**
      * [createdIds] maps the refs evaluated so far to the entity they created or matched, so a
-     * `{"$op": ref}` can be compared; [deployed] is the set of agents deployed on the plan's namespace.
+     * `{"$op": ref}` can be compared and a namespace the plan creates can be read.
      */
     fun evaluate(
         op: PlannedOperation,
         plan: ConfigChangePlan,
         viewerId: UUID,
         createdIds: Map<String, UUID>,
-        deployed: Set<UUID>,
     ): OperationEvaluation =
         when (op.action) {
-            ConfigAction.CREATE -> evaluateCreate(op, plan, viewerId, createdIds, deployed)
+            ConfigAction.CREATE -> evaluateCreate(op, plan, viewerId, createdIds)
             ConfigAction.UPDATE -> evaluateUpdate(op, plan, viewerId, createdIds)
             ConfigAction.ENABLE, ConfigAction.DISABLE -> evaluateEnabled(op, plan, viewerId)
-            ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> evaluateDeployment(op, deployed)
+            ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> evaluateDeployment(op, plan, createdIds)
         }
 
+    /**
+     * A namespace matched by name and values counts as created, like any other entity, so proposing
+     * a plan again converges; the operations that reference it are then read inside it.
+     */
     private fun evaluateCreate(
         op: PlannedOperation,
         plan: ConfigChangePlan,
         viewerId: UUID,
         createdIds: Map<String, UUID>,
-        deployed: Set<UUID>,
     ): OperationEvaluation {
         val name = op.value?.path("name")?.asText().orEmpty()
-        val existing = configReadService.findByName(op.kind, name, op.scope?.namespaceId, op.scope?.userId, viewerId, plan.namespaceId)
+        val existing = findExisting(op, name, plan, viewerId, createdIds)
         val secretFields = op.secrets.map { ConfigJson.segments(it.path).first() }.toSet()
         return when {
             existing == null -> OperationEvaluation(ConfigOperationStatus.PENDING)
             !matches(op.value as? ObjectNode, existing, secretFields, createdIds) ->
                 OperationEvaluation(ConfigOperationStatus.CONFLICT, existing.id, existing, "an entity named '$name' already exists with other values")
-            op.kind == ConfigKind.AGENT && op.deployTo == ConfigDeployTarget.NAMESPACE && existing.id !in deployed ->
-                OperationEvaluation(ConfigOperationStatus.PENDING, existing.id, existing)
+            awaitsDeployment(op, existing.id, plan, createdIds) -> OperationEvaluation(ConfigOperationStatus.PENDING, existing.id, existing)
             else -> OperationEvaluation(ConfigOperationStatus.ALREADY_APPLIED, existing.id, existing)
+        }
+    }
+
+    /** An agent created with `deployTo: NAMESPACE` that exists but is not deployed yet: its deployment is still to apply. */
+    private fun awaitsDeployment(
+        op: PlannedOperation,
+        agentId: UUID,
+        plan: ConfigChangePlan,
+        createdIds: Map<String, UUID>,
+    ): Boolean = op.kind == ConfigKind.AGENT && op.deployTo == ConfigDeployTarget.NAMESPACE && !isDeployed(agentId, plan.deploymentNamespaceOf(op, createdIds))
+
+    /** The entity a `CREATE` would duplicate, read within the plan's namespace or within the namespace the plan creates. */
+    private fun findExisting(
+        op: PlannedOperation,
+        name: String,
+        plan: ConfigChangePlan,
+        viewerId: UUID,
+        createdIds: Map<String, UUID>,
+    ): ConfigEntity? {
+        val scope = op.scope
+        val namespaceId = scope?.namespaceIn(createdIds)
+        return when {
+            scope?.namespaceRef == null -> configReadService.findByName(op.kind, name, scope?.namespaceId, scope?.userId, viewerId, plan.namespaceId)
+            // The namespace it goes into does not exist yet, so neither can the entity.
+            namespaceId == null -> null
+            else -> configReadService.findByName(op.kind, name, namespaceId, scope.userId, viewerId, namespaceId)
         }
     }
 
@@ -118,12 +145,19 @@ class ConfigChangeStatus(
 
     private fun evaluateDeployment(
         op: PlannedOperation,
-        deployed: Set<UUID>,
+        plan: ConfigChangePlan,
+        createdIds: Map<String, UUID>,
     ): OperationEvaluation {
         val target = op.target!!
-        val done = (target.id in deployed) == (op.action == ConfigAction.DEPLOY)
+        val done = isDeployed(target.id, plan.deploymentNamespaceOf(op, createdIds)) == (op.action == ConfigAction.DEPLOY)
         return OperationEvaluation(if (done) ConfigOperationStatus.APPLIED else ConfigOperationStatus.PENDING, target.id)
     }
+
+    /** Nothing is deployed on a namespace that does not exist yet ([namespaceId] null). */
+    private fun isDeployed(
+        agentId: UUID,
+        namespaceId: UUID?,
+    ): Boolean = namespaceId != null && agentId in configReadService.deployedAgentIds(namespaceId)
 
     /**
      * Whether a proposed field matches what the server stores. A field the server omits or nulls on

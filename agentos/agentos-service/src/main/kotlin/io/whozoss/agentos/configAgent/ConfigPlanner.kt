@@ -14,9 +14,10 @@ import java.util.UUID
  *   attached after its creation;
  * - what would make the plan ambiguous: an unknown or cyclic `$op` reference, a secret written by
  *   the LLM;
- * - what the tool could not show or apply faithfully: a scope outside the current namespace (reads
- *   and statuses are bounded to it), a personal scope for agents and skills (they have none, and the
- *   REST API would silently ignore it), a secret outside a credential field, a path through a list.
+ * - what the tool could not show or apply faithfully: a scope outside the current namespace or a
+ *   namespace the plan creates (reads and statuses are bounded to them), a personal scope for agents
+ *   and skills (they have none, and the REST API would silently ignore it), a secret outside a
+ *   credential field, a path through a list.
  *
  * Rights are checked at apply time by the REST layer, with the identity of the user who clicks.
  */
@@ -44,13 +45,14 @@ class ConfigPlanner(
         context: ProposalContext,
     ): PlanningResult {
         val refs = rawOperations.mapIndexed { index, op -> op.ref?.trim()?.takeIf { it.isNotEmpty() } ?: "op${index + 1}" }
+        val planRefs = PlanRefs(all = refs.toSet(), namespaces = refs.filterIndexed { index, _ -> isNamespaceCreate(rawOperations[index]) }.toSet())
         val errors = mutableListOf<String>()
         refs.groupBy { it }.filterValues { it.size > 1 }.keys.forEach { errors += "ref '$it': refs must be unique." }
         val planned =
             rawOperations.mapIndexedNotNull { index, op ->
                 val ref = refs[index]
                 val opErrors = mutableListOf<String>()
-                planOperation(ref, op, refs.toSet(), context, opErrors).also { errors += opErrors.map { "$ref: $it" } }
+                planOperation(ref, op, planRefs, context, opErrors).also { errors += opErrors.map { "$ref: $it" } }
             }
         val order = orderOperations(planned.withIndex().toList())
         return when {
@@ -95,7 +97,7 @@ class ConfigPlanner(
     private fun planOperation(
         ref: String,
         op: OperationInput,
-        allRefs: Set<String>,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? {
@@ -109,7 +111,7 @@ class ConfigPlanner(
                 errors += "$action is not supported for $kind (allowed: ${allowedActions(kind).joinToString()})."
                 null
             }
-            else -> planSupported(ref, kind, action, op, allRefs, context, errors)
+            else -> planSupported(ref, kind, action, op, refs, context, errors)
         }
     }
 
@@ -118,7 +120,7 @@ class ConfigPlanner(
         kind: ConfigKind,
         action: ConfigAction,
         op: OperationInput,
-        allRefs: Set<String>,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? {
@@ -127,9 +129,9 @@ class ConfigPlanner(
             errors += "'${ConfigJson.MASK}' is a masked secret, never a value: declare the path in 'secrets' so the user types it."
         }
         return when (action) {
-            ConfigAction.CREATE -> planCreate(ref, kind, op, secrets, allRefs, context, errors)
-            ConfigAction.UPDATE -> planUpdate(ref, kind, op, secrets, allRefs, context, errors)
-            else -> planTargetOnly(ref, kind, action, op, context, errors)
+            ConfigAction.CREATE -> planCreate(ref, kind, op, secrets, refs, context, errors)
+            ConfigAction.UPDATE -> planUpdate(ref, kind, op, secrets, refs, context, errors)
+            else -> planTargetOnly(ref, kind, action, op, refs, context, errors)
         }
     }
 
@@ -138,12 +140,12 @@ class ConfigPlanner(
         kind: ConfigKind,
         op: OperationInput,
         secrets: List<SecretSlot>,
-        allRefs: Set<String>,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? =
         when (val value = op.value) {
-            is ObjectNode -> planCreateOf(ref, kind, value, op, secrets, allRefs, context, errors)
+            is ObjectNode -> planCreateOf(ref, kind, value, op, secrets, refs, context, errors)
             else -> {
                 errors += "CREATE needs 'value', an object with the fields of the new $kind."
                 null
@@ -156,7 +158,7 @@ class ConfigPlanner(
         value: ObjectNode,
         op: OperationInput,
         secrets: List<SecretSlot>,
-        allRefs: Set<String>,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? {
@@ -165,14 +167,14 @@ class ConfigPlanner(
         listOf("id", "namespaceId", "userId").filter { value.has(it) }.forEach {
             errors += "'value.$it' is not allowed: the scope goes in 'scope' and the id is assigned by the server."
         }
-        val scope = scopeOf(kind, op.scope, context, errors)
+        val scope = scopeOf(kind, op.scope, refs, context, errors)
         secrets.forEach { slot ->
             ConfigJson.valueAt(value, slot.path)?.takeUnless { it.isNull }?.let {
                 errors += "secret path '${slot.path}' must not carry a value in 'value'."
             }
         }
-        val dependsOn = ConfigJson.opRefs(value)
-        (dependsOn - allRefs).forEach { errors += "unknown reference {\"\$op\": \"$it\"}." }
+        val dependsOn = ConfigJson.opRefs(value) + listOfNotNull(scope?.namespaceRef)
+        (dependsOn - refs.all).forEach { errors += "unknown reference {\"\$op\": \"$it\"}." }
         if (ref in dependsOn) errors += "an operation cannot reference itself."
         val deployTo =
             if (kind == ConfigKind.AGENT) {
@@ -192,7 +194,7 @@ class ConfigPlanner(
                 secrets = secrets,
                 deployTo = deployTo,
                 dependsOn = dependsOn.toList().sorted(),
-                affects = affects(it.namespaceId, it.userId),
+                affects = affects(namespaced = it.namespaceId != null || it.namespaceRef != null, userId = it.userId),
             )
         }
     }
@@ -202,7 +204,7 @@ class ConfigPlanner(
         kind: ConfigKind,
         op: OperationInput,
         secrets: List<SecretSlot>,
-        allRefs: Set<String>,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? {
@@ -214,7 +216,7 @@ class ConfigPlanner(
                 errors += "UPDATE needs 'changes' (or 'secrets')."
                 null
             }
-            else -> planUpdateOf(ref, kind, current, changes, secrets, allRefs, errors)
+            else -> planUpdateOf(ref, kind, current, changes, secrets, refs, errors)
         }
     }
 
@@ -224,7 +226,7 @@ class ConfigPlanner(
         current: ConfigEntity,
         changes: List<ChangeInput>,
         secrets: List<SecretSlot>,
-        allRefs: Set<String>,
+        refs: PlanRefs,
         errors: MutableList<String>,
     ): PlannedOperation {
         val target = current.toTarget()
@@ -261,7 +263,7 @@ class ConfigPlanner(
             }
         if (current.fromFilesystem) errors += "${kind.name.lowercase()} '${current.name}' is defined in a file and cannot be changed here."
         val dependsOn = planned.flatMap { ConfigJson.opRefs(it.after) }.toSet()
-        (dependsOn - allRefs).forEach { errors += "unknown reference {\"\$op\": \"$it\"}." }
+        (dependsOn - refs.all).forEach { errors += "unknown reference {\"\$op\": \"$it\"}." }
         if (ref in dependsOn) errors += "an operation cannot reference itself."
         return PlannedOperation(
             ref = ref,
@@ -271,27 +273,46 @@ class ConfigPlanner(
             changes = planned,
             secrets = secrets,
             dependsOn = dependsOn.toList().sorted(),
-            affects = affects(target.namespaceId, target.userId),
+            affects = affects(namespaced = target.namespaceId != null, userId = target.userId),
         )
     }
 
+    /** `DEPLOY` and `UNDEPLOY` act on the current namespace, or on the one [OperationInput.scope] names. */
     private fun planTargetOnly(
         ref: String,
         kind: ConfigKind,
         action: ConfigAction,
         op: OperationInput,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
-    ): PlannedOperation? =
-        targetEntity(kind, op.id, context, errors)?.toTarget()?.let { target ->
-            val scopeNamespace = if (action == ConfigAction.DEPLOY || action == ConfigAction.UNDEPLOY) context.namespaceId else target.namespaceId
+    ): PlannedOperation? {
+        val deployment = action == ConfigAction.DEPLOY || action == ConfigAction.UNDEPLOY
+        val scope = op.scope?.takeIf { deployment }?.let { deploymentScope(kind, it, refs, context, errors) }
+        return targetEntity(kind, op.id, context, errors)?.toTarget()?.let { target ->
             PlannedOperation(
                 ref = ref,
                 kind = kind,
                 action = action,
                 target = target,
-                affects = affects(scopeNamespace, target.userId),
+                scope = scope,
+                dependsOn = listOfNotNull(scope?.namespaceRef),
+                affects = affects(namespaced = deployment || target.namespaceId != null, userId = target.userId),
             )
+        }
+    }
+
+    private fun deploymentScope(
+        kind: ConfigKind,
+        scope: ScopeInput,
+        refs: PlanRefs,
+        context: ProposalContext,
+        errors: MutableList<String>,
+    ): PlannedScope =
+        scopeFrom(kind, scope, refs, context, errors).also {
+            if (it.namespaceId == null && it.namespaceRef == null) {
+                errors += "a deployment needs a namespace: omit 'scope' for this one, or use {\"\$op\": \"<ref>\"} of a namespace this plan creates."
+            }
         }
 
     private fun targetEntity(
@@ -313,32 +334,54 @@ class ConfigPlanner(
 
     private fun ConfigEntity.toTarget() = PlannedTarget(id = id, name = name, namespaceId = namespaceId, userId = userId)
 
+    /** A namespace is a platform-level entity: it has no scope of its own. */
     private fun scopeOf(
         kind: ConfigKind,
         scope: ScopeInput?,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedScope? =
-        if (scope == null) {
-            errors += "CREATE needs 'scope': {\"namespaceId\": \"current\" or null for platform, \"userId\": \"me\" or null}."
-            null
-        } else {
-            scopeFrom(kind, scope, context, errors)
+        when {
+            kind == ConfigKind.NAMESPACE -> {
+                if (scope != null && (namespaceNodeOf(scope) != null || !scope.userId.isNullOrBlank())) errors += "a namespace has no scope: omit 'scope'."
+                PlannedScope(namespaceId = null, userId = null)
+            }
+            scope == null -> {
+                errors +=
+                    "CREATE needs 'scope': {\"namespaceId\": \"current\", {\"\$op\": \"<ref>\"} of a namespace this plan creates or null for platform, " +
+                    "\"userId\": \"me\" or null}."
+                null
+            }
+            else -> scopeFrom(kind, scope, refs, context, errors)
         }
 
     private fun scopeFrom(
         kind: ConfigKind,
         scope: ScopeInput,
+        refs: PlanRefs,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedScope {
+        val namespaceNode = namespaceNodeOf(scope)
+        val namespaceRef = namespaceNode?.let(ConfigJson::opRefOf)
         val namespaceId =
-            scope.namespaceId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { raw ->
-                val id = if (raw.equals("current", ignoreCase = true)) context.namespaceId else runCatching { UUID.fromString(raw) }.getOrNull()
-                if (id != context.namespaceId) {
-                    errors += "scope.namespaceId must be this namespace (\"current\" or ${context.namespaceId}) or null for platform."
+            when {
+                namespaceNode == null -> null
+                namespaceRef != null -> {
+                    if (namespaceRef !in refs.namespaces) {
+                        errors += "scope.namespaceId {\"\$op\": \"$namespaceRef\"} must name an operation of this plan that creates a NAMESPACE."
+                    }
+                    null
                 }
-                id
+                else ->
+                    namespaceIdOf(namespaceNode, context).also { id ->
+                        if (id != context.namespaceId) {
+                            errors +=
+                                "scope.namespaceId must be this namespace (\"current\" or ${context.namespaceId}), " +
+                                "{\"\$op\": \"<ref>\"} of a namespace this plan creates, or null for platform."
+                        }
+                    }
             }
         val userId =
             scope.userId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { raw ->
@@ -352,8 +395,23 @@ class ConfigPlanner(
         if (userId != null && kind in SHARED_ONLY_KINDS) {
             errors += "${kind.name.lowercase()}s have no personal scope: scope.userId must be null."
         }
-        return PlannedScope(namespaceId = namespaceId, userId = userId)
+        return PlannedScope(namespaceId = namespaceId, userId = userId, namespaceRef = namespaceRef?.takeIf { it in refs.namespaces })
     }
+
+    /** The namespace part of [scope], or null when it means the platform (absent, JSON null, blank or `"null"`). */
+    private fun namespaceNodeOf(scope: ScopeInput): JsonNode? =
+        scope.namespaceId?.takeUnless { node -> node.isNull || (node.isTextual && node.textValue().trim().let { it.isEmpty() || it == "null" }) }
+
+    private fun namespaceIdOf(
+        node: JsonNode,
+        context: ProposalContext,
+    ): UUID? {
+        val raw = node.takeIf { it.isTextual }?.textValue()?.trim()
+        return if (raw.equals("current", ignoreCase = true)) context.namespaceId else raw?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+    }
+
+    private fun isNamespaceCreate(op: OperationInput): Boolean =
+        enumOrNull<ConfigKind>(op.kind) == ConfigKind.NAMESPACE && enumOrNull<ConfigAction>(op.action) == ConfigAction.CREATE
 
     /**
      * Secrets may only target fields that hold one: the credential fields of an auth setting and the
@@ -442,22 +500,24 @@ class ConfigPlanner(
 
     private fun rank(op: PlannedOperation): Int =
         when (op.kind) {
-            ConfigKind.AUTH_SETTING -> 0
-            ConfigKind.INTEGRATION -> 1
-            ConfigKind.SKILL -> 2
+            ConfigKind.NAMESPACE -> 0
+            ConfigKind.AUTH_SETTING -> 1
+            ConfigKind.INTEGRATION -> 2
+            ConfigKind.SKILL -> 3
             ConfigKind.AGENT ->
                 when (op.action) {
-                    ConfigAction.CREATE -> 3
-                    ConfigAction.UPDATE -> 4
-                    ConfigAction.ENABLE, ConfigAction.DISABLE -> 6
-                    ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> 7
+                    ConfigAction.CREATE -> 4
+                    ConfigAction.UPDATE -> 5
+                    ConfigAction.ENABLE, ConfigAction.DISABLE -> 7
+                    ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> 8
                 }
-            ConfigKind.PROMPT -> 5
+            ConfigKind.PROMPT -> 6
         }
 
     private fun allowedActions(kind: ConfigKind): Set<ConfigAction> =
         when (kind) {
             ConfigKind.AGENT -> ConfigAction.entries.toSet()
+            ConfigKind.NAMESPACE -> setOf(ConfigAction.CREATE)
             else -> setOf(ConfigAction.CREATE, ConfigAction.UPDATE)
         }
 
@@ -487,12 +547,12 @@ class ConfigPlanner(
         } == true
 
     private fun affects(
-        namespaceId: UUID?,
+        namespaced: Boolean,
         userId: UUID?,
     ): ConfigAffects =
         when {
             userId != null -> ConfigAffects.CALLER_ONLY
-            namespaceId == null -> ConfigAffects.PLATFORM
+            !namespaced -> ConfigAffects.PLATFORM
             else -> ConfigAffects.NAMESPACE_MEMBERS
         }
 
