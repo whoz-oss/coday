@@ -316,7 +316,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     ref.destroy()
   })
 
-  it('offers a worktree from the namespace setting and sends the choice with a top-level case', async () => {
+  it('offers the namespace worktree checked and sends only a declined one', async () => {
     gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
     const ref = makeComponent()
     ref.instance.ngOnInit()
@@ -332,15 +332,34 @@ describe('CaseHomeComponent — first message with attachments', () => {
     ref.destroy()
   })
 
+  it('sends no worktree field when the box is left checked, so the namespace setting applies as before', async () => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    ref.instance['inputValue'].set('fix the export')
+    await ref.instance['submit']()
+
+    expect(ref.instance['worktreeOffered']()).toBe(true)
+    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
+    ref.destroy()
+  })
+
   it.each([
     ['the namespace does not create one for every case', of({ associated: true, autoWorktreeForRootCases: false })],
     ['the namespace has just been associated', of({ associated: true })],
-  ])('leaves the worktree unchecked when %s', (_, association) => {
+    [
+      'the namespace association is unusable',
+      of({ associated: true, autoWorktreeForRootCases: false, checkoutStatus: 'FAILED' }),
+    ],
+  ])('does not offer a worktree when %s', async (_, association) => {
     gitApi.getAssociationNamespaceGit.mockReturnValue(association)
     const ref = makeComponent()
     ref.instance.ngOnInit()
-    expect(ref.instance['worktreeOffered']()).toBe(true)
-    expect(ref.instance['worktree']()).toBe(false)
+    ref.instance['inputValue'].set('hello')
+    await ref.instance['submit']()
+
+    expect(ref.instance['worktreeOffered']()).toBe(false)
+    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
     ref.destroy()
   })
 
@@ -379,14 +398,16 @@ describe('CaseHomeComponent — first message with attachments', () => {
     ref.destroy()
   })
 
-  it('never sends a worktree choice for a sub-case, which shares its root case worktree', async () => {
+  it('neither asks for the association nor sends a worktree choice for a sub-case, which shares its root case worktree', async () => {
     gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
     TestBed.inject(ActivatedRoute).snapshot.queryParams['parentCase'] = 'root'
     const ref = makeComponent()
     ref.instance.ngOnInit()
+    queryParams$.next({ ns: 'ns-1', parentCase: 'other-root' })
     ref.instance['inputValue'].set('@reviewer Analyse this change')
     await ref.instance['submit']()
 
+    expect(gitApi.getAssociationNamespaceGit).not.toHaveBeenCalled()
     expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
     ref.destroy()
   })
@@ -400,6 +421,20 @@ describe('CaseHomeComponent — first message with attachments', () => {
 
     expect(gitApi.getAssociationNamespaceGit).toHaveBeenLastCalledWith('ns-2')
     expect(ref.instance['worktreeOffered']()).toBe(false)
+    ref.destroy()
+  })
+
+  it('asks the integration types again on the next namespace after a failed read', () => {
+    integrationTypes.listTypesIntegrationType.mockReturnValueOnce(throwError(() => ({ status: 502 })))
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    expect(ref.instance['worktreeOffered']()).toBe(false)
+
+    queryParams$.next({ ns: 'ns-2' })
+
+    expect(integrationTypes.listTypesIntegrationType).toHaveBeenCalledTimes(2)
+    expect(ref.instance['worktreeOffered']()).toBe(true)
     ref.destroy()
   })
 })
