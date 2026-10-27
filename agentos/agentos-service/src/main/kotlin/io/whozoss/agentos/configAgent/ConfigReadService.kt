@@ -12,13 +12,16 @@ import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator
 import io.whozoss.agentos.skill.Skill
 import io.whozoss.agentos.skill.SkillAuthorizationService
 import io.whozoss.agentos.skill.SkillService
+import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
 import java.util.UUID
 import io.whozoss.agentos.agentConfig.toDto as agentToDto
@@ -55,6 +58,8 @@ class ConfigReadService(
     private val integrationTypeRegistry: IntegrationTypeRegistry,
     private val permissionEvaluator: AgentOsPermissionEvaluator,
     private val skillAuthorizationService: SkillAuthorizationService,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
+    private val userService: UserService,
     private val objectMapper: ObjectMapper,
 ) {
     /** The entity [id] of [kind] if [callerId] may read it by id within [namespaceId]'s bounds, else null. */
@@ -142,13 +147,26 @@ class ConfigReadService(
             else -> entity.userId == callerId || entity.namespaceId == null || hasNamespaceRight(callerId, namespaceId, Action.READ)
         }
 
-    /** The `GET /{id}` rule of the entity's controller. */
+    /**
+     * The `GET /{id}` rule of the entity's controller. Integrations are authorized by their service
+     * (`IntegrationConfigServiceImpl.getByIdForCaller`, through [ScopedAccessPolicy]), the other kinds
+     * by `@PreAuthorize`, mirrored by the evaluator with its owner fallback.
+     */
     private fun canReadById(
         entity: ConfigEntity,
         callerId: UUID,
     ): Boolean =
-        permissionEvaluator.hasPermission(callerId.toString(), entityTypeOf(entity.kind), entity.id.toString(), Action.READ) ||
-            (entity.kind == ConfigKind.SKILL && skillAuthorizationService.canRead(callerId.toString(), entity.id))
+        when (entity.kind) {
+            ConfigKind.INTEGRATION ->
+                integrationConfigService.findById(entity.id)?.let { config ->
+                    scopedAccessPolicy.canAccess(callerOf(callerId), EntityType.INTEGRATION_CONFIG, config, Action.READ)
+                } == true
+            else ->
+                permissionEvaluator.hasPermission(callerId.toString(), entityTypeOf(entity.kind), entity.id.toString(), Action.READ) ||
+                    (entity.kind == ConfigKind.SKILL && skillAuthorizationService.canRead(callerId.toString(), entity.id))
+        }
+
+    private fun callerOf(callerId: UUID): Caller = Caller.Human(callerId, isAdmin = userService.findById(callerId)?.isAdmin == true)
 
     private fun entityTypeOf(kind: ConfigKind): EntityType =
         when (kind) {
