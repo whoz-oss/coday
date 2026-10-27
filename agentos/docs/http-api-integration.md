@@ -161,10 +161,7 @@ Rules that follow from the service behaviour:
   authorization declined or timed out is not asked again by every later call, and the user's next message
   (a new run) asks again. Concurrent calls wait for the single resolution. A call whose arguments are
   invalid is refused before the credential is asked. A `401` is reported as `UNAUTHORIZED` with an
-  instruction not to retry; the agent cannot refresh a token mid-run. Between runs, the service refreshes
-  an expired OAuth token with its refresh token, keeping the current one when the server does not issue
-  a new one; the authorization request asks for offline access (`access_type=offline`, unless the
-  authorization endpoint already sets `access_type`) so that Google issues one.
+  instruction not to retry; the agent cannot refresh a token mid-run.
 - API key placement is a property of the called API, hence configured on the integration (`auth`), not
   on the Auth Setting.
 - **The document can supply the placement.** When the `auth` block is absent or left at its defaults and
