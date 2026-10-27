@@ -11,9 +11,9 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.ScopedAccessPolicy
-import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
@@ -209,8 +209,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         }
 
         "three rows differing only by scope coexist for the same name (AC2 grid)" {
-            // (ns=A, user=null, name) × (ns=null, user=alice, name) × (ns=A, user=alice, name)
-            // — all three valid, none colliding under the (namespaceId, userId, name) uniqueness.
             val service = newService()
             val nsA = UUID.randomUUID()
             val alice = UUID.randomUUID()
@@ -219,26 +217,20 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val userOnly = service.create(config(namespaceId = null, userId = alice, name = "JIRA"))
             val userNamespace = service.create(config(namespaceId = nsA, userId = alice, name = "JIRA"))
 
-            // All three are persisted as distinct rows
             (setOf(nsOnly.id, userOnly.id, userNamespace.id)).size shouldBe 3
 
-            // findByTriple retrieves each one independently
             service.findByTriple(nsA, null, "JIRA")?.id shouldBe nsOnly.id
             service.findByTriple(null, alice, "JIRA")?.id shouldBe userOnly.id
             service.findByTriple(nsA, alice, "JIRA")?.id shouldBe userNamespace.id
         }
 
         "update conflict check uses the triple, not just (namespaceId, name)" {
-            // A user-overlay row with the same (namespaceId, name) as a namespace-shared row
-            // must NOT block renaming the user-overlay; the conflict check must be triple-aware.
             val service = newService()
             val nsId = UUID.randomUUID()
             val alice = UUID.randomUUID()
             service.create(config(namespaceId = nsId, userId = null, name = "JIRA"))
             val aliceCfg = service.create(config(namespaceId = nsId, userId = alice, name = "JIRA-SECONDARY"))
 
-            // Renaming alice's overlay to "JIRA" must succeed because the existing (nsId, null, "JIRA")
-            // row has a different scope — the triple is (nsId, alice, "JIRA"), not used yet.
             val renamed = service.update(aliceCfg.copy(name = "JIRA"))
             renamed.name shouldBe "JIRA"
         }
@@ -337,7 +329,13 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
 
         "delete refuses a filesystem-backed config resolved by id" {
             val repository = InMemoryIntegrationConfigRepository()
-            val service = IntegrationConfigServiceImpl(repository, IntegrationConfigMergeStrategy())
+            val service = IntegrationConfigServiceImpl(
+                repository,
+                IntegrationConfigMergeStrategy(),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
+                namespaceService = mockk<NamespaceService>(relaxed = true),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+            )
             val filesystem = repository.save(config().copy(source = IntegrationConfigSource.FILESYSTEM))
 
             shouldThrow<UnprocessableEntityException> { service.delete(filesystem.id) }
@@ -386,9 +384,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            // NS-shared layer with type=JIRA
             service.create(config(namespaceId = nsId, name = "JIRA", integrationType = "JIRA"))
-            // User tries to create a user×ns override with the same name but different type
             shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
@@ -400,11 +396,9 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            // user×ns layer for this user
             service.create(
                 config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "JIRA"),
             )
-            // Same user creates a user-global with the same name but different type
             shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
@@ -416,11 +410,9 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            // user-global layer for this user
             service.create(
                 config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "JIRA"),
             )
-            // Same user adds a user×ns override with a different type — would break the merge
             shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
@@ -433,7 +425,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
             service.create(config(namespaceId = nsId, name = "JIRA", integrationType = "JIRA"))
-            // Should NOT throw — same integrationType is the legitimate override case
             val override = service.create(
                 config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "JIRA"),
             )
@@ -445,10 +436,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val nsId = UUID.randomUUID()
             val userA = UUID.randomUUID()
             val userB = UUID.randomUUID()
-            // user A user-global with type=JIRA
             service.create(config(namespaceId = null, userId = userA, name = "MAIL", integrationType = "JIRA"))
-            // user B user-global with the same name but type=FILE_ACCESS — no merge between users
-            // → legitimate, must NOT throw
             val configB = service.create(
                 config(namespaceId = null, userId = userB, name = "MAIL", integrationType = "FILE_ACCESS"),
             )
@@ -463,8 +451,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val userOverride = service.create(
                 config(namespaceId = nsId, userId = userId, name = "FILES", integrationType = "FILE_ACCESS"),
             )
-            // Rename the user override from "FILES" to "JIRA" — would now collide with the NS
-            // layer's "JIRA"/JIRA but the user override carries integrationType=FILE_ACCESS
             shouldThrow<ConflictException> {
                 service.update(userOverride.copy(name = "JIRA"))
             }
@@ -477,9 +463,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         "create rejects NS-shared config whose integrationType conflicts with an existing platform config" {
             val service = newService()
             val nsId = UUID.randomUUID()
-            // Platform layer with type=JIRA
             service.create(config(namespaceId = null, userId = null, name = "JIRA", integrationType = "JIRA"))
-            // NS-shared layer with the same name but a different type — would break the merge
             shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = nsId, userId = null, name = "JIRA", integrationType = "FILE_ACCESS"),
@@ -531,7 +515,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            // Platform: base apiUrl + sharedKey
             service.create(
                 config(
                     namespaceId = null,
@@ -540,7 +523,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                     parametersJson = """{"apiUrl": "https://platform.example.com", "sharedKey": "from-platform"}""",
                 ),
             )
-            // NS-shared: overrides apiUrl, leaves sharedKey inherited from platform
             service.create(
                 config(
                     namespaceId = nsId,
@@ -591,7 +573,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            // Platform: base defaults
             service.create(
                 config(
                     namespaceId = null,
@@ -600,7 +581,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                     parametersJson = """{"apiUrl": "https://platform.example.com", "platformOnly": "p"}""",
                 ),
             )
-            // NS-shared: overrides apiUrl
             service.create(
                 config(
                     namespaceId = nsId,
@@ -609,7 +589,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                     parametersJson = """{"apiUrl": "https://ns.example.com", "nsOnly": "ns"}""",
                 ),
             )
-            // User-global: overrides token
             service.create(
                 config(
                     namespaceId = null,
@@ -618,7 +597,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                     parametersJson = """{"token": "user-global-token", "userOnly": "ug"}""",
                 ),
             )
-            // User × namespace: overrides apiUrl to its final value
             service.create(
                 config(
                     namespaceId = nsId,
@@ -632,11 +610,8 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
 
             effective shouldHaveSize 1
             val params = effective.first().parameters!!
-            // user×ns wins for apiUrl
             params.get("apiUrl").asText() shouldBe "https://user-ns.example.com"
-            // user-global wins for token
             params.get("token").asText() shouldBe "user-global-token"
-            // keys present only in lower layers are still inherited
             params.get("platformOnly").asText() shouldBe "p"
             params.get("nsOnly").asText() shouldBe "ns"
             params.get("userOnly").asText() shouldBe "ug"
@@ -654,7 +629,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                     parametersJson = """{"apiKey": "secret"}""",
                 ),
             )
-            // NS-shared sends explicit null for apiKey — must NOT blank the platform value
             service.create(
                 config(
                     namespaceId = nsId,
@@ -715,7 +689,6 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val effective = service.findEffective(nsId, userId)
 
             effective shouldHaveSize 1
-            // id, namespaceId, userId come from the platform (lowest) layer
             effective.first().id shouldBe platform.id
             effective.first().namespaceId shouldBe null
             effective.first().userId shouldBe null
@@ -756,9 +729,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val nsB = UUID.randomUUID()
             val alice = UUID.randomUUID()
             val bob = UUID.randomUUID()
-            // NS-B shared — must NOT appear for nsA/alice context
             service.create(config(namespaceId = nsB, userId = null, name = "JIRA"))
-            // Bob's user-global — must NOT appear for alice context
             service.create(config(namespaceId = null, userId = bob, name = "JIRA"))
 
             service.findEffective(nsA, alice).shouldBeEmpty()
