@@ -275,17 +275,17 @@ agentos:
   # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
   # threshold across the full session without triggering it within a single turn.
   # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
-  # case-max-iterations: 100
+  case-max-iterations: ${AGENTOS_LIMITS_CASE_MAX_ITERATIONS:100}
   # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
   # Each iteration consists of one intention-generation call followed by zero or one tool
   # executions. When this limit is reached the agent emits a WarnEvent and breaks out
   # of the loop, producing its final response based on what it has gathered so far.
   # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
-  # agent-max-iterations: 20
+  agent-max-iterations: ${AGENTOS_LIMITS_AGENT_MAX_ITERATIONS:100}
   # Maximum number of entities processed by one AgentLoop run. Each entity starts one case
   # immediately, so this bounds concurrent agent runs started by a single loop.
   # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
-  agent-loop-max-items: 50
+  agent-loop-max-items: ${AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS:50}
   # Maximum amount the platform accepts spending without a human check-in, in the platform's
   # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
   # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
