@@ -85,6 +85,11 @@
 
     @if (report(); as result) {
       <p class="config-change__report" role="status">Result: {{ result.decision.toLowerCase() }}</p>
+      @if (result.answerPosted === false) {
+        <p class="config-change__error" role="alert">
+          The configuration was changed but the agent could not be told. Click Apply again to send it the result.
+        </p>
+      }
     }
     @if (errorMessage(); as message) {
       <p class="config-change__error" role="alert">{{ message }}</p>
@@ -114,7 +119,7 @@
           <button
             class="config-change__btn config-change__btn--danger"
             type="button"
-            [disabled]="busy()"
+            [disabled]="busy() || disabled()"
             (click)="confirmReject()"
           >
             Reject the plan
@@ -126,7 +131,7 @@
         <button
           class="config-change__btn config-change__btn--secondary"
           type="button"
-          [disabled]="busy()"
+          [disabled]="busy() || disabled()"
           (click)="startReject()"
         >
           Reject

@@ -10,6 +10,10 @@
 import { ConfigOperationResultDto } from './config-operation-result-dto'
 
 export interface ConfigChangeReportDto {
+  /**
+   * False when the configuration was written but the agent could not be told; applying again re-sends it.
+   */
+  answerPosted: boolean
   appliedBy: string
   decision: ConfigChangeReportDtoDecisionEnum
   results: Array<ConfigOperationResultDto>

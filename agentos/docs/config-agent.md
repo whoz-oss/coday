@@ -55,7 +55,11 @@ the identity of the user who clicked.
 - **The click is bound to the displayed plan**: Apply carries the plan hash, and anything else is
   refused (409 `PLAN_HASH_MISMATCH`).
 - **Secrets** are never written by the agent: the plan declares their paths and the user types the
-  values in the card. A proposal containing `****` or a value at a secret path is refused.
+  values in the card. Only real secret fields qualify (`/apiKey`, `/token`, `/password`,
+  `/clientSecret` of an auth setting, paths under `/parameters/` of an integration), so a typed key
+  never lands in a plain field. A proposal containing `****` or a value at a secret path is refused.
+- **Bean Validation** runs on every DTO before the in-process call, since `@Valid` only applies to
+  HTTP requests: a value the REST API would refuse with 400 is reported `INVALID`.
 - **Reads** (tool and card) use the same rules as the REST read endpoints, owner fallback included
   (`AgentOsPermissionEvaluator.hasPermission(userId, ...)`). They are bounded to the platform, the
   current namespace and the caller's own entities, because what the tool reads is stored in the case
@@ -66,11 +70,13 @@ the identity of the user who clicked.
 
 `propose` takes operations on `AGENT`, `SKILL`, `PROMPT`, `INTEGRATION` and `AUTH_SETTING`:
 
-- `CREATE` carries a `scope` (`namespaceId`: an id, `"current"` or null for platform; `userId`:
-  `"me"` or null) and a `value` with the REST DTO fields. `{"$op": "<ref>"}` stands for the id an
+- `CREATE` carries a `scope` (`namespaceId`: `"current"` or null for platform; `userId`: `"me"` or
+  null, and always null for agents and skills, which have no personal scope) and a `value` with the
+  REST DTO fields. `{"$op": "<ref>"}` stands for the id an
   earlier operation of the plan creates. A new agent needs `deployTo: NAMESPACE | NONE`.
 - `UPDATE` targets an `id` and lists `changes` by JSON Pointer path (`/instructions`,
-  `/integrations/MY_API`), merged by the server onto the full DTO it re-reads.
+  `/integrations/MY_API`), merged by the server onto the full DTO it re-reads. A path cannot go
+  through a list: the whole list is replaced (`/content`, `/subAgents`).
 - `ENABLE`, `DISABLE`, `DEPLOY`, `UNDEPLOY` (agents only) target an `id`.
 
 Validation only anticipates what the REST API would refuse (immutable fields, prompt attached after
@@ -85,11 +91,16 @@ Limits (`ConfigAgentLimits`): 20 operations per plan, plans expire after 24 hour
 Each operation's status is recomputed from the real state at every read: `PENDING`, `APPLIED`,
 `ALREADY_APPLIED`, `CONFLICT` (the value changed since the plan was made) or `NOT_VISIBLE`. Apply
 walks the order, skips what is already applied, writes what is pending, and stops at the first
-refusal or conflict. Re-applying after a partial failure is therefore safe, but nothing is rolled
-back. A claim per question prevents a double click (single instance, like the case runtime registry).
+refusal or conflict. Nothing is rolled back. A claim per question serializes apply and reject
+(single instance, like the case runtime registry).
 
-The server posts the report as the answer to the question. Its text carries only fixed templates and
-codes, never parameter values, since it is replayed to the LLM.
+Whatever the outcome, the server posts the report as the answer to the question, which closes the
+plan and resumes the agent. To retry after a partial failure, the agent proposes again: the new plan
+converges, since what the first one already wrote shows as `APPLIED` or `ALREADY_APPLIED`. A newer
+plan in the same case marks the older ones `SUPERSEDED` for good. If the answer cannot be posted
+(the case was closed meanwhile), the report says `answerPosted: false` and the plan stays open, so
+applying it again re-sends it. The answer text carries only fixed templates and codes, never
+parameter values, since it is replayed to the LLM.
 
 ## Limits
 

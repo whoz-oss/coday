@@ -103,6 +103,19 @@ describe('ConfigChangeCardComponent', () => {
     })
   })
 
+  it('keeps Apply and Reject disabled while the agent turn is still running', () => {
+    service.viewConfigChange.mockReturnValue(of(plan({ operations: [plan().operations[1]] })))
+    fixture = TestBed.createComponent(ConfigChangeCardComponent)
+    fixture.componentRef.setInput('caseId', 'case-1')
+    fixture.componentRef.setInput('questionId', 'q-1')
+    fixture.componentRef.setInput('disabled', true)
+    fixture.detectChanges()
+    const root = fixture.nativeElement as HTMLElement
+
+    expect(button(root, 'Apply').disabled).toBe(true)
+    expect(button(root, 'Reject').disabled).toBe(true)
+  })
+
   it('offers no action to a viewer the plan was not proposed to', () => {
     const root = render(plan({ canApply: false }))
 

@@ -144,13 +144,13 @@ class ConfigPlanner(
             errors += "$action is not supported for $kind (allowed: ${allowedActions(kind).joinToString()})."
             return null
         }
-        val secrets = secretSlots(op.secrets, errors)
+        val secrets = secretSlots(kind, op.secrets, errors)
         if (ConfigJson.containsMask(op.value) || op.changes.orEmpty().any { ConfigJson.containsMask(it.value) }) {
             errors += "'${ConfigJson.MASK}' is a masked secret, never a value: declare the path in 'secrets' so the user types it."
         }
         return when (action) {
             ConfigAction.CREATE -> planCreate(ref, kind, op, secrets, allRefs, context, errors)
-            ConfigAction.UPDATE -> planUpdate(ref, kind, op, secrets, context, errors)
+            ConfigAction.UPDATE -> planUpdate(ref, kind, op, secrets, allRefs, context, errors)
             else -> planTargetOnly(ref, kind, action, op, context, errors)
         }
     }
@@ -174,7 +174,7 @@ class ConfigPlanner(
         listOf("id", "namespaceId", "userId").filter { value.has(it) }.forEach {
             errors += "'value.$it' is not allowed: the scope goes in 'scope' and the id is assigned by the server."
         }
-        val scope = scopeOf(op.scope, context, errors)
+        val scope = scopeOf(kind, op.scope, context, errors)
         secrets.forEach { slot ->
             ConfigJson.valueAt(value, slot.path)?.takeUnless { it.isNull }?.let {
                 errors += "secret path '${slot.path}' must not carry a value in 'value'."
@@ -210,6 +210,7 @@ class ConfigPlanner(
         kind: ConfigKind,
         op: OperationInput,
         secrets: List<SecretSlot>,
+        allRefs: Set<String>,
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? {
@@ -238,6 +239,10 @@ class ConfigPlanner(
                         errors += "'$path' is declared as a secret: remove it from 'changes'."
                         null
                     }
+                    listPrefix(current.dto, path) != null -> {
+                        errors += "'$path' goes through a list: replace the whole list with path '${listPrefix(current.dto, path)}'."
+                        null
+                    }
                     else ->
                         PlannedChange(
                             path = path,
@@ -248,6 +253,9 @@ class ConfigPlanner(
                 }
             }
         if (current.fromFilesystem) errors += "${kind.name.lowercase()} '${current.name}' is defined in a file and cannot be changed here."
+        val dependsOn = planned.flatMap { ConfigJson.opRefs(it.after) }.toSet()
+        (dependsOn - allRefs).forEach { errors += "unknown reference {\"\$op\": \"$it\"}." }
+        if (ref in dependsOn) errors += "an operation cannot reference itself."
         return PlannedOperation(
             ref = ref,
             kind = kind,
@@ -255,6 +263,7 @@ class ConfigPlanner(
             target = target,
             changes = planned,
             secrets = secrets,
+            dependsOn = dependsOn.toList().sorted(),
             affects = affects(target.namespaceId, target.userId),
         )
     }
@@ -297,6 +306,7 @@ class ConfigPlanner(
     private fun ConfigEntity.toTarget() = PlannedTarget(id = id, name = name, namespaceId = namespaceId, userId = userId)
 
     private fun scopeOf(
+        kind: ConfigKind,
         scope: ScopeInput?,
         context: ProposalContext,
         errors: MutableList<String>,
@@ -307,13 +317,11 @@ class ConfigPlanner(
         }
         val namespaceId =
             scope.namespaceId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { raw ->
-                if (raw.equals("current", ignoreCase = true)) {
-                    context.namespaceId
-                } else {
-                    runCatching { UUID.fromString(raw) }.getOrNull().also {
-                        if (it == null) errors += "scope.namespaceId must be a namespace id, \"current\" or null."
-                    }
+                val id = if (raw.equals("current", ignoreCase = true)) context.namespaceId else runCatching { UUID.fromString(raw) }.getOrNull()
+                if (id != context.namespaceId) {
+                    errors += "scope.namespaceId must be this namespace (\"current\" or ${context.namespaceId}) or null for platform."
                 }
+                id
             }
         val userId =
             scope.userId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { raw ->
@@ -324,22 +332,67 @@ class ConfigPlanner(
                     null
                 }
             }
+        if (userId != null && kind in SHARED_ONLY_KINDS) {
+            errors += "${kind.name.lowercase()}s have no personal scope: scope.userId must be null."
+        }
         return PlannedScope(namespaceId = namespaceId, userId = userId)
     }
 
+    /**
+     * Secrets may only target fields that hold one: the credential fields of an auth setting and the
+     * parameters of an integration. Anything else would store what the user types as a password in a
+     * plain field (instructions, name) or move the entity (namespaceId).
+     */
     private fun secretSlots(
+        kind: ConfigKind,
         secrets: List<SecretInput>?,
         errors: MutableList<String>,
     ): List<SecretSlot> =
         secrets.orEmpty().mapNotNull { secret ->
             val path = secret.path?.trim().orEmpty()
-            if (!isValidPath(path)) {
-                errors += "secret path '$path' must be a JSON Pointer like '/apiKey' or '/parameters/token'."
-                null
-            } else {
-                SecretSlot(path = path, label = secret.label?.trim()?.takeIf { it.isNotEmpty() } ?: path.removePrefix("/"))
+            when {
+                !isValidPath(path) -> {
+                    errors += "secret path '$path' must be a JSON Pointer like '/apiKey' or '/parameters/token'."
+                    null
+                }
+                !isSecretField(kind, path) -> {
+                    errors += "'$path' cannot hold a secret for a ${kind.name.lowercase()}: ${secretFieldsHint(kind)}."
+                    null
+                }
+                else -> SecretSlot(path = path, label = secret.label?.trim()?.takeIf { it.isNotEmpty() } ?: path.removePrefix("/"))
             }
         }
+
+    private fun isSecretField(
+        kind: ConfigKind,
+        path: String,
+    ): Boolean =
+        when (kind) {
+            ConfigKind.AUTH_SETTING -> path in AUTH_SETTING_SECRET_PATHS
+            ConfigKind.INTEGRATION -> path.startsWith("/parameters/")
+            else -> false
+        }
+
+    private fun secretFieldsHint(kind: ConfigKind): String =
+        when (kind) {
+            ConfigKind.AUTH_SETTING -> "use one of ${AUTH_SETTING_SECRET_PATHS.joinToString()}"
+            ConfigKind.INTEGRATION -> "use a path under /parameters/"
+            else -> "this kind has no secret field"
+        }
+
+    /** The first list on [path] in [dto], as a JSON Pointer, or null when the path only goes through objects. */
+    private fun listPrefix(
+        dto: JsonNode,
+        path: String,
+    ): String? {
+        val segments = ConfigJson.segments(path)
+        var node: JsonNode? = dto
+        segments.dropLast(1).forEachIndexed { index, segment ->
+            node = node?.get(segment)
+            if (node?.isArray == true) return "/" + segments.take(index + 1).joinToString("/")
+        }
+        return null
+    }
 
     private fun warnings(
         operations: List<PlannedOperation>,
@@ -434,5 +487,10 @@ class ConfigPlanner(
 
     companion object {
         const val MAX_PATH_DEPTH = 3
+
+        /** Kinds that only exist at platform or namespace level. */
+        private val SHARED_ONLY_KINDS = setOf(ConfigKind.AGENT, ConfigKind.SKILL)
+
+        private val AUTH_SETTING_SECRET_PATHS = setOf("/apiKey", "/token", "/password", "/clientSecret")
     }
 }

@@ -37,6 +37,8 @@ export class ConfigChangeCardComponent implements OnInit {
 
   readonly caseId = input.required<string>()
   readonly questionId = input.required<string>()
+  /** Disables Apply and Reject while the agent's turn is still running: an answer sent then would not resume it. */
+  readonly disabled = input(false)
 
   protected readonly view = signal<ConfigChangeViewDto | null>(null)
   protected readonly report = signal<ConfigChangeReportDto | null>(null)
@@ -52,7 +54,9 @@ export class ConfigChangeCardComponent implements OnInit {
       .flatMap((op) => op.secretInputs.map((s) => s.key))
   )
   protected readonly secretsComplete = computed(() => this.secretKeys().every((key) => !!this.secrets()[key]?.trim()))
-  protected readonly canApply = computed(() => !!this.view()?.canApply && !this.busy() && this.secretsComplete())
+  protected readonly canApply = computed(
+    () => !!this.view()?.canApply && !this.busy() && !this.disabled() && this.secretsComplete()
+  )
   protected readonly stateLabel = computed(() => {
     const view = this.view()
     if (!view) return null
@@ -135,6 +139,7 @@ export class ConfigChangeCardComponent implements OnInit {
         error: (err: HttpErrorResponse) => {
           this.busy.set(false)
           this.errorMessage.set(this.describeError(err, 'reject'))
+          this.load()
         },
       })
   }
@@ -179,7 +184,7 @@ export class ConfigChangeCardComponent implements OnInit {
   }
 
   protected json(value: unknown): string {
-    return value === undefined ? '(absent)' : JSON.stringify(value, null, 2)
+    return value === undefined || value === null ? '(none)' : JSON.stringify(value, null, 2)
   }
 
   protected resultLabel(ref: string): string | null {

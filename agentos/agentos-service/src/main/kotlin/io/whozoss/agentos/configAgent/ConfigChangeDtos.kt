@@ -109,6 +109,8 @@ data class ConfigChangeReportDto(
     val decision: ConfigChangeDecision,
     val appliedBy: UUID,
     val results: List<ConfigOperationResultDto>,
+    @field:Schema(description = "False when the configuration was written but the agent could not be told; applying again re-sends it.")
+    val answerPosted: Boolean = true,
 )
 
 data class ConfigOperationResultDto(

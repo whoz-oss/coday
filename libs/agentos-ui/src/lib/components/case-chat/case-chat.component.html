@@ -242,7 +242,11 @@
                   @if (!item.answer) {
                     <div [attr.data-question-controls]="item.event.id" class="case-chat__question-controls">
                       @if (configChangeQuestionIds().has(item.event.id)) {
-                        <agentos-config-change-card [caseId]="caseId" [questionId]="item.event.id" />
+                        <agentos-config-change-card
+                          [caseId]="caseId"
+                          [questionId]="item.event.id"
+                          [disabled]="isRunning()"
+                        />
                       } @else {
                         <agentos-question-panel
                           variant="inline"

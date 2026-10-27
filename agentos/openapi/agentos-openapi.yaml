@@ -4686,6 +4686,10 @@ components:
     ConfigChangeReportDto:
       type: object
       properties:
+        answerPosted:
+          type: boolean
+          description: False when the configuration was written but the agent could
+            not be told; applying again re-sends it.
         appliedBy:
           type: string
           format: uuid
@@ -4701,6 +4705,7 @@ components:
           items:
             $ref: "#/components/schemas/ConfigOperationResultDto"
       required:
+      - answerPosted
       - appliedBy
       - decision
       - results

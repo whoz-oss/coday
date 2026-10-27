@@ -2,6 +2,7 @@ package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.databind.node.TextNode
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -92,21 +93,18 @@ class ConfigChangeService(
         caller: User,
         request: ConfigChangeApplyRequest,
     ): ConfigChangeReportDto {
-        val loaded = load(caseId, questionId)
-        val plan = loaded.plan
-        requireRecipient(plan, caller)
-        if (request.expectedPlanHash != plan.planHash) throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
-        requireOpen(state(loaded))
-        missingSecrets(plan, caller.id, request.secrets).takeIf { it.isNotEmpty() }?.let { missing ->
-            throw UnprocessableEntityException("MISSING_SECRET: ${missing.joinToString()}")
-        }
-        if (!claims.add(questionId)) throw ConflictException("IN_PROGRESS: this plan is already being applied")
-        try {
+        requireRecipient(load(caseId, questionId).plan, caller)
+        return withClaim(questionId) {
+            // Re-read under the claim: an answer posted by a concurrent apply or reject is now visible.
+            val loaded = load(caseId, questionId)
+            val plan = loaded.plan
+            if (request.expectedPlanHash != plan.planHash) throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
+            requireOpen(state(loaded, claimedByCaller = true))
+            missingSecrets(plan, caller.id, request.secrets).takeIf { it.isNotEmpty() }?.let { missing ->
+                throw UnprocessableEntityException("MISSING_SECRET: ${missing.joinToString()}")
+            }
             val report = applyPlan(plan, caller, request.secrets)
-            postAnswer(caseId, questionId, caller, answerText(plan, report, caller))
-            return report
-        } finally {
-            claims.remove(questionId)
+            report.copy(answerPosted = postAnswer(caseId, questionId, caller, answerText(plan, report, caller)))
         }
     }
 
@@ -116,16 +114,29 @@ class ConfigChangeService(
         caller: User,
         comment: String?,
     ) {
-        val loaded = load(caseId, questionId)
-        requireRecipient(loaded.plan, caller)
-        if (questionId in claims) throw ConflictException("IN_PROGRESS: this plan is being applied")
-        requireOpen(state(loaded))
-        val text =
-            buildString {
-                append("[${ConfigAgentIntegration.TYPE} change ${shortId(questionId)} ${ConfigChangeDecision.REJECTED} by ${displayName(caller)}]")
-                comment?.trim()?.takeIf { it.isNotEmpty() }?.let { append("\nComment: ").append(it) }
-            }
-        postAnswer(caseId, questionId, caller, text)
+        requireRecipient(load(caseId, questionId).plan, caller)
+        withClaim(questionId) {
+            requireOpen(state(load(caseId, questionId), claimedByCaller = true))
+            val text =
+                buildString {
+                    append("[${ConfigAgentIntegration.TYPE} change ${shortId(questionId)} ${ConfigChangeDecision.REJECTED} by ${displayName(caller)}]")
+                    comment?.trim()?.takeIf { it.isNotEmpty() }?.let { append("\nComment: ").append(it) }
+                }
+            if (!postAnswer(caseId, questionId, caller, text)) throw IllegalStateException("The rejection could not be delivered to the agent")
+        }
+    }
+
+    /** Runs [block] while holding the per-question claim, so apply and reject never overlap. */
+    private fun <T> withClaim(
+        questionId: UUID,
+        block: () -> T,
+    ): T {
+        if (!claims.add(questionId)) throw ConflictException("IN_PROGRESS: this plan is already being applied or rejected")
+        try {
+            return block()
+        } finally {
+            claims.remove(questionId)
+        }
     }
 
     /** Keys of the secrets the operations still to write need and the request does not carry. */
@@ -154,7 +165,6 @@ class ConfigChangeService(
     ): ConfigChangeReportDto {
         val createdIds = mutableMapOf<String, UUID>()
         val deployed = configReadService.deployedAgentIds(plan.namespaceId)
-        val evaluations = mutableMapOf<String, Evaluation>()
         val results = mutableListOf<ConfigOperationResultDto>()
         var stopped = false
         for (ref in plan.order) {
@@ -163,7 +173,15 @@ class ConfigChangeService(
                 results += ConfigOperationResultDto(ref, ConfigResultStatus.NOT_RUN)
                 continue
             }
-            val evaluation = evaluate(op, plan, caller.id, createdIds, deployed).also { evaluations[ref] = it }
+            val evaluation =
+                runCatching { evaluate(op, plan, caller.id, createdIds, deployed) }
+                    .onFailure { logger.warn(it) { "[ConfigChange] could not evaluate ${op.ref}" } }
+                    .getOrNull()
+            if (evaluation == null) {
+                results += ConfigOperationResultDto(ref, ConfigResultStatus.FAILED, message = "Unexpected error, see the server logs.")
+                stopped = true
+                continue
+            }
             evaluation.entityId?.let { createdIds[ref] = it }
             val result =
                 when (evaluation.status) {
@@ -195,12 +213,15 @@ class ConfigChangeService(
         evaluation: Evaluation,
         secrets: Map<String, String>,
         createdIds: Map<String, UUID>,
-    ): ConfigOperationResultDto =
-        try {
+    ): ConfigOperationResultDto {
+        // Set as soon as a CREATE succeeds, so a later failure (the deployment) still reports the entity.
+        var createdId: UUID? = null
+        return try {
             val entityId =
                 when (op.action) {
                     ConfigAction.CREATE -> {
                         val id = evaluation.entityId ?: configWriter.create(op.kind, createPayload(op, secrets, createdIds))
+                        createdId = id
                         if (op.kind == ConfigKind.AGENT && op.deployTo == ConfigDeployTarget.NAMESPACE) {
                             configWriter.setDeployed(op.scope?.namespaceId ?: plan.namespaceId, id, deployed = true)
                         }
@@ -221,23 +242,33 @@ class ConfigChangeService(
                     }
                 }
             ConfigOperationResultDto(op.ref, ConfigResultStatus.APPLIED, entityId)
-        } catch (e: AccessDeniedException) {
-            ConfigOperationResultDto(op.ref, ConfigResultStatus.DENIED, message = "The user is not allowed to do this.")
-        } catch (e: ResourceNotFoundException) {
-            ConfigOperationResultDto(op.ref, ConfigResultStatus.NOT_FOUND, message = e.message)
-        } catch (e: ConflictException) {
-            ConfigOperationResultDto(op.ref, ConfigResultStatus.CONFLICT, message = e.message)
-        } catch (e: BadRequestException) {
-            ConfigOperationResultDto(op.ref, ConfigResultStatus.INVALID, message = e.message)
-        } catch (e: UnprocessableEntityException) {
-            ConfigOperationResultDto(op.ref, ConfigResultStatus.INVALID, message = e.message)
-        } catch (e: IllegalArgumentException) {
-            // AgentConfigServiceImpl reports a duplicate name this way.
-            val status = if (e.message?.contains("already exists") == true) ConfigResultStatus.CONFLICT else ConfigResultStatus.INVALID
-            ConfigOperationResultDto(op.ref, status, message = e.message)
         } catch (e: Exception) {
-            logger.warn(e) { "[ConfigChange] ${op.ref} ${op.action} ${op.kind} failed" }
-            ConfigOperationResultDto(op.ref, ConfigResultStatus.FAILED, message = "Unexpected error, see the server logs.")
+            val (status, message) = failureOf(op, e)
+            ConfigOperationResultDto(
+                ref = op.ref,
+                status = status,
+                entityId = createdId,
+                message = createdId?.let { "Created (id $it) but not deployed: $message" } ?: message,
+            )
+        }
+    }
+
+    private fun failureOf(
+        op: PlannedOperation,
+        e: Exception,
+    ): Pair<ConfigResultStatus, String?> =
+        when (e) {
+            is AccessDeniedException -> ConfigResultStatus.DENIED to "The user is not allowed to do this."
+            is ResourceNotFoundException -> ConfigResultStatus.NOT_FOUND to e.message
+            is ConflictException -> ConfigResultStatus.CONFLICT to e.message
+            is BadRequestException, is UnprocessableEntityException -> ConfigResultStatus.INVALID to e.message
+            // AgentConfigServiceImpl reports a duplicate name this way; ConfigJson refuses paths through lists.
+            is IllegalArgumentException ->
+                (if (e.message?.contains("already exists") == true) ConfigResultStatus.CONFLICT else ConfigResultStatus.INVALID) to e.message
+            else -> {
+                logger.warn(e) { "[ConfigChange] ${op.ref} ${op.action} ${op.kind} failed" }
+                ConfigResultStatus.FAILED to "Unexpected error, see the server logs."
+            }
         }
 
     private fun createPayload(
@@ -246,9 +277,10 @@ class ConfigChangeService(
         createdIds: Map<String, UUID>,
     ): ObjectNode {
         val payload = (ConfigJson.resolveOpRefs(op.value, createdIds) as ObjectNode).deepCopy()
+        injectSecrets(payload, op, secrets)
+        // Last, so nothing in the plan can move the entity away from the scope the card shows.
         payload.put("namespaceId", op.scope?.namespaceId?.toString())
         payload.put("userId", op.scope?.userId?.toString())
-        injectSecrets(payload, op, secrets)
         return payload
     }
 
@@ -326,7 +358,7 @@ class ConfigChangeService(
             (op.value as? ObjectNode)?.properties().orEmpty().all { (field, value) ->
                 field in secretFields ||
                     ConfigJson.opRefs(value).any { it !in createdIds } ||
-                    existing.dto.get(field) == ConfigJson.resolveOpRefs(value, createdIds)
+                    sameValue(existing.dto.get(field), ConfigJson.resolveOpRefs(value, createdIds))
             }
         return when {
             !identical -> Evaluation(ConfigOperationStatus.CONFLICT, existing.id, existing, "an entity named '$name' already exists with other values")
@@ -335,6 +367,26 @@ class ConfigChangeService(
             else -> Evaluation(ConfigOperationStatus.ALREADY_APPLIED, existing.id, existing)
         }
     }
+
+    /**
+     * Whether a proposed field matches what the server stores. A field the server omits or nulls on
+     * output (a deprecated or defaulted one) does not count as a difference, and strings are compared
+     * trimmed, since the REST layer normalizes some of them.
+     */
+    private fun sameValue(
+        existing: JsonNode?,
+        proposed: JsonNode?,
+    ): Boolean = existing == null || existing.isNull || normalized(existing) == normalized(proposed)
+
+    private fun normalized(node: JsonNode?): JsonNode? =
+        when (node) {
+            is TextNode -> TextNode(node.textValue().trim())
+            is ArrayNode ->
+                objectMapper.createArrayNode().also { copy -> node.forEach { copy.add(normalized(it)) } }
+            is ObjectNode ->
+                objectMapper.createObjectNode().also { copy -> node.properties().forEach { (key, value) -> copy.set<JsonNode>(key, normalized(value)) } }
+            else -> node
+        }
 
     private fun evaluateUpdate(
         op: PlannedOperation,
@@ -427,30 +479,28 @@ class ConfigChangeService(
         return LoadedPlan(plan, question, planIndex, events)
     }
 
-    private fun state(loaded: LoadedPlan): ConfigChangeState {
+    private fun state(
+        loaded: LoadedPlan,
+        claimedByCaller: Boolean = false,
+    ): ConfigChangeState {
         val (plan, question, planIndex, events) = loaded
         return when {
             isAnswered(question, events) -> ConfigChangeState.ANSWERED
-            plan.questionId in claims -> ConfigChangeState.IN_PROGRESS
+            !claimedByCaller && plan.questionId in claims -> ConfigChangeState.IN_PROGRESS
             Instant.now(clock).isAfter(plan.expiresAt) -> ConfigChangeState.EXPIRED
-            hasNewerOpenPlan(planIndex, events) -> ConfigChangeState.SUPERSEDED
+            hasNewerPlan(planIndex, events) -> ConfigChangeState.SUPERSEDED
             else -> ConfigChangeState.OPEN
         }
     }
 
-    private fun hasNewerOpenPlan(
+    /** A newer plan in the same case replaces this one for good, whether it has been answered or not. */
+    private fun hasNewerPlan(
         planIndex: Int,
         events: List<CaseEvent>,
     ): Boolean =
         events
             .drop(planIndex + 1)
-            .filterIsInstance<ToolResponseEvent>()
-            .filter { it.toolName == ConfigAgentIntegration.PROPOSE_TOOL_NAME }
-            .mapNotNull { response -> response.structuredOutput?.path("questionId")?.asText()?.let { runCatching { UUID.fromString(it) }.getOrNull() } }
-            .any { newerQuestionId ->
-                val newer = events.firstOrNull { it is QuestionEvent && it.id == newerQuestionId } as? QuestionEvent
-                newer != null && !isAnswered(newer, events)
-            }
+            .any { it is ToolResponseEvent && it.toolName == ConfigAgentIntegration.PROPOSE_TOOL_NAME && it.structuredOutput != null }
 
     /** Same rule as the case runtime: only the addressee's answer closes a question. */
     private fun isAnswered(
@@ -472,14 +522,22 @@ class ConfigChangeService(
         if (state != ConfigChangeState.OPEN) throw ConflictException("${state.name}: this plan can no longer be applied or rejected")
     }
 
+    /**
+     * Answers the question, which resumes the agent. Returns false instead of throwing when the case
+     * refuses the message (e.g. it was closed meanwhile): the configuration is already written, so the
+     * caller must still get the report. The plan then stays open and applying it again re-sends it.
+     */
     private fun postAnswer(
         caseId: UUID,
         questionId: UUID,
         caller: User,
         text: String,
-    ) {
+    ): Boolean {
         val actor = Actor(id = caller.id.toString(), displayName = displayName(caller), role = ActorRole.USER)
-        caseService.addMessage(caseId = caseId, actor = actor, content = listOf(MessageContent.Text(text)), answerToEventId = questionId)
+        return runCatching {
+            caseService.addMessage(caseId = caseId, actor = actor, content = listOf(MessageContent.Text(text)), answerToEventId = questionId)
+        }.onFailure { logger.warn(it) { "[ConfigChange] could not answer question $questionId in case $caseId" } }
+            .isSuccess
     }
 
     /** Fixed templates and codes only: the answer is replayed to the LLM, so it carries no parameter value. */

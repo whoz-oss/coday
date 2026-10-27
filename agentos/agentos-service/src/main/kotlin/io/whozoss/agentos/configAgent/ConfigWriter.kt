@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.authSetting.AuthSettingApi
 import io.whozoss.agentos.authSetting.AuthSettingDto
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.namespace.NamespaceAgentDeployRequest
 import io.whozoss.agentos.namespace.NamespaceController
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
@@ -15,6 +16,7 @@ import io.whozoss.agentos.sdk.api.prompt.PromptApi
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.skill.SkillApi
 import io.whozoss.agentos.sdk.api.skill.SkillDto
+import jakarta.validation.Validator
 import org.springframework.stereotype.Component
 import java.util.UUID
 
@@ -60,7 +62,8 @@ interface ConfigWriter {
  * `ApiBeanBridgeAuthorizationSpec` proves the bridge; outside a request the calls are refused.
  *
  * Deployment has no `*Api` method yet, so it goes through [NamespaceController], the same proxy.
- * `@Valid` does not apply to in-process calls: [ConfigPlanner] checks the shape beforehand.
+ * `@Valid` does not apply to in-process calls, so every DTO is validated here with the same Bean
+ * Validation constraints before it reaches the controller, and refused as a 400 would be.
  */
 @Component
 class ApiBeanConfigWriter(
@@ -71,6 +74,7 @@ class ApiBeanConfigWriter(
     private val authSettingApi: AuthSettingApi,
     private val namespaceController: NamespaceController,
     private val objectMapper: ObjectMapper,
+    private val validator: Validator,
 ) : ConfigWriter {
     override fun create(
         kind: ConfigKind,
@@ -125,8 +129,14 @@ class ApiBeanConfigWriter(
         api.update(id, read(current, type))
     }
 
-    private fun <T> read(
+    private fun <T : Any> read(
         dto: ObjectNode,
         type: Class<T>,
-    ): T = objectMapper.treeToValue(dto, type)
+    ): T =
+        objectMapper.treeToValue(dto, type).also { value ->
+            val violations = validator.validate(value)
+            if (violations.isNotEmpty()) {
+                throw BadRequestException(violations.sortedBy { it.propertyPath.toString() }.joinToString("; ") { "${it.propertyPath}: ${it.message}" })
+            }
+        }
 }

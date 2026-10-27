@@ -47,8 +47,8 @@ interface SubAgentRow {
 /** Built-in integration letting an agent read and propose AgentOS configuration changes. */
 const CONFIG_AGENT_TYPE = 'AGENTOS_CONFIG'
 
-/** Integration types that reach the network. */
-const NETWORK_INTEGRATION_TYPES = new Set(['HTTP_API', 'MCP_HTTP'])
+/** Integration types that can send data off the server: network clients and process or Git access. */
+const NETWORK_INTEGRATION_TYPES = new Set(['HTTP_API', 'MCP_HTTP', 'MCP_STDIO', 'BASH', 'TMUX', 'GIT'])
 
 interface IntegrationRow {
   config: IntegrationConfig

@@ -32,6 +32,7 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
@@ -58,7 +59,8 @@ import java.util.UUID
  * The config agent end to end, on the real security chain and embedded Neo4j: the propose tool
  * freezes a plan, the card's endpoints show and apply it with the rights of the user who clicks,
  * and the server answers the question. Only the identity ([UserService]) and the answer delivery
- * ([CaseService], which would start a real agent run) are mocked.
+ * ([CaseService], which would start a real agent run) are mocked; the mock stores the answer like the
+ * real service, so a plan is closed once answered.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -148,6 +150,28 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         return interrupt
     }
 
+    private val samePlan: String
+        get() =
+            """
+                    { "summary": "Plug Acme into the dev agent",
+                      "operations": [
+                        { "ref": "p1", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "triage-$suffix", "content": ["Triage this"], "agentConfigId": { "${'$'}op": "sup" } } },
+                        { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
+                          "changes": [ { "path": "/integrations/ACME_$suffix", "value": null } ] },
+                        { "ref": "sup", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "support-$suffix", "instructions": "Help the user" }, "deployTo": "NAMESPACE" },
+                        { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current", "userId": null },
+                          "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
+                      ] }
+                    """.trimIndent()
+
+    private fun promptPlan(name: String) =
+        """
+        { "operations": [ { "ref": "p", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
+          "value": { "name": "$name-$suffix", "content": ["Hello"] } } ] }
+        """.trimIndent()
+
     private fun view(questionId: UUID): JsonNode =
         objectMapper.readTree(
             mockMvc
@@ -194,26 +218,24 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                     AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespace.id, name = "dev-$suffix", enabled = true),
                 )
             actAs(alice)
+            every { caseService.addMessage(any(), any(), any(), any(), any()) } answers {
+                val questionId = arg<UUID?>(3)
+                if (questionId != null) {
+                    caseEventService.create(
+                        AnswerEvent(
+                            namespaceId = namespace.id,
+                            caseId = firstArg(),
+                            questionId = questionId,
+                            actor = secondArg(),
+                            answer = (thirdArg<List<MessageContent>>().first() as MessageContent.Text).content,
+                        ),
+                    )
+                }
+            }
         }
 
-        "a namespace admin's plan is shown, applied in order with their rights, answered, and re-applying it is a no-op" {
-            val proposal =
-                propose(
-                    alice,
-                    """
-                    { "summary": "Plug Acme into the dev agent",
-                      "operations": [
-                        { "ref": "p1", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "triage-$suffix", "content": ["Triage this"], "agentConfigId": { "${'$'}op": "sup" } } },
-                        { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
-                          "changes": [ { "path": "/integrations/ACME_$suffix", "value": null } ] },
-                        { "ref": "sup", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "support-$suffix", "instructions": "Help the user" }, "deployTo": "NAMESPACE" },
-                        { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current", "userId": null },
-                          "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
-                      ] }
-                    """.trimIndent(),
-                )
+        "a namespace admin's plan is shown, applied in order with their rights and answered; proposing it again converges" {
+            val proposal = propose(alice, samePlan)
 
             val shown = view(proposal.questionId)
             shown["state"].asText() shouldBe "OPEN"
@@ -244,8 +266,67 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             text shouldStartWith "[${ConfigAgentIntegration.TYPE} change"
             text shouldContain "APPLIED by"
 
-            view(proposal.questionId)["operations"].map { it["status"].asText() }.toSet() shouldBe setOf("APPLIED", "ALREADY_APPLIED")
-            applied(proposal.questionId, shown["planHash"].asText())["results"].map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
+            val after = view(proposal.questionId)
+            after["state"].asText() shouldBe "ANSWERED"
+            after["canApply"].asBoolean() shouldBe false
+            after["operations"].map { it["status"].asText() }.toSet() shouldBe setOf("APPLIED", "ALREADY_APPLIED")
+            apply(proposal.questionId, shown["planHash"].asText()).andExpect(status().isConflict)
+
+            val again = propose(alice, samePlan)
+            view(proposal.questionId)["state"].asText() shouldBe "ANSWERED"
+            val reapplied = applied(again.questionId, view(again.questionId)["planHash"].asText())
+            reapplied["results"].map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
+        }
+
+        "a newer plan supersedes an older one for good, even once answered" {
+            val older = propose(alice, promptPlan("first"))
+            val newer = propose(alice, promptPlan("second"))
+            view(older.questionId)["state"].asText() shouldBe "SUPERSEDED"
+
+            applied(newer.questionId, view(newer.questionId)["planHash"].asText())["decision"].asText() shouldBe "APPLIED"
+
+            view(older.questionId)["state"].asText() shouldBe "SUPERSEDED"
+            apply(older.questionId, view(older.questionId)["planHash"].asText()).andExpect(status().isConflict)
+        }
+
+        "a proposal that would mislabel its scope or hide a secret in a plain field is refused" {
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current", "userId": "me" },
+                          "value": { "name": "mine" }, "deployTo": "NONE",
+                          "secrets": [ { "path": "/instructions", "label": "API key" } ] },
+                        { "ref": "p", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "${UUID.randomUUID()}" },
+                          "value": { "name": "elsewhere", "content": ["x"] } },
+                        { "ref": "d", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
+                          "changes": [ { "path": "/subAgents/0", "value": "x" }, { "path": "/instructions", "value": { "${'$'}op": "nope" } } ] } ] }
+                    """.trimIndent(),
+                    ToolContext(namespaceId = namespace.id, userId = alice.id, userExternalId = null, caseEvents = emptyList()),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "agents have no personal scope"
+            result.output shouldContain "cannot hold a secret"
+            result.output shouldContain "must be this namespace"
+            result.output shouldContain "unknown reference"
+        }
+
+        "a value the REST API would refuse with 400 is reported INVALID, not written" {
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
+                          "changes": [ { "path": "/name", "value": "  " } ] } ] }
+                    """.trimIndent(),
+                )
+
+            val report = applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())
+
+            report["results"].single()["status"].asText() shouldBe "INVALID"
+            agentConfigService.findById(devAgent.id)!!.name shouldBe devAgent.name
         }
 
         "a member's plan is refused by the REST rules at apply time, and nothing is written" {

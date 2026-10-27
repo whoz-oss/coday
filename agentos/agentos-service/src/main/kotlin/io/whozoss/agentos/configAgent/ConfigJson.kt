@@ -44,12 +44,11 @@ internal object ConfigJson {
         require(segments.isNotEmpty()) { "Empty path" }
         var current: ObjectNode = root
         for (segment in segments.dropLast(1)) {
-            val next = current.get(segment)
             current =
-                if (next is ObjectNode) {
-                    next
-                } else {
-                    current.putObject(segment)
+                when (val next = current.get(segment)) {
+                    is ObjectNode -> next
+                    is ArrayNode -> throw IllegalArgumentException("'$pointer' goes through a list: replace the whole list instead")
+                    else -> current.putObject(segment)
                 }
         }
         current.set<JsonNode>(segments.last(), value ?: JsonNodeFactory.instance.nullNode())
@@ -61,6 +60,7 @@ internal object ConfigJson {
     ) {
         val segments = segments(pointer)
         val parent = segments.dropLast(1).fold(root as JsonNode?) { node, segment -> node?.get(segment) }
+        if (parent is ArrayNode) throw IllegalArgumentException("'$pointer' goes through a list: replace the whole list instead")
         (parent as? ObjectNode)?.remove(segments.last())
     }
 
