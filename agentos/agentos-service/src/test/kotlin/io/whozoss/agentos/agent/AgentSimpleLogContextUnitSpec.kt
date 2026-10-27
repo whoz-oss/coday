@@ -36,7 +36,8 @@ class AgentSimpleLogContextUnitSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val seenByTool = AtomicReference<Pair<String?, String?>>()
-            val seenAfterCallback = AtomicReference<String?>("unset")
+            val traceSeenByCallback = AtomicReference<String?>()
+            val afterCallback = AtomicReference<Map<String, String>?>()
 
             val tool =
                 object : StandardTool<Nothing> {
@@ -51,6 +52,7 @@ class AgentSimpleLogContextUnitSpec :
                         context: ToolContext,
                     ): ToolExecutionResult {
                         seenByTool.set(MDC.get(LogContext.CASE_ID) to MDC.get(LogContext.AGENT_NAME))
+                        traceSeenByCallback.set(MDC.get("traceId"))
                         return ToolExecutionResult.success("ok")
                     }
                 }
@@ -59,12 +61,13 @@ class AgentSimpleLogContextUnitSpec :
             val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             val callbacks = slot<List<ToolCallback>>()
             every { chatClient.prompt(any<Prompt>()).toolCallbacks(capture(callbacks)).stream() } answers {
-                // Simulate Spring AI: the callback runs on a thread with an empty MDC.
+                // Simulate Spring AI: the callback runs on a pooled thread carrying its own MDC
+                // (an infrastructure trace id, and a stale caseId left by a previous task).
                 val worker =
                     Thread {
-                        MDC.clear()
+                        MDC.setContextMap(mapOf("traceId" to "trace-1", LogContext.CASE_ID to "stale-case"))
                         callbacks.captured.single().call("{}")
-                        seenAfterCallback.set(MDC.get(LogContext.CASE_ID))
+                        afterCallback.set(MDC.getCopyOfContextMap())
                     }
                 worker.start()
                 worker.join()
@@ -92,8 +95,12 @@ class AgentSimpleLogContextUnitSpec :
                 agent.run(listOf(input)).toList()
             }
 
+            // The tool sees the run's context, never the stale caseId of the pooled thread.
             seenByTool.get() shouldBe (caseId.toString() to "dev")
-            // The foreign thread's MDC is restored once the callback returns.
-            seenAfterCallback.get() shouldBe null
+            // Foreign keys of the callback thread are kept: the callback captured them in withMdc,
+            // but the tool itself runs in a fresh runBlocking context built from the run's MDC only.
+            traceSeenByCallback.get() shouldBe null
+            // The pooled thread gets its own MDC back, unchanged, once the callback returns.
+            afterCallback.get() shouldBe mapOf("traceId" to "trace-1", LogContext.CASE_ID to "stale-case")
         }
     })

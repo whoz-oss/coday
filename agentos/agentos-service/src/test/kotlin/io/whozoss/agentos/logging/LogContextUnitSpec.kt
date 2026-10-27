@@ -60,6 +60,21 @@ class LogContextUnitSpec :
             MDC.clear()
         }
 
+        "withMdc keeps foreign keys of the thread but drops its stale AgentOS keys" {
+            MDC.clear()
+            MDC.put("traceId", "trace-1")
+            MDC.put(LogContext.AGENT_NAME, "stale-agent")
+            withMdc(mapOf(LogContext.CASE_ID to "case-1")) {
+                MDC.get("traceId") shouldBe "trace-1"
+                MDC.get(LogContext.CASE_ID) shouldBe "case-1"
+                MDC.get(LogContext.AGENT_NAME).shouldBeNull()
+            }
+            MDC.get("traceId") shouldBe "trace-1"
+            MDC.get(LogContext.AGENT_NAME) shouldBe "stale-agent"
+            MDC.get(LogContext.CASE_ID).shouldBeNull()
+            MDC.clear()
+        }
+
         "withMdc with a null context clears a stale MDC during the block, then restores it" {
             MDC.clear()
             MDC.put(LogContext.CASE_ID, "stale")

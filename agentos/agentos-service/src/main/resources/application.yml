@@ -374,5 +374,5 @@ logging:
     org.springframework.data.neo4j.cypher: ERROR
   pattern:
     # MDC keys (see io.whozoss.agentos.logging.LogContext) are empty outside a case run.
+    # No file pattern: logback-spring.xml configures no file appender (console only).
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} [case=%X{caseId:-} agent=%X{agentName:-}] - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} [case=%X{caseId:-} ns=%X{namespaceId:-} agent=%X{agentName:-} user=%X{userId:-}] - %msg%n"

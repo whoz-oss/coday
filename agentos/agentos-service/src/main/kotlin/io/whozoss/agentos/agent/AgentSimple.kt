@@ -99,6 +99,10 @@ class AgentSimple(
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
 
+            // Tool callbacks run on Spring AI / Reactor threads where the thread-local MDC of this
+            // coroutine is absent: capture it once, at the start of the run, and re-apply it in each callback.
+            val logContext: Map<String, String>? = MDC.getCopyOfContextMap()
+
             // Channel to collect tool events from callbacks
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
 
@@ -123,10 +127,6 @@ class AgentSimple(
                     "[$name] sending ${allMessages.size} messages to LLM" +
                         (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
                 }
-
-                // Tool callbacks run on Spring AI / Reactor threads where the thread-local MDC of this
-                // coroutine is absent: capture it now and re-apply it inside each callback.
-                val logContext: Map<String, String>? = MDC.getCopyOfContextMap()
 
                 // Bail out immediately if an interrupt/kill was requested before
                 // the LLM call even starts (e.g. kill fired while the previous
@@ -168,8 +168,8 @@ class AgentSimple(
                     }
 
                 logger.info {
-                    "[AgentSimple] $name calling LLM $llmProvider/$llmModel with ${allMessages.size} message(s) " +
-                        "and ${toolCallbacks.size} tool(s)"
+                    "[AgentSimple] $name sending request to LLM $llmProvider/$llmModel: ${allMessages.size} message(s), " +
+                        "${toolCallbacks.size} tool(s)"
                 }
 
                 // Make single LLM call with tools

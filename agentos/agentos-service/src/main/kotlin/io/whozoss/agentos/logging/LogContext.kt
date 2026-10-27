@@ -1,6 +1,5 @@
 package io.whozoss.agentos.logging
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.slf4j.MDCContext
 import kotlinx.coroutines.withContext
 import org.slf4j.MDC
@@ -27,6 +26,9 @@ object LogContext {
     const val AGENT_NAME = "agentName"
     const val USER_ID = "userId"
 
+    /** The keys AgentOS owns: never inherited from whatever a pooled thread last carried. */
+    val KEYS: Set<String> = setOf(CASE_ID, NAMESPACE_ID, AGENT_NAME, USER_ID)
+
     /** The current thread MDC plus [entries]; null values are skipped. */
     fun merged(vararg entries: Pair<String, Any?>): Map<String, String> {
         val current = MDC.getCopyOfContextMap() ?: emptyMap()
@@ -45,20 +47,24 @@ object LogContext {
 /** Runs [block] with [entries] added to the MDC, propagated across suspensions and dispatchers. */
 suspend fun <T> withLogContext(
     vararg entries: Pair<String, Any?>,
-    block: suspend CoroutineScope.() -> T,
-): T = withContext(LogContext.mdcContext(*entries), block)
+    block: suspend () -> T,
+): T = withContext(LogContext.mdcContext(*entries)) { block() }
 
 /**
- * Runs [block] with the MDC set to [context] (cleared when null), then restores the previous MDC.
+ * Runs [block] with [context] merged into the thread's MDC, then restores the previous MDC.
  * For code running outside coroutines on threads AgentOS does not own (e.g. Spring AI tool
  * callbacks on Reactor threads), where the coroutine-propagated MDC is not available.
+ *
+ * Keys set by others on that thread (e.g. a trace id) are kept. The AgentOS keys ([LogContext.KEYS])
+ * come only from [context]: a stale caseId left on a pooled thread never leaks into this block.
  */
 inline fun <T> withMdc(
     context: Map<String, String>?,
     block: () -> T,
 ): T {
     val previous = MDC.getCopyOfContextMap()
-    if (context.isNullOrEmpty()) MDC.clear() else MDC.setContextMap(context)
+    val merged = (previous ?: emptyMap()).filterKeys { it !in LogContext.KEYS } + (context ?: emptyMap())
+    if (merged.isEmpty()) MDC.clear() else MDC.setContextMap(merged)
     try {
         return block()
     } finally {
