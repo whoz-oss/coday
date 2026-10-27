@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { IntegrationTypeControllerService, Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { switchMap, BehaviorSubject, catchError, map, of } from 'rxjs'
+import { switchMap, BehaviorSubject, map } from 'rxjs'
 import { AsyncPipe } from '@angular/common'
 import { NamespaceItemComponent } from '../namespace-item/namespace-item.component'
 
@@ -12,13 +12,11 @@ import { NamespaceItemComponent } from '../namespace-item/namespace-item.compone
  *
  * Responsibilities:
  * - Load and display the list of namespaces via ds-entity-list
- * - Navigate to create/edit pages
+ * - Navigate to the create page and to namespace settings
  * - Delete with immediate list refresh (confirmation handled by NamespaceItemComponent)
  *
- * Create and edit logic live in NamespaceFormComponent.
+ * Create and edit logic live in NamespaceFormComponent (edit is reached from the namespace settings).
  */
-const GIT_INTEGRATION_TYPE = 'GIT'
-
 @Component({
   selector: 'agentos-namespace-list',
   imports: [AsyncPipe, NamespaceItemComponent, EntityListComponent],
@@ -30,21 +28,11 @@ export class NamespaceListComponent {
   private readonly router = inject(Router)
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly integrationTypeController = inject(IntegrationTypeControllerService)
 
   /** Trigger to refresh the list (emitting a new value forces re-subscription). */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-
-  /** The GIT plugin registers the `GIT` integration type; without it, Git settings are hidden. */
-  protected readonly gitAvailable = toSignal(
-    this.integrationTypeController.listTypesIntegrationType().pipe(
-      map((types) => types.some((type) => type.type === GIT_INTEGRATION_TYPE)),
-      catchError(() => of(false))
-    ),
-    { initialValue: false }
-  )
 
   /** Raw namespaces, kept for delete lookups. */
   private readonly namespaces$ = this.refresh$.pipe(
@@ -91,10 +79,6 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos/namespaces/new'])
   }
 
-  protected navigateToEdit(ns: Namespace): void {
-    this.router.navigate(['/agentos/namespaces', ns.id ?? '', 'edit'])
-  }
-
   protected openIntegrations(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'integrations'])
   }
@@ -115,6 +99,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'prompts'])
   }
 
+  protected openSkills(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'skills'])
+  }
+
   protected openScheduledPrompts(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'scheduled-prompts'])
   }
@@ -127,20 +115,8 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'auth-settings'])
   }
 
-  protected openUsage(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'usage'])
-  }
-
-  protected openMembers(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'members'])
-  }
-
   protected openToolInvoke(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'tool-invoke'])
-  }
-
-  protected openGit(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'git'])
   }
 
   // --- Delete ---

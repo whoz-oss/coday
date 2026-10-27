@@ -15,7 +15,7 @@ services:
       - SERVER_PORT=8080
 
       # PF4J configuration
-      - PLUGINS_DIR=/app/plugins
+      - AGENTOS_PLUGINS_DIR=/app/plugins
 
       # JVM options
       - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC

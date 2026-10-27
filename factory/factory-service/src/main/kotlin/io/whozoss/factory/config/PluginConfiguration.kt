@@ -12,12 +12,12 @@ import org.pf4j.PluginLoader
 import org.pf4j.PluginManager
 import org.pf4j.spring.SpringExtensionFactory
 import org.pf4j.spring.SpringPluginManager
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 
 /**
  * Configuration of the PF4J plugin system.
@@ -29,12 +29,25 @@ import java.nio.file.Paths
  */
 @Configuration
 class PluginConfiguration {
+    /**
+     * PF4J runtime directory, aligned with AgentOS (`agentos.plugins.dir`).
+     *
+     * Defaults to `plugins/`, resolved against the working directory: Coday launches the
+     * service with `cwd = <configDir>/factory` and the IntelliJ run configuration with
+     * `cwd = factory/`, so both land on the installation `plugins/` directory without any
+     * variable. `FACTORY_PLUGINS_DIR` remains available for other layouts.
+     */
+    @Bean
+    fun factoryPluginsDirectory(
+        @Value($$"${factory.plugins.dir:plugins/}") dir: String,
+    ): FactoryPluginsDirectory = FactoryPluginsDirectory { Path.of(dir) }
+
     @Bean
     fun pluginManager(
-        pluginsConfigProperties: FactoryPluginConfigProperties,
+        pluginsDirectory: FactoryPluginsDirectory,
         applicationContext: ApplicationContext,
     ): PluginManager {
-        val pluginPath = Paths.get(pluginsConfigProperties.dir)
+        val pluginPath = pluginsDirectory.path().toAbsolutePath().normalize()
 
         if (!Files.exists(pluginPath)) {
             Files.createDirectories(pluginPath)

@@ -3,8 +3,9 @@ package io.whozoss.agentos.integrationConfig
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.JsonNode
-import io.whozoss.agentos.sdk.entity.Entity
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.entity.ScopedEntity
 import java.util.UUID
 
 /**
@@ -35,13 +36,15 @@ import java.util.UUID
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class IntegrationConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val namespaceId: UUID? = null,
-    val userId: UUID? = null,
+    override val namespaceId: UUID? = null,
+    override val userId: UUID? = null,
     val name: String,
     val integrationType: String,
     val description: String? = null,
     val parameters: JsonNode? = null,
     val authSettingName: String? = null,
+    /** Runtime origin. Neo4j is the safe default for existing persisted records. */
+    val source: IntegrationConfigSource = IntegrationConfigSource.NEO4J,
     /**
      * When `true`, this configuration is granted to every agent within its scope without the agent
      * having to name it in [io.whozoss.agentos.agentConfig.AgentConfig.integrations].
@@ -65,5 +68,5 @@ data class IntegrationConfig(
      * deployment sees no change.
      */
     val autoGrant: Boolean = false,
-) : Entity {
+) : ScopedEntity {
 }

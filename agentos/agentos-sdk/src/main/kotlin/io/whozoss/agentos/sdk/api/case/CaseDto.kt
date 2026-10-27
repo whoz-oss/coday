@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.case
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
@@ -39,6 +40,10 @@ import java.util.UUID
  *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement
  *   mechanism when the user chooses to continue after a breach. A stored value is always absolute
  *   and independent of platform or namespace config changes.
+ * @property worktree Create only, null in responses. Whether a new top-level case gets the worktree its
+ *   namespace creates for every case: null leaves it to the namespace's settings, false creates an ordinary
+ *   case, true requires it and refuses the creation when the namespace does not create one or cannot. Must be
+ *   null for a sub-case, which shares its root case's worktree.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -58,6 +63,19 @@ data class CaseDto(
     )
     @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,
+    /**
+     * Per-case override of the reasoning effort of the agents running in the case. Null means each
+     * agent uses the effort of its model. Replaces the effort of every agent's model, whatever it has
+     * configured; not sent to Anthropic and Gemini providers. Accepted on create; changed afterwards
+     * through `PUT /api/cases/{id}/reasoning-effort` only (`PUT /api/cases/{id}` ignores it).
+     */
+    @field:Schema(
+        description =
+            "Per-case override of the reasoning effort of the agents running in the case. " +
+                "Null means each agent uses the effort of its model. Replaces the model effort of every agent, " +
+                "whatever the model has configured; not sent to Anthropic and Gemini providers.",
+    )
+    val reasoningEffort: ReasoningEffort? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**
@@ -86,4 +104,12 @@ data class CaseDto(
      */
     @field:Schema(description = "Timestamp of the caller's last read. Null = never read (unread).")
     val readAt: Instant? = null,
+    @field:Schema(
+        description =
+            "Create only. Whether a new top-level case gets the worktree its namespace creates for every case. " +
+                "Null leaves it to the namespace's settings, false creates an ordinary case, true requires it " +
+                "and refuses the creation when the namespace does not create one or cannot. " +
+                "Must be null for a sub-case.",
+    )
+    val worktree: Boolean? = null,
 )

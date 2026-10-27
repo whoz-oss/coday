@@ -145,7 +145,7 @@ agentos:
     # Grant the case exchange to every agent that does not mention CASE_FILE_EXCHANGE in its
     # integrations map. An agent that lists the key decides for itself; an empty list opts out.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
-      case-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT:false}
+      case-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT:true}
     # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
     # declared, also requires the invoking user to hold Namespace READ; a run without an
     # identified user is denied. Write access follows the user's Namespace WRITE right.
@@ -293,7 +293,11 @@ agentos:
   # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
   # prompt-caching-enabled: true
   plugins:
-    dir: ${PLUGINS_DIR:plugins/}
+    # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
+    # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,
+    # so the default needs no variable.
+    # Override with env var: AGENTOS_PLUGINS_DIR
+    dir: ${AGENTOS_PLUGINS_DIR:plugins/}
   security:
     # Identity resolution mode: 'local' (default) or 'auth'.
     # local: uses the OS username; auto-creates a User record on first access.

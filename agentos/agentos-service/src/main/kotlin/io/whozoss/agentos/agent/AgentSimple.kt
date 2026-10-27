@@ -4,6 +4,7 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -83,6 +84,10 @@ class AgentSimple(
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     override val llmProvider: String,
     override val llmModel: String,
+    /** Reasoning effort the provider receives, carried on the agent's messages. */
+    override val reasoningEffort: ReasoningEffort? = null,
+    /** Reasoning effort asked (the case's, else the model's), carried on the agent's messages. */
+    override val requestedReasoningEffort: ReasoningEffort? = null,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
     /**
@@ -278,6 +283,8 @@ class AgentSimple(
                             content = listOf(MessageContent.Text(content)),
                             llmProvider = llmProvider,
                             llmModel = llmModel,
+                            reasoningEffort = reasoningEffort,
+                            requestedReasoningEffort = requestedReasoningEffort,
                         ),
                     )
                 }

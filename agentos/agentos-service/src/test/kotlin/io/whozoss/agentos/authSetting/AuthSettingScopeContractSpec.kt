@@ -8,6 +8,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -71,7 +72,13 @@ class AuthSettingScopeContractSpec :
                     permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
                 } returns true
                 val service = AuthSettingServiceImpl(repository, AuthSettingMergeStrategy(), permissionService, userService)
-                val controller = AuthSettingController(service, mockk<NamespaceService>(), userService, permissionService)
+                val controller = AuthSettingController(
+                    service,
+                    mockk<NamespaceService>(),
+                    userService,
+                    permissionService,
+                    ScopedAccessPolicy(permissionService),
+                )
 
                 controller.list(case.namespaceParam, case.userParam).map { it.id } shouldContainExactlyInAnyOrder
                     case.expected.map { it.id }

@@ -124,6 +124,30 @@
         />
       </div>
 
+      <div class="ai-model-form__field">
+        <label class="ai-model-form__label" for="model-reasoning-effort">Reasoning effort</label>
+        <select id="model-reasoning-effort" class="ai-model-form__select" [formControl]="reasoningEffortControl">
+          <option [ngValue]="null">Provider default</option>
+          @for (effort of reasoningEffortOptions; track effort) {
+            <option [ngValue]="effort">{{ effort.toLowerCase() }}</option>
+          }
+        </select>
+        @if (reasoningEffortUnsupported()) {
+          <span class="ai-model-form__hint">Not supported yet for Anthropic and Gemini providers.</span>
+        } @else {
+          <span class="ai-model-form__hint">
+            Sent as is to OpenAI-compatible providers, which reject levels the model does not support. Through Requesty,
+            Claude models do not apply it faithfully.
+          </span>
+        }
+        @if (temperatureMayConflictWithEffort()) {
+          <span class="ai-model-form__hint ai-model-form__hint--warning">
+            OpenAI reasoning models (GPT-5.1 and later) reject a temperature other than 1 with an effort: leave
+            Temperature empty or set it to 1.
+          </span>
+        }
+      </div>
+
       <!-- Pricing section (all values per million tokens) -->
       <fieldset class="ai-model-form__section" [formGroup]="pricingGroup">
         <legend class="ai-model-form__section-title">

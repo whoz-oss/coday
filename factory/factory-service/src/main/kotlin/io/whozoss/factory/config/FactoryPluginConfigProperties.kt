@@ -1,19 +1,14 @@
 package io.whozoss.factory.config
 
-import org.springframework.boot.context.properties.ConfigurationProperties
+import java.nio.file.Path
 
 /**
- * Default root directory scanned by PF4J for plugin archives.
- */
-const val DEFAULT_FACTORY_PLUGINS_DIR = "plugins/"
-
-/**
- * Strongly-typed binding of the `factory.plugins.*` configuration tree.
+ * Internal source of the PF4J runtime installation directory.
  *
- * The directory is created automatically at startup when missing so the service
- * always boots cleanly, even with zero plugins installed.
+ * Production resolves `factory.plugins.dir` (env `FACTORY_PLUGINS_DIR`, default
+ * `plugins/` relative to the working directory), like AgentOS. Tests replace this
+ * bean to keep plugin discovery isolated.
  */
-@ConfigurationProperties(prefix = "factory.plugins")
-data class FactoryPluginConfigProperties(
-    val dir: String = DEFAULT_FACTORY_PLUGINS_DIR,
-)
+fun interface FactoryPluginsDirectory {
+    fun path(): Path
+}

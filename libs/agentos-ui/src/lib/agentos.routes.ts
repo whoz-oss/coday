@@ -37,10 +37,9 @@ export const AGENTOS_ROUTES: Route[] = [
               import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
           },
           {
+            // Legacy URL: edit now lives in the namespace settings shell (`:namespaceId/edit`).
             path: 'namespaces/:namespaceId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+            redirectTo: '/agentos/:namespaceId/edit',
           },
           {
             path: 'namespaces',
@@ -219,6 +218,32 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformAiModelsComponent
               ),
           },
+          // --- Admin: Platform Skills ---
+          {
+            path: 'admin/skills/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+          },
+          {
+            path: 'admin/skills/:skillId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+          },
+          {
+            path: 'admin/skills/:skillId/inspect',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-inspect/skill-inspect.component').then((m) => m.SkillInspectComponent),
+          },
+          {
+            path: 'admin/skills',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-skills/platform-skills.component').then((m) => m.PlatformSkillsComponent),
+          },
+
           // --- Admin: Platform Agent Configs ---
           {
             path: 'admin/agent-configs/new',
@@ -265,234 +290,299 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
           },
-          // --- Auth Settings ---
+          // --- Namespace settings shell ---
+          // Preserve the established URLs while rendering all namespace-scoped pages
+          // inside a shared settings navigation shell.
           {
-            path: ':namespaceId/auth-settings/new',
-            canActivate: [agentosReadyGuard],
+            path: ':namespaceId',
             loadComponent: () =>
-              import('./components/auth-setting-form/auth-setting-form.component').then(
-                (m) => m.AuthSettingFormComponent
+              import('./components/namespace-settings-layout/namespace-settings-layout.component').then(
+                (m) => m.NamespaceSettingsLayoutComponent
               ),
-          },
-          {
-            path: ':namespaceId/auth-settings/:authSettingId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/auth-setting-form/auth-setting-form.component').then(
-                (m) => m.AuthSettingFormComponent
-              ),
-          },
-          {
-            path: ':namespaceId/auth-settings',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/auth-settings-all-scopes/auth-settings-all-scopes.component').then(
-                (m) => m.AuthSettingsAllScopesComponent
-              ),
-          },
-          // --- Integrations ---
-          {
-            path: ':namespaceId/integrations/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/integration-form/integration-form.component').then(
-                (m) => m.IntegrationFormComponent
-              ),
-          },
-          {
-            path: ':namespaceId/integrations/:integrationId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/integration-form/integration-form.component').then(
-                (m) => m.IntegrationFormComponent
-              ),
-          },
-          {
-            path: ':namespaceId/integrations',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/integrations-all-scopes/integrations-all-scopes.component').then(
-                (m) => m.IntegrationsAllScopesComponent
-              ),
-          },
-          // --- AI Providers ---
-          {
-            path: ':namespaceId/ai-providers/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
-          },
-          {
-            path: ':namespaceId/ai-providers/:aiProviderId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
-          },
-          {
-            path: ':namespaceId/ai-providers',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/ai-providers-all-scopes/ai-providers-all-scopes.component').then(
-                (m) => m.AiProvidersAllScopesComponent
-              ),
-          },
-          // --- AI models ---
-          {
-            path: ':namespaceId/ai-models/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
-          },
-          {
-            path: ':namespaceId/ai-models/:modelId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
-          },
-          {
-            path: ':namespaceId/ai-models',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-ai-models/namespace-ai-models.component').then(
-                (m) => m.NamespaceAiModelsComponent
-              ),
-          },
-          {
-            path: ':namespaceId/usage',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-usage/namespace-usage.component').then((m) => m.NamespaceUsageComponent),
-          },
-          // --- Scheduled Prompts ---
-          {
-            path: ':namespaceId/scheduled-prompts/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
-                (m) => m.ScheduledPromptFormComponent
-              ),
-          },
-          {
-            path: ':namespaceId/scheduled-prompts/:scheduledPromptId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
-                (m) => m.ScheduledPromptFormComponent
-              ),
-          },
-          {
-            path: ':namespaceId/scheduled-prompts',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/scheduled-prompt-list/scheduled-prompt-list.component').then(
-                (m) => m.ScheduledPromptListComponent
-              ),
-          },
-          // --- Prompts ---
-          {
-            path: ':namespaceId/prompts/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
-          },
-          {
-            path: ':namespaceId/prompts/:promptId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
-          },
-          {
-            path: ':namespaceId/prompts',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-prompts/namespace-prompts.component').then(
-                (m) => m.NamespacePromptsComponent
-              ),
-          },
-          // --- Agent Configs ---
-          {
-            path: ':namespaceId/agent-configs/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/agent-config-form/agent-config-form.component').then(
-                (m) => m.AgentConfigFormComponent
-              ),
-          },
-          {
-            path: ':namespaceId/agent-configs/:agentConfigId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/agent-config-form/agent-config-form.component').then(
-                (m) => m.AgentConfigFormComponent
-              ),
-          },
-          {
-            path: ':namespaceId/agent-configs/:agentConfigId/inspect',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/agent-config-inspect/agent-config-inspect.component').then(
-                (m) => m.AgentConfigInspectComponent
-              ),
-          },
-          {
-            path: ':namespaceId/agent-configs/:agentConfigId/launch',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/agent-config-launch/agent-config-launch.component').then(
-                (m) => m.AgentConfigLaunchComponent
-              ),
-          },
-          {
-            path: ':namespaceId/agent-configs',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-agent-configs/namespace-agent-configs.component').then(
-                (m) => m.NamespaceAgentConfigsComponent
-              ),
-          },
-          // --- User Groups ---
-          {
-            path: ':namespaceId/user-groups/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/user-group-form/user-group-form.component').then((m) => m.UserGroupFormComponent),
-          },
-          {
-            path: ':namespaceId/user-groups/:userGroupId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/user-group-form/user-group-form.component').then((m) => m.UserGroupFormComponent),
-          },
-          {
-            path: ':namespaceId/user-groups',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-user-groups/namespace-user-groups.component').then(
-                (m) => m.NamespaceUserGroupsComponent
-              ),
-          },
-          // --- Tool Invoke (namespace-scoped) ---
-          {
-            path: ':namespaceId/tool-invoke',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/tool-invoke/tool-invoke.component').then((m) => m.ToolInvokeComponent),
-          },
-          // --- Git repository ---
-          {
-            path: ':namespaceId/git',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-git/namespace-git.component').then((m) => m.NamespaceGitComponent),
-          },
-          // --- Members ---
-          {
-            path: ':namespaceId/members',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-members/namespace-members.component').then(
-                (m) => m.NamespaceMembersComponent
-              ),
+            children: [
+              // --- Namespace details (edit form) ---
+              {
+                path: 'edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+              },
+              // --- Auth Settings ---
+              {
+                path: 'auth-settings/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/auth-setting-form/auth-setting-form.component').then(
+                    (m) => m.AuthSettingFormComponent
+                  ),
+              },
+              {
+                path: 'auth-settings/:authSettingId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/auth-setting-form/auth-setting-form.component').then(
+                    (m) => m.AuthSettingFormComponent
+                  ),
+              },
+              {
+                path: 'auth-settings',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/auth-settings-all-scopes/auth-settings-all-scopes.component').then(
+                    (m) => m.AuthSettingsAllScopesComponent
+                  ),
+              },
+              // --- Integrations ---
+              {
+                path: 'integrations/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/integration-form/integration-form.component').then(
+                    (m) => m.IntegrationFormComponent
+                  ),
+              },
+              {
+                path: 'integrations/:integrationId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/integration-form/integration-form.component').then(
+                    (m) => m.IntegrationFormComponent
+                  ),
+              },
+              {
+                path: 'integrations/:integrationId/view',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/integration-config-view/integration-config-view.component').then(
+                    (m) => m.IntegrationConfigViewComponent
+                  ),
+              },
+              {
+                path: 'integrations',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/integrations-all-scopes/integrations-all-scopes.component').then(
+                    (m) => m.IntegrationsAllScopesComponent
+                  ),
+              },
+              // --- AI Providers ---
+              {
+                path: 'ai-providers/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/ai-provider-form/ai-provider-form.component').then(
+                    (m) => m.AiProviderFormComponent
+                  ),
+              },
+              {
+                path: 'ai-providers/:aiProviderId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/ai-provider-form/ai-provider-form.component').then(
+                    (m) => m.AiProviderFormComponent
+                  ),
+              },
+              {
+                path: 'ai-providers',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/ai-providers-all-scopes/ai-providers-all-scopes.component').then(
+                    (m) => m.AiProvidersAllScopesComponent
+                  ),
+              },
+              // --- AI models ---
+              {
+                path: 'ai-models/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+              },
+              {
+                path: 'ai-models/:modelId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+              },
+              {
+                path: 'ai-models',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-ai-models/namespace-ai-models.component').then(
+                    (m) => m.NamespaceAiModelsComponent
+                  ),
+              },
+              {
+                path: 'usage',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-usage/namespace-usage.component').then(
+                    (m) => m.NamespaceUsageComponent
+                  ),
+              },
+              // --- Scheduled Prompts ---
+              {
+                path: 'scheduled-prompts/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                    (m) => m.ScheduledPromptFormComponent
+                  ),
+              },
+              {
+                path: 'scheduled-prompts/:scheduledPromptId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                    (m) => m.ScheduledPromptFormComponent
+                  ),
+              },
+              {
+                path: 'scheduled-prompts',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/scheduled-prompt-list/scheduled-prompt-list.component').then(
+                    (m) => m.ScheduledPromptListComponent
+                  ),
+              },
+              // --- Prompts ---
+              {
+                path: 'prompts/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+              },
+              {
+                path: 'prompts/:promptId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+              },
+              {
+                path: 'prompts',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-prompts/namespace-prompts.component').then(
+                    (m) => m.NamespacePromptsComponent
+                  ),
+              },
+              // --- Skills ---
+              {
+                path: ':namespaceId/skills/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+              },
+              {
+                path: ':namespaceId/skills/:skillId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+              },
+              {
+                path: ':namespaceId/skills/:skillId/inspect',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/skill-inspect/skill-inspect.component').then((m) => m.SkillInspectComponent),
+              },
+              {
+                path: ':namespaceId/skills',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-skills/namespace-skills.component').then(
+                    (m) => m.NamespaceSkillsComponent
+                  ),
+              },
+
+              // --- Agent Configs ---
+              {
+                path: 'agent-configs/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/agent-config-form/agent-config-form.component').then(
+                    (m) => m.AgentConfigFormComponent
+                  ),
+              },
+              {
+                path: 'agent-configs/:agentConfigId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/agent-config-form/agent-config-form.component').then(
+                    (m) => m.AgentConfigFormComponent
+                  ),
+              },
+              {
+                path: 'agent-configs/:agentConfigId/inspect',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/agent-config-inspect/agent-config-inspect.component').then(
+                    (m) => m.AgentConfigInspectComponent
+                  ),
+              },
+              {
+                path: 'agent-configs/:agentConfigId/launch',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/agent-config-launch/agent-config-launch.component').then(
+                    (m) => m.AgentConfigLaunchComponent
+                  ),
+              },
+              {
+                path: 'agent-configs',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-agent-configs/namespace-agent-configs.component').then(
+                    (m) => m.NamespaceAgentConfigsComponent
+                  ),
+              },
+              // --- User Groups ---
+              {
+                path: 'user-groups/new',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/user-group-form/user-group-form.component').then(
+                    (m) => m.UserGroupFormComponent
+                  ),
+              },
+              {
+                path: 'user-groups/:userGroupId/edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/user-group-form/user-group-form.component').then(
+                    (m) => m.UserGroupFormComponent
+                  ),
+              },
+              {
+                path: 'user-groups',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-user-groups/namespace-user-groups.component').then(
+                    (m) => m.NamespaceUserGroupsComponent
+                  ),
+              },
+              // --- Tool Invoke (namespace-scoped) ---
+              {
+                path: 'tool-invoke',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/tool-invoke/tool-invoke.component').then((m) => m.ToolInvokeComponent),
+              },
+              // --- Git repository ---
+              {
+                path: 'git',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-git/namespace-git.component').then((m) => m.NamespaceGitComponent),
+              },
+              // --- Members ---
+              {
+                path: 'members',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-members/namespace-members.component').then(
+                    (m) => m.NamespaceMembersComponent
+                  ),
+              },
+            ],
           },
           {
             path: '',

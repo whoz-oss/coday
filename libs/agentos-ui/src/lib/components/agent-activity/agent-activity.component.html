@@ -1,0 +1,15 @@
+<div class="agent-activity" [attr.title]="activity().detail">
+  <span class="agent-activity__pulse" aria-hidden="true"></span>
+  @for (line of lines(); track line.label) {
+    <span class="agent-activity__label" aria-hidden="true">{{ line.label }}</span>
+  }
+  @if (elapsed(); as seconds) {
+    <span class="agent-activity__elapsed" aria-hidden="true">{{ seconds }}</span>
+  }
+  <!--
+    The live region is this element alone, and it stays in place while the visible sentence is
+    replaced: a region inserted with its text already in it is often not announced, and one that
+    held the counter would be announced again every second.
+  -->
+  <span class="agent-activity__announce" role="status" aria-live="polite">{{ activity().label }}</span>
+</div>

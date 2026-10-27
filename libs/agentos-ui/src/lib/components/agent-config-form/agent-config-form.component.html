@@ -133,6 +133,79 @@
         </fieldset>
       }
 
+      <!-- Skills section: writes AgentConfig.skillSelectors -->
+      <fieldset class="agent-config-form__skills">
+        <legend class="agent-config-form__label">Skills</legend>
+        <p class="agent-config-form__skills-hint">
+          Instruction bundles this agent can read on demand. Selecting at least one grants it the
+          <code class="agent-config-form__code">readSkill</code> and
+          <code class="agent-config-form__code">readSkillResource</code> tools; selecting none grants neither.
+          @if (isPlatformMode) {
+            A platform config can only list platform skills here: namespace skills are resolved per namespace when the
+            agent runs.
+          }
+        </p>
+
+        <label class="agent-config-form__skill-all">
+          <input
+            class="agent-config-form__skill-checkbox"
+            type="checkbox"
+            [checked]="allSkillsSelected()"
+            (change)="toggleAllSkills()"
+          />
+          <span class="agent-config-form__skill-name">
+            Every skill in the catalogue (<code class="agent-config-form__code">*</code>)
+          </span>
+        </label>
+        <p class="agent-config-form__field-hint">
+          Resolved at run time, so skills added later are granted too, without editing this agent.
+        </p>
+
+        @if (namedSkillSelectionDropped()) {
+          <p class="agent-config-form__skills-warning" role="alert">
+            Saving with this on replaces the selection below with
+            <code class="agent-config-form__code">*</code>.
+          </p>
+        }
+
+        @if (skillCatalogueUnavailable()) {
+          <p class="agent-config-form__skills-warning" role="alert">
+            The skill catalogue could not be loaded. What this agent already declares is listed below and preserved on
+            save.
+          </p>
+        }
+
+        @if (skillRows().length === 0) {
+          <p class="agent-config-form__skills-empty">No skill available in this scope yet.</p>
+        } @else {
+          @for (row of skillRows(); track row.selector) {
+            <div class="agent-config-form__skill-row">
+              <label class="agent-config-form__skill-toggle">
+                <input
+                  class="agent-config-form__skill-checkbox"
+                  type="checkbox"
+                  [checked]="row.selected()"
+                  [disabled]="allSkillsSelected()"
+                  (change)="toggleSkill(row)"
+                />
+                <span class="agent-config-form__skill-name">{{ row.name }}</span>
+                @if (row.platform) {
+                  <span class="agent-config-form__skill-badge">platform</span>
+                }
+                @if (row.unresolved) {
+                  <span class="agent-config-form__skill-badge agent-config-form__skill-badge--unresolved">
+                    {{ skillCatalogueUnavailable() ? 'not verified' : 'no matching skill' }}
+                  </span>
+                }
+              </label>
+              @if (row.description) {
+                <p class="agent-config-form__skill-desc">{{ row.description }}</p>
+              }
+            </div>
+          }
+        }
+      </fieldset>
+
       <!-- Execution mode — replaces the old advancedExecution checkbox -->
       <div class="agent-config-form__field">
         <label class="agent-config-form__label" for="agent-config-execution-mode">Execution mode</label>

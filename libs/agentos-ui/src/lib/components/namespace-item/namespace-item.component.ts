@@ -1,45 +1,42 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
-import { ActionCardChipsDirective, ActionCardComponent, ActionCardMenuItem } from '../action-card/action-card.component'
-import { UsageConfigurationService } from '../../services/usage-configuration.service'
+import {
+  ActionCardActionsDirective,
+  ActionCardComponent,
+  ActionCardMenuItem,
+} from '../action-card/action-card.component'
 
 @Component({
   selector: 'agentos-namespace-item',
-  imports: [ActionCardComponent, ActionCardChipsDirective, IconButtonComponent],
+  imports: [ActionCardComponent, ActionCardActionsDirective, IconButtonComponent],
   templateUrl: './namespace-item.component.html',
   styleUrl: './namespace-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  readonly usageConfiguration = inject(UsageConfigurationService)
   readonly namespace = input.required<Namespace>()
-  /** Git settings exist only while the GIT plugin is loaded on the server. */
-  readonly gitAvailable = input(false)
 
   readonly selected = output<Namespace>()
-  readonly editRequested = output<Namespace>()
   readonly integrationsRequested = output<Namespace>()
   readonly aiProvidersRequested = output<Namespace>()
   readonly aiModelsRequested = output<Namespace>()
   readonly agentConfigsRequested = output<Namespace>()
   readonly promptsRequested = output<Namespace>()
+  readonly skillsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
-  readonly usageRequested = output<Namespace>()
-  readonly membersRequested = output<Namespace>()
-  readonly gitRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
   readonly toolInvokeRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
   protected readonly pendingDelete = signal(false)
 
-  protected readonly menuItems: ActionCardMenuItem[] = [
-    { key: 'edit', label: 'Edit namespace' },
-    { key: 'separator', label: '', variant: 'separator' },
-    { key: 'delete', label: 'Delete namespace', variant: 'danger' },
-  ]
+  /**
+   * Namespace settings (members, git, usage, edit, ...) live in the settings layout.
+   * The kebab only keeps the destructive action.
+   */
+  protected readonly menuItems: ActionCardMenuItem[] = [{ key: 'delete', label: 'Delete namespace', variant: 'danger' }]
 
   protected onSelect(): void {
     this.selected.emit(this.namespace())
@@ -59,17 +56,14 @@ export class NamespaceItemComponent {
   protected onPrompts(): void {
     this.promptsRequested.emit(this.namespace())
   }
+  protected onSkills(): void {
+    this.skillsRequested.emit(this.namespace())
+  }
   protected onScheduledPrompts(): void {
     this.scheduledPromptsRequested.emit(this.namespace())
   }
   protected onUserGroups(): void {
     this.userGroupsRequested.emit(this.namespace())
-  }
-  protected onMembers(): void {
-    this.membersRequested.emit(this.namespace())
-  }
-  protected onGit(): void {
-    this.gitRequested.emit(this.namespace())
   }
   protected onAuthSettings(): void {
     this.authSettingsRequested.emit(this.namespace())
@@ -80,8 +74,32 @@ export class NamespaceItemComponent {
 
   protected onMenuAction(key: string): void {
     switch (key) {
-      case 'edit':
-        this.editRequested.emit(this.namespace())
+      case 'integrations':
+        this.onIntegrations()
+        break
+      case 'ai-providers':
+        this.onAiProviders()
+        break
+      case 'ai-models':
+        this.onAiModels()
+        break
+      case 'agent-configs':
+        this.onAgentConfigs()
+        break
+      case 'prompts':
+        this.onPrompts()
+        break
+      case 'scheduled-prompts':
+        this.onScheduledPrompts()
+        break
+      case 'user-groups':
+        this.onUserGroups()
+        break
+      case 'auth-settings':
+        this.onAuthSettings()
+        break
+      case 'tool-invoke':
+        this.onToolInvoke()
         break
       case 'delete':
         this.pendingDelete.set(true)

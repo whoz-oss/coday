@@ -1,8 +1,88 @@
-// Layout fully delegated to ds-entity-list. Only the synthetic empty-row placeholder lives here.
-.integrations-all-scopes__empty {
-  margin: 0;
-  padding: 0.65rem 1rem;
-  font-size: 0.85rem;
-  font-style: italic;
+.integrations__new {
+  padding: 7px 12px;
+  border: 1px solid var(--color-accent);
+  border-radius: 0;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.integrations__status {
+  margin: 20px 8px;
   color: var(--color-text-secondary);
+}
+.integrations__table-wrap {
+  overflow-x: auto;
+}
+
+table.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.ds-table th {
+  padding: 7px;
+  border-bottom: 1px solid var(--color-divider);
+  color: var(--color-neutral-600);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+table.ds-table td {
+  padding: 7px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+table.ds-table tbody tr:hover {
+  background: var(--color-bg-hover);
+}
+.integrations__name {
+  font-weight: 500;
+}
+.integrations__type {
+  color: var(--color-text-secondary);
+}
+.integrations__tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.integrations__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+.integrations__actions button {
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+}
+.integrations__actions button:hover:not(:disabled) {
+  background: var(--color-accent-100);
+}
+.integrations__actions button:disabled {
+  color: var(--color-neutral-600);
+  cursor: default;
+}
+.integrations__actions .integrations__delete {
+  color: var(--color-error);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

@@ -57,6 +57,7 @@ model/auth-setting-dto.ts
 model/basic-auth-auth-setting.ts
 model/bearer-token-auth-setting.ts
 model/case-event.ts
+model/case-reasoning-effort-request.ts
 model/case-status-event.ts
 model/case-updated-event.ts
 model/case-workspace-view.ts
@@ -130,11 +131,13 @@ model/prompt-translate-request.ts
 model/prompt-translation.ts
 model/prompt.ts
 model/question-event.ts
+model/reasoning-effort.ts
 model/recurrence.ts
 model/run-cost-dto.ts
 model/scheduled-prompt-effective-request.ts
 model/scheduled-prompt-search-request.ts
 model/scheduled-prompt.ts
+model/skill-summary.ts
 model/skill.ts
 model/sub-case-finished-event.ts
 model/sub-case-started-event.ts

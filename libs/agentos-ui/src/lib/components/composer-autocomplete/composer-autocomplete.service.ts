@@ -6,7 +6,9 @@ import { AgentStateService } from '../../services/agent-state.service'
 import { filterAndSortAgents } from '../../services/agent.utils'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
+import { EFFORT_OPTIONS, EffortOption, effortOptionsFor } from './effort-command'
 
 /**
  * ComposerAutocompleteService — component-scoped service centralising slash-command (/)
@@ -23,6 +25,9 @@ import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autoc
  * 2. Call `reset()` when the namespace changes to clear stale suggestions.
  * 3. Bind `slashSuggestions` and `atSuggestions` signals to the template dropdowns.
  * 4. Delegate `onInput`, `onKeydown`, `onPromptSelected`, `onAgentSelected` from the template.
+ *
+ * A host that can change the reasoning effort (an open case) also calls `enableEffortCommand`:
+ * "/effort" then lists the levels in `effortSuggestions` instead of the matching prompts.
  */
 @Injectable()
 export class ComposerAutocompleteService {
@@ -40,6 +45,9 @@ export class ComposerAutocompleteService {
   /** Filtered agents matching the current @-mention prefix. Empty = dropdown closed. */
   readonly atSuggestions = signal<AgentConfig[]>([])
 
+  /** /effort levels matching the current value. Empty = dropdown closed. */
+  readonly effortSuggestions = signal<EffortOption[]>([])
+
   // ---------------------------------------------------------------------------
   // Internal state
   // ---------------------------------------------------------------------------
@@ -53,6 +61,9 @@ export class ComposerAutocompleteService {
   private effectiveAgents: AgentConfig[] = []
   private agentsLoaded = false
   private readonly atPrefix$ = new Subject<string>()
+
+  /** Null until the host enables /effort; then tells whether the effort can be changed right now. */
+  private effortCommandAvailable: (() => boolean) | null = null
 
   constructor() {
     // Slash-command pipeline: debounce → lazy-load prompts on first `/` → filter locally.
@@ -72,6 +83,8 @@ export class ComposerAutocompleteService {
       .subscribe(({ prefix, prompts }) => {
         this.effectivePrompts = prompts
         this.promptsLoaded = true
+        // A late answer must not open the prompt list over the /effort picker the user has reached since.
+        if (this.effortSuggestions().length) return
         this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
       })
 
@@ -107,6 +120,22 @@ export class ComposerAutocompleteService {
   }
 
   /**
+   * Offer the /effort command in this composer. [available] is checked on each keystroke: the
+   * levels are only listed while the effort can be saved (a loaded case that has not ended).
+   */
+  enableEffortCommand(available: () => boolean): void {
+    this.effortCommandAvailable = available
+  }
+
+  /** Open the /effort picker on every level, e.g. after a level the command does not know. */
+  showEffortLevels(): void {
+    if (!this.effortCommandAvailable?.()) return
+    this.slashSuggestions.set([])
+    this.atSuggestions.set([])
+    this.effortSuggestions.set([...EFFORT_OPTIONS])
+  }
+
+  /**
    * Clear all autocomplete state (suggestions + loaded caches).
    * Call when the namespace changes so stale data from the previous namespace
    * is never shown.
@@ -118,6 +147,7 @@ export class ComposerAutocompleteService {
     this.atSuggestions.set([])
     this.effectiveAgents = []
     this.agentsLoaded = false
+    this.effortSuggestions.set([])
   }
 
   // ---------------------------------------------------------------------------
@@ -142,8 +172,27 @@ export class ComposerAutocompleteService {
   onKeydown(
     event: KeyboardEvent,
     promptRef: Signal<PromptAutocompleteComponent | undefined>,
-    agentRef: Signal<AgentAutocompleteComponent | undefined>
+    agentRef: Signal<AgentAutocompleteComponent | undefined>,
+    effortRef?: Signal<EffortAutocompleteComponent | undefined>
   ): boolean {
+    if (this.effortSuggestions().length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        effortRef?.()?.navigate(event.key)
+        return true
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        this.effortSuggestions.set([])
+        return true
+      }
+      if (event.key === 'Tab' || event.key === 'Enter') {
+        event.preventDefault()
+        effortRef?.()?.navigate('Enter')
+        return true
+      }
+    }
+
     if (this.slashSuggestions().length > 0) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
@@ -243,6 +292,16 @@ export class ComposerAutocompleteService {
   // ---------------------------------------------------------------------------
 
   private updateAutocomplete(value: string): void {
+    // /effort takes precedence over the prompts whose name starts the same way.
+    const effortOptions = this.effortCommandAvailable?.() ? effortOptionsFor(value) : null
+    if (effortOptions?.length) {
+      this.slashSuggestions.set([])
+      this.atSuggestions.set([])
+      this.effortSuggestions.set(effortOptions)
+      return
+    }
+    if (this.effortSuggestions().length) this.effortSuggestions.set([])
+
     // Slash commands (/): only active when the value starts with / and has no space yet.
     if (value.startsWith('/')) {
       const withoutSlash = value.slice(1)

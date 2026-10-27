@@ -179,6 +179,12 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
     workingDir = projectDir
+    // bootRun starts from factory-service/, not from the Factory root: point PF4J at the
+    // shared factory/plugins/ directory (where deployPlugins installs the JARs) unless the
+    // caller already chose another one.
+    if (System.getenv("FACTORY_PLUGINS_DIR") == null) {
+        environment("FACTORY_PLUGINS_DIR", rootDir.parentFile.resolve("plugins").absolutePath)
+    }
 }
 
 // Mints a long-lived Factory JWT for an AgentOS Auth Setting:

@@ -418,11 +418,7 @@
         }
 
         @if (isRunning()) {
-          <div class="case-chat__thinking">
-            <span class="thinking-dot"></span>
-            <span class="thinking-dot"></span>
-            <span class="thinking-dot"></span>
-          </div>
+          <agentos-agent-activity [activity]="activity()" />
         }
       </div>
 
@@ -445,6 +441,16 @@
               [agents]="autocomplete.atSuggestions()"
               (selected)="onAgentSelected($event)"
               (dismissed)="closeAtAutocomplete()"
+            />
+          </div>
+        }
+        @if (autocomplete.effortSuggestions().length > 0) {
+          <div class="case-chat__autocomplete">
+            <agentos-effort-autocomplete
+              [options]="autocomplete.effortSuggestions()"
+              [current]="activeCase()?.reasoningEffort ?? null"
+              (selected)="onEffortSelected($event)"
+              (dismissed)="closeEffortAutocomplete()"
             />
           </div>
         }
@@ -485,6 +491,14 @@
               [disabled]="!canStageFiles()"
               (action)="attachmentsUi.openPicker()"
             />
+          }
+          @if (activeCase()) {
+            <span
+              class="case-chat__effort"
+              title="Type /effort to change it. Not applied to Anthropic and Gemini providers."
+            >
+              effort: {{ caseEffortLabel() }}
+            </span>
           }
           <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 

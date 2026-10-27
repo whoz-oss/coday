@@ -1,9 +1,8 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
   AiProviderConfigStateService,
@@ -12,41 +11,20 @@ import {
 } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
-import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
-const SECTION_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
-  platform: 'Platform (read-only)',
-  namespace: 'AI Providers du namespace',
-  userOnNs: 'Mes overrides sur ce namespace',
-  userGlobal: 'Mes overrides globaux',
-})
-
-const EMPTY_PREFIX = '__empty__'
-
-type AnyProvider = AiProvider
-
-interface ResolvedItem {
-  config: AnyProvider
+interface AiProviderRow {
+  key: string
+  config: AiProvider
   scope: AiProviderScope
+  scopeLabel: 'Platform' | 'Namespace' | 'Personal'
+  canMutate: boolean
 }
 
-/**
- * AiProvidersAllScopesComponent — unified 3-section view for the AI Providers page (story 6.6).
- *
- * Replaces `NamespaceAiProvidersComponent`. Renders three sections grouped via `ds-entity-list`:
- *   1. NS-shared providers      (groupKey: 'namespace')
- *   2. user × current namespace (groupKey: 'userOnNs')
- *   3. user-global              (groupKey: 'userGlobal')
- *
- * Pattern locked in story 6.5 (see `IntegrationsAllScopesComponent`):
- *   - vm$ multicast handled in the state service via shareReplay
- *   - resolved index keyed by composite `<scope>:<id>` to prevent cross-scope collisions
- *   - read-only is wired by default on the namespace section (default-safe)
- *   - namespaceId is reactive via paramMap, defensive vs RouteReuseStrategy customizations
- */
 @Component({
   selector: 'agentos-ai-providers-all-scopes',
-  imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent, IconButtonComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './ai-providers-all-scopes.component.html',
   styleUrl: './ai-providers-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -57,142 +35,77 @@ export class AiProvidersAllScopesComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(AiProviderConfigStateService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
-
   protected namespaceId = this.route.snapshot.params['namespaceId'] as string
-
-  /** Whether the user can administrate this namespace (super-admin OR namespace ADMIN). */
   protected readonly isAdmin = signal(false)
-
-  protected readonly listItems$ = this.state.vm$.pipe(map((vm) => this.toListItems(vm)))
-
-  /** True until the first vm$ emission resolves. */
   protected readonly isLoading = signal(true)
-
-  /**
-   * Index resolving a composite key (`<scope>:<id>`) → (config, scope) so the item template
-   * can render the right component variant. Composite key prevents cross-scope collisions
-   * when the same id exists in two scopes.
-   */
-  private resolved = new Map<string, ResolvedItem>()
+  protected readonly rows = signal<AiProviderRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.config.name, row.config.apiType, row.scopeLabel].join(' ')
+  )
 
   ngOnInit(): void {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
-      const ns = params.get('namespaceId') ?? ''
-      if (ns && ns !== this.namespaceId) this.namespaceId = ns
-      this.state.setNamespace(ns)
+      const id = params.get('namespaceId') ?? ''
+      if (id && id !== this.namespaceId) this.namespaceId = id
+      this.state.setNamespace(id)
     })
-
     this.route.paramMap
       .pipe(
         map((params) => params.get('namespaceId') ?? ''),
-        switchMap((ns) => (ns ? this.namespaceRole.isAdminOfNamespace$(ns) : of(false))),
+        switchMap((id) => (id ? this.namespaceRole.isAdminOfNamespace$(id) : of(false))),
         takeUntilDestroyed(this.destroyRef)
       )
-      .subscribe((v) => this.isAdmin.set(v))
-
-    this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
-      this.isLoading.set(false)
-      const next = new Map<string, ResolvedItem>()
-      vm.platform.forEach((c) => {
-        if (c.id) next.set(this.itemKey('platform', c.id), { config: c, scope: 'platform' })
-      })
-      vm.namespace.forEach((c) => {
-        if (c.id) next.set(this.itemKey('namespace', c.id), { config: c, scope: 'namespace' })
-      })
-      vm.userOnNs.forEach((c) => {
-        if (c.id) next.set(this.itemKey('userOnNs', c.id), { config: c, scope: 'userOnNs' })
-      })
-      vm.userGlobal.forEach((c) => {
-        if (c.id) next.set(this.itemKey('userGlobal', c.id), { config: c, scope: 'userGlobal' })
-      })
-      this.resolved = next
+      .subscribe((isAdmin) => this.isAdmin.set(isAdmin))
+    this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (vm) => {
+        this.rows.set(this.toRows(vm))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
-
-  protected isEmptyPlaceholder(id: string): boolean {
-    return id.startsWith(EMPTY_PREFIX)
-  }
-
-  protected resolve(id: string): ResolvedItem | null {
-    return this.resolved.get(id) ?? null
-  }
-
-  private itemKey(scope: AiProviderScope, id: string): string {
-    return `${scope}:${id}`
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'namespaces'])
-  }
-
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
+    void this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
       queryParams: { scope: defaultCreateScope(this.isAdmin()) },
     })
   }
-
-  protected onEdit(item: ResolvedItem): void {
-    const id = item.config.id
-    if (!id) return
-    this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', id, 'edit'], {
-      queryParams: { scope: item.scope },
+  protected edit(row: AiProviderRow): void {
+    if (!row.canMutate || !row.config.id) return
+    void this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', row.config.id, 'edit'], {
+      queryParams: { scope: row.scope },
     })
   }
-
-  protected onDelete(item: ResolvedItem): void {
-    const id = item.config.id
-    if (!id) return
-    this.state
-      .delete(id, item.scope)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: (err) => {
-          console.error(`[AiProvidersAllScopes] Delete failed for ${item.scope}:${id}:`, err)
-        },
-      })
+  protected delete(row: AiProviderRow): void {
+    if (!row.canMutate || !row.config.id || !confirm(`Delete AI provider “${row.config.name}”?`)) return
+    this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
   }
-
-  protected onDuplicate(item: ResolvedItem): void {
-    // Default destination = source scope (clone strict). Radio in the form lets the user
-    // re-target. `templateScope` tells the form which controller to use to load the source.
-    //
-    // Smart-redirect for non-admins: a non-admin cloning a NS item into NS scope would 403
-    // at submit (the form's radio also disables that option). Steer directly to `userOnNs`.
-    if (!item.config.id) return
-    const destinationScope = item.scope === 'namespace' && !this.isAdmin() ? 'userOnNs' : item.scope
-    this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
-      queryParams: { scope: destinationScope, template: item.config.id, templateScope: item.scope },
+  protected duplicate(row: AiProviderRow): void {
+    if (!row.config.id) return
+    const scope = row.scope === 'platform' || (row.scope === 'namespace' && !this.isAdmin()) ? 'userOnNs' : row.scope
+    void this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
+      queryParams: { scope, template: row.config.id, templateScope: row.scope },
     })
   }
-
-  private toListItems(vm: AiProviderConfigViewModel): EntityListItem[] {
-    const items: EntityListItem[] = []
-    items.push(...this.sectionItems('platform', vm.platform))
-    items.push(...this.sectionItems('namespace', vm.namespace))
-    items.push(...this.sectionItems('userOnNs', vm.userOnNs))
-    items.push(...this.sectionItems('userGlobal', vm.userGlobal))
-    return items
+  private toRows(vm: AiProviderConfigViewModel): AiProviderRow[] {
+    return [
+      ...this.mapScope(vm.platform, 'platform', 'Platform', false),
+      ...this.mapScope(vm.namespace, 'namespace', 'Namespace', this.isAdmin()),
+      ...this.mapScope(vm.userOnNs, 'userOnNs', 'Personal', true),
+      ...this.mapScope(vm.userGlobal, 'userGlobal', 'Personal', true),
+    ]
   }
-
-  private sectionItems(scope: AiProviderScope, configs: AnyProvider[]): EntityListItem[] {
-    if (configs.length === 0) {
-      return [
-        {
-          id: `${EMPTY_PREFIX}${scope}`,
-          name: 'Aucun AI Provider',
-          groupKey: scope,
-          groupLabel: SECTION_LABEL[scope],
-        },
-      ]
-    }
-    return configs
-      .filter((c): c is AnyProvider & { id: string } => !!c.id)
-      .map((c) => ({
-        id: this.itemKey(scope, c.id),
-        name: c.name,
-        description: c.apiType,
-        groupKey: scope,
-        groupLabel: SECTION_LABEL[scope],
-      }))
+  private mapScope(
+    configs: AiProvider[],
+    scope: AiProviderScope,
+    scopeLabel: AiProviderRow['scopeLabel'],
+    canMutate: boolean
+  ): AiProviderRow[] {
+    return configs.map((config, index) => ({
+      key: `${scope}:${config.id ?? index}`,
+      config,
+      scope,
+      scopeLabel,
+      canMutate,
+    }))
   }
 }

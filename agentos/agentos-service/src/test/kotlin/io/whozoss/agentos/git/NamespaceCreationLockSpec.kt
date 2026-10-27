@@ -72,9 +72,9 @@ class NamespaceCreationLockSpec : StringSpec({
             every { findAutomaticSettings(namespaceId) } returns settings
         }, bindings, mockk { every { isAvailable() } returns true }, workerOn())
         val observed = object : CaseWorkspaceProvisioning by provisioning {
-            override fun <T> aroundCreation(case: Case, action: () -> T): T {
+            override fun <T> aroundCreation(case: Case, worktree: Boolean?, action: () -> T): T {
                 enteredCreation.countDown()
-                return provisioning.aroundCreation(case, action)
+                return provisioning.aroundCreation(case, worktree, action)
             }
         }
         val service = CaseServiceImpl(mockk(relaxed = true), mockk(relaxed = true), AgentConfigProperties(),

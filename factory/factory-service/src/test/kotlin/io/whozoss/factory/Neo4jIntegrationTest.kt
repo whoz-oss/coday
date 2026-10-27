@@ -1,8 +1,9 @@
 package io.whozoss.factory
 
 import io.whozoss.factory.artifact.domain.ArtifactAvailabilityStatus
-import io.whozoss.factory.artifact.infrastructure.persistence.SpringDataNeo4jArtifactRepository
 import io.whozoss.factory.artifact.infrastructure.persistence.ArtifactMetadataNode
+import io.whozoss.factory.artifact.infrastructure.persistence.SpringDataNeo4jArtifactRepository
+import io.whozoss.factory.config.FactoryPluginsDirectory
 import io.whozoss.factory.oracle.publisher.OracleArtifactPublisher
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.persistence.neo4j.EmbeddedNeo4jTestConfiguration
@@ -83,9 +84,9 @@ abstract class Neo4jIntegrationTest {
                 Files.writeString(root.resolve("smoke@1.0.0.json"), SMOKE_DEFINITION)
             }
 
-        /** Empty plug-in drop-in directory shared by every integration test. */
+        /** Empty isolated plug-in runtime directory shared by every integration test. */
         @JvmStatic
-        protected val pluginsDir: Path =
+        internal val pluginsDir: Path =
             Files.createTempDirectory("factory-test-plugins")
 
         @JvmStatic
@@ -93,7 +94,6 @@ abstract class Neo4jIntegrationTest {
         fun registerSharedProperties(registry: DynamicPropertyRegistry) {
             registry.add("factory.oracle.definitions-root") { oracleDefinitionsRoot.toAbsolutePath().toString() }
             registry.add("factory.security.fake-idp-secret") { SHARED_FAKE_IDP_SECRET }
-            registry.add("factory.plugins.dir") { pluginsDir.toAbsolutePath().toString() }
             registry.add("factory.outbox.drain-enabled") { "false" }
             registry.add("server.forward-headers-strategy") { "framework" }
         }
@@ -109,6 +109,11 @@ abstract class Neo4jIntegrationTest {
  */
 @TestConfiguration
 class SharedNeo4jIntegrationTestConfiguration {
+
+    @Bean
+    @Primary
+    fun isolatedFactoryPluginsDirectory(): FactoryPluginsDirectory =
+        FactoryPluginsDirectory { Neo4jIntegrationTest.pluginsDir }
 
     /**
      * Replaces the OS-username resolver of `local` mode with a fixed user. Absent when a test
