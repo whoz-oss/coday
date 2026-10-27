@@ -15,8 +15,8 @@ import java.util.Base64
  * plugin receives no provider and cannot tell that apart from an unbound config: the spec is [None], the
  * same tools are listed and calls are sent unauthenticated, typically ending in `UNAUTHORIZED`. An
  * authenticated config therefore needs a run with a user identity. Only a provider that is present but
- * yields nothing usable is [Missing]: the tools are still listed and a call fails fast without a request,
- * the next one asking the provider again. `toString` of every variant is redacted.
+ * yields nothing usable is [Missing]: the tools are still listed and every call of the run fails fast
+ * without a request, the next run asking the provider again. `toString` of every variant is redacted.
  */
 sealed interface AuthHeaderSpec {
 
