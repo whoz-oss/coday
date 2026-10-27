@@ -75,7 +75,7 @@ describe('ConfigChangeCardComponent', () => {
   it('shows each operation with its diff and keeps Apply disabled until the secrets are typed', () => {
     const root = render(plan())
 
-    expect(root.textContent).toContain('create auth setting ACME_KEY')
+    expect(root.textContent).toContain('Create auth setting ACME_KEY')
     expect(root.textContent).toContain('/instructions')
     expect(button(root, 'Apply').disabled).toBe(true)
 
@@ -121,9 +121,122 @@ describe('ConfigChangeCardComponent', () => {
       } as Partial<ConfigChangeViewDto>)
     )
 
-    expect(root.textContent).toContain('create namespace Copy')
+    expect(root.textContent).toContain('Create namespace Copy')
     expect(root.textContent).toContain('Members of Copy')
     expect(root.textContent).toContain('Deployed on Copy so its members can use it.')
+  })
+
+  it('folds the fields of each step and gathers the secrets next to Apply, saying why it is disabled', () => {
+    const root = render(plan())
+
+    const steps = Array.from(root.querySelectorAll('details'))
+    expect(steps.length).toBe(2)
+    expect(steps.every((step) => !step.open)).toBe(true)
+    expect(root.querySelector('fieldset')?.textContent).toContain('Acme API key')
+    expect(root.textContent).toContain('Secret needed')
+    expect(root.textContent).toContain('Type the Acme API key above to apply.')
+
+    const secret = root.querySelector('fieldset input[type="password"]') as HTMLInputElement
+    secret.value = 's3cr3t'
+    secret.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+
+    expect(root.textContent).not.toContain('Type the Acme API key above to apply.')
+    expect(root.textContent).not.toContain('Secret needed')
+  })
+
+  it('shows a reference to another step as that step, not as JSON', () => {
+    const root = render(
+      plan({
+        operations: [
+          {
+            ref: 'sup',
+            order: 1,
+            kind: 'AGENT',
+            action: 'CREATE',
+            name: 'support',
+            affects: 'NAMESPACE_MEMBERS',
+            deployTo: 'NAMESPACE',
+            value: { name: 'support' },
+            changes: [],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+          {
+            ref: 'p1',
+            order: 2,
+            kind: 'PROMPT',
+            action: 'CREATE',
+            name: 'triage',
+            affects: 'NAMESPACE_MEMBERS',
+            value: { name: 'triage', agentConfigId: { $op: 'sup' } },
+            changes: [],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+        ],
+      } as Partial<ConfigChangeViewDto>)
+    )
+
+    expect(root.textContent).toContain('id created by step 1 (support)')
+    expect(root.textContent).not.toContain('$op')
+  })
+
+  it('reads an integration given to an agent as the tools it grants, and long text as text', () => {
+    const root = render(
+      plan({
+        operations: [
+          {
+            ref: 'dev',
+            order: 1,
+            kind: 'AGENT',
+            action: 'UPDATE',
+            name: 'dev',
+            affects: 'NAMESPACE_MEMBERS',
+            changes: [
+              { path: '/integrations/google-drive', remove: false },
+              { path: '/integrations/jira', after: ['search'], remove: false },
+            ],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+          {
+            ref: 'acme',
+            order: 2,
+            kind: 'INTEGRATION',
+            action: 'CREATE',
+            name: 'acme',
+            affects: 'NAMESPACE_MEMBERS',
+            value: { name: 'acme', description: 'A long description '.repeat(10) },
+            changes: [],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+        ],
+      } as Partial<ConfigChangeViewDto>)
+    )
+
+    expect(root.textContent).toContain('all tools')
+    expect(root.textContent).toContain('only search')
+    expect(root.querySelector('dd pre')).toBeNull()
+  })
+
+  it('tells why a step was not applied once the plan is applied', () => {
+    service.applyConfigChange.mockReturnValue(
+      of({
+        decision: 'FAILED',
+        appliedBy: 'u-1',
+        results: [{ ref: 'dev', status: 'DENIED', message: 'The user is not allowed to do this.' }],
+      })
+    )
+    const root = render(plan({ operations: [plan().operations[1]] }))
+
+    button(root, 'Apply').click()
+    fixture.detectChanges()
+
+    expect(root.textContent).toContain('Not allowed')
+    expect(root.textContent).toContain('The user is not allowed to do this.')
+    expect(root.textContent).toContain('Nothing was applied.')
   })
 
   it('applies the displayed plan with its hash and the typed secrets', () => {
@@ -153,6 +266,7 @@ describe('ConfigChangeCardComponent', () => {
 
     expect(button(root, 'Apply').disabled).toBe(true)
     expect(button(root, 'Reject').disabled).toBe(true)
+    expect(root.textContent).toContain('The agent is still working')
   })
 
   it('offers no action to a viewer the plan was not proposed to', () => {

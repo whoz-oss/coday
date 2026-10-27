@@ -1,10 +1,23 @@
 <section class="config-change" aria-label="Configuration plan">
   @if (view(); as plan) {
     <header class="config-change__header">
-      <span class="config-change__title">Configuration plan</span>
-      <span class="config-change__meta"
-        >{{ plan.operations.length }} operation(s) · proposed by {{ plan.agentName }}</span
-      >
+      <div class="config-change__heading">
+        <span class="config-change__title">Configuration plan</span>
+        <span class="config-change__meta">proposed by {{ plan.agentName }}</span>
+      </div>
+      <p class="config-change__summary">{{ plan.summary }}</p>
+      <p class="config-change__counts">
+        {{ plan.operations.length }} {{ plan.operations.length === 1 ? 'step' : 'steps' }}
+        @if (counts().pending > 0) {
+          · {{ counts().pending }} to apply
+        }
+        @if (counts().done > 0) {
+          · {{ counts().done }} done
+        }
+        @if (counts().blocked > 0) {
+          · <span class="config-change__counts-problem">{{ counts().blocked }} blocked</span>
+        }
+      </p>
     </header>
 
     @for (warning of plan.warnings; track warning) {
@@ -14,20 +27,79 @@
     <ol class="config-change__operations">
       @for (op of plan.operations; track op.ref) {
         <li class="config-change__op" [class.config-change__op--highlight]="isHighlighted(op)">
-          <div class="config-change__op-head">
-            <span class="config-change__op-title">{{ op.order }}. {{ title(op) }}</span>
-            <span class="config-change__badge">{{ scopeLabel(op) }}</span>
-            <span
-              class="config-change__status"
-              [class.config-change__status--done]="op.status === 'APPLIED' || op.status === 'ALREADY_APPLIED'"
-              [class.config-change__status--problem]="op.status === 'CONFLICT' || op.status === 'NOT_VISIBLE'"
-              >{{ resultLabel(op.ref) ?? statusLabel(op) }}</span
-            >
-          </div>
+          <details class="config-change__details">
+            <summary class="config-change__op-head">
+              <span class="config-change__chevron" aria-hidden="true"></span>
+              <span class="config-change__op-main">
+                <span class="config-change__op-title">
+                  {{ op.order }}. {{ actionLabel(op) }} <strong>{{ op.name }}</strong>
+                </span>
+                <span class="config-change__badge">{{ scopeLabel(op) }}</span>
+                @if (needsSecret(op)) {
+                  <span class="config-change__badge config-change__badge--secret">Secret needed</span>
+                }
+              </span>
+              <span
+                class="config-change__status"
+                [class.config-change__status--done]="isDone(op)"
+                [class.config-change__status--problem]="isProblem(op)"
+                >{{ statusLabel(op) }}</span
+              >
+            </summary>
 
-          @if (op.action === 'CREATE' && op.value) {
-            <pre class="config-change__json">{{ json(op.value) }}</pre>
-          }
+            <div class="config-change__body">
+              @if (op.action === 'CREATE' && op.value) {
+                <dl class="config-change__fields">
+                  @for (field of fields(op); track field.key) {
+                    <dt>{{ field.key }}</dt>
+                    <dd>
+                      @if (field.block) {
+                        <pre class="config-change__json">{{ field.text }}</pre>
+                      } @else {
+                        {{ field.text }}
+                      }
+                    </dd>
+                  }
+                </dl>
+              }
+
+              @if (op.changes.length > 0) {
+                <table class="config-change__diff">
+                  <thead>
+                    <tr>
+                      <th scope="col">Field</th>
+                      <th scope="col">Current</th>
+                      <th scope="col">Proposed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (change of op.changes; track change.path) {
+                      <tr>
+                        <td>
+                          <code>{{ change.path }}</code>
+                        </td>
+                        <td>
+                          <pre class="config-change__json">{{ display(change.before) }}</pre>
+                        </td>
+                        <td>
+                          @if (change.remove) {
+                            <em>removed</em>
+                          } @else {
+                            <pre class="config-change__json">{{ proposedValue(change) }}</pre>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
+
+              @if (op.action !== 'CREATE' && op.changes.length === 0) {
+                <p class="config-change__note">No field to show for this step.</p>
+              }
+            </div>
+          </details>
+
           @if (op.deployTo === 'NAMESPACE') {
             <p class="config-change__note">
               Deployed on {{ op.namespaceName ?? 'the namespace' }} so its members can use it.
@@ -35,58 +107,37 @@
           } @else if (op.deployTo === 'NONE') {
             <p class="config-change__note">Not deployed: members of the namespace will not see it.</p>
           }
-
-          @if (op.changes.length > 0) {
-            <table class="config-change__diff">
-              <thead>
-                <tr>
-                  <th scope="col">Field</th>
-                  <th scope="col">Current</th>
-                  <th scope="col">Proposed</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (change of op.changes; track change.path) {
-                  <tr>
-                    <td>
-                      <code>{{ change.path }}</code>
-                    </td>
-                    <td>
-                      <pre class="config-change__json">{{ json(change.before) }}</pre>
-                    </td>
-                    <td>
-                      @if (change.remove) {
-                        <em>removed</em>
-                      } @else {
-                        <pre class="config-change__json">{{ json(change.after) }}</pre>
-                      }
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          @if (op.status === 'PENDING' && plan.canApply) {
-            @for (secret of op.secretInputs; track secret.key) {
-              <label class="config-change__secret">
-                <span>{{ secret.label }}</span>
-                <input
-                  type="password"
-                  autocomplete="off"
-                  [attr.aria-label]="secret.label"
-                  [disabled]="busy()"
-                  (input)="onSecretInput(secret.key, $event)"
-                />
-              </label>
-            }
+          @if (failureMessage(op.ref); as message) {
+            <p class="config-change__op-error">{{ message }}</p>
           }
         </li>
       }
     </ol>
 
+    @if (plan.canApply && pendingSecrets().length > 0) {
+      <fieldset class="config-change__secrets" [disabled]="busy()">
+        <legend>{{ pendingSecrets().length === 1 ? 'A secret is needed' : 'Secrets are needed' }}</legend>
+        <p class="config-change__note">Typed here and sent to AgentOS only: the agent never sees it.</p>
+        @for (secret of pendingSecrets(); track secret.input.key) {
+          <label class="config-change__secret">
+            <span class="config-change__secret-label">
+              {{ secret.input.label }}
+              <span class="config-change__secret-for">for step {{ secret.op.order }} · {{ secret.op.name }}</span>
+            </span>
+            <input
+              type="password"
+              autocomplete="off"
+              [attr.aria-label]="secret.input.label"
+              [placeholder]="'Type the ' + secret.input.label"
+              (input)="onSecretInput(secret.input.key, $event)"
+            />
+          </label>
+        }
+      </fieldset>
+    }
+
     @if (report(); as result) {
-      <p class="config-change__report" role="status">Result: {{ result.decision.toLowerCase() }}</p>
+      <p class="config-change__report" role="status">{{ decisionLabel(result.decision) }}</p>
       @if (result.answerPosted === false) {
         <p class="config-change__error" role="alert">
           The configuration was changed but the agent could not be told. Click Apply again to send it the result.
@@ -130,6 +181,9 @@
       </div>
     } @else {
       <div class="config-change__actions">
+        @if (applyHint(); as hint) {
+          <p class="config-change__hint" role="status">{{ hint }}</p>
+        }
         <button
           class="config-change__btn config-change__btn--secondary"
           type="button"
@@ -147,9 +201,6 @@
           {{ busy() ? 'Applying…' : 'Apply' }}
         </button>
       </div>
-      @if (!secretsComplete()) {
-        <p class="config-change__note">Fill in the secrets above to apply.</p>
-      }
     }
   } @else if (errorMessage(); as message) {
     <p class="config-change__error" role="alert">{{ message }}</p>
