@@ -117,8 +117,8 @@ agentos:
       # runs exactly as without Git, whatever the namespace's Git association.
       enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
   encryption:
-    key: ${AGENTOS_ENCRYPTION_KEY}
-    salt: ${AGENTOS_ENCRYPTION_SALT}
+    key: ${AGENTOS_ENCRYPTION_KEY:NONE}
+    salt: ${AGENTOS_ENCRYPTION_SALT:NONE}
   case:
   # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
   # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
@@ -129,7 +129,7 @@ agentos:
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT
-    mount-root: ${AGENTOS_EXCHANGE_MOUNT_ROOT:data/exchange/}
+    mount-root: ${AGENTOS_EXCHANGE_MOUNT_ROOT:${user.home}/coday/agentos/data/exchange}
     # Comma-separated file extensions allowed for user uploads (lowercase, no dot). The default
     # covers text/doc/data/image/code; empty allows any. Expected to differ per AgentOS instance.
     # Override with env var: AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS
@@ -303,14 +303,14 @@ agentos:
     # local: uses the OS username; auto-creates a User record on first access.
     # auth:  decodes the Cloudflare JWT (Cf-Access-Jwt-Assertion header) or falls back
     #        to x-forwarded-email; requires the User to be pre-registered.
-    # Override with env var: FACTORY_SECURITY_MODE
-    mode: local
+    # Override with env var: AGENTOS_SECURITY_MODE
+    mode: ${AGENTOS_SECURITY_MODE:local}
   oauth:
     # Absolute redirect URI sent to the OAuth provider as redirect_uri.
     # Must match the frontend OAuth callback page URL exactly.
     # In production, set to the deployed frontend callback URL (e.g. https://app.example.com/oauth/callback).
     # Override with env var: AGENTOS_OAUTH_REDIRECT_URI
-    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:http://localhost:4100/agentos/oauth/callback}
+    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:}
     # Maximum time in minutes to wait for the user to complete browser authorization.
     # Each pending flow holds one Dispatchers.IO thread for this duration; lower values
     # reduce the maximum blocking window. Default: 2 minutes.
@@ -330,7 +330,7 @@ agentos:
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
-    data-dir: ${AGENTOS_PERSISTENCE_DATA_DIR:data}
+    data-dir: ${AGENTOS_PERSISTENCE_DATA_DIR:${user.home}/coday/agentos/data/database}
     # Persistence mode:
     #   embedded-neo4j (default) - embedded Neo4j engine, no Docker required;
     #                              database stored under data-dir/neo4j/

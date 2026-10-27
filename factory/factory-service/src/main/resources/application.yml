@@ -4,16 +4,6 @@ server:
 spring:
   application:
     name: factory-service
-  config:
-    import: "optional:file:../.env[.properties]"
-  # Connection coordinates for the remote `neo4j` persistence mode.
-  # EmbeddedNeo4jConfiguration provides its own Driver using the port assigned at startup.
-  neo4j:
-    uri: ${SPRING_NEO4J_URI:bolt://localhost:7687}
-    authentication:
-      username: ${SPRING_NEO4J_USERNAME:neo4j}
-      password: ${SPRING_NEO4J_PASSWORD:password}
-
 # Neo4j reports every idempotent `CREATE ... IF NOT EXISTS` as an INFO
 # notification when the schema already exists. Keep actionable warnings while
 # hiding this expected startup noise.
@@ -49,7 +39,7 @@ factory:
     # Persistence mode: `embedded-neo4j` (default, in-process engine, no Docker)
     # or `neo4j` (standalone server, configure spring.neo4j.*).
     mode: ${FACTORY_PERSISTENCE_MODE:embedded-neo4j}
-    data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:data}
+    data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:${user.home}/coday/factory/data/database}
     embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
     embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:0}
   cockpit:
@@ -59,6 +49,9 @@ factory:
   bind:
     host: ${FACTORY_BIND_HOST:127.0.0.1}
     unsafe-allow-remote-bind: ${FACTORY_UNSAFE_ALLOW_REMOTE_BIND:false}
+  encryption:
+    key: ${FACTORY_ENCRYPTION_KEY:NONE}
+    salt: ${FACTORY_ENCRYPTION_SALT:NONE}
   tenant:
     organization-id: ${FACTORY_ORGANIZATION_ID:default}
     workstream-id: ${FACTORY_WORKSTREAM_ID:default}
