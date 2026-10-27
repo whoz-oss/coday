@@ -44,6 +44,13 @@ data class IntegrationConfigUpdate(
  * composition, for service-to-service and startup-seeding use only. They must not be called
  * directly from controllers or agent tools.
  *
+ * **Exception** — [NamespaceGitController.removeAssociation][io.whozoss.agentos.git.NamespaceGitController]
+ * calls [delete] directly because the GIT_REPOSITORY config is a namespace capability (always
+ * namespace-shared, never user-owned), and its
+ * `@PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")` annotation already
+ * enforces the same permission that a `deleteForCaller` path would check. A `deleteForCaller`
+ * surface for this case would add a DB round-trip without adding authorization coverage.
+ *
  * ## Scope modes
  * Four scope modes are supported: platform `(null, null)`, namespace-shared `(ns, null)`,
  * user-global `(null, user)`, and user×namespace `(ns, user)`.
@@ -281,6 +288,15 @@ interface IntegrationConfigService :
      * Unchecked: performs no authorization. For service-to-service composition and startup
      * seeding only. A controller or an agent tool calling this is a bug — use the
      * `*ForCaller` surface.
+     *
+     * ## Forward scaffolding
+     *
+     * No production call site uses `unsecuredFindById` yet. It is declared here alongside
+     * [unsecuredCreate] and [unsecuredUpdate] so the `unsecured*` convention is complete and
+     * greppable from the first commit that introduces the naming convention. The first agent
+     * tool that needs a read-without-caller context (e.g. a reconciliation job that runs
+     * under no user identity) will call this instead of the inherited [EntityService.findById],
+     * making the unchecked access visible at the call site.
      */
     fun unsecuredFindById(id: UUID, withRemoved: Boolean = false): IntegrationConfig?
 }

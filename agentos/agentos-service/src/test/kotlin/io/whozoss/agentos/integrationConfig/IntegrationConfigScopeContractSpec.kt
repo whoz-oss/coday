@@ -10,6 +10,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
@@ -85,7 +86,7 @@ class IntegrationConfigScopeContractSpec : StringSpec({
             val controller = IntegrationConfigController(
                 service,
                 userService,
-                io.whozoss.agentos.testutil.yamlExportMapper(),
+                yamlExportMapper(),
             )
 
             controller.list(case.namespaceParam, case.userParam).map { it.id } shouldContainExactlyInAnyOrder
