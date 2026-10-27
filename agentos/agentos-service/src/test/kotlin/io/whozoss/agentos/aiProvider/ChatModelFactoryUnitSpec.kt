@@ -1,16 +1,23 @@
 package io.whozoss.agentos.aiProvider
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.chat.sentTo
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.anthropic.AnthropicChatModel
+import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.google.genai.GoogleGenAiChatModel
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions
+import org.springframework.ai.ollama.api.OllamaChatOptions
+import org.springframework.ai.ollama.api.ThinkOption
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
 
@@ -124,6 +131,78 @@ class ChatModelFactoryUnitSpec : StringSpec({
             val trackedModel = enabledFactory.createChatModel(apiType, "http://localhost:8000", "test", "test")
             (trackedModel.defaultOptions as OpenAiChatOptions).streamUsage shouldBe true
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Reasoning effort
+    // -------------------------------------------------------------------------
+
+    fun optionsFor(
+        apiType: AiApiType,
+        effort: ReasoningEffort?,
+    ) = factory.createChatModel(
+        apiType = apiType,
+        baseUrl = "http://localhost:8000",
+        apiKey = "key",
+        modelName = "test-model",
+        reasoningEffort = effort,
+    ).defaultOptions
+
+    "OpenAI sends the reasoning effort verbatim in lowercase and nothing by default" {
+        (optionsFor(AiApiType.OpenAI, ReasoningEffort.XHIGH) as OpenAiChatOptions).reasoningEffort shouldBe "xhigh"
+        (optionsFor(AiApiType.OpenAI, ReasoningEffort.NONE) as OpenAiChatOptions).reasoningEffort shouldBe "none"
+        (optionsFor(AiApiType.OpenAI, null) as OpenAiChatOptions).reasoningEffort.shouldBeNull()
+    }
+
+    "vLLM keeps thinking off by default and for NONE, and turns it on with the level otherwise" {
+        listOf(null, ReasoningEffort.NONE).forEach { effort ->
+            val off = optionsFor(AiApiType.vLLM, effort) as OpenAiChatOptions
+            off.reasoningEffort.shouldBeNull()
+            off.extraBody shouldBe mapOf("chat_template_kwargs" to mapOf("enable_thinking" to false))
+        }
+
+        val on = optionsFor(AiApiType.vLLM, ReasoningEffort.MEDIUM) as OpenAiChatOptions
+        on.reasoningEffort shouldBe "medium"
+        on.extraBody shouldBe mapOf("chat_template_kwargs" to mapOf("enable_thinking" to true))
+    }
+
+    "vLLM sends XHIGH and MAX as high, the highest level its request schema accepts" {
+        listOf(ReasoningEffort.HIGH, ReasoningEffort.XHIGH, ReasoningEffort.MAX).forEach { effort ->
+            (optionsFor(AiApiType.vLLM, effort) as OpenAiChatOptions).reasoningEffort shouldBe "high"
+        }
+    }
+
+    "Ollama keeps thinking off by default and for NONE, and maps the other levels to its three levels" {
+        mapOf(
+            null to ThinkOption.ThinkBoolean.DISABLED,
+            ReasoningEffort.NONE to ThinkOption.ThinkBoolean.DISABLED,
+            ReasoningEffort.LOW to ThinkOption.ThinkLevel.LOW,
+            ReasoningEffort.MEDIUM to ThinkOption.ThinkLevel.MEDIUM,
+            ReasoningEffort.HIGH to ThinkOption.ThinkLevel.HIGH,
+            ReasoningEffort.XHIGH to ThinkOption.ThinkLevel.HIGH,
+            ReasoningEffort.MAX to ThinkOption.ThinkLevel.HIGH,
+        ).forEach { (effort, expected) ->
+            (optionsFor(AiApiType.Ollama, effort) as OllamaChatOptions).thinkOption shouldBe expected
+        }
+    }
+
+    "Gemini ignores the reasoning effort and keeps its thinking settings unset" {
+        val options = optionsFor(AiApiType.Gemini, ReasoningEffort.HIGH) as GoogleGenAiChatOptions
+        options.thinkingLevel.shouldBeNull()
+        options.thinkingBudget.shouldBeNull()
+    }
+
+    "sentTo gives the level each API receives: verbatim on OpenAI, high at most on vLLM and Ollama, none elsewhere" {
+        ReasoningEffort.MAX.sentTo(AiApiType.OpenAI) shouldBe ReasoningEffort.MAX
+        ReasoningEffort.MAX.sentTo(AiApiType.vLLM) shouldBe ReasoningEffort.HIGH
+        ReasoningEffort.XHIGH.sentTo(AiApiType.Ollama) shouldBe ReasoningEffort.HIGH
+        ReasoningEffort.MEDIUM.sentTo(AiApiType.Ollama) shouldBe ReasoningEffort.MEDIUM
+        ReasoningEffort.HIGH.sentTo(AiApiType.Anthropic).shouldBeNull()
+        ReasoningEffort.HIGH.sentTo(AiApiType.Gemini).shouldBeNull()
+    }
+
+    "Anthropic ignores the reasoning effort and keeps thinking unset" {
+        (optionsFor(AiApiType.Anthropic, ReasoningEffort.HIGH) as AnthropicChatOptions).thinking.shouldBeNull()
     }
 
 })

@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.chat.forUtilityCall
 import io.whozoss.agentos.exception.BadRequestException
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
@@ -105,7 +106,7 @@ class PromptTranslationServiceImpl(
                     "No default AI model configured for namespace $namespaceId -- cannot translate prompt",
                 )
         val provider = aiProviderService.getById(model.aiProviderId)
-        return model to provider
+        return model.forUtilityCall() to provider
     }
 
     /**

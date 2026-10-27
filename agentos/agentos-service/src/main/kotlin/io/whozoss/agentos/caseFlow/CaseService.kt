@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import java.util.UUID
 
 /**
@@ -203,6 +204,21 @@ interface CaseService : EntityService<Case, UUID> {
      * @throws [io.whozoss.agentos.exception.ConflictException] if the case is not in a terminal status
      */
     fun reopenCase(caseId: UUID): Case
+
+    /**
+     * Set the case-level reasoning effort ([Case.reasoningEffort]), or remove it with null.
+     *
+     * Goes through [edit], so only that field changes: the status stays as the runtime left it, and
+     * the change is applied again to a fresh read when a concurrent write wins (a run ending, a
+     * generated title).
+     *
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if concurrent writes keep winning
+     */
+    fun setReasoningEffort(
+        caseId: UUID,
+        reasoningEffort: ReasoningEffort?,
+    ): Case
 
     /**
      * Start a turn that a [CaseLaunchGate] held back, if there is one to start.

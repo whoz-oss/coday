@@ -22,6 +22,7 @@ import reactor.core.publisher.Flux
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Exercises real Spring AI clients and native tool execution; only the provider transport is mocked. */
@@ -33,6 +34,7 @@ class ChatClientUsageSwitchSpec : StringSpec({
                     val requests = AtomicInteger()
                     val toolsExecuted = AtomicInteger()
                     val gateChecks = AtomicInteger()
+                    val sentEfforts = CopyOnWriteArrayList<String?>()
                     val callback = object : ToolCallback {
                         override fun getToolDefinition(): ToolDefinition = ToolDefinition.builder()
                             .name("lookup")
@@ -76,6 +78,7 @@ class ChatClientUsageSwitchSpec : StringSpec({
                     }
                     val api = mockk<OpenAiApi>()
                     every { api.chatCompletionEntity(any(), any()) } answers {
+                        sentEfforts.add(firstArg<OpenAiApi.ChatCompletionRequest>().reasoningEffort())
                         val (reason, message) = nextMessage()
                         ResponseEntity.ok(
                             OpenAiApi.ChatCompletion(
@@ -91,6 +94,7 @@ class ChatClientUsageSwitchSpec : StringSpec({
                         )
                     }
                     every { api.chatCompletionStream(any(), any()) } answers {
+                        sentEfforts.add(firstArg<OpenAiApi.ChatCompletionRequest>().reasoningEffort())
                         val (reason, message) = nextMessage()
                         Flux.just(
                             OpenAiApi.ChatCompletionChunk(
@@ -107,10 +111,10 @@ class ChatClientUsageSwitchSpec : StringSpec({
                     }
                     val nativeModel = OpenAiChatModel.builder()
                         .openAiApi(api)
-                        .defaultOptions(OpenAiChatOptions.builder().model("test-model").build())
+                        .defaultOptions(OpenAiChatOptions.builder().model("test-model").reasoningEffort("high").build())
                         .build()
                     val factory = mockk<ChatModelFactory> {
-                        every { createChatModel(any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                        every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
                     }
                     val provider = AiProvider(
                         namespaceId = UUID.randomUUID(),
@@ -148,6 +152,8 @@ class ChatClientUsageSwitchSpec : StringSpec({
                     accumulator.snapshot().calls shouldBe if (enabled) requests.get().toLong() else 0L
                     accumulator.total.totalTokens shouldBe if (enabled) requests.get() * 15L else 0L
                     gateChecks.get() shouldBe if (enabled) (if (withTool) 3 else 1) else 0
+                    // The model's reasoning effort survives the options copies, including the tool round.
+                    sentEfforts shouldBe List(requests.get()) { "high" }
                 }
             }
         }

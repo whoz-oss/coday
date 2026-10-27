@@ -56,4 +56,9 @@ data class AiModelDto(
      * for field semantics.
      */
     val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
+    /**
+     * Reasoning effort sent to the provider. Null = provider default. Rejected with a 400 for
+     * Anthropic and Gemini providers, where the service cannot send it reliably yet.
+     */
+    val reasoningEffort: io.whozoss.agentos.sdk.aiProvider.ReasoningEffort? = null,
 )

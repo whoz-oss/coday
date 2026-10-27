@@ -440,6 +440,16 @@
             />
           </div>
         }
+        @if (autocomplete.effortSuggestions().length > 0) {
+          <div class="case-chat__autocomplete">
+            <agentos-effort-autocomplete
+              [options]="autocomplete.effortSuggestions()"
+              [current]="activeCase()?.reasoningEffort ?? null"
+              (selected)="onEffortSelected($event)"
+              (dismissed)="closeEffortAutocomplete()"
+            />
+          </div>
+        }
         @if (autocomplete.slashSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-prompt-autocomplete
@@ -477,6 +487,14 @@
               [disabled]="!canStageFiles()"
               (action)="attachmentsUi.openPicker()"
             />
+          }
+          @if (activeCase()) {
+            <span
+              class="case-chat__effort"
+              title="Type /effort to change it. Applies to agents whose model has an effort above none."
+            >
+              effort: {{ caseEffortLabel() }}
+            </span>
           }
           <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 

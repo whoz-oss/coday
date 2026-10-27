@@ -7,6 +7,7 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ReasoningEffort } from './reasoning-effort'
 
 export interface Case {
   created?: string
@@ -20,6 +21,10 @@ export interface Case {
    * Timestamp of the caller\'s last read. Null = never read (unread).
    */
   readAt?: string
+  /**
+   * Per-case override of the reasoning effort of the agents running in the case. Null means each agent uses the effort of its model. Applies only to agents whose model has a reasoning effort configured above NONE.
+   */
+  reasoningEffort?: ReasoningEffort
   removed: boolean
   /**
    * The caller\'s direct relation on this case

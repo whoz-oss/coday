@@ -54,6 +54,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -167,15 +168,17 @@ class AgentServiceImplUnitSpec : StringSpec() {
             description = "Engineering namespace for backend services",
         )
 
-    private fun providerConfig(apiKey: String? = "sk-ant-test") =
-        AiProvider(
-            metadata = EntityMetadata(id = aiProviderId),
-            namespaceId = namespaceId,
-            name = "anthropic-prod",
-            apiType = AiApiType.Anthropic,
-            baseUrl = "https://api.anthropic.com",
-            apiKey = apiKey,
-        )
+    private fun providerConfig(
+        apiKey: String? = "sk-ant-test",
+        apiType: AiApiType = AiApiType.Anthropic,
+    ) = AiProvider(
+        metadata = EntityMetadata(id = aiProviderId),
+        namespaceId = namespaceId,
+        name = "anthropic-prod",
+        apiType = apiType,
+        baseUrl = "https://api.anthropic.com",
+        apiKey = apiKey,
+    )
 
     private fun modelConfig(
         apiName: String = "claude-sonnet-4-5",
@@ -183,6 +186,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         priority: Int = 0,
         temperature: Double? = null,
         maxCompletionTokens: Int? = null,
+        reasoningEffort: ReasoningEffort? = null,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -192,6 +196,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         priority = priority,
         temperature = temperature,
         maxCompletionTokens = maxCompletionTokens,
+        reasoningEffort = reasoningEffort,
     )
 
     private fun agentConfig(
@@ -902,6 +907,88 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.findAgentByName("my-agent", context)
 
             verify(exactly = 1) { aiModelService.findAiModel(namespaceId, "opus") }
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
+        }
+
+        "findAgentByName replaces the model reasoning effort with the case override" {
+            val config = agentConfig(name = "my-agent", modelName = "astra")
+            val model = modelConfig(apiName = "openai/gpt-6-astra", alias = "astra", reasoningEffort = ReasoningEffort.LOW)
+            val provider = providerConfig(apiType = AiApiType.OpenAI)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "astra") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context.copy(reasoningEffort = ReasoningEffort.XHIGH))
+
+            verify(exactly = 1) {
+                chatClientProvider.getChatClient(model.copy(reasoningEffort = ReasoningEffort.XHIGH), provider, any())
+            }
+        }
+
+        "findAgentByName keeps the model reasoning effort when the case has no override" {
+            val config = agentConfig(name = "my-agent", modelName = "astra")
+            val model = modelConfig(apiName = "openai/gpt-6-astra", alias = "astra", reasoningEffort = ReasoningEffort.LOW)
+            val provider = providerConfig(apiType = AiApiType.OpenAI)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "astra") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context)
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
+        }
+
+        "findAgentByName ignores the case reasoning effort when the model is kept at NONE" {
+            // NONE can be the only level that works (GPT-6 with tools on OpenAI direct).
+            val config = agentConfig(name = "my-agent", modelName = "sol")
+            val model = modelConfig(apiName = "gpt-6-sol", alias = "sol", reasoningEffort = ReasoningEffort.NONE)
+            val provider = providerConfig(apiType = AiApiType.OpenAI)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sol") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context.copy(reasoningEffort = ReasoningEffort.HIGH))
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
+        }
+
+        "findAgentByName gives the agent the effort its provider receives, clamped where the API stops at high" {
+            val config = agentConfig(name = "my-agent", modelName = "qwen")
+            val model = modelConfig(apiName = "qwen3:4b", alias = "qwen", reasoningEffort = ReasoningEffort.LOW)
+            val provider = providerConfig(apiType = AiApiType.Ollama)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "qwen") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            val agent = agentService.findAgentByName("my-agent", context.copy(reasoningEffort = ReasoningEffort.MAX))
+
+            agent.reasoningEffort shouldBe ReasoningEffort.HIGH
+            verify(exactly = 1) {
+                chatClientProvider.getChatClient(model.copy(reasoningEffort = ReasoningEffort.MAX), provider, any())
+            }
+        }
+
+        "findAgentByName ignores the case reasoning effort when the model has none configured" {
+            // A model without an effort may not accept one (gpt-4.x, GPT-6 with tools on OpenAI, Anthropic).
+            val config = agentConfig(name = "my-agent", modelName = "gpt-4.1")
+            val model = modelConfig(apiName = "gpt-4.1", alias = "gpt-4.1")
+            val provider = providerConfig(apiType = AiApiType.OpenAI)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "gpt-4.1") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context.copy(reasoningEffort = ReasoningEffort.HIGH))
+
             verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
         }
 

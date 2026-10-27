@@ -1,6 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -55,4 +56,14 @@ data class Case(
      *   any platform or namespace configuration that may change later.
      */
     val runCostThreshold: Double? = null,
+    /**
+     * Per-case override of the reasoning effort of the agents that run in this case.
+     *
+     * **`null` means "use the effort of each agent's model"** ([io.whozoss.agentos.sdk.aiProvider.AiModel.reasoningEffort]).
+     * Read at the start of each agent run (each step of a message, redirects included), never during one.
+     * Applies only to agents whose model has a reasoning effort configured above NONE: setting a level on the
+     * model is how an admin declares that the model reasons, which also rules out Anthropic. Sub-cases do not
+     * inherit it.
+     */
+    val reasoningEffort: ReasoningEffort? = null,
 ) : Entity
