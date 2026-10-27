@@ -146,7 +146,7 @@ export class ConfigChangeControllerService extends BaseService {
   public rejectConfigChange(
     caseId: string,
     questionId: string,
-    configChangeRejectRequest: ConfigChangeRejectRequest,
+    configChangeRejectRequest?: ConfigChangeRejectRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
@@ -154,7 +154,7 @@ export class ConfigChangeControllerService extends BaseService {
   public rejectConfigChange(
     caseId: string,
     questionId: string,
-    configChangeRejectRequest: ConfigChangeRejectRequest,
+    configChangeRejectRequest?: ConfigChangeRejectRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
@@ -162,7 +162,7 @@ export class ConfigChangeControllerService extends BaseService {
   public rejectConfigChange(
     caseId: string,
     questionId: string,
-    configChangeRejectRequest: ConfigChangeRejectRequest,
+    configChangeRejectRequest?: ConfigChangeRejectRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
@@ -170,7 +170,7 @@ export class ConfigChangeControllerService extends BaseService {
   public rejectConfigChange(
     caseId: string,
     questionId: string,
-    configChangeRejectRequest: ConfigChangeRejectRequest,
+    configChangeRejectRequest?: ConfigChangeRejectRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
@@ -180,11 +180,6 @@ export class ConfigChangeControllerService extends BaseService {
     }
     if (questionId === null || questionId === undefined) {
       throw new Error('Required parameter questionId was null or undefined when calling rejectConfigChange.')
-    }
-    if (configChangeRejectRequest === null || configChangeRejectRequest === undefined) {
-      throw new Error(
-        'Required parameter configChangeRejectRequest was null or undefined when calling rejectConfigChange.'
-      )
     }
 
     let localVarHeaders = this.defaultHeaders

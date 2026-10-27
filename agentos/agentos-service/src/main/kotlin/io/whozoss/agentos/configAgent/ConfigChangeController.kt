@@ -52,14 +52,14 @@ class ConfigChangeController(
     ): ConfigChangeReportDto = configChangeService.apply(caseId, questionId, userService.getCurrentUser(), request)
 
     @Operation(summary = "Reject a configuration plan, then answer the agent")
-    @PostMapping("/{questionId}/reject", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PostMapping("/{questionId}/reject")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun rejectConfigChange(
         @PathVariable caseId: UUID,
         @PathVariable questionId: UUID,
-        @RequestBody request: ConfigChangeRejectRequest,
+        @RequestBody(required = false) request: ConfigChangeRejectRequest?,
     ) {
-        configChangeService.reject(caseId, questionId, userService.getCurrentUser(), request.comment)
+        configChangeService.reject(caseId, questionId, userService.getCurrentUser(), request?.comment)
     }
 }

@@ -181,8 +181,8 @@ class ConfigPlanner(
             }
         }
         val authType = effective.path("authType").asText(null)
-        checkAuthSettingSecrets(kind, authType, secrets, errors)
-        clearTextSecrets(kind, authType, effective, path = "").forEach { errors += clearTextSecretError(it) }
+        if (kind == ConfigKind.AUTH_SETTING) errors += ConfigSecretPolicy.misplacedAuthSettingSecrets(authType, secrets)
+        errors += ConfigSecretPolicy.clearTextSecrets(kind, authType, effective, path = "").map(ConfigSecretPolicy::clearTextSecretError)
         val dependsOn = ConfigJson.opRefs(effective) + listOfNotNull(scope?.namespaceRef)
         (dependsOn - refs.all).forEach { errors += "unknown reference {\"\$op\": \"$it\"}." }
         if (ref in dependsOn) errors += "an operation cannot reference itself."
@@ -244,11 +244,12 @@ class ConfigPlanner(
         val masked = configReadService.masked(current)
         val secretPaths = secrets.map { it.path }.toSet()
         val authType = current.dto.path("authType").asText(null)
-        checkAuthSettingSecrets(kind, authType, secrets, errors)
-        changes
-            .filter { it.remove != true }
-            .flatMap { change -> clearTextSecrets(kind, authType, change.value, path = change.path?.trim().orEmpty()) }
-            .forEach { errors += clearTextSecretError(it) }
+        if (kind == ConfigKind.AUTH_SETTING) errors += ConfigSecretPolicy.misplacedAuthSettingSecrets(authType, secrets)
+        errors +=
+            changes
+                .filter { it.remove != true }
+                .flatMap { change -> ConfigSecretPolicy.clearTextSecrets(kind, authType, change.value, path = change.path?.trim().orEmpty()) }
+                .map(ConfigSecretPolicy::clearTextSecretError)
         val planned =
             changes.mapNotNull { change ->
                 val path = change.path?.trim().orEmpty()
@@ -461,83 +462,13 @@ class ConfigPlanner(
                     errors += "secret path '$path' must be a JSON Pointer like '/apiKey' or '/parameters/token'."
                     null
                 }
-                !isSecretField(kind, path) -> {
-                    errors += "'$path' cannot hold a secret for a ${kind.name.lowercase()}: ${secretFieldsHint(kind)}."
+                !ConfigSecretPolicy.canHoldSecret(kind, path) -> {
+                    errors += "'$path' cannot hold a secret for a ${kind.name.lowercase()}: ${ConfigSecretPolicy.secretFieldsHint(kind)}."
                     null
                 }
                 else -> SecretSlot(path = path, label = secret.label?.trim()?.takeIf { it.isNotEmpty() } ?: path.removePrefix("/"))
             }
         }
-
-    private fun isSecretField(
-        kind: ConfigKind,
-        path: String,
-    ): Boolean =
-        when (kind) {
-            ConfigKind.AUTH_SETTING -> path in AUTH_SETTING_SECRET_PATHS
-            ConfigKind.INTEGRATION -> path.startsWith("/parameters/")
-            else -> false
-        }
-
-    private fun secretFieldsHint(kind: ConfigKind): String =
-        when (kind) {
-            ConfigKind.AUTH_SETTING -> "use one of ${AUTH_SETTING_SECRET_PATHS.joinToString()}"
-            ConfigKind.INTEGRATION -> "use a path under /parameters/"
-            else -> "this kind has no secret field"
-        }
-
-    /** An auth setting's declared secrets must be secret fields of its own type, or the typed value would be dropped. */
-    private fun checkAuthSettingSecrets(
-        kind: ConfigKind,
-        authType: String?,
-        secrets: List<SecretSlot>,
-        errors: MutableList<String>,
-    ) {
-        val allowed = ConfigAuthSettingTypes.secretFieldsOf(authType)?.takeIf { kind == ConfigKind.AUTH_SETTING } ?: return
-        secrets.filter { ConfigJson.segments(it.path).first() !in allowed }.forEach {
-            errors += "'${it.path}' is not a secret field of a $authType auth setting: " +
-                if (allowed.isEmpty()) "it has none." else "use ${allowed.joinToString { field -> "/$field" }}."
-        }
-    }
-
-    /**
-     * Pointers, under [path], where [node] writes a secret in clear: a secret field of an auth setting
-     * (of its type, or of any type when the type is unknown), or an integration parameter named like a
-     * credential. A secret is declared in `secrets` and typed by the user, never written by the LLM.
-     */
-    private fun clearTextSecrets(
-        kind: ConfigKind,
-        authType: String?,
-        node: JsonNode?,
-        path: String,
-    ): List<String> =
-        when (kind) {
-            ConfigKind.AUTH_SETTING -> {
-                val fields = ConfigAuthSettingTypes.secretFieldsOf(authType) ?: ConfigSecretMasker.AUTH_SETTING_SECRET_FIELDS
-                secretLeaves(node, path) { pointer -> ConfigJson.segments(pointer).let { it.size == 1 && it.single() in fields } }
-            }
-            ConfigKind.INTEGRATION ->
-                secretLeaves(node, path) { pointer ->
-                    ConfigJson.segments(pointer).let { it.size > 1 && it.first() == PARAMETERS && it.last().lowercase() in SECRET_PARAMETER_KEYS }
-                }
-            else -> emptyList()
-        }
-
-    /** Pointers of the non-blank text leaves of [node], rooted at [path], that [isSecret] flags. */
-    private fun secretLeaves(
-        node: JsonNode?,
-        path: String,
-        isSecret: (String) -> Boolean,
-    ): List<String> =
-        when {
-            node == null -> emptyList()
-            node.isObject -> node.properties().flatMap { (key, value) -> secretLeaves(value, path + ConfigJson.pointerOf(listOf(key)), isSecret) }
-            node.isArray -> node.flatMapIndexed { index, value -> secretLeaves(value, "$path/$index", isSecret) }
-            node.isTextual && node.textValue().isNotBlank() && path.isNotEmpty() && isSecret(path) -> listOf(path)
-            else -> emptyList()
-        }
-
-    private fun clearTextSecretError(pointer: String): String = "'$pointer' holds a secret: never write it, declare it in 'secrets' so the user types it in the card."
 
     /** The first list on [path] in [dto], as a JSON Pointer, or null when the path only goes through objects. */
     private fun listPrefix(
@@ -605,7 +536,6 @@ class ConfigPlanner(
     private fun allowedActions(kind: ConfigKind): Set<ConfigAction> =
         when (kind) {
             ConfigKind.AGENT -> ConfigAction.entries.toSet()
-            ConfigKind.NAMESPACE -> setOf(ConfigAction.CREATE, ConfigAction.UPDATE)
             else -> setOf(ConfigAction.CREATE, ConfigAction.UPDATE)
         }
 
@@ -656,25 +586,5 @@ class ConfigPlanner(
 
         /** Kinds that only exist at platform or namespace level. */
         private val SHARED_ONLY_KINDS = setOf(ConfigKind.AGENT, ConfigKind.SKILL)
-
-        private val AUTH_SETTING_SECRET_PATHS = ConfigSecretMasker.AUTH_SETTING_SECRET_FIELDS.map { "/$it" }.toSet()
-
-        private const val PARAMETERS = "parameters"
-
-        /** Integration parameter names that hold a credential, compared in lower case. */
-        private val SECRET_PARAMETER_KEYS =
-            setOf(
-                "token",
-                "secret",
-                "password",
-                "apikey",
-                "api_key",
-                "clientsecret",
-                "client_secret",
-                "accesstoken",
-                "access_token",
-                "refreshtoken",
-                "refresh_token",
-            )
     }
 }

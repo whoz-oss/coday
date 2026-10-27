@@ -15,12 +15,6 @@ import com.fasterxml.jackson.databind.node.TextNode
  * yet, so every string leaf is masked except a short list of keys that only locate a service.
  */
 internal object ConfigSecretMasker {
-    private val NON_SECRET_PARAMETER_KEYS =
-        setOf("baseurl", "url", "specurl", "openapiurl", "serverurl", "endpoint", "apibaseurl", "mcpurl", "description", "title", "region")
-
-    /** The secret fields of the auth setting types: masked on read, and the only auth setting paths a plan may declare as secrets. */
-    val AUTH_SETTING_SECRET_FIELDS = setOf("apiKey", "token", "password", "clientSecret")
-
     fun mask(
         kind: ConfigKind,
         dto: JsonNode,
@@ -30,7 +24,7 @@ internal object ConfigSecretMasker {
         when (kind) {
             ConfigKind.INTEGRATION -> copy.get("parameters")?.let { copy.set<JsonNode>("parameters", maskParameters(it, parentKey = null)) }
             ConfigKind.AUTH_SETTING ->
-                AUTH_SETTING_SECRET_FIELDS.forEach { field ->
+                ConfigSecretPolicy.AUTH_SETTING_SECRET_FIELDS.forEach { field ->
                     if (copy.hasNonNull(field)) copy.put(field, ConfigJson.MASK)
                 }
             else -> Unit
@@ -48,7 +42,7 @@ internal object ConfigSecretMasker {
                     node.properties().forEach { (key, value) -> copy.set<JsonNode>(key, maskParameters(value, key)) }
                 }
             is ArrayNode -> JsonNodeFactory.instance.arrayNode().also { copy -> node.forEach { copy.add(maskParameters(it, parentKey)) } }
-            is TextNode -> if (parentKey?.lowercase() in NON_SECRET_PARAMETER_KEYS) node else TextNode(ConfigJson.MASK)
+            is TextNode -> if (parentKey?.lowercase() in ConfigSecretPolicy.NON_SECRET_PARAMETER_KEYS) node else TextNode(ConfigJson.MASK)
             else -> node
         }
 }

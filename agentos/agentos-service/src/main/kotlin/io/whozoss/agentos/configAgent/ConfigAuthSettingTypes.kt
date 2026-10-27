@@ -28,10 +28,10 @@ internal object ConfigAuthSettingTypes {
     /** e.g. `API_KEY (apiKey*); BASIC_AUTH (username, password*); ...` */
     val description: String =
         fieldsByType.entries.joinToString("; ") { (type, fields) ->
-            "$type (${fields.joinToString(", ") { if (it in ConfigSecretMasker.AUTH_SETTING_SECRET_FIELDS) "$it*" else it }})"
+            "$type (${fields.joinToString(", ") { if (it in ConfigSecretPolicy.AUTH_SETTING_SECRET_FIELDS) "$it*" else it }})"
         }
 
     /** The secret fields of [authType], or null when it is not a known type (the REST API then refuses the setting). */
     fun secretFieldsOf(authType: String?): Set<String>? =
-        fieldsByType[authType?.trim()?.uppercase()]?.filter { it in ConfigSecretMasker.AUTH_SETTING_SECRET_FIELDS }?.toSet()
+        fieldsByType[authType?.trim()?.uppercase()]?.filter { it in ConfigSecretPolicy.AUTH_SETTING_SECRET_FIELDS }?.toSet()
 }

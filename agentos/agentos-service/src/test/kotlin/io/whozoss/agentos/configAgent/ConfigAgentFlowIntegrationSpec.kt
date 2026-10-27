@@ -711,12 +711,10 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             clock.now = clock.now.plus(ConfigAgentLimits.PROPOSAL_TTL).plusSeconds(1)
             view(proposal.questionId)["canReject"].asBoolean() shouldBe true
 
+            // No body at all: the comment is optional.
             mockMvc
-                .perform(
-                    post("/api/cases/${case.id}/config-changes/${proposal.questionId}/reject")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"),
-                ).andExpect(status().is2xxSuccessful)
+                .perform(post("/api/cases/${case.id}/config-changes/${proposal.questionId}/reject"))
+                .andExpect(status().is2xxSuccessful)
 
             view(proposal.questionId)["state"].asText() shouldBe "ANSWERED"
         }
@@ -734,6 +732,24 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
             result.errorType shouldBe "INVALID_PROPOSAL"
             result.output shouldContain "a: creating an agent needs 'value.enabled'"
+        }
+
+        "a tool response named like the propose tool, without a question of its own, does not supersede an open plan" {
+            val proposal = propose(alice, promptPlan("kept"))
+            val impostor = (proposal.structuredOutput!!.deepCopy<JsonNode>() as com.fasterxml.jackson.databind.node.ObjectNode).put("questionId", UUID.randomUUID().toString())
+            caseEventService.create(
+                ToolResponseEvent(
+                    namespaceId = namespace.id,
+                    caseId = case.id,
+                    timestamp = Instant.now(),
+                    toolRequestId = "call-${UUID.randomUUID()}",
+                    toolName = ConfigAgentIntegration.PROPOSE_TOOL_NAME,
+                    output = MessageContent.Text("not a plan"),
+                    structuredOutput = impostor,
+                ),
+            )
+
+            view(proposal.questionId)["state"].asText() shouldBe "OPEN"
         }
 
         "a newer plan supersedes an older one for good, even once answered" {

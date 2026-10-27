@@ -30,6 +30,7 @@ import java.util.UUID
 @Service
 class ConfigToolGrantService(
     private val configReadService: ConfigReadService,
+    private val configNamespaceDiagnosis: ConfigNamespaceDiagnosis,
     private val configPlanner: ConfigPlanner,
     private val toolResolverService: ToolResolverService,
     private val objectMapper: ObjectMapper,
@@ -47,7 +48,7 @@ class ConfigToolGrantService(
         return if (granted) {
             logger.debug { "Granting ${ConfigAgentIntegration.TYPE} tools to agent '$agentName' (allowed=$allowed)" }
             listOf(
-                ConfigReadTool(userId, namespaceId, configReadService, objectMapper),
+                ConfigReadTool(userId, namespaceId, configReadService, configNamespaceDiagnosis, objectMapper),
                 ConfigProposeTool(userId, namespaceId, caseId, agentName, configPlanner, objectMapper, clock),
             ).filter { toolResolverService.isToolAllowed(it.name, ConfigAgentIntegration.TYPE, allowed) }
         } else {

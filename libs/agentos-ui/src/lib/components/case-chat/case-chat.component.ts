@@ -76,6 +76,7 @@ import { findLegitimateAnswer } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import { configChangeQuestionIds } from './config-change-questions'
 
 export interface ToolCall {
   requestId: string
@@ -594,21 +595,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return items
   })
 
-  /**
-   * Questions asked by `AGENTOS_CONFIG__propose`: their plan rides on the propose call's
-   * ToolResponseEvent, and they are answered through the configuration card, not the question panel.
-   * The tool name mirrors `ConfigAgentIntegration.PROPOSE_TOOL_NAME`, pinned by `ConfigAgentIntegrationUnitSpec`.
-   */
-  protected readonly configChangeQuestionIds = computed(() => {
-    const ids = new Set<string>()
-    for (const e of this.events()) {
-      if (e.type !== 'ToolResponseEvent') continue
-      const response = e as ToolResponseEvent
-      const questionId = response.structuredOutput?.questionId
-      if (response.toolName === 'AGENTOS_CONFIG__propose' && typeof questionId === 'string') ids.add(questionId)
-    }
-    return ids
-  })
+  /** Questions answered through a configuration card: see {@link configChangeQuestionIds}. */
+  protected readonly configChangeQuestionIds = computed(() => configChangeQuestionIds(this.events()))
 
   /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
   protected readonly timeline = computed<TimelineItem[]>(() => {

@@ -18,7 +18,9 @@ import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.skill.SkillApi
 import io.whozoss.agentos.sdk.api.skill.SkillDto
 import jakarta.validation.Validator
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
+import org.springframework.web.context.request.RequestContextHolder
 import java.util.UUID
 
 /**
@@ -28,9 +30,12 @@ import java.util.UUID
  * Must run inside the HTTP request of the user who applies: `@PreAuthorize` and the inline guards
  * (`requireSuperAdmin`, scope policies) read the identity of that request, so every write is
  * authorized exactly like the same call made by the browser. No access rule is copied here.
- * `ApiBeanBridgeAuthorizationSpec` proves the bridge; outside a request the calls are refused.
+ * `ApiBeanBridgeAuthorizationSpec` proves the bridge. Every method checks it runs inside such a
+ * request first, so a future asynchronous caller fails with a clear message rather than with an
+ * authentication error from the proxy.
  *
- * Deployment has no `*Api` method yet, so it goes through [NamespaceController], the same proxy.
+ * Deployment has no `*Api` method yet, so it goes through [NamespaceController], the same proxy,
+ * until `NamespaceApi` declares it (#1519).
  * `@Valid` does not apply to in-process calls, so every DTO is validated here with the same Bean
  * Validation constraints before it reaches the controller, and refused as a 400 would be.
  */
@@ -50,35 +55,40 @@ class ApiBeanConfigWriter(
         kind: ConfigKind,
         dto: ObjectNode,
     ): UUID =
-        when (kind) {
-            ConfigKind.AGENT -> agentConfigApi.create(validated(dto, AgentConfigDto::class.java)).id
-            ConfigKind.SKILL -> skillApi.create(validated(dto, SkillDto::class.java)).id
-            ConfigKind.PROMPT -> promptApi.create(validated(dto, PromptDto::class.java)).id
-            ConfigKind.INTEGRATION -> integrationConfigApi.create(validated(dto, IntegrationConfigDto::class.java)).id
-            ConfigKind.AUTH_SETTING -> authSettingApi.create(validated(dto, AuthSettingDto::class.java)).id
-            ConfigKind.NAMESPACE -> namespaceApi.create(validated(dto, NamespaceDto::class.java)).id
-        } ?: throw IllegalStateException("The REST API created a $kind without returning its id")
+        asRequestUser {
+            // Every DTO's id is nullable, so the check covers all the branches.
+            when (kind) {
+                ConfigKind.AGENT -> agentConfigApi.create(validated(dto, AgentConfigDto::class.java)).id
+                ConfigKind.SKILL -> skillApi.create(validated(dto, SkillDto::class.java)).id
+                ConfigKind.PROMPT -> promptApi.create(validated(dto, PromptDto::class.java)).id
+                ConfigKind.INTEGRATION -> integrationConfigApi.create(validated(dto, IntegrationConfigDto::class.java)).id
+                ConfigKind.AUTH_SETTING -> authSettingApi.create(validated(dto, AuthSettingDto::class.java)).id
+                ConfigKind.NAMESPACE -> namespaceApi.create(validated(dto, NamespaceDto::class.java)).id
+            } ?: throw IllegalStateException("The REST API created a $kind without returning its id")
+        }
 
     override fun read(
         kind: ConfigKind,
         id: UUID,
     ): ObjectNode =
-        objectMapper.valueToTree(
-            when (kind) {
-                ConfigKind.AGENT -> agentConfigApi.getById(id)
-                ConfigKind.SKILL -> skillApi.getById(id)
-                ConfigKind.PROMPT -> promptApi.getById(id)
-                ConfigKind.INTEGRATION -> integrationConfigApi.getById(id)
-                ConfigKind.AUTH_SETTING -> authSettingApi.getById(id)
-                ConfigKind.NAMESPACE -> namespaceApi.getById(id)
-            },
-        )
+        asRequestUser {
+            objectMapper.valueToTree(
+                when (kind) {
+                    ConfigKind.AGENT -> agentConfigApi.getById(id)
+                    ConfigKind.SKILL -> skillApi.getById(id)
+                    ConfigKind.PROMPT -> promptApi.getById(id)
+                    ConfigKind.INTEGRATION -> integrationConfigApi.getById(id)
+                    ConfigKind.AUTH_SETTING -> authSettingApi.getById(id)
+                    ConfigKind.NAMESPACE -> namespaceApi.getById(id)
+                },
+            )
+        }
 
     override fun update(
         kind: ConfigKind,
         id: UUID,
         change: (ObjectNode) -> Unit,
-    ) {
+    ): Unit = asRequestUser {
         val current = read(kind, id).also(change)
         when (kind) {
             ConfigKind.AGENT -> agentConfigApi.update(id, validated(current, AgentConfigDto::class.java))
@@ -93,17 +103,24 @@ class ApiBeanConfigWriter(
     override fun setEnabled(
         agentId: UUID,
         enabled: Boolean,
-    ) {
-        if (enabled) agentConfigApi.enable(agentId) else agentConfigApi.disable(agentId)
-    }
+    ): Unit =
+        asRequestUser {
+            if (enabled) agentConfigApi.enable(agentId) else agentConfigApi.disable(agentId)
+        }
 
     override fun setDeployed(
         namespaceId: UUID,
         agentId: UUID,
         deployed: Boolean,
-    ) {
+    ): Unit = asRequestUser {
         val request = NamespaceAgentDeployRequest(listOf(agentId))
         if (deployed) namespaceController.deployAgents(namespaceId, request) else namespaceController.undeployAgents(namespaceId, request)
+    }
+
+    /** Runs [block] once sure to act as the user of the current HTTP request, whose identity the proxies read. */
+    private fun <T> asRequestUser(block: () -> T): T {
+        check(RequestContextHolder.getRequestAttributes() != null && SecurityContextHolder.getContext().authentication != null) { NO_REQUEST_USER }
+        return block()
     }
 
     private fun <T : Any> validated(
@@ -116,4 +133,8 @@ class ApiBeanConfigWriter(
                 throw BadRequestException(violations.sortedBy { it.propertyPath.toString() }.joinToString("; ") { "${it.propertyPath}: ${it.message}" })
             }
         }
+
+    private companion object {
+        const val NO_REQUEST_USER = "ConfigWriter must run inside the HTTP request of the user who applies the plan"
+    }
 }

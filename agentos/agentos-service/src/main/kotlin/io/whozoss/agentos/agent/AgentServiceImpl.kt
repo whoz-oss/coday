@@ -412,7 +412,8 @@ class AgentServiceImpl(
                 caseId = context.caseId,
             )
         // The config tools go first so the de-dup keeps them over an integration of the same name: a
-        // configuration named AGENTOS_CONFIG must not stand in for the tool that freezes plans.
+        // configuration named AGENTOS_CONFIG must not stand in for the tool that freezes plans
+        // (BuiltInNameConfigPolicy also refuses that name; built-ins become an extension point in #1520).
         val tools =
             toolResolverService.dedupToolsByName(
                 configTools +

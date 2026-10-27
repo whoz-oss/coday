@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -118,8 +119,8 @@ class ConfigChangeService(
         block: () -> T,
     ): T {
         if (!claims.add(questionId)) throw ConflictException("IN_PROGRESS: this plan is already being applied or rejected")
-        try {
-            return block()
+        return try {
+            block()
         } finally {
             claims.remove(questionId)
         }
@@ -233,6 +234,8 @@ class ConfigChangeService(
                     }
                 }
             ConfigOperationResultDto(op.ref, ConfigResultStatus.APPLIED, entityId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             val (status, message) = failureOf(op, e)
             ConfigOperationResultDto(
@@ -263,9 +266,8 @@ class ConfigChangeService(
             // A DTO the REST API cannot even read (missing type, wrong field type) would have been a 400.
             is JsonProcessingException -> ConfigResultStatus.INVALID to e.originalMessage
             is ResponseStatusException -> statusOf(e) to (e.reason ?: e.message)
-            // AgentConfigServiceImpl reports a duplicate name this way; ConfigJson refuses paths through lists.
-            is IllegalArgumentException ->
-                (if (e.message?.contains("already exists") == true) ConfigResultStatus.CONFLICT else ConfigResultStatus.INVALID) to e.message
+            // A service's own validation, e.g. a duplicate agent name; ConfigJson refuses paths through lists.
+            is IllegalArgumentException -> ConfigResultStatus.INVALID to e.message
             else -> {
                 logger.warn(e) { "[ConfigChange] ${op.ref} ${op.action} ${op.kind} failed" }
                 ConfigResultStatus.FAILED to UNEXPECTED_ERROR

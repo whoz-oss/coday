@@ -27,9 +27,15 @@ It is never granted by default (`enabledByDefault = false`, no platform property
 form it appears under "Built-in integrations". Enabling it requires AgentConfig WRITE on the agent,
 like any other change to the agent.
 
-The form warns when an agent has `AGENTOS_CONFIG` together with a network integration (`HTTP_API`,
-`MCP_HTTP`) or sub-agents: reads do not go through the Apply click, so such an agent could send what
-it read elsewhere. Prefer a dedicated configuration agent without them.
+The form warns when an agent has `AGENTOS_CONFIG` together with an integration that can carry data
+off the server (`HTTP_API`, `MCP_HTTP`, `MCP_STDIO`, `BASH`, `TMUX`, `GIT`) or with sub-agents: reads
+do not go through the Apply click, so such an agent could send what it read elsewhere. Prefer a
+dedicated configuration agent without them.
+
+What the agent reads goes to the LLM provider and into the case history. Secrets are masked (auth
+setting credentials, and every integration parameter but the keys that only locate a service), but
+free text is returned in full: an agent's instructions, a prompt, a skill's body, a description. A
+credential pasted into one of them is read like any other text.
 
 ## Flow
 
@@ -143,8 +149,8 @@ user: whether a message without `@mention` reaches an agent, resolved like the r
 `agentos.defaults.agent-name`, among the agents deployed and enabled for the user), and if not the
 first condition that fails: `NOT_SET`, `NOT_FOUND`, `DISABLED` or `NOT_DEPLOYED`, with the agents
 deployed on it. `namespaceId` points the other reads (agents, integrations, deployment,
-capabilities) at a namespace the user administers. The agent no longer needs the service logs or the
-source code to find why a namespace does not answer.
+capabilities) at a namespace the user administers. This is what the service logs would otherwise be
+needed for when a namespace does not answer.
 
 Limits (`ConfigAgentLimits`): 20 operations per plan, plans expire after 24 hours.
 
@@ -192,9 +198,10 @@ The tools are granted in `AgentServiceImpl.resolveAgentDefinition` only:
 
 - A proposal made in a delegated sub-case shows its card in the sub-case only.
 - Clients without the card (Slack, older desktop) show the question text; a text reply closes the plan.
-- A member cannot create a personal `HTTP_API` integration (refused in user scopes since #1314).
-  The supported path is a shared integration created by an admin plus the member's own `API_KEY`
-  auth setting in user x namespace scope, which wins at resolution.
+- A member cannot create a personal `HTTP_API` integration: user scopes refuse it, so that a member
+  cannot point a shared credential at an API of their choosing. The supported path is a shared
+  integration created by an admin plus the member's own `API_KEY` auth setting in user x namespace
+  scope, which wins at resolution.
 - Group deployment, AI providers and AI models are not covered yet, nor deleting a namespace.
 - Auth settings are not copied: their secrets are typed again in the card.
 - A namespace-shared auth setting is read and changed by id by super-admins only: `AUTH_SETTING` does

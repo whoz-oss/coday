@@ -447,6 +447,7 @@ Check that:
 
 - [AgentOS SDK README.md](agentos-sdk/README.md) - How to develop plugins using AgentOS SDK
 - [Quick Start](QUICKSTART.md) - Get started quickly
+- [Config agent](docs/config-agent.md) - Configure AgentOS through an agent, each change applied from a card the user confirms
 
 ## License
 
