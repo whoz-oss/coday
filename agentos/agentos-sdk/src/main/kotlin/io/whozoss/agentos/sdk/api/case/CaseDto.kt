@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.case
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
@@ -62,6 +63,19 @@ data class CaseDto(
     )
     @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,
+    /**
+     * Per-case override of the reasoning effort of the agents running in the case. Null means each
+     * agent uses the effort of its model. Replaces the effort of every agent's model, whatever it has
+     * configured; not sent to Anthropic and Gemini providers. Accepted on create; changed afterwards
+     * through `PUT /api/cases/{id}/reasoning-effort` only (`PUT /api/cases/{id}` ignores it).
+     */
+    @field:Schema(
+        description =
+            "Per-case override of the reasoning effort of the agents running in the case. " +
+                "Null means each agent uses the effort of its model. Replaces the model effort of every agent, " +
+                "whatever the model has configured; not sent to Anthropic and Gemini providers.",
+    )
+    val reasoningEffort: ReasoningEffort? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**

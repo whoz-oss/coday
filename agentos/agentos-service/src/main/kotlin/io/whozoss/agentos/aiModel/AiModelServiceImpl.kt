@@ -1,8 +1,11 @@
 package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -21,6 +24,9 @@ import java.util.UUID
  *   When [AiModel.alias] is null the check is skipped — null aliases are intentionally
  *   unconstrained so that provider-level "anonymous" configs (resolved only by apiName
  *   fallback) can coexist without conflicting with each other.
+ *
+ * [create] and [update] reject an [AiModel.reasoningEffort] under an API type without
+ * [AiApiType.supportsReasoningEffort] (Anthropic, Gemini): the setting would be ignored or refused.
  */
 @Service
 class AiModelServiceImpl(
@@ -41,6 +47,7 @@ class AiModelServiceImpl(
             }
         }
         val parent = aiProviderService.getById(entity.aiProviderId)
+        checkReasoningEffortSupported(entity.reasoningEffort, parent.apiType)
         return repository.save(
             entity.copy(
                 namespaceId = parent.namespaceId,
@@ -61,6 +68,7 @@ class AiModelServiceImpl(
                     )
                 }
         }
+        checkReasoningEffortSupported(entity.reasoningEffort, aiProviderService.getById(entity.aiProviderId).apiType)
         return repository.save(entity)
     }
 
@@ -103,6 +111,15 @@ class AiModelServiceImpl(
             ?: candidates
                 .filter { it.apiModelName.equals(name, ignoreCase = true) }
                 .maxWithOrNull(MODEL_COMPARATOR)
+    }
+
+    private fun checkReasoningEffortSupported(
+        effort: ReasoningEffort?,
+        apiType: AiApiType,
+    ) {
+        if (effort != null && !apiType.supportsReasoningEffort) {
+            throw BadRequestException("reasoningEffort is not supported yet for $apiType providers")
+        }
     }
 
     companion object : KLogging() {

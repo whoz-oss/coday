@@ -4,6 +4,7 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Service
  * The two entities carry everything [ChatModelFactory] needs:
  * - provider connectivity ([AiProvider.apiType], [AiProvider.baseUrl], [AiProvider.apiKey])
  * - model identity and inference parameters ([AiModel.apiModelName],
- *   [AiModel.temperature], [AiModel.maxCompletionTokens])
+ *   [AiModel.temperature], [AiModel.maxCompletionTokens], [AiModel.reasoningEffort])
  *
  * Resolution of which model/provider pair to use is the responsibility of the caller
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
@@ -43,6 +44,7 @@ class ChatClientProvider(
                 temperature = modelConfig.temperature,
                 maxCompletionTokens = modelConfig.maxCompletionTokens,
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
+                reasoningEffort = modelConfig.reasoningEffort,
             )
         val trackedModel =
             if (usageConfig.enabled && accumulator != null) {
@@ -62,4 +64,15 @@ class ChatClientProvider(
     companion object {
         const val X_SESSION_ID = "X-Session-Id"
     }
+}
+
+/**
+ * The model for short utility calls (case naming, prompt translation): its reasoning effort is capped
+ * at [ReasoningEffort.LOW], so these calls neither pay for the effort configured for agents nor fall
+ * back to a provider default above a level the admin chose to save cost. Returns the model itself
+ * when its effort is null, NONE or LOW.
+ */
+internal fun AiModel.forUtilityCall(): AiModel {
+    val effort = reasoningEffort
+    return if (effort == null || effort <= ReasoningEffort.LOW) this else copy(reasoningEffort = ReasoningEffort.LOW)
 }

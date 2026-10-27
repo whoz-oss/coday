@@ -31,6 +31,10 @@ import java.util.UUID
  * window — the provider enforces that separately. Null means no explicit limit is set and
  * the provider uses its own default.
  *
+ * [reasoningEffort] sets how much the model reasons before answering (see [ReasoningEffort]).
+ * Null keeps the provider default. Two configs may share an [apiModelName] with different
+ * efforts as long as their aliases differ, which is how an agent picks an effort level.
+ *
  * Uniqueness constraints enforced by [AiModelConfigServiceImpl]:
  * - (aiProviderId, apiName) must be unique
  * - (aiProviderId, alias) must be unique when alias is non-null
@@ -65,4 +69,9 @@ data class AiModel(
      * is configured and cost estimation is skipped. See [ModelPricing] for field semantics.
      */
     val pricing: ModelPricing? = null,
+    /**
+     * Reasoning effort sent to the provider. Null = provider default. Rejected when the model is
+     * saved under an API type without [AiApiType.supportsReasoningEffort] (Anthropic, Gemini).
+     */
+    val reasoningEffort: ReasoningEffort? = null,
 ) : Entity

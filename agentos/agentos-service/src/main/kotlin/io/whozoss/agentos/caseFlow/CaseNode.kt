@@ -1,6 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.Version
@@ -16,6 +17,8 @@ import java.util.UUID
  *
  * [version] carries optimistic locking and tells Spring Data whether a save creates the node: a
  * save based on a stale read is refused, and so is the creation of a case whose id already exists.
+ *
+ * [reasoningEffort] is stored as its enum name string and round-tripped via [ReasoningEffort.valueOf].
  */
 @Node("Case")
 data class CaseNode(
@@ -28,6 +31,7 @@ data class CaseNode(
     val scheduledPromptId: String? = null,
     val originCaseId: String? = null,
     val runCostThreshold: Double? = null,
+    val reasoningEffort: String? = null,
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
@@ -56,6 +60,7 @@ data class CaseNode(
             scheduledPromptId = scheduledPromptId?.let { UUID.fromString(it) },
             originCaseId = originCaseId?.let { UUID.fromString(it) },
             runCostThreshold = runCostThreshold,
+            reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
         )
 
     companion object {
@@ -69,6 +74,7 @@ data class CaseNode(
                 scheduledPromptId = case.scheduledPromptId?.toString(),
                 originCaseId = case.originCaseId?.toString(),
                 runCostThreshold = case.runCostThreshold,
+                reasoningEffort = case.reasoningEffort?.name,
                 created = case.metadata.created,
                 createdBy = case.metadata.createdBy,
                 modified = case.metadata.modified,

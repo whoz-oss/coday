@@ -26,6 +26,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -239,6 +240,11 @@ class CaseServiceImpl(
             saveEdit(entity)
         }
     }
+
+    override fun setReasoningEffort(
+        caseId: UUID,
+        reasoningEffort: ReasoningEffort?,
+    ): Case = edit(caseId) { it.copy(reasoningEffort = reasoningEffort) }
 
     override fun edit(
         id: UUID,
@@ -750,6 +756,8 @@ class CaseServiceImpl(
                     saved
                 },
                 usageAccumulator = usageAccumulator,
+                // Read at every agent run, so a change applies from the next run on, never during one.
+                reasoningEffort = findById(caseId)?.reasoningEffort,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
