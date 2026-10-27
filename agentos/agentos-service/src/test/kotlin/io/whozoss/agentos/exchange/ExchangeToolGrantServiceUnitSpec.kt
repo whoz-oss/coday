@@ -117,8 +117,9 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
                 .resolveCaseGrant(emptyMap()) shouldBe null
         }
 
-        "no case grant when the agent declares no integrations at all" {
-            service().resolveCaseGrant(null) shouldBe null
+        "no case grant when the agent declares no integrations at all and the platform default is off" {
+            service(ExchangeToolsConfigProperties(caseEnabledByDefault = false))
+                .resolveCaseGrant(null) shouldBe null
         }
 
         "the platform default grants every tool when the key is absent" {
