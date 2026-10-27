@@ -10,7 +10,7 @@ interface Agent : Entity {
     val llmProvider: String
     val llmModel: String
 
-    /** Reasoning effort sent with this agent's model requests, or null when none is sent. */
+    /** Reasoning effort the provider receives with this agent's model requests, or null when none is sent. */
     val reasoningEffort: ReasoningEffort?
         get() = null
 

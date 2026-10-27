@@ -216,8 +216,8 @@ data class MessageEvent(
     /** Durable execution attribution for agent-authored messages; null for user messages. */
     val llmModel: String? = null,
     /**
-     * Reasoning effort the agent's model ran with for this message; null for user messages and when
-     * no effort was sent (the provider default applied).
+     * Reasoning effort the provider received for this message, after the provider's own limits (vLLM
+     * and Ollama stop at HIGH); null for user messages and when no effort was sent.
      */
     val reasoningEffort: ReasoningEffort? = null,
 ) : CaseEvent {

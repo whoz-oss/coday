@@ -14,6 +14,7 @@ import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.chat.sentTo
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
@@ -518,9 +519,9 @@ class AgentServiceImpl(
      * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
      *
      * A non-null [caseReasoningEffort] replaces the model's reasoning effort only when the model has
-     * one configured: setting it on the model is how an admin declares that the model accepts an
-     * effort, so a case-level choice cannot break a model that does not take one (nor an Anthropic
-     * model, which never has one).
+     * one configured above [ReasoningEffort.NONE]: setting a level on the model is how an admin declares
+     * that the model reasons, so a case-level choice cannot break a model that takes no effort (nor an
+     * Anthropic model, which never has one) or one kept at NONE on purpose (GPT-6 with tools on OpenAI).
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -538,10 +539,10 @@ class AgentServiceImpl(
         val modelConfig =
             when {
                 caseReasoningEffort == null -> baseModel
-                baseModel.reasoningEffort == null -> {
-                    logger.info {
+                baseModel.reasoningEffort == null || baseModel.reasoningEffort == ReasoningEffort.NONE -> {
+                    logger.debug {
                         "Case reasoning effort $caseReasoningEffort ignored: model " +
-                            "'${baseModel.alias ?: baseModel.apiModelName}' has no reasoning effort configured"
+                            "'${baseModel.alias ?: baseModel.apiModelName}' has reasoning effort ${baseModel.reasoningEffort}"
                     }
                     baseModel
                 }
@@ -645,7 +646,7 @@ class AgentServiceImpl(
                     maxIterations = limitsConfig.agentMaxIterations,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
-                    reasoningEffort = modelConfig.reasoningEffort,
+                    reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
                     toolMetricsService = toolMetricsService,
                 )
             }
@@ -670,7 +671,7 @@ class AgentServiceImpl(
                     caseEventsProvider = context.caseEventsProvider,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
-                    reasoningEffort = modelConfig.reasoningEffort,
+                    reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )

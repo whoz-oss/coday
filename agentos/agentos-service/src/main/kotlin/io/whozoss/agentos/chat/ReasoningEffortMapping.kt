@@ -1,5 +1,6 @@
 package io.whozoss.agentos.chat
 
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.ollama.api.OllamaChatOptions
 import org.springframework.ai.openai.OpenAiChatOptions
@@ -13,6 +14,18 @@ import org.springframework.ai.openai.OpenAiChatOptions
  * [io.whozoss.agentos.sdk.aiProvider.AiApiType.supportsReasoningEffort], and
  * [io.whozoss.agentos.aiModel.AiModelServiceImpl] rejects an effort on their models.
  */
+
+/**
+ * The level [apiType] actually receives for this configured level: verbatim for OpenAI-compatible
+ * APIs, clamped to high where the API stops there (vLLM, Ollama), null where no effort is sent.
+ * The translations below and the effort recorded on agent messages both rely on it.
+ */
+internal fun ReasoningEffort.sentTo(apiType: AiApiType): ReasoningEffort? =
+    when (apiType) {
+        AiApiType.vLLM, AiApiType.Ollama ->
+            if (this == ReasoningEffort.XHIGH || this == ReasoningEffort.MAX) ReasoningEffort.HIGH else this
+        else -> takeIf { apiType.supportsReasoningEffort }
+    }
 
 /**
  * OpenAI-compatible APIs (OpenAI, routers such as Requesty) take `reasoning_effort` as a string:
@@ -30,23 +43,18 @@ internal fun OpenAiChatOptions.Builder.applyReasoningEffort(effort: ReasoningEff
  * otherwise it ends up in the agent's answer.
  */
 internal fun OpenAiChatOptions.Builder.applyVllmReasoningEffort(effort: ReasoningEffort?): OpenAiChatOptions.Builder {
-    val level =
-        when (effort) {
-            null, ReasoningEffort.NONE -> null
-            ReasoningEffort.LOW, ReasoningEffort.MEDIUM, ReasoningEffort.HIGH -> effort.wireValue()
-            ReasoningEffort.XHIGH, ReasoningEffort.MAX -> ReasoningEffort.HIGH.wireValue()
-        }
-    level?.let { reasoningEffort(it) }
+    val level = effort?.sentTo(AiApiType.vLLM)?.takeIf { it != ReasoningEffort.NONE }
+    level?.let { reasoningEffort(it.wireValue()) }
     return extraBody(mapOf("chat_template_kwargs" to mapOf("enable_thinking" to (level != null))))
 }
 
 /** Ollama knows three levels; thinking stays off for a null or [ReasoningEffort.NONE] effort, as before. */
 internal fun OllamaChatOptions.Builder.applyReasoningEffort(effort: ReasoningEffort?): OllamaChatOptions.Builder =
-    when (effort) {
+    when (effort?.sentTo(AiApiType.Ollama)) {
         null, ReasoningEffort.NONE -> disableThinking()
         ReasoningEffort.LOW -> thinkLow()
         ReasoningEffort.MEDIUM -> thinkMedium()
-        ReasoningEffort.HIGH, ReasoningEffort.XHIGH, ReasoningEffort.MAX -> thinkHigh()
+        else -> thinkHigh()
     }
 
 private fun ReasoningEffort.wireValue(): String = name.lowercase()

@@ -938,6 +938,40 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
         }
 
+        "findAgentByName ignores the case reasoning effort when the model is kept at NONE" {
+            // NONE can be the only level that works (GPT-6 with tools on OpenAI direct).
+            val config = agentConfig(name = "my-agent", modelName = "sol")
+            val model = modelConfig(apiName = "gpt-6-sol", alias = "sol", reasoningEffort = ReasoningEffort.NONE)
+            val provider = providerConfig(apiType = AiApiType.OpenAI)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sol") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context.copy(reasoningEffort = ReasoningEffort.HIGH))
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
+        }
+
+        "findAgentByName gives the agent the effort its provider receives, clamped where the API stops at high" {
+            val config = agentConfig(name = "my-agent", modelName = "qwen")
+            val model = modelConfig(apiName = "qwen3:4b", alias = "qwen", reasoningEffort = ReasoningEffort.LOW)
+            val provider = providerConfig(apiType = AiApiType.Ollama)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "qwen") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            val agent = agentService.findAgentByName("my-agent", context.copy(reasoningEffort = ReasoningEffort.MAX))
+
+            agent.reasoningEffort shouldBe ReasoningEffort.HIGH
+            verify(exactly = 1) {
+                chatClientProvider.getChatClient(model.copy(reasoningEffort = ReasoningEffort.MAX), provider, any())
+            }
+        }
+
         "findAgentByName ignores the case reasoning effort when the model has none configured" {
             // A model without an effort may not accept one (gpt-4.x, GPT-6 with tools on OpenAI, Anthropic).
             val config = agentConfig(name = "my-agent", modelName = "gpt-4.1")

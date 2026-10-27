@@ -1659,7 +1659,7 @@ paths:
         \ of the reasoning effort of the agents running in the case, or remove it\
         \ with a null value so each agent uses the effort of its model again. Read\
         \ at the start of each agent run. Applies only to agents whose model has a\
-        \ reasoning effort configured. Returns the updated Case DTO."
+        \ reasoning effort configured above NONE. Returns the updated Case DTO."
       operationId: setReasoningEffortCase
       parameters:
       - in: path
@@ -4410,7 +4410,7 @@ components:
           $ref: "#/components/schemas/ReasoningEffort"
           description: Per-case override of the reasoning effort of the agents running
             in the case. Null means each agent uses the effort of its model. Applies
-            only to agents whose model has a reasoning effort configured.
+            only to agents whose model has a reasoning effort configured above NONE.
         removed:
           type: boolean
         role:

@@ -4,6 +4,7 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 
@@ -66,7 +67,12 @@ class ChatClientProvider(
 }
 
 /**
- * The model without its reasoning effort, for short utility calls (case naming, prompt translation)
- * that should not pay for the effort configured for agents. Returns the model itself when it has none.
+ * The model for short utility calls (case naming, prompt translation): its reasoning effort is capped
+ * at [ReasoningEffort.LOW], so these calls neither pay for the effort configured for agents nor fall
+ * back to a provider default above a level the admin chose to save cost. Returns the model itself
+ * when its effort is null, NONE or LOW.
  */
-internal fun AiModel.withoutReasoningEffort(): AiModel = if (reasoningEffort == null) this else copy(reasoningEffort = null)
+internal fun AiModel.forUtilityCall(): AiModel {
+    val effort = reasoningEffort
+    return if (effort == null || effort <= ReasoningEffort.LOW) this else copy(reasoningEffort = ReasoningEffort.LOW)
+}

@@ -413,8 +413,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   constructor() {
     this.autocomplete.init(this.namespaceId)
-    // The effort is saved through the loaded case list, and a run reads it at its start.
-    this.autocomplete.enableEffortCommand(() => !!this.activeCase() && !this.isTerminal())
+    this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent)
@@ -1049,16 +1048,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.slashSuggestions.set([])
   }
 
+  /**
+   * Whether the case-level effort can be changed now: it is saved through the loaded case list (a case
+   * opened through namespace access only is not in it), and a run reads it at its start.
+   */
+  private canChangeEffort(): boolean {
+    return !!this.activeCase() && !this.isTerminal()
+  }
+
   /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
   protected onEffortSelected(option: EffortOption): void {
     this.autocomplete.effortSuggestions.set([])
+    if (!this.canChangeEffort()) return
     this.inputValue.set('')
     const input = this.composerInput()?.nativeElement
     if (input) {
       input.value = ''
       this.resizeComposer(input)
     }
-    if (!this.activeCase()) return
     this.caseState.setReasoningEffort(this.caseId, option.effort).subscribe({
       error: (err) => console.error('[CaseChat] Failed to set the reasoning effort', err),
     })
@@ -1113,10 +1120,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected async submit(): Promise<void> {
     if (this.submitting || !this.canSend) return
     const content = this.inputValue().trim()
-    // A typed "/effort <level>" is a command for the case, never a message for the agent.
+    // A typed "/effort <level>" is a command for the case, never a message for the agent. When the
+    // effort cannot be changed here, the text stays in the composer.
     const effortCommand = parseEffortCommand(content)
     if (effortCommand !== undefined) {
-      if (effortCommand) this.onEffortSelected(effortCommand)
+      if (effortCommand) {
+        this.onEffortSelected(effortCommand)
+      } else {
+        // Missing or unknown level: show the levels instead of doing nothing.
+        this.autocomplete.showEffortLevels()
+      }
       return
     }
     if (this.attachments.hasAttachments()) {

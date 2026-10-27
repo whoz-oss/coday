@@ -22,7 +22,7 @@ export interface Case {
    */
   readAt?: string
   /**
-   * Per-case override of the reasoning effort of the agents running in the case. Null means each agent uses the effort of its model. Applies only to agents whose model has a reasoning effort configured.
+   * Per-case override of the reasoning effort of the agents running in the case. Null means each agent uses the effort of its model. Applies only to agents whose model has a reasoning effort configured above NONE.
    */
   reasoningEffort?: ReasoningEffort
   removed: boolean

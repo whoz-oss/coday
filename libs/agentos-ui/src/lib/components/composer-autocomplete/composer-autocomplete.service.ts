@@ -8,7 +8,7 @@ import { PromptStateService } from '../../services/prompt-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
-import { EffortOption, effortOptionsFor } from './effort-command'
+import { EFFORT_OPTIONS, EffortOption, effortOptionsFor } from './effort-command'
 
 /**
  * ComposerAutocompleteService — component-scoped service centralising slash-command (/)
@@ -125,6 +125,14 @@ export class ComposerAutocompleteService {
    */
   enableEffortCommand(available: () => boolean): void {
     this.effortCommandAvailable = available
+  }
+
+  /** Open the /effort picker on every level, e.g. after a level the command does not know. */
+  showEffortLevels(): void {
+    if (!this.effortCommandAvailable?.()) return
+    this.slashSuggestions.set([])
+    this.atSuggestions.set([])
+    this.effortSuggestions.set([...EFFORT_OPTIONS])
   }
 
   /**

@@ -217,6 +217,26 @@ describe('ComposerAutocompleteService', () => {
     }))
   })
 
+  describe('showEffortLevels()', () => {
+    it('lists every level when the command is available, and nothing otherwise', () => {
+      const { service } = setup()
+      service.showEffortLevels()
+      expect(service.effortSuggestions()).toEqual([])
+
+      service.enableEffortCommand(() => true)
+      service.showEffortLevels()
+      expect(service.effortSuggestions().map((o) => o.label)).toEqual([
+        'default',
+        'none',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+      ])
+    })
+  })
+
   describe('slash-command autocomplete (/)', () => {
     it('triggers an HTTP call on the first slash and caches the result', fakeAsync(() => {
       const { service, promptState } = setup()

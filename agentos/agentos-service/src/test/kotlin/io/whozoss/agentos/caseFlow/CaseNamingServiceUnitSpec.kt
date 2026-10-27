@@ -255,7 +255,7 @@ class CaseNamingServiceUnitSpec :
             emitted.filterIsInstance<CaseUpdatedEvent>().single().title shouldBe "Kotlin Coroutines Explained"
         }
 
-        "names the case without the reasoning effort configured on the default model" {
+        "names the case with the reasoning effort of the default model capped at low" {
             val chatClientProvider = mockk<ChatClientProvider>()
             chatClientProvider.stub(stubbedChatClient("Effort title"))
             val effortModel = model.copy(reasoningEffort = ReasoningEffort.MAX)
@@ -269,7 +269,7 @@ class CaseNamingServiceUnitSpec :
             service.nameCase(case, listOf(messageEvent("Plan the migration", case.id))) {}
 
             verify(exactly = 1) {
-                chatClientProvider.getChatClient(effortModel.copy(reasoningEffort = null), provider, case.id.toString())
+                chatClientProvider.getChatClient(effortModel.copy(reasoningEffort = ReasoningEffort.LOW), provider, case.id.toString())
             }
         }
 

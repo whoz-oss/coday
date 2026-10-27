@@ -5,10 +5,12 @@ import { ActivatedRoute } from '@angular/router'
 import {
   ActorRoleEnum,
   AnswerEvent,
+  Case,
   Configuration,
   ExchangeFileEntryScopeEnum,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
+  ReasoningEffort,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@whoz-oss/agentos-api-client'
@@ -18,6 +20,8 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
+import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { CaseChatComponent } from './case-chat.component'
 
 /**
@@ -86,6 +90,7 @@ describe('CaseChatComponent — submit with attachments', () => {
             updateCaseTitle: jest.fn(),
             updateCaseStatus: jest.fn(),
             notifyAgentMessageEvent: jest.fn(),
+            setReasoningEffort: jest.fn().mockReturnValue(of({})),
           },
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
@@ -252,6 +257,47 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'hello', userId: 'default-user' })
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+  })
+
+  describe('/effort command', () => {
+    const loadCase = (): void => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'IDLE' } as Case])
+    }
+
+    it('sets the case effort and sends nothing to the agent', async () => {
+      loadCase()
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).toHaveBeenCalledWith('c-1', ReasoningEffort.HIGH)
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('keeps the text and sends nothing when the case is not in the loaded list', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/effort high')
+    })
+
+    it('opens the level picker on an unknown level instead of doing nothing', async () => {
+      loadCase()
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/effort hihg')
+
+      await ref.instance['submit']()
+
+      expect(ref.injector.get(ComposerAutocompleteService).effortSuggestions()).toHaveLength(EFFORT_OPTIONS.length)
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+    })
   })
 
   it('a failed message send keeps the text and the uploaded chips for a retry', async () => {

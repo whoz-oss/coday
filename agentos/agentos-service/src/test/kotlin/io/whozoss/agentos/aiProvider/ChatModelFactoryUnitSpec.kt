@@ -8,6 +8,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.chat.sentTo
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
@@ -189,6 +190,15 @@ class ChatModelFactoryUnitSpec : StringSpec({
         val options = optionsFor(AiApiType.Gemini, ReasoningEffort.HIGH) as GoogleGenAiChatOptions
         options.thinkingLevel.shouldBeNull()
         options.thinkingBudget.shouldBeNull()
+    }
+
+    "sentTo gives the level each API receives: verbatim on OpenAI, high at most on vLLM and Ollama, none elsewhere" {
+        ReasoningEffort.MAX.sentTo(AiApiType.OpenAI) shouldBe ReasoningEffort.MAX
+        ReasoningEffort.MAX.sentTo(AiApiType.vLLM) shouldBe ReasoningEffort.HIGH
+        ReasoningEffort.XHIGH.sentTo(AiApiType.Ollama) shouldBe ReasoningEffort.HIGH
+        ReasoningEffort.MEDIUM.sentTo(AiApiType.Ollama) shouldBe ReasoningEffort.MEDIUM
+        ReasoningEffort.HIGH.sentTo(AiApiType.Anthropic).shouldBeNull()
+        ReasoningEffort.HIGH.sentTo(AiApiType.Gemini).shouldBeNull()
     }
 
     "Anthropic ignores the reasoning effort and keeps thinking unset" {

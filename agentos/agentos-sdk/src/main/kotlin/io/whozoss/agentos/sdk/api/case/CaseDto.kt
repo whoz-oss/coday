@@ -42,7 +42,7 @@ import java.util.UUID
  *   and independent of platform or namespace config changes.
  * @property reasoningEffort Per-case override of the reasoning effort of the agents running in the
  *   case. Null means each agent uses the effort of its model. Applies only to agents whose model
- *   has a reasoning effort configured. Accepted on create; changed afterwards through
+ *   has a reasoning effort configured above NONE. Accepted on create; changed afterwards through
  *   `PUT /api/cases/{id}/reasoning-effort` only (`PUT /api/cases/{id}` ignores it).
  */
 @Schema(name = "Case")
@@ -67,7 +67,7 @@ data class CaseDto(
         description =
             "Per-case override of the reasoning effort of the agents running in the case. " +
                 "Null means each agent uses the effort of its model. Applies only to agents whose model " +
-                "has a reasoning effort configured.",
+                "has a reasoning effort configured above NONE.",
     )
     val reasoningEffort: ReasoningEffort? = null,
     val created: Instant? = null,

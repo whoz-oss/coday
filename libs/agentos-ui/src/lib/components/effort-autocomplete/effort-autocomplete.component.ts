@@ -42,10 +42,10 @@ export class EffortAutocompleteComponent {
   private readonly itemRefs = viewChildren<ElementRef<HTMLLIElement>>('effortItem')
 
   constructor() {
-    // Reset selection index whenever the list changes.
+    // Start on the level the case uses, so Enter right after /effort keeps it instead of resetting it.
     effect(() => {
-      this.options()
-      this.activeIndex.set(0)
+      const index = this.options().findIndex((option) => option.effort === this.current())
+      this.activeIndex.set(Math.max(index, 0))
     })
   }
 

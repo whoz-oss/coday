@@ -33,7 +33,7 @@ import java.util.UUID
  *   Null when usage tracking is not needed (e.g. definition resolution, tests).
  * @param reasoningEffort The case-level override of the reasoning effort ([io.whozoss.agentos.caseFlow.Case.reasoningEffort]),
  *   read at the start of the run. Null means each agent uses the effort of its model. Applied only when that
- *   model has a reasoning effort configured.
+ *   model has a reasoning effort configured above NONE.
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
