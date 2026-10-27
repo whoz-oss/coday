@@ -77,10 +77,14 @@ class ScopedAccessPolicy(private val permissionService: PermissionService) {
      * Asserts that [caller] may perform [action] on namespace [namespaceId], throwing
      * [AccessDeniedException] otherwise.
      *
+     * Short-circuits to `true` for Super Admins without querying the permission graph,
+     * consistent with [canAccess], [canReadNamespace], and [filterVisible].
+     *
      * The exception message is stable and asserted by existing specs:
      * `"Cannot create $entityLabel in namespace $namespaceId (${action.name} required)"`.
      */
     fun requireNamespacePermission(caller: Caller, namespaceId: UUID, action: Action, entityLabel: String) {
+        if (caller.isAdmin) return
         if (!permissionService.hasPermission(
                 caller.userId.toString(),
                 EntityType.NAMESPACE,
