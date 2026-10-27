@@ -2578,7 +2578,8 @@ class CaseServiceImplSpec :
             val service = buildService(caseRepository = repository)
 
             shouldThrow<ConflictException> { service.create(Case(namespaceId = namespaceId), worktree = true) }
-                .message shouldBe "Cannot create a worktree for this case: Git workspaces are not enabled on this instance"
+                .message shouldBe
+                "Cannot create a worktree for this case: Git workspaces are not enabled on this instance"
             verify(exactly = 0) { repository.save(any()) }
         }
 

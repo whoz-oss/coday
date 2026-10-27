@@ -35,9 +35,9 @@ import org.springframework.beans.factory.ObjectProvider
  * When a case creation results in a workspace being requested.
  *
  * The rules are all about *not* acting: a sub-case never allocates, an unassociated namespace
- * never allocates, an association with automation off never allocates unless the creator asks,
- * a creator who declines never gets one, and a broken association or a worktree that cannot be
- * created is refused instead of silently creating an unequipped family.
+ * never allocates, an association with automation off never allocates, a creator who declines
+ * never gets one, and a broken association or a required worktree that cannot be created is
+ * refused instead of silently creating an unequipped family.
  */
 class GitCaseWorkspaceProvisioningSpec :
     StringSpec({
@@ -67,7 +67,6 @@ class GitCaseWorkspaceProvisioningSpec :
             val association = mockk<GitRepositoryAssociationService> {
                 every { automationEnabled(namespaceId) } returns automation
                 every { findAutomaticSettings(any()) } answers { resolve()?.takeIf { automation } }
-                every { findSettings(any()) } answers { resolve() }
             }
             return GitCaseWorkspaceProvisioning(
                 association,
@@ -125,7 +124,7 @@ class GitCaseWorkspaceProvisioningSpec :
                 row(true, null, true),
                 row(false, null, false),
                 row(true, false, false),
-                row(false, true, true),
+                row(true, true, true),
             ).forAll { automation, worktree, secondWaits ->
                 val provisioning = hook(InMemoryCaseResourceBindingService(), automation = automation) { null }
                 val firstInside = CountDownLatch(1)
@@ -160,38 +159,59 @@ class GitCaseWorkspaceProvisioningSpec :
             bindings.findByRootCaseId(case.id).shouldBeNull()
         }
 
-        "a root case whose creator asks for a worktree is equipped even with automation off" {
+        "a root case whose creator requires a worktree is equipped by its namespace's automation" {
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
 
-            val configured = settings(autoWorktree = false)
-            hook(bindings, automation = false) { configured }.create(case, worktree = true)
+            val configured = settings(autoWorktree = true)
+            hook(bindings) { configured }.create(case, worktree = true)
 
-            val binding = bindings.findByRootCaseId(case.id)
-            binding.shouldNotBeNull()
-            binding.status shouldBe CaseResourceStatus.REQUESTED
-            binding.settings shouldBe configured
+            bindings.findByRootCaseId(case.id)?.settings shouldBe configured
         }
 
-        "a worktree the creator asks for and that cannot be created refuses the creation" {
+        "a required worktree that cannot be created is refused before the case is written" {
             val workerOff = mockk<ObjectProvider<CaseWorkspaceWorker>> { every { getIfAvailable() } returns null }
             table(
-                headers("situation", "available", "worker", "associated", "reason"),
+                headers("situation", "available", "worker", "automation", "reason"),
                 row("GIT plugin not loaded", false, workerOn(), true, "Git is not available on this instance"),
                 row("Git worker disabled", true, workerOff, true, "the Git worker is disabled on this instance"),
-                row("namespace without an association", true, workerOn(), false, "its namespace has no Git repository"),
-            ).forAll { _, available, worker, associated, reason ->
-                val bindings = InMemoryCaseResourceBindingService()
-                val case = rootCase()
+                row("namespace without automation", true, workerOn(), false, "its namespace does not create worktrees"),
+            ).forAll { _, available, worker, automation, reason ->
+                var written = false
 
                 shouldThrow<ConflictException> {
-                    hook(bindings, available = available, automation = false, worker = worker) {
-                        settings(autoWorktree = false).takeIf { associated }
-                    }.create(case, worktree = true)
+                    val bindings = InMemoryCaseResourceBindingService()
+                    hook(bindings, available = available, automation = automation, worker = worker) {
+                        settings(autoWorktree = automation)
+                    }.aroundCreation(rootCase(), worktree = true) { written = true }
                 }.message shouldBe "Cannot create a worktree for this case: $reason"
 
-                bindings.findByRootCaseId(case.id).shouldBeNull()
+                written shouldBe false
             }
+        }
+
+        "a required worktree is refused when a settings save it waited for turned automation off" {
+            val bindings = InMemoryCaseResourceBindingService()
+            val case = rootCase()
+            val association = mockk<GitRepositoryAssociationService> {
+                every { automationEnabled(namespaceId) } returns true
+                every { findAutomaticSettings(namespaceId) } returns null
+            }
+
+            shouldThrow<ConflictException> {
+                GitCaseWorkspaceProvisioning(association, bindings, availability(), workerOn())
+                    .create(case, worktree = true)
+            }.message shouldBe "Cannot create a worktree for this case: its namespace does not create worktrees"
+
+            bindings.findByRootCaseId(case.id).shouldBeNull()
+        }
+
+        "a required worktree is never skipped silently when the creation bypassed aroundCreation" {
+            val bindings = InMemoryCaseResourceBindingService()
+            val provisioning = hook(bindings) { settings(autoWorktree = true) }
+
+            shouldThrow<IllegalStateException> { provisioning.onCaseCreated(rootCase(), worktree = true) }
+            provisioning.onCaseCreated(rootCase(), worktree = null)
         }
 
         "a broken association is rejected as a conflict for the admin to fix, before creating an unequipped family" {
@@ -200,7 +220,8 @@ class GitCaseWorkspaceProvisioningSpec :
 
             listOf(null, true).forEach { worktree ->
                 shouldThrow<ConflictException> {
-                    hook(bindings) { throw BadRequestException("serviceAuthSettingId must be a UUID") }.create(case, worktree)
+                    hook(bindings) { throw BadRequestException("serviceAuthSettingId must be a UUID") }
+                        .create(case, worktree)
                 }.message shouldBe "The namespace Git settings are invalid (serviceAuthSettingId must be a UUID): " +
                     "a namespace admin must fix them before new conversations can start"
 
