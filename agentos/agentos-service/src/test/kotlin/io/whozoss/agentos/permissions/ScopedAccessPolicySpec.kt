@@ -178,6 +178,16 @@ class ScopedAccessPolicySpec : StringSpec({
         error.message shouldBe "Cannot create IntegrationConfig in namespace $namespaceId (WRITE required)"
     }
 
+    "a Super Admin bypasses requireNamespacePermission without consulting the permission graph" {
+        val permissions = denyAll()
+        val policy = ScopedAccessPolicy(permissions)
+
+        // Must not throw and must not call the permission graph
+        policy.requireNamespacePermission(human(isAdmin = true), namespaceId, Action.WRITE, "IntegrationConfig")
+
+        verify(exactly = 0) { permissions.hasPermission(any(), any(), any(), any()) }
+    }
+
     // -------------------------------------------------------------------------
     // filterVisible
     // -------------------------------------------------------------------------
