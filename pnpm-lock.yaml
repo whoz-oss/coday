@@ -656,6 +656,18 @@ importers:
         specifier: catalog:dev
         version: 6.0.3
 
+  apps/web:
+    dependencies:
+      '@whoz-oss/coday-client':
+        specifier: workspace:*
+        version: link:../client
+      '@whoz-oss/coday-factory-cockpit':
+        specifier: workspace:*
+        version: link:../factory-cockpit
+      '@whoz-oss/coday-server':
+        specifier: workspace:*
+        version: link:../server
+
   libs/agent:
     dependencies:
       rxjs:
@@ -687,6 +699,12 @@ importers:
       typescript:
         specifier: catalog:dev
         version: 6.0.3
+
+  libs/coday-events/dist:
+    dependencies:
+      tslib:
+        specifier: ^2.3.0
+        version: 2.8.1
 
   libs/coday-services:
     dependencies:
@@ -1065,19 +1083,6 @@ importers:
         specifier: catalog:dev
         version: 6.0.3
 
-  libs/integrations/excel/dist:
-    dependencies:
-      exceljs:
-        specifier: 4.4.0
-        version: 4.4.0
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
-    devDependencies:
-      typescript:
-        specifier: catalog:dev
-        version: 6.0.3
-
   libs/integrations/file:
     dependencies:
       tslib:
@@ -1145,22 +1150,6 @@ importers:
         version: 6.0.3
 
   libs/integrations/http:
-    dependencies:
-      oauth4webapi:
-        specifier: 'catalog:'
-        version: 3.8.3
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
-      yaml:
-        specifier: 'catalog:'
-        version: 2.8.1
-    devDependencies:
-      typescript:
-        specifier: catalog:dev
-        version: 6.0.3
-
-  libs/integrations/http/dist:
     dependencies:
       oauth4webapi:
         specifier: 'catalog:'
@@ -2431,7 +2420,7 @@ packages:
     engines: {node: '>=12'}
 
   '@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2':
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
+    resolution: {tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
     version: 10.2.0-electron.1
     engines: {node: '>=12.13.0'}
     hasBin: true
@@ -4456,6 +4445,10 @@ packages:
   '@pnpm/npm-conf@3.0.3':
     resolution: {integrity: sha512-//0sR/cow/s4ICQaYoAobOl4aU8cjU6x/V24V7XkKotb9+O+3zySIYp146vpaobYHnxa4pZX8NkV54Z5AwbDKA==}
     engines: {node: '>=12'}
+
+  '@profoundlogic/hogan@3.0.4':
+    resolution: {integrity: sha512-pmNVGuooS30Mm7YbZd5T7E5zYVO6D5Ct91sn4T39mUvMUc3sCGridcnhAufL1/Bz2QzAtzEn0agNrdk3+5yWzw==}
+    hasBin: true
 
   '@rollup/rollup-android-arm-eabi@4.60.2':
     resolution: {integrity: sha512-dnlp69efPPg6Uaw2dVqzWRfAWRnYVb1XJ8CyyhIbZeaq4CA5/mLeZ1IEt9QqQxmbdvagjLIm2ZL8BxXv5lH4Yw==}
@@ -6688,8 +6681,16 @@ packages:
     engines: {node: '>= 16.0.0'}
     hasBin: true
 
+  diff2html@3.4.56:
+    resolution: {integrity: sha512-u9gfn+BlbHcyO7vItCIC4z49LJDUt31tODzOfAuJ5R1E7IdlRL6KjugcB9zOpejD+XiR+dDZbsnHSQ3g6A/u8A==}
+    engines: {node: '>=12'}
+
   diff@4.0.4:
     resolution: {integrity: sha512-X07nttJQkwkfKfvTPG/KSnE2OMdcUCao6+eXF3wmnIQRn2aPAHH3VxDbDOdegkd6JbPsXqShpvEOHfAT+nCNwQ==}
+    engines: {node: '>=0.3.1'}
+
+  diff@8.0.4:
+    resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
   dir-compare@4.2.0:
@@ -7657,6 +7658,10 @@ packages:
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
+
+  highlight.js@11.11.1:
+    resolution: {integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==}
+    engines: {node: '>=12.0.0'}
 
   hono@4.13.5:
     resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
@@ -9157,6 +9162,10 @@ packages:
   nodemon@3.1.10:
     resolution: {integrity: sha512-WDjw3pJ0/0jMFmyNDp3gvY2YizjLmmOUQo6DEBY+JgdvW/yQ9mEeSw6H5ythl5Ny2ytb7f9C2nIbjSxMNzbJXw==}
     engines: {node: '>=10'}
+    hasBin: true
+
+  nopt@1.0.10:
+    resolution: {integrity: sha512-NWmpvLSqUrgrAC9HCuxEvb+PSloHpqVu+FqcO4eeF2h5qYRhA7ev6KvelyQAKtegUbC6RypJnlEOhd8vloNKYg==}
     hasBin: true
 
   nopt@6.0.0:
@@ -11682,26 +11691,6 @@ packages:
 
   zone.js@0.16.1:
     resolution: {integrity: sha512-dpvY17vxYIW3+bNrP0ClUlaiY0CiIRK3tnoLaGoQsQcY9/I/NpzIWQ7tQNhbV7LacQMpCII6wVzuL3tuWOyfuA==}
-  '@profoundlogic/hogan@3.0.4':
-    resolution: {integrity: sha512-pmNVGuooS30Mm7YbZd5T7E5zYVO6D5Ct91sn4T39mUvMUc3sCGridcnhAufL1/Bz2QzAtzEn0agNrdk3+5yWzw==}
-    hasBin: true
-
-  diff2html@3.4.56:
-    resolution: {integrity: sha512-u9gfn+BlbHcyO7vItCIC4z49LJDUt31tODzOfAuJ5R1E7IdlRL6KjugcB9zOpejD+XiR+dDZbsnHSQ3g6A/u8A==}
-    engines: {node: '>=12'}
-
-  diff@8.0.4:
-    resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
-    engines: {node: '>=0.3.1'}
-
-  highlight.js@11.11.1:
-    resolution: {integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==}
-    engines: {node: '>=12.0.0'}
-
-  nopt@1.0.10:
-    resolution: {integrity: sha512-NWmpvLSqUrgrAC9HCuxEvb+PSloHpqVu+FqcO4eeF2h5qYRhA7ev6KvelyQAKtegUbC6RypJnlEOhd8vloNKYg==}
-    hasBin: true
-
 
 snapshots:
 
@@ -15358,6 +15347,10 @@ snapshots:
       '@pnpm/network.ca-file': 1.0.2
       config-chain: 1.1.13
 
+  '@profoundlogic/hogan@3.0.4':
+    dependencies:
+      nopt: 1.0.10
+
   '@rollup/rollup-android-arm-eabi@4.60.2':
     optional: true
 
@@ -17685,7 +17678,16 @@ snapshots:
     dependencies:
       address: 2.0.3
 
+  diff2html@3.4.56:
+    dependencies:
+      '@profoundlogic/hogan': 3.0.4
+      diff: 8.0.4
+    optionalDependencies:
+      highlight.js: 11.11.1
+
   diff@4.0.4: {}
+
+  diff@8.0.4: {}
 
   dir-compare@4.2.0:
     dependencies:
@@ -19047,6 +19049,9 @@ snapshots:
       function-bind: 1.1.2
 
   he@1.2.0: {}
+
+  highlight.js@11.11.1:
+    optional: true
 
   hono@4.13.5: {}
 
@@ -21105,6 +21110,10 @@ snapshots:
       supports-color: 5.5.0
       touch: 3.1.1
       undefsafe: 2.0.5
+
+  nopt@1.0.10:
+    dependencies:
+      abbrev: 1.1.1
 
   nopt@6.0.0:
     dependencies:
@@ -23886,22 +23895,3 @@ snapshots:
   zod@4.4.3: {}
 
   zone.js@0.16.1: {}
-  '@profoundlogic/hogan@3.0.4':
-    dependencies:
-      nopt: 1.0.10
-
-  diff2html@3.4.56:
-    dependencies:
-      '@profoundlogic/hogan': 3.0.4
-      diff: 8.0.4
-    optionalDependencies:
-      highlight.js: 11.11.1
-
-  diff@8.0.4: {}
-
-  highlight.js@11.11.1:
-    optional: true
-
-  nopt@1.0.10:
-    dependencies:
-      abbrev: 1.1.1
