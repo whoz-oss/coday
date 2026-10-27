@@ -80,6 +80,9 @@ outside a credential field, a path through a list.
   stands for the id an earlier operation of the plan creates. A new agent needs
   `deployTo: NAMESPACE | NONE`; `NAMESPACE` deploys it on the namespace it is created in, or on the
   current one for a platform agent.
+- The tool's description lists every auth setting type with its own fields and marks the secret
+  ones, read from the `AuthSettingDto` subtypes (`ConfigAuthSettingTypes`), so a new type shows up
+  without touching the tool.
 - `CREATE` of a `NAMESPACE` has a `value` only (`name`, `description`, the other `NamespaceDto`
   fields). The REST API reserves it to super-admins. It is the only action on namespaces.
 - `UPDATE` targets an `id` and lists `changes` by JSON Pointer path (`/instructions`,

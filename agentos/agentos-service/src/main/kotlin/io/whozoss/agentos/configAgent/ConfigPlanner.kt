@@ -567,6 +567,6 @@ class ConfigPlanner(
         /** Kinds that only exist at platform or namespace level. */
         private val SHARED_ONLY_KINDS = setOf(ConfigKind.AGENT, ConfigKind.SKILL)
 
-        private val AUTH_SETTING_SECRET_PATHS = setOf("/apiKey", "/token", "/password", "/clientSecret")
+        private val AUTH_SETTING_SECRET_PATHS = ConfigSecretMasker.AUTH_SETTING_SECRET_FIELDS.map { "/$it" }.toSet()
     }
 }
