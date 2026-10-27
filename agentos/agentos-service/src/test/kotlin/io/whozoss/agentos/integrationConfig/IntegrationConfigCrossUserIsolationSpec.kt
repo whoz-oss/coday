@@ -73,12 +73,6 @@ class IntegrationConfigCrossUserIsolationSpec : StringSpec() {
             every { namespaceService.findById(sharedNamespaceId) } returns sharedNamespace
             every { permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, sharedNamespaceId.toString(), Action.READ) } returns true
             every { permissionService.hasPermission(bobId.toString(), EntityType.NAMESPACE, sharedNamespaceId.toString(), Action.READ) } returns true
-            // isSuperAdmin() calls userService.findById(callerId: UUID). UserService extends
-            // EntityService<User, String> whose findById is generic — a relaxed MockK mock
-            // auto-stubs the erased upper bound (Entity), causing a ClassCastException when
-            // the service casts the result to User. Stubbing explicitly for the callers we
-            // know about avoids the cast and correctly represents them as non-admins.
-            every { userService.findById(aliceId) } returns alice
         }
 
         fun createBobRow(namespaceId: UUID?, name: String): IntegrationConfig =

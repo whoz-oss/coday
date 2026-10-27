@@ -7,10 +7,10 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.access.AccessDeniedException
@@ -47,10 +47,9 @@ class IntegrationConfigServiceImpl(
      */
     private val policies: List<IntegrationConfigPolicy> = emptyList(),
     private val integrationsProperties: IntegrationsProperties = IntegrationsProperties(),
-    private val permissionService: PermissionService,
-    private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val scopePolicy: IntegrationConfigScopePolicy,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -147,60 +146,37 @@ class IntegrationConfigServiceImpl(
                 }
             }
 
+    // -------------------------------------------------------------------------
+    // Unchecked composition surface
+    // -------------------------------------------------------------------------
+
+    override fun unsecuredCreate(entity: IntegrationConfig): IntegrationConfig = create(entity)
+
+    override fun unsecuredUpdate(entity: IntegrationConfig): IntegrationConfig = update(entity)
+
+    override fun unsecuredFindById(id: UUID, withRemoved: Boolean): IntegrationConfig? = findById(id, withRemoved)
+
     // --- Authorized surface ---
 
-    private fun canAccess(callerId: UUID, config: IntegrationConfig, action: Action): Boolean =
-        permissionService.hasPermission(callerId.toString(), EntityType.INTEGRATION_CONFIG, config.id.toString(), action) ||
-            (config.userId != null && config.userId == callerId)
-
-    private fun isSuperAdmin(callerId: UUID): Boolean = userService.findById(callerId)?.isAdmin == true
-
-    /** Throws when [config] is platform-scoped (both ids null) and the caller is not a Super Admin. */
-    private fun requireAdminForPlatform(callerId: UUID, config: IntegrationConfig) {
-        if (config.namespaceId != null || config.userId != null) return
-        if (!isSuperAdmin(callerId)) throw AccessDeniedException("Platform-level IntegrationConfig requires Super Admin")
-    }
-
-    override fun getByIdForCaller(callerId: UUID, id: UUID, action: Action): IntegrationConfig {
+    override fun getByIdForCaller(caller: Caller, id: UUID, action: Action): IntegrationConfig {
         val config = findById(id, withRemoved = true)
             ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        if (!canAccess(callerId, config, action)) throw AccessDeniedException("Access denied on IntegrationConfig $id")
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, config, action)
         return config
     }
 
-    override fun findByIdsForCaller(callerId: UUID, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig> {
+    override fun findByIdsForCaller(caller: Caller, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig> {
         if (ids.size > MAX_BATCH_SIZE) throw BadRequestException("Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE")
         if (ids.isEmpty()) return emptyList()
 
-        if (isSuperAdmin(callerId)) {
-            val byId = findByIds(ids.toSet(), withRemoved).associateBy { it.metadata.id }
-            return ids.mapNotNull { byId[it] }
-        }
-
-        val rawVisible = permissionService.filterVisibleIds(
-            userId = callerId.toString(),
-            entityType = EntityType.INTEGRATION_CONFIG,
-            ids = ids.map(UUID::toString),
-            action = Action.READ,
-        )
-        val parsed = rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-        if (parsed.size != rawVisible.size) {
-            logger.warn {
-                "[${EntityType.INTEGRATION_CONFIG}] PermissionService returned ${rawVisible.size - parsed.size} non-UUID id(s); dropping. " +
-                    "This indicates data corruption or schema drift — investigate."
-            }
-        }
-        val visibleIds = parsed.toSet()
-
         val rows = findByIds(ids.toSet(), withRemoved)
-        val byId = rows
-            .filter { it.metadata.id in visibleIds || it.userId == callerId }
-            .associateBy { it.metadata.id }
+        val visible = scopedAccessPolicy.filterVisible(caller, EntityType.INTEGRATION_CONFIG, rows, Action.READ)
+        val byId = rows.filter { it.id in visible }.associateBy { it.metadata.id }
         return ids.mapNotNull { byId[it] }
     }
 
     override fun findFilteredForCaller(
-        callerId: UUID,
+        caller: Caller,
         namespaceId: UUID?,
         namespaceIsNone: Boolean,
         userRequested: Boolean,
@@ -211,7 +187,7 @@ class IntegrationConfigServiceImpl(
 
             // NS-shared layer of a specific namespace (no userId param) : check READ permission
             namespaceId != null && !userRequested -> {
-                if (!permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)) {
+                if (!scopedAccessPolicy.canReadNamespace(caller, namespaceId)) {
                     emptyList()
                 } else {
                     findByNamespaceShared(namespaceId)
@@ -226,36 +202,36 @@ class IntegrationConfigServiceImpl(
                         namespaceId != null -> { nsId -> nsId == namespaceId }
                         else -> { _ -> true }
                     }
-                findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+                findByUserId(caller.userId).filter { nsFilter(it.namespaceId) }
             }
 
             // No filter at all : surface the caller's own overlays
             else -> {
-                findByUserId(callerId)
+                findByUserId(caller.userId)
             }
         }
 
-    override fun createForCaller(callerId: UUID, entity: IntegrationConfig): IntegrationConfig {
+    override fun createForCaller(caller: Caller, entity: IntegrationConfig): IntegrationConfig {
         if (entity.namespaceId == null && entity.userId == null) {
-            if (!isSuperAdmin(callerId)) throw AccessDeniedException("Platform-level IntegrationConfig requires Super Admin")
+            if (!caller.isAdmin) throw AccessDeniedException("Platform-level IntegrationConfig requires Super Admin")
             return create(entity.copy(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, userId = null))
         }
         scopePolicy.requireScopeAllowed(userId = entity.userId, integrationType = entity.integrationType)
         val scope = validateAndResolveScope(
             entityLabel = "IntegrationConfig",
-            callerId = callerId,
+            caller = caller,
             requestedUserId = entity.userId,
             requestedNamespaceId = entity.namespaceId,
             namespaceService = namespaceService,
-            permissionService = permissionService,
+            scopedAccessPolicy = scopedAccessPolicy,
         )
         return create(entity.copy(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = scope.namespaceId, userId = scope.userId))
     }
 
-    override fun updateForCaller(callerId: UUID, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig {
+    override fun updateForCaller(caller: Caller, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig {
         val existing = findById(id) ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        if (!canAccess(callerId, existing, Action.WRITE)) throw AccessDeniedException("Access denied on IntegrationConfig $id")
-        requireAdminForPlatform(callerId, existing)
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, existing, Action.WRITE)
+        scopedAccessPolicy.requireAdminForPlatform(caller, "IntegrationConfig", existing)
         scopePolicy.requireScopeAllowed(userId = existing.userId, integrationType = existing.integrationType)
         // id, namespaceId, userId and integrationType are preserved from the persisted row —
         // this is the mass-assignment guard, now a business rule owned by the service.
@@ -271,10 +247,10 @@ class IntegrationConfigServiceImpl(
         )
     }
 
-    override fun deleteForCaller(callerId: UUID, id: UUID) {
+    override fun deleteForCaller(caller: Caller, id: UUID) {
         val existing = findById(id) ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        if (!canAccess(callerId, existing, Action.DELETE)) throw AccessDeniedException("Access denied on IntegrationConfig $id")
-        requireAdminForPlatform(callerId, existing)
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, existing, Action.DELETE)
+        scopedAccessPolicy.requireAdminForPlatform(caller, "IntegrationConfig", existing)
         if (!delete(id)) throw ResourceNotFoundException("IntegrationConfig not found: $id")
     }
 

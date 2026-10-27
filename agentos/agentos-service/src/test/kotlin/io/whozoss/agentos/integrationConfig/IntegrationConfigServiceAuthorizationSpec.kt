@@ -13,11 +13,11 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserService
 import org.springframework.security.access.AccessDeniedException
 import java.util.UUID
 
@@ -28,9 +28,14 @@ import java.util.UUID
  * explicit guards in the controller body, and inside the
  * [io.whozoss.agentos.entity.ScopedOwnershipCrudDelegate] it built. They were therefore
  * reachable only through HTTP, which is why every non-HTTP caller (agent tools, schedulers)
- * had to re-derive them. They now belong to the service, take an explicit `callerId`, and are
+ * had to re-derive them. They now belong to the service, take an explicit [Caller], and are
  * asserted here against the service directly — no controller, no Spring context, no
  * [org.springframework.security.core.context.SecurityContextHolder].
+ *
+ * The caller's privilege (including Super Admin status) is now carried directly by [Caller]
+ * rather than resolved through a `userService.findById` lookup inside the service. This is
+ * why this spec needs no user-service mock: the [Caller] passed to each `*ForCaller` method
+ * already encodes `isAdmin`, and the service reads it from there.
  *
  * [permissionService] is deliberately NOT relaxed: `hasPermission` defaults to `false` so every
  * test states exactly what it grants. A relaxed mock would silently return `false` too, but it
@@ -45,51 +50,43 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
     val otherUserId = UUID.randomUUID()
     val namespaceId = UUID.randomUUID()
 
-    fun user(id: UUID, isAdmin: Boolean) = User(
-        metadata = EntityMetadata(id = id),
-        externalId = "user-$id@example.com",
-        email = "user-$id@example.com",
-        isAdmin = isAdmin,
-    )
-
     /**
      * One service and its mocks per test. The repository is the in-memory fixture, so a test can
      * seed a row through the **unchecked** [IntegrationConfigService.create] to set up a state the
      * authorized surface would refuse to create (a denied type in user scope, a platform row).
      *
-     * The caller's admin flag is not a constructor argument: it is applied by [fixture], which
-     * stubs `userService.findById(callerId)`, because that lookup is exactly how the service
-     * decides super-admin status.
+     * [scopedAccessPolicy] is a REAL [ScopedAccessPolicy] instance — the predicate under test —
+     * rather than a mock. [permissionService] (its sole dependency) is not relaxed so every test
+     * states exactly what the permission graph grants.
      */
     class Fixture {
         val permissionService = mockk<PermissionService>()
-        val userService = mockk<UserService>()
         val namespaceService = mockk<NamespaceService>(relaxed = true)
         val repository = InMemoryIntegrationConfigRepository()
+        val scopedAccessPolicy = ScopedAccessPolicy(permissionService)
         val service = IntegrationConfigServiceImpl(
             repository,
             IntegrationConfigMergeStrategy(),
-            permissionService = permissionService,
-            userService = userService,
             namespaceService = namespaceService,
             scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+            scopedAccessPolicy = scopedAccessPolicy,
         )
 
         init {
             every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
             every { permissionService.filterVisibleIds(any(), any(), any(), any()) } returns emptySet()
-            every { userService.findById(any()) } returns null
         }
     }
 
-    fun fixture(callerIsAdmin: Boolean = false): Fixture = Fixture().also {
-        every { it.userService.findById(callerId) } returns user(callerId, callerIsAdmin)
+    fun fixture(): Fixture = Fixture().also {
         every { it.namespaceService.findById(namespaceId) } returns Namespace(
             metadata = EntityMetadata(id = namespaceId),
             externalId = "ns-$namespaceId",
             name = "ns",
         )
     }
+
+    fun caller(isAdmin: Boolean = false): Caller = Caller.Human(callerId, isAdmin)
 
     fun config(
         nsId: UUID? = namespaceId,
@@ -132,7 +129,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
 
         shouldThrow<BadRequestException> {
-            f.service.createForCaller(callerId, config(nsId = null, userId = otherUserId))
+            f.service.createForCaller(caller(), config(nsId = null, userId = otherUserId))
         }
         f.repository.findByUserId(otherUserId).shouldBeEmpty()
     }
@@ -142,18 +139,18 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "create platform scope by a non-admin is denied and persists nothing" {
-        val f = fixture(callerIsAdmin = false)
+        val f = fixture()
 
         shouldThrow<AccessDeniedException> {
-            f.service.createForCaller(callerId, config(nsId = null, userId = null))
+            f.service.createForCaller(caller(isAdmin = false), config(nsId = null, userId = null))
         }
         f.repository.findPlatform().shouldBeEmpty()
     }
 
     "create platform scope by a Super Admin succeeds without any namespace permission query" {
-        val f = fixture(callerIsAdmin = true)
+        val f = fixture()
 
-        val saved = f.service.createForCaller(callerId, config(nsId = null, userId = null))
+        val saved = f.service.createForCaller(caller(isAdmin = true), config(nsId = null, userId = null))
 
         saved.namespaceId shouldBe null
         saved.userId shouldBe null
@@ -168,7 +165,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
 
         shouldThrow<AccessDeniedException> {
-            f.service.createForCaller(callerId, config(nsId = null, userId = callerId, integrationType = "MCP_HTTP"))
+            f.service.createForCaller(caller(), config(nsId = null, userId = callerId, integrationType = "MCP_HTTP"))
         }
         f.repository.findByUserId(callerId).shouldBeEmpty()
     }
@@ -178,7 +175,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         f.grantNamespace(Action.READ)
 
         shouldThrow<AccessDeniedException> {
-            f.service.createForCaller(callerId, config(userId = callerId, integrationType = "HTTP_API"))
+            f.service.createForCaller(caller(), config(userId = callerId, integrationType = "HTTP_API"))
         }
         f.repository.findByUserId(callerId).shouldBeEmpty()
     }
@@ -187,7 +184,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
         f.grantNamespace(Action.WRITE)
 
-        val saved = f.service.createForCaller(callerId, config(userId = null, integrationType = "MCP_HTTP"))
+        val saved = f.service.createForCaller(caller(), config(userId = null, integrationType = "MCP_HTTP"))
 
         saved.userId shouldBe null
         saved.integrationType shouldBe "MCP_HTTP"
@@ -201,7 +198,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
         f.grantNamespace(Action.WRITE)
 
-        val saved = f.service.createForCaller(callerId, config(userId = null, name = "shared"))
+        val saved = f.service.createForCaller(caller(), config(userId = null, name = "shared"))
 
         saved.namespaceId shouldBe namespaceId
         saved.userId shouldBe null
@@ -211,7 +208,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
 
         shouldThrow<AccessDeniedException> {
-            f.service.createForCaller(callerId, config(userId = null))
+            f.service.createForCaller(caller(), config(userId = null))
         }
         f.repository.findByNamespaceId(namespaceId).shouldBeEmpty()
     }
@@ -220,7 +217,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
         f.grantNamespace(Action.READ)
 
-        val saved = f.service.createForCaller(callerId, config(userId = callerId))
+        val saved = f.service.createForCaller(caller(), config(userId = callerId))
 
         saved.namespaceId shouldBe namespaceId
         saved.userId shouldBe callerId
@@ -233,7 +230,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
 
         shouldThrow<AccessDeniedException> {
-            f.service.createForCaller(callerId, config(userId = callerId))
+            f.service.createForCaller(caller(), config(userId = callerId))
         }
         f.repository.findByUserId(callerId).shouldBeEmpty()
     }
@@ -241,7 +238,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
     "create user-global makes no namespace permission query" {
         val f = fixture()
 
-        val saved = f.service.createForCaller(callerId, config(nsId = null, userId = callerId))
+        val saved = f.service.createForCaller(caller(), config(nsId = null, userId = callerId))
 
         saved.namespaceId shouldBe null
         saved.userId shouldBe callerId
@@ -261,7 +258,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         } returns true
 
         shouldThrow<ResourceNotFoundException> {
-            f.service.createForCaller(callerId, config(nsId = unknownNs, userId = null))
+            f.service.createForCaller(caller(), config(nsId = unknownNs, userId = null))
         }
     }
 
@@ -271,7 +268,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         every { f.namespaceService.findById(unknownNs) } returns null
 
         shouldThrow<AccessDeniedException> {
-            f.service.createForCaller(callerId, config(nsId = unknownNs, userId = null))
+            f.service.createForCaller(caller(), config(nsId = unknownNs, userId = null))
         }
     }
 
@@ -282,21 +279,21 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
     "getById on an unknown id is 404" {
         val f = fixture()
 
-        shouldThrow<ResourceNotFoundException> { f.service.getByIdForCaller(callerId, UUID.randomUUID()) }
+        shouldThrow<ResourceNotFoundException> { f.service.getByIdForCaller(caller(), UUID.randomUUID()) }
     }
 
     "the owner reads their own row with no permission edge at all" {
         val f = fixture()
         val own = f.service.create(config(nsId = null, userId = callerId))
 
-        f.service.getByIdForCaller(callerId, own.id).id shouldBe own.id
+        f.service.getByIdForCaller(caller(), own.id).id shouldBe own.id
     }
 
     "a non-owner without permission is denied on read" {
         val f = fixture()
         val foreign = f.service.create(config(nsId = null, userId = otherUserId))
 
-        shouldThrow<AccessDeniedException> { f.service.getByIdForCaller(callerId, foreign.id) }
+        shouldThrow<AccessDeniedException> { f.service.getByIdForCaller(caller(), foreign.id) }
     }
 
     "a non-owner without permission is denied on the export path (READ is not enough)" {
@@ -304,8 +301,8 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val foreign = f.service.create(config(nsId = null, userId = otherUserId))
         f.grantEntity(foreign.id, Action.READ)
 
-        f.service.getByIdForCaller(callerId, foreign.id, Action.READ).id shouldBe foreign.id
-        shouldThrow<AccessDeniedException> { f.service.getByIdForCaller(callerId, foreign.id, Action.WRITE) }
+        f.service.getByIdForCaller(caller(), foreign.id, Action.READ).id shouldBe foreign.id
+        shouldThrow<AccessDeniedException> { f.service.getByIdForCaller(caller(), foreign.id, Action.WRITE) }
     }
 
     // -------------------------------------------------------------------------
@@ -315,21 +312,21 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
     "update on a non-existent id is 404" {
         val f = fixture()
 
-        shouldThrow<ResourceNotFoundException> { f.service.updateForCaller(callerId, UUID.randomUUID(), changes()) }
+        shouldThrow<ResourceNotFoundException> { f.service.updateForCaller(caller(), UUID.randomUUID(), changes()) }
     }
 
     "the owner updates their own row with no permission edge at all" {
         val f = fixture()
         val own = f.service.create(config(nsId = null, userId = callerId))
 
-        f.service.updateForCaller(callerId, own.id, changes()).name shouldBe "RENAMED"
+        f.service.updateForCaller(caller(), own.id, changes()).name shouldBe "RENAMED"
     }
 
     "a non-owner without permission is denied on update" {
         val f = fixture()
         val foreign = f.service.create(config(nsId = null, userId = otherUserId))
 
-        shouldThrow<AccessDeniedException> { f.service.updateForCaller(callerId, foreign.id, changes()) }
+        shouldThrow<AccessDeniedException> { f.service.updateForCaller(caller(), foreign.id, changes()) }
         f.service.findById(foreign.id)!!.name shouldBe "JIRA_PROD"
     }
 
@@ -338,7 +335,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val own = f.service.create(config(userId = callerId, integrationType = "JIRA"))
         f.grantNamespace(Action.READ)
 
-        val updated = f.service.updateForCaller(callerId, own.id, changes(name = "RENAMED"))
+        val updated = f.service.updateForCaller(caller(), own.id, changes(name = "RENAMED"))
 
         updated.id shouldBe own.id
         updated.namespaceId shouldBe namespaceId
@@ -354,24 +351,24 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
         val legacy = f.service.create(config(nsId = null, userId = callerId, integrationType = "MCP_STDIO"))
 
-        shouldThrow<AccessDeniedException> { f.service.updateForCaller(callerId, legacy.id, changes()) }
+        shouldThrow<AccessDeniedException> { f.service.updateForCaller(caller(), legacy.id, changes()) }
         f.service.findById(legacy.id)!!.name shouldBe "JIRA_PROD"
     }
 
     "update of a platform row requires Super Admin even when the caller holds WRITE on it" {
-        val f = fixture(callerIsAdmin = false)
+        val f = fixture()
         val platform = f.service.create(config(nsId = null, userId = null))
         f.grantEntity(platform.id, Action.WRITE)
 
-        shouldThrow<AccessDeniedException> { f.service.updateForCaller(callerId, platform.id, changes()) }
+        shouldThrow<AccessDeniedException> { f.service.updateForCaller(caller(isAdmin = false), platform.id, changes()) }
     }
 
     "update of a platform row succeeds for a Super Admin" {
-        val f = fixture(callerIsAdmin = true)
+        val f = fixture()
         val platform = f.service.create(config(nsId = null, userId = null))
         f.grantEntity(platform.id, Action.WRITE)
 
-        f.service.updateForCaller(callerId, platform.id, changes()).name shouldBe "RENAMED"
+        f.service.updateForCaller(caller(isAdmin = true), platform.id, changes()).name shouldBe "RENAMED"
     }
 
     // -------------------------------------------------------------------------
@@ -381,14 +378,14 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
     "delete on a non-existent id is 404" {
         val f = fixture()
 
-        shouldThrow<ResourceNotFoundException> { f.service.deleteForCaller(callerId, UUID.randomUUID()) }
+        shouldThrow<ResourceNotFoundException> { f.service.deleteForCaller(caller(), UUID.randomUUID()) }
     }
 
     "the owner deletes their own row with no permission edge at all" {
         val f = fixture()
         val own = f.service.create(config(nsId = null, userId = callerId))
 
-        f.service.deleteForCaller(callerId, own.id)
+        f.service.deleteForCaller(caller(), own.id)
 
         f.service.findById(own.id) shouldBe null
     }
@@ -397,25 +394,25 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
         val foreign = f.service.create(config(nsId = null, userId = otherUserId))
 
-        shouldThrow<AccessDeniedException> { f.service.deleteForCaller(callerId, foreign.id) }
+        shouldThrow<AccessDeniedException> { f.service.deleteForCaller(caller(), foreign.id) }
         f.service.findById(foreign.id).shouldNotBeNull()
     }
 
     "delete of a platform row requires Super Admin even when the caller holds DELETE on it" {
-        val f = fixture(callerIsAdmin = false)
+        val f = fixture()
         val platform = f.service.create(config(nsId = null, userId = null))
         f.grantEntity(platform.id, Action.DELETE)
 
-        shouldThrow<AccessDeniedException> { f.service.deleteForCaller(callerId, platform.id) }
+        shouldThrow<AccessDeniedException> { f.service.deleteForCaller(caller(isAdmin = false), platform.id) }
         f.service.findById(platform.id).shouldNotBeNull()
     }
 
     "delete of a platform row succeeds for a Super Admin" {
-        val f = fixture(callerIsAdmin = true)
+        val f = fixture()
         val platform = f.service.create(config(nsId = null, userId = null))
         f.grantEntity(platform.id, Action.DELETE)
 
-        f.service.deleteForCaller(callerId, platform.id)
+        f.service.deleteForCaller(caller(isAdmin = true), platform.id)
 
         f.service.findById(platform.id) shouldBe null
     }
@@ -428,13 +425,13 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val f = fixture()
         val tooMany = List(1001) { UUID.randomUUID() }
 
-        shouldThrow<BadRequestException> { f.service.findByIdsForCaller(callerId, tooMany, withRemoved = false) }
+        shouldThrow<BadRequestException> { f.service.findByIdsForCaller(caller(), tooMany, withRemoved = false) }
     }
 
     "findByIds short-circuits on an empty batch without consulting the permission service" {
         val f = fixture()
 
-        f.service.findByIdsForCaller(callerId, emptyList(), withRemoved = false).shouldBeEmpty()
+        f.service.findByIdsForCaller(caller(), emptyList(), withRemoved = false).shouldBeEmpty()
 
         verify(exactly = 0) { f.permissionService.filterVisibleIds(any(), any(), any(), any()) }
     }
@@ -444,7 +441,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val own = f.service.create(config(nsId = null, userId = callerId))
         val foreign = f.service.create(config(nsId = null, userId = otherUserId, name = "FOREIGN"))
 
-        val result = f.service.findByIdsForCaller(callerId, listOf(own.id, foreign.id), withRemoved = false)
+        val result = f.service.findByIdsForCaller(caller(), listOf(own.id, foreign.id), withRemoved = false)
 
         result.map { it.id } shouldBe listOf(own.id)
     }
@@ -454,16 +451,16 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         val a = f.service.create(config(nsId = null, userId = callerId, name = "A"))
         val b = f.service.create(config(nsId = null, userId = callerId, name = "B"))
 
-        val result = f.service.findByIdsForCaller(callerId, listOf(b.id, a.id, b.id), withRemoved = false)
+        val result = f.service.findByIdsForCaller(caller(), listOf(b.id, a.id, b.id), withRemoved = false)
 
         result.map { it.id } shouldBe listOf(b.id, a.id, b.id)
     }
 
     "findByIds as a Super Admin bypasses the permission filter entirely" {
-        val f = fixture(callerIsAdmin = true)
+        val f = fixture()
         val foreign = f.service.create(config(nsId = null, userId = otherUserId))
 
-        val result = f.service.findByIdsForCaller(callerId, listOf(foreign.id), withRemoved = false)
+        val result = f.service.findByIdsForCaller(caller(isAdmin = true), listOf(foreign.id), withRemoved = false)
 
         result.map { it.id } shouldBe listOf(foreign.id)
         verify(exactly = 0) { f.permissionService.filterVisibleIds(any(), any(), any(), any()) }
@@ -478,7 +475,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         f.service.create(config(userId = null))
 
         f.service
-            .findFilteredForCaller(callerId, namespaceId, namespaceIsNone = false, userRequested = false)
+            .findFilteredForCaller(caller(), namespaceId, namespaceIsNone = false, userRequested = false)
             .shouldBeEmpty()
     }
 
@@ -488,7 +485,7 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         f.grantNamespace(Action.READ)
 
         f.service
-            .findFilteredForCaller(callerId, namespaceId, namespaceIsNone = false, userRequested = false)
+            .findFilteredForCaller(caller(), namespaceId, namespaceIsNone = false, userRequested = false)
             .map { it.id } shouldBe listOf(shared.id)
     }
 })

@@ -77,7 +77,7 @@ class UserGroupIntegrationConfigSeeder(
 
     private fun createDefault() {
         try {
-            integrationConfigService.create(defaultConfig())
+            integrationConfigService.unsecuredCreate(defaultConfig())
             logger.info {
                 "[UserGroupSeeder] Created platform '$DEFAULT_CONFIG_NAME' configuration (autoGrant=false). " +
                     "Assign it to specific agents to grant them the USER_GROUP tools."

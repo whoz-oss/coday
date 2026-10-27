@@ -12,9 +12,8 @@ import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
@@ -30,9 +29,8 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         IntegrationConfigServiceImpl(
             InMemoryIntegrationConfigRepository(),
             IntegrationConfigMergeStrategy(),
-            permissionService = mockk<io.whozoss.agentos.permissions.PermissionService>(relaxed = true),
-            userService = mockk<io.whozoss.agentos.user.UserService>(relaxed = true),
-            namespaceService = mockk<io.whozoss.agentos.namespace.NamespaceService>(relaxed = true),
+            scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
+            namespaceService = mockk<NamespaceService>(relaxed = true),
             scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
         )
 

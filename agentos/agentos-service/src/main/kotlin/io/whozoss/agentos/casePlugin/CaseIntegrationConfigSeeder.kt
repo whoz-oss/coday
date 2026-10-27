@@ -79,7 +79,7 @@ class CaseIntegrationConfigSeeder(
 
     private fun createDefault() {
         try {
-            integrationConfigService.create(defaultConfig())
+            integrationConfigService.unsecuredCreate(defaultConfig())
             logger.info {
                 "[CaseSeeder] Created platform '$DEFAULT_CONFIG_NAME' configuration (autoGrant=false). " +
                     "An agent receives the ReadCase and FreeCaseStarter tools by naming it in its integrations; " +

@@ -62,10 +62,9 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
                 InMemoryIntegrationConfigRepository(),
                 IntegrationConfigMergeStrategy(),
                 listOf(observedPolicy),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
                 namespaceService = mockk(relaxed = true),
                 scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
             )
             val associations = GitRepositoryAssociationService(service, factory)
             val allocation = GitCaseWorkspaceProvisioning(associations, bindings, mockk { every { isAvailable() } returns true }, workerOn())

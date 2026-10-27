@@ -55,7 +55,13 @@ class AiProviderControllerSpec :
         val namespaceService = mockk<NamespaceService>(relaxed = true)
         val userService = mockk<UserService>(relaxed = true)
         val permissionService = mockk<PermissionService>(relaxed = true)
-        val controller = AiProviderController(service, namespaceService, userService, permissionService)
+        val controller = AiProviderController(
+            service,
+            namespaceService,
+            userService,
+            permissionService,
+            io.whozoss.agentos.permissions.ScopedAccessPolicy(permissionService),
+        )
 
         val namespaceId = UUID.randomUUID()
         val aliceId = UUID.randomUUID()

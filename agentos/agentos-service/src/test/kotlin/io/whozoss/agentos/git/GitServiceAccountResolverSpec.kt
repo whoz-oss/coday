@@ -24,7 +24,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigServiceImpl
 import io.whozoss.agentos.integrationConfig.IntegrationsProperties
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import java.util.UUID
 
@@ -107,13 +107,12 @@ class GitServiceAccountResolverSpec : StringSpec({
             context.beanFactory.registerSingleton("gitProperties", GitExecutionProperties())
             context.beanFactory.registerSingleton("urlValidator", mockk<GitRemoteUrlValidator>())
             context.beanFactory.registerSingleton("gitAvailability", mockk<GitAvailability>(relaxed = true))
-            // IntegrationConfigServiceImpl now requires PermissionService, UserService,
-            // NamespaceService and IntegrationConfigScopePolicy. This test only exercises
-            // the Git association path (findActiveNamespaceSingleton) which never calls the
-            // authorized surface, so relaxed mocks satisfy all three service dependencies
-            // and the scope policy is instantiated with its default properties.
+            // IntegrationConfigServiceImpl depends on NamespaceService, IntegrationConfigScopePolicy
+            // and ScopedAccessPolicy. This test only exercises the Git association path
+            // (findActiveNamespaceSingleton), which never reaches the authorized surface, so a
+            // relaxed PermissionService is enough; ScopedAccessPolicy is registered as a real bean
+            // so the wiring under test is the production one.
             context.beanFactory.registerSingleton("permissionService", mockk<PermissionService>(relaxed = true))
-            context.beanFactory.registerSingleton("userService", mockk<UserService>(relaxed = true))
             context.beanFactory.registerSingleton("namespaceService", mockk<NamespaceService>(relaxed = true))
             context.beanFactory.registerSingleton("integrationConfigScopePolicy", IntegrationConfigScopePolicy(IntegrationsProperties()))
             context.register(
@@ -121,6 +120,7 @@ class GitServiceAccountResolverSpec : StringSpec({
                 GitRepositoryAssociationService::class.java,
                 IntegrationConfigServiceImpl::class.java,
                 IntegrationConfigMergeStrategy::class.java,
+                ScopedAccessPolicy::class.java,
                 GitRepositoryConfigPolicy::class.java,
                 RepositoryCheckoutProvisioner::class.java,
                 GitRepositorySettingsFactory::class.java,

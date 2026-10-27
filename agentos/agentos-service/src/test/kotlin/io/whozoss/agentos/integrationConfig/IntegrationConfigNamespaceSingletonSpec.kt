@@ -9,9 +9,8 @@ import io.mockk.mockk
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
@@ -31,8 +30,7 @@ class IntegrationConfigNamespaceSingletonSpec :
             IntegrationConfigServiceImpl(
                 InMemoryIntegrationConfigRepository(),
                 IntegrationConfigMergeStrategy(),
-                permissionService = mockk<PermissionService>(relaxed = true),
-                userService = mockk<UserService>(relaxed = true),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
                 namespaceService = mockk<NamespaceService>(relaxed = true),
                 scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
             )

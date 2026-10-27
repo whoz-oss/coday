@@ -15,6 +15,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -43,6 +44,10 @@ class IntegrationConfigControllerSpec : StringSpec({
     val aliceId = UUID.randomUUID()
     val bobId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")
+
+    // The controller builds this from userService.getCurrentUser(); Caller.Human is a data class,
+    // so MockK matches the stubs below by value.
+    val aliceCaller = Caller.Human(aliceId, false)
 
     fun aliceUser(isAdmin: Boolean = false) = User(
         metadata = EntityMetadata(id = aliceId),
@@ -125,7 +130,7 @@ class IntegrationConfigControllerSpec : StringSpec({
             config(nsId = null, userId = aliceId, name = "GLOBAL_JIRA"),
             config(nsId = namespaceId, userId = aliceId, name = "NS_JIRA"),
         )
-        every { service.findFilteredForCaller(aliceId, null, false, true) } returns rows
+        every { service.findFilteredForCaller(aliceCaller, null, false, true) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = "me")
 
@@ -137,7 +142,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "PERSONAL_JIRA"),
         )
-        every { service.findFilteredForCaller(aliceId, null, false, false) } returns rows
+        every { service.findFilteredForCaller(aliceCaller, null, false, false) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = null)
 
@@ -148,7 +153,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL"),
         )
-        every { service.findFilteredForCaller(aliceId, null, true, true) } returns rows
+        every { service.findFilteredForCaller(aliceCaller, null, true, true) } returns rows
 
         val resp = controller.list(namespaceId = "none", userId = "me")
 
@@ -159,7 +164,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL"),
         )
-        every { service.findFilteredForCaller(aliceId, null, true, true) } returns rows
+        every { service.findFilteredForCaller(aliceCaller, null, true, true) } returns rows
 
         val resp = controller.list(namespaceId = "NONE", userId = "me")
 
@@ -170,7 +175,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val rows = listOf(
             config(nsId = namespaceId, userId = aliceId, name = "NS"),
         )
-        every { service.findFilteredForCaller(aliceId, namespaceId, false, true) } returns rows
+        every { service.findFilteredForCaller(aliceCaller, namespaceId, false, true) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -185,7 +190,7 @@ class IntegrationConfigControllerSpec : StringSpec({
             config(nsId = namespaceId, userId = null, name = "NS-A"),
             config(nsId = namespaceId, userId = null, name = "NS-B"),
         )
-        every { service.findFilteredForCaller(aliceId, namespaceId, false, false) } returns rows
+        every { service.findFilteredForCaller(aliceCaller, namespaceId, false, false) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -196,7 +201,7 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
-        every { service.findFilteredForCaller(aliceId, namespaceId, false, false) } returns emptyList()
+        every { service.findFilteredForCaller(aliceCaller, namespaceId, false, false) } returns emptyList()
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -215,7 +220,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
             it.copy(parameters = exportParams)
         }
-        every { service.getByIdForCaller(aliceId, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -229,7 +234,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
             it.copy(parameters = exportParams)
         }
-        every { service.getByIdForCaller(aliceId, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -249,7 +254,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val cfg = config(name = "MCP_HTTP", integrationType = "MCP_HTTP").let {
             it.copy(parameters = exportParams)
         }
-        every { service.getByIdForCaller(aliceId, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
 
         val body = controller.export(cfg.metadata.id).body!!
 
@@ -262,7 +267,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "export includes authSettingName when present" {
         val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = "my-oauth")
-        every { service.getByIdForCaller(aliceId, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -273,7 +278,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "export omits authSettingName when null" {
         val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = null)
-        every { service.getByIdForCaller(aliceId, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -283,7 +288,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "export keeps the existing Content-Disposition header and application/yaml content type" {
         val cfg = config(name = "BASH_LOCAL", integrationType = "BASH")
-        every { service.getByIdForCaller(aliceId, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
 

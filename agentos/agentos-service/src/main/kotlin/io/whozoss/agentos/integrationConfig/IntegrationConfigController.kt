@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier
 import io.whozoss.agentos.entity.ScopeParams
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -58,16 +59,16 @@ class IntegrationConfigController(
     override fun getById(
         @PathVariable id: UUID,
     ): IntegrationConfigDto {
-        val callerId = userService.getCurrentUser().id
-        return toDto(integrationConfigService.getByIdForCaller(callerId, id))
+        val caller = callerOf()
+        return toDto(integrationConfigService.getByIdForCaller(caller, id))
     }
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
     ): List<IntegrationConfigDto> {
-        val callerId = userService.getCurrentUser().id
-        return integrationConfigService.findByIdsForCaller(callerId, request.ids, request.withRemoved).map(::toDto)
+        val caller = callerOf()
+        return integrationConfigService.findByIdsForCaller(caller, request.ids, request.withRemoved).map(::toDto)
     }
 
     /**
@@ -103,12 +104,12 @@ class IntegrationConfigController(
         @RequestParam(required = false) namespaceId: String?,
         @RequestParam(required = false) userId: String?,
     ): List<IntegrationConfigDto> {
-        val callerId = userService.getCurrentUser().id
+        val caller = callerOf()
         ScopeParams.validateUserParam(userId)
         val resolvedNs = ScopeParams.parseNamespaceParam(namespaceId)
         return integrationConfigService
             .findFilteredForCaller(
-                callerId = callerId,
+                caller = caller,
                 namespaceId = resolvedNs,
                 namespaceIsNone = namespaceId?.equals(ScopeParams.NONE, ignoreCase = true) == true,
                 userRequested = userId != null,
@@ -135,7 +136,7 @@ class IntegrationConfigController(
     override fun create(
         @Valid @RequestBody resource: IntegrationConfigDto,
     ): IntegrationConfigDto {
-        val callerId = userService.getCurrentUser().id
+        val caller = callerOf()
         val entity = IntegrationConfig(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             namespaceId = resource.namespaceId,
@@ -147,7 +148,7 @@ class IntegrationConfigController(
             authSettingName = resource.authSettingName,
             autoGrant = resource.autoGrant,
         )
-        return toDto(integrationConfigService.createForCaller(callerId, entity))
+        return toDto(integrationConfigService.createForCaller(caller, entity))
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -156,7 +157,7 @@ class IntegrationConfigController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: IntegrationConfigDto,
     ): IntegrationConfigDto {
-        val callerId = userService.getCurrentUser().id
+        val caller = callerOf()
         val changes = IntegrationConfigUpdate(
             name = resource.name,
             description = resource.description,
@@ -164,7 +165,7 @@ class IntegrationConfigController(
             authSettingName = resource.authSettingName,
             autoGrant = resource.autoGrant,
         )
-        return toDto(integrationConfigService.updateForCaller(callerId, id, changes))
+        return toDto(integrationConfigService.updateForCaller(caller, id, changes))
     }
 
     @DeleteMapping("/{id}")
@@ -173,8 +174,8 @@ class IntegrationConfigController(
     override fun delete(
         @PathVariable id: UUID,
     ) {
-        val callerId = userService.getCurrentUser().id
-        integrationConfigService.deleteForCaller(callerId, id)
+        val caller = callerOf()
+        integrationConfigService.deleteForCaller(caller, id)
     }
 
     @Operation(
@@ -192,8 +193,8 @@ class IntegrationConfigController(
     fun export(
         @PathVariable id: UUID,
     ): ResponseEntity<String> {
-        val callerId = userService.getCurrentUser().id
-        val entity = integrationConfigService.getByIdForCaller(callerId, id, Action.WRITE)
+        val caller = callerOf()
+        val entity = integrationConfigService.getByIdForCaller(caller, id, Action.WRITE)
         val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
         return ResponseEntity
@@ -202,6 +203,8 @@ class IntegrationConfigController(
             .contentType(MediaType.parseMediaType(MediaType.APPLICATION_YAML_VALUE))
             .body(yaml)
     }
+
+    private fun callerOf(): Caller = userService.getCurrentUser().let { Caller.Human(it.id, it.isAdmin) }
 
     companion object : KLogging() {
         /**

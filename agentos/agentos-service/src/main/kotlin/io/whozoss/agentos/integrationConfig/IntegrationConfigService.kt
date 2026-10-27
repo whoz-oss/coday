@@ -3,6 +3,7 @@ package io.whozoss.agentos.integrationConfig
 import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.reconciliation.ConfigLookup
 import io.whozoss.agentos.security.declarative.OwnershipAware
@@ -30,6 +31,13 @@ data class IntegrationConfigUpdate(
  * [getByIdForCaller], [findByIdsForCaller], [findFilteredForCaller], [createForCaller],
  * [updateForCaller], and [deleteForCaller] enforce authorization and are the **only** surface
  * a controller, an agent tool, or any other user-facing entry point may call.
+ *
+ * ### `unsecured*` methods (unchecked composition surface)
+ * [unsecuredCreate], [unsecuredUpdate], and [unsecuredFindById] bypass all authorization.
+ * These names are self-reporting at the call site and greppable — a KDoc paragraph alone
+ * cannot provide the same signal. They exist for service-to-service composition and startup
+ * seeding only. A controller or an agent tool calling one of these is a bug — use the
+ * `*ForCaller` surface instead.
  *
  * ### Inherited [EntityService] methods (internal composition surface)
  * [create], [update], [delete], [findByIds], [findByTriple], [findEffective], [findPlatform],
@@ -174,39 +182,35 @@ interface IntegrationConfigService :
      * when not found, and [org.springframework.security.access.AccessDeniedException] when the
      * caller lacks the required [action].
      *
-     * @param callerId the authenticated user's UUID
+     * @param caller the authenticated principal
      * @param id the entity to load
      * @param action permission required — use [Action.READ] for a normal read, [Action.WRITE] for export
      */
-    fun getByIdForCaller(callerId: UUID, id: UUID, action: Action = Action.READ): IntegrationConfig
+    fun getByIdForCaller(caller: Caller, id: UUID, action: Action = Action.READ): IntegrationConfig
 
     /**
      * Batch read, permission-filtered. Never throws on denial — inaccessible ids are silently
      * omitted. Input order and duplicates are preserved. Throws
      * [io.whozoss.agentos.exception.BadRequestException] when `ids.size > 1000`.
      *
-     * @param callerId the authenticated user's UUID
+     * @param caller the authenticated principal
      * @param ids the batch of entity ids to resolve
      * @param withRemoved when true, includes soft-deleted entities
      */
-    fun findByIdsForCaller(callerId: UUID, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig>
+    fun findByIdsForCaller(caller: Caller, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig>
 
     /**
      * Scope-aware listing, permission-enforced.
      *
-     * Replaces the old `findFiltered(namespaceId, namespaceIsNone, callerId, userRequested,
-     * canReadNamespace)` — the callback is gone; the service checks the namespace READ permission
-     * itself using [io.whozoss.agentos.permissions.PermissionService].
-     *
      * Returns an empty list (never throws) when the caller lacks READ on the requested namespace.
      *
-     * @param callerId the authenticated user's UUID
+     * @param caller the authenticated principal
      * @param namespaceId resolved namespace UUID (null when absent or the `none` sentinel)
      * @param namespaceIsNone true when the raw query parameter was the `none` sentinel
      * @param userRequested true when the caller explicitly passed `userId=me`
      */
     fun findFilteredForCaller(
-        callerId: UUID,
+        caller: Caller,
         namespaceId: UUID?,
         namespaceIsNone: Boolean,
         userRequested: Boolean,
@@ -221,10 +225,10 @@ interface IntegrationConfigService :
      * 3. Scope validation and resolution via [io.whozoss.agentos.entity.validateAndResolveScope].
      * 4. Persistence via the unchecked [create].
      *
-     * @param callerId the authenticated user's UUID
+     * @param caller the authenticated principal
      * @param entity the entity to create (id will be replaced with a freshly generated UUID)
      */
-    fun createForCaller(callerId: UUID, entity: IntegrationConfig): IntegrationConfig
+    fun createForCaller(caller: Caller, entity: IntegrationConfig): IntegrationConfig
 
     /**
      * Update an [IntegrationConfig], enforcing authorization.
@@ -237,11 +241,11 @@ interface IntegrationConfigService :
      * 4. User-scope type denial via [IntegrationConfigScopePolicy] (on the persisted type).
      * 5. Applies [changes] while preserving server-owned fields (id, namespaceId, userId, integrationType).
      *
-     * @param callerId the authenticated user's UUID
+     * @param caller the authenticated principal
      * @param id the entity to update
      * @param changes the mutable fields to apply
      */
-    fun updateForCaller(callerId: UUID, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig
+    fun updateForCaller(caller: Caller, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig
 
     /**
      * Delete an [IntegrationConfig], enforcing authorization.
@@ -252,8 +256,33 @@ interface IntegrationConfigService :
      *    lacks DELETE (membership or ownership).
      * 3. Platform-scope guard — Super Admin only for platform rows.
      *
-     * @param callerId the authenticated user's UUID
+     * @param caller the authenticated principal
      * @param id the entity to delete
      */
-    fun deleteForCaller(callerId: UUID, id: UUID)
+    fun deleteForCaller(caller: Caller, id: UUID)
+
+    // -------------------------------------------------------------------------
+    // Unchecked composition surface — unsecured* methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Unchecked: performs no authorization. For service-to-service composition and startup
+     * seeding only. A controller or an agent tool calling this is a bug — use the
+     * `*ForCaller` surface.
+     */
+    fun unsecuredCreate(entity: IntegrationConfig): IntegrationConfig
+
+    /**
+     * Unchecked: performs no authorization. For service-to-service composition and startup
+     * seeding only. A controller or an agent tool calling this is a bug — use the
+     * `*ForCaller` surface.
+     */
+    fun unsecuredUpdate(entity: IntegrationConfig): IntegrationConfig
+
+    /**
+     * Unchecked: performs no authorization. For service-to-service composition and startup
+     * seeding only. A controller or an agent tool calling this is a bug — use the
+     * `*ForCaller` surface.
+     */
+    fun unsecuredFindById(id: UUID, withRemoved: Boolean = false): IntegrationConfig?
 }

@@ -80,12 +80,6 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
     init {
         beforeEach {
             every { userService.getCurrentUser() } returns alice
-            // isSuperAdmin() calls userService.findById(callerId: UUID). UserService extends
-            // EntityService<User, String> whose findById is generic — a relaxed MockK mock
-            // auto-stubs the erased upper bound (Entity), causing a ClassCastException when
-            // the service casts the result to User. Stubbing explicitly with a real User
-            // (isAdmin=false) fixes the cast and correctly represents alice as a non-admin.
-            every { userService.findById(aliceId) } returns alice
             every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
             every { namespaceService.findById(namespaceId) } returns ns
             every {

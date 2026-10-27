@@ -9,6 +9,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -56,6 +57,7 @@ class AuthSettingController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
 ) : AuthSettingApi {
     private val crud =
         ScopedOwnershipCrudDelegate<AuthSettingDto>(
@@ -63,6 +65,7 @@ class AuthSettingController(
             userService = userService,
             namespaceService = namespaceService,
             permissionService = permissionService,
+            scopedAccessPolicy = scopedAccessPolicy,
             ownerOf = { (it as AuthSetting).userId },
             userIdOf = { it.userId },
             namespaceIdOf = { it.namespaceId },

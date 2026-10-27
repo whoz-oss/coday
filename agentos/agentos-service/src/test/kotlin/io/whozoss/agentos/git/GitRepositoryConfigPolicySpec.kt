@@ -57,10 +57,9 @@ class GitRepositoryConfigPolicySpec :
                 InMemoryIntegrationConfigRepository(),
                 IntegrationConfigMergeStrategy(),
                 listOf(policy),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
                 namespaceService = mockk(relaxed = true),
                 scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
             )
 
         val namespaceId = UUID.randomUUID()
@@ -132,10 +131,9 @@ class GitRepositoryConfigPolicySpec :
                 InMemoryIntegrationConfigRepository(),
                 IntegrationConfigMergeStrategy(),
                 listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
                 namespaceService = mockk(relaxed = true),
                 scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
             )
             val dedicatedNamespace = UUID.randomUUID()
             val namespaces = mockk<NamespaceService> {
@@ -173,10 +171,9 @@ class GitRepositoryConfigPolicySpec :
                     repository,
                     IntegrationConfigMergeStrategy(),
                     listOf(policy),
-                    permissionService = mockk(relaxed = true),
-                    userService = mockk(relaxed = true),
                     namespaceService = mockk(relaxed = true),
                     scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                    scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
                 )
                 val value = if (updating) service.create(config(validParameters())) else config(validParameters())
                 clearMocks(provisioner, answers = false)
@@ -294,10 +291,9 @@ class GitRepositoryConfigPolicySpec :
                 InMemoryIntegrationConfigRepository(),
                 IntegrationConfigMergeStrategy(),
                 listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
                 namespaceService = mockk(relaxed = true),
                 scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
             )
             val saved = service.create(config(validParameters()))
             val failed = checkoutStore.markStatus(checkoutStore.findByNamespaceId(namespaceId)!!.id, RepositoryCheckoutStatus.FAILED, "first clone failed")

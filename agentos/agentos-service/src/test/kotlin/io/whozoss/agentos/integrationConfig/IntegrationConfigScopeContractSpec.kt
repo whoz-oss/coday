@@ -8,6 +8,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -72,18 +73,11 @@ class IntegrationConfigScopeContractSpec : StringSpec({
                 email = "alice@example.com",
                 isAdmin = false,
             )
-            every { userService.findById(callerId) } returns User(
-                metadata = EntityMetadata(id = callerId),
-                externalId = "alice@example.com",
-                email = "alice@example.com",
-                isAdmin = false,
-            )
 
             val service = IntegrationConfigServiceImpl(
                 repository,
                 IntegrationConfigMergeStrategy(),
-                permissionService = permissionService,
-                userService = userService,
+                scopedAccessPolicy = ScopedAccessPolicy(permissionService),
                 namespaceService = mockk<NamespaceService>(relaxed = true),
                 scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
             )
