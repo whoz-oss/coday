@@ -135,15 +135,12 @@ class ConfigReadTool(
             runCatching { UUID.fromString(id) }
                 .getOrNull()
                 ?.let { configReadService.find(kind, it, userId, target) }
-                ?.let { entity -> summary(entity, userId) + mapOf("value" to configReadService.masked(entity)) + readinessOf(entity, userId) }
+                ?.let { entity -> summary(entity, userId) + mapOf("value" to configReadService.masked(entity)) + readinessOf(entity) }
         }
 
     /** A namespace read by id also says whether a message reaches an agent there. */
-    private fun readinessOf(
-        entity: ConfigEntity,
-        userId: UUID,
-    ): Map<String, Any?> =
-        if (entity.kind == ConfigKind.NAMESPACE) mapOf("readiness" to configReadService.readiness(userId, entity.id)) else emptyMap()
+    private fun readinessOf(entity: ConfigEntity): Map<String, Any?> =
+        if (entity.kind == ConfigKind.NAMESPACE) mapOf("readiness" to configReadService.readiness(entity.id)) else emptyMap()
 
     private fun integrationTypes(type: String?): Any? =
         if (type == null) {

@@ -122,20 +122,24 @@ class ConfigReadService(
     ): Boolean = canWriteNamespace(callerId, namespaceId) && namespaceService.findById(namespaceId) != null
 
     /**
-     * Whether a message without `@mention` in [namespaceId] reaches an agent for [callerId], resolved like
-     * `CaseServiceImpl.selectDefaultAgent` (the namespace default, else the platform default, among the
-     * agents deployed and enabled for the caller) and, when it does not, the first condition that fails.
+     * Whether a member's message without `@mention` in [namespaceId] reaches an agent, resolved like
+     * `CaseServiceImpl.selectDefaultAgent`: the namespace default, else the platform default, matched as a
+     * case-insensitive name prefix among the enabled agents deployed on the namespace. When none is
+     * found, the first condition that fails. It speaks for members, not for the caller: a super-admin's
+     * own messages skip the deployment check, and an agent deployed on a user group only answers that
+     * group.
      */
-    fun readiness(
-        callerId: UUID,
-        namespaceId: UUID,
-    ): NamespaceReadiness? =
+    fun readiness(namespaceId: UUID): NamespaceReadiness? =
         namespaceService.findById(namespaceId)?.let { namespace ->
             val defaultName = namespace.defaultAgentName ?: agentConfigProperties.agentName
-            val agents = agentConfigService.findByNamespace(namespaceId) + agentConfigService.findByNamespace(null)
             val deployed = deployedAgentIds(namespaceId)
-            val resolved = defaultName?.let { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, callerId, it).firstOrNull() }
-            val status = defaultAgentStatus(defaultName, resolved, agents)
+            val candidates =
+                defaultName?.let { prefix ->
+                    (agentConfigService.findByNamespace(namespaceId) + agentConfigService.findByNamespace(null))
+                        .filter { it.name.lowercase().startsWith(prefix.lowercase()) }
+                }.orEmpty()
+            val resolved = candidates.firstOrNull { it.enabled && it.metadata.id in deployed }
+            val status = defaultAgentStatus(defaultName, resolved, candidates)
             NamespaceReadiness(
                 defaultAgentName = defaultName,
                 defaultAgentSource =
@@ -147,24 +151,25 @@ class ConfigReadService(
                 defaultAgentStatus = status,
                 hint = status.hint,
                 resolvedAgent = resolved?.name,
-                deployedAgents = agents.filter { it.metadata.id in deployed }.map { DeployedAgent(name = it.name, enabled = it.enabled) },
+                deployedAgents =
+                    (agentConfigService.findByNamespace(namespaceId) + agentConfigService.findByNamespace(null))
+                        .filter { it.metadata.id in deployed }
+                        .map { DeployedAgent(name = it.name, enabled = it.enabled) },
             )
         }
 
     private fun defaultAgentStatus(
         defaultName: String?,
         resolved: AgentConfig?,
-        agents: List<AgentConfig>,
-    ): DefaultAgentStatus {
-        val named = agents.filter { it.name.equals(defaultName, ignoreCase = true) }
-        return when {
+        candidates: List<AgentConfig>,
+    ): DefaultAgentStatus =
+        when {
             defaultName == null -> DefaultAgentStatus.NOT_SET
             resolved != null -> DefaultAgentStatus.OK
-            named.isEmpty() -> DefaultAgentStatus.NOT_FOUND
-            named.none { it.enabled } -> DefaultAgentStatus.DISABLED
+            candidates.isEmpty() -> DefaultAgentStatus.NOT_FOUND
+            candidates.none { it.enabled } -> DefaultAgentStatus.DISABLED
             else -> DefaultAgentStatus.NOT_DEPLOYED
         }
-    }
 
     fun capabilities(
         callerId: UUID,

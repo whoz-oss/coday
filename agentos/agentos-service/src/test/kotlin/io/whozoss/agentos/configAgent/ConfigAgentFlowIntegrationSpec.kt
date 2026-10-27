@@ -3,7 +3,8 @@ package io.whozoss.agentos.configAgent
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
-import io.kotest.assertions.throwables.shouldThrow
+import com.ninjasquad.springmockk.SpykBean
+import io.kotest.assertions.fail
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldContain
@@ -54,6 +55,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
 import org.springframework.http.MediaType
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -99,6 +101,9 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var userService: UserService
 
     @MockkBean(relaxed = true) lateinit var caseService: CaseService
+
+    /** The real writer, stubbed by a test that needs one write to be refused. */
+    @SpykBean lateinit var configWriter: ConfigWriter
 
     /** The plan's expiry and the views read this clock, so a test can move time forward. */
     @Autowired lateinit var clock: MovableClock
@@ -167,8 +172,10 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         input: String,
     ): AgentInterrupt.AwaitAnswer {
         val interrupt =
-            shouldThrow<AgentInterrupt.AwaitAnswer> {
-                proposeTool(caller).executeWithJson(input, ToolContext(namespaceId = namespace.id, userId = caller.id, userExternalId = null, caseEvents = emptyList()))
+            try {
+                fail("The proposal was not submitted: ${proposeTool(caller).executeWithJson(input, toolContext(caller)).output}")
+            } catch (e: AgentInterrupt.AwaitAnswer) {
+                e
             }
         val now = Instant.now()
         caseEventService.create(
@@ -507,15 +514,13 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                             ),
                     ),
                 )
-            val proposal =
-                propose(
-                    alice,
-                    """
-                    { "operations": [
-                        { "ref": "copy", "kind": "INTEGRATION", "action": "CREATE", "copyFrom": "${source.metadata.id}",
-                          "scope": { "namespaceId": "${other.id}" }, "value": { "parameters": { "project": "NEW" } } } ] }
-                    """.trimIndent(),
-                )
+            val proposalJson =
+                """
+                { "operations": [
+                    { "ref": "copy", "kind": "INTEGRATION", "action": "CREATE", "copyFrom": "${source.metadata.id}",
+                      "scope": { "namespaceId": "${other.id}" }, "value": { "parameters": { "project": "NEW" } } } ] }
+                """.trimIndent()
+            val proposal = propose(alice, proposalJson)
             val plan = objectMapper.writeValueAsString(proposal.structuredOutput)
             plan shouldNotContain "t0k3n-$suffix"
             plan shouldNotContain "npx"
@@ -523,6 +528,9 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
             applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())["decision"].asText() shouldBe "APPLIED"
 
+            view(proposal.questionId)["operations"].single()["status"].asText() shouldBe "ALREADY_APPLIED"
+            val again = propose(alice, proposalJson)
+            applied(again.questionId, view(again.questionId)["planHash"].asText())["results"].single()["status"].asText() shouldBe "ALREADY_APPLIED"
             val copy = integrationConfigService.findByNamespaceShared(other.id).single { it.name == "SRC_$suffix" }
             copy.integrationType shouldBe "JIRA"
             copy.description shouldBe "Source"
@@ -530,6 +538,187 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                 objectMapper.readTree(
                     """{ "url": "https://jira.example.com", "command": "npx", "args": ["-y", "pkg"], "token": "t0k3n-$suffix", "project": "NEW" }""",
                 )
+        }
+
+        "a number sent as an integer matches the decimal the server stores, and a removed field reads as applied" {
+            val other = otherNamespace(admin = alice)
+            namespaceService.update(other.copy(defaultAgentName = "someone-$suffix"))
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "ns", "kind": "NAMESPACE", "action": "UPDATE", "id": "${other.id}",
+                          "changes": [ { "path": "/runCostThreshold", "value": 10 }, { "path": "/defaultAgentName", "remove": true } ] } ] }
+                    """.trimIndent(),
+                )
+
+            applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())["decision"].asText() shouldBe "APPLIED"
+
+            namespaceService.findById(other.id)!!.runCostThreshold shouldBe 10.0
+            view(proposal.questionId)["operations"].single()["status"].asText() shouldBe "APPLIED"
+        }
+
+        "an existing entity with an empty field the plan sets is a conflict, not already applied" {
+            val other = otherNamespace(admin = alice)
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "ns", "kind": "NAMESPACE", "action": "CREATE", "value": { "name": "Other $suffix", "defaultAgentName": "assistant" } } ] }
+                    """.trimIndent(),
+                )
+
+            view(proposal.questionId)["operations"].single()["status"].asText() shouldBe "CONFLICT"
+            namespaceService.findById(other.id)!!.defaultAgentName shouldBe null
+        }
+
+        "a secret declared under parameters does not hide the other parameters from the comparison" {
+            integrationConfigService.create(
+                IntegrationConfig(
+                    namespaceId = namespace.id,
+                    name = "JIRA_$suffix",
+                    integrationType = "JIRA",
+                    parameters = objectMapper.readTree("""{ "url": "https://old.example.com" }"""),
+                ),
+            )
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "jira", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "JIRA_$suffix", "integrationType": "JIRA", "parameters": { "url": "https://new.example.com" } },
+                          "secrets": [ { "path": "/parameters/token", "label": "Jira token" } ] } ] }
+                    """.trimIndent(),
+                )
+
+            view(proposal.questionId)["operations"].single()["status"].asText() shouldBe "CONFLICT"
+        }
+
+        "the readiness speaks for members: a super-admin reading it is told an undeployed agent does not answer, matched by prefix" {
+            val root = superAdmin()
+            val other = otherNamespace(admin = alice)
+            namespaceService.update(other.copy(defaultAgentName = "assist"))
+            val candidate =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "assistant-$suffix", enabled = false),
+                )
+            suspend fun status(): String = read(root, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText()
+
+            status() shouldBe "DISABLED"
+            agentConfigService.enable(candidate.id)
+            status() shouldBe "NOT_DEPLOYED"
+            namespaceService.deployAgents(other.id, listOf(candidate.id))
+            status() shouldBe "OK"
+        }
+
+        "a DTO the REST API cannot even read is reported INVALID with its reason, not as an unexpected failure" {
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "key", "kind": "AUTH_SETTING", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "NO_TYPE_$suffix" } } ] }
+                    """.trimIndent(),
+                )
+
+            val result = applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())["results"].single()
+
+            result["status"].asText() shouldBe "INVALID"
+            result["message"].asText() shouldNotContain "Unexpected error"
+        }
+
+        "a secret must be declared on a secret field of the auth setting's own type, and never written in clear" {
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "basic", "kind": "AUTH_SETTING", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "B_$suffix", "authType": "BASIC_AUTH", "username": "u" },
+                          "secrets": [ { "path": "/apiKey", "label": "Password" } ] },
+                        { "ref": "clear", "kind": "AUTH_SETTING", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "K_$suffix", "authType": "API_KEY", "apiKey": "sk-live-$suffix" } },
+                        { "ref": "jira", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "J_$suffix", "integrationType": "JIRA", "parameters": { "token": "abc-$suffix" } } } ] }
+                    """.trimIndent(),
+                    toolContext(alice),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "basic: '/apiKey' is not a secret field of a BASIC_AUTH auth setting"
+            result.output shouldContain "clear: '/apiKey' holds a secret"
+            result.output shouldContain "jira: '/parameters/token' holds a secret"
+        }
+
+        "removing a field of an auth setting clears it, since the REST API reads a missing one as keep" {
+            // A namespace-shared auth setting is read and written by id by its super-admins only.
+            val root = superAdmin()
+            actAs(root)
+            val creation =
+                propose(
+                    root,
+                    """
+                    { "operations": [
+                        { "ref": "oauth", "kind": "AUTH_SETTING", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "OAUTH_$suffix", "authType": "OAUTH_REGISTERED", "clientId": "client",
+                                     "authorizationUrl": "https://idp.example.com/authorize", "tokenUrl": "https://idp.example.com/token", "scopes": "read" },
+                          "secrets": [ { "path": "/clientSecret", "label": "Client secret" } ] } ] }
+                    """.trimIndent(),
+                )
+            val settingId =
+                applied(creation.questionId, view(creation.questionId)["planHash"].asText(), mapOf("oauth./clientSecret" to "s3cret"))["results"]
+                    .single()["entityId"]
+                    .asText()
+            val proposal =
+                propose(
+                    root,
+                    """
+                    { "operations": [
+                        { "ref": "scopes", "kind": "AUTH_SETTING", "action": "UPDATE", "id": "$settingId",
+                          "changes": [ { "path": "/scopes", "remove": true } ] } ] }
+                    """.trimIndent(),
+                )
+
+            applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())["decision"].asText() shouldBe "APPLIED"
+
+            (authSettingService.findById(UUID.fromString(settingId)) as OAuthRegisteredAuthSetting).scopes.isNullOrBlank() shouldBe true
+            view(proposal.questionId)["operations"].single()["status"].asText() shouldBe "APPLIED"
+        }
+
+        "an agent created but not deployed makes the plan partial, not failed" {
+            every { configWriter.setDeployed(any(), any(), true) } throws AccessDeniedException("no deployment for you")
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "lonely-$suffix", "enabled": true }, "deployTo": "NAMESPACE" } ] }
+                    """.trimIndent(),
+                )
+
+            val report = applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())
+
+            report["decision"].asText() shouldBe "PARTIAL"
+            report["results"].single()["status"].asText() shouldBe "DENIED"
+        }
+
+        "an expired plan can still be rejected, which answers the agent" {
+            val proposal = propose(alice, promptPlan("stale"))
+            clock.now = clock.now.plus(ConfigAgentLimits.PROPOSAL_TTL).plusSeconds(1)
+            view(proposal.questionId)["canReject"].asBoolean() shouldBe true
+
+            mockMvc
+                .perform(
+                    post("/api/cases/${case.id}/config-changes/${proposal.questionId}/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"),
+                ).andExpect(status().is2xxSuccessful)
+
+            view(proposal.questionId)["state"].asText() shouldBe "ANSWERED"
         }
 
         "creating an agent needs an explicit enabled flag" {

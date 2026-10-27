@@ -1,10 +1,6 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.node.TextNode
 import org.springframework.stereotype.Component
 import java.util.UUID
 
@@ -47,10 +43,9 @@ class ConfigChangeStatus(
     ): OperationEvaluation {
         val name = op.value?.path("name")?.asText().orEmpty()
         val existing = findExisting(op, name, plan, viewerId, createdIds)
-        val secretFields = op.secrets.map { ConfigJson.segments(it.path).first() }.toSet()
         return when {
             existing == null -> OperationEvaluation(ConfigOperationStatus.PENDING)
-            !matches(op.value as? ObjectNode, existing, secretFields, createdIds) ->
+            !matches(op.value as? ObjectNode, existing, op.secrets.map { it.path }.toSet(), createdIds) ->
                 OperationEvaluation(ConfigOperationStatus.CONFLICT, existing.id, existing, "an entity named '$name' already exists with other values")
             awaitsDeployment(op, existing.id, plan, createdIds) -> OperationEvaluation(ConfigOperationStatus.PENDING, existing.id, existing)
             else -> OperationEvaluation(ConfigOperationStatus.ALREADY_APPLIED, existing.id, existing)
@@ -83,17 +78,19 @@ class ConfigChangeStatus(
         }
     }
 
-    /** Whether every proposed field, secrets and unresolved references aside, matches what is stored. */
+    /**
+     * Whether the stored entity holds every proposed field, secret paths and unresolved references aside.
+     * A top-level field the DTO leaves out when null counts as empty.
+     */
     private fun matches(
         value: ObjectNode?,
         existing: ConfigEntity,
-        secretFields: Set<String>,
+        secretPaths: Set<String>,
         createdIds: Map<String, UUID>,
     ): Boolean =
         value?.properties().orEmpty().all { (field, proposed) ->
-            field in secretFields ||
-                ConfigJson.opRefs(proposed).any { it !in createdIds } ||
-                sameValue(existing.dto.get(field), ConfigJson.resolveOpRefs(proposed, createdIds))
+            ConfigJson.opRefs(proposed).any { it !in createdIds } ||
+                ConfigValueMatch.holds(existing.dto.get(field), ConfigJson.resolveOpRefs(proposed, createdIds), ConfigJson.pointerOf(listOf(field)), secretPaths)
         }
 
     private fun evaluateUpdate(
@@ -115,16 +112,21 @@ class ConfigChangeStatus(
         }
     }
 
-    /** Compared with the unmasked value, so a change of an integration parameter is seen as applied. */
+    /**
+     * Compared with the unmasked value, so a change of an integration parameter is seen as applied. A
+     * removal is applied once the field is empty: absent, or null or blank where the DTO keeps it.
+     */
     private fun isApplied(
         entity: ConfigEntity,
         change: PlannedChange,
         createdIds: Map<String, UUID>,
     ): Boolean {
         val current = ConfigJson.valueAt(entity.dto, change.path)
+        val after = change.after
         return when {
-            change.remove -> current == null
-            ConfigJson.opRefs(change.after).all { it in createdIds } -> current == ConfigJson.resolveOpRefs(change.after, createdIds)
+            change.remove -> ConfigValueMatch.isEmpty(current)
+            after == null || after.isNull -> current?.isNull == true
+            ConfigJson.opRefs(after).all { it in createdIds } -> ConfigValueMatch.holds(current, ConfigJson.resolveOpRefs(after, createdIds), change.path)
             else -> false
         }
     }
@@ -158,25 +160,4 @@ class ConfigChangeStatus(
         agentId: UUID,
         namespaceId: UUID?,
     ): Boolean = namespaceId != null && agentId in configReadService.deployedAgentIds(namespaceId)
-
-    /**
-     * Whether a proposed field matches what the server stores. A field the server omits or nulls on
-     * output (a deprecated or defaulted one) does not count as a difference, and strings are compared
-     * trimmed, since the REST layer normalizes some of them.
-     */
-    private fun sameValue(
-        existing: JsonNode?,
-        proposed: JsonNode?,
-    ): Boolean = existing == null || existing.isNull || normalized(existing) == normalized(proposed)
-
-    private fun normalized(node: JsonNode?): JsonNode? =
-        when (node) {
-            is TextNode -> TextNode(node.textValue().trim())
-            is ArrayNode -> JsonNodeFactory.instance.arrayNode().also { copy -> node.forEach { copy.add(normalized(it)) } }
-            is ObjectNode ->
-                JsonNodeFactory.instance.objectNode().also { copy ->
-                    node.properties().forEach { (key, value) -> copy.set<JsonNode>(key, normalized(value)) }
-                }
-            else -> node
-        }
 }

@@ -136,6 +136,7 @@
               autocomplete="off"
               [attr.aria-label]="secret.input.label"
               [placeholder]="'Type the ' + secret.input.label"
+              [value]="secrets()[secret.input.key] ?? ''"
               (input)="onSecretInput(secret.input.key, $event)"
             />
           </label>
@@ -157,7 +158,8 @@
 
     @if (stateLabel(); as label) {
       <p class="config-change__state">{{ label }}</p>
-    } @else if (rejecting()) {
+    }
+    @if (rejecting()) {
       <div class="config-change__reject">
         <textarea
           class="config-change__comment"
@@ -186,7 +188,7 @@
           </button>
         </div>
       </div>
-    } @else {
+    } @else if (plan.canApply) {
       <div class="config-change__actions">
         @if (applyHint(); as hint) {
           <p class="config-change__hint" role="status">{{ hint }}</p>
@@ -206,6 +208,17 @@
           (click)="apply()"
         >
           {{ busy() ? 'Applying…' : 'Apply' }}
+        </button>
+      </div>
+    } @else if (plan.canReject) {
+      <div class="config-change__actions">
+        <button
+          class="config-change__btn config-change__btn--secondary"
+          type="button"
+          [disabled]="busy() || disabled()"
+          (click)="startReject()"
+        >
+          Reject
         </button>
       </div>
     }

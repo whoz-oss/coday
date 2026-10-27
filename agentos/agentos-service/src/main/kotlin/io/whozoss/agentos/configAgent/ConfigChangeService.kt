@@ -1,5 +1,6 @@
 package io.whozoss.agentos.configAgent
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.databind.node.TextNode
 import io.whozoss.agentos.exception.BadRequestException
@@ -8,8 +9,10 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.user.User
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
+import org.springframework.web.server.ResponseStatusException
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -66,6 +69,7 @@ class ConfigChangeService(
             expiresAt = plan.expiresAt,
             state = state,
             canApply = state == ConfigChangeState.OPEN && viewer.id == plan.recipientUserId,
+            canReject = state in REJECTABLE_STATES && viewer.id == plan.recipientUserId,
             operations = operations,
             warnings = plan.warnings,
         )
@@ -76,21 +80,20 @@ class ConfigChangeService(
         questionId: UUID,
         caller: User,
         request: ConfigChangeApplyRequest,
-    ): ConfigChangeReportDto {
-        requireRecipient(configPlanReader.load(caseId, questionId).plan, caller)
-        return withClaim(questionId) {
-            // Re-read under the claim: an answer posted by a concurrent apply or reject is now visible.
+    ): ConfigChangeReportDto =
+        withClaim(questionId) {
+            // Read under the claim: an answer posted by a concurrent apply or reject is visible.
             val loaded = configPlanReader.load(caseId, questionId)
             val plan = loaded.plan
+            requireRecipient(plan, caller)
             if (request.expectedPlanHash != plan.planHash) throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
-            requireOpen(stateOf(loaded, claimedByCaller = true))
+            requireState(stateOf(loaded, claimedByCaller = true), setOf(ConfigChangeState.OPEN))
             missingSecrets(plan, caller.id, request.secrets).takeIf { it.isNotEmpty() }?.let { missing ->
                 throw UnprocessableEntityException("MISSING_SECRET: ${missing.joinToString()}")
             }
             val report = applyPlan(plan, caller, request.secrets)
             report.copy(answerPosted = configChangeAnswer.post(caseId, questionId, caller, configChangeAnswer.applied(plan, report, caller)))
         }
-    }
 
     fun reject(
         caseId: UUID,
@@ -98,9 +101,11 @@ class ConfigChangeService(
         caller: User,
         comment: String?,
     ) {
-        requireRecipient(configPlanReader.load(caseId, questionId).plan, caller)
         withClaim(questionId) {
-            requireOpen(stateOf(configPlanReader.load(caseId, questionId), claimedByCaller = true))
+            val loaded = configPlanReader.load(caseId, questionId)
+            requireRecipient(loaded.plan, caller)
+            // An expired plan can still be rejected: the answer closes the question the agent waits on.
+            requireState(stateOf(loaded, claimedByCaller = true), REJECTABLE_STATES)
             if (!configChangeAnswer.post(caseId, questionId, caller, configChangeAnswer.rejected(questionId, caller, comment))) {
                 throw IllegalStateException("The rejection could not be delivered to the agent")
             }
@@ -156,11 +161,12 @@ class ConfigChangeService(
                         ConfigOperationResultDto(op.ref, ConfigResultStatus.NOT_RUN)
                     }
             }
-        val succeeded = results.count { it.status.isSuccess }
+        // A CREATE that fails after writing (the deployment of a new agent) still created its entity.
+        val written = results.count { it.status.isSuccess || (it.entityId != null && plan.operation(it.ref)?.action == ConfigAction.CREATE) }
         val decision =
-            when (succeeded) {
-                results.size -> ConfigChangeDecision.APPLIED
-                0 -> ConfigChangeDecision.FAILED
+            when {
+                results.all { it.status.isSuccess } -> ConfigChangeDecision.APPLIED
+                written == 0 -> ConfigChangeDecision.FAILED
                 else -> ConfigChangeDecision.PARTIAL
             }
         return ConfigChangeReportDto(decision = decision, appliedBy = caller.id, results = results)
@@ -254,6 +260,9 @@ class ConfigChangeService(
             is ResourceNotFoundException -> ConfigResultStatus.NOT_FOUND to e.message
             is ConflictException -> ConfigResultStatus.CONFLICT to e.message
             is BadRequestException, is UnprocessableEntityException -> ConfigResultStatus.INVALID to e.message
+            // A DTO the REST API cannot even read (missing type, wrong field type) would have been a 400.
+            is JsonProcessingException -> ConfigResultStatus.INVALID to e.originalMessage
+            is ResponseStatusException -> statusOf(e) to (e.reason ?: e.message)
             // AgentConfigServiceImpl reports a duplicate name this way; ConfigJson refuses paths through lists.
             is IllegalArgumentException ->
                 (if (e.message?.contains("already exists") == true) ConfigResultStatus.CONFLICT else ConfigResultStatus.INVALID) to e.message
@@ -261,6 +270,15 @@ class ConfigChangeService(
                 logger.warn(e) { "[ConfigChange] ${op.ref} ${op.action} ${op.kind} failed" }
                 ConfigResultStatus.FAILED to UNEXPECTED_ERROR
             }
+        }
+
+    private fun statusOf(e: ResponseStatusException): ConfigResultStatus =
+        when (e.statusCode.value()) {
+            HttpStatus.BAD_REQUEST.value(), HttpStatus.UNPROCESSABLE_ENTITY.value() -> ConfigResultStatus.INVALID
+            HttpStatus.FORBIDDEN.value() -> ConfigResultStatus.DENIED
+            HttpStatus.NOT_FOUND.value() -> ConfigResultStatus.NOT_FOUND
+            HttpStatus.CONFLICT.value() -> ConfigResultStatus.CONFLICT
+            else -> ConfigResultStatus.FAILED
         }
 
     private fun createPayload(
@@ -292,10 +310,12 @@ class ConfigChangeService(
         createdIds: Map<String, UUID>,
     ) {
         op.changes.forEach { change ->
-            if (change.remove) {
-                ConfigJson.removeAt(dto, change.path)
-            } else {
-                ConfigJson.setAt(dto, change.path, ConfigJson.resolveOpRefs(change.after, createdIds))
+            val value = ConfigJson.resolveOpRefs(change.after, createdIds)
+            when {
+                // The auth setting API reads a missing or null field as "keep", and an empty one as "clear".
+                op.kind == ConfigKind.AUTH_SETTING && (change.remove || value == null || value.isNull) -> ConfigJson.setAt(dto, change.path, TextNode(""))
+                change.remove -> ConfigJson.removeAt(dto, change.path)
+                else -> ConfigJson.setAt(dto, change.path, value)
             }
         }
         injectSecrets(dto, op, secrets)
@@ -378,8 +398,11 @@ class ConfigChangeService(
         if (caller.id != plan.recipientUserId) throw AccessDeniedException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
     }
 
-    private fun requireOpen(state: ConfigChangeState) {
-        if (state != ConfigChangeState.OPEN) throw ConflictException("${state.name}: this plan can no longer be applied or rejected")
+    private fun requireState(
+        state: ConfigChangeState,
+        allowed: Set<ConfigChangeState>,
+    ) {
+        if (state !in allowed) throw ConflictException("${state.name}: this plan can no longer be applied or rejected")
     }
 
     private fun secretKey(
@@ -389,6 +412,8 @@ class ConfigChangeService(
 
     companion object : KLogging() {
         private const val UNEXPECTED_ERROR = "Unexpected error, see the server logs."
+
+        private val REJECTABLE_STATES = setOf(ConfigChangeState.OPEN, ConfigChangeState.EXPIRED)
 
         /** Fields of a copied entity the copy never keeps: the server assigns the id, the plan sets the scope. */
         private val COPY_EXCLUDED_FIELDS = listOf("id", "namespaceId", "userId")

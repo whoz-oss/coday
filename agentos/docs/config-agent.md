@@ -62,9 +62,12 @@ created without an explicit `enabled`.
 - **The click is bound to the displayed plan**: Apply carries the plan hash, and anything else is
   refused (409 `PLAN_HASH_MISMATCH`).
 - **Secrets** are never written by the agent: the plan declares their paths and the user types the
-  values in the card. Only real secret fields qualify (`/apiKey`, `/token`, `/password`,
-  `/clientSecret` of an auth setting, paths under `/parameters/` of an integration), so a typed key
-  never lands in a plain field. A proposal containing `****` or a value at a secret path is refused.
+  values in the card. Only real secret fields qualify: the secret fields of the auth setting's own
+  `authType` (`/password` for `BASIC_AUTH`, `/apiKey` for `API_KEY`…), paths under `/parameters/` of an
+  integration. A typed key therefore never lands in a plain field nor in a field its type drops. A
+  proposal is refused when it contains `****`, a value at a declared secret path, a value at a secret
+  field of its auth setting, or an integration parameter named like a credential (`token`,
+  `password`, `apiKey`, `clientSecret`…).
 - **Bean Validation** runs on every DTO before the in-process call, since `@Valid` only applies to
   HTTP requests: a value the REST API would refuse with 400 is reported `INVALID`.
 - **Reads** (tool and card) use the same rules as the REST read endpoints: a list follows the list
@@ -153,13 +156,26 @@ walks the order, skips what is already applied, writes what is pending, and stop
 refusal or conflict. Nothing is rolled back. A claim per question serializes apply and reject
 (single instance, like the case runtime registry).
 
+A value counts as stored the way the REST layer stores it (`ConfigValueMatch`): an object holds the
+proposed keys (a copy brings the others), numbers compare by value (`10` and `10.0`), strings trimmed,
+and an empty value (absent, null, blank) only matches an empty one, so an existing entity that lacks
+a proposed value is a `CONFLICT`, never `ALREADY_APPLIED`. Declared secrets are left out of the
+comparison, path by path. A secret cannot be read back, so an `UPDATE` that carries one stays
+`PENDING`; applying it again writes the same value. For an auth setting, removing a field sends an
+empty value, since its API reads a missing or null field as "keep".
+
+The decision is `APPLIED` when every step succeeded, `FAILED` when nothing was written, and
+`PARTIAL` otherwise, an entity created but not deployed included. A DTO the REST API cannot even
+read (missing type, wrong field type) is reported `INVALID` with its reason.
+
 Whatever the outcome, the server posts the report as the answer to the question, which closes the
 plan and resumes the agent. To retry after a partial failure, the agent proposes again: the new plan
 converges, since what the first one already wrote shows as `APPLIED` or `ALREADY_APPLIED`. A newer
 plan in the same case marks the older ones `SUPERSEDED` for good. If the answer cannot be posted
 (the case was closed meanwhile), the report says `answerPosted: false` and the plan stays open, so
-applying it again re-sends it. The answer text carries only fixed templates and codes, never
-parameter values, since it is replayed to the LLM.
+applying it again re-sends it. An expired plan can no longer be applied but can still be rejected,
+which answers the agent. The answer text carries only fixed templates and codes, never parameter
+values, since it is replayed to the LLM.
 
 ## Where the tools exist
 
@@ -181,6 +197,8 @@ The tools are granted in `AgentServiceImpl.resolveAgentDefinition` only:
   auth setting in user x namespace scope, which wins at resolution.
 - Group deployment, AI providers and AI models are not covered yet, nor deleting a namespace.
 - Auth settings are not copied: their secrets are typed again in the card.
+- A namespace-shared auth setting is read and changed by id by super-admins only: `AUTH_SETTING` does
+  not inherit the namespace's rights in the permission model, for the REST API as for this tool.
 - In local mode (`LocalSecurityService`) every request to the service acts as the OS user, so an
   agent with a shell can still reach the REST API directly. The tool's description asks it not to;
   only a dedicated configuration agent without shell, terminal or browser tools guarantees it.

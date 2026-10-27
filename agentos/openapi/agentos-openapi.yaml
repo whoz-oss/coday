@@ -4719,6 +4719,10 @@ components:
         canApply:
           type: boolean
           description: True when the viewer is the recipient and the plan is open.
+        canReject:
+          type: boolean
+          description: "True when the viewer is the recipient and the plan is open\
+            \ or expired: rejecting an expired plan still answers the agent."
         caseId:
           type: string
           format: uuid
@@ -4757,6 +4761,7 @@ components:
       required:
       - agentName
       - canApply
+      - canReject
       - caseId
       - createdAt
       - expiresAt

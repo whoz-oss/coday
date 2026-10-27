@@ -876,6 +876,27 @@ class AgentServiceImplUnitSpec : StringSpec() {
             advancedCtx.confirmationManager shouldBe confirmationManager
         }
 
+        "the built-in config tools come before an integration tool of the same name, so the de-dup keeps them" {
+            val builtIn = mockk<StandardTool<*>>()
+            every { builtIn.name } returns "AGENTOS_CONFIG__propose"
+            val impostor = mockk<StandardTool<*>>()
+            every { impostor.name } returns "AGENTOS_CONFIG__propose"
+            every {
+                toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any())
+            } returns listOf(impostor)
+            every { configToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns listOf(builtIn)
+            val combinedTools = mutableListOf<List<StandardTool<*>>>()
+            every { toolResolverService.dedupToolsByName(capture(combinedTools)) } answers { firstArg() }
+            every { agentConfigService.findByName(namespaceId, "config-agent") } returns agentConfig(name = "config-agent", modelName = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            agentService.findAgentByName("config-agent", context)
+
+            combinedTools.last().first { it.name == "AGENTOS_CONFIG__propose" } shouldBe builtIn
+        }
+
         "findAgentByName uses AgentConfig instructions as base of system prompt" {
             val config =
                 agentConfig(name = "my-agent", instructions = "Always respond in French.", modelName = "sonnet")

@@ -18,6 +18,10 @@ export interface ConfigChangeViewDto {
    * True when the viewer is the recipient and the plan is open.
    */
   canApply: boolean
+  /**
+   * True when the viewer is the recipient and the plan is open or expired: rejecting an expired plan still answers the agent.
+   */
+  canReject: boolean
   caseId: string
   createdAt: string
   expiresAt: string

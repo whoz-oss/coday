@@ -17,6 +17,8 @@ data class ConfigChangeViewDto(
     val state: ConfigChangeState,
     @field:Schema(description = "True when the viewer is the recipient and the plan is open.")
     val canApply: Boolean,
+    @field:Schema(description = "True when the viewer is the recipient and the plan is open or expired: rejecting an expired plan still answers the agent.")
+    val canReject: Boolean = false,
     val operations: List<ConfigOperationViewDto>,
     val warnings: List<String>,
 )

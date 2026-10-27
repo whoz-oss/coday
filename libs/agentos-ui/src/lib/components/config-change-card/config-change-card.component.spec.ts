@@ -265,6 +265,32 @@ describe('ConfigChangeCardComponent', () => {
     expect(root.textContent).toContain('Nothing was applied.')
   })
 
+  it('empties the secret fields once applied, so what is shown matches what would be sent', () => {
+    service.applyConfigChange.mockReturnValue(of({ decision: 'APPLIED', appliedBy: 'u-1', results: [] }))
+    const root = render(plan())
+    const secret = root.querySelector('input[type="password"]') as HTMLInputElement
+    secret.value = 's3cr3t'
+    secret.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+
+    button(root, 'Apply').click()
+    fixture.detectChanges()
+
+    expect((root.querySelector('input[type="password"]') as HTMLInputElement).value).toBe('')
+  })
+
+  it('offers to reject an expired plan, which still answers the agent', () => {
+    service.rejectConfigChange.mockReturnValue(of(undefined))
+    const root = render(plan({ state: 'EXPIRED', canApply: false, canReject: true } as Partial<ConfigChangeViewDto>))
+
+    expect(root.textContent).toContain('This plan has expired')
+    button(root, 'Reject').click()
+    fixture.detectChanges()
+    button(root, 'Reject the plan').click()
+
+    expect(service.rejectConfigChange).toHaveBeenCalledWith('case-1', 'q-1', { comment: undefined })
+  })
+
   it('applies the displayed plan with its hash and the typed secrets', () => {
     service.applyConfigChange.mockReturnValue(of({ decision: 'APPLIED', appliedBy: 'u-1', results: [] }))
     const root = render(plan())

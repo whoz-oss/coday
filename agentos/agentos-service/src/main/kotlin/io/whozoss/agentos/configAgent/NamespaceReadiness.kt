@@ -1,12 +1,12 @@
 package io.whozoss.agentos.configAgent
 
 /**
- * What a member's message meets in a namespace, read for one user.
+ * What a member's message without `@mention` meets in a namespace.
  *
  * @property defaultAgentSource `namespace` (its defaultAgentName), `platform` (agentos.defaults.agent-name)
  *   or null when neither is set.
- * @property resolvedAgent The agent a message without `@mention` goes to; the runtime matches the name as a
- *   prefix, so it may differ from [defaultAgentName].
+ * @property resolvedAgent The agent such a message goes to; the runtime matches the name as a prefix, so it
+ *   may differ from [defaultAgentName].
  */
 data class NamespaceReadiness(
     val defaultAgentName: String?,

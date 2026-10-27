@@ -411,9 +411,12 @@ class AgentServiceImpl(
                 userId = context.userId,
                 caseId = context.caseId,
             )
+        // The config tools go first so the de-dup keeps them over an integration of the same name: a
+        // configuration named AGENTOS_CONFIG must not stand in for the tool that freezes plans.
         val tools =
             toolResolverService.dedupToolsByName(
-                baseTools +
+                configTools +
+                    baseTools +
                     listOfNotNull(
                         subCaseManager?.let {
                             buildDelegationTools(
@@ -424,8 +427,7 @@ class AgentServiceImpl(
                         },
                     ) +
                     exchangeTools +
-                    skillTools +
-                    configTools,
+                    skillTools,
             )
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
 
