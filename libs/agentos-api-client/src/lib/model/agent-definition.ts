@@ -8,6 +8,7 @@
  * Do not edit the class manually.
  */
 import { AgentDefinitionToolSummary } from './agent-definition-tool-summary'
+import { SkillSummary } from './skill-summary'
 
 export interface AgentDefinition {
   /**
@@ -43,6 +44,10 @@ export interface AgentDefinition {
    * The name of the resolved AI provider.
    */
   resolvedProviderName: string
+  /**
+   * Skills resolved for this agent from its skillSelectors, in catalog order. Namespace skills shadow platform skills of the same name. Empty when the agent declares no selectors. Bodies and resources are not included — fetch GET /api/skills/{id} for those.
+   */
+  skills: Array<SkillSummary>
   /**
    * Privileged namespace context block sent as a separate system message, before instructions. Null when no namespace context is available.
    */
