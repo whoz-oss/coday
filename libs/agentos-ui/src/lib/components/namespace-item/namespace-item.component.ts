@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import {
@@ -6,6 +6,8 @@ import {
   ActionCardComponent,
   ActionCardMenuItem,
 } from '../action-card/action-card.component'
+import { UsageConfigurationService } from '../../services/usage-configuration.service'
+
 @Component({
   selector: 'agentos-namespace-item',
   imports: [ActionCardComponent, ActionCardActionsDirective, IconButtonComponent],
@@ -14,6 +16,8 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
+  private readonly usageConfiguration = inject(UsageConfigurationService)
+
   readonly namespace = input.required<Namespace>()
   /** Git settings exist only while the GIT plugin is loaded on the server. */
   readonly gitAvailable = input(false)
@@ -37,11 +41,14 @@ export class NamespaceItemComponent {
 
   protected readonly pendingDelete = signal(false)
 
-  protected readonly menuItems: ActionCardMenuItem[] = [
-    { key: 'edit', label: 'Edit namespace' },
+  protected readonly menuItems = computed<ActionCardMenuItem[]>(() => [
+    { key: 'members', label: 'Members' },
+    ...(this.gitAvailable() ? [{ key: 'git', label: 'Git' }] : []),
+    ...(this.usageConfiguration.enabled() ? [{ key: 'usage', label: 'Usage and costs' }] : []),
     { key: 'separator', label: '', variant: 'separator' },
+    { key: 'edit', label: 'Edit namespace' },
     { key: 'delete', label: 'Delete namespace', variant: 'danger' },
-  ]
+  ])
 
   protected onSelect(): void {
     this.selected.emit(this.namespace())

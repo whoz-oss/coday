@@ -1,7 +1,7 @@
 <agentos-action-card
   [name]="namespace().name"
   [description]="namespace().description ?? null"
-  [menuItems]="pendingDelete() ? [] : menuItems"
+  [menuItems]="pendingDelete() ? [] : menuItems()"
   (nameClicked)="onSelect()"
   (menuAction)="onMenuAction($event)"
 >
