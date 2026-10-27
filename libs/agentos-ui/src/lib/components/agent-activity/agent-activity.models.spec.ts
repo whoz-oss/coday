@@ -1,16 +1,13 @@
 import {
   ActorRoleEnum,
-  EntityMetadata,
+  AgentFinishedEvent,
   AgentRunningEvent,
   CaseEvent,
-  ConfirmationResolvedEvent,
+  EntityMetadata,
   IntentionGeneratedEvent,
   MessageEvent,
-  PendingConfirmationEvent,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
-  SubCaseFinishedEvent,
-  SubCaseFinishedEventOutcomeEnum,
   SubCaseStartedEvent,
   TextChunkEvent,
   ToolRequestEvent,
@@ -18,6 +15,7 @@ import {
   ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
+import { DelegationPresentation } from '../delegation/models/delegation.models'
 import { describeAgentActivity, toolActivityLabel } from './agent-activity.models'
 
 const metadata: EntityMetadata = { id: '', created: '', modified: '', removed: false }
@@ -55,14 +53,14 @@ function toolSelected(id: string, toolName: string): ToolSelectedEvent {
   return { ...base(id), type: 'ToolSelectedEvent', toolName, agentId: 'a-1' }
 }
 
-function intention(id: string, toolName: string): IntentionGeneratedEvent {
+function intention(id: string, toolName: string, isFailedIntention = false): IntentionGeneratedEvent {
   return {
     ...base(id),
     type: 'IntentionGeneratedEvent',
     toolName,
     agentId: 'a-1',
     intention: 'A long rationale that never reaches the line.',
-    isFailedIntention: false,
+    isFailedIntention,
   }
 }
 
@@ -98,22 +96,16 @@ function question(id: string): QuestionEvent {
   }
 }
 
-function pendingConfirmation(id: string, toolName: string, inputJson: string): PendingConfirmationEvent {
-  return {
-    ...base(id),
-    type: 'PendingConfirmationEvent',
-    toolName,
-    toolRequestId: 'r-1',
-    inputJson,
-    toolConfirmationInstructions: 'Confirm before writing',
-  }
+function agentFinished(id: string): AgentFinishedEvent {
+  return { ...base(id), type: 'AgentFinishedEvent', agentId: 'a-1', agentName: 'Astra' }
 }
 
-function confirmationResolved(id: string, pendingEventId: string): ConfirmationResolvedEvent {
-  return { ...base(id), type: 'ConfirmationResolvedEvent', pendingEventId, confirmed: true, resultText: 'ok' }
-}
-
-function subCaseStarted(id: string, delegationId: string, agentName: string): SubCaseStartedEvent {
+function subCaseStarted(
+  id: string,
+  delegationId: string,
+  agentName: string,
+  toolRequestId = 'd-1'
+): SubCaseStartedEvent {
   return {
     ...base(id),
     type: 'SubCaseStartedEvent',
@@ -121,20 +113,25 @@ function subCaseStarted(id: string, delegationId: string, agentName: string): Su
     agentName,
     subCaseId: `sub-${delegationId}`,
     task: 'Investigate the stall',
-    toolRequestId: 'd-1',
+    toolRequestId,
     resumed: false,
   }
 }
 
-function subCaseFinished(id: string, delegationId: string, agentName: string): SubCaseFinishedEvent {
+function delegation(
+  delegationId: string,
+  agentName: string,
+  status: DelegationPresentation['status'],
+  toolRequestId = 'd-1'
+): DelegationPresentation {
   return {
-    ...base(id),
-    type: 'SubCaseFinishedEvent',
     delegationId,
-    agentName,
+    toolRequestId,
     subCaseId: `sub-${delegationId}`,
-    toolRequestId: 'd-1',
-    outcome: SubCaseFinishedEventOutcomeEnum.SUCCESS,
+    agentName,
+    task: 'Investigate the stall',
+    resumed: false,
+    status,
   }
 }
 
@@ -170,6 +167,16 @@ describe('toolActivityLabel', () => {
     expect(toolActivityLabel('JIRA__createIssue', '{"title":"Fix the login"}')).toBe('Creating issue: Fix the login')
   })
 
+  it('reads the prefix up to the first delimiter, as the backend does', () => {
+    // Splitting on the last one would describe a Notion deletion as a file removal.
+    expect(toolActivityLabel('MCP__notion__remove', '{"pageId":"abc"}')).toBe('Running notion remove')
+  })
+
+  it('counts every target, however many there are', () => {
+    const edits = Array.from({ length: 30 }, (_, index) => ({ operation: 'write', path: `file-${index}.ts` }))
+    expect(toolActivityLabel('FILES__editFiles', JSON.stringify({ edits }))).toBe('Editing file-0.ts +29')
+  })
+
   it('still says what it runs when the name opens on no known verb', () => {
     expect(toolActivityLabel('bash', '{"command":"pnpm lint"}')).toBe('Running bash: pnpm lint')
   })
@@ -185,6 +192,13 @@ describe('toolActivityLabel', () => {
     expect(label.endsWith('case-chat.component.ts')).toBe(true)
     expect(label.length).toBeLessThanOrEqual('Reading '.length + 48)
   })
+
+  it('cuts a long command at its end, keeping the program it runs', () => {
+    const command = 'pnpm nx run-many --targets=lint,test --projects=agentos-ui && node ./scripts/check.js'
+    const label = toolActivityLabel('bash', JSON.stringify({ command }))
+    expect(label.startsWith('Running bash: pnpm nx run-many')).toBe(true)
+    expect(label.endsWith('…')).toBe(true)
+  })
 })
 
 describe('describeAgentActivity', () => {
@@ -195,7 +209,7 @@ describe('describeAgentActivity', () => {
 
   it('announces the tool call that is still running', () => {
     const events = [userMessage('m1'), toolRequest('r1', 'FILES__readFile', '{"filePath":"README.md"}')]
-    expect(describeAgentActivity(events)).toEqual({ label: 'Reading README.md', detail: 'FILES__readFile' })
+    expect(describeAgentActivity(events)).toMatchObject({ label: 'Reading README.md', detail: 'FILES__readFile' })
   })
 
   it('announces the chosen tool before its arguments exist', () => {
@@ -204,7 +218,10 @@ describe('describeAgentActivity', () => {
   })
 
   it('moves to the next step once a tool has answered', () => {
-    const events = [toolRequest('r1', 'FILES__readFile'), toolResponse('r1', 'FILES__readFile')]
+    const events = [
+      toolRequest('r1', 'FILES__readFile', '{"filePath":"README.md"}'),
+      toolResponse('r1', 'FILES__readFile'),
+    ]
     expect(describeAgentActivity(events).label).toBe('Planning the next step')
   })
 
@@ -218,31 +235,49 @@ describe('describeAgentActivity', () => {
     expect(describeAgentActivity(events).label).toBe('Writing the answer')
   })
 
-  it('reports what the turn waits for', () => {
-    expect(describeAgentActivity([question('q1')]).label).toBe('Waiting for your answer')
-    const pending = pendingConfirmation('p1', 'FILES__remove', '{"path":"a.ts"}')
-    expect(describeAgentActivity([pending]).label).toBe('Waiting for your confirmation')
+  it('does not carry the previous turn over into the next one', () => {
+    // The line is shown again as soon as the user sends a message, before any event of the new
+    // turn has arrived: what the previous turn ended on is not what is happening.
+    const answered: CaseEvent[] = [question('q1'), agentFinished('f1')]
+    expect(describeAgentActivity(answered).label).toBe('Thinking')
+    const streamed: CaseEvent[] = [textChunk('t1'), agentFinished('f1')]
+    expect(describeAgentActivity(streamed).label).toBe('Thinking')
   })
 
-  it('announces the confirmed tool once the user has resolved the confirmation', () => {
-    const pending = pendingConfirmation('p1', 'FILES__remove', '{"path":"a.ts"}')
-    const events: CaseEvent[] = [pending, confirmationResolved('c1', 'p1')]
-    expect(describeAgentActivity(events)).toEqual({ label: 'Removing a.ts', detail: 'FILES__remove' })
+  it('says nothing of a step the backend has given up on', () => {
+    // args = null after the parameter generation failed: the tool is never called.
+    expect(describeAgentActivity([toolRequest('r1', 'FILES__readFile')]).label).toBe('Planning the next step')
+    expect(describeAgentActivity([intention('i1', 'FILES__readFile', true)]).label).toBe('Thinking')
   })
 
   it('names the delegate while the sub-case runs, and counts them beyond one', () => {
-    const delegating = toolRequest('d-1', 'DELEGATE__delegate')
-    expect(describeAgentActivity([delegating, subCaseStarted('s1', 'd1', 'Leo')]).label).toBe('Delegating to Leo')
-    const two = [delegating, subCaseStarted('s1', 'd1', 'Leo'), subCaseStarted('s2', 'd2', 'Astra')]
-    expect(describeAgentActivity(two).label).toBe('Delegating to 2 agents')
+    const events = [toolRequest('d-1', 'DELEGATE__delegate'), subCaseStarted('s1', 'd1', 'Leo')]
+    const one = [delegation('d1', 'Leo', 'WORKING')]
+    expect(describeAgentActivity(events, one).label).toBe('Delegating to Leo')
+
+    const both = [...events, subCaseStarted('s2', 'd2', 'Astra')]
+    const two = [...one, delegation('d2', 'Astra', 'WORKING')]
+    expect(describeAgentActivity(both, two).label).toBe('Delegating to 2 agents')
   })
 
   it('leaves the delegating tool call to speak once every sub-case is over', () => {
-    const events: CaseEvent[] = [
+    const events = [
       toolRequest('d-1', 'DELEGATE__delegate', '{"delegations":[{"agentName":"Leo","task":"t"}]}'),
       subCaseStarted('s1', 'd1', 'Leo'),
-      subCaseFinished('f1', 'd1', 'Leo'),
     ]
-    expect(describeAgentActivity(events).label).toBe('Delegating to Leo')
+    const done = [delegation('d1', 'Leo', 'SUCCESS')]
+    expect(describeAgentActivity(events, done).label).toBe('Delegating to Leo')
+  })
+
+  it('ignores a sub-case left open by an earlier delegating call', () => {
+    // A lost SubCaseFinishedEvent used to make every later delegation read "2 agents".
+    const events = [toolRequest('d-2', 'DELEGATE__delegate'), subCaseStarted('s2', 'd2', 'Astra', 'd-2')]
+    const delegations = [delegation('d1', 'Leo', 'WORKING', 'd-1'), delegation('d2', 'Astra', 'WORKING', 'd-2')]
+    expect(describeAgentActivity(events, delegations).label).toBe('Delegating to Astra')
+  })
+
+  it('counts from the event that named the step', () => {
+    const request = toolRequest('r1', 'FILES__readFile', '{"filePath":"README.md"}')
+    expect(describeAgentActivity([request]).since).toBe(request.timestamp)
   })
 })

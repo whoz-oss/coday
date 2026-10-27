@@ -1,9 +1,5 @@
-import {
-  CaseEvent,
-  PendingConfirmationEvent,
-  SubCaseFinishedEvent,
-  SubCaseStartedEvent,
-} from '@whoz-oss/agentos-api-client'
+import { CaseEvent } from '@whoz-oss/agentos-api-client'
+import { DelegationPresentation } from '../delegation/models/delegation.models'
 
 /**
  * One-line summary of what an agent is doing right now, shown in place of a spinner.
@@ -17,10 +13,18 @@ export interface AgentActivity {
   label: string
   /** Qualified tool name behind the sentence, surfaced as the line's tooltip. */
   detail?: string
+  /**
+   * Timestamp of the event that named the step, which the line counts from. Absent when no
+   * single event does — the line then counts from the moment the sentence appeared.
+   */
+  since?: string
 }
 
 /** What the line says while the agent holds the turn but no event tells more than that. */
 const THINKING: AgentActivity = { label: 'Thinking' }
+
+/** What it says between two tools, while the next step is being chosen. */
+const PLANNING: AgentActivity = { label: 'Planning the next step' }
 
 /** Sentences for one tool, picked depending on whether an argument names the target. */
 interface ToolPhrase {
@@ -33,8 +37,9 @@ interface ToolPhrase {
 }
 
 /**
- * The tool catalogue, keyed by the action part of a qualified tool name (`PREFIX__action`,
- * see the SDK's ToolPlugin) reduced to its letters and digits. Tools absent from this table —
+ * The tool catalogue, keyed by what follows the first `__` of a qualified tool name (the
+ * `configName__toolName` convention of the SDK's ToolPlugin) reduced to its letters and
+ * digits. Tools absent from this table —
  * bash tools named by configuration, MCP tools, anything a plugin adds — are phrased by
  * `genericSentence` from their own name.
  */
@@ -108,6 +113,12 @@ const GERUNDS: Record<string, string> = {
   write: 'Writing',
 }
 
+/**
+ * Argument keys whose value is a path. They are elided from the left, so the file name stays
+ * readable; every other value is a command or a sentence and is cut at the end instead.
+ */
+const PATH_ARGS: ReadonlySet<string> = new Set(['path', 'filePath', 'filePaths', 'relPath', 'rootPath', 'from', 'to'])
+
 /** Argument keys that most often carry the object of a tool outside the catalogue. */
 const GENERIC_ARGS = ['command', 'query', 'path', 'filePath', 'url', 'name', 'title', 'message', 'task'] as const
 
@@ -117,16 +128,15 @@ const MAX_VALUE_LENGTH = 48
 /** How deep an argument tree is searched — `delegations[0].agentName` sits at depth 3. */
 const MAX_ARG_DEPTH = 4
 
-/** How many values of one argument key are counted before the search stops. */
-const MAX_ARG_VALUES = 20
-
 /**
  * The sentence for a tool call: the catalogue entry when there is one, a sentence built from
  * the tool's own name otherwise. `args` is the raw payload of the event — JSON for a
  * structured call, free text for the rest, and absent before the arguments are generated.
  */
 export function toolActivityLabel(toolName: string, args?: string | null): string {
-  const separator = toolName.lastIndexOf('__')
+  // The prefix ends at the FIRST delimiter, as the backend reads it (`substringBefore("__")`).
+  // Splitting on the last one would read `MCP__notion__remove` as the file plugin's `remove`.
+  const separator = toolName.indexOf('__')
   const action = separator >= 0 ? toolName.slice(separator + 2) : toolName
   const parsed = parseArgs(args)
   const phrase = TOOL_PHRASES[action.toLowerCase().replace(/[^a-z0-9]/g, '')]
@@ -144,50 +154,69 @@ export function toolActivityLabel(toolName: string, args?: string | null): strin
 /**
  * The step the agent is on, read from the event stream of the case.
  *
- * Walks the stream backwards and stops at the first event that names a step: statuses,
- * warnings and end-of-turn markers say nothing about the present and are walked through.
- * Always returns a sentence — the caller shows the line only while the turn is running,
- * and a turn that has just started has nothing more to say than "Thinking".
+ * Walks the stream backwards and stops at the first event that names a step; warnings and
+ * other diagnostics say nothing about the present and are walked through. The walk also stops
+ * on the events that close or suspend a run: the line is shown again as soon as the user sends
+ * the next message, before any event of the new turn has arrived, and the tail of the previous
+ * turn is not what is happening then.
+ *
+ * `delegations` is the pairing case-chat already computes for the delegation cards, reused here
+ * so a sub-case is counted as running only while that pairing says so.
+ *
+ * Always returns a sentence — the caller shows the line only while the turn is running, and a
+ * turn that has just started has nothing more to say than "Thinking".
  */
-export function describeAgentActivity(events: readonly CaseEvent[]): AgentActivity {
+export function describeAgentActivity(
+  events: readonly CaseEvent[],
+  delegations: readonly DelegationPresentation[] = []
+): AgentActivity {
   for (let index = events.length - 1; index >= 0; index--) {
     const event = events[index]
     if (!event) continue
 
     switch (event.type) {
       case 'TextChunkEvent':
-        return { label: 'Writing the answer' }
-      case 'QuestionEvent':
-        return { label: 'Waiting for your answer' }
-      case 'PendingConfirmationEvent':
-        return { label: 'Waiting for your confirmation', detail: event.toolName }
-      case 'ConfirmationResolvedEvent': {
-        // The tool runs as soon as the confirmation is resolved, and only the pending event
-        // carries its name and arguments.
-        const pending = events.find(
-          (candidate): candidate is PendingConfirmationEvent =>
-            candidate.type === 'PendingConfirmationEvent' && candidate.id === event.pendingEventId
-        )
-        return pending ? toolActivity(pending.toolName, pending.inputJson) : THINKING
+        return { label: 'Writing the answer', since: event.timestamp }
+      case 'ToolRequestEvent': {
+        // args = null is how the backend reports that it gave up generating them after
+        // MAX_PARAMETER_ATTEMPTS: the tool is deliberately never called.
+        const args = event.args ?? null
+        return args === null
+          ? { ...PLANNING, since: event.timestamp }
+          : toolActivity(event.toolName, args, event.timestamp)
       }
-      case 'ToolRequestEvent':
-        return toolActivity(event.toolName, event.args)
-      case 'ToolSelectedEvent':
       case 'IntentionGeneratedEvent':
+        // A failed intention is the planner giving up, not a step being prepared.
+        if (event.isFailedIntention) return THINKING
         // The tool is known, its arguments are not yet: the same sentence, less precise.
-        return toolActivity(event.toolName)
+        return toolActivity(event.toolName, null, event.timestamp)
+      case 'ToolSelectedEvent':
+        return toolActivity(event.toolName, null, event.timestamp)
       case 'ToolResponseEvent':
-        return { label: 'Planning the next step' }
+        return { ...PLANNING, since: event.timestamp }
       case 'SubCaseStartedEvent': {
-        const running = runningDelegations(events)
+        // Scoped to the delegating call this sub-case belongs to: a sub-case left open by an
+        // earlier turn, its SubCaseFinishedEvent lost, must not be counted with the current ones.
+        const running = delegations.filter(
+          (delegation) => delegation.toolRequestId === event.toolRequestId && delegation.status === 'WORKING'
+        )
         // Every sub-case is over: the delegating tool call below tells the rest of the story.
         if (running.length === 0) continue
-        return { label: delegationLabel(running) }
+        return { label: delegationLabel(running), since: event.timestamp }
       }
       case 'AgentRunningEvent':
       case 'AgentSelectedEvent':
       case 'AnswerEvent':
       case 'MessageEvent':
+        return THINKING
+      case 'AgentFinishedEvent':
+      case 'CaseStatusEvent':
+      case 'ConfirmationResolvedEvent':
+      case 'ErrorEvent':
+      case 'PendingConfirmationEvent':
+      case 'QuestionEvent':
+        // These close or suspend the run: the question and confirmation flows interrupt it, a
+        // status or a finished marker ends the turn. Whatever ran before them is over.
         return THINKING
       default:
         continue
@@ -197,24 +226,12 @@ export function describeAgentActivity(events: readonly CaseEvent[]): AgentActivi
   return THINKING
 }
 
-function toolActivity(toolName: string, args?: string | null): AgentActivity {
-  return { label: toolActivityLabel(toolName, args), detail: toolName }
-}
-
-/** The sub-cases started and not yet finished, in start order. */
-function runningDelegations(events: readonly CaseEvent[]): SubCaseStartedEvent[] {
-  const finished = new Set(
-    events
-      .filter((event): event is SubCaseFinishedEvent => event.type === 'SubCaseFinishedEvent')
-      .map((event) => event.delegationId)
-  )
-  return events.filter(
-    (event): event is SubCaseStartedEvent => event.type === 'SubCaseStartedEvent' && !finished.has(event.delegationId)
-  )
+function toolActivity(toolName: string, args: string | null, since: string): AgentActivity {
+  return { label: toolActivityLabel(toolName, args), detail: toolName, since }
 }
 
 /** Names the delegate while there is one to name, counts them beyond that. */
-function delegationLabel(running: readonly SubCaseStartedEvent[]): string {
+function delegationLabel(running: readonly DelegationPresentation[]): string {
   const names = [...new Set(running.map((event) => event.agentName).filter((name) => name.trim().length > 0))]
   if (names.length === 1) return `Delegating to ${names[0]}`
   if (names.length === 0) return `Delegating ${running.length} tasks`
@@ -263,12 +280,17 @@ function findArgument(args: unknown, keys: readonly string[]): string | null {
     const values = collectValues(args, key, 0)
     const first = values[0]
     if (first === undefined) continue
-    return values.length > 1 ? `${shorten(first)} +${values.length - 1}` : shorten(first)
+    const value = shorten(first, PATH_ARGS.has(key))
+    return values.length > 1 ? `${value} +${values.length - 1}` : value
   }
   return null
 }
 
-/** Every string stored under `key` in the tree, down to `MAX_ARG_DEPTH`. */
+/**
+ * Every string stored under `key` in the tree, down to `MAX_ARG_DEPTH`. All of them are
+ * collected, not a bounded sample: the count ends up in the sentence as `+n`, where a cap
+ * would read as an exact number that is wrong.
+ */
 function collectValues(node: unknown, key: string, depth: number): string[] {
   if (depth > MAX_ARG_DEPTH || node === null || typeof node !== 'object') return []
 
@@ -279,10 +301,7 @@ function collectValues(node: unknown, key: string, depth: number): string[] {
   }
 
   if (Array.isArray(node)) {
-    for (const item of node) {
-      values.push(...collectValues(item, key, depth + 1))
-      if (values.length >= MAX_ARG_VALUES) return values.slice(0, MAX_ARG_VALUES)
-    }
+    for (const item of node) values.push(...collectValues(item, key, depth + 1))
     return values
   }
 
@@ -294,16 +313,17 @@ function collectValues(node: unknown, key: string, depth: number): string[] {
   for (const [name, value] of Object.entries(record)) {
     if (name === key) continue
     values.push(...collectValues(value, key, depth + 1))
-    if (values.length >= MAX_ARG_VALUES) return values.slice(0, MAX_ARG_VALUES)
   }
 
   return values
 }
 
-/** Keeps a value on one line: the tail of a path, the head of a sentence. */
-function shorten(value: string): string {
+/**
+ * Keeps a value on one line. A path loses its head, so the file name stays readable; a command
+ * or a sentence loses its tail, so the program being run — the part that identifies it — stays.
+ */
+function shorten(value: string, isPath: boolean): string {
   const single = value.replace(/\s+/g, ' ').trim()
   if (single.length <= MAX_VALUE_LENGTH) return single
-  if (single.includes('/')) return `…${single.slice(single.length - MAX_VALUE_LENGTH + 1)}`
-  return `${single.slice(0, MAX_VALUE_LENGTH - 1)}…`
+  return isPath ? `…${single.slice(single.length - MAX_VALUE_LENGTH + 1)}` : `${single.slice(0, MAX_VALUE_LENGTH - 1)}…`
 }

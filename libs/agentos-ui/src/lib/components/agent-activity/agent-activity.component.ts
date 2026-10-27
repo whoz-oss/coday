@@ -1,8 +1,21 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, linkedSignal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  NgZone,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+  untracked,
+} from '@angular/core'
 import { AgentActivity } from './agent-activity.models'
 
 /** How long a step must last before the line starts counting the seconds out loud. */
 const ELAPSED_THRESHOLD_SECONDS = 5
+
+const SECONDS_PER_MINUTE = 60
 
 /**
  * AgentActivityComponent — the line shown while an agent holds the turn, in place of a spinner.
@@ -24,10 +37,26 @@ export class AgentActivityComponent {
   /** The step to announce. */
   readonly activity = input.required<AgentActivity>()
 
-  /** Seconds spent on the current step: counted by the ticker, back to zero on a new sentence. */
-  private readonly seconds = linkedSignal<string, number>({
+  private readonly zone = inject(NgZone)
+
+  /** Advanced by the ticker; the only thing that moves the counter. */
+  private readonly now = signal(Date.now())
+
+  /**
+   * When the current step started: the timestamp of the event that named it, so the count is
+   * right after a reconnection or a spell in a background tab, and the moment the sentence
+   * appeared when no event carries one.
+   *
+   * Keyed on the sentence so it is read once per step: the activity object itself is rebuilt on
+   * every frame of the stream, and `since` is read outside the reactive context for that reason.
+   */
+  private readonly startedAt = linkedSignal<string, number>({
     source: () => this.activity().label,
-    computation: () => 0,
+    computation: () => {
+      const since = untracked(() => this.activity().since)
+      const parsed = since ? Date.parse(since) : Number.NaN
+      return Number.isNaN(parsed) ? Date.now() : parsed
+    },
   })
 
   /**
@@ -39,12 +68,17 @@ export class AgentActivityComponent {
 
   /** The counter, shown once the step has lasted long enough to be worth timing. */
   protected readonly elapsed = computed<string | null>(() => {
-    const seconds = this.seconds()
-    return seconds >= ELAPSED_THRESHOLD_SECONDS ? `${seconds}s` : null
+    // A step started by the server can be timestamped slightly ahead of this clock.
+    const seconds = Math.max(0, Math.floor((this.now() - this.startedAt()) / 1000))
+    if (seconds < ELAPSED_THRESHOLD_SECONDS) return null
+    if (seconds < SECONDS_PER_MINUTE) return `${seconds}s`
+    return `${Math.floor(seconds / SECONDS_PER_MINUTE)}m ${seconds % SECONDS_PER_MINUTE}s`
   })
 
   constructor() {
-    const ticker = setInterval(() => this.seconds.update((value) => value + 1), 1000)
+    // Outside the Angular zone on purpose: the signal write refreshes this line, where a
+    // zone-patched timer would run a change-detection pass over the whole chat every second.
+    const ticker = this.zone.runOutsideAngular(() => setInterval(() => this.now.set(Date.now()), 1000))
     inject(DestroyRef).onDestroy(() => clearInterval(ticker))
   }
 }

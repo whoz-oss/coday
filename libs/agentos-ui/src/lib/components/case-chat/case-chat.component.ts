@@ -379,12 +379,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   readonly showToolCallsOverride = input(true)
   protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
 
-  /**
-   * What the agent is doing right now — shown in place of a spinner while the turn runs.
-   * Derived from the event stream, so it follows the turn without any extra bookkeeping.
-   */
-  protected readonly activity = computed<AgentActivity>(() => describeAgentActivity(this.events()))
-
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
 
@@ -480,6 +474,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
   protected readonly delegations = computed(() => buildDelegations(this.events()))
+
+  /**
+   * What the agent is doing right now — shown in place of a spinner while the turn runs.
+   * Derived from the event stream and from the delegation pairing above, so it follows the turn
+   * without any extra bookkeeping.
+   */
+  protected readonly activity = computed<AgentActivity>(() => describeAgentActivity(this.events(), this.delegations()))
 
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()

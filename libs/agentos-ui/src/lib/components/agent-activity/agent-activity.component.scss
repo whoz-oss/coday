@@ -1,9 +1,15 @@
 // The running-turn line: a pulsing mark, the current step, and how long it has been running.
 // Square mark and muted tones on purpose — same visual family as the tool call rows.
 
-.agent-activity {
+:host {
+  // The flex item of the messages column is this host, not the div inside it.
+  display: block;
   flex-shrink: 0;
   align-self: flex-start;
+  max-width: 100%;
+}
+
+.agent-activity {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -34,6 +40,19 @@
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
     color: var(--color-text-tertiary, #888);
+  }
+
+  // Read by screen readers only — see the comment on the element.
+  &__announce {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
