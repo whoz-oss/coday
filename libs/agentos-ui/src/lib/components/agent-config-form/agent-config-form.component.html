@@ -124,6 +124,12 @@
               </div>
             }
           }
+          @if (configAgentExposureWarning()) {
+            <p class="agent-config-form__integration-warning" role="note">
+              This agent can read the AgentOS configuration and also has a network integration or sub-agents: what it
+              reads could be sent outside without any confirmation. Prefer a dedicated configuration agent without them.
+            </p>
+          }
         </fieldset>
       }
 

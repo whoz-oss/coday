@@ -241,13 +241,17 @@
                   </div>
                   @if (!item.answer) {
                     <div [attr.data-question-controls]="item.event.id" class="case-chat__question-controls">
-                      <agentos-question-panel
-                        variant="inline"
-                        [questionEvent]="item.event"
-                        [disabled]="isRunning()"
-                        (answered)="onQuestionAnswered(item.event, $event)"
-                        (cancelled)="onQuestionCancelled()"
-                      />
+                      @if (configChangeQuestionIds().has(item.event.id)) {
+                        <agentos-config-change-card [caseId]="caseId" [questionId]="item.event.id" />
+                      } @else {
+                        <agentos-question-panel
+                          variant="inline"
+                          [questionEvent]="item.event"
+                          [disabled]="isRunning()"
+                          (answered)="onQuestionAnswered(item.event, $event)"
+                          (cancelled)="onQuestionCancelled()"
+                        />
+                      }
                     </div>
                   }
                 </div>

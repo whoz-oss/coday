@@ -234,6 +234,13 @@
     }
   }
 
+  &__integration-warning {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-warning, #b25000);
+    line-height: 1.4;
+  }
+
   &__integration-restriction {
     margin: 0 0 0 1.5rem;
     font-size: 0.8rem;
