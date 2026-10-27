@@ -145,7 +145,7 @@ agentos:
     # Grant the case exchange to every agent that does not mention CASE_FILE_EXCHANGE in its
     # integrations map. An agent that lists the key decides for itself; an empty list opts out.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
-      case-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT:false}
+      case-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT:true}
     # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
     # declared, also requires the invoking user to hold Namespace READ; a run without an
     # identified user is denied. Write access follows the user's Namespace WRITE right.
