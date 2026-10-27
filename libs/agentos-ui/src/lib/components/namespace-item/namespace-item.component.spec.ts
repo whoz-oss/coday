@@ -1,25 +1,17 @@
-import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { Namespace } from '@whoz-oss/agentos-api-client'
-import { UsageConfigurationService } from '../../services/usage-configuration.service'
 import { NamespaceItemComponent } from './namespace-item.component'
 
 describe('NamespaceItemComponent', () => {
   const namespace = { id: 'ns', name: 'Test namespace' } as Namespace
-  let usageEnabled: ReturnType<typeof signal<boolean>>
 
   beforeEach(() => {
-    usageEnabled = signal(false)
-    TestBed.configureTestingModule({
-      imports: [NamespaceItemComponent],
-      providers: [{ provide: UsageConfigurationService, useValue: { enabled: usageEnabled } }],
-    })
+    TestBed.configureTestingModule({ imports: [NamespaceItemComponent] })
   })
 
-  function render(gitAvailable = false) {
+  function render() {
     const fixture = TestBed.createComponent(NamespaceItemComponent)
     fixture.componentRef.setInput('namespace', namespace)
-    fixture.componentRef.setInput('gitAvailable', gitAvailable)
     fixture.detectChanges()
     return fixture
   }
@@ -32,33 +24,34 @@ describe('NamespaceItemComponent', () => {
     expect(buttons).not.toEqual(expect.arrayContaining(['Members', 'Git', 'Usage and costs']))
   })
 
-  it('places Members and conditionally Git and Usage in the kebab contract', () => {
-    usageEnabled.set(true)
-    const fixture = render(true)
-    const labels = fixture.componentInstance['menuItems']().map((item) => item.label)
-    expect(labels).toEqual(expect.arrayContaining(['Members', 'Git', 'Usage and costs']))
+  it('keeps only the destructive action in the kebab, settings live in the settings layout', () => {
+    const labels = render().componentInstance['menuItems'].map((item) => item.label)
+    expect(labels).toEqual(['Delete namespace'])
   })
 
-  it('omits unavailable Git and Usage menu actions', () => {
-    const labels = render()
-      .componentInstance['menuItems']()
-      .map((item) => item.label)
-    expect(labels).toContain('Members')
-    expect(labels).not.toEqual(expect.arrayContaining(['Git', 'Usage and costs']))
-  })
-
-  it.each([
-    ['members', 'membersRequested'],
-    ['git', 'gitRequested'],
-    ['usage', 'usageRequested'],
-  ])('emits the namespace for the %s menu action', (key, output) => {
-    usageEnabled.set(true)
-    const component = render(true).componentInstance
+  it('asks for confirmation before emitting deleteRequested', () => {
+    const component = render().componentInstance
     const emit = jest.fn()
-    ;(
-      component[output as keyof NamespaceItemComponent] as { subscribe: (handler: (value: Namespace) => void) => void }
-    ).subscribe(emit)
-    component['onMenuAction'](key)
+    component.deleteRequested.subscribe(emit)
+
+    component['onMenuAction']('delete')
+    expect(component['pendingDelete']()).toBe(true)
+    expect(emit).not.toHaveBeenCalled()
+
+    component['onDeleteConfirmed']()
+    expect(component['pendingDelete']()).toBe(false)
     expect(emit).toHaveBeenCalledWith(namespace)
+  })
+
+  it('cancels a pending deletion without emitting', () => {
+    const component = render().componentInstance
+    const emit = jest.fn()
+    component.deleteRequested.subscribe(emit)
+
+    component['onMenuAction']('delete')
+    component['onDeleteCancelled']()
+
+    expect(component['pendingDelete']()).toBe(false)
+    expect(emit).not.toHaveBeenCalled()
   })
 })

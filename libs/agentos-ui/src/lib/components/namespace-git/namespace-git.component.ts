@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http'
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { ActivatedRoute, Router } from '@angular/router'
+import { ActivatedRoute } from '@angular/router'
 import {
   AuthSettingDto,
   NamespaceGit,
@@ -57,7 +57,6 @@ const AUTH_TYPE_LABELS: Readonly<Record<string, string>> = {
 })
 export class NamespaceGitComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
-  private readonly router = inject(Router)
   private readonly gitApi = inject(NamespaceGitControllerService)
   private readonly authSettingState = inject(AuthSettingConfigStateService)
   private readonly destroyRef = inject(DestroyRef)
@@ -217,10 +216,6 @@ export class NamespaceGitComponent implements OnInit {
         }
         this.isSaving.set(false)
       })
-  }
-
-  cancel(): void {
-    void this.router.navigate(['/agentos/namespaces'])
   }
 
   private messageOf(error: HttpErrorResponse): string {
