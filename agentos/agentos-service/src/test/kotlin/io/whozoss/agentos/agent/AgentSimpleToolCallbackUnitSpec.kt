@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.collections.shouldHaveSize
@@ -23,6 +24,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -327,7 +329,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val questionId = UUID.randomUUID()
-            val plan = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree("""{"schema":"test-plan"}""")
+            val plan = jacksonObjectMapper().readTree("""{"schema":"test-plan"}""")
             val askingTool =
                 object : StandardTool<Nothing> {
                     override val name = "ASK__ask"
@@ -358,7 +360,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "configure"))).toList()
 
             events.filterIsInstance<ToolResponseEvent>().single().structuredOutput shouldBe plan
-            events.filterIsInstance<io.whozoss.agentos.sdk.caseEvent.QuestionEvent>().single().id shouldBe questionId
+            events.filterIsInstance<QuestionEvent>().single().id shouldBe questionId
         }
 
         "convertEventsToMessages produces placeholder for orphaned ToolRequestEvent in history" {

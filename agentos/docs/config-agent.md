@@ -41,9 +41,11 @@ agent    resumes with the per-operation report
 
 ## Rights
 
-The user is responsible for what they apply. There is no ceiling and no rule beyond the REST API:
-the agent may propose anything, and each write is accepted or refused by the REST controllers with
-the identity of the user who clicked.
+The user is responsible for what they apply. There is no ceiling on rights: each write is accepted
+or refused by the REST controllers with the identity of the user who clicked. The planner only
+refuses what the tool could not show or apply faithfully: a scope outside the current namespace, a
+personal scope for agents and skills (they have none), a secret outside a credential field, a path
+through a list.
 
 - **Writes** run inside the HTTP request of the Apply click, through the public `*Api` interfaces
   (`AgentConfigApi`, `SkillApi`, `PromptApi`, `IntegrationConfigApi`, `AuthSettingApi`, and
@@ -60,7 +62,8 @@ the identity of the user who clicked.
   never lands in a plain field. A proposal containing `****` or a value at a secret path is refused.
 - **Bean Validation** runs on every DTO before the in-process call, since `@Valid` only applies to
   HTTP requests: a value the REST API would refuse with 400 is reported `INVALID`.
-- **Reads** (tool and card) use the same rules as the REST read endpoints, owner fallback included
+- **Reads** (tool and card) use the same rules as the REST read endpoints: a list follows the list
+  endpoints, a single entity follows its `GET /{id}` guard, owner fallback included
   (`AgentOsPermissionEvaluator.hasPermission(userId, ...)`). They are bounded to the platform, the
   current namespace and the caller's own entities, because what the tool reads is stored in the case
   history. Integration parameters are masked closed by default (only keys such as `baseUrl` are
@@ -101,6 +104,17 @@ plan in the same case marks the older ones `SUPERSEDED` for good. If the answer 
 (the case was closed meanwhile), the report says `answerPosted: false` and the plan stays open, so
 applying it again re-sends it. The answer text carries only fixed templates and codes, never
 parameter values, since it is replayed to the LLM.
+
+## Where the tools exist
+
+The tools are granted in `AgentServiceImpl.resolveAgentDefinition` only:
+
+- chat runs (AgentSimple and AgentAdvanced) get them;
+- the definition preview lists them, and `propose` answers `NO_CASE` there, since it has no case;
+- `GET /api/tools` and `POST /api/tools/invoke` never see them, since they resolve integration
+  configs only;
+- a LOOP workflow can only call them by naming them, and then takes the `AwaitAnswer` of `propose`
+  as a failed step.
 
 ## Limits
 

@@ -18,6 +18,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator
 import io.whozoss.agentos.skill.Skill
+import io.whozoss.agentos.skill.SkillAuthorizationService
 import io.whozoss.agentos.skill.SkillService
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
@@ -28,24 +29,11 @@ import io.whozoss.agentos.prompt.toDto as promptToDto
 import io.whozoss.agentos.skill.toDto as skillToDto
 
 /**
- * A configuration entity as the config agent sees it: identity, scope, and its REST DTO as JSON.
- * [dto] is unmasked; callers mask it with [ConfigSecretMasker] before it leaves the server.
- */
-data class ConfigEntity(
-    val kind: ConfigKind,
-    val id: UUID,
-    val name: String,
-    val namespaceId: UUID?,
-    val userId: UUID?,
-    val dto: JsonNode,
-    val enabled: Boolean? = null,
-    val integrationType: String? = null,
-    val fromFilesystem: Boolean = false,
-)
-
-/**
  * Reads the configuration on behalf of an explicit user, outside any HTTP request (agent tools)
- * or inside one (the card's view), with the same rights as the REST read endpoints.
+ * or inside one (the card's view), with the same rights as the REST read endpoints: a list follows
+ * the list endpoints (platform layer for anyone, namespace layer with Namespace READ, the caller's own
+ * overlays), and a single entity follows its `GET /{id}` guard, `hasPermission(id, <Entity>, READ)`
+ * with the owner fallback, plus the namespace fallback `SkillController` adds for filesystem skills.
  *
  * Reads are bounded to the platform, the current namespace and the caller's own overlays: an
  * entity owned by another user is never returned, even to a super-admin, because what the config
@@ -63,15 +51,16 @@ class ConfigReadService(
     private val integrationTypeRegistry: IntegrationTypeRegistry,
     private val integrationsProperties: IntegrationsProperties,
     private val permissionEvaluator: AgentOsPermissionEvaluator,
+    private val skillAuthorizationService: SkillAuthorizationService,
     private val objectMapper: ObjectMapper,
 ) {
-    /** The entity [id] of [kind] if [callerId] may read it within [namespaceId]'s bounds, else null. */
+    /** The entity [id] of [kind] if [callerId] may read it by id within [namespaceId]'s bounds, else null. */
     fun find(
         kind: ConfigKind,
         id: UUID,
         callerId: UUID,
         namespaceId: UUID,
-    ): ConfigEntity? = load(kind, id)?.takeIf { canRead(it, callerId, namespaceId) }
+    ): ConfigEntity? = load(kind, id)?.takeIf { inBounds(it, callerId, namespaceId) && canReadById(it, callerId) }
 
     /** Entities of [kind] the caller may read, in the requested [scope]. */
     fun list(
@@ -87,11 +76,11 @@ class ConfigReadService(
                 if (scope.includesNamespace && namespaceReadable) addAll(loadScope(kind, namespaceId = namespaceId, userId = null))
                 if (scope.includesMine) addAll(loadOwned(kind, callerId, namespaceId))
             }
-        return candidates.distinctBy { it.id }.filter { canRead(it, callerId, namespaceId) }.sortedBy { it.name.lowercase() }
+        return candidates.distinctBy { it.id }.filter { inBounds(it, callerId, namespaceId) && canReadListed(it, callerId, namespaceId) }.sortedBy { it.name.lowercase() }
     }
 
     /**
-     * The entity of [kind] named [name] at exactly ([scopeNamespaceId], [scopeUserId]), if readable.
+     * The entity of [kind] named [name] at exactly ([scopeNamespaceId], [scopeUserId]), if readable by id.
      * Name matching follows the entity's own uniqueness rule: case-insensitive for agents and
      * skills, case-sensitive for prompts, integrations and auth settings.
      */
@@ -106,7 +95,7 @@ class ConfigReadService(
         val caseInsensitive = kind == ConfigKind.AGENT || kind == ConfigKind.SKILL
         return loadScope(kind, scopeNamespaceId, scopeUserId)
             .filter { it.name.equals(name, ignoreCase = caseInsensitive) }
-            .firstOrNull { canRead(it, callerId, namespaceId) }
+            .firstOrNull { inBounds(it, callerId, namespaceId) && canReadById(it, callerId) }
     }
 
     fun masked(entity: ConfigEntity): JsonNode = ConfigSecretMasker.mask(entity.kind, entity.dto)
@@ -124,8 +113,8 @@ class ConfigReadService(
         val superAdmin = userService.findById(callerId)?.isAdmin == true
         val namespaceRole =
             when {
-                permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) -> "ADMIN"
-                permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) -> "MEMBER"
+                canWriteNamespace(callerId, namespaceId) -> "ADMIN"
+                canReadNamespace(callerId, namespaceId) -> "MEMBER"
                 else -> "NONE"
             }
         return mapOf(
@@ -142,21 +131,43 @@ class ConfigReadService(
         namespaceId: UUID,
     ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
 
-    private fun canRead(
+    private fun canWriteNamespace(
+        callerId: UUID,
+        namespaceId: UUID,
+    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+
+    /** Platform, current namespace and the caller's own overlays only, whatever the caller's rights. */
+    private fun inBounds(
         entity: ConfigEntity,
         callerId: UUID,
         namespaceId: UUID,
-    ): Boolean {
-        val inBounds =
-            (entity.namespaceId == null || entity.namespaceId == namespaceId) &&
-                (entity.userId == null || entity.userId == callerId)
-        return when {
-            !inBounds -> false
-            entity.userId == callerId -> true
-            entity.namespaceId == null -> true
-            else -> canReadNamespace(callerId, namespaceId)
+    ): Boolean =
+        (entity.namespaceId == null || entity.namespaceId == namespaceId) &&
+            (entity.userId == null || entity.userId == callerId)
+
+    /** The list endpoints' rule. */
+    private fun canReadListed(
+        entity: ConfigEntity,
+        callerId: UUID,
+        namespaceId: UUID,
+    ): Boolean = entity.userId == callerId || entity.namespaceId == null || canReadNamespace(callerId, namespaceId)
+
+    /** The `GET /{id}` rule of the entity's controller. */
+    private fun canReadById(
+        entity: ConfigEntity,
+        callerId: UUID,
+    ): Boolean =
+        permissionEvaluator.hasPermission(callerId.toString(), entityTypeOf(entity.kind), entity.id.toString(), Action.READ) ||
+            (entity.kind == ConfigKind.SKILL && skillAuthorizationService.canRead(callerId.toString(), entity.id))
+
+    private fun entityTypeOf(kind: ConfigKind): EntityType =
+        when (kind) {
+            ConfigKind.AGENT -> EntityType.AGENT_CONFIG
+            ConfigKind.SKILL -> EntityType.SKILL
+            ConfigKind.PROMPT -> EntityType.PROMPT
+            ConfigKind.INTEGRATION -> EntityType.INTEGRATION_CONFIG
+            ConfigKind.AUTH_SETTING -> EntityType.AUTH_SETTING
         }
-    }
 
     private fun load(
         kind: ConfigKind,
@@ -270,16 +281,4 @@ class ConfigReadService(
             userId = setting.userId,
             dto = objectMapper.valueToTree(authSettingToDto(setting)),
         )
-}
-
-/** Which layers a `read` list covers. */
-enum class ReadScope(
-    val includesPlatform: Boolean,
-    val includesNamespace: Boolean,
-    val includesMine: Boolean,
-) {
-    ALL(true, true, true),
-    PLATFORM(true, false, false),
-    NAMESPACE(false, true, false),
-    MINE(false, false, true),
 }

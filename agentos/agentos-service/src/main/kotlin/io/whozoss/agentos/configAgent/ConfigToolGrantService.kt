@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.tool.ToolResolverService
 import mu.KLogging
 import org.springframework.stereotype.Service
+import java.time.Clock
 import java.util.UUID
 
 /**
@@ -17,6 +18,14 @@ import java.util.UUID
  * The tools are bound to the run's user, namespace, case and agent here, at grant time, because
  * the [io.whozoss.agentos.sdk.tool.ToolContext] the agents build at execution carries neither the
  * agent name nor the case reliably.
+ *
+ * Called from `AgentServiceImpl.resolveAgentDefinition` only, so:
+ * - chat runs (AgentSimple and AgentAdvanced) get the tools;
+ * - the definition preview lists them, and `propose` answers `NO_CASE` there, since it has no case;
+ * - `GET /api/tools` and `POST /api/tools/invoke` never see them: `ToolInvokeService` resolves
+ *   integration configs only;
+ * - a LOOP workflow can only call them by naming them, and `LoopWorkflowRunnerService` then takes the
+ *   `AwaitAnswer` of `propose` as a failed step.
  */
 @Service
 class ConfigToolGrantService(
@@ -24,6 +33,7 @@ class ConfigToolGrantService(
     private val configPlanner: ConfigPlanner,
     private val toolResolverService: ToolResolverService,
     private val objectMapper: ObjectMapper,
+    private val clock: Clock,
 ) {
     fun grantTools(
         integrations: Map<String, List<String>?>?,
@@ -32,14 +42,17 @@ class ConfigToolGrantService(
         userId: UUID?,
         caseId: UUID?,
     ): List<StandardTool<*>> {
-        if (integrations == null || !integrations.containsKey(ConfigAgentIntegration.TYPE)) return emptyList()
-        val allowed = integrations[ConfigAgentIntegration.TYPE]
-        if (allowed != null && allowed.isEmpty()) return emptyList()
-        logger.debug { "Granting ${ConfigAgentIntegration.TYPE} tools to agent '$agentName' (allowed=$allowed)" }
-        return listOf(
-            ConfigReadTool(userId, namespaceId, configReadService, objectMapper),
-            ConfigProposeTool(userId, namespaceId, caseId, agentName, configPlanner, objectMapper),
-        ).filter { toolResolverService.isToolAllowed(it.name, ConfigAgentIntegration.TYPE, allowed) }
+        val allowed = integrations?.get(ConfigAgentIntegration.TYPE)
+        val granted = integrations?.containsKey(ConfigAgentIntegration.TYPE) == true && allowed?.isEmpty() != true
+        return if (granted) {
+            logger.debug { "Granting ${ConfigAgentIntegration.TYPE} tools to agent '$agentName' (allowed=$allowed)" }
+            listOf(
+                ConfigReadTool(userId, namespaceId, configReadService, objectMapper),
+                ConfigProposeTool(userId, namespaceId, caseId, agentName, configPlanner, objectMapper, clock),
+            ).filter { toolResolverService.isToolAllowed(it.name, ConfigAgentIntegration.TYPE, allowed) }
+        } else {
+            emptyList()
+        }
     }
 
     companion object : KLogging()

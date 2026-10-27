@@ -46,7 +46,7 @@ class ConfigReadTool(
           "properties": {
             "kind": {
               "type": "string",
-              "enum": ["agent", "skill", "prompt", "integration", "auth-setting", "integration-type", "deployment", "capabilities"]
+              "enum": [${ReadKind.wireNames}]
             },
             "id": {
               "type": "string",
@@ -66,34 +66,46 @@ class ConfigReadTool(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
-        val userId = callerId ?: return ToolExecutionResult.error("Reading the configuration needs a user: this run has none.", errorType = "NO_USER")
-        val kind = input?.kind?.trim()?.lowercase()
-        val scope =
-            input?.scope?.trim()?.uppercase()?.let { raw -> ReadScope.entries.firstOrNull { it.name == raw } }
-                ?: ReadScope.ALL
-        val id = input?.id?.trim()?.takeIf { it.isNotEmpty() }
-        val result: Any =
-            when (kind) {
-                "capabilities" -> configReadService.capabilities(userId, namespaceId)
-                "integration-type" -> integrationTypes(id) ?: return notFound("integration type '$id'")
-                "deployment" -> deployment(userId)
-                else -> {
-                    val configKind =
-                        kindOf(kind) ?: return ToolExecutionResult.error(
-                            "Unknown kind '${input?.kind}'. Use one of: agent, skill, prompt, integration, auth-setting, integration-type, deployment, capabilities.",
-                            errorType = "INVALID_INPUT",
-                        )
-                    if (id == null) {
-                        configReadService.list(configKind, scope, userId, namespaceId).map { summary(it) }
-                    } else {
-                        val uuid = runCatching { UUID.fromString(id) }.getOrNull() ?: return notFound("$kind '$id'")
-                        val entity = configReadService.find(configKind, uuid, userId, namespaceId) ?: return notFound("$kind '$id'")
-                        summary(entity) + mapOf("value" to configReadService.masked(entity))
-                    }
-                }
-            }
-        return ToolExecutionResult.success(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result))
+        val kind = ReadKind.fromWire(input?.kind)
+        return when {
+            callerId == null -> ToolExecutionResult.error("Reading the configuration needs a user: this run has none.", errorType = "NO_USER")
+            kind == null ->
+                ToolExecutionResult.error("Unknown kind '${input?.kind}'. Use one of: ${ReadKind.wireNames}.", errorType = "INVALID_INPUT")
+            else ->
+                read(kind, input?.id?.trim()?.takeIf { it.isNotEmpty() }, scopeOf(input?.scope), callerId)
+                    ?.let { ToolExecutionResult.success(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(it)) }
+                    ?: ToolExecutionResult.error("No ${kind.wireName} '${input?.id}' visible to the user.", errorType = "NOT_FOUND")
+        }
     }
+
+    /** The value to return, or null when the requested entity is not visible to the user. */
+    private fun read(
+        kind: ReadKind,
+        id: String?,
+        scope: ReadScope,
+        userId: UUID,
+    ): Any? =
+        when (kind) {
+            ReadKind.CAPABILITIES -> configReadService.capabilities(userId, namespaceId)
+            ReadKind.INTEGRATION_TYPE -> integrationTypes(id)
+            ReadKind.DEPLOYMENT -> deployment(userId)
+            else -> entities(kind.configKind!!, id, scope, userId)
+        }
+
+    private fun entities(
+        kind: ConfigKind,
+        id: String?,
+        scope: ReadScope,
+        userId: UUID,
+    ): Any? =
+        if (id == null) {
+            configReadService.list(kind, scope, userId, namespaceId).map(::summary)
+        } else {
+            runCatching { UUID.fromString(id) }
+                .getOrNull()
+                ?.let { configReadService.find(kind, it, userId, namespaceId) }
+                ?.let { summary(it) + mapOf("value" to configReadService.masked(it)) }
+        }
 
     private fun integrationTypes(type: String?): Any? =
         if (type == null) {
@@ -121,17 +133,5 @@ class ConfigReadTool(
             if (entity.fromFilesystem) put("origin", "FILESYSTEM (read-only)")
         }
 
-    private fun notFound(what: String) = ToolExecutionResult.error("No $what visible to the user.", errorType = "NOT_FOUND")
-
-    companion object {
-        fun kindOf(raw: String?): ConfigKind? =
-            when (raw) {
-                "agent" -> ConfigKind.AGENT
-                "skill" -> ConfigKind.SKILL
-                "prompt" -> ConfigKind.PROMPT
-                "integration" -> ConfigKind.INTEGRATION
-                "auth-setting", "auth_setting", "authsetting" -> ConfigKind.AUTH_SETTING
-                else -> null
-            }
-    }
+    private fun scopeOf(raw: String?): ReadScope = raw?.trim()?.uppercase()?.let { value -> ReadScope.entries.firstOrNull { it.name == value } } ?: ReadScope.ALL
 }

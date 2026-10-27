@@ -44,7 +44,10 @@ interface SubAgentRow {
  * - `enabled`: signal-based toggle so OnPush change detection reacts immediately
  * - `toolsControl`: free-text input for comma-separated tool names (empty = all tools allowed)
  */
-/** Built-in integration letting an agent read and propose AgentOS configuration changes. */
+/**
+ * Built-in integration letting an agent read and propose AgentOS configuration changes. Mirrors
+ * `ConfigAgentIntegration.TYPE`, pinned by `ConfigAgentIntegrationUnitSpec`.
+ */
 const CONFIG_AGENT_TYPE = 'AGENTOS_CONFIG'
 
 /** Integration types that can send data off the server: network clients and process or Git access. */

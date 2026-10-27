@@ -597,6 +597,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /**
    * Questions asked by `AGENTOS_CONFIG__propose`: their plan rides on the propose call's
    * ToolResponseEvent, and they are answered through the configuration card, not the question panel.
+   * The tool name mirrors `ConfigAgentIntegration.PROPOSE_TOOL_NAME`, pinned by `ConfigAgentIntegrationUnitSpec`.
    */
   protected readonly configChangeQuestionIds = computed(() => {
     const ids = new Set<string>()

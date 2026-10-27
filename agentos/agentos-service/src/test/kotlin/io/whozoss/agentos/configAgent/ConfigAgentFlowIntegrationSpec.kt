@@ -45,15 +45,24 @@ import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /**
  * The config agent end to end, on the real security chain and embedded Neo4j: the propose tool
@@ -65,7 +74,7 @@ import java.util.UUID
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
-@Import(EmbeddedNeo4jTestConfiguration::class)
+@Import(EmbeddedNeo4jTestConfiguration::class, ConfigAgentFlowIntegrationSpec.MovableClockConfiguration::class)
 class ConfigAgentFlowIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
@@ -86,6 +95,9 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var userService: UserService
 
     @MockkBean(relaxed = true) lateinit var caseService: CaseService
+
+    /** The plan's expiry and the views read this clock, so a test can move time forward. */
+    @Autowired lateinit var clock: MovableClock
 
     private lateinit var alice: User // ADMIN of the namespace, the user the agent runs for
     private lateinit var bob: User // may write in the case, nothing else
@@ -215,9 +227,16 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             permissionService.grantPermission(carol.id.toString(), EntityType.CASE, case.id.toString(), PermissionRelation.ADMIN)
             devAgent =
                 agentConfigRepository.save(
-                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespace.id, name = "dev-$suffix", enabled = true),
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespace.id,
+                        name = "dev-$suffix",
+                        enabled = true,
+                        subAgents = listOf("helper-$suffix"),
+                    ),
                 )
             actAs(alice)
+            clock.now = Instant.now()
             every { caseService.addMessage(any(), any(), any(), any(), any()) } answers {
                 val questionId = arg<UUID?>(3)
                 if (questionId != null) {
@@ -289,7 +308,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             apply(older.questionId, view(older.questionId)["planHash"].asText()).andExpect(status().isConflict)
         }
 
-        "a proposal that would mislabel its scope or hide a secret in a plain field is refused" {
+        "a proposal with a mislabelled scope, a secret in a plain field, a path through a list or an unknown reference is refused" {
             val result =
                 proposeTool(alice).executeWithJson(
                     """
@@ -309,6 +328,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             result.output shouldContain "agents have no personal scope"
             result.output shouldContain "cannot hold a secret"
             result.output shouldContain "must be this namespace"
+            result.output shouldContain "goes through a list"
             result.output shouldContain "unknown reference"
         }
 
@@ -371,6 +391,57 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             stored.namespaceId shouldBe namespace.id
         }
 
+        "a proposal above the operation limit is refused" {
+            val operations =
+                (1..ConfigAgentLimits.MAX_OPERATIONS + 1).joinToString(",") { index ->
+                    """{ "ref": "p$index", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                       "value": { "name": "limit-$index-$suffix", "content": ["x"] } }"""
+                }
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """{ "operations": [ $operations ] }""",
+                    ToolContext(namespaceId = namespace.id, userId = alice.id, userExternalId = null, caseEvents = emptyList()),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "at most ${ConfigAgentLimits.MAX_OPERATIONS} operations"
+        }
+
+        "an expired plan can no longer be applied" {
+            val proposal = propose(alice, promptPlan("late"))
+            val planHash = view(proposal.questionId)["planHash"].asText()
+
+            clock.now = clock.now.plus(ConfigAgentLimits.PROPOSAL_TTL).plusSeconds(1)
+
+            view(proposal.questionId)["state"].asText() shouldBe "EXPIRED"
+            apply(proposal.questionId, planHash).andExpect(status().isConflict)
+        }
+
+        "a second click while the plan is being applied is refused, apply or reject" {
+            val proposal = propose(alice, promptPlan("busy"))
+            val planHash = view(proposal.questionId)["planHash"].asText()
+            val answering = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            every { caseService.addMessage(any(), any(), any(), any(), any()) } answers {
+                answering.countDown()
+                release.await(10, TimeUnit.SECONDS)
+            }
+
+            var firstStatus = 0
+            val first = thread { firstStatus = apply(proposal.questionId, planHash).andReturn().response.status }
+            answering.await(10, TimeUnit.SECONDS) shouldBe true
+            apply(proposal.questionId, planHash).andExpect(status().isConflict)
+            mockMvc
+                .perform(
+                    post("/api/cases/${case.id}/config-changes/${proposal.questionId}/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"),
+                ).andExpect(status().isConflict)
+            release.countDown()
+            first.join()
+            firstStatus shouldBe 200
+        }
+
         "an invalid proposal is returned to the LLM instead of reaching the user" {
             val result =
                 proposeTool(alice).executeWithJson(
@@ -391,5 +462,23 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             result.output shouldContain "unknown reference"
             result.output shouldContain "deployTo"
         }
+    }
+
+    /** A clock a test can move; primary so it replaces the application's UTC clock in this context. */
+    class MovableClock(
+        var now: Instant,
+    ) : Clock() {
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+
+        override fun instant(): Instant = now
+    }
+
+    @TestConfiguration
+    class MovableClockConfiguration {
+        @Bean
+        @Primary
+        fun movableClock(): MovableClock = MovableClock(Instant.now())
     }
 }

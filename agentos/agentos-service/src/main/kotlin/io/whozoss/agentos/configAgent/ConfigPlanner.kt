@@ -4,71 +4,21 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import org.springframework.stereotype.Service
-import java.time.Instant
 import java.util.UUID
-
-/** What the LLM sends to `AGENTOS_CONFIG__propose`. Every field is optional so a malformed call gets a precise error. */
-data class ProposeInput(
-    val summary: String? = null,
-    val operations: List<OperationInput>? = null,
-)
-
-data class OperationInput(
-    val ref: String? = null,
-    val kind: String? = null,
-    val action: String? = null,
-    val id: String? = null,
-    val scope: ScopeInput? = null,
-    val value: JsonNode? = null,
-    val changes: List<ChangeInput>? = null,
-    val secrets: List<SecretInput>? = null,
-    val deployTo: String? = null,
-)
-
-data class ScopeInput(
-    val namespaceId: String? = null,
-    val userId: String? = null,
-)
-
-data class ChangeInput(
-    val path: String? = null,
-    val value: JsonNode? = null,
-    val remove: Boolean? = null,
-)
-
-data class SecretInput(
-    val path: String? = null,
-    val label: String? = null,
-)
-
-/** Who proposes, for whom, and where the question will be asked. */
-data class ProposalContext(
-    val callerId: UUID,
-    val namespaceId: UUID,
-    val caseId: UUID,
-    val agentName: String,
-    val questionId: UUID,
-    val now: Instant,
-)
-
-sealed interface PlanningResult {
-    data class Planned(
-        val plan: ConfigChangePlan,
-    ) : PlanningResult
-
-    /** One message per offending operation (prefixed by its ref), so the LLM can fix its call. */
-    data class Invalid(
-        val errors: List<String>,
-    ) : PlanningResult
-}
 
 /**
  * Turns a proposal into a frozen [ConfigChangePlan], or explains why it cannot.
  *
- * Validation only rejects what the REST API would refuse anyway (missing name, immutable field,
- * unknown target, prompt attached after creation...) or what would make the plan ambiguous
- * (unknown or cyclic `$op` reference, secret written by the LLM). It never restricts what the user
- * may do: rights are checked at apply time by the REST layer, with the identity of who clicks.
+ * Validation rejects three things, none of them a right:
+ * - what the REST API would refuse anyway: missing name, immutable field, unknown target, prompt
+ *   attached after its creation;
+ * - what would make the plan ambiguous: an unknown or cyclic `$op` reference, a secret written by
+ *   the LLM;
+ * - what the tool could not show or apply faithfully: a scope outside the current namespace (reads
+ *   and statuses are bounded to it), a personal scope for agents and skills (they have none, and the
+ *   REST API would silently ignore it), a secret outside a credential field, a path through a list.
+ *
+ * Rights are checked at apply time by the REST layer, with the identity of the user who clicks.
  */
 @Service
 class ConfigPlanner(
@@ -80,28 +30,42 @@ class ConfigPlanner(
         context: ProposalContext,
     ): PlanningResult {
         val rawOperations = input.operations.orEmpty()
-        if (rawOperations.isEmpty()) return PlanningResult.Invalid(listOf("operations: at least one operation is required."))
-        if (rawOperations.size > ConfigAgentLimits.MAX_OPERATIONS) {
-            return PlanningResult.Invalid(listOf("operations: at most ${ConfigAgentLimits.MAX_OPERATIONS} operations per proposal, got ${rawOperations.size}."))
+        return when {
+            rawOperations.isEmpty() -> PlanningResult.Invalid(listOf("operations: at least one operation is required."))
+            rawOperations.size > ConfigAgentLimits.MAX_OPERATIONS ->
+                PlanningResult.Invalid(listOf("operations: at most ${ConfigAgentLimits.MAX_OPERATIONS} operations per proposal, got ${rawOperations.size}."))
+            else -> planOperations(rawOperations, input.summary, context)
         }
+    }
 
+    private fun planOperations(
+        rawOperations: List<OperationInput>,
+        summary: String?,
+        context: ProposalContext,
+    ): PlanningResult {
         val refs = rawOperations.mapIndexed { index, op -> op.ref?.trim()?.takeIf { it.isNotEmpty() } ?: "op${index + 1}" }
         val errors = mutableListOf<String>()
         refs.groupBy { it }.filterValues { it.size > 1 }.keys.forEach { errors += "ref '$it': refs must be unique." }
-
         val planned =
             rawOperations.mapIndexedNotNull { index, op ->
                 val ref = refs[index]
                 val opErrors = mutableListOf<String>()
-                val result = planOperation(ref, op, refs.toSet(), context, opErrors)
-                errors += opErrors.map { "$ref: $it" }
-                result
+                planOperation(ref, op, refs.toSet(), context, opErrors).also { errors += opErrors.map { "$ref: $it" } }
             }
-        if (errors.isNotEmpty()) return PlanningResult.Invalid(errors)
+        val order = orderOperations(planned.withIndex().toList())
+        return when {
+            errors.isNotEmpty() -> PlanningResult.Invalid(errors)
+            order == null -> PlanningResult.Invalid(listOf("operations: the {\"\$op\": ...} references form a cycle."))
+            else -> PlanningResult.Planned(freeze(planned, order, summary, context))
+        }
+    }
 
-        val order =
-            orderOperations(planned) ?: return PlanningResult.Invalid(listOf("operations: the {\"\$op\": ...} references form a cycle."))
-        val warnings = warnings(planned, context)
+    private fun freeze(
+        planned: List<PlannedOperation>,
+        order: List<String>,
+        summary: String?,
+        context: ProposalContext,
+    ): ConfigChangePlan {
         val plan =
             ConfigChangePlan(
                 questionId = context.questionId,
@@ -109,14 +73,14 @@ class ConfigPlanner(
                 namespaceId = context.namespaceId,
                 recipientUserId = context.callerId,
                 agentName = context.agentName,
-                summary = input.summary?.trim()?.takeIf { it.isNotEmpty() } ?: "Configuration change",
+                summary = summary?.trim()?.takeIf { it.isNotEmpty() } ?: DEFAULT_SUMMARY,
                 createdAt = context.now,
                 expiresAt = context.now.plus(ConfigAgentLimits.PROPOSAL_TTL),
                 order = order,
                 operations = planned,
-                warnings = warnings,
+                warnings = warnings(planned, context),
             )
-        return PlanningResult.Planned(plan.copy(planHash = planHash(plan)))
+        return plan.copy(planHash = planHash(plan))
     }
 
     /** Hash of the plan without its own `planHash` field. */
@@ -139,11 +103,25 @@ class ConfigPlanner(
         val action = enumOrNull<ConfigAction>(op.action)
         if (kind == null) errors += "kind must be one of ${ConfigKind.entries.joinToString()}."
         if (action == null) errors += "action must be one of ${ConfigAction.entries.joinToString()}."
-        if (kind == null || action == null) return null
-        if (action !in allowedActions(kind)) {
-            errors += "$action is not supported for $kind (allowed: ${allowedActions(kind).joinToString()})."
-            return null
+        return when {
+            kind == null || action == null -> null
+            action !in allowedActions(kind) -> {
+                errors += "$action is not supported for $kind (allowed: ${allowedActions(kind).joinToString()})."
+                null
+            }
+            else -> planSupported(ref, kind, action, op, allRefs, context, errors)
         }
+    }
+
+    private fun planSupported(
+        ref: String,
+        kind: ConfigKind,
+        action: ConfigAction,
+        op: OperationInput,
+        allRefs: Set<String>,
+        context: ProposalContext,
+        errors: MutableList<String>,
+    ): PlannedOperation? {
         val secrets = secretSlots(kind, op.secrets, errors)
         if (ConfigJson.containsMask(op.value) || op.changes.orEmpty().any { ConfigJson.containsMask(it.value) }) {
             errors += "'${ConfigJson.MASK}' is a masked secret, never a value: declare the path in 'secrets' so the user types it."
@@ -163,12 +141,25 @@ class ConfigPlanner(
         allRefs: Set<String>,
         context: ProposalContext,
         errors: MutableList<String>,
-    ): PlannedOperation? {
-        val value = op.value as? ObjectNode
-        if (value == null) {
-            errors += "CREATE needs 'value', an object with the fields of the new $kind."
-            return null
+    ): PlannedOperation? =
+        when (val value = op.value) {
+            is ObjectNode -> planCreateOf(ref, kind, value, op, secrets, allRefs, context, errors)
+            else -> {
+                errors += "CREATE needs 'value', an object with the fields of the new $kind."
+                null
+            }
         }
+
+    private fun planCreateOf(
+        ref: String,
+        kind: ConfigKind,
+        value: ObjectNode,
+        op: OperationInput,
+        secrets: List<SecretSlot>,
+        allRefs: Set<String>,
+        context: ProposalContext,
+        errors: MutableList<String>,
+    ): PlannedOperation? {
         val name = value.path("name").asText("").trim()
         if (name.isEmpty()) errors += "CREATE needs 'value.name'."
         listOf("id", "namespaceId", "userId").filter { value.has(it) }.forEach {
@@ -191,18 +182,19 @@ class ConfigPlanner(
             } else {
                 null
             }
-        if (scope == null) return null
-        return PlannedOperation(
-            ref = ref,
-            kind = kind,
-            action = ConfigAction.CREATE,
-            scope = scope,
-            value = value,
-            secrets = secrets,
-            deployTo = deployTo,
-            dependsOn = dependsOn.toList().sorted(),
-            affects = affects(scope.namespaceId, scope.userId),
-        )
+        return scope?.let {
+            PlannedOperation(
+                ref = ref,
+                kind = kind,
+                action = ConfigAction.CREATE,
+                scope = it,
+                value = value,
+                secrets = secrets,
+                deployTo = deployTo,
+                dependsOn = dependsOn.toList().sorted(),
+                affects = affects(it.namespaceId, it.userId),
+            )
+        }
     }
 
     private fun planUpdate(
@@ -214,13 +206,28 @@ class ConfigPlanner(
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? {
-        val current = targetEntity(kind, op.id, context, errors) ?: return null
-        val target = current.toTarget()
+        val current = targetEntity(kind, op.id, context, errors)
         val changes = op.changes.orEmpty()
-        if (changes.isEmpty() && secrets.isEmpty()) {
-            errors += "UPDATE needs 'changes' (or 'secrets')."
-            return null
+        return when {
+            current == null -> null
+            changes.isEmpty() && secrets.isEmpty() -> {
+                errors += "UPDATE needs 'changes' (or 'secrets')."
+                null
+            }
+            else -> planUpdateOf(ref, kind, current, changes, secrets, allRefs, errors)
         }
+    }
+
+    private fun planUpdateOf(
+        ref: String,
+        kind: ConfigKind,
+        current: ConfigEntity,
+        changes: List<ChangeInput>,
+        secrets: List<SecretSlot>,
+        allRefs: Set<String>,
+        errors: MutableList<String>,
+    ): PlannedOperation {
+        val target = current.toTarget()
         val masked = configReadService.masked(current)
         val secretPaths = secrets.map { it.path }.toSet()
         val planned =
@@ -275,17 +282,17 @@ class ConfigPlanner(
         op: OperationInput,
         context: ProposalContext,
         errors: MutableList<String>,
-    ): PlannedOperation? {
-        val target = targetEntity(kind, op.id, context, errors)?.toTarget() ?: return null
-        val scopeNamespace = if (action == ConfigAction.DEPLOY || action == ConfigAction.UNDEPLOY) context.namespaceId else target.namespaceId
-        return PlannedOperation(
-            ref = ref,
-            kind = kind,
-            action = action,
-            target = target,
-            affects = affects(scopeNamespace, target.userId),
-        )
-    }
+    ): PlannedOperation? =
+        targetEntity(kind, op.id, context, errors)?.toTarget()?.let { target ->
+            val scopeNamespace = if (action == ConfigAction.DEPLOY || action == ConfigAction.UNDEPLOY) context.namespaceId else target.namespaceId
+            PlannedOperation(
+                ref = ref,
+                kind = kind,
+                action = action,
+                target = target,
+                affects = affects(scopeNamespace, target.userId),
+            )
+        }
 
     private fun targetEntity(
         kind: ConfigKind,
@@ -294,12 +301,13 @@ class ConfigPlanner(
         errors: MutableList<String>,
     ): ConfigEntity? {
         val uuid = id?.let { runCatching { UUID.fromString(it.trim()) }.getOrNull() }
-        if (uuid == null) {
+        return if (uuid == null) {
             errors += "'id' must be the id of an existing ${kind.name.lowercase()}, as returned by ${ConfigAgentIntegration.READ_TOOL_NAME}."
-            return null
-        }
-        return configReadService.find(kind, uuid, context.callerId, context.namespaceId).also {
-            if (it == null) errors += "no ${kind.name.lowercase()} with id $uuid is visible to the user."
+            null
+        } else {
+            configReadService.find(kind, uuid, context.callerId, context.namespaceId).also {
+                if (it == null) errors += "no ${kind.name.lowercase()} with id $uuid is visible to the user."
+            }
         }
     }
 
@@ -310,11 +318,20 @@ class ConfigPlanner(
         scope: ScopeInput?,
         context: ProposalContext,
         errors: MutableList<String>,
-    ): PlannedScope? {
+    ): PlannedScope? =
         if (scope == null) {
-            errors += "CREATE needs 'scope': {\"namespaceId\": \"${context.namespaceId}\" or null for platform, \"userId\": \"me\" or null}."
-            return null
+            errors += "CREATE needs 'scope': {\"namespaceId\": \"current\" or null for platform, \"userId\": \"me\" or null}."
+            null
+        } else {
+            scopeFrom(kind, scope, context, errors)
         }
+
+    private fun scopeFrom(
+        kind: ConfigKind,
+        scope: ScopeInput,
+        context: ProposalContext,
+        errors: MutableList<String>,
+    ): PlannedScope {
         val namespaceId =
             scope.namespaceId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { raw ->
                 val id = if (raw.equals("current", ignoreCase = true)) context.namespaceId else runCatching { UUID.fromString(raw) }.getOrNull()
@@ -386,12 +403,9 @@ class ConfigPlanner(
         path: String,
     ): String? {
         val segments = ConfigJson.segments(path)
-        var node: JsonNode? = dto
-        segments.dropLast(1).forEachIndexed { index, segment ->
-            node = node?.get(segment)
-            if (node?.isArray == true) return "/" + segments.take(index + 1).joinToString("/")
-        }
-        return null
+        return (1 until segments.size)
+            .map { length -> ConfigJson.pointerOf(segments.take(length)) }
+            .firstOrNull { prefix -> ConfigJson.valueAt(dto, prefix)?.isArray == true }
     }
 
     private fun warnings(
@@ -411,19 +425,19 @@ class ConfigPlanner(
     }
 
     /** Topological order of the `$op` dependencies, ties broken by a fixed rank then by plan order; null on a cycle. */
-    private fun orderOperations(operations: List<PlannedOperation>): List<String>? {
-        val remaining = operations.withIndex().toMutableList()
-        val done = linkedSetOf<String>()
-        while (remaining.isNotEmpty()) {
-            val next =
-                remaining
-                    .filter { (_, op) -> op.dependsOn.all { it in done } }
-                    .minWithOrNull(compareBy({ rank(it.value) }, { it.index }))
-                    ?: return null
-            done += next.value.ref
-            remaining.remove(next)
+    private tailrec fun orderOperations(
+        remaining: List<IndexedValue<PlannedOperation>>,
+        done: List<String> = emptyList(),
+    ): List<String>? {
+        val next =
+            remaining
+                .filter { (_, op) -> op.dependsOn.all { it in done } }
+                .minWithOrNull(compareBy({ rank(it.value) }, { it.index }))
+        return when {
+            remaining.isEmpty() -> done
+            next == null -> null
+            else -> orderOperations(remaining - next, done + next.value.ref)
         }
-        return done.toList()
     }
 
     private fun rank(op: PlannedOperation): Int =
@@ -487,6 +501,8 @@ class ConfigPlanner(
 
     companion object {
         const val MAX_PATH_DEPTH = 3
+
+        private const val DEFAULT_SUMMARY = "Configuration change"
 
         /** Kinds that only exist at platform or namespace level. */
         private val SHARED_ONLY_KINDS = setOf(ConfigKind.AGENT, ConfigKind.SKILL)
