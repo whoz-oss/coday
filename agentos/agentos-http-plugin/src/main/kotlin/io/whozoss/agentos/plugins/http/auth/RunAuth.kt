@@ -20,6 +20,10 @@ import mu.KLogging
  * again. Concurrent calls of the run wait for that single resolution. A resolution that throws is answered
  * as [AuthHeaderSpec.Missing], the detail staying in the logs.
  *
+ * A run is one agent turn. Every user message starts a new one, which resolves the tools again and so
+ * builds a new [RunAuth] (`CaseRuntime` -> `AgentServiceImpl.findAgentByName` ->
+ * `ToolResolverService.resolveToolsForRun` -> `provideTools`).
+ *
  * @param resolve Builds the spec. The credential provider is not suspending and may block until the user
  *   answers, so it runs on the IO dispatcher, interrupted when the run is cancelled.
  */
