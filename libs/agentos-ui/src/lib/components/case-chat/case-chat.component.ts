@@ -56,6 +56,7 @@ import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
+import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import {
@@ -164,6 +165,7 @@ function hasActiveSelection(): boolean {
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
+    ConfigChangeCardComponent,
     DelegationCardComponent,
     ConfirmDialogComponent,
   ],
@@ -590,6 +592,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
 
     return items
+  })
+
+  /**
+   * Questions asked by `AGENTOS_CONFIG__propose`: their plan rides on the propose call's
+   * ToolResponseEvent, and they are answered through the configuration card, not the question panel.
+   */
+  protected readonly configChangeQuestionIds = computed(() => {
+    const ids = new Set<string>()
+    for (const e of this.events()) {
+      if (e.type !== 'ToolResponseEvent') continue
+      const response = e as ToolResponseEvent
+      const questionId = response.structuredOutput?.questionId
+      if (response.toolName === 'AGENTOS_CONFIG__propose' && typeof questionId === 'string') ids.add(questionId)
+    }
+    return ids
   })
 
   /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */

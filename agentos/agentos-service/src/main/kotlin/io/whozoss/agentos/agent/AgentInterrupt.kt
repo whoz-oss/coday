@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import java.util.UUID
 
@@ -80,11 +81,19 @@ sealed class AgentInterrupt(
      *   No artificial fallback is applied: if the upstream context has no userId, this
      *   stays null and the [io.whozoss.agentos.sdk.caseEvent.QuestionEvent] remains
      *   unaddressed.
+     * @param questionId Id given to the emitted [io.whozoss.agentos.sdk.caseEvent.QuestionEvent].
+     *   Allocated by the tool when it must reference the question before it exists (the config
+     *   agent stores it in its frozen plan); a fresh id otherwise.
+     * @param structuredOutput Machine-readable payload recorded on the interrupted call's
+     *   [io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent], which is persisted and exposed to
+     *   clients but never sent to the LLM. Null for a plain question.
      */
     class AwaitAnswer(
         val question: String,
         val options: List<String>? = null,
         val questionType: QuestionType = QuestionType.FREE_TEXT,
         val userId: UUID? = null,
+        val questionId: UUID = UUID.randomUUID(),
+        val structuredOutput: JsonNode? = null,
     ) : AgentInterrupt("Awaiting user answer")
 }

@@ -141,4 +141,20 @@ class AgentInterruptHandlerUnitSpec : StringSpec({
         finished.agentId shouldBe agentId
         finished.agentName shouldBe "test-agent"
     }
+
+    "QuestionEvent takes the id the tool allocated, so a frozen plan can reference it" {
+        val questionId = UUID.randomUUID()
+        val emitted = mutableListOf<CaseEvent>()
+        val collector = FlowCollector<CaseEvent> { emitted.add(it) }
+
+        collector.emitInterruptAndFinishEvents(
+            buildAgent(),
+            AgentInterrupt.AwaitAnswer(question = "Apply?", questionId = questionId),
+            namespaceId,
+            caseId,
+            logger,
+        )
+
+        emitted.filterIsInstance<QuestionEvent>().single().id shouldBe questionId
+    }
 })
