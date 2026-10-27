@@ -1,10 +1,20 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.entity.validateAndResolveScope
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -14,9 +24,11 @@ import java.util.UUID
  * Delegates persistence to [IntegrationConfigRepository].
  *
  * Four scope modes are supported: platform `(null, null)`, namespace-shared `(ns, null)`,
- * user-global `(null, user)`, and user×namespace `(ns, user)`. The service accepts all four;
- * authorization (only Super Admins may write platform-level configs) is enforced in the
- * controller where the security context is available.
+ * user-global `(null, user)`, and user×namespace `(ns, user)`. Authorization is enforced
+ * by this service's `*ForCaller` methods ([getByIdForCaller], [findByIdsForCaller],
+ * [findFilteredForCaller], [createForCaller], [updateForCaller], [deleteForCaller]).
+ * The inherited [EntityService] methods are unchecked internal composition and must not
+ * be called directly from controllers or agent tools.
  *
  * Uniqueness on the (namespaceId, userId, name) triple is enforced on [create] (409 on
  * conflict) and on [update] when a rename would collide with another row in the same scope.
@@ -36,6 +48,9 @@ class IntegrationConfigServiceImpl(
      */
     private val policies: List<IntegrationConfigPolicy> = emptyList(),
     private val integrationsProperties: IntegrationsProperties = IntegrationsProperties(),
+    private val namespaceService: NamespaceService,
+    private val scopePolicy: IntegrationConfigScopePolicy,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -142,12 +157,40 @@ class IntegrationConfigServiceImpl(
                 }
             }
 
-    override fun findFiltered(
+    // -------------------------------------------------------------------------
+    // Unchecked composition surface
+    // -------------------------------------------------------------------------
+
+    override fun unsecuredCreate(entity: IntegrationConfig): IntegrationConfig = create(entity)
+
+    override fun unsecuredUpdate(entity: IntegrationConfig): IntegrationConfig = update(entity)
+
+    override fun unsecuredFindById(id: UUID, withRemoved: Boolean): IntegrationConfig? = findById(id, withRemoved)
+
+    // --- Authorized surface ---
+
+    override fun getByIdForCaller(caller: Caller, id: UUID, action: Action): IntegrationConfig {
+        val config = findById(id, withRemoved = true)
+            ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, config, action)
+        return config
+    }
+
+    override fun findByIdsForCaller(caller: Caller, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig> {
+        if (ids.size > MAX_BATCH_SIZE) throw BadRequestException("Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE")
+        if (ids.isEmpty()) return emptyList()
+
+        val rows = findByIds(ids.toSet(), withRemoved)
+        val visible = scopedAccessPolicy.filterVisible(caller, EntityType.INTEGRATION_CONFIG, rows, Action.READ)
+        val byId = rows.filter { it.id in visible }.associateBy { it.metadata.id }
+        return ids.mapNotNull { byId[it] }
+    }
+
+    override fun findFilteredForCaller(
+        caller: Caller,
         namespaceId: UUID?,
         namespaceIsNone: Boolean,
-        callerId: UUID,
         userRequested: Boolean,
-        canReadNamespace: (UUID) -> Boolean,
     ): List<IntegrationConfig> =
         when {
             // Explicit platform scope, available to all authenticated users.
@@ -155,7 +198,7 @@ class IntegrationConfigServiceImpl(
 
             // NS-shared layer of a specific namespace (no userId param) : check READ permission
             namespaceId != null && !userRequested -> {
-                if (!canReadNamespace(namespaceId)) {
+                if (!scopedAccessPolicy.canReadNamespace(caller, namespaceId)) {
                     emptyList()
                 } else {
                     findByNamespaceShared(namespaceId)
@@ -170,14 +213,57 @@ class IntegrationConfigServiceImpl(
                         namespaceId != null -> { nsId -> nsId == namespaceId }
                         else -> { _ -> true }
                     }
-                findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+                findByUserId(caller.userId).filter { nsFilter(it.namespaceId) }
             }
 
             // No filter at all : surface the caller's own overlays
             else -> {
-                findByUserId(callerId)
+                findByUserId(caller.userId)
             }
         }
+
+    override fun createForCaller(caller: Caller, entity: IntegrationConfig): IntegrationConfig {
+        if (entity.namespaceId == null && entity.userId == null) {
+            if (!caller.isAdmin) throw AccessDeniedException("Platform-level IntegrationConfig requires Super Admin")
+            return create(entity.copy(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, userId = null))
+        }
+        scopePolicy.requireScopeAllowed(userId = entity.userId, integrationType = entity.integrationType)
+        val scope = validateAndResolveScope(
+            entityLabel = "IntegrationConfig",
+            caller = caller,
+            requestedUserId = entity.userId,
+            requestedNamespaceId = entity.namespaceId,
+            namespaceService = namespaceService,
+            scopedAccessPolicy = scopedAccessPolicy,
+        )
+        return create(entity.copy(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = scope.namespaceId, userId = scope.userId))
+    }
+
+    override fun updateForCaller(caller: Caller, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig {
+        val existing = findById(id) ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, existing, Action.WRITE)
+        scopedAccessPolicy.requireAdminForPlatform(caller, "IntegrationConfig", existing)
+        scopePolicy.requireScopeAllowed(userId = existing.userId, integrationType = existing.integrationType)
+        // id, namespaceId, userId and integrationType are preserved from the persisted row —
+        // this is the mass-assignment guard, now a business rule owned by the service.
+        return update(
+            existing.copy(
+                name = changes.name,
+                integrationType = existing.integrationType,
+                description = changes.description,
+                parameters = changes.parameters,
+                authSettingName = changes.authSettingName,
+                autoGrant = changes.autoGrant,
+            )
+        )
+    }
+
+    override fun deleteForCaller(caller: Caller, id: UUID) {
+        val existing = findById(id) ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, existing, Action.DELETE)
+        scopedAccessPolicy.requireAdminForPlatform(caller, "IntegrationConfig", existing)
+        if (!delete(id)) throw ResourceNotFoundException("IntegrationConfig not found: $id")
+    }
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
@@ -386,6 +472,7 @@ class IntegrationConfigServiceImpl(
             "Only one is allowed per namespace."
 
     companion object : KLogging() {
+        private const val MAX_BATCH_SIZE = 1000
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "integration_config_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
         private const val SINGLETON_KEY_CONSTRAINT_NAME = "integration_config_singleton_key_unique"

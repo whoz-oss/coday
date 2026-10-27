@@ -46,26 +46,36 @@ import java.util.UUID
 class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
-    @Autowired lateinit var mockMvc: MockMvc
-    @Autowired lateinit var integrationConfigService: IntegrationConfigService
+    @Autowired
+    lateinit var mockMvc: MockMvc
 
-    @MockkBean(relaxed = true) lateinit var userService: UserService
-    @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
-    @MockkBean(relaxed = true) lateinit var namespaceService: NamespaceService
+    @Autowired
+    lateinit var integrationConfigService: IntegrationConfigService
+
+    @MockkBean(relaxed = true)
+    lateinit var userService: UserService
+
+    @MockkBean(relaxed = true)
+    lateinit var permissionService: PermissionService
+
+    @MockkBean(relaxed = true)
+    lateinit var namespaceService: NamespaceService
 
     private val aliceId = UUID.randomUUID()
-    private val alice = User(
-        metadata = EntityMetadata(id = aliceId),
-        externalId = "alice@example.com",
-        email = "alice@example.com",
-        isAdmin = false,
-    )
+    private val alice =
+        User(
+            metadata = EntityMetadata(id = aliceId),
+            externalId = "alice@example.com",
+            email = "alice@example.com",
+            isAdmin = false,
+        )
     private val namespaceId = UUID.randomUUID()
-    private val ns = Namespace(
-        metadata = EntityMetadata(id = namespaceId),
-        externalId = "ns-${namespaceId}",
-        name = "ns",
-    )
+    private val ns =
+        Namespace(
+            metadata = EntityMetadata(id = namespaceId),
+            externalId = "ns-$namespaceId",
+            name = "ns",
+        )
 
     init {
         beforeEach {
@@ -73,10 +83,20 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
             every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
             every { namespaceService.findById(namespaceId) } returns ns
             every {
-                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+                permissionService.hasPermission(
+                    aliceId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.READ,
+                )
             } returns true
             every {
-                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    aliceId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns true
         }
 
@@ -85,25 +105,28 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "POST /api/integration-configs without body returns 400" {
-            mockMvc.perform(
-                post("/api/integration-configs").contentType(MediaType.APPLICATION_JSON),
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs").contentType(MediaType.APPLICATION_JSON),
+                ).andExpect(status().isBadRequest)
         }
 
         "POST with blank name returns 400" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "", "integrationType": "JIRA" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "POST with blank integrationType returns 400" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "JIRA_PROD", "integrationType": "" }"""),
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "JIRA_PROD", "integrationType": "" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         // -------------------------------------------------------------------------
@@ -112,71 +135,87 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
         "POST with neither namespaceId nor userId returns 403 for non-admin (platform scope)" {
             // alice.isAdmin = false — platform scope is restricted to Super Admins
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "name": "JIRA_PROD", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isForbidden)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "name": "JIRA_PROD", "integrationType": "JIRA" }"""),
+                ).andExpect(status().isForbidden)
         }
 
         "POST NS-shared (namespaceId only) returns 201" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "JIRA_PROD_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "namespaceId": "$namespaceId", "name": "JIRA_PROD_${UUID.randomUUID()}", "integrationType": "JIRA" }""",
+                        ),
+                ).andExpect(status().isCreated)
         }
 
         "POST with parameters returns 201" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "SLACK_DEV_${UUID.randomUUID()}", "integrationType": "SLACK", "parameters": { "webhookUrl": "https://hooks.slack.com/xxx" } }"""),
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "namespaceId": "$namespaceId", "name": "SLACK_DEV_${UUID.randomUUID()}", "integrationType": "SLACK", "parameters": { "webhookUrl": "https://hooks.slack.com/xxx" } }""",
+                        ),
+                ).andExpect(status().isCreated)
         }
 
         "POST user-global (userId=me) returns 201" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "userId": "$aliceId", "name": "GLOBAL_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "userId": "$aliceId", "name": "GLOBAL_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
+                ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.userId").value(aliceId.toString()))
                 .andExpect(jsonPath("$.namespaceId").doesNotExist())
         }
 
         "POST user-namespace with READ permission returns 201" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId", "name": "NS_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "namespaceId": "$namespaceId", "userId": "$aliceId", "name": "NS_${UUID.randomUUID()}", "integrationType": "JIRA" }""",
+                        ),
+                ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.userId").value(aliceId.toString()))
                 .andExpect(jsonPath("$.namespaceId").value(namespaceId.toString()))
         }
 
         "POST user-namespace without READ permission returns 403" {
             val foreignNs = UUID.randomUUID()
-            every { namespaceService.findById(foreignNs) } returns Namespace(
-                metadata = EntityMetadata(id = foreignNs),
-                externalId = "foreign-$foreignNs",
-                name = "foreign",
-            )
+            every { namespaceService.findById(foreignNs) } returns
+                Namespace(
+                    metadata = EntityMetadata(id = foreignNs),
+                    externalId = "foreign-$foreignNs",
+                    name = "foreign",
+                )
 
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$foreignNs", "userId": "$aliceId", "name": "FOREIGN_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isForbidden)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "namespaceId": "$foreignNs", "userId": "$aliceId", "name": "FOREIGN_${UUID.randomUUID()}", "integrationType": "JIRA" }""",
+                        ),
+                ).andExpect(status().isForbidden)
         }
 
         "POST with mismatched body.userId returns 400 (mass-assignment guard)" {
             val attackerUserId = UUID.randomUUID()
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "userId": "$attackerUserId", "name": "ATTACK_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "userId": "$attackerUserId", "name": "ATTACK_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "POST with dangling namespaceId returns 404 for an authorised caller" {
@@ -186,40 +225,53 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
             val unknownNs = UUID.randomUUID()
             every { namespaceService.findById(unknownNs) } returns null
             every {
-                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.READ)
+                permissionService.hasPermission(
+                    aliceId.toString(),
+                    EntityType.NAMESPACE,
+                    unknownNs.toString(),
+                    Action.READ,
+                )
             } returns true
 
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isNotFound)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "integrationType": "JIRA" }""",
+                        ),
+                ).andExpect(status().isNotFound)
         }
 
         "POST with dangling namespaceId returns 403 for a non-member (existence-leak guard)" {
             val unknownNs = UUID.randomUUID()
             every { namespaceService.findById(unknownNs) } returns null
 
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isForbidden)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "integrationType": "JIRA" }""",
+                        ),
+                ).andExpect(status().isForbidden)
         }
 
         "POST duplicate triple returns 409" {
             val name = "DUP_${UUID.randomUUID()}"
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId", "name": "$name", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId", "name": "$name", "integrationType": "JIRA" }"""),
+                ).andExpect(status().isCreated)
 
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId", "name": "$name", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isConflict)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId", "name": "$name", "integrationType": "JIRA" }"""),
+                ).andExpect(status().isConflict)
         }
 
         // -------------------------------------------------------------------------
@@ -228,68 +280,72 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "POST user-global config of a denied type (MCP_HTTP) returns 403" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
-                        {
-                          "userId": "$aliceId",
-                          "name": "DENIED_${UUID.randomUUID()}",
-                          "integrationType": "MCP_HTTP"
-                        }
-                        """.trimIndent(),
-                    ),
-            ).andExpect(status().isForbidden)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "userId": "$aliceId",
+                              "name": "DENIED_${UUID.randomUUID()}",
+                              "integrationType": "MCP_HTTP"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isForbidden)
         }
 
         "POST user-namespace config of a denied type (HTTP_API) returns 403 even with namespace READ" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
-                        {
-                          "namespaceId": "$namespaceId",
-                          "userId": "$aliceId",
-                          "name": "DENIED_${UUID.randomUUID()}",
-                          "integrationType": "HTTP_API"
-                        }
-                        """.trimIndent(),
-                    ),
-            ).andExpect(status().isForbidden)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "namespaceId": "$namespaceId",
+                              "userId": "$aliceId",
+                              "name": "DENIED_${UUID.randomUUID()}",
+                              "integrationType": "HTTP_API"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isForbidden)
         }
 
         "POST NS-shared config of a denied type (MCP_HTTP) still returns 201" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
-                        {
-                          "namespaceId": "$namespaceId",
-                          "name": "SHARED_MCP_${UUID.randomUUID()}",
-                          "integrationType": "MCP_HTTP"
-                        }
-                        """.trimIndent(),
-                    ),
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "namespaceId": "$namespaceId",
+                              "name": "SHARED_MCP_${UUID.randomUUID()}",
+                              "integrationType": "MCP_HTTP"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isCreated)
         }
 
         "POST user-global config of a type outside the denied list (BASH) still returns 201" {
-            mockMvc.perform(
-                post("/api/integration-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
-                        {
-                          "userId": "$aliceId",
-                          "name": "ALLOWED_${UUID.randomUUID()}",
-                          "integrationType": "BASH"
-                        }
-                        """.trimIndent(),
-                    ),
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "userId": "$aliceId",
+                              "name": "ALLOWED_${UUID.randomUUID()}",
+                              "integrationType": "BASH"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isCreated)
         }
 
         "PUT on an existing user-scoped config of a denied type returns 404 (hidden by @HideOnAccessDenied)" {
@@ -297,30 +353,32 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
             // @PreAuthorize WRITE check passes and the controller body raises AccessDeniedException.
             // `update` carries @HideOnAccessDenied, so AccessDeniedExceptionHandler translates that
             // 403 into a 404: the endpoint deliberately never confirms the row's existence.
-            val created = integrationConfigService.create(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = null,
-                    userId = aliceId,
-                    name = "LEGACY_MCP_${UUID.randomUUID()}",
-                    integrationType = "MCP_HTTP",
-                ),
-            )
-
-            mockMvc.perform(
-                put("/api/integration-configs/${created.id}")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
-                        {
-                          "id": "${created.id}",
-                          "name": "${created.name}",
-                          "integrationType": "MCP_HTTP",
-                          "parameters": { "url": "https://evil.example.com" }
-                        }
-                        """.trimIndent(),
+            val created =
+                integrationConfigService.create(
+                    IntegrationConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = null,
+                        userId = aliceId,
+                        name = "LEGACY_MCP_${UUID.randomUUID()}",
+                        integrationType = "MCP_HTTP",
                     ),
-            ).andExpect(status().isNotFound)
+                )
+
+            mockMvc
+                .perform(
+                    put("/api/integration-configs/${created.id}")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "id": "${created.id}",
+                              "name": "${created.name}",
+                              "integrationType": "MCP_HTTP",
+                              "parameters": { "url": "https://evil.example.com" }
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isNotFound)
         }
 
         // -------------------------------------------------------------------------
@@ -329,59 +387,67 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
         "PUT /api/integration-configs/{id} with blank name returns 400" {
             val id = UUID.randomUUID()
-            mockMvc.perform(
-                put("/api/integration-configs/$id")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "$id", "namespaceId": "$namespaceId", "name": "", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    put("/api/integration-configs/$id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$id", "namespaceId": "$namespaceId", "name": "", "integrationType": "JIRA" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "PUT /api/integration-configs/{id} with blank integrationType returns 400" {
             val id = UUID.randomUUID()
-            mockMvc.perform(
-                put("/api/integration-configs/$id")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "$id", "namespaceId": "$namespaceId", "name": "JIRA_PROD", "integrationType": "" }"""),
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    put("/api/integration-configs/$id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$id", "namespaceId": "$namespaceId", "name": "JIRA_PROD", "integrationType": "" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "PUT /api/integration-configs/{id} with valid payload returns 200" {
             // Owned by alice so the evaluator's ownership branch grants WRITE
             // (PermissionService is fully mocked, no entity-level membership grant).
-            val created = integrationConfigService.create(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = null,
-                    userId = aliceId,
-                    name = "GITHUB_MAIN_${UUID.randomUUID()}",
-                    integrationType = "GITHUB",
-                ),
-            )
+            val created =
+                integrationConfigService.create(
+                    IntegrationConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = null,
+                        userId = aliceId,
+                        name = "GITHUB_MAIN_${UUID.randomUUID()}",
+                        integrationType = "GITHUB",
+                    ),
+                )
 
-            mockMvc.perform(
-                put("/api/integration-configs/${created.id}")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "${created.id}", "name": "${created.name}", "integrationType": "GITHUB" }"""),
-            ).andExpect(status().isOk)
+            mockMvc
+                .perform(
+                    put("/api/integration-configs/${created.id}")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "${created.id}", "name": "${created.name}", "integrationType": "GITHUB" }"""),
+                ).andExpect(status().isOk)
         }
 
         "PUT preserves userId even when body sends another (mass-assignment guard)" {
-            val created = integrationConfigService.create(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = null,
-                    userId = aliceId,
-                    name = "PUT_${UUID.randomUUID()}",
-                    integrationType = "JIRA",
-                ),
-            )
+            val created =
+                integrationConfigService.create(
+                    IntegrationConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = null,
+                        userId = aliceId,
+                        name = "PUT_${UUID.randomUUID()}",
+                        integrationType = "JIRA",
+                    ),
+                )
             val attackerUserId = UUID.randomUUID()
 
-            mockMvc.perform(
-                put("/api/integration-configs/${created.id}")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "${created.id}", "userId": "$attackerUserId", "name": "${created.name}", "integrationType": "JIRA", "description": "renamed" }"""),
-            ).andExpect(status().isOk)
+            mockMvc
+                .perform(
+                    put("/api/integration-configs/${created.id}")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "id": "${created.id}", "userId": "$attackerUserId", "name": "${created.name}", "integrationType": "JIRA", "description": "renamed" }""",
+                        ),
+                ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.userId").value(aliceId.toString()))
                 .andExpect(jsonPath("$.description").value("renamed"))
         }
@@ -391,16 +457,18 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "DELETE on own row returns 204" {
-            val created = integrationConfigService.create(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = null,
-                    userId = aliceId,
-                    name = "DEL_${UUID.randomUUID()}",
-                    integrationType = "JIRA",
-                ),
-            )
-            mockMvc.perform(delete("/api/integration-configs/${created.id}"))
+            val created =
+                integrationConfigService.create(
+                    IntegrationConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = null,
+                        userId = aliceId,
+                        name = "DEL_${UUID.randomUUID()}",
+                        integrationType = "JIRA",
+                    ),
+                )
+            mockMvc
+                .perform(delete("/api/integration-configs/${created.id}"))
                 .andExpect(status().isNoContent)
         }
 
@@ -409,20 +477,22 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "GET non-existent id returns 404 (not 403)" {
-            mockMvc.perform(get("/api/integration-configs/${UUID.randomUUID()}"))
+            mockMvc
+                .perform(get("/api/integration-configs/${UUID.randomUUID()}"))
                 .andExpect(status().isNotFound)
         }
 
         "LIST with namespaceId=none returns only platform configs for a non-admin" {
-            val platform = integrationConfigService.create(
-                IntegrationConfig(
-                    metadata = EntityMetadata(),
-                    namespaceId = null,
-                    userId = null,
-                    name = "PLATFORM_${UUID.randomUUID()}",
-                    integrationType = "JIRA",
-                ),
-            )
+            val platform =
+                integrationConfigService.create(
+                    IntegrationConfig(
+                        metadata = EntityMetadata(),
+                        namespaceId = null,
+                        userId = null,
+                        name = "PLATFORM_${UUID.randomUUID()}",
+                        integrationType = "JIRA",
+                    ),
+                )
             integrationConfigService.create(
                 IntegrationConfig(
                     metadata = EntityMetadata(),
@@ -433,7 +503,8 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/integration-configs").param("namespaceId", "none"))
+            mockMvc
+                .perform(get("/api/integration-configs").param("namespaceId", "none"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.id == '${platform.id}')]").isNotEmpty)
                 .andExpect(jsonPath("$[?(@.userId != null || @.namespaceId != null)]").isEmpty)
@@ -451,7 +522,8 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/integration-configs?userId=me"))
+            mockMvc
+                .perform(get("/api/integration-configs?userId=me"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
         }

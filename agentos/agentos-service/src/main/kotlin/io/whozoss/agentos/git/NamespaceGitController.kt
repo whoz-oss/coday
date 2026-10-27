@@ -123,8 +123,8 @@ class NamespaceGitController(
                 )
 
         when (existing) {
-            null -> integrationConfigService.create(config)
-            else -> integrationConfigService.update(config)
+            null -> integrationConfigService.unsecuredCreate(config)
+            else -> integrationConfigService.unsecuredUpdate(config)
         }
         logger.info { "Namespace $namespaceId associated with ${request.repositoryUrl}" }
 

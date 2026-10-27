@@ -9,7 +9,10 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.mockk
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -25,7 +28,13 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
     private val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
 
     private fun newService(): IntegrationConfigServiceImpl =
-        IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy())
+        IntegrationConfigServiceImpl(
+            InMemoryIntegrationConfigRepository(),
+            IntegrationConfigMergeStrategy(),
+            scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
+            namespaceService = mockk<NamespaceService>(relaxed = true),
+            scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+        )
 
     private fun config(
         namespaceId: UUID? = UUID.randomUUID(),

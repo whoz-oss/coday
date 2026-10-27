@@ -1,13 +1,54 @@
 package io.whozoss.agentos.integrationConfig
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.entity.EntityService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.reconciliation.ConfigLookup
 import io.whozoss.agentos.security.declarative.OwnershipAware
 import java.util.UUID
 
 /**
+ * The mutable fields of an [IntegrationConfig]. [IntegrationConfig.metadata],
+ * [IntegrationConfig.namespaceId], [IntegrationConfig.userId] and
+ * [IntegrationConfig.integrationType] are server-owned and never taken from a client payload.
+ */
+data class IntegrationConfigUpdate(
+    val name: String,
+    val description: String?,
+    val parameters: JsonNode?,
+    val authSettingName: String?,
+    val autoGrant: Boolean,
+)
+
+/**
  * Service for managing [IntegrationConfig] entities.
+ *
+ * ## Two surfaces
+ *
+ * ### `*ForCaller` methods (authorized surface)
+ * [getByIdForCaller], [findByIdsForCaller], [findFilteredForCaller], [createForCaller],
+ * [updateForCaller], and [deleteForCaller] enforce authorization and are the **only** surface
+ * a controller, an agent tool, or any other user-facing entry point may call.
+ *
+ * ### `unsecured*` methods (unchecked composition surface)
+ * [unsecuredCreate], [unsecuredUpdate], and [unsecuredFindById] bypass all authorization.
+ * These names are self-reporting at the call site and greppable — a KDoc paragraph alone
+ * cannot provide the same signal. They exist for service-to-service composition and startup
+ * seeding only. A controller or an agent tool calling one of these is a bug — use the
+ * `*ForCaller` surface instead.
+ *
+ * ### Inherited [EntityService] methods (internal composition surface)
+ * [create], [update], [delete], [findByIds], [findByTriple], [findEffective], [findPlatform],
+ * [findByUserId], [findByNamespaceShared], [findActiveNamespaceSingleton],
+ * [findByNamespaceAndName], [deleteByParent], [findByParent] are **unchecked** internal
+ * composition, for service-to-service and startup-seeding use only. They must not be called
+ * directly from controllers or agent tools.
+ *
+ * ## Scope modes
+ * Four scope modes are supported: platform `(null, null)`, namespace-shared `(ns, null)`,
+ * user-global `(null, user)`, and user×namespace `(ns, user)`.
  *
  * Extends [EntityService] with integration-specific operations:
  * - [create] and [update] are kept separate (inherited from [EntityService]) because
@@ -121,29 +162,6 @@ interface IntegrationConfigService :
     ): List<IntegrationConfig>
 
     /**
-     * Scope-aware filtered listing used by [IntegrationConfigController.list].
-     *
-     * Dispatches the query based on the resolved namespace/user filter combination:
-     * - Explicit `namespaceId=none` + no user request → platform configs
-     * - Specific namespace + no user request → namespace-shared (guarded by [canReadNamespace])
-     * - User requested → user-scoped rows, optionally filtered by namespace
-     * - No filters → caller's own overlays
-     *
-     * @param namespaceId resolved namespace UUID (null when absent or `none` sentinel)
-     * @param namespaceIsNone true when the raw query parameter was the `none` sentinel
-     * @param callerId the authenticated user's id (always provided)
-     * @param userRequested true when the caller explicitly passed `userId=me`
-     * @param canReadNamespace callback to check caller READ permission on the namespace
-     */
-    fun findFiltered(
-        namespaceId: UUID?,
-        namespaceIsNone: Boolean,
-        callerId: UUID,
-        userRequested: Boolean,
-        canReadNamespace: (UUID) -> Boolean,
-    ): List<IntegrationConfig>
-
-    /**
      * The active namespace-shared row of a singleton [integrationType], or null. Unlike [findEffective]
      * it merges no layer and reads no YAML: see [IntegrationTypeConstraints].
      */
@@ -151,4 +169,120 @@ interface IntegrationConfigService :
         namespaceId: UUID,
         integrationType: String,
     ): IntegrationConfig?
+
+    // -------------------------------------------------------------------------
+    // Authorized surface — *ForCaller methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Read one config, enforcing authorization.
+     *
+     * Loads the entity including soft-deleted rows (same as the old `EntityCrudDelegate.getById`
+     * which used `withRemoved = true`). Throws [io.whozoss.agentos.exception.ResourceNotFoundException]
+     * when not found, and [org.springframework.security.access.AccessDeniedException] when the
+     * caller lacks the required [action].
+     *
+     * @param caller the authenticated principal
+     * @param id the entity to load
+     * @param action permission required — use [Action.READ] for a normal read, [Action.WRITE] for export
+     */
+    fun getByIdForCaller(caller: Caller, id: UUID, action: Action = Action.READ): IntegrationConfig
+
+    /**
+     * Batch read, permission-filtered. Never throws on denial — inaccessible ids are silently
+     * omitted. Input order and duplicates are preserved. Throws
+     * [io.whozoss.agentos.exception.BadRequestException] when `ids.size > 1000`.
+     *
+     * @param caller the authenticated principal
+     * @param ids the batch of entity ids to resolve
+     * @param withRemoved when true, includes soft-deleted entities
+     */
+    fun findByIdsForCaller(caller: Caller, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig>
+
+    /**
+     * Scope-aware listing, permission-enforced.
+     *
+     * Returns an empty list (never throws) when the caller lacks READ on the requested namespace.
+     *
+     * @param caller the authenticated principal
+     * @param namespaceId resolved namespace UUID (null when absent or the `none` sentinel)
+     * @param namespaceIsNone true when the raw query parameter was the `none` sentinel
+     * @param userRequested true when the caller explicitly passed `userId=me`
+     */
+    fun findFilteredForCaller(
+        caller: Caller,
+        namespaceId: UUID?,
+        namespaceIsNone: Boolean,
+        userRequested: Boolean,
+    ): List<IntegrationConfig>
+
+    /**
+     * Create an [IntegrationConfig], enforcing authorization and scope rules.
+     *
+     * Enforces (in this order):
+     * 1. Platform-scope guard (both null) — Super Admin only.
+     * 2. User-scope type denial via [IntegrationConfigScopePolicy].
+     * 3. Scope validation and resolution via [io.whozoss.agentos.entity.validateAndResolveScope].
+     * 4. Persistence via the unchecked [create].
+     *
+     * @param caller the authenticated principal
+     * @param entity the entity to create (id will be replaced with a freshly generated UUID)
+     */
+    fun createForCaller(caller: Caller, entity: IntegrationConfig): IntegrationConfig
+
+    /**
+     * Update an [IntegrationConfig], enforcing authorization.
+     *
+     * Enforces:
+     * 1. Existence check — [io.whozoss.agentos.exception.ResourceNotFoundException] when not found.
+     * 2. Access check — [org.springframework.security.access.AccessDeniedException] when the caller
+     *    lacks WRITE (membership or ownership).
+     * 3. Platform-scope guard — Super Admin only for platform rows.
+     * 4. User-scope type denial via [IntegrationConfigScopePolicy] (on the persisted type).
+     * 5. Applies [changes] while preserving server-owned fields (id, namespaceId, userId, integrationType).
+     *
+     * @param caller the authenticated principal
+     * @param id the entity to update
+     * @param changes the mutable fields to apply
+     */
+    fun updateForCaller(caller: Caller, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig
+
+    /**
+     * Delete an [IntegrationConfig], enforcing authorization.
+     *
+     * Enforces:
+     * 1. Existence check — [io.whozoss.agentos.exception.ResourceNotFoundException] when not found.
+     * 2. Access check — [org.springframework.security.access.AccessDeniedException] when the caller
+     *    lacks DELETE (membership or ownership).
+     * 3. Platform-scope guard — Super Admin only for platform rows.
+     *
+     * @param caller the authenticated principal
+     * @param id the entity to delete
+     */
+    fun deleteForCaller(caller: Caller, id: UUID)
+
+    // -------------------------------------------------------------------------
+    // Unchecked composition surface — unsecured* methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Unchecked: performs no authorization. For service-to-service composition and startup
+     * seeding only. A controller or an agent tool calling this is a bug — use the
+     * `*ForCaller` surface.
+     */
+    fun unsecuredCreate(entity: IntegrationConfig): IntegrationConfig
+
+    /**
+     * Unchecked: performs no authorization. For service-to-service composition and startup
+     * seeding only. A controller or an agent tool calling this is a bug — use the
+     * `*ForCaller` surface.
+     */
+    fun unsecuredUpdate(entity: IntegrationConfig): IntegrationConfig
+
+    /**
+     * Unchecked: performs no authorization. For service-to-service composition and startup
+     * seeding only. A controller or an agent tool calling this is a bug — use the
+     * `*ForCaller` surface.
+     */
+    fun unsecuredFindById(id: UUID, withRemoved: Boolean = false): IntegrationConfig?
 }

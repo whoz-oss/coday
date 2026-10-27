@@ -57,6 +57,9 @@ class GitRepositoryConfigPolicySpec :
                 InMemoryIntegrationConfigRepository(),
                 IntegrationConfigMergeStrategy(),
                 listOf(policy),
+                namespaceService = mockk(relaxed = true),
+                scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
             )
 
         val namespaceId = UUID.randomUUID()
@@ -124,8 +127,14 @@ class GitRepositoryConfigPolicySpec :
             val checkoutStore = InMemoryRepositoryCheckoutService()
             val factory = GitRepositorySettingsFactory(GitRemoteUrlValidator(GitExecutionProperties()))
             val actualProvisioner = RepositoryCheckoutProvisioner(mockk(), GitExecutionProperties(), mockk(), checkoutStore, mockk())
-            val service = IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy(),
-                listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)))
+            val service = IntegrationConfigServiceImpl(
+                InMemoryIntegrationConfigRepository(),
+                IntegrationConfigMergeStrategy(),
+                listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)),
+                namespaceService = mockk(relaxed = true),
+                scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+            )
             val dedicatedNamespace = UUID.randomUUID()
             val namespaces = mockk<NamespaceService> {
                 every { findById(dedicatedNamespace) } returns Namespace(metadata = EntityMetadata(id = dedicatedNamespace), name = "Test")
@@ -158,7 +167,14 @@ class GitRepositoryConfigPolicySpec :
         "persistence failures never queue preparation for create or update" {
             for (updating in listOf(false, true)) {
                 val repository = spyk(InMemoryIntegrationConfigRepository())
-                val service = IntegrationConfigServiceImpl(repository, IntegrationConfigMergeStrategy(), listOf(policy))
+                val service = IntegrationConfigServiceImpl(
+                    repository,
+                    IntegrationConfigMergeStrategy(),
+                    listOf(policy),
+                    namespaceService = mockk(relaxed = true),
+                    scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                    scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+                )
                 val value = if (updating) service.create(config(validParameters())) else config(validParameters())
                 clearMocks(provisioner, answers = false)
                 every { repository.save(any()) } throws DataIntegrityViolationException("storage refused the save")
@@ -271,8 +287,14 @@ class GitRepositoryConfigPolicySpec :
             }
             val factory = GitRepositorySettingsFactory(GitRemoteUrlValidator(GitExecutionProperties()))
             val actualProvisioner = RepositoryCheckoutProvisioner(mockk(), GitExecutionProperties(), storage, checkoutStore, mockk(), bindingStore)
-            val service = IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy(),
-                listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)))
+            val service = IntegrationConfigServiceImpl(
+                InMemoryIntegrationConfigRepository(),
+                IntegrationConfigMergeStrategy(),
+                listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)),
+                namespaceService = mockk(relaxed = true),
+                scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
+                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+            )
             val saved = service.create(config(validParameters()))
             val failed = checkoutStore.markStatus(checkoutStore.findByNamespaceId(namespaceId)!!.id, RepositoryCheckoutStatus.FAILED, "first clone failed")
             val corrected = saved.copy(parameters = objectMapper.valueToTree(validParameters().also {

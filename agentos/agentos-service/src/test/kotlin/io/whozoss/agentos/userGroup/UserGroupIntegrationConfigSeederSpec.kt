@@ -15,6 +15,15 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
+/**
+ * Unit tests for [UserGroupIntegrationConfigSeeder].
+ *
+ * The seeder writes through [IntegrationConfigService.unsecuredCreate], not the authorized
+ * `*ForCaller` surface: it runs at startup, on behalf of no user, so there is no caller whose
+ * privilege could be checked. The `unsecured` prefix is what makes that visible here and at the
+ * call site. These expectations name that method deliberately — stubbing or verifying the
+ * inherited `create` would pass vacuously while asserting nothing about what the seeder does.
+ */
 class UserGroupIntegrationConfigSeederSpec : StringSpec({
 
     fun seeder(
@@ -44,11 +53,11 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
             service.findByTriple(null, null, UserGroupIntegrationConfigSeeder.DEFAULT_CONFIG_NAME)
         } returns null
         val created = slot<IntegrationConfig>()
-        every { service.create(capture(created)) } answers { created.captured }
+        every { service.unsecuredCreate(capture(created)) } answers { created.captured }
 
         seeder(enabledByDefault = true, service = service).seed()
 
-        verify(exactly = 1) { service.create(any()) }
+        verify(exactly = 1) { service.unsecuredCreate(any()) }
         created.captured.namespaceId shouldBe null
         created.captured.userId shouldBe null
         created.captured.name shouldBe "USER_GROUP"
@@ -65,8 +74,8 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
 
         seeder(enabledByDefault = true, service = service).seed()
 
-        verify(exactly = 0) { service.create(any()) }
-        verify(exactly = 0) { service.update(any()) }
+        verify(exactly = 0) { service.unsecuredCreate(any()) }
+        verify(exactly = 0) { service.unsecuredUpdate(any()) }
     }
 
     "a concurrent create by another instance is not a startup failure" {
@@ -74,11 +83,11 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
         every {
             service.findByTriple(null, null, UserGroupIntegrationConfigSeeder.DEFAULT_CONFIG_NAME)
         } returns null
-        every { service.create(any()) } throws ConflictException("already exists")
+        every { service.unsecuredCreate(any()) } throws ConflictException("already exists")
 
         seeder(enabledByDefault = true, service = service).seed()
 
-        verify(exactly = 1) { service.create(any()) }
+        verify(exactly = 1) { service.unsecuredCreate(any()) }
     }
 
     "a non-conflict failure still propagates" {
@@ -86,7 +95,7 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
         every {
             service.findByTriple(null, null, UserGroupIntegrationConfigSeeder.DEFAULT_CONFIG_NAME)
         } returns null
-        every { service.create(any()) } throws ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "bad")
+        every { service.unsecuredCreate(any()) } throws ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "bad")
 
         shouldThrow<ResponseStatusException> {
             seeder(enabledByDefault = true, service = service).seed()
@@ -105,7 +114,7 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
 
         seeder(enabledByDefault = false, service = service).seed()
 
-        verify(exactly = 0) { service.create(any()) }
+        verify(exactly = 0) { service.unsecuredCreate(any()) }
     }
 
     "create-only: disabling afterwards never deletes an already-seeded config" {
@@ -117,7 +126,7 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
         seeder(enabledByDefault = false, service = service).seed()
 
         verify(exactly = 0) { service.delete(any()) }
-        verify(exactly = 0) { service.update(any()) }
-        verify(exactly = 0) { service.create(any()) }
+        verify(exactly = 0) { service.unsecuredUpdate(any()) }
+        verify(exactly = 0) { service.unsecuredCreate(any()) }
     }
 })

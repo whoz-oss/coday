@@ -4,8 +4,9 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.user.UserService
 import org.springframework.security.access.AccessDeniedException
@@ -41,6 +42,7 @@ class ScopedOwnershipCrudDelegate<ResourceType>(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val permissionService: PermissionService,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
     private val ownerOf: (Entity) -> UUID?,
     private val userIdOf: (ResourceType) -> UUID?,
     private val namespaceIdOf: (ResourceType) -> UUID?,
@@ -59,14 +61,15 @@ class ScopedOwnershipCrudDelegate<ResourceType>(
      * and persists it through the inner [crud] delegate.
      */
     fun create(resource: ResourceType): ResourceType {
-        val me = userService.getCurrentUser().id
+        val me = userService.getCurrentUser()
+        val caller = Caller.Human(me.id, me.isAdmin)
         val (resolvedNs, resolvedUser) = validateAndResolveScope(
             entityLabel = entityLabel,
-            callerId = me,
+            caller = caller,
             requestedUserId = userIdOf(resource),
             requestedNamespaceId = namespaceIdOf(resource),
             namespaceService = namespaceService,
-            permissionService = permissionService,
+            scopedAccessPolicy = scopedAccessPolicy,
         )
         return crud.createEntity(buildEntity(resource, resolvedNs, resolvedUser))
     }
@@ -132,30 +135,30 @@ data class ResolvedScope(
  * resolved [ResolvedScope].
  *
  * Rules (same for AiProvider and IntegrationConfig):
- * - [requestedUserId] must be `null` or equal to [callerId]; any other value is rejected.
+ * - [requestedUserId] must be `null` or equal to [caller.userId]; any other value is rejected.
  * - At least one of namespace or user scope must be present.
  * - Namespace-only scope requires WRITE on the namespace.
  * - Namespace + user scope requires only READ on the namespace (the user owns the record).
- * - The namespace must exist.
+ * - Authorization is checked before existence; the namespace existence check follows.
  *
  * @param entityLabel Human-readable entity name used in error messages (e.g. `"AiProvider"`).
- * @param callerId UUID of the authenticated caller.
+ * @param caller The authenticated principal making the request.
  * @param requestedUserId The `userId` field from the incoming DTO body.
  * @param requestedNamespaceId The `namespaceId` field from the incoming DTO body.
  */
 fun validateAndResolveScope(
     entityLabel: String,
-    callerId: UUID,
+    caller: Caller,
     requestedUserId: UUID?,
     requestedNamespaceId: UUID?,
     namespaceService: NamespaceService,
-    permissionService: PermissionService,
+    scopedAccessPolicy: ScopedAccessPolicy,
 ): ResolvedScope {
-    if (requestedUserId != null && requestedUserId != callerId) {
+    if (requestedUserId != null && requestedUserId != caller.userId) {
         throw BadRequestException("userId in body must match authenticated user or be omitted")
     }
     val resolvedNs = requestedNamespaceId
-    val resolvedUser = if (requestedUserId != null) callerId else null
+    val resolvedUser = if (requestedUserId != null) caller.userId else null
 
     if (resolvedNs == null && resolvedUser == null) {
         throw BadRequestException("must provide namespaceId, userId, or both")
@@ -163,17 +166,7 @@ fun validateAndResolveScope(
 
     if (resolvedNs != null) {
         val requiredAction = if (resolvedUser != null) Action.READ else Action.WRITE
-        if (!permissionService.hasPermission(
-                callerId.toString(),
-                EntityType.NAMESPACE,
-                resolvedNs.toString(),
-                requiredAction,
-            )
-        ) {
-            throw AccessDeniedException(
-                "Cannot create $entityLabel in namespace $resolvedNs (${requiredAction.name} required)",
-            )
-        }
+        scopedAccessPolicy.requireNamespacePermission(caller, resolvedNs, requiredAction, entityLabel)
         if (namespaceService.findById(resolvedNs) == null) {
             throw ResourceNotFoundException("Namespace not found: $resolvedNs")
         }

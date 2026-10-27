@@ -71,7 +71,13 @@ class AuthSettingScopeContractSpec :
                     permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
                 } returns true
                 val service = AuthSettingServiceImpl(repository, AuthSettingMergeStrategy(), permissionService, userService)
-                val controller = AuthSettingController(service, mockk<NamespaceService>(), userService, permissionService)
+                val controller = AuthSettingController(
+                    service,
+                    mockk<NamespaceService>(),
+                    userService,
+                    permissionService,
+                    io.whozoss.agentos.permissions.ScopedAccessPolicy(permissionService),
+                )
 
                 controller.list(case.namespaceParam, case.userParam).map { it.id } shouldContainExactlyInAnyOrder
                     case.expected.map { it.id }

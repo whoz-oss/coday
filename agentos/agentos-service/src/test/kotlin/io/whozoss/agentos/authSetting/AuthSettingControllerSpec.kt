@@ -60,7 +60,13 @@ class AuthSettingControllerSpec :
         val namespaceService = mockk<NamespaceService>(relaxed = true)
         val userService = mockk<UserService>(relaxed = true)
         val permissionService = mockk<PermissionService>(relaxed = true)
-        val controller = AuthSettingController(service, namespaceService, userService, permissionService)
+        val controller = AuthSettingController(
+            service,
+            namespaceService,
+            userService,
+            permissionService,
+            io.whozoss.agentos.permissions.ScopedAccessPolicy(permissionService),
+        )
 
         val namespaceId = UUID.randomUUID()
         val aliceId = UUID.randomUUID()
