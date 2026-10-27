@@ -183,11 +183,11 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
         val owner = UUID.randomUUID()
         val stranger = UUID.randomUUID().toString()
         val targetId = UUID.randomUUID()
-        every { permissionService.hasPermission(any(), EntityType.INTEGRATION_CONFIG, targetId.toString(), Action.READ) } returns false
-        every { ownershipResolver.resolveOwner(EntityType.INTEGRATION_CONFIG, targetId) } returns owner
+        every { permissionService.hasPermission(any(), EntityType.AI_PROVIDER, targetId.toString(), Action.READ) } returns false
+        every { ownershipResolver.resolveOwner(EntityType.AI_PROVIDER, targetId) } returns owner
 
-        evaluator.hasPermission(owner.toString(), EntityType.INTEGRATION_CONFIG, targetId.toString(), Action.READ) shouldBe true
-        evaluator.hasPermission(stranger, EntityType.INTEGRATION_CONFIG, targetId.toString(), Action.READ) shouldBe false
+        evaluator.hasPermission(owner.toString(), EntityType.AI_PROVIDER, targetId.toString(), Action.READ) shouldBe true
+        evaluator.hasPermission(stranger, EntityType.AI_PROVIDER, targetId.toString(), Action.READ) shouldBe false
     }
 
     "hasPermission for an explicit user passes a platform-level null target through" {

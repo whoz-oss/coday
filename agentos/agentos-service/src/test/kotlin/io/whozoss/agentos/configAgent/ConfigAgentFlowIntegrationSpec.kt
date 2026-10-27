@@ -743,6 +743,20 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             member["namespaceRole"].asText() shouldBe "MEMBER"
         }
 
+        "the owner of a personal integration reads it by id even without rights on its namespace, as the REST API allows" {
+            // bob may write in the case but has no right on the namespace: only ownership lets him read.
+            val bobs =
+                integrationConfigService.create(
+                    IntegrationConfig(namespaceId = namespace.id, userId = bob.id, name = "BOBS_$suffix", integrationType = "JIRA"),
+                )
+            actAs(bob)
+
+            read(bob, """{ "kind": "integration", "id": "${bobs.metadata.id}" }""")["name"].asText() shouldBe "BOBS_$suffix"
+            configTool(carol, ConfigAgentIntegration.READ_TOOL_NAME)
+                .executeWithJson("""{ "kind": "integration", "id": "${bobs.metadata.id}" }""", toolContext(carol))
+                .errorType shouldBe "NOT_FOUND"
+        }
+
         "creating an agent needs an explicit enabled flag" {
             val result =
                 proposeTool(alice).executeWithJson(
