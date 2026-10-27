@@ -62,12 +62,30 @@ class AgentOsPermissionEvaluator(
             return false
         }
 
+        return hasPermission(userId, entityType, targetId?.toString(), action)
+    }
+
+    /**
+     * The same decision as the `@PreAuthorize("hasPermission(...)")` path, for an explicit
+     * [userId] instead of the request's [Authentication].
+     *
+     * For code that runs outside an HTTP request (an agent tool, a background job), where no
+     * [Authentication] exists but the rule must stay identical to the REST endpoint's, owner
+     * fallback included. [PermissionService.hasPermission] alone misses that fallback and would
+     * refuse a user access to their own user-scoped integration, prompt, provider or auth setting.
+     */
+    fun hasPermission(
+        userId: String,
+        entityType: EntityType,
+        targetId: String?,
+        action: Action,
+    ): Boolean {
         // 1) Try the membership/super-admin path first. Super-admins bypass here ; regular
         //    members succeed only when an explicit permission edge or namespace relation
         //    grants the action. This is the canonical path inherited from Epic 5.
         //    targetId may be null for platform-scoped entities (namespaceId = null) —
         //    PermissionService handles the null case explicitly.
-        if (permissionService.hasPermission(userId, entityType, targetId?.toString(), action)) return true
+        if (permissionService.hasPermission(userId, entityType, targetId, action)) return true
 
         // 2) Fall-through to ownership for the scope-aware entities (Epic 6 user-level
         //    overlays). The ownership check is intentionally placed AFTER the membership
@@ -76,7 +94,7 @@ class AgentOsPermissionEvaluator(
         //    by this branch — owner-miss requests pay 1 extra DB read.
         //    Ownership resolution requires a concrete entityId — skip for platform scope.
         if (targetId != null && entityType in ownershipResolver.supportedTypes) {
-            val ownerUserId = runCatching { ownershipResolver.resolveOwner(entityType, UUID.fromString(targetId.toString())) }
+            val ownerUserId = runCatching { ownershipResolver.resolveOwner(entityType, UUID.fromString(targetId)) }
                 .getOrNull()
             if (ownerUserId != null && ownerUserId.toString() == userId) return true
         }

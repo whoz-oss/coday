@@ -26,6 +26,9 @@ interface NamespaceRepository : EntityRepository<Namespace, String> {
      */
     fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>)
 
+    /** Ids of the agents with a `DEPLOYED_TO` edge to the namespace [namespaceId] itself. */
+    fun findDeployedAgentIds(namespaceId: UUID): Set<UUID>
+
     companion object {
         const val NAMESPACE_PARENT_KEY = "all"
     }

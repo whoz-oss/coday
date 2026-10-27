@@ -2,11 +2,11 @@ package io.whozoss.agentos.tool
 
 import com.fasterxml.jackson.databind.JsonNode
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.configAgent.ConfigAgentIntegration
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.integrationConfig.CompositeIntegrationTypeRegistry
@@ -87,6 +87,19 @@ class ToolRegistryServiceUnitSpec :
                         ),
                 )
 
-            registry.listTypes().shouldBeEmpty()
+            registry.listTypes().map { it.type } shouldBe listOf(ConfigAgentIntegration.TYPE)
+        }
+
+        "the AGENTOS_CONFIG built-in is always registered and never granted by default" {
+            val registry =
+                initializedRegistry(
+                    plugins = emptyList(),
+                    properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true, namespaceEnabledByDefault = true),
+                )
+
+            val descriptor = registry.findByType(ConfigAgentIntegration.TYPE)
+            descriptor shouldNotBe null
+            descriptor!!.builtIn shouldBe true
+            descriptor.enabledByDefault shouldBe false
         }
     })

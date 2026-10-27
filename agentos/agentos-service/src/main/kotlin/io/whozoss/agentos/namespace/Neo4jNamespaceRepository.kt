@@ -62,6 +62,9 @@ open class Neo4jNamespaceRepository(
         namespaceNodeNeo4jRepository.undeployAgents(namespaceId.toString(), agentConfigIds.map { it.toString() })
     }
 
+    override fun findDeployedAgentIds(namespaceId: UUID): Set<UUID> =
+        namespaceNodeNeo4jRepository.findDeployedAgentIds(namespaceId.toString()).map(UUID::fromString).toSet()
+
     @Transactional
     open override fun deleteByParent(parentId: String): Int {
         val active = namespaceNodeNeo4jRepository.findAllActive()
