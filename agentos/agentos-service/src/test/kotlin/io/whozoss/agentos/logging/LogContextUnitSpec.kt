@@ -11,10 +11,22 @@ import kotlinx.coroutines.withContext
 import org.slf4j.MDC
 import java.util.UUID
 
+/**
+ * MDC is thread-local. Suspending tests start from an explicit empty [MDCContext], which restores the
+ * thread's MDC when it exits; blocking tests (no suspension, so they stay on one thread) clean that
+ * thread's MDC before and after, whatever the assertion outcome.
+ */
+private inline fun withCleanMdc(block: () -> Unit) {
+    MDC.clear()
+    try {
+        block()
+    } finally {
+        MDC.clear()
+    }
+}
+
 class LogContextUnitSpec :
     StringSpec({
-        // MDC is thread-local and a test coroutine may resume on any thread: suspending tests start
-        // from an explicit empty MDCContext, blocking ones clear the MDC of their own thread.
 
         "withLogContext exposes its entries inside the block and skips null values" {
             withContext(MDCContext(emptyMap())) {
@@ -52,43 +64,46 @@ class LogContextUnitSpec :
         }
 
         "withMdc sets the context for the block and restores the previous one" {
-            MDC.clear()
-            MDC.put(LogContext.CASE_ID, "outer")
-            withMdc(mapOf(LogContext.CASE_ID to "inner", LogContext.AGENT_NAME to "dev")) {
-                MDC.get(LogContext.CASE_ID) shouldBe "inner"
-                MDC.get(LogContext.AGENT_NAME) shouldBe "dev"
+            withCleanMdc {
+                MDC.put(LogContext.CASE_ID, "outer")
+                withMdc(mapOf(LogContext.CASE_ID to "inner", LogContext.AGENT_NAME to "dev")) {
+                    MDC.get(LogContext.CASE_ID) shouldBe "inner"
+                    MDC.get(LogContext.AGENT_NAME) shouldBe "dev"
+                }
+                MDC.get(LogContext.CASE_ID) shouldBe "outer"
+                MDC.get(LogContext.AGENT_NAME).shouldBeNull()
             }
-            MDC.get(LogContext.CASE_ID) shouldBe "outer"
-            MDC.get(LogContext.AGENT_NAME).shouldBeNull()
-            MDC.clear()
         }
 
         "withMdc keeps foreign keys of the thread but drops its stale AgentOS keys" {
-            MDC.clear()
-            MDC.put("traceId", "trace-1")
-            MDC.put(LogContext.AGENT_NAME, "stale-agent")
-            withMdc(mapOf(LogContext.CASE_ID to "case-1")) {
+            withCleanMdc {
+                MDC.put("traceId", "trace-1")
+                MDC.put(LogContext.AGENT_NAME, "stale-agent")
+                withMdc(mapOf(LogContext.CASE_ID to "case-1")) {
+                    MDC.get("traceId") shouldBe "trace-1"
+                    MDC.get(LogContext.CASE_ID) shouldBe "case-1"
+                    MDC.get(LogContext.AGENT_NAME).shouldBeNull()
+                }
                 MDC.get("traceId") shouldBe "trace-1"
-                MDC.get(LogContext.CASE_ID) shouldBe "case-1"
-                MDC.get(LogContext.AGENT_NAME).shouldBeNull()
+                MDC.get(LogContext.AGENT_NAME) shouldBe "stale-agent"
+                MDC.get(LogContext.CASE_ID).shouldBeNull()
             }
-            MDC.get("traceId") shouldBe "trace-1"
-            MDC.get(LogContext.AGENT_NAME) shouldBe "stale-agent"
-            MDC.get(LogContext.CASE_ID).shouldBeNull()
-            MDC.clear()
         }
 
-        "withMdc with a null context clears a stale MDC during the block, then restores it" {
-            MDC.clear()
-            MDC.put(LogContext.CASE_ID, "stale")
-            withMdc(null) { MDC.get(LogContext.CASE_ID).shouldBeNull() }
-            MDC.get(LogContext.CASE_ID) shouldBe "stale"
-            MDC.clear()
+        "withMdc with a null context drops a stale AgentOS key during the block, then restores it" {
+            withCleanMdc {
+                MDC.put(LogContext.CASE_ID, "stale")
+                withMdc(null) { MDC.get(LogContext.CASE_ID).shouldBeNull() }
+                MDC.get(LogContext.CASE_ID) shouldBe "stale"
+            }
         }
 
         "withMdc restores the previous context when the block throws" {
-            MDC.clear()
-            runCatching { withMdc(mapOf(LogContext.CASE_ID to "inner")) { error("boom") } }
-            MDC.get(LogContext.CASE_ID).shouldBeNull()
+            withCleanMdc {
+                MDC.put("traceId", "trace-1")
+                runCatching { withMdc(mapOf(LogContext.CASE_ID to "inner")) { error("boom") } }
+                MDC.get(LogContext.CASE_ID).shouldBeNull()
+                MDC.get("traceId") shouldBe "trace-1"
+            }
         }
     })

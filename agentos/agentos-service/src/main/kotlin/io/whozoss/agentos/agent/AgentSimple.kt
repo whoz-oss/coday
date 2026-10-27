@@ -124,7 +124,7 @@ class AgentSimple(
                     }
 
                 logger.debug {
-                    "[$name] sending ${allMessages.size} messages to LLM" +
+                    "[$name] sending ${allMessages.size} messages to LLM $llmProvider/$llmModel with ${tools.size} tool(s)" +
                         (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
                 }
 
@@ -166,11 +166,6 @@ class AgentSimple(
                             logContext,
                         )
                     }
-
-                logger.info {
-                    "[AgentSimple] $name sending request to LLM $llmProvider/$llmModel: ${allMessages.size} message(s), " +
-                        "${toolCallbacks.size} tool(s)"
-                }
 
                 // Make single LLM call with tools
                 val prompt = chatClient.prompt(Prompt(allMessages))
@@ -540,7 +535,9 @@ class AgentSimple(
                     measureTime {
                         executionResult =
                             try {
-                                runBlocking(Dispatchers.IO + MDCContext(logContext ?: emptyMap())) {
+                                // MDCContext() captures the MDC of this thread, which withMdc has just merged:
+                                // the run's keys plus the foreign keys (e.g. an infra trace id) of the callback thread.
+                                runBlocking(Dispatchers.IO + MDCContext()) {
                                     tool.executeWithJson(toolInput, context)
                                 }
                             } catch (e: AgentInterrupt) {

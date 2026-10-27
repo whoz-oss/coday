@@ -26,7 +26,7 @@ services:
       
       # Logging
       - LOGGING_LEVEL_ROOT=INFO
-      - LOGGING_LEVEL_IO_BIZNET_AGENTOS=DEBUG
+      - LOGGING_LEVEL_IO_WHOZOSS_AGENTOS=INFO
     
     volumes:
       # Keep managed Git repositories and case worktrees across container restarts.

@@ -15,6 +15,8 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.slf4j.MDCContext
+import kotlinx.coroutines.withContext
 import org.slf4j.MDC
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
@@ -36,8 +38,9 @@ class AgentSimpleLogContextUnitSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val seenByTool = AtomicReference<Pair<String?, String?>>()
-            val traceSeenByCallback = AtomicReference<String?>()
+            val traceSeenByTool = AtomicReference<String?>()
             val afterCallback = AtomicReference<Map<String, String>?>()
+            val workerFailure = AtomicReference<Throwable?>()
 
             val tool =
                 object : StandardTool<Nothing> {
@@ -52,7 +55,7 @@ class AgentSimpleLogContextUnitSpec :
                         context: ToolContext,
                     ): ToolExecutionResult {
                         seenByTool.set(MDC.get(LogContext.CASE_ID) to MDC.get(LogContext.AGENT_NAME))
-                        traceSeenByCallback.set(MDC.get("traceId"))
+                        traceSeenByTool.set(MDC.get("traceId"))
                         return ToolExecutionResult.success("ok")
                     }
                 }
@@ -65,9 +68,13 @@ class AgentSimpleLogContextUnitSpec :
                 // (an infrastructure trace id, and a stale caseId left by a previous task).
                 val worker =
                     Thread {
-                        MDC.setContextMap(mapOf("traceId" to "trace-1", LogContext.CASE_ID to "stale-case"))
-                        callbacks.captured.single().call("{}")
-                        afterCallback.set(MDC.getCopyOfContextMap())
+                        // A throwable must not die with this thread: it would surface as an unrelated
+                        // assertion failure. It is rethrown by the test body once the run is over.
+                        runCatching {
+                            MDC.setContextMap(mapOf("traceId" to "trace-1", LogContext.CASE_ID to "stale-case"))
+                            callbacks.captured.single().call("{}")
+                            afterCallback.set(MDC.getCopyOfContextMap())
+                        }.onFailure { workerFailure.set(it) }
                     }
                 worker.start()
                 worker.join()
@@ -91,15 +98,21 @@ class AgentSimpleLogContextUnitSpec :
                     content = listOf(MessageContent.Text("go")),
                 )
 
-            withLogContext(LogContext.CASE_ID to caseId, LogContext.AGENT_NAME to "dev") {
-                agent.run(listOf(input)).toList()
+            // Start from an explicitly empty MDC: a key leaked on this pooled thread by another spec would
+            // otherwise travel through LogContext.merged() into the tool.
+            withContext(MDCContext(emptyMap())) {
+                withLogContext(LogContext.CASE_ID to caseId, LogContext.AGENT_NAME to "dev") {
+                    agent.run(listOf(input)).toList()
+                }
             }
+
+            workerFailure.get()?.let { throw it }
 
             // The tool sees the run's context, never the stale caseId of the pooled thread.
             seenByTool.get() shouldBe (caseId.toString() to "dev")
-            // Foreign keys of the callback thread are kept: the callback captured them in withMdc,
-            // but the tool itself runs in a fresh runBlocking context built from the run's MDC only.
-            traceSeenByCallback.get() shouldBe null
+            // Foreign keys of the callback thread (an infra trace id) reach the tool too: its runBlocking
+            // context is built from the MDC that withMdc merged on that thread.
+            traceSeenByTool.get() shouldBe "trace-1"
             // The pooled thread gets its own MDC back, unchanged, once the callback returns.
             afterCallback.get() shouldBe mapOf("traceId" to "trace-1", LogContext.CASE_ID to "stale-case")
         }

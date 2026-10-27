@@ -270,14 +270,14 @@ class ConfirmationManager(
         prompt: String,
     ): String {
         logger.info { "[ConfirmationManager] Calling LLM to make a decision." }
-        logger.debug { "[ConfirmationManager] decision prompt=$prompt" }
+        logger.trace { "[ConfirmationManager] decision prompt=$prompt" }
         val raw =
             chatClient
                 .prompt(Prompt(UserMessage(prompt)))
                 .call()
                 .content()
                 .orEmpty()
-        logger.debug { "[ConfirmationManager] raw return of call decision=$raw" }
+        logger.trace { "[ConfirmationManager] raw return of call decision=$raw" }
         return extractTag(raw, DECISION_TAG_REGEX).trim().lowercase()
     }
 

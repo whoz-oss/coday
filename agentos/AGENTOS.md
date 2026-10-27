@@ -213,11 +213,13 @@ The context travels with coroutines (`kotlinx-coroutines-slf4j` `MDCContext`), s
 dispatcher hops. Code that starts a new coroutine scope or runs on a foreign thread must carry it
 explicitly (`LogContext.mdcContext(...)`, `withLogContext`, `withMdc`).
 
-- **Console** (default profile): `... [case=<caseId> agent=<agentName>] - message`.
+- **Console** (default profile): `... [case=<caseId> ns=<namespaceId> agent=<agentName> user=<userId>] - message`;
+  the bracket block is omitted on lines logged outside a case run.
 - **Docker** profile: JSON via the Logstash encoder; MDC keys are top-level fields, ready to filter on.
-- **Levels**: `logging.level.io.whozoss.agentos` (DEBUG by default, INFO in docker). In docker, set
+- **Levels**: `logging.level.io.whozoss.agentos` is INFO by default, in every profile. In docker, set
   `LOGGING_LEVEL_IO_WHOZOSS_AGENTOS` (`LOGGING_LEVEL_IO_BIZNET_AGENTOS` is still read as a fallback).
-- **`debug` profile**: also logs Spring AI prompts/completions and HTTP traffic. Local debugging only.
+- **`debug` profile**: sets `io.whozoss.agentos` to DEBUG and also logs Spring AI prompts/completions and
+  HTTP traffic. Local debugging only.
 - **Rule**: tool arguments, tool outputs, prompts and secrets are never logged above TRACE.
 
 ## Detailed Documentation
