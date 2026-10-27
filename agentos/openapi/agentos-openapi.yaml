@@ -5126,6 +5126,14 @@ components:
           format: uuid
         parameters:
           $ref: "#/components/schemas/JsonNode"
+        source:
+          type: string
+          description: Configuration origin. FILESYSTEM entries are read-only; no
+            local path is exposed.
+          enum:
+          - NEO4J
+          - FILESYSTEM
+          readOnly: true
         userId:
           type:
           - string
@@ -5135,6 +5143,7 @@ components:
       - autoGrant
       - integrationType
       - name
+      - source
     IntegrationTypeDescriptor:
       type: object
       properties:

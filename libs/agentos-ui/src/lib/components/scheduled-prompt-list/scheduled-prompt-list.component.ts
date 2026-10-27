@@ -1,34 +1,18 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { ScheduledPrompt } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { DAY_OF_WEEK_FULL_LABELS, ScheduledPrompt, SchedulerUnit } from '@whoz-oss/agentos-api-client'
+import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { catchError, forkJoin, of } from 'rxjs'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
-import { ScheduledPromptItemComponent } from '../scheduled-prompt-item/scheduled-prompt-item.component'
-
-const GROUP_PLATFORM = 'platform'
-const GROUP_NAMESPACE = 'namespace'
-
-/**
- * ScheduledPromptListComponent — smart container for scheduled prompts of a namespace.
- *
- * Loaded at /:namespaceId/scheduled-prompts. Responsibilities:
- * - Load and display namespace-level AND platform-level scheduled prompts
- * - Merge both levels into a grouped ds-entity-list (platform first, then namespace)
- * - Platform-level prompts are displayed read-only (no edit/enable-disable/delete actions)
- * - Navigate to the create form (/:namespaceId/scheduled-prompts/new)
- * - Enable/disable inline (idempotent, namespace-level only)
- * - Delete with inline confirmation (delegated to ScheduledPromptItemComponent)
- *
- * State is two signals (platform, namespace), loaded once. Mutations only ever apply
- * to namespace-level prompts (platform prompts are read-only here), and patch the
- * namespace signal locally from the updated entity returned by the API — no full
- * refetch of both scopes on every single enable/disable/delete.
- */
+interface ScheduledPromptRow {
+  key: string
+  prompt: ScheduledPrompt
+  scope: 'platform' | 'namespace'
+}
 @Component({
   selector: 'agentos-scheduled-prompt-list',
-  imports: [EntityListComponent, ScheduledPromptItemComponent, IconButtonComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent],
   templateUrl: './scheduled-prompt-list.component.html',
   styleUrl: './scheduled-prompt-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -38,48 +22,9 @@ export class ScheduledPromptListComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(ScheduledPromptStateService)
-
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
-
-  private readonly platformPrompts = signal<ScheduledPrompt[]>([])
-  private readonly namespacePrompts = signal<ScheduledPrompt[]>([])
-
+  protected readonly rows = signal<ScheduledPromptRow[]>([])
   protected readonly isLoading = signal(true)
-
-  /** Mapped to EntityListItem[] for ds-entity-list, platform group first. */
-  protected readonly promptItems = computed<EntityListItem[]>(() => [
-    ...this.platformPrompts().map(
-      (d): EntityListItem => ({
-        id: d.id ?? '',
-        name: d.name,
-        description: d.description,
-        groupKey: GROUP_PLATFORM,
-        groupLabel: 'Platform (read-only)',
-        badges: [
-          {
-            label: d.enabled ? 'Enabled' : 'Disabled',
-            variant: d.enabled ? 'success' : 'warning',
-          },
-        ],
-      })
-    ),
-    ...this.namespacePrompts().map(
-      (d): EntityListItem => ({
-        id: d.id ?? '',
-        name: d.name,
-        description: d.description,
-        groupKey: GROUP_NAMESPACE,
-        groupLabel: 'Namespace',
-        badges: [
-          {
-            label: d.enabled ? 'Enabled' : 'Disabled',
-            variant: d.enabled ? 'success' : 'warning',
-          },
-        ],
-      })
-    ),
-  ])
-
   constructor() {
     forkJoin({
       platform: this.state.listPlatform().pipe(catchError(() => of([] as ScheduledPrompt[]))),
@@ -88,53 +33,57 @@ export class ScheduledPromptListComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: ({ platform, namespace }) => {
-          this.platformPrompts.set(platform)
-          this.namespacePrompts.set(namespace)
+          this.rows.set([
+            ...platform.map((prompt, index) => ({
+              key: `platform:${prompt.id ?? index}`,
+              prompt,
+              scope: 'platform' as const,
+            })),
+            ...namespace.map((prompt, index) => ({
+              key: `namespace:${prompt.id ?? index}`,
+              prompt,
+              scope: 'namespace' as const,
+            })),
+          ])
           this.isLoading.set(false)
         },
         error: () => this.isLoading.set(false),
       })
   }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'namespaces'])
-  }
-
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'scheduled-prompts', 'new'])
+    void this.router.navigate(['/agentos', this.namespaceId, 'scheduled-prompts', 'new'])
   }
-
-  protected enablePrompt(definition: ScheduledPrompt): void {
-    this.state
-      .enable(definition.id ?? '')
+  protected edit(row: ScheduledPromptRow): void {
+    if (row.scope === 'platform' || !row.prompt.id) return
+    void this.router.navigate(['/agentos', this.namespaceId, 'scheduled-prompts', row.prompt.id, 'edit'])
+  }
+  protected toggle(row: ScheduledPromptRow): void {
+    if (row.scope === 'platform') return
+    const request = row.prompt.enabled
+      ? this.state.disable(row.prompt.id ?? '')
+      : this.state.enable(row.prompt.id ?? '')
+    request
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((updated) => this.patchNamespacePrompt(updated))
+      .subscribe((updated) =>
+        this.rows.update((rows) =>
+          rows.map((current) => (current.key === row.key ? { ...current, prompt: updated } : current))
+        )
+      )
   }
-
-  protected disablePrompt(definition: ScheduledPrompt): void {
+  protected delete(row: ScheduledPromptRow): void {
+    if (row.scope === 'platform' || !row.prompt.id || !confirm(`Delete scheduled prompt “${row.prompt.name}”?`)) return
     this.state
-      .disable(definition.id ?? '')
+      .delete(row.prompt.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((updated) => this.patchNamespacePrompt(updated))
+      .subscribe(() => this.rows.update((rows) => rows.filter((current) => current.key !== row.key)))
   }
-
-  protected deletePrompt(definition: ScheduledPrompt): void {
-    const id = definition.id ?? ''
-    this.state
-      .delete(id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.namespacePrompts.update((list) => list.filter((p) => p.id !== id)))
-  }
-
-  protected resolvePrompt(id: string): ScheduledPrompt | null {
-    return this.platformPrompts().find((p) => p.id === id) ?? this.namespacePrompts().find((p) => p.id === id) ?? null
-  }
-
-  protected isPlatformPrompt(id: string): boolean {
-    return this.platformPrompts().some((p) => p.id === id)
-  }
-
-  private patchNamespacePrompt(updated: ScheduledPrompt): void {
-    this.namespacePrompts.update((list) => list.map((p) => (p.id === updated.id ? updated : p)))
+  protected scheduleLabel(prompt: ScheduledPrompt): string {
+    const recurrence = prompt.recurrence
+    const unit = recurrence.unit === SchedulerUnit.WEEK ? 'week' : 'month'
+    const days =
+      recurrence.unit === SchedulerUnit.WEEK && recurrence.days?.length
+        ? ` (${recurrence.days.map((day) => DAY_OF_WEEK_FULL_LABELS[day] ?? day).join(', ')})`
+        : ''
+    return `Every ${unit}${days} at ${recurrence.timeUtc} UTC`
   }
 }

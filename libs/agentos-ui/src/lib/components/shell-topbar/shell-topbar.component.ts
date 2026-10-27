@@ -1,8 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
-import { Router } from '@angular/router'
-import { THEME_PORT, ThemeMode } from '../../services/theme.service'
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core'
+import { Router, RouterLink, RouterLinkActive } from '@angular/router'
 import { UserStateService } from '../../services/user-state.service'
-import { ShellUserMenuComponent } from '../case-shell/shell-user-menu/shell-user-menu.component'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 
 /**
@@ -13,87 +11,24 @@ import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
  * - Le layout admin (/agentos/admin/**)
  * - Le layout user (/agentos/me)
  *
- * Contient : logo Coday + bouton utilisateur avec menu contextuel.
+ * Contient : logo Coday + navigation directe vers les espaces de configuration.
  */
 @Component({
   selector: 'agentos-shell-topbar',
   templateUrl: './shell-topbar.component.html',
   styleUrl: './shell-topbar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ShellUserMenuComponent],
+  imports: [RouterLink, RouterLinkActive],
 })
 export class ShellTopbarComponent {
   private readonly router = inject(Router)
   private readonly userState = inject(UserStateService)
-  private readonly themePort = inject(THEME_PORT)
   private readonly namespaceState = inject(NamespaceStateService)
 
-  protected readonly menuOpen = signal(false)
-
   protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)
-
-  protected readonly isDark = computed(() => {
-    const { mode } = this.themePort.theme()
-    if (mode === 'dark') return true
-    if (mode === 'light') return false
-    return (
-      typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')?.includes('dark') === true
-    )
-  })
-
-  protected readonly themeVariant = computed(() => this.themePort.theme().variant)
-
-  protected readonly userInitials = computed(() => {
-    const user = this.userState.currentUser()
-    if (!user) return ''
-    const first = user.firstname?.[0] ?? ''
-    const last = user.lastname?.[0] ?? ''
-    return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
-  })
-
-  // Technical display toggles have no effect outside the CaseShell.
-  protected readonly showTechnical = signal(false)
-  protected readonly showToolCalls = signal(true)
 
   protected navigateHome(): void {
     const nsId = this.namespaceState.activeNamespaceId()
     this.router.navigate(['/agentos/home'], nsId ? { queryParams: { ns: nsId } } : {})
-  }
-
-  protected toggleMenu(event: MouseEvent): void {
-    event.stopPropagation()
-    this.menuOpen.update((v) => !v)
-  }
-
-  protected closeMenu(event: Event): void {
-    event.stopPropagation()
-    this.menuOpen.set(false)
-  }
-
-  protected onNavigate(path: string): void {
-    this.menuOpen.set(false)
-    this.router.navigate([path])
-  }
-
-  protected onThemeToggle(): void {
-    this.menuOpen.set(false)
-    const next: ThemeMode = this.isDark() ? 'light' : 'dark'
-    this.themePort.setTheme({ variant: this.themePort.theme().variant, mode: next })
-  }
-
-  protected onThemeVariantChanged(variant: string): void {
-    this.menuOpen.set(false)
-    const current = this.themePort.theme()
-    this.themePort.setTheme({ variant: variant as any, mode: current.mode })
-  }
-
-  protected onLogsToggle(): void {
-    // no-op hors du CaseShell
-    this.menuOpen.set(false)
-  }
-
-  protected onToolCallsToggle(): void {
-    // no-op hors du CaseShell
-    this.menuOpen.set(false)
   }
 }
