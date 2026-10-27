@@ -58,28 +58,30 @@ class HttpApiTool(
                 "'${runtime.configName}'; mutations are never implicit and require explicit user consent."
         }
 
+    /** Valid arguments first, then the run's authentication, so an invalid call never asks for it. */
     override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
-        val args = parseArguments(input?.args)
-            ?: return failure(
+        val plan = parseArguments(input?.args)?.let { HttpRequestFactory.build(descriptor, runtime, it) }
+        return when (plan) {
+            null -> failure(
                 output = "arguments must be a JSON object matching the tool schema",
                 errorType = HttpApiErrors.INVALID_INPUT,
             )
-        val request = when (val plan = HttpRequestFactory.build(descriptor, runtime, args)) {
-            is RequestPlan.Ready -> plan.request
-            is RequestPlan.Rejected -> return failure(output = plan.message, errorType = plan.errorType)
+            is RequestPlan.Rejected -> failure(output = plan.message, errorType = plan.errorType)
+            is RequestPlan.Ready -> sendAuthenticated(plan.request)
         }
-        val auth = runtime.auth.spec()
-        if (auth is AuthHeaderSpec.Missing) {
-            return failure(
+    }
+
+    private suspend fun sendAuthenticated(request: Request): ToolExecutionResult =
+        when (val auth = runtime.auth.spec()) {
+            is AuthHeaderSpec.Missing -> failure(
                 output = "Authentication is not available for HTTP_API integration '${runtime.configName}': " +
                     "${auth.reason}. Every call of this run fails the same way, do not retry. Tell the user: " +
                     "an authorization is asked again on their next message; if none is asked, an administrator " +
                     "must check the bound Auth Setting.",
                 errorType = HttpApiErrors.AUTH_MISSING,
             )
+            else -> send(HttpRequestFactory.authenticate(request, auth))
         }
-        return send(HttpRequestFactory.authenticate(request, auth))
-    }
 
     /** Null or blank arguments mean no arguments; anything that is not a JSON object is refused. */
     private fun parseArguments(json: String?): JsonNode? {

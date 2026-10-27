@@ -6,7 +6,6 @@ import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -26,6 +25,7 @@ import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -41,9 +41,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.system.measureTimeMillis
 
 class HttpApiToolProviderUnitSpec : StringSpec({
     isolationMode = IsolationMode.InstancePerLeaf
@@ -272,7 +270,7 @@ class HttpApiToolProviderUnitSpec : StringSpec({
         server.requests.single { it.path.startsWith("/v1/") }.header("Authorization") shouldBe "Bearer late"
     }
 
-    "invalid arguments are refused before the credential is asked" {
+    "a call refused for its arguments or its URL never asks for the credential" {
         servePetstoreApi()
         val calls = AtomicInteger()
         val tools = provider.provideTools(
@@ -284,28 +282,40 @@ class HttpApiToolProviderUnitSpec : StringSpec({
             },
         )
 
-        val result = tools.named("showPetById").executeWithJson("{}", context())
+        val missingArgument = tools.named("showPetById").executeWithJson("{}", context())
+        val leavingBaseUrl = tools.named("showPetById").executeWithJson("""{"petId":".."}""", context())
 
-        result.errorType shouldBe "INVALID_INPUT"
+        missingArgument.errorType shouldBe "INVALID_INPUT"
+        leavingBaseUrl.errorType shouldBe "URL_POLICY_REJECTED"
         calls.get() shouldBe 0
+        server.requests.none { it.path.startsWith("/v1/") } shouldBe true
     }
 
     listOf<Credential?>(bearer("t"), null).forEach { answer ->
         "concurrent calls of a run resolve the credential once (provider answers ${answer?.credentialType})" {
             servePetstoreApi()
             val calls = AtomicInteger()
+            val release = CountDownLatch(1)
             val tools = provider.provideTools(
                 specConfig(),
                 "PETS",
                 context {
                     calls.incrementAndGet()
-                    Thread.sleep(200)
+                    release.await()
                     answer
                 },
             )
 
+            // UNDISPATCHED runs each call up to its first suspension before the next one starts: the first
+            // is resolving, held by the latch, and the three others have all asked for the spec before it ends.
             coroutineScope {
-                (1..4).map { async { tools.named("listPets").executeWithJson("{}", context()) } }.awaitAll()
+                val results = (1..4).map {
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        tools.named("listPets").executeWithJson("{}", context())
+                    }
+                }
+                release.countDown()
+                results.awaitAll()
             }.all { it.success } shouldBe (answer != null)
 
             calls.get() shouldBe 1
@@ -344,10 +354,10 @@ class HttpApiToolProviderUnitSpec : StringSpec({
 
         coroutineScope {
             val call = launch(Dispatchers.Default) { tools.named("listPets").executeWithJson("{}", context()) }
-            runInterruptible(Dispatchers.IO) { started.await(5, TimeUnit.SECONDS) } shouldBe true
-            val elapsed = measureTimeMillis { call.cancelAndJoin() }
-            elapsed shouldBeLessThan 2_000L
+            runInterruptible(Dispatchers.IO) { started.await() }
+            call.cancelAndJoin()
         }
+        // Without the interrupt the sleep runs to its end and the latch stays at 1.
         interrupted.count shouldBe 0L
     }
 
