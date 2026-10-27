@@ -10,6 +10,12 @@
 } @else if (rows().length === 0) {
   <p class="agent-configs__status">No agent configs available.</p>
 } @else {
+  <agentos-table-filter
+    label="Filter agent configs"
+    placeholder="Filter agent configs…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
   <div class="agent-configs__table-wrap">
     <table dsTable>
       <thead>
@@ -22,7 +28,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (row of rows(); track row.key) {
+        @for (row of rowFilter.filteredRows(); track row.key) {
           <tr>
             <td class="agent-configs__name">{{ row.config.name }}</td>
             <td class="agent-configs__description">{{ row.config.description || '—' }}</td>

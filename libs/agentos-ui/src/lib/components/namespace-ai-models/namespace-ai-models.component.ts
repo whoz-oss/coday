@@ -9,6 +9,8 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, Observable, of, switchMap } from 'rxjs'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface AiModelRow {
   key: string
@@ -18,7 +20,7 @@ interface AiModelRow {
 }
 @Component({
   selector: 'agentos-namespace-ai-models',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './namespace-ai-models.component.html',
   styleUrl: './namespace-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,21 +35,42 @@ export class NamespaceAiModelsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<AiModelRow[]>([])
-  private readonly data$: Observable<{ namespace: AiModel[]; platform: AiModel[]; providers: AiProvider[] }> =
-    this.refresh$.pipe(
-      switchMap(() => {
-        this.isLoading.set(true)
-        return forkJoin({
-          namespace: this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
-          platform: this.aiModelController.listPlatformLevelAiModel().pipe(catchError(() => of([] as AiModel[]))),
-          providers: this.aiProviderController.listAiProvider(this.namespaceId),
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.model.alias, row.model.apiModelName, row.providerName, row.scope].filter(Boolean).join(' ')
+  )
+  private readonly data$: Observable<{
+    namespace: AiModel[]
+    platform: AiModel[]
+    providers: AiProvider[]
+    referencedProviders: AiProvider[]
+  }> = this.refresh$.pipe(
+    switchMap(() => {
+      this.isLoading.set(true)
+      return forkJoin({
+        namespace: this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
+        platform: this.aiModelController.listPlatformLevelAiModel().pipe(catchError(() => of([] as AiModel[]))),
+        providers: this.aiProviderController.listAiProvider(this.namespaceId),
+      }).pipe(
+        switchMap(({ namespace, platform, providers }) => {
+          const providerIds = [...new Set([...platform, ...namespace].map((model) => model.aiProviderId))]
+          return forkJoin({
+            namespace: of(namespace),
+            platform: of(platform),
+            providers: of(providers),
+            referencedProviders: this.aiProviderController
+              .getByIdsAiProvider({ ids: providerIds, withRemoved: false })
+              .pipe(catchError(() => of([] as AiProvider[]))),
+          })
         })
-      })
-    )
+      )
+    })
+  )
   constructor() {
     this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ({ namespace, platform, providers }) => {
-        const names = new Map(providers.map((provider) => [provider.id ?? '', provider.name]))
+      next: ({ namespace, platform, providers, referencedProviders }) => {
+        const names = new Map(
+          [...referencedProviders, ...providers].map((provider) => [provider.id ?? '', provider.name])
+        )
         this.rows.set([
           ...platform.map((model, index) => ({
             key: `platform:${model.id ?? index}`,

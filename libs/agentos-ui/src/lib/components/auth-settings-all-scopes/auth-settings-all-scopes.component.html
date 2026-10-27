@@ -9,6 +9,12 @@
 } @else if (rows().length === 0) {
   <p class="auth-settings__status">No auth settings available.</p>
 } @else {
+  <agentos-table-filter
+    label="Filter auth settings"
+    placeholder="Filter auth settings…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
   <div class="auth-settings__table-wrap">
     <table dsTable>
       <thead>
@@ -20,7 +26,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (row of rows(); track row.key) {
+        @for (row of rowFilter.filteredRows(); track row.key) {
           <tr>
             <td class="auth-settings__name">{{ row.config.name }}</td>
             <td class="auth-settings__type">{{ row.config.authType }}</td>

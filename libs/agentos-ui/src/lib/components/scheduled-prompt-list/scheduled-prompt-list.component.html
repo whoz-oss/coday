@@ -10,6 +10,12 @@
 } @else if (rows().length === 0) {
   <p class="scheduled-prompts__status">No scheduled prompts available.</p>
 } @else {
+  <agentos-table-filter
+    label="Filter scheduled prompts"
+    placeholder="Filter scheduled prompts…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
   <div class="scheduled-prompts__table-wrap">
     <table dsTable>
       <thead>
@@ -22,7 +28,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (row of rows(); track row.key) {
+        @for (row of rowFilter.filteredRows(); track row.key) {
           <tr>
             <td>
               <span class="scheduled-prompts__name">{{ row.prompt.name }}</span>

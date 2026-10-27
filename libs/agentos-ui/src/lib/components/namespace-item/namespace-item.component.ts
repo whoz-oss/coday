@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import {
@@ -6,8 +6,6 @@ import {
   ActionCardComponent,
   ActionCardMenuItem,
 } from '../action-card/action-card.component'
-import { UsageConfigurationService } from '../../services/usage-configuration.service'
-
 @Component({
   selector: 'agentos-namespace-item',
   imports: [ActionCardComponent, ActionCardActionsDirective, IconButtonComponent],
@@ -16,7 +14,6 @@ import { UsageConfigurationService } from '../../services/usage-configuration.se
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  readonly usageConfiguration = inject(UsageConfigurationService)
   readonly namespace = input.required<Namespace>()
   /** Git settings exist only while the GIT plugin is loaded on the server. */
   readonly gitAvailable = input(false)
@@ -40,29 +37,11 @@ export class NamespaceItemComponent {
 
   protected readonly pendingDelete = signal(false)
 
-  private readonly baseMenuItems: ActionCardMenuItem[] = [
-    { key: 'integrations', label: 'Integrations' },
-    { key: 'ai-providers', label: 'AI providers' },
-    { key: 'ai-models', label: 'AI models' },
-    { key: 'agent-configs', label: 'Agent configs' },
-    { key: 'prompts', label: 'Prompts' },
-    { key: 'scheduled-prompts', label: 'Schedulers' },
-    { key: 'user-groups', label: 'User groups' },
-    { key: 'members', label: 'Members' },
-    { key: 'auth-settings', label: 'Auth settings' },
-    { key: 'tool-invoke', label: 'Tool invoke' },
+  protected readonly menuItems: ActionCardMenuItem[] = [
     { key: 'edit', label: 'Edit namespace' },
     { key: 'separator', label: '', variant: 'separator' },
     { key: 'delete', label: 'Delete namespace', variant: 'danger' },
   ]
-
-  protected readonly menuItems = computed<ActionCardMenuItem[]>(() => {
-    const pluginItems: ActionCardMenuItem[] = []
-    if (this.usageConfiguration.enabled()) pluginItems.push({ key: 'usage', label: 'Usage and costs' })
-    if (this.gitAvailable()) pluginItems.push({ key: 'git', label: 'Git' })
-
-    return [...this.baseMenuItems.slice(0, 10), ...pluginItems, ...this.baseMenuItems.slice(10)]
-  })
 
   protected onSelect(): void {
     this.selected.emit(this.namespace())

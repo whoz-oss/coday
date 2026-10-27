@@ -11,6 +11,8 @@ import {
 } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface IntegrationRow {
   readonly key: string
@@ -24,7 +26,7 @@ interface IntegrationRow {
 
 @Component({
   selector: 'agentos-integrations-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './integrations-all-scopes.component.html',
   styleUrl: './integrations-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -42,6 +44,9 @@ export class IntegrationsAllScopesComponent implements OnInit {
   protected readonly isAdmin = signal(false)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<IntegrationRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.config.name, row.config.integrationType, row.scopeLabel, row.source].join(' ')
+  )
 
   ngOnInit(): void {
     this.state.setNamespace(this.namespaceId)
