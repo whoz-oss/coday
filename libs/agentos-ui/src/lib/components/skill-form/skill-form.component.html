@@ -1,0 +1,119 @@
+<div class="skill-form">
+  <header class="skill-form__header">
+    <button class="skill-form__back" type="button" (click)="cancel()" title="Back to skills">
+      <span class="skill-form__back-icon">&#8592;</span>
+      Skills
+    </button>
+    <h1 class="skill-form__title">{{ isEditMode() ? 'Edit skill' : 'New skill' }}</h1>
+    @if (isEditMode()) {
+      <a class="skill-form__sibling-link" [routerLink]="inspectRoute()">View skill &rarr;</a>
+    }
+    @if (isPlatformMode) {
+      <span class="skill-form__platform-badge">Platform level</span>
+    }
+  </header>
+
+  @if (isLoading()) {
+    <p class="skill-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="skill-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="skill-form__field">
+        <label class="skill-form__label" for="skill-name">Name</label>
+        <input id="skill-name" class="skill-form__input" type="text" autocomplete="off" [formControl]="nameControl" />
+        <p class="skill-form__field-hint">
+          The value an agent's skillSelectors entry must match. Letters, digits, dash, dot, underscore and single
+          spaces; 100 characters max.
+        </p>
+        @if (nameControl.invalid && nameControl.touched) {
+          <p class="skill-form__field-hint skill-form__field-hint--error" role="alert">
+            A valid, non-empty name is required.
+          </p>
+        }
+      </div>
+
+      <div class="skill-form__field">
+        <label class="skill-form__label" for="skill-description">Description</label>
+        <textarea
+          id="skill-description"
+          class="skill-form__input skill-form__textarea"
+          rows="2"
+          [formControl]="descriptionControl"
+        ></textarea>
+        <p class="skill-form__field-hint">
+          This is what the agent sees in its skill catalog — it decides from this line alone whether to read the skill.
+          500 characters max.
+        </p>
+      </div>
+
+      <div class="skill-form__field">
+        <label class="skill-form__label" for="skill-body">Body</label>
+        <textarea
+          id="skill-body"
+          class="skill-form__input skill-form__textarea skill-form__textarea--code"
+          rows="16"
+          [formControl]="bodyControl"
+        ></textarea>
+        <p class="skill-form__field-hint">
+          Markdown instructions returned verbatim by the readSkill tool when the agent asks for this skill.
+        </p>
+      </div>
+
+      <div class="skill-form__field">
+        <span class="skill-form__label">Resources</span>
+        <p class="skill-form__field-hint">
+          Optional files the agent can read with readSkillResource, by relative path.
+        </p>
+
+        @if (resourceRows().length > 0) {
+          <ul class="skill-form__resource-list">
+            @for (row of resourceRows(); track $index) {
+              <li class="skill-form__resource-row">
+                <div class="skill-form__resource-head">
+                  <input
+                    class="skill-form__input skill-form__resource-path"
+                    type="text"
+                    placeholder="e.g. references/checklist.md"
+                    autocomplete="off"
+                    [formControl]="row.path"
+                  />
+                  <button
+                    class="skill-form__resource-btn skill-form__resource-btn--danger"
+                    type="button"
+                    title="Remove"
+                    (click)="removeResource(row)"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <textarea
+                  class="skill-form__input skill-form__textarea skill-form__textarea--code"
+                  rows="4"
+                  [formControl]="row.content"
+                ></textarea>
+              </li>
+            }
+          </ul>
+        }
+
+        <button class="skill-form__resource-btn skill-form__resource-btn--add" type="button" (click)="addResource()">
+          + Add resource
+        </button>
+      </div>
+
+      @if (errorMessage()) {
+        <p class="skill-form__error" role="alert">{{ errorMessage() }}</p>
+      }
+
+      <div class="skill-form__actions">
+        <button class="skill-form__btn" type="button" (click)="cancel()">Cancel</button>
+        <button
+          class="skill-form__btn skill-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isSubmitting() ? 'Saving…' : isEditMode() ? 'Save' : 'Create' }}
+        </button>
+      </div>
+    </form>
+  }
+</div>

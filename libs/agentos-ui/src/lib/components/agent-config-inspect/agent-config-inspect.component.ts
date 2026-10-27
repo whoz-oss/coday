@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { AgentConfigControllerService, AgentDefinition, AgentDefinitionToolSummary } from '@whoz-oss/agentos-api-client'
@@ -41,6 +41,14 @@ export class AgentConfigInspectComponent implements OnInit {
 
   /** Tracks which tool rows are expanded (by tool name). */
   protected readonly expandedTools = signal<Set<string>>(new Set())
+
+  /**
+   * The skills this agent's selectors resolved to, server-side.
+   *
+   * Defaults to an empty list rather than trusting the field: the generated model
+   * declares it required, but a backend older than the field answers without it.
+   */
+  protected readonly resolvedSkills = computed(() => this.definition()?.skills ?? [])
 
   /** Whether the system prompt section is collapsed. */
   protected readonly systemPromptCollapsed = signal(true)
