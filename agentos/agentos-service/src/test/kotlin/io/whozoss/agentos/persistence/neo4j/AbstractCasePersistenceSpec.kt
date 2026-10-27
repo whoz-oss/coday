@@ -6,12 +6,14 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.neo4j.driver.Driver
@@ -57,6 +59,17 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             found shouldHaveSize 1
             found.first().id shouldBe saved.id
             found.first().status shouldBe CaseStatus.CREATED
+        }
+
+        "save and findByIds round-trips reasoningEffort, absent by default" {
+            val ns = namespaceRepo.save(namespace())
+            val withEffort = repo.save(case(ns.id).copy(reasoningEffort = ReasoningEffort.MAX))
+            val withoutEffort = repo.save(case(ns.id))
+
+            val found = repo.findByIds(listOf(withEffort.id, withoutEffort.id)).associateBy { it.id }
+
+            found.getValue(withEffort.id).reasoningEffort shouldBe ReasoningEffort.MAX
+            found.getValue(withoutEffort.id).reasoningEffort.shouldBeNull()
         }
 
         "findByParent returns cases for that namespace only" {

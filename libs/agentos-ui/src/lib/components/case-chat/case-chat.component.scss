@@ -907,6 +907,16 @@
     padding: 6px 10px 10px;
   }
 
+  &__effort {
+    flex-shrink: 0;
+    padding: 2px 6px;
+    border: 1px solid var(--color-divider);
+    color: var(--color-neutral-700);
+    font-family: var(--font-body);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
   &__actions-hint {
     flex: 1;
     font-size: 11px;

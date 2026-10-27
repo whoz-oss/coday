@@ -64,6 +64,13 @@ import {
   isCorrelatedDelegateTool,
 } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
+import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
+import {
+  EffortOption,
+  effortLabel,
+  messageEffortLabel,
+  parseEffortCommand,
+} from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
@@ -159,6 +166,7 @@ function hasActiveSelection(): boolean {
     CaseMembersComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
+    EffortAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
     CopyButtonComponent,
@@ -251,6 +259,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
+  private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
@@ -300,6 +309,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether the kill confirmation dialog is showing. */
   protected readonly confirmingKill = signal(false)
+
+  /** The case-level reasoning effort shown next to the composer; "default" means each agent's model setting. */
+  protected readonly caseEffortLabel = computed(() => effortLabel(this.activeCase()?.reasoningEffort))
 
   /** Which panel is active in the right drawer: files exchange or case members. */
   protected readonly drawerPanel = signal<'files' | 'members'>('files')
@@ -406,6 +418,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   constructor() {
     this.autocomplete.init(this.namespaceId)
+    this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent)
@@ -1015,7 +1028,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
+    const consumed = this.autocomplete.onKeydown(
+      event,
+      this.promptAutocompleteRef,
+      this.agentAutocompleteRef,
+      this.effortAutocompleteRef
+    )
     if (consumed) return
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
@@ -1033,6 +1051,36 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected closeSlashAutocomplete(): void {
     this.autocomplete.slashSuggestions.set([])
+  }
+
+  /**
+   * Whether the case-level effort can be changed now: it is saved through the loaded case list (a case
+   * opened through namespace access only is not in it), and a run reads it at its start.
+   */
+  private canChangeEffort(): boolean {
+    return !!this.activeCase() && !this.isTerminal()
+  }
+
+  /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
+  protected onEffortSelected(option: EffortOption): void {
+    this.autocomplete.effortSuggestions.set([])
+    if (!this.canChangeEffort()) return
+    this.inputValue.set('')
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = ''
+      this.resizeComposer(input)
+    }
+    this.caseState
+      .setReasoningEffort(this.caseId, option.effort)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => console.error('[CaseChat] Failed to set the reasoning effort', err),
+      })
+  }
+
+  protected closeEffortAutocomplete(): void {
+    this.autocomplete.effortSuggestions.set([])
   }
 
   protected closeAtAutocomplete(): void {
@@ -1080,6 +1128,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected async submit(): Promise<void> {
     if (this.submitting || !this.canSend) return
     const content = this.inputValue().trim()
+    // A typed "/effort <level>" is a command for the case, never a message for the agent. When the
+    // effort cannot be changed here, the text stays in the composer.
+    const effortCommand = parseEffortCommand(content)
+    if (effortCommand !== undefined) {
+      if (effortCommand) {
+        this.onEffortSelected(effortCommand)
+      } else {
+        // Missing or unknown level: show the levels instead of doing nothing.
+        this.autocomplete.showEffortLevels()
+      }
+      return
+    }
     if (this.attachments.hasAttachments()) {
       this.submitting = true
       try {
@@ -1295,10 +1355,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.extractText(item.event)
   }
 
-  /** Durable provider/model attribution carried by the agent MessageEvent itself. */
+  /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */
   protected agentModelAttribution(message: CaseMessageEvent): string | null {
     if (message.actor.role !== 'AGENT') return null
-    const parts = [message.llmProvider, message.llmModel].filter((part): part is string => !!part)
+    const effort = messageEffortLabel(message.reasoningEffort, message.requestedReasoningEffort)
+    const parts = [message.llmProvider, message.llmModel, effort].filter((part): part is string => !!part)
     return parts.length ? parts.join(' · ') : null
   }
 

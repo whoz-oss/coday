@@ -2,30 +2,27 @@ package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Hidden
-import org.springframework.beans.factory.annotation.Qualifier
 import io.swagger.v3.oas.annotations.Operation
-import io.whozoss.agentos.entity.EntityCrudDelegate
-import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.entity.ScopeParams
-import io.whozoss.agentos.entity.ScopedOwnershipCrudDelegate
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -43,88 +40,42 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * Unified REST API for [IntegrationConfig] entities — covers the **four scopes**
  * (platform, NS-shared, user × namespace, user-global) under a single set of routes.
  *
- * Standard read and delete operations are delegated to [scopedOwnershipCrudDelegate] (a
- * [ScopedOwnershipCrudDelegate] wrapping an [EntityCrudDelegate]). [create], [update],
- * [list], and [listByParent] are explicit overrides because they carry logic that is
- * specific to this controller (platform-scope guard, immutable-field preservation,
- * custom filtering).
- *
- * **Scope dispatch on `POST`** — inferred from `(body.namespaceId, body.userId)`:
- *  - both null → platform scope (Super Admin only)
- *  - `(ns, null)` → NS-shared (WRITE on namespace required)
- *  - `(null, user)` → user-global (authenticated only)
- *  - `(ns, user)` → user × namespace (READ on namespace required)
- *
- * **Platform guard on `PUT` / `DELETE`** — a platform-scoped entity
- * (`namespaceId == null && userId == null`) may only be mutated by a Super Admin.
- *
- * **Mass-assignment guards** — on `PUT`, `id`, `namespaceId`, `userId`, and
- * `integrationType` are preserved from the persisted row. `integrationType` is
- * immutable post-create (Decision 18 / AC11b).
- *
- * **User-scope denial** — both user scopes refuse the integration types listed in
- * [IntegrationsProperties.userScopeDeniedTypes] on `POST` and `PUT` (see
- * [IntegrationConfigScopePolicy]); shared scopes are unaffected.
+ * A class-level `@PreAuthorize("isAuthenticated()")` ensures every handler requires an
+ * authenticated principal — `callerOf()` then converts it to a typed [Caller] for the
+ * service layer. Authorization (beyond authentication) is delegated to [IntegrationConfigService]'s
+ * `*ForCaller` methods. [HideOnAccessDenied] on [getById], [update], [delete], and [export]
+ * converts an [org.springframework.security.access.AccessDeniedException] into 404 instead of 403.
  */
 @RestController
 @RequestMapping(
     "/api/integration-configs",
     produces = [MediaType.APPLICATION_JSON_VALUE],
 )
+@PreAuthorize("isAuthenticated()")
 class IntegrationConfigController(
     private val integrationConfigService: IntegrationConfigService,
-    private val namespaceService: NamespaceService,
     private val userService: UserService,
-    private val permissionService: PermissionService,
-    private val scopePolicy: IntegrationConfigScopePolicy,
     @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : IntegrationConfigApi {
-    private val scopedOwnershipCrudDelegate =
-        ScopedOwnershipCrudDelegate(
-            entityLabel = "IntegrationConfig",
-            userService = userService,
-            namespaceService = namespaceService,
-            permissionService = permissionService,
-            ownerOf = { (it as IntegrationConfig).userId },
-            userIdOf = { it.userId },
-            namespaceIdOf = { it.namespaceId },
-            buildEntity = { resource, resolvedNs, resolvedUser ->
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = resolvedNs,
-                    userId = resolvedUser,
-                    name = resource.name,
-                    integrationType = resource.integrationType,
-                    description = resource.description,
-                    parameters = resource.parameters,
-                    authSettingName = resource.authSettingName,
-                    autoGrant = resource.autoGrant,
-                )
-            },
-            crud =
-                EntityCrudDelegate(
-                    service = integrationConfigService,
-                    userService = userService,
-                    permissions = permissionService,
-                    entityType = EntityType.INTEGRATION_CONFIG,
-                    toResource = { toDto(it as IntegrationConfig) },
-                    // toDomain omitted: ScopedOwnershipCrudDelegate always calls createEntity;
-                    // crud.create(resource) is never invoked directly.
-                ),
-        )
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'READ')")
     @HideOnAccessDenied
     override fun getById(
         @PathVariable id: UUID,
-    ): IntegrationConfigDto = scopedOwnershipCrudDelegate.getById(id)
+    ): IntegrationConfigDto {
+        val caller = callerOf()
+        // withRemoved=true: parity with the old EntityCrudDelegate.getById contract, which
+        // included soft-deleted rows so callers can inspect or audit a removed record via REST.
+        return toDto(integrationConfigService.getByIdForCaller(caller, id, withRemoved = true))
+    }
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
-    ): List<IntegrationConfigDto> = scopedOwnershipCrudDelegate.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
+    ): List<IntegrationConfigDto> {
+        val caller = callerOf()
+        return integrationConfigService.findByIdsForCaller(caller, request.ids, request.withRemoved).map(::toDto)
+    }
 
     /**
      * Hard-break stub for the legacy `GET /by-parentId/{parentId}`. Hidden from
@@ -132,7 +83,6 @@ class IntegrationConfigController(
      */
     @Hidden
     @GetMapping("/by-parentId/{parentId}")
-    @PreAuthorize("isAuthenticated()")
     override fun listByParent(
         @PathVariable parentId: UUID,
     ): List<IntegrationConfigDto> =
@@ -156,29 +106,19 @@ class IntegrationConfigController(
                 "`namespaceId=none` is the sentinel for `namespaceId IS NULL`.",
     )
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
     override fun list(
         @RequestParam(required = false) namespaceId: String?,
         @RequestParam(required = false) userId: String?,
     ): List<IntegrationConfigDto> {
-        val currentUser = userService.getCurrentUser()
+        val caller = callerOf()
         ScopeParams.validateUserParam(userId)
-
         val resolvedNs = ScopeParams.parseNamespaceParam(namespaceId)
         return integrationConfigService
-            .findFiltered(
+            .findFilteredForCaller(
+                caller = caller,
                 namespaceId = resolvedNs,
                 namespaceIsNone = namespaceId?.equals(ScopeParams.NONE, ignoreCase = true) == true,
-                callerId = currentUser.id,
                 userRequested = userId != null,
-                canReadNamespace = { nsId ->
-                    permissionService.hasPermission(
-                        userId = currentUser.id.toString(),
-                        entityType = EntityType.NAMESPACE,
-                        entityId = nsId.toString(),
-                        action = Action.READ,
-                    )
-                },
             ).map(::toDto)
     }
 
@@ -198,75 +138,50 @@ class IntegrationConfigController(
                 "(default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created in either user scope (403).",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
     override fun create(
         @Valid @RequestBody resource: IntegrationConfigDto,
     ): IntegrationConfigDto {
-        // Platform scope (both null) — Super Admin only; bypass ScopedOwnershipCrudDelegate
-        // which requires at least one of namespaceId/userId to be non-null.
-        if (resource.namespaceId == null && resource.userId == null) {
-            requireSuperAdmin()
-            val entity =
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = null,
-                    userId = null,
-                    name = resource.name,
-                    integrationType = resource.integrationType,
-                    description = resource.description,
-                    parameters = resource.parameters,
-                    authSettingName = resource.authSettingName,
-                    autoGrant = resource.autoGrant,
-                )
-            return toDto(integrationConfigService.create(entity))
-        }
-
-        // Non-platform scopes — delegate handles userId guard + namespace authz.
-        scopePolicy.requireScopeAllowed(userId = resource.userId, integrationType = resource.integrationType)
-        return scopedOwnershipCrudDelegate.create(resource)
+        val caller = callerOf()
+        val entity = IntegrationConfig(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            namespaceId = resource.namespaceId,
+            userId = resource.userId,
+            name = resource.name,
+            integrationType = resource.integrationType,
+            description = resource.description,
+            parameters = resource.parameters,
+            authSettingName = resource.authSettingName,
+            autoGrant = resource.autoGrant,
+        )
+        return toDto(integrationConfigService.createForCaller(caller, entity))
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'WRITE')")
     @HideOnAccessDenied
     override fun update(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: IntegrationConfigDto,
     ): IntegrationConfigDto {
-        val existing =
-            integrationConfigService.findById(id)
-                ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        requireAdminForPlatform(existing.namespaceId, existing.userId)
-        // integrationType is immutable, so the persisted type is the one that matters here.
-        scopePolicy.requireScopeAllowed(userId = existing.userId, integrationType = existing.integrationType)
-        return toDto(
-            integrationConfigService.update(
-                existing.copy(
-                    name = resource.name,
-                    // integrationType is immutable post-create (Decision 18 / AC11b)
-                    integrationType = existing.integrationType,
-                    description = resource.description,
-                    parameters = resource.parameters,
-                    authSettingName = resource.authSettingName,
-                    autoGrant = resource.autoGrant,
-                ),
-            ),
+        val caller = callerOf()
+        val changes = IntegrationConfigUpdate(
+            name = resource.name,
+            description = resource.description,
+            parameters = resource.parameters,
+            authSettingName = resource.authSettingName,
+            autoGrant = resource.autoGrant,
         )
+        return toDto(integrationConfigService.updateForCaller(caller, id, changes))
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'DELETE')")
     @HideOnAccessDenied
     @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
     ) {
-        val existing =
-            integrationConfigService.findById(id)
-                ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        requireAdminForPlatform(existing.namespaceId, existing.userId)
-        scopedOwnershipCrudDelegate.delete(id)
+        val caller = callerOf()
+        integrationConfigService.deleteForCaller(caller, id)
     }
 
     @Operation(
@@ -280,14 +195,13 @@ class IntegrationConfigController(
                 "**parameters are exported in clear text** — requires WRITE permission on the entity.",
     )
     @GetMapping("/{id}/export", produces = [MediaType.APPLICATION_YAML_VALUE])
-    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'WRITE')")
     @HideOnAccessDenied
     fun export(
         @PathVariable id: UUID,
     ): ResponseEntity<String> {
-        val entity =
-            integrationConfigService.findById(id)
-                ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        val caller = callerOf()
+        // withRemoved=false: the export path must not serve deleted configs in clear text.
+        val entity = integrationConfigService.getByIdForCaller(caller, id, Action.WRITE, withRemoved = false)
         val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
         return ResponseEntity
@@ -297,26 +211,21 @@ class IntegrationConfigController(
             .body(yaml)
     }
 
-    // ---------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------
-
     /**
-     * Throws [AccessDeniedException] when the entity is platform-scoped
-     * (`namespaceId == null && userId == null`) and the caller is not a Super Admin.
-     * Short-circuits immediately for non-platform entities.
+     * Builds the [Caller] for the current request.
+     *
+     * Reads from [AgentOsAuthentication] in the [SecurityContextHolder] when available —
+     * the filter already resolved the [User] and stored it as the principal, so there is
+     * no second `findByExternalId` round-trip. Falls back to `userService.getCurrentUser()`
+     * for unit tests that construct the controller directly without a Spring context.
      */
-    private fun requireAdminForPlatform(
-        namespaceId: UUID?,
-        userId: UUID?,
-    ) {
-        if (namespaceId != null || userId != null) return
-        requireSuperAdmin()
-    }
-
-    private fun requireSuperAdmin() {
-        if (!userService.getCurrentUser().isAdmin) {
-            throw AccessDeniedException("Platform-level IntegrationConfig requires Super Admin")
+    private fun callerOf(): Caller {
+        val auth = SecurityContextHolder.getContext().authentication as? AgentOsAuthentication
+        return if (auth != null) {
+            val user = auth.principal as User
+            Caller.Human(user.id, user.isAdmin)
+        } else {
+            userService.getCurrentUser().let { Caller.Human(it.id, it.isAdmin) }
         }
     }
 
@@ -351,7 +260,6 @@ class IntegrationConfigController(
             |# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
             |
             """.trimMargin()
-
     }
 }
 

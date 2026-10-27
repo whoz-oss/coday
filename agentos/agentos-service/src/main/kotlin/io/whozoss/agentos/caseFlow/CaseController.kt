@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.CaseReasoningEffortRequest
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -192,9 +193,10 @@ class CaseController(
                 status = CaseStatus.CREATED,
                 title = resource.title ?: "Case ${metadata.id}",
                 runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
+                reasoningEffort = resource.reasoningEffort,
                 parentCaseId = resource.parentCaseId,
             )
-        val saved = caseService.create(domain)
+        val saved = caseService.create(domain, resource.worktree)
         val granted =
             runCatching {
                 permissionService.grantPermission(
@@ -241,8 +243,25 @@ class CaseController(
                     // creation is sticky. The enforcement mechanism raises the limit by writing
                     // a concrete value here when the user chooses to continue after a breach.
                     runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
+                    // reasoningEffort is not changed here: an absent field must not erase the
+                    // override, and null is a meaningful value. See setReasoningEffort.
                 )
             }
+        return updated.withCallerMeta(userService.getCurrentUser().id.toString())
+    }
+
+    /**
+     * PUT /api/cases/{id}/reasoning-effort — set the case-level reasoning effort, or remove it with a
+     * null value. Same permission as renaming the case.
+     */
+    @PutMapping("/{id}/reasoning-effort", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
+    override fun setReasoningEffort(
+        @PathVariable id: UUID,
+        @RequestBody request: CaseReasoningEffortRequest,
+    ): CaseDto {
+        val updated = caseService.setReasoningEffort(id, request.reasoningEffort)
+        logger.info { "Case $id reasoning effort set to ${request.reasoningEffort}" }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 
@@ -460,6 +479,7 @@ internal fun toDto(entity: Case) =
         parentCaseId = entity.parentCaseId,
         scheduledPromptId = entity.scheduledPromptId,
         runCostThreshold = entity.runCostThreshold,
+        reasoningEffort = entity.reasoningEffort,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by

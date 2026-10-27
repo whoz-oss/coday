@@ -3,6 +3,7 @@ package io.whozoss.agentos.aiModel
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -27,6 +28,8 @@ import java.util.UUID
  *
  * [ModelPricing] is stored as four flat scalar properties — Neo4j nodes cannot hold
  * nested objects. [toDomain] / [fromDomain] assemble / disassemble the object.
+ *
+ * [reasoningEffort] is stored as its enum name string and round-tripped via [ReasoningEffort.valueOf].
  */
 @Node("AiModel")
 data class AiModelNode(
@@ -47,6 +50,7 @@ data class AiModelNode(
     val pricingOutputMTokens: Double? = null,
     val pricingCacheRead: Double? = null,
     val pricingCacheWrite: Double? = null,
+    val reasoningEffort: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -91,6 +95,7 @@ data class AiModelNode(
             maxCompletionTokens = maxCompletionTokens,
             contextWindow = contextWindow,
             pricing = pricing,
+            reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
         )
     }
 
@@ -112,6 +117,7 @@ data class AiModelNode(
                 pricingOutputMTokens = model.pricing?.outputMTokens,
                 pricingCacheRead = model.pricing?.cacheRead,
                 pricingCacheWrite = model.pricing?.cacheWrite,
+                reasoningEffort = model.reasoningEffort?.name,
                 created = model.metadata.created,
                 createdBy = model.metadata.createdBy,
                 modified = model.metadata.modified,

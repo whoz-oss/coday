@@ -18,6 +18,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.aiProvider.AiProviderDto
@@ -55,7 +56,13 @@ class AiProviderControllerSpec :
         val namespaceService = mockk<NamespaceService>(relaxed = true)
         val userService = mockk<UserService>(relaxed = true)
         val permissionService = mockk<PermissionService>(relaxed = true)
-        val controller = AiProviderController(service, namespaceService, userService, permissionService)
+        val controller = AiProviderController(
+            service,
+            namespaceService,
+            userService,
+            permissionService,
+            ScopedAccessPolicy(permissionService),
+        )
 
         val namespaceId = UUID.randomUUID()
         val aliceId = UUID.randomUUID()

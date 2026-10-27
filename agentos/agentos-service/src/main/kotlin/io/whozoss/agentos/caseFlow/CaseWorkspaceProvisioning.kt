@@ -13,10 +13,13 @@ package io.whozoss.agentos.caseFlow
  * work at all here. They may refuse a creation they cannot honour, such as a family that should be
  * equipped under settings that are no longer valid, rather than create it in a state that no retry
  * can repair.
+ *
+ * `worktree` is the creator's choice for a top-level case, as [CaseService.create] documents: null
+ * leaves it to the namespace's settings.
  */
 interface CaseWorkspaceProvisioning {
     /** Coordinate configuration before any case write can lock the namespace in the database. */
-    fun <T> aroundCreation(case: Case, action: () -> T): T = action()
+    fun <T> aroundCreation(case: Case, worktree: Boolean?, action: () -> T): T = action()
 
     /**
      * Called once a case has been persisted, inside [aroundCreation].
@@ -25,5 +28,5 @@ interface CaseWorkspaceProvisioning {
      * never provisions anything synchronously: it records the intent, leaving the slow part
      * (clone, branch, worktree, setup) to the provisioner.
      */
-    fun onCaseCreated(case: Case)
+    fun onCaseCreated(case: Case, worktree: Boolean?)
 }

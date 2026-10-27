@@ -21,7 +21,7 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
 
     val permissionService = mockk<PermissionService>()
     val ownershipResolver = mockk<OwnershipResolver>(relaxed = true) {
-        every { supportedTypes } returns setOf(EntityType.AI_PROVIDER, EntityType.INTEGRATION_CONFIG)
+        every { supportedTypes } returns setOf(EntityType.AI_PROVIDER)
     }
     val evaluator = AgentOsPermissionEvaluator(permissionService, ownershipResolver)
 
@@ -86,16 +86,6 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
         verify(exactly = 0) { ownershipResolver.resolveOwner(any(), any()) }
     }
 
-    "ownership branch allows scope-aware entity when caller owns it (IntegrationConfig)" {
-        val targetId = UUID.randomUUID()
-        every {
-            permissionService.hasPermission(userId, EntityType.INTEGRATION_CONFIG, targetId.toString(), Action.DELETE)
-        } returns false
-        every { ownershipResolver.resolveOwner(EntityType.INTEGRATION_CONFIG, targetId) } returns UUID.fromString(userId)
-
-        evaluator.hasPermission(auth, targetId, "IntegrationConfig", "DELETE") shouldBe true
-    }
-
     "ownership branch returns false when targetId is not a valid UUID (defence-in-depth)" {
         val notAUuid = "not-a-uuid"
         every {
@@ -108,7 +98,7 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
         verify(exactly = 0) { ownershipResolver.resolveOwner(any(), any()) }
     }
 
-    "ownership branch is NOT consulted for non-scope-aware entities (AgentConfig, Case, …)" {
+    "ownership branch is NOT consulted for non-scope-aware entities (AgentConfig, Case, IntegrationConfig, …)" {
         val targetId = UUID.randomUUID()
         every {
             permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, targetId.toString(), Action.READ)
@@ -116,7 +106,9 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
 
         evaluator.hasPermission(auth, targetId, "AgentConfig", "READ") shouldBe false
 
-        // AC10 — ownership leakage prevented : only AI_PROVIDER and INTEGRATION_CONFIG trigger the branch.
+        // AC10 — ownership leakage prevented: only AI_PROVIDER triggers the ownership branch.
+        // IntegrationConfig authorization now lives entirely in IntegrationConfigServiceImpl's
+        // *ForCaller surface (via ScopedAccessPolicy) and never reaches this evaluator.
         verify(exactly = 0) { ownershipResolver.resolveOwner(any(), any()) }
     }
 

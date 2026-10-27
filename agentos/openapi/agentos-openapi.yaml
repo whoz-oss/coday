@@ -1653,6 +1653,38 @@ paths:
           description: OK
       tags:
       - case-controller
+  /api/cases/{id}/reasoning-effort:
+    put:
+      description: "PUT /api/cases/{id}/reasoning-effort — set the case-level override\
+        \ of the reasoning effort of the agents running in the case, or remove it\
+        \ with a null value so each agent uses the effort of its model again. Read\
+        \ at the start of each agent run. Replaces the model effort of every agent;\
+        \ not sent to Anthropic and Gemini providers, whose agent messages show it\
+        \ as not applied. Returns the updated Case DTO."
+      operationId: setReasoningEffortCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseReasoningEffortRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Set the reasoning effort of a case
+      tags:
+      - case-controller
   /api/cases/{id}/star:
     delete:
       description: "DELETE /api/cases/{id}/star — remove the case from the current\
@@ -4251,6 +4283,8 @@ components:
         priority:
           type: integer
           format: int32
+        reasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
         temperature:
           type: number
           format: double
@@ -4452,6 +4486,12 @@ components:
           type: string
           format: date-time
           description: Timestamp of the caller's last read. Null = never read (unread).
+        reasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+          description: "Per-case override of the reasoning effort of the agents running\
+            \ in the case. Null means each agent uses the effort of its model. Replaces\
+            \ the model effort of every agent, whatever the model has configured;\
+            \ not sent to Anthropic and Gemini providers."
         removed:
           type: boolean
         role:
@@ -4482,6 +4522,13 @@ components:
           - ERROR
         title:
           type: string
+        worktree:
+          type: boolean
+          description: "Create only. Whether a new top-level case gets the worktree\
+            \ its namespace creates for every case. Null leaves it to the namespace's\
+            \ settings, false creates an ordinary case, true requires it and refuses\
+            \ the creation when the namespace does not create one or cannot. Must\
+            \ be null for a sub-case."
       required:
       - favorite
       - namespaceId
@@ -4536,6 +4583,11 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseReasoningEffortRequest:
+      type: object
+      properties:
+        reasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
     CaseStatusEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -5290,6 +5342,10 @@ components:
             type: string
           llmProvider:
             type: string
+          reasoningEffort:
+            $ref: "#/components/schemas/ReasoningEffort"
+          requestedReasoningEffort:
+            $ref: "#/components/schemas/ReasoningEffort"
           sessionContext:
             type: object
             additionalProperties: {}
@@ -5929,6 +5985,15 @@ components:
       - questionType
       - timestamp
       - type
+    ReasoningEffort:
+      type: string
+      enum:
+      - NONE
+      - LOW
+      - MEDIUM
+      - HIGH
+      - XHIGH
+      - MAX
     Recurrence:
       type: object
       properties:

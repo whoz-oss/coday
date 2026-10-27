@@ -81,7 +81,7 @@ class QueryUserConfigSeeder(
 
     private fun createDefault() {
         try {
-            integrationConfigService.create(defaultConfig())
+            integrationConfigService.unsecuredCreate(defaultConfig())
             logger.info {
                 "[QueryUserSeeder] Created platform '$DEFAULT_CONFIG_NAME' configuration with autoGrant=true. " +
                     "Every agent of this environment receives the queryUser tool; override it per namespace by " +

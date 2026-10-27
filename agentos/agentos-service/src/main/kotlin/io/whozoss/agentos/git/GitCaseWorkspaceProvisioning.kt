@@ -17,6 +17,10 @@ import org.springframework.stereotype.Component
  * and persisted as a binding rather than re-derived later from the namespace's configuration —
  * re-deriving would make the automation switch retroactive in both directions.
  *
+ * The namespace's automation decides; the creator can only decline it, never equip a root case the
+ * namespace would not. A creator who requires the worktree gets it, or the creation is refused:
+ * the case is never silently made without it.
+ *
  * This records the intent only. Cloning, worktree creation and setup happen in
  * [CaseWorktreeProvisioner], driven separately, so creating a case stays fast and a failed
  * preparation never turns into a failure to create the conversation. Invalid namespace settings do
@@ -34,30 +38,50 @@ class GitCaseWorkspaceProvisioning(
     private val gitAvailability: GitAvailability,
     private val worker: ObjectProvider<CaseWorkspaceWorker>,
 ) : CaseWorkspaceProvisioning {
-    override fun <T> aroundCreation(case: Case, action: () -> T): T =
+    override fun <T> aroundCreation(case: Case, worktree: Boolean?, action: () -> T): T {
+        if (case.parentCaseId != null || worktree == false) return action()
+        val automation = associationService.automationEnabled(case.namespaceId)
+        if (worktree == true) requireWorktreePossible(automation)
         // Only a namespace that equips new families has settings to freeze: creations elsewhere never wait.
-        if (case.parentCaseId == null && associationService.automationEnabled(case.namespaceId)) {
-            WorkspaceLifecycleLocks.withNamespace(case.namespaceId, action)
-        } else {
-            action()
-        }
-
-    override fun onCaseCreated(case: Case) {
-        // Equip only a creation that [aroundCreation] serialized with settings saves. Taking the lock
-        // now, after the case write, could deadlock with a save waiting for that write's database lock.
-        if (case.parentCaseId == null && WorkspaceLifecycleLocks.holdsNamespace(case.namespaceId)) allocate(case)
+        return if (automation) WorkspaceLifecycleLocks.withNamespace(case.namespaceId, action) else action()
     }
 
-    private fun allocate(case: Case) {
-        equippingSettings(case)?.let { settings ->
+    override fun onCaseCreated(case: Case, worktree: Boolean?) {
+        if (case.parentCaseId != null || worktree == false) return
+        // Equip only a creation that [aroundCreation] serialized with settings saves. Taking the lock
+        // now, after the case write, could deadlock with a save waiting for that write's database lock.
+        if (WorkspaceLifecycleLocks.holdsNamespace(case.namespaceId)) {
+            allocate(case, required = worktree == true)
+        } else {
+            check(worktree != true) { "Case ${case.id} requires a worktree but was not created through aroundCreation" }
+        }
+    }
+
+    /** Refuses a required worktree before the case is written when this instance or namespace cannot create it. */
+    private fun requireWorktreePossible(automation: Boolean) {
+        val reason =
+            when {
+                !gitAvailability.isAvailable() -> "Git is not available on this instance"
+                worker.getIfAvailable() == null -> "the Git worker is disabled on this instance"
+                !automation -> NAMESPACE_WITHOUT_WORKTREES
+                else -> null
+            }
+        reason?.let { throw ConflictException("$WORKTREE_REFUSED: $it") }
+    }
+
+    private fun allocate(case: Case, required: Boolean) {
+        val settings = equippingSettings(case)
+        // A settings save this creation waited for may have turned automation off.
+        if (settings == null && required) throw ConflictException("$WORKTREE_REFUSED: $NAMESPACE_WITHOUT_WORKTREES")
+        settings?.let {
             val binding =
                 bindingService.create(
                     CaseResourceBinding(
                         rootCaseId = case.id,
                         namespaceId = case.namespaceId,
-                        integrationConfigId = settings.configId,
+                        integrationConfigId = it.configId,
                         status = CaseResourceStatus.REQUESTED,
-                        settings = settings,
+                        settings = it,
                     ),
                 )
             logger.info { "Case ${case.id} equipped with workspace ${binding.id} (title '${case.title}')" }
@@ -89,5 +113,8 @@ class GitCaseWorkspaceProvisioning(
             )
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private const val WORKTREE_REFUSED = "Cannot create a worktree for this case"
+        private const val NAMESPACE_WITHOUT_WORKTREES = "its namespace does not create worktrees"
+    }
 }

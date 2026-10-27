@@ -55,6 +55,8 @@ class PromptTranslationServiceImplSpec : StringSpec() {
         beforeEach {
             every { aiModelService.findAiModel(namespaceId) } returns model
             every { model.aiProviderId } returns UUID.randomUUID()
+            // The service caps the model's reasoning effort for translation; a relaxed mock would report one.
+            every { model.reasoningEffort } returns null
             every { aiProviderService.getById(any()) } returns provider
         }
 

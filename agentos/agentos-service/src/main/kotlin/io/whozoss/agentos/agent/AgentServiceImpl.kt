@@ -14,6 +14,7 @@ import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.chat.sentTo
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
@@ -35,6 +36,7 @@ import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
@@ -240,6 +242,7 @@ class AgentServiceImpl(
                 baseModel = baseModel,
                 namespaceId = context.namespaceId,
                 userId = context.userId,
+                caseReasoningEffort = context.reasoningEffort,
             )
         val effectiveIntegrationConfigs =
             runIntegrationCustomizers.fold(
@@ -515,11 +518,18 @@ class AgentServiceImpl(
      * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
      * fetches all four overlay layers in a single query and folds them by precedence.
      * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
+     *
+     * A non-null [caseReasoningEffort] replaces the model's reasoning effort, whatever the model has
+     * configured: the level chosen in the case is the one asked. The provider's API type then decides
+     * what is sent ([sentTo]): nothing for Anthropic and Gemini, which the agent's messages show as not
+     * applied. A model that rejects the parameter (gpt-4.x on OpenAI) fails the run with the provider's
+     * error until the case goes back to the default.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
         namespaceId: UUID,
         userId: UUID?,
+        caseReasoningEffort: ReasoningEffort? = null,
     ): Pair<AiModel, AiProvider> {
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
         val providerConfig =
@@ -528,13 +538,15 @@ class AgentServiceImpl(
             } else {
                 baseProvider
             }
+        val modelConfig = caseReasoningEffort?.let { baseModel.copy(reasoningEffort = it) } ?: baseModel
 
         logger.info {
             "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
                 "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
+                "reasoningEffort=${modelConfig.reasoningEffort}, " +
                 "provider='${providerConfig.name}', userId=$userId)"
         }
-        return baseModel to providerConfig
+        return modelConfig to providerConfig
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
@@ -625,6 +637,8 @@ class AgentServiceImpl(
                     maxIterations = limitsConfig.agentMaxIterations,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
+                    reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
+                    requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                 )
             }
@@ -649,6 +663,8 @@ class AgentServiceImpl(
                     caseEventsProvider = context.caseEventsProvider,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
+                    reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
+                    requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )
