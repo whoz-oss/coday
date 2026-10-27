@@ -293,7 +293,11 @@ agentos:
   # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
   # prompt-caching-enabled: true
   plugins:
-    dir: ${PLUGINS_DIR:plugins/}
+    # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
+    # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,
+    # so the default needs no variable.
+    # Override with env var: AGENTOS_PLUGINS_DIR
+    dir: ${AGENTOS_PLUGINS_DIR:plugins/}
   security:
     # Identity resolution mode: 'local' (default) or 'auth'.
     # local: uses the OS username; auto-creates a User record on first access.
