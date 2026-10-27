@@ -22,9 +22,14 @@ import org.springframework.ai.openai.OpenAiChatOptions
  */
 internal fun ReasoningEffort.sentTo(apiType: AiApiType): ReasoningEffort? =
     when (apiType) {
+        AiApiType.OpenAI -> this
         AiApiType.vLLM, AiApiType.Ollama ->
-            if (this == ReasoningEffort.XHIGH || this == ReasoningEffort.MAX) ReasoningEffort.HIGH else this
-        else -> takeIf { apiType.supportsReasoningEffort }
+            when (this) {
+                ReasoningEffort.XHIGH, ReasoningEffort.MAX -> ReasoningEffort.HIGH
+                else -> this
+            }
+        // No effort is sent to them: see AiApiType.supportsReasoningEffort.
+        AiApiType.Anthropic, AiApiType.Gemini -> null
     }
 
 /**
@@ -43,6 +48,8 @@ internal fun OpenAiChatOptions.Builder.applyReasoningEffort(effort: ReasoningEff
  * otherwise it ends up in the agent's answer.
  */
 internal fun OpenAiChatOptions.Builder.applyVllmReasoningEffort(effort: ReasoningEffort?): OpenAiChatOptions.Builder {
+    // NONE reaches vLLM as thinking off (enable_thinking false), not as a reasoning_effort level,
+    // so it is filtered out after the clamp, like a null effort.
     val level = effort?.sentTo(AiApiType.vLLM)?.takeIf { it != ReasoningEffort.NONE }
     level?.let { reasoningEffort(it.wireValue()) }
     return extraBody(mapOf("chat_template_kwargs" to mapOf("enable_thinking" to (level != null))))

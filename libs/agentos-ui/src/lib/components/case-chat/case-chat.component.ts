@@ -1066,9 +1066,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       input.value = ''
       this.resizeComposer(input)
     }
-    this.caseState.setReasoningEffort(this.caseId, option.effort).subscribe({
-      error: (err) => console.error('[CaseChat] Failed to set the reasoning effort', err),
-    })
+    this.caseState
+      .setReasoningEffort(this.caseId, option.effort)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => console.error('[CaseChat] Failed to set the reasoning effort', err),
+      })
   }
 
   protected closeEffortAutocomplete(): void {

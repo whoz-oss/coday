@@ -68,9 +68,7 @@ class AiModelServiceImpl(
                     )
                 }
         }
-        entity.reasoningEffort?.let { effort ->
-            checkReasoningEffortSupported(effort, aiProviderService.getById(entity.aiProviderId).apiType)
-        }
+        checkReasoningEffortSupported(entity.reasoningEffort, aiProviderService.getById(entity.aiProviderId).apiType)
         return repository.save(entity)
     }
 

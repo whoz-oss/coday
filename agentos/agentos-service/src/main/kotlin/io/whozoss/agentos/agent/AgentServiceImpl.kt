@@ -536,13 +536,14 @@ class AgentServiceImpl(
             } else {
                 baseProvider
             }
+        val modelEffort = baseModel.reasoningEffort
         val modelConfig =
             when {
                 caseReasoningEffort == null -> baseModel
-                baseModel.reasoningEffort == null || baseModel.reasoningEffort == ReasoningEffort.NONE -> {
+                modelEffort == null || modelEffort == ReasoningEffort.NONE -> {
                     logger.debug {
                         "Case reasoning effort $caseReasoningEffort ignored: model " +
-                            "'${baseModel.alias ?: baseModel.apiModelName}' has reasoning effort ${baseModel.reasoningEffort}"
+                            "'${baseModel.alias ?: baseModel.apiModelName}' has reasoning effort $modelEffort"
                     }
                     baseModel
                 }
