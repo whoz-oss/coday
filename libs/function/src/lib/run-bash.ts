@@ -25,22 +25,21 @@ export const runBash = async ({
   lineLimit?: number
   maxBuffer?: number
 }): Promise<string> => {
-  let resolvedPath = root
   const limits = { lineLimit, charLimit: DEFAULT_CHAR_LIMIT }
-
-  if (relPath) {
-    resolvedPath = path.resolve(root, relPath)
-  }
+  const resolvedRoot = path.resolve(root)
+  // Absolute, normalized execution directory (also reported back to the caller)
+  const resolvedPath = path.resolve(resolvedRoot, relPath ?? '.')
 
   // Check if the resolved path is within the root folder to prevent leaving the designated folder
-  if (!resolvedPath.startsWith(path.resolve(root))) {
+  const relative = path.relative(resolvedRoot, resolvedPath)
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     return 'Attempt to navigate outside the root folder'
   }
 
-  try {
-    // Resolve the absolute path from root and relPath
-    const resolvedPath = relPath ? path.resolve(root, relPath) : root
+  // Trailer giving the execution context (pwd) of the command, appended to every executed command's output
+  const workingDirectory = `\n\nWorking directory: ${resolvedPath}`
 
+  try {
     // Log the command that will run
     interactor.debug(`\nRunning command: ${command} in ${resolvedPath}`)
 
@@ -67,11 +66,11 @@ export const runBash = async ({
     const limitedOutput = limitOutput(stdout, limits)
     const limitedErr = limitOutput(stderr, limits)
     // stderr on a successful command is informational (progress, warnings) — not an error
-    return `Output:\n${limitedOutput}${limitedErr ? `\n\nStderr:\n${limitedErr}` : ''}`
+    return `Output:\n${limitedOutput}${limitedErr ? `\n\nStderr:\n${limitedErr}` : ''}${workingDirectory}`
   } catch (error: any) {
     const stdout = error.stdout ? `\nStdout:\n${limitOutput(error.stdout, limits)}` : ''
     const stderr = error.stderr ? `\nStderr:\n${limitOutput(error.stderr, limits)}` : ''
-    const message = `Command failed: ${error.message ?? error}${stdout}${stderr}`
+    const message = `Command failed: ${error.message ?? error}${stdout}${stderr}${workingDirectory}`
     interactor.error(message)
     return message
   }
