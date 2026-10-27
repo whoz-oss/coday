@@ -46,15 +46,24 @@ class RunAuth(
         val spec =
             try {
                 runInterruptible(Dispatchers.IO) { resolve() }
+            } catch (e: CancellationException) {
+                // The run's own cancellation propagates; any other one is a failed resolution.
+                currentCoroutineContext().ensureActive()
+                failed(e)
             } catch (e: Exception) {
-                // A cancellation is the run's only when the run is cancelled; any other is a failed resolution.
-                if (e is CancellationException) currentCoroutineContext().ensureActive()
-                logger.error(e) { "HTTP_API integration '$configName': credential resolution failed: ${e.message}" }
-                AuthHeaderSpec.Missing(RESOLUTION_FAILED)
+                failed(e)
             }
         val line = "HTTP_API integration '$configName': auth=$spec for the rest of the run"
-        if (spec is AuthHeaderSpec.Missing) logger.warn { line } else logger.info { line }
+        when (spec) {
+            is AuthHeaderSpec.Missing -> logger.warn { line }
+            else -> logger.info { line }
+        }
         return spec
+    }
+
+    private fun failed(e: Exception): AuthHeaderSpec {
+        logger.error(e) { "HTTP_API integration '$configName': credential resolution failed: ${e.message}" }
+        return AuthHeaderSpec.Missing(RESOLUTION_FAILED)
     }
 
     companion object : KLogging() {
