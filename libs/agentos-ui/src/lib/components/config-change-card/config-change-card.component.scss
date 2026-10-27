@@ -14,9 +14,31 @@
 
   &__header {
     display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  &__heading {
+    display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     gap: 0.5rem;
+  }
+
+  &__summary {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-text, #1d1d1f);
+  }
+
+  &__counts {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
+  &__counts-problem {
+    color: var(--color-error, #d70015);
   }
 
   &__title {
@@ -50,32 +72,94 @@
   &__op {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.6rem 0.75rem;
+    gap: 0.3rem;
+    padding: 0.5rem 0.75rem;
     border-radius: 8px;
     border: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
 
     &--highlight {
-      border-color: var(--color-warning, #b25000);
+      border-left: 3px solid var(--color-warning, #b25000);
     }
+  }
+
+  &__details[open] &__chevron {
+    transform: rotate(90deg);
   }
 
   &__op-head {
     display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary, #0071e3);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+  }
+
+  &__op-main {
+    display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
+  }
+
+  &__chevron {
+    flex-shrink: 0;
+    width: 0;
+    height: 0;
+    border-top: 0.3rem solid transparent;
+    border-bottom: 0.3rem solid transparent;
+    border-left: 0.4rem solid var(--color-text-secondary, #6e6e73);
+    transition: transform 0.15s ease;
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+    padding-left: 0.9rem;
+  }
+
+  &__fields {
+    display: grid;
+    grid-template-columns: minmax(6rem, max-content) 1fr;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+    font-size: 0.8rem;
+
+    dt {
+      color: var(--color-text-secondary, #6e6e73);
+    }
+
+    dd {
+      margin: 0;
+      min-width: 0;
+      color: var(--color-text, #1d1d1f);
+      word-break: break-word;
+    }
+  }
+
+  &__op-error {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-error, #d70015);
   }
 
   &__op-title {
     font-size: 0.9rem;
     font-weight: 500;
     color: var(--color-text, #1d1d1f);
-    text-transform: none;
-
-    &::first-letter {
-      text-transform: uppercase;
-    }
   }
 
   &__badge,
@@ -87,7 +171,13 @@
     color: var(--color-text-secondary, #6e6e73);
   }
 
+  &__badge--secret {
+    background: color-mix(in srgb, var(--color-warning, #b25000) 15%, transparent);
+    color: var(--color-warning, #b25000);
+  }
+
   &__status {
+    flex-shrink: 0;
     margin-left: auto;
 
     &--done {
@@ -127,6 +217,35 @@
       font-weight: 500;
       color: var(--color-text-secondary, #6e6e73);
     }
+  }
+
+  &__secrets {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.6rem 0.75rem 0.75rem;
+    border: 1px solid var(--color-warning, #b25000);
+    border-radius: 8px;
+
+    legend {
+      padding: 0 0.25rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--color-text, #1d1d1f);
+    }
+  }
+
+  &__secret-for {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
+  &__secret-label {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 14rem;
   }
 
   &__secret {
@@ -183,8 +302,17 @@
 
   &__actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
+    align-items: center;
     gap: 0.5rem;
+  }
+
+  &__hint {
+    flex: 1 1 12rem;
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-warning, #b25000);
   }
 
   &__btn {
