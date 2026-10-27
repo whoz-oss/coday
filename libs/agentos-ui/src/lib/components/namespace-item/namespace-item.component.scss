@@ -1,8 +1,51 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.ns-action {
+  min-height: 34px;
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-accent);
+    background: var(--color-accent-100);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  &--primary {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-bg);
+
+    &:hover {
+      background: var(--color-accent-700);
+      color: var(--color-accent-100);
+    }
+  }
+}
+
 .ns-confirm-label {
-  font:
-    500 12px 'Inter',
-    sans-serif;
-  color: var(--color-error, #a5140a);
-  white-space: nowrap;
   align-self: center;
+  margin-right: auto;
+  color: var(--color-error, #a5140a);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }

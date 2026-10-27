@@ -1,0 +1,36 @@
+:host {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--color-divider, rgba(0, 0, 0, 0.16));
+}
+
+h2 {
+  margin: 0 0 2px;
+  color: var(--color-text, #1d1f20);
+  font-family: var(--font-body, sans-serif);
+  font-size: 25px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+  color: var(--color-text-secondary, #6b7280);
+  font-size: 14px;
+}
+
+.section-header__actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+@media (max-width: 600px) {
+  :host {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

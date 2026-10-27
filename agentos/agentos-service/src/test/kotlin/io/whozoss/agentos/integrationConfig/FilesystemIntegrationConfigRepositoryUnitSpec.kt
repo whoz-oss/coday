@@ -10,6 +10,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
@@ -147,6 +148,7 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
 
             result.single().namespaceId shouldBe namespaceId
             result.single().userId shouldBe null
+            result.single().source shouldBe IntegrationConfigSource.FILESYSTEM
         }
 
         "findByNamespaceId maps all YAML fields to IntegrationConfig" {
@@ -623,6 +625,28 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
 
             result shouldBe null
             verify(exactly = 0) { nsRepo.findByIds(any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // findByIds — filesystem augmentation
+        // -------------------------------------------------------------------------
+
+        "findByIds resolves a synthetic filesystem integration id" {
+            val root = tempDir()
+            writeYaml(integrationsDir(root), "jira.yaml", integrationYaml("JIRA", "JIRA"))
+            val fsId = UUID.nameUUIDFromBytes("filesystem-integration:JIRA".toByteArray())
+            val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString())
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            every { delegate.findByIds(listOf(fsId), false) } returns emptyList()
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns listOf(namespace)
+            every { nsRepo.findByIds(listOf(namespaceId)) } returns listOf(namespace)
+
+            val result = buildRepo(delegate, nsRepo).findByIds(listOf(fsId), false)
+
+            result.single().id shouldBe fsId
+            result.single().namespaceId shouldBe namespaceId
+            result.single().source shouldBe IntegrationConfigSource.FILESYSTEM
         }
 
         // -------------------------------------------------------------------------

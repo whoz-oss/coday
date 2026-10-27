@@ -1,0 +1,39 @@
+<header class="settings-header">
+  <nav class="settings-header__breadcrumb" aria-label="Breadcrumb">
+    <a routerLink="/agentos/namespaces">Namespaces</a>
+    <span aria-hidden="true">/</span>
+    <span>{{ namespaceName() }}</span>
+  </nav>
+  <div class="settings-header__main">
+    <span class="settings-header__avatar" aria-hidden="true">{{ namespaceName().charAt(0).toUpperCase() }}</span>
+    <h1>{{ namespaceName() }} <span aria-hidden="true">·</span> Configuration</h1>
+    <button class="settings-header__open" type="button" (click)="openNamespace()">Open namespace</button>
+  </div>
+</header>
+
+<div class="settings-layout">
+  <nav class="settings-nav" [attr.aria-label]="namespaceName() + ' settings'">
+    @for (group of groups; track group.label) {
+      <section class="settings-nav__group">
+        <h2>{{ group.label }}</h2>
+        @for (item of group.items; track item.path) {
+          @if (item.path !== 'git' || gitAvailable()) {
+            <a
+              class="settings-nav__item"
+              [routerLink]="[item.path]"
+              routerLinkActive="settings-nav__item--active"
+              [routerLinkActiveOptions]="{ exact: false }"
+              ariaCurrentWhenActive="page"
+            >
+              {{ item.label }}
+            </a>
+          }
+        }
+      </section>
+    }
+  </nav>
+
+  <main class="settings-content">
+    <router-outlet />
+  </main>
+</div>
