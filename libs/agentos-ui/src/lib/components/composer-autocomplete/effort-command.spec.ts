@@ -1,5 +1,5 @@
 import { ReasoningEffort } from '@whoz-oss/agentos-api-client'
-import { EFFORT_OPTIONS, effortLabel, effortOptionsFor, parseEffortCommand } from './effort-command'
+import { EFFORT_OPTIONS, effortLabel, effortOptionsFor, messageEffortLabel, parseEffortCommand } from './effort-command'
 
 describe('effort command', () => {
   describe('effortOptionsFor()', () => {
@@ -52,6 +52,29 @@ describe('effort command', () => {
       expect(effortLabel(ReasoningEffort.XHIGH)).toBe('xhigh')
       expect(effortLabel(null)).toBe('default')
       expect(effortLabel(undefined)).toBe('default')
+    })
+  })
+
+  describe('messageEffortLabel()', () => {
+    it('names the level sent when it is the one asked', () => {
+      expect(messageEffortLabel(ReasoningEffort.XHIGH, ReasoningEffort.XHIGH)).toBe('effort xhigh')
+    })
+
+    it('adds the level asked when the provider capped it', () => {
+      expect(messageEffortLabel(ReasoningEffort.HIGH, ReasoningEffort.MAX)).toBe('effort high (max requested)')
+    })
+
+    it('marks the level asked as not applied when the provider takes none', () => {
+      expect(messageEffortLabel(null, ReasoningEffort.XHIGH)).toBe('effort xhigh not applied')
+    })
+
+    it('reads the level sent alone on messages stored before the level asked was recorded', () => {
+      expect(messageEffortLabel(ReasoningEffort.LOW, undefined)).toBe('effort low')
+    })
+
+    it('returns null when no effort was asked', () => {
+      expect(messageEffortLabel(null, null)).toBeNull()
+      expect(messageEffortLabel(undefined, undefined)).toBeNull()
     })
   })
 })

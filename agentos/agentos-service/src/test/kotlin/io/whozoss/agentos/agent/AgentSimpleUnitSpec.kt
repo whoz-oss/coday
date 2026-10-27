@@ -39,6 +39,7 @@ class AgentSimpleUnitSpec :
             tools: Collection<StandardTool<*>> = emptyList(),
             instructions: String? = null,
             reasoningEffort: ReasoningEffort? = null,
+            requestedReasoningEffort: ReasoningEffort? = null,
         ): AgentSimple =
             AgentSimple(
                 metadata = EntityMetadata(id = agentId),
@@ -49,6 +50,7 @@ class AgentSimpleUnitSpec :
                 llmProvider = "test-provider",
                 llmModel = "test-model",
                 reasoningEffort = reasoningEffort,
+                requestedReasoningEffort = requestedReasoningEffort,
             )
 
         fun userMessage(
@@ -96,7 +98,7 @@ class AgentSimpleUnitSpec :
             finishedEvent.agentName shouldBe "SimpleAgent"
         }
 
-        "the agent message carries the reasoning effort the model ran with" {
+        "the agent message carries the reasoning effort sent and the one asked" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -104,13 +106,25 @@ class AgentSimpleUnitSpec :
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("391")
 
-            val withEffort = makeAgent(UUID.randomUUID(), mockChatClient, reasoningEffort = ReasoningEffort.HIGH)
+            val withEffort =
+                makeAgent(
+                    UUID.randomUUID(),
+                    mockChatClient,
+                    reasoningEffort = ReasoningEffort.HIGH,
+                    requestedReasoningEffort = ReasoningEffort.XHIGH,
+                )
             val withoutEffort = makeAgent(UUID.randomUUID(), mockChatClient)
 
-            withEffort.run(listOf(userMessage(namespaceId, caseId, "17*23?"))).toList()
-                .filterIsInstance<MessageEvent>().single().reasoningEffort shouldBe ReasoningEffort.HIGH
-            withoutEffort.run(listOf(userMessage(namespaceId, caseId, "17*23?"))).toList()
-                .filterIsInstance<MessageEvent>().single().reasoningEffort shouldBe null
+            val withEffortMessage =
+                withEffort.run(listOf(userMessage(namespaceId, caseId, "17*23?"))).toList()
+                    .filterIsInstance<MessageEvent>().single()
+            withEffortMessage.reasoningEffort shouldBe ReasoningEffort.HIGH
+            withEffortMessage.requestedReasoningEffort shouldBe ReasoningEffort.XHIGH
+            val withoutEffortMessage =
+                withoutEffort.run(listOf(userMessage(namespaceId, caseId, "17*23?"))).toList()
+                    .filterIsInstance<MessageEvent>().single()
+            withoutEffortMessage.reasoningEffort shouldBe null
+            withoutEffortMessage.requestedReasoningEffort shouldBe null
         }
 
         "should handle conversation with multiple messages" {

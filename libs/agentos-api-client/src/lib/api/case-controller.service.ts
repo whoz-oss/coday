@@ -1148,7 +1148,7 @@ export class CaseControllerService extends BaseService {
 
   /**
    * Set the reasoning effort of a case
-   * PUT /api/cases/{id}/reasoning-effort — set the case-level override of the reasoning effort of the agents running in the case, or remove it with a null value so each agent uses the effort of its model again. Read at the start of each agent run. Applies only to agents whose model has a reasoning effort configured above NONE. Returns the updated Case DTO.
+   * PUT /api/cases/{id}/reasoning-effort — set the case-level override of the reasoning effort of the agents running in the case, or remove it with a null value so each agent uses the effort of its model again. Read at the start of each agent run. Replaces the model effort of every agent; not sent to Anthropic and Gemini providers, whose agent messages show it as not applied. Returns the updated Case DTO.
    * @param id
    * @param caseReasoningEffortRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.

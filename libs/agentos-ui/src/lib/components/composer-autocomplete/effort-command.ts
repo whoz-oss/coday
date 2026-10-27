@@ -52,3 +52,18 @@ export function parseEffortCommand(value: string): EffortOption | null | undefin
 export function effortLabel(effort: ReasoningEffort | null | undefined): string {
   return EFFORT_OPTIONS.find((option) => option.effort === (effort ?? null))?.label ?? 'default'
 }
+
+/**
+ * How an agent message reads the effort it ran with: the level sent, with the level asked when the provider
+ * capped it, or the level asked marked "not applied" when the provider takes none. Null when none was asked.
+ */
+export function messageEffortLabel(
+  sent: ReasoningEffort | null | undefined,
+  requested: ReasoningEffort | null | undefined
+): string | null {
+  if (sent) {
+    const capped = requested && requested !== sent ? ` (${effortLabel(requested)} requested)` : ''
+    return `effort ${effortLabel(sent)}${capped}`
+  }
+  return requested ? `effort ${effortLabel(requested)} not applied` : null
+}

@@ -58,8 +58,10 @@ class AgentAdvanced(
     private val maxIterations: Int = 20,
     override val llmProvider: String,
     override val llmModel: String,
-    /** Effective reasoning effort of the model, carried on the agent's messages. */
+    /** Reasoning effort the provider receives, carried on the agent's messages. */
     override val reasoningEffort: ReasoningEffort? = null,
+    /** Reasoning effort asked (the case's, else the model's), carried on the agent's messages. */
+    override val requestedReasoningEffort: ReasoningEffort? = null,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
 ) : Agent {
@@ -563,6 +565,7 @@ class AgentAdvanced(
                         llmProvider = llmProvider,
                         llmModel = llmModel,
                         reasoningEffort = reasoningEffort,
+                        requestedReasoningEffort = requestedReasoningEffort,
                     ),
                 )
                 emitEvent(
@@ -694,6 +697,7 @@ class AgentAdvanced(
                 llmProvider = llmProvider,
                 llmModel = llmModel,
                 reasoningEffort = reasoningEffort,
+                requestedReasoningEffort = requestedReasoningEffort,
             ),
             WarnEvent(
                 namespaceId = namespaceId,
@@ -797,6 +801,7 @@ class AgentAdvanced(
                                         llmProvider = llmProvider,
                                         llmModel = llmModel,
                                         reasoningEffort = reasoningEffort,
+                                        requestedReasoningEffort = requestedReasoningEffort,
                                     )
                                 emitEvent(clarification)
                                 appendTo += clarification
@@ -919,6 +924,7 @@ class AgentAdvanced(
                 llmProvider = llmProvider,
                 llmModel = llmModel,
                 reasoningEffort = reasoningEffort,
+                requestedReasoningEffort = requestedReasoningEffort,
             )
         emitEvent(resolutionMessage)
         appendTo += resolutionMessage
@@ -1109,6 +1115,7 @@ class AgentAdvanced(
                     llmProvider = llmProvider,
                     llmModel = llmModel,
                     reasoningEffort = reasoningEffort,
+                    requestedReasoningEffort = requestedReasoningEffort,
                 )
             emitEvent(msg)
         }

@@ -15,6 +15,14 @@ interface Agent : Entity {
         get() = null
 
     /**
+     * Reasoning effort asked for this agent's model requests (the case's, else the model's), before the
+     * provider's limits; null when none is asked. Differs from [reasoningEffort] when the provider caps the
+     * level (vLLM, Ollama) or takes none (Anthropic, Gemini).
+     */
+    val requestedReasoningEffort: ReasoningEffort?
+        get() = null
+
+    /**
      * Run the agent with the given case events.
      * Returns a Flow of CaseEvents that are emitted during execution:
      * - ThinkingEvent when processing

@@ -65,15 +65,15 @@ data class CaseDto(
     val runCostThreshold: Double? = null,
     /**
      * Per-case override of the reasoning effort of the agents running in the case. Null means each
-     * agent uses the effort of its model. Applies only to agents whose model has a reasoning effort
-     * configured above NONE. Accepted on create; changed afterwards through
-     * `PUT /api/cases/{id}/reasoning-effort` only (`PUT /api/cases/{id}` ignores it).
+     * agent uses the effort of its model. Replaces the effort of every agent's model, whatever it has
+     * configured; not sent to Anthropic and Gemini providers. Accepted on create; changed afterwards
+     * through `PUT /api/cases/{id}/reasoning-effort` only (`PUT /api/cases/{id}` ignores it).
      */
     @field:Schema(
         description =
             "Per-case override of the reasoning effort of the agents running in the case. " +
-                "Null means each agent uses the effort of its model. Applies only to agents whose model " +
-                "has a reasoning effort configured above NONE.",
+                "Null means each agent uses the effort of its model. Replaces the model effort of every agent, " +
+                "whatever the model has configured; not sent to Anthropic and Gemini providers.",
     )
     val reasoningEffort: ReasoningEffort? = null,
     val created: Instant? = null,
