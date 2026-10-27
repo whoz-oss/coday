@@ -58,6 +58,8 @@ import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
+import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
+import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
 import {
   buildDelegations,
   DelegationPresentation,
@@ -174,6 +176,7 @@ function hasActiveSelection(): boolean {
     QuestionPanelComponent,
     DelegationCardComponent,
     ConfirmDialogComponent,
+    AgentActivityComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -484,6 +487,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
   protected readonly delegations = computed(() => buildDelegations(this.events()))
+
+  /**
+   * What the agent is doing right now — shown in place of a spinner while the turn runs.
+   * Derived from the event stream and from the delegation pairing above, so it follows the turn
+   * without any extra bookkeeping.
+   */
+  protected readonly activity = computed<AgentActivity>(() => describeAgentActivity(this.events(), this.delegations()))
 
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
