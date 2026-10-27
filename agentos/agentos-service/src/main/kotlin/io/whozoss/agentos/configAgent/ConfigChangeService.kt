@@ -1,0 +1,356 @@
+package io.whozoss.agentos.configAgent
+
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.databind.node.TextNode
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.user.User
+import mu.KLogging
+import org.springframework.security.access.AccessDeniedException
+import org.springframework.stereotype.Service
+import java.time.Clock
+import java.time.Instant
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * Shows, applies and rejects the configuration plans frozen by `AGENTOS_CONFIG__propose`.
+ *
+ * Every method runs inside the HTTP request of the user who called the endpoint. Reads go through
+ * [ConfigReadService] with that user's rights; writes go through [ConfigWriter], i.e. through the
+ * REST controllers with the same request identity. After an apply or a reject the server posts the
+ * answer to the question ([ConfigChangeAnswer]), which closes the plan and resumes the agent.
+ *
+ * The plan comes from [ConfigPlanReader], and each operation's status from [ConfigChangeStatus].
+ */
+@Service
+class ConfigChangeService(
+    private val configPlanReader: ConfigPlanReader,
+    private val configChangeStatus: ConfigChangeStatus,
+    private val configChangeAnswer: ConfigChangeAnswer,
+    private val configReadService: ConfigReadService,
+    private val configWriter: ConfigWriter,
+    private val clock: Clock,
+) {
+    /**
+     * Questions whose plan is being applied or rejected. Entries live only for the duration of one
+     * request (removed in a `finally`). Single instance, like the case runtime registry.
+     */
+    private val claims = ConcurrentHashMap.newKeySet<UUID>()
+
+    fun view(
+        caseId: UUID,
+        questionId: UUID,
+        viewer: User,
+    ): ConfigChangeViewDto {
+        val loaded = configPlanReader.load(caseId, questionId)
+        val plan = loaded.plan
+        val state = stateOf(loaded, claimedByCaller = false)
+        val createdIds = mutableMapOf<String, UUID>()
+        val deployed = configReadService.deployedAgentIds(plan.namespaceId)
+        val operations =
+            plan.order.mapNotNull(plan::operation).mapIndexed { index, op ->
+                val evaluation = configChangeStatus.evaluate(op, plan, viewer.id, createdIds, deployed)
+                evaluation.entityId?.let { createdIds[op.ref] = it }
+                viewOf(op, index, evaluation)
+            }
+        return ConfigChangeViewDto(
+            questionId = questionId,
+            caseId = caseId,
+            recipientUserId = plan.recipientUserId,
+            agentName = plan.agentName,
+            summary = plan.summary,
+            planHash = plan.planHash,
+            createdAt = plan.createdAt,
+            expiresAt = plan.expiresAt,
+            state = state,
+            canApply = state == ConfigChangeState.OPEN && viewer.id == plan.recipientUserId,
+            operations = operations,
+            warnings = plan.warnings,
+        )
+    }
+
+    fun apply(
+        caseId: UUID,
+        questionId: UUID,
+        caller: User,
+        request: ConfigChangeApplyRequest,
+    ): ConfigChangeReportDto {
+        requireRecipient(configPlanReader.load(caseId, questionId).plan, caller)
+        return withClaim(questionId) {
+            // Re-read under the claim: an answer posted by a concurrent apply or reject is now visible.
+            val loaded = configPlanReader.load(caseId, questionId)
+            val plan = loaded.plan
+            if (request.expectedPlanHash != plan.planHash) throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
+            requireOpen(stateOf(loaded, claimedByCaller = true))
+            missingSecrets(plan, caller.id, request.secrets).takeIf { it.isNotEmpty() }?.let { missing ->
+                throw UnprocessableEntityException("MISSING_SECRET: ${missing.joinToString()}")
+            }
+            val report = applyPlan(plan, caller, request.secrets)
+            report.copy(answerPosted = configChangeAnswer.post(caseId, questionId, caller, configChangeAnswer.applied(plan, report, caller)))
+        }
+    }
+
+    fun reject(
+        caseId: UUID,
+        questionId: UUID,
+        caller: User,
+        comment: String?,
+    ) {
+        requireRecipient(configPlanReader.load(caseId, questionId).plan, caller)
+        withClaim(questionId) {
+            requireOpen(stateOf(configPlanReader.load(caseId, questionId), claimedByCaller = true))
+            if (!configChangeAnswer.post(caseId, questionId, caller, configChangeAnswer.rejected(questionId, caller, comment))) {
+                throw IllegalStateException("The rejection could not be delivered to the agent")
+            }
+        }
+    }
+
+    /** Runs [block] while holding the per-question claim, so apply and reject never overlap. */
+    private fun <T> withClaim(
+        questionId: UUID,
+        block: () -> T,
+    ): T {
+        if (!claims.add(questionId)) throw ConflictException("IN_PROGRESS: this plan is already being applied or rejected")
+        try {
+            return block()
+        } finally {
+            claims.remove(questionId)
+        }
+    }
+
+    private fun stateOf(
+        loaded: LoadedPlan,
+        claimedByCaller: Boolean,
+    ): ConfigChangeState = configPlanReader.state(loaded, Instant.now(clock), claimed = !claimedByCaller && loaded.plan.questionId in claims)
+
+    /** Keys of the secrets the operations still to write need and the request does not carry. */
+    private fun missingSecrets(
+        plan: ConfigChangePlan,
+        callerId: UUID,
+        secrets: Map<String, String>,
+    ): List<String> {
+        val createdIds = mutableMapOf<String, UUID>()
+        val deployed = configReadService.deployedAgentIds(plan.namespaceId)
+        return plan.order.mapNotNull(plan::operation).flatMap { op ->
+            val evaluation = configChangeStatus.evaluate(op, plan, callerId, createdIds, deployed)
+            evaluation.entityId?.let { createdIds[op.ref] = it }
+            val needsWrite = evaluation.status == ConfigOperationStatus.PENDING && !(op.action == ConfigAction.CREATE && evaluation.entityId != null)
+            op.secrets.map { secretKey(op, it) }.filter { needsWrite && secrets[it].isNullOrEmpty() }
+        }
+    }
+
+    /** Applies the operations in order, and once one does not succeed reports the rest as NOT_RUN. */
+    private fun applyPlan(
+        plan: ConfigChangePlan,
+        caller: User,
+        secrets: Map<String, String>,
+    ): ConfigChangeReportDto {
+        val createdIds = mutableMapOf<String, UUID>()
+        val deployed = configReadService.deployedAgentIds(plan.namespaceId)
+        val results =
+            plan.order.mapNotNull(plan::operation).fold(emptyList<ConfigOperationResultDto>()) { done, op ->
+                done +
+                    if (done.all { it.status.isSuccess }) {
+                        applyOperation(op, plan, caller, secrets, createdIds, deployed)
+                    } else {
+                        ConfigOperationResultDto(op.ref, ConfigResultStatus.NOT_RUN)
+                    }
+            }
+        val succeeded = results.count { it.status.isSuccess }
+        val decision =
+            when (succeeded) {
+                results.size -> ConfigChangeDecision.APPLIED
+                0 -> ConfigChangeDecision.FAILED
+                else -> ConfigChangeDecision.PARTIAL
+            }
+        return ConfigChangeReportDto(decision = decision, appliedBy = caller.id, results = results)
+    }
+
+    /** Evaluates then, when pending, writes one operation; records the entity it created or matched. */
+    private fun applyOperation(
+        op: PlannedOperation,
+        plan: ConfigChangePlan,
+        caller: User,
+        secrets: Map<String, String>,
+        createdIds: MutableMap<String, UUID>,
+        deployed: Set<UUID>,
+    ): ConfigOperationResultDto {
+        val evaluation =
+            runCatching { configChangeStatus.evaluate(op, plan, caller.id, createdIds, deployed) }
+                .onFailure { logger.warn(it) { "[ConfigChange] could not evaluate ${op.ref}" } }
+                .getOrNull()
+        evaluation?.entityId?.let { createdIds[op.ref] = it }
+        val result =
+            when (evaluation?.status) {
+                null -> ConfigOperationResultDto(op.ref, ConfigResultStatus.FAILED, message = UNEXPECTED_ERROR)
+                ConfigOperationStatus.APPLIED, ConfigOperationStatus.ALREADY_APPLIED ->
+                    ConfigOperationResultDto(op.ref, ConfigResultStatus.ALREADY_APPLIED, evaluation.entityId)
+                ConfigOperationStatus.CONFLICT -> ConfigOperationResultDto(op.ref, ConfigResultStatus.CONFLICT, evaluation.entityId, evaluation.reason)
+                ConfigOperationStatus.NOT_VISIBLE -> ConfigOperationResultDto(op.ref, ConfigResultStatus.NOT_FOUND, message = evaluation.reason)
+                ConfigOperationStatus.PENDING -> write(op, plan, evaluation, secrets, createdIds)
+            }
+        result.entityId?.let { createdIds[op.ref] = it }
+        return result
+    }
+
+    private fun write(
+        op: PlannedOperation,
+        plan: ConfigChangePlan,
+        evaluation: OperationEvaluation,
+        secrets: Map<String, String>,
+        createdIds: Map<String, UUID>,
+    ): ConfigOperationResultDto {
+        // Set as soon as a CREATE succeeds, so a later failure (the deployment) still reports the entity.
+        var createdId: UUID? = null
+        return try {
+            val entityId =
+                when (op.action) {
+                    ConfigAction.CREATE -> {
+                        val id = evaluation.entityId ?: configWriter.create(op.kind, createPayload(op, secrets, createdIds))
+                        createdId = id
+                        if (op.kind == ConfigKind.AGENT && op.deployTo == ConfigDeployTarget.NAMESPACE) {
+                            configWriter.setDeployed(op.scope?.namespaceId ?: plan.namespaceId, id, deployed = true)
+                        }
+                        id
+                    }
+                    ConfigAction.UPDATE -> {
+                        val target = op.target!!
+                        configWriter.update(op.kind, target.id) { dto -> applyChanges(dto, op, secrets, createdIds) }
+                        target.id
+                    }
+                    ConfigAction.ENABLE, ConfigAction.DISABLE -> {
+                        configWriter.setEnabled(op.target!!.id, enabled = op.action == ConfigAction.ENABLE)
+                        op.target.id
+                    }
+                    ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> {
+                        configWriter.setDeployed(plan.namespaceId, op.target!!.id, deployed = op.action == ConfigAction.DEPLOY)
+                        op.target.id
+                    }
+                }
+            ConfigOperationResultDto(op.ref, ConfigResultStatus.APPLIED, entityId)
+        } catch (e: Exception) {
+            val (status, message) = failureOf(op, e)
+            ConfigOperationResultDto(
+                ref = op.ref,
+                status = status,
+                entityId = createdId,
+                message = createdId?.let { "Created (id $it) but not deployed: $message" } ?: message,
+            )
+        }
+    }
+
+    private fun failureOf(
+        op: PlannedOperation,
+        e: Exception,
+    ): Pair<ConfigResultStatus, String?> =
+        when (e) {
+            is AccessDeniedException -> ConfigResultStatus.DENIED to "The user is not allowed to do this."
+            is ResourceNotFoundException -> ConfigResultStatus.NOT_FOUND to e.message
+            is ConflictException -> ConfigResultStatus.CONFLICT to e.message
+            is BadRequestException, is UnprocessableEntityException -> ConfigResultStatus.INVALID to e.message
+            // AgentConfigServiceImpl reports a duplicate name this way; ConfigJson refuses paths through lists.
+            is IllegalArgumentException ->
+                (if (e.message?.contains("already exists") == true) ConfigResultStatus.CONFLICT else ConfigResultStatus.INVALID) to e.message
+            else -> {
+                logger.warn(e) { "[ConfigChange] ${op.ref} ${op.action} ${op.kind} failed" }
+                ConfigResultStatus.FAILED to UNEXPECTED_ERROR
+            }
+        }
+
+    private fun createPayload(
+        op: PlannedOperation,
+        secrets: Map<String, String>,
+        createdIds: Map<String, UUID>,
+    ): ObjectNode {
+        val payload = (ConfigJson.resolveOpRefs(op.value, createdIds) as ObjectNode).deepCopy()
+        injectSecrets(payload, op, secrets)
+        // Last, so nothing in the plan can move the entity away from the scope the card shows.
+        payload.put("namespaceId", op.scope?.namespaceId?.toString())
+        payload.put("userId", op.scope?.userId?.toString())
+        return payload
+    }
+
+    private fun applyChanges(
+        dto: ObjectNode,
+        op: PlannedOperation,
+        secrets: Map<String, String>,
+        createdIds: Map<String, UUID>,
+    ) {
+        op.changes.forEach { change ->
+            if (change.remove) {
+                ConfigJson.removeAt(dto, change.path)
+            } else {
+                ConfigJson.setAt(dto, change.path, ConfigJson.resolveOpRefs(change.after, createdIds))
+            }
+        }
+        injectSecrets(dto, op, secrets)
+    }
+
+    private fun injectSecrets(
+        dto: ObjectNode,
+        op: PlannedOperation,
+        secrets: Map<String, String>,
+    ) {
+        op.secrets.forEach { slot ->
+            val value =
+                secrets[secretKey(op, slot)]?.takeIf { it.isNotEmpty() }
+                    ?: throw UnprocessableEntityException("MISSING_SECRET: '${slot.label}' (${secretKey(op, slot)}) is required")
+            ConfigJson.setAt(dto, slot.path, TextNode(value))
+        }
+    }
+
+    private fun viewOf(
+        op: PlannedOperation,
+        index: Int,
+        evaluation: OperationEvaluation,
+    ): ConfigOperationViewDto {
+        val masked = evaluation.entity?.let(configReadService::masked)
+        return ConfigOperationViewDto(
+            ref = op.ref,
+            order = index + 1,
+            kind = op.kind,
+            action = op.action,
+            name = op.target?.name ?: op.value?.path("name")?.asText().orEmpty(),
+            targetId = op.target?.id ?: evaluation.entityId,
+            namespaceId = op.target?.namespaceId ?: op.scope?.namespaceId,
+            userId = op.target?.userId ?: op.scope?.userId,
+            affects = op.affects,
+            deployTo = op.deployTo,
+            value = op.value,
+            changes =
+                op.changes.map { change ->
+                    ConfigFieldChangeDto(
+                        path = change.path,
+                        before = masked?.let { ConfigJson.valueAt(it, change.path) },
+                        after = change.after,
+                        remove = change.remove,
+                    )
+                },
+            secretInputs = op.secrets.map { ConfigSecretInputDto(key = secretKey(op, it), path = it.path, label = it.label) },
+            status = evaluation.status,
+        )
+    }
+
+    private fun requireRecipient(
+        plan: ConfigChangePlan,
+        caller: User,
+    ) {
+        if (caller.id != plan.recipientUserId) throw AccessDeniedException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
+    }
+
+    private fun requireOpen(state: ConfigChangeState) {
+        if (state != ConfigChangeState.OPEN) throw ConflictException("${state.name}: this plan can no longer be applied or rejected")
+    }
+
+    private fun secretKey(
+        op: PlannedOperation,
+        slot: SecretSlot,
+    ) = "${op.ref}.${slot.path}"
+
+    companion object : KLogging() {
+        private const val UNEXPECTED_ERROR = "Unexpected error, see the server logs."
+    }
+}

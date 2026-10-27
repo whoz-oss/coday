@@ -52,6 +52,15 @@ interface SubAgentRow {
  * - `enabled`: signal-based toggle so OnPush change detection reacts immediately
  * - `toolsControl`: free-text input for comma-separated tool names (empty = all tools allowed)
  */
+/**
+ * Built-in integration letting an agent read and propose AgentOS configuration changes. Mirrors
+ * `ConfigAgentIntegration.TYPE`, pinned by `ConfigAgentIntegrationUnitSpec`.
+ */
+const CONFIG_AGENT_TYPE = 'AGENTOS_CONFIG'
+
+/** Integration types that can send data off the server: network clients and process or Git access. */
+const NETWORK_INTEGRATION_TYPES = new Set(['HTTP_API', 'MCP_HTTP', 'MCP_STDIO', 'BASH', 'TMUX', 'GIT'])
+
 interface IntegrationRow {
   config: IntegrationConfig
   enabled: WritableSignal<boolean>
@@ -297,6 +306,20 @@ export class AgentConfigFormComponent implements OnInit {
     }
     return ['/agentos', this.namespaceId!, 'agent-configs', agentConfigId, 'inspect']
   }
+
+  /**
+   * True when the agent can read the AgentOS configuration (built-in AGENTOS_CONFIG enabled) and
+   * also has a network integration or sub-agents. Reads do not go through the user's Apply click,
+   * so such an agent could send what it read elsewhere. Shown as a warning, never blocked.
+   */
+  protected readonly configAgentExposureWarning = computed(() => {
+    const configEnabled = this.builtInRows().some((row) => row.type === CONFIG_AGENT_TYPE && row.state() === 'on')
+    if (!configEnabled) return false
+    const hasNetworkIntegration = this.integrationRows().some(
+      (row) => row.enabled() && NETWORK_INTEGRATION_TYPES.has(row.config.integrationType)
+    )
+    return hasNetworkIntegration || this.subAgentRows().length > 0
+  })
 
   /** Integration rows built from the namespace's IntegrationConfig list. */
   protected readonly integrationRows = signal<IntegrationRow[]>([])

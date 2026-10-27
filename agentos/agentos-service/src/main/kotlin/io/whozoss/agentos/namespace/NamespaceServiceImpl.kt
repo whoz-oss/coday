@@ -114,6 +114,8 @@ class NamespaceServiceImpl(
         }
     }
 
+    override fun findDeployedAgentIds(namespaceId: UUID): Set<UUID> = namespaceRepository.findDeployedAgentIds(namespaceId)
+
     override fun resolveRunCostThreshold(namespaceId: UUID): Double? =
         findById(namespaceId)?.runCostThreshold ?: limitsConfig.runCostThreshold
 

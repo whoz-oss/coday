@@ -16,6 +16,8 @@ export * from './case-membership-controller.service'
 import { CaseMembershipControllerService } from './case-membership-controller.service'
 export * from './case-workspace-controller.service'
 import { CaseWorkspaceControllerService } from './case-workspace-controller.service'
+export * from './config-change-controller.service'
+import { ConfigChangeControllerService } from './config-change-controller.service'
 export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
@@ -68,6 +70,7 @@ export const APIS = [
   CaseEventRestControllerService,
   CaseMembershipControllerService,
   CaseWorkspaceControllerService,
+  ConfigChangeControllerService,
   ExchangeControllerService,
   FeedbackControllerService,
   GitWorkspacesConfigurationControllerService,

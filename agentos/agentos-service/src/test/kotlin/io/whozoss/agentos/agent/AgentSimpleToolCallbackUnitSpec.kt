@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.collections.shouldHaveSize
@@ -23,6 +24,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -319,6 +321,46 @@ class AgentSimpleToolCallbackUnitSpec :
             (finishedIndex < selectedIndex) shouldBe true
             (events[selectedIndex] as AgentSelectedEvent).agentName shouldBe "TargetAgent"
             events.filterIsInstance<ToolResponseEvent>().first().success shouldBe true
+        }
+
+        "on AwaitAnswer, the tool response carries the structured output and the question its allocated id" {
+            // The config agent stores its frozen plan this way: on the interrupted call's
+            // ToolResponseEvent, persisted and shown to clients, never sent to the LLM.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val questionId = UUID.randomUUID()
+            val plan = jacksonObjectMapper().readTree("""{"schema":"test-plan"}""")
+            val askingTool =
+                object : StandardTool<Nothing> {
+                    override val name = "ASK__ask"
+                    override val description = "Asks the user"
+                    override val inputSchema = """{"type":"object","properties":{}}"""
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult =
+                        throw AgentInterrupt.AwaitAnswer(question = "Apply?", questionId = questionId, structuredOutput = plan)
+                }
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every {
+                mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream()
+            } answers {
+                toolCallbackSlot.captured.first { it.toolDefinition.name() == "ASK__ask" }.call("{}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = makeAgent(UUID.randomUUID(), mockChatClient, listOf(askingTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "configure"))).toList()
+
+            events.filterIsInstance<ToolResponseEvent>().single().structuredOutput shouldBe plan
+            events.filterIsInstance<QuestionEvent>().single().id shouldBe questionId
         }
 
         "convertEventsToMessages produces placeholder for orphaned ToolRequestEvent in history" {
