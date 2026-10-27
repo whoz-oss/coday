@@ -26,6 +26,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -65,7 +66,7 @@ class AuthSettingControllerSpec :
             namespaceService,
             userService,
             permissionService,
-            io.whozoss.agentos.permissions.ScopedAccessPolicy(permissionService),
+            ScopedAccessPolicy(permissionService),
         )
 
         val namespaceId = UUID.randomUUID()

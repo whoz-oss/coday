@@ -14,7 +14,10 @@ import io.whozoss.agentos.integrationConfig.InMemoryIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy
 import io.whozoss.agentos.integrationConfig.IntegrationConfigPolicy
+import io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy
 import io.whozoss.agentos.integrationConfig.IntegrationConfigServiceImpl
+import io.whozoss.agentos.integrationConfig.IntegrationsProperties
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -63,8 +66,8 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
                 IntegrationConfigMergeStrategy(),
                 listOf(observedPolicy),
                 namespaceService = mockk(relaxed = true),
-                scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
-                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
             )
             val associations = GitRepositoryAssociationService(service, factory)
             val allocation = GitCaseWorkspaceProvisioning(associations, bindings, mockk { every { isAvailable() } returns true }, workerOn())

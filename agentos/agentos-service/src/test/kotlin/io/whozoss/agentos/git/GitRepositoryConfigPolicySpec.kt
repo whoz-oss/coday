@@ -18,9 +18,12 @@ import io.whozoss.agentos.git.core.GitRemoteUrlValidator
 import io.whozoss.agentos.integrationConfig.InMemoryIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy
+import io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy
 import io.whozoss.agentos.integrationConfig.IntegrationConfigServiceImpl
+import io.whozoss.agentos.integrationConfig.IntegrationsProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.dao.DataIntegrityViolationException
 import java.util.UUID
@@ -58,8 +61,8 @@ class GitRepositoryConfigPolicySpec :
                 IntegrationConfigMergeStrategy(),
                 listOf(policy),
                 namespaceService = mockk(relaxed = true),
-                scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
-                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
             )
 
         val namespaceId = UUID.randomUUID()
@@ -132,8 +135,8 @@ class GitRepositoryConfigPolicySpec :
                 IntegrationConfigMergeStrategy(),
                 listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)),
                 namespaceService = mockk(relaxed = true),
-                scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
-                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
             )
             val dedicatedNamespace = UUID.randomUUID()
             val namespaces = mockk<NamespaceService> {
@@ -172,8 +175,8 @@ class GitRepositoryConfigPolicySpec :
                     IntegrationConfigMergeStrategy(),
                     listOf(policy),
                     namespaceService = mockk(relaxed = true),
-                    scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
-                    scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+                    scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+                    scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
                 )
                 val value = if (updating) service.create(config(validParameters())) else config(validParameters())
                 clearMocks(provisioner, answers = false)
@@ -292,8 +295,8 @@ class GitRepositoryConfigPolicySpec :
                 IntegrationConfigMergeStrategy(),
                 listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability, workerEnabled)),
                 namespaceService = mockk(relaxed = true),
-                scopePolicy = io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy(io.whozoss.agentos.integrationConfig.IntegrationsProperties()),
-                scopedAccessPolicy = io.whozoss.agentos.permissions.ScopedAccessPolicy(mockk(relaxed = true)),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
             )
             val saved = service.create(config(validParameters()))
             val failed = checkoutStore.markStatus(checkoutStore.findByNamespaceId(namespaceId)!!.id, RepositoryCheckoutStatus.FAILED, "first clone failed")

@@ -54,6 +54,17 @@ sealed interface Caller {
      *
      * [namespaceId] is the namespace in which the agent is running.
      * [caseId] is the case being processed, or `null` for background / scheduled runs.
+     *
+     * ## Forward scaffolding
+     *
+     * No production call site constructs `Caller.Agent` yet — agent tool dispatch still resolves
+     * identity through `UserService.getCurrentUser()` and builds a `Caller.Human`. `Agent` is
+     * declared here alongside `Human` rather than added later because:
+     * - The sealed interface is the right place to express the full principal taxonomy from day
+     *   one; adding a variant later would touch every exhaustive `when` branch in policies.
+     * - `isAgent` lets a policy opt into an explicit confirmation step for far-reaching writes
+     *   without needing a separate code path — the infrastructure is in place when the first
+     *   policy that needs it lands.
      */
     data class Agent(
         override val userId: UUID,

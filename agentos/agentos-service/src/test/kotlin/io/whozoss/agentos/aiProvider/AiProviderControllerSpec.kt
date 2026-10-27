@@ -18,6 +18,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.aiProvider.AiProviderDto
@@ -60,7 +61,7 @@ class AiProviderControllerSpec :
             namespaceService,
             userService,
             permissionService,
-            io.whozoss.agentos.permissions.ScopedAccessPolicy(permissionService),
+            ScopedAccessPolicy(permissionService),
         )
 
         val namespaceId = UUID.randomUUID()
