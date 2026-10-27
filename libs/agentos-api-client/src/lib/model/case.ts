@@ -32,6 +32,10 @@ export interface Case {
   scheduledPromptId?: string
   status: CaseStatusEnum
   title?: string
+  /**
+   * Create only. Whether a new top-level case gets a worktree of its namespace\'s Git repository. Null leaves it to the namespace\'s settings, false creates an ordinary case, true creates the worktree even when the namespace does not create one for every case. Must be null for a sub-case.
+   */
+  worktree?: boolean
 }
 export enum CaseRoleEnum {
   ADMIN = 'ADMIN',
