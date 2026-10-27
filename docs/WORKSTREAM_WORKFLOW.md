@@ -376,7 +376,13 @@ stamp versions in the working tree only. The version line in `apps/*/package.jso
 `agentosSdk` / `agentosService` keys in `libs.versions.toml` are therefore *unmodified* on the
 workstream side. Git merges line-by-line, not file-by-file, so a work branch that adds a
 dependency to `package.json` merges cleanly with a master release that changed only the version
-line. No conflict occurs.
+line.
+
+**This only holds if a release rewrites nothing but the `version` field.** Git treats adjacent
+modified lines as a single hunk: if a release rewrites a line next to one the workstream added,
+the sync conflicts. That is exactly what happened with `apps/web/package.json` while its internal
+dependencies were pinned to literal versions (see *Internal dependencies MUST use `workspace:*`*,
+below).
 
 A real conflict in these files means two sides genuinely changed overlapping lines — which is
 information, not noise.
@@ -393,6 +399,48 @@ information, not noise.
 
 For everything else the sync must **fail loudly** and open an issue or notify, requiring manual
 resolution.
+
+### Internal dependencies MUST use `workspace:*`
+
+A dependency between two packages of the release group (e.g. `@whoz-oss/coday-web` →
+`@whoz-oss/coday-client` / `-server` / `-factory-cockpit`) must be declared as `workspace:*`,
+never as a literal version.
+
+**Why — the failure it prevents.** Nx only links a `package.json` dependency to a local project
+when the declared specifier is `workspace:*` / `*`, or when the local version *satisfies* the
+declared one (`findDependencyInWorkspaceProjects` in nx 23.1.1). The release stamp then rewrites
+only the dependency lines that have such an edge. With literal pins, a single drifted copy
+silently breaks the chain:
+
+1. A package that exists only on the workstream (here `factory-cockpit`) is never bumped by master
+   releases, so its own `version` field lags behind (`3.40.0`).
+2. Its line in `apps/web/package.json` sits between lines that master releases *do* rewrite, so it
+   gets aligned with them (`3.40.1`) — by a conflict resolution or a release.
+3. `satisfies('3.40.0', '3.40.1')` is false → no graph edge → the workstream stamp skips that line.
+4. `coday-web@0.0.0-workstream-<slug>.<n>` is published depending on
+   `coday-factory-cockpit@3.40.1`, which does not exist. Nothing fails until deployment.
+
+**How `workspace:*` removes the problem rather than guarding it.**
+
+- The version is written in exactly one place: each package's own `version` field. There is no
+  copy left to drift.
+- A `workspace:` specifier always creates the graph edge, whatever the versions.
+- `preserveLocalDependencyProtocols` (default `true`) makes `nx release` leave these lines
+  untouched, so releases no longer rewrite them and syncs no longer conflict on them.
+- `releasePublish` runs `pnpm publish`, which substitutes `workspace:*` with the exact stamped
+  version **in the published tarball only** (`3.40.2` on master, `0.0.0-workstream-<slug>.<n>` on
+  a workstream). The repository always keeps `workspace:*`.
+
+**Requirements.**
+
+- The depending package must be a **pnpm workspace member** (it must not be excluded in
+  `pnpm-workspace.yaml`), and `pnpm install` must have run in the publishing job — pnpm resolves
+  the substitution from the linked local packages.
+- Use `workspace:*`, not `workspace:^`: the latter publishes a range (`^0.0.0-workstream-…`),
+  which breaks the exact-version lockstep consumers rely on.
+- `npm pack` / `npm publish` do **not** substitute the protocol. To check a tarball locally, use
+  `pnpm pack` and inspect `package/package.json` inside it. A `--dry-run` of the release scripts
+  does not show the substituted versions either, since nothing is written to disk.
 
 ### Known trade-off: reset discards in-flight promotions
 
