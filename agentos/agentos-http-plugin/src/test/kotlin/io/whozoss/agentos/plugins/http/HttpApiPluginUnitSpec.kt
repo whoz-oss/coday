@@ -34,7 +34,13 @@ class HttpApiPluginUnitSpec : StringSpec({
         val services = HttpApiPluginHolder.services
         services.client.dns.shouldBeInstanceOf<PolicyDns>()
         services.client.followRedirects shouldBe false
-        services.urlPolicy.validate("https://127.0.0.1/").shouldBeInstanceOf<UrlCheck.Rejected>()
+        // The mode comes from AGENTOS_HTTP_API_DISALLOW_UNSECURE: permissive by default, strict when "true".
+        val loopback = services.urlPolicy.validate("https://127.0.0.1/")
+        if (HttpApiPluginHolder.allowUnsecure()) {
+            loopback.shouldBeInstanceOf<UrlCheck.Ok>()
+        } else {
+            loopback.shouldBeInstanceOf<UrlCheck.Rejected>()
+        }
         val again = HttpApiPluginHolder.services
         again shouldBeSameInstanceAs services
         again.catalogueCache shouldBeSameInstanceAs services.catalogueCache
