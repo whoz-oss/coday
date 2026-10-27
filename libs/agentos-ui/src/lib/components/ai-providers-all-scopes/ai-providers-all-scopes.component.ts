@@ -11,6 +11,8 @@ import {
 } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface AiProviderRow {
   key: string
@@ -22,7 +24,7 @@ interface AiProviderRow {
 
 @Component({
   selector: 'agentos-ai-providers-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './ai-providers-all-scopes.component.html',
   styleUrl: './ai-providers-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,6 +39,9 @@ export class AiProvidersAllScopesComponent implements OnInit {
   protected readonly isAdmin = signal(false)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<AiProviderRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.config.name, row.config.apiType, row.scopeLabel].join(' ')
+  )
 
   ngOnInit(): void {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {

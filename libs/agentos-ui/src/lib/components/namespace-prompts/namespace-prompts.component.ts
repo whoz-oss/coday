@@ -5,6 +5,8 @@ import { Prompt } from '@whoz-oss/agentos-api-client'
 import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 interface PromptRow {
   key: string
   prompt: Prompt
@@ -12,7 +14,7 @@ interface PromptRow {
 }
 @Component({
   selector: 'agentos-namespace-prompts',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './namespace-prompts.component.html',
   styleUrl: './namespace-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,6 +28,9 @@ export class NamespacePromptsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<PromptRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.prompt.name, row.prompt.description, row.scope].filter(Boolean).join(' ')
+  )
   private readonly allPrompts$ = this.refresh$.pipe(
     switchMap(() => {
       this.isLoading.set(true)

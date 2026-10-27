@@ -11,6 +11,8 @@ import {
 } from '../../services/auth-setting-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface AuthSettingRow {
   key: string
@@ -22,7 +24,7 @@ interface AuthSettingRow {
 
 @Component({
   selector: 'agentos-auth-settings-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './auth-settings-all-scopes.component.html',
   styleUrl: './auth-settings-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -38,6 +40,9 @@ export class AuthSettingsAllScopesComponent implements OnInit {
   protected readonly isAdmin = signal(false)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<AuthSettingRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.config.name, row.config.authType, row.scopeLabel].join(' ')
+  )
 
   ngOnInit(): void {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {

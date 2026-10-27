@@ -4,6 +4,8 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService, AgentConfigExecutionModeEnum } from '@whoz-oss/agentos-api-client'
 import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 interface AgentConfigRow {
   key: string
   config: AgentConfig
@@ -11,7 +13,7 @@ interface AgentConfigRow {
 }
 @Component({
   selector: 'agentos-namespace-agent-configs',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './namespace-agent-configs.component.html',
   styleUrl: './namespace-agent-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -25,6 +27,9 @@ export class NamespaceAgentConfigsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<AgentConfigRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.config.name, row.config.description, this.mode(row), row.scope].filter(Boolean).join(' ')
+  )
   private readonly allConfigs$ = this.refresh$.pipe(
     switchMap(() => {
       this.isLoading.set(true)
