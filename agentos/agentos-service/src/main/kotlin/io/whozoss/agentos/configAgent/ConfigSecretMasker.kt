@@ -18,7 +18,8 @@ internal object ConfigSecretMasker {
     private val NON_SECRET_PARAMETER_KEYS =
         setOf("baseurl", "url", "specurl", "openapiurl", "serverurl", "endpoint", "apibaseurl", "mcpurl", "description", "title", "region")
 
-    private val AUTH_SETTING_SECRET_FIELDS = setOf("apiKey", "token", "password", "clientSecret")
+    /** The secret fields of the auth setting types: masked on read, and the only auth setting paths a plan may declare as secrets. */
+    val AUTH_SETTING_SECRET_FIELDS = setOf("apiKey", "token", "password", "clientSecret")
 
     fun mask(
         kind: ConfigKind,

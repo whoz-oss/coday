@@ -21,6 +21,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.authSetting.ApiKeyAuthSetting
 import io.whozoss.agentos.authSetting.AuthSettingService
+import io.whozoss.agentos.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
@@ -475,6 +476,31 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             val stored = authSettingService.findByUserId(alice.id).single { it.name == "ACME_KEY_$suffix" } as ApiKeyAuthSetting
             stored.apiKey shouldBe "s3cr3t-$suffix"
             stored.namespaceId shouldBe namespace.id
+        }
+
+        "an OAuth auth setting is created with its client secret typed in the card" {
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "oauth", "kind": "AUTH_SETTING", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "ACME_OAUTH_$suffix", "authType": "OAUTH_REGISTERED", "clientId": "acme-client",
+                                     "authorizationUrl": "https://acme.example.com/authorize", "tokenUrl": "https://acme.example.com/token",
+                                     "scopes": "read write" },
+                          "secrets": [ { "path": "/clientSecret", "label": "Acme client secret" } ] } ] }
+                    """.trimIndent(),
+                )
+            val shown = view(proposal.questionId)
+
+            val report = applied(proposal.questionId, shown["planHash"].asText(), mapOf("oauth./clientSecret" to "client-s3cr3t-$suffix"))
+
+            report["decision"].asText() shouldBe "APPLIED"
+            val stored = authSettingService.findByNamespaceId(namespace.id).single { it.name == "ACME_OAUTH_$suffix" } as OAuthRegisteredAuthSetting
+            stored.clientId shouldBe "acme-client"
+            stored.clientSecret shouldBe "client-s3cr3t-$suffix"
+            stored.tokenUrl shouldBe "https://acme.example.com/token"
+            stored.userId shouldBe null
         }
 
         "a proposal above the operation limit is refused" {

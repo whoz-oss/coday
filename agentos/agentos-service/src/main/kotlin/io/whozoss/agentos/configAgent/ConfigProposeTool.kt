@@ -38,10 +38,11 @@ class ConfigProposeTool(
         and UNDEPLOY target an existing 'id'; CREATE carries a 'scope' and a 'value' with the fields of the new entity
         (the same fields as the AgentOS REST API: e.g. an agent has name, description, instructions, modelName,
         integrations {"INTEGRATION_NAME": null or ["tool"]}, subAgents; a prompt has name, content [..], agentConfigId;
-        an integration has name, integrationType, description, parameters, authSettingName; an API key auth setting
-        has name, authType "API_KEY", apiKey; a skill has name, description, body; a namespace has name, description).
+        an integration has name, integrationType, description, parameters, authSettingName; a skill has name, description,
+        body; a namespace has name, description; an auth setting has name, description, authType and the fields of that
+        type: ${ConfigAuthSettingTypes.description}, where * marks a secret).
         To use the id of an entity created earlier in the same plan, write {"${'$'}op": "<ref>"}.
-        Never write a secret (API key, token, password): declare its path in 'secrets' and the user types it in the card.
+        Never write a secret (API key, token, password, client secret): declare its path in 'secrets' and the user types it in the card.
         A new agent needs 'deployTo': NAMESPACE so members can use it, or NONE.
         Entities live on the platform, in this namespace, or in a namespace the same plan creates (CREATE NAMESPACE, then
         scope.namespaceId {"${'$'}op": "<its ref>"} on the entities created in it and on the DEPLOY of existing platform agents).
