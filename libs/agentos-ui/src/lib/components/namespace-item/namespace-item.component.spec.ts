@@ -1,49 +1,64 @@
+import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
-import { Namespace, UsageConfigurationControllerService } from '@whoz-oss/agentos-api-client'
-import { of, Subject } from 'rxjs'
+import { Namespace } from '@whoz-oss/agentos-api-client'
+import { UsageConfigurationService } from '../../services/usage-configuration.service'
 import { NamespaceItemComponent } from './namespace-item.component'
 
-describe('NamespaceItemComponent usage link', () => {
-  let configuration: { getUsageConfiguration: jest.Mock }
+describe('NamespaceItemComponent', () => {
+  const namespace = { id: 'ns', name: 'Test namespace' } as Namespace
+  let usageEnabled: ReturnType<typeof signal<boolean>>
 
   beforeEach(() => {
-    configuration = { getUsageConfiguration: jest.fn() }
+    usageEnabled = signal(false)
     TestBed.configureTestingModule({
       imports: [NamespaceItemComponent],
-      providers: [{ provide: UsageConfigurationControllerService, useValue: configuration }],
+      providers: [{ provide: UsageConfigurationService, useValue: { enabled: usageEnabled } }],
     })
   })
 
-  function render() {
+  function render(gitAvailable = false) {
     const fixture = TestBed.createComponent(NamespaceItemComponent)
-    fixture.componentRef.setInput('namespace', { id: 'ns', name: 'Test namespace' } as Namespace)
+    fixture.componentRef.setInput('namespace', namespace)
+    fixture.componentRef.setInput('gitAvailable', gitAvailable)
     fixture.detectChanges()
     return fixture
   }
 
-  it('hides usage while settings are loading and when tracking is disabled', () => {
-    const settings = new Subject<{ enabled: boolean }>()
-    configuration.getUsageConfiguration.mockReturnValue(settings)
-    const fixture = render()
-    expect(fixture.nativeElement.textContent).not.toContain('Usage and costs')
-    settings.next({ enabled: false })
-    settings.complete()
-    fixture.detectChanges()
-    expect(fixture.nativeElement.textContent).not.toContain('Usage and costs')
+  it('exposes only Open and Configure as visible card actions', () => {
+    const buttons = Array.from(render().nativeElement.querySelectorAll('button')).map((button) =>
+      button.textContent?.trim()
+    )
+    expect(buttons).toEqual(expect.arrayContaining(['Open', 'Configure']))
+    expect(buttons).not.toEqual(expect.arrayContaining(['Members', 'Git', 'Usage and costs']))
   })
 
-  it('shares settings across namespace cards and exposes usage when enabled', () => {
-    configuration.getUsageConfiguration.mockReturnValue(of({ enabled: true }))
-    const first = render()
-    const second = render()
-    expect(first.nativeElement.textContent).toContain('Usage and costs')
-    expect(second.nativeElement.textContent).toContain('Usage and costs')
-    expect(configuration.getUsageConfiguration).toHaveBeenCalledTimes(1)
-    const emit = jest.spyOn(first.componentInstance.usageRequested, 'emit')
-    const button = Array.from(first.nativeElement.querySelectorAll('button')).find((element) =>
-      (element as HTMLButtonElement).textContent?.includes('Usage and costs')
-    ) as HTMLButtonElement
-    button.click()
-    expect(emit).toHaveBeenCalledWith({ id: 'ns', name: 'Test namespace' })
+  it('places Members and conditionally Git and Usage in the kebab contract', () => {
+    usageEnabled.set(true)
+    const fixture = render(true)
+    const labels = fixture.componentInstance['menuItems']().map((item) => item.label)
+    expect(labels).toEqual(expect.arrayContaining(['Members', 'Git', 'Usage and costs']))
+  })
+
+  it('omits unavailable Git and Usage menu actions', () => {
+    const labels = render()
+      .componentInstance['menuItems']()
+      .map((item) => item.label)
+    expect(labels).toContain('Members')
+    expect(labels).not.toEqual(expect.arrayContaining(['Git', 'Usage and costs']))
+  })
+
+  it.each([
+    ['members', 'membersRequested'],
+    ['git', 'gitRequested'],
+    ['usage', 'usageRequested'],
+  ])('emits the namespace for the %s menu action', (key, output) => {
+    usageEnabled.set(true)
+    const component = render(true).componentInstance
+    const emit = jest.fn()
+    ;(
+      component[output as keyof NamespaceItemComponent] as { subscribe: (handler: (value: Namespace) => void) => void }
+    ).subscribe(emit)
+    component['onMenuAction'](key)
+    expect(emit).toHaveBeenCalledWith(namespace)
   })
 })
