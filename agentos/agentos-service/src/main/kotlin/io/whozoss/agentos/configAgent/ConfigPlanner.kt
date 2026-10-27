@@ -14,8 +14,9 @@ import java.util.UUID
  *   attached after its creation;
  * - what would make the plan ambiguous: an unknown or cyclic `$op` reference, a secret written by
  *   the LLM;
- * - what the tool could not show or apply faithfully: a scope outside the current namespace or a
- *   namespace the plan creates (reads and statuses are bounded to them), a personal scope for agents
+ * - what the tool could not show or apply faithfully: a scope outside the current namespace, the
+ *   namespaces the user administers and a namespace the plan creates (reads and statuses are bounded
+ *   to them), a personal scope for agents
  *   and skills (they have none, and the REST API would silently ignore it), a secret outside a
  *   credential field, a path through a list.
  *
@@ -162,18 +163,24 @@ class ConfigPlanner(
         context: ProposalContext,
         errors: MutableList<String>,
     ): PlannedOperation? {
-        val name = value.path("name").asText("").trim()
+        val source = op.copyFrom?.let { copySource(kind, it, context, errors) }
+        // A copy keeps its source's name unless the plan gives another one.
+        val effective = source?.takeUnless { value.has("name") }?.let { value.deepCopy().put("name", it.name) } ?: value
+        val name = effective.path("name").asText("").trim()
         if (name.isEmpty()) errors += "CREATE needs 'value.name'."
-        listOf("id", "namespaceId", "userId").filter { value.has(it) }.forEach {
+        if (kind == ConfigKind.AGENT && effective.get("enabled")?.isBoolean != true) {
+            errors += "creating an agent needs 'value.enabled': true (it can run) or false (it stays a draft nobody can use)."
+        }
+        listOf("id", "namespaceId", "userId").filter { effective.has(it) }.forEach {
             errors += "'value.$it' is not allowed: the scope goes in 'scope' and the id is assigned by the server."
         }
         val scope = scopeOf(kind, op.scope, refs, context, errors)
         secrets.forEach { slot ->
-            ConfigJson.valueAt(value, slot.path)?.takeUnless { it.isNull }?.let {
+            ConfigJson.valueAt(effective, slot.path)?.takeUnless { it.isNull }?.let {
                 errors += "secret path '${slot.path}' must not carry a value in 'value'."
             }
         }
-        val dependsOn = ConfigJson.opRefs(value) + listOfNotNull(scope?.namespaceRef)
+        val dependsOn = ConfigJson.opRefs(effective) + listOfNotNull(scope?.namespaceRef)
         (dependsOn - refs.all).forEach { errors += "unknown reference {\"\$op\": \"$it\"}." }
         if (ref in dependsOn) errors += "an operation cannot reference itself."
         val deployTo =
@@ -190,9 +197,10 @@ class ConfigPlanner(
                 kind = kind,
                 action = ConfigAction.CREATE,
                 scope = it,
-                value = value,
+                value = effective,
                 secrets = secrets,
                 deployTo = deployTo,
+                copyFrom = source,
                 dependsOn = dependsOn.toList().sorted(),
                 affects = affects(namespaced = it.namespaceId != null || it.namespaceRef != null, userId = it.userId),
             )
@@ -273,9 +281,23 @@ class ConfigPlanner(
             changes = planned,
             secrets = secrets,
             dependsOn = dependsOn.toList().sorted(),
-            affects = affects(namespaced = target.namespaceId != null, userId = target.userId),
+            affects = affects(namespaced = target.namespaceId != null || kind == ConfigKind.NAMESPACE, userId = target.userId),
         )
     }
+
+    /** The integration a `CREATE` copies, read like any target: within the bounds, with the user's rights. */
+    private fun copySource(
+        kind: ConfigKind,
+        id: String,
+        context: ProposalContext,
+        errors: MutableList<String>,
+    ): PlannedTarget? =
+        if (kind == ConfigKind.INTEGRATION) {
+            targetEntity(kind, id, context, errors)?.toTarget()
+        } else {
+            errors += "'copyFrom' is only supported for INTEGRATION."
+            null
+        }
 
     /** `DEPLOY` and `UNDEPLOY` act on the current namespace, or on the one [OperationInput.scope] names. */
     private fun planTargetOnly(
@@ -376,10 +398,10 @@ class ConfigPlanner(
                 }
                 else ->
                     namespaceIdOf(namespaceNode, context).also { id ->
-                        if (id != context.namespaceId) {
+                        if (id == null || (id != context.namespaceId && !configReadService.canAdminister(context.callerId, id))) {
                             errors +=
-                                "scope.namespaceId must be this namespace (\"current\" or ${context.namespaceId}), " +
-                                "{\"\$op\": \"<ref>\"} of a namespace this plan creates, or null for platform."
+                                "scope.namespaceId must be this namespace (\"current\" or ${context.namespaceId}), the id of a namespace " +
+                                "the user administers, {\"\$op\": \"<ref>\"} of a namespace this plan creates, or null for platform."
                         }
                     }
             }
@@ -469,18 +491,21 @@ class ConfigPlanner(
     private fun warnings(
         operations: List<PlannedOperation>,
         context: ProposalContext,
-    ): List<String> {
-        val deployed = configReadService.deployedAgentIds(context.namespaceId)
-        return operations.mapNotNull { op ->
+    ): List<String> =
+        operations.mapNotNull { op ->
             when {
                 op.kind == ConfigKind.AGENT && op.action == ConfigAction.CREATE && op.deployTo == ConfigDeployTarget.NONE ->
                     "${op.ref}: the new agent is not deployed, so members of the namespace will not see it."
-                op.kind == ConfigKind.AGENT && op.action == ConfigAction.ENABLE && op.target != null && op.target.id !in deployed ->
-                    "${op.ref}: '${op.target.name}' is not deployed on this namespace, so members will not see it."
+                op.kind == ConfigKind.AGENT &&
+                    op.action == ConfigAction.ENABLE &&
+                    op.target != null &&
+                    op.target.id !in configReadService.deployedAgentIds(op.target.namespaceId ?: context.namespaceId) ->
+                    "${op.ref}: '${op.target.name}' is not deployed on its namespace, so members will not see it."
+                op.kind == ConfigKind.NAMESPACE && op.action == ConfigAction.CREATE && op.value?.hasNonNull("defaultAgentName") != true ->
+                    "${op.ref}: the new namespace has no default agent, so a message without @mention gets no answer there."
                 else -> null
             }
         }
-    }
 
     /** Topological order of the `$op` dependencies, ties broken by a fixed rank then by plan order; null on a cycle. */
     private tailrec fun orderOperations(
@@ -500,7 +525,8 @@ class ConfigPlanner(
 
     private fun rank(op: PlannedOperation): Int =
         when (op.kind) {
-            ConfigKind.NAMESPACE -> 0
+            // A namespace is created first; its update comes last, e.g. to name a default agent the plan creates.
+            ConfigKind.NAMESPACE -> if (op.action == ConfigAction.CREATE) 0 else 9
             ConfigKind.AUTH_SETTING -> 1
             ConfigKind.INTEGRATION -> 2
             ConfigKind.SKILL -> 3
@@ -517,7 +543,7 @@ class ConfigPlanner(
     private fun allowedActions(kind: ConfigKind): Set<ConfigAction> =
         when (kind) {
             ConfigKind.AGENT -> ConfigAction.entries.toSet()
-            ConfigKind.NAMESPACE -> setOf(ConfigAction.CREATE)
+            ConfigKind.NAMESPACE -> setOf(ConfigAction.CREATE, ConfigAction.UPDATE)
             else -> setOf(ConfigAction.CREATE, ConfigAction.UPDATE)
         }
 
@@ -528,6 +554,8 @@ class ConfigPlanner(
                 ConfigKind.PROMPT -> setOf("agentConfigId")
                 ConfigKind.INTEGRATION -> setOf("integrationType")
                 ConfigKind.AUTH_SETTING -> setOf("authType")
+                // The REST API keeps a namespace's externalId as created.
+                ConfigKind.NAMESPACE -> setOf("externalId")
                 else -> emptySet()
             }
 

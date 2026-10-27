@@ -2,6 +2,7 @@ package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.authSetting.AuthSetting
@@ -37,13 +38,14 @@ import io.whozoss.agentos.skill.toDto as skillToDto
  * overlays), and a single entity follows its `GET /{id}` guard, `hasPermission(id, <Entity>, READ)`
  * with the owner fallback, plus the namespace fallback `SkillController` adds for filesystem skills.
  *
- * Reads are bounded to the platform, the current namespace and the caller's own overlays: an
- * entity owned by another user is never returned, even to a super-admin, because what the config
- * agent reads ends up in the case history, readable by every member of the case. The statuses of a
- * plan's operations in a namespace that plan creates are read with that namespace as the bound.
+ * Reads are bounded to the platform, the current namespace, the namespaces the caller administers
+ * (Namespace WRITE, so every namespace for a super-admin) and the caller's own overlays: an entity
+ * owned by another user is never returned, even to a super-admin, because what the config agent
+ * reads ends up in the case history, readable by every member of the case. The statuses of a plan's
+ * operations in a namespace that plan creates are read with that namespace as the bound.
  *
- * Namespaces are platform-level entities, looked up by name only, to tell whether a planned one
- * already exists; `AGENTOS_CONFIG__read` does not list them.
+ * Namespaces are platform-level entities, listed and read with the Namespace READ rule of the REST
+ * API. [readiness] tells, for one user, whether a message reaches an agent in a namespace.
  */
 @Service
 class ConfigReadService(
@@ -58,6 +60,7 @@ class ConfigReadService(
     private val integrationsProperties: IntegrationsProperties,
     private val permissionEvaluator: AgentOsPermissionEvaluator,
     private val skillAuthorizationService: SkillAuthorizationService,
+    private val agentConfigProperties: AgentConfigProperties,
     private val objectMapper: ObjectMapper,
 ) {
     /** The entity [id] of [kind] if [callerId] may read it by id within [namespaceId]'s bounds, else null. */
@@ -112,6 +115,57 @@ class ConfigReadService(
 
     fun integrationType(type: String) = integrationTypeRegistry.findByType(type)
 
+    /** Whether [namespaceId] exists and [callerId] administers it (Namespace WRITE), which brings it within the bounds. */
+    fun canAdminister(
+        callerId: UUID,
+        namespaceId: UUID,
+    ): Boolean = canWriteNamespace(callerId, namespaceId) && namespaceService.findById(namespaceId) != null
+
+    /**
+     * Whether a message without `@mention` in [namespaceId] reaches an agent for [callerId], resolved like
+     * `CaseServiceImpl.selectDefaultAgent` (the namespace default, else the platform default, among the
+     * agents deployed and enabled for the caller) and, when it does not, the first condition that fails.
+     */
+    fun readiness(
+        callerId: UUID,
+        namespaceId: UUID,
+    ): NamespaceReadiness? =
+        namespaceService.findById(namespaceId)?.let { namespace ->
+            val defaultName = namespace.defaultAgentName ?: agentConfigProperties.agentName
+            val agents = agentConfigService.findByNamespace(namespaceId) + agentConfigService.findByNamespace(null)
+            val deployed = deployedAgentIds(namespaceId)
+            val resolved = defaultName?.let { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, callerId, it).firstOrNull() }
+            val status = defaultAgentStatus(defaultName, resolved, agents)
+            NamespaceReadiness(
+                defaultAgentName = defaultName,
+                defaultAgentSource =
+                    when {
+                        namespace.defaultAgentName != null -> "namespace"
+                        defaultName != null -> "platform"
+                        else -> null
+                    },
+                defaultAgentStatus = status,
+                hint = status.hint,
+                resolvedAgent = resolved?.name,
+                deployedAgents = agents.filter { it.metadata.id in deployed }.map { DeployedAgent(name = it.name, enabled = it.enabled) },
+            )
+        }
+
+    private fun defaultAgentStatus(
+        defaultName: String?,
+        resolved: AgentConfig?,
+        agents: List<AgentConfig>,
+    ): DefaultAgentStatus {
+        val named = agents.filter { it.name.equals(defaultName, ignoreCase = true) }
+        return when {
+            defaultName == null -> DefaultAgentStatus.NOT_SET
+            resolved != null -> DefaultAgentStatus.OK
+            named.isEmpty() -> DefaultAgentStatus.NOT_FOUND
+            named.none { it.enabled } -> DefaultAgentStatus.DISABLED
+            else -> DefaultAgentStatus.NOT_DEPLOYED
+        }
+    }
+
     fun capabilities(
         callerId: UUID,
         namespaceId: UUID,
@@ -142,21 +196,25 @@ class ConfigReadService(
         namespaceId: UUID,
     ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
 
-    /** Platform, current namespace and the caller's own overlays only, whatever the caller's rights. */
+    /** Platform, current namespace, administered namespaces and the caller's own overlays only. */
     private fun inBounds(
         entity: ConfigEntity,
         callerId: UUID,
         namespaceId: UUID,
     ): Boolean =
-        (entity.namespaceId == null || entity.namespaceId == namespaceId) &&
+        (entity.namespaceId == null || entity.namespaceId == namespaceId || canAdminister(callerId, entity.namespaceId)) &&
             (entity.userId == null || entity.userId == callerId)
 
-    /** The list endpoints' rule. */
+    /** The list endpoints' rule; a namespace is listed to whoever may read it, as `GET /api/namespaces` does. */
     private fun canReadListed(
         entity: ConfigEntity,
         callerId: UUID,
         namespaceId: UUID,
-    ): Boolean = entity.userId == callerId || entity.namespaceId == null || canReadNamespace(callerId, namespaceId)
+    ): Boolean =
+        when {
+            entity.kind == ConfigKind.NAMESPACE -> canReadById(entity, callerId)
+            else -> entity.userId == callerId || entity.namespaceId == null || canReadNamespace(callerId, namespaceId)
+        }
 
     /** The `GET /{id}` rule of the entity's controller. */
     private fun canReadById(

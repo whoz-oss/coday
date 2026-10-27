@@ -221,6 +221,32 @@ describe('ConfigChangeCardComponent', () => {
     expect(root.querySelector('dd pre')).toBeNull()
   })
 
+  it('says which integration a step copies', () => {
+    const root = render(
+      plan({
+        operations: [
+          {
+            ref: 'copy',
+            order: 1,
+            kind: 'INTEGRATION',
+            action: 'CREATE',
+            name: 'github-api',
+            affects: 'NAMESPACE_MEMBERS',
+            namespaceName: 'agentos-forge',
+            copyFrom: 'github-api',
+            value: { name: 'github-api' },
+            changes: [],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+        ],
+      } as Partial<ConfigChangeViewDto>)
+    )
+
+    expect(root.textContent).toContain('Copy of github-api')
+    expect(root.textContent).toContain('Members of agentos-forge')
+  })
+
   it('tells why a step was not applied once the plan is applied', () => {
     service.applyConfigChange.mockReturnValue(
       of({

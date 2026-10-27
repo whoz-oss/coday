@@ -13,6 +13,7 @@ enum class ReadKind(
     PROMPT("prompt", ConfigKind.PROMPT),
     INTEGRATION("integration", ConfigKind.INTEGRATION),
     AUTH_SETTING("auth-setting", ConfigKind.AUTH_SETTING),
+    NAMESPACE("namespace", ConfigKind.NAMESPACE),
     INTEGRATION_TYPE("integration-type"),
     DEPLOYMENT("deployment"),
     CAPABILITIES("capabilities"),

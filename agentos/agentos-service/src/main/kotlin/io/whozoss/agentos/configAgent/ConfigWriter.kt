@@ -16,6 +16,12 @@ interface ConfigWriter {
         dto: ObjectNode,
     ): UUID
 
+    /** The entity as the REST API returns it to the user of the request. */
+    fun read(
+        kind: ConfigKind,
+        id: UUID,
+    ): ObjectNode
+
     /** Re-reads the entity as the REST API returns it, lets [change] edit it, and writes it back. */
     fun update(
         kind: ConfigKind,

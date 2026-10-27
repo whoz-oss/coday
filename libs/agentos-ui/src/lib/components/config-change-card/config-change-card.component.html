@@ -48,6 +48,13 @@
             </summary>
 
             <div class="config-change__body">
+              @if (op.copyFrom) {
+                <p class="config-change__note">
+                  Copy of <strong>{{ op.copyFrom }}</strong
+                  >: AgentOS copies its settings when you apply, without showing them to the agent. The fields below
+                  replace some of them.
+                </p>
+              }
               @if (op.action === 'CREATE' && op.value) {
                 <dl class="config-change__fields">
                   @for (field of fields(op); track field.key) {

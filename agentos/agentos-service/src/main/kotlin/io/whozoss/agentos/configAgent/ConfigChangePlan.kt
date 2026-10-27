@@ -9,8 +9,9 @@ import java.util.UUID
  * client sends back the same [planHash].
  *
  * @property order Refs in application order: a topological sort of the `$op` dependencies, with a
- *   fixed rank per kind and action as tie-breaker (credentials and integrations before the agents
- *   that use them, agents before their prompts, deployment last).
+ *   fixed rank per kind and action as tie-breaker (a new namespace first, credentials and
+ *   integrations before the agents that use them, agents before their prompts, deployment, then a
+ *   namespace update last).
  */
 data class ConfigChangePlan(
     val schema: String = ConfigAgentIntegration.PLAN_SCHEMA,

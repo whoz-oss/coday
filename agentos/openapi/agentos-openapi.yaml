@@ -4831,6 +4831,10 @@ components:
             \ the proposed one."
           items:
             $ref: "#/components/schemas/ConfigFieldChangeDto"
+        copyFrom:
+          type: string
+          description: "Name of the integration this CREATE copies; the server reads\
+            \ its fields at apply time, and value only overrides some of them."
         deployTo:
           type: string
           enum:
@@ -4854,8 +4858,8 @@ components:
           description: "Scope of the entity: null namespaceId and userId mean platform."
         namespaceName:
           type: string
-          description: "Name of the namespace this plan creates, when the operation\
-            \ writes into it or deploys on it."
+          description: "Name of the namespace the operation acts in when it is not\
+            \ the case's: one the plan creates or another one the user administers."
         order:
           type: integer
           format: int32

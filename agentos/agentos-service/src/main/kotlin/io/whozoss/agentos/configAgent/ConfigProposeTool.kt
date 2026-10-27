@@ -2,6 +2,7 @@ package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.AgentInterrupt
+import io.whozoss.agentos.git.GitRepositoryIntegration
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -36,17 +37,28 @@ class ConfigProposeTool(
         in a card and clicks Apply or Reject; you then receive the result as their answer.
         Read the current state first with ${ConfigAgentIntegration.READ_TOOL_NAME}: UPDATE, ENABLE, DISABLE, DEPLOY
         and UNDEPLOY target an existing 'id'; CREATE carries a 'scope' and a 'value' with the fields of the new entity
-        (the same fields as the AgentOS REST API: e.g. an agent has name, description, instructions, modelName,
+        (the same fields as the AgentOS REST API: e.g. an agent has name, description, instructions, modelName, enabled,
         integrations {"INTEGRATION_NAME": null or ["tool"]}, subAgents; a prompt has name, content [..], agentConfigId;
         an integration has name, integrationType, description, parameters, authSettingName; a skill has name, description,
-        body; a namespace has name, description; an auth setting has name, description, authType and the fields of that
-        type: ${ConfigAuthSettingTypes.description}, where * marks a secret).
+        body; a namespace has name, description, defaultAgentName (the agent that answers a message without @mention),
+        runCostThreshold; an auth setting has name, description, authType and the fields of that type:
+        ${ConfigAuthSettingTypes.description}, where * marks a secret).
+        A namespace's Git repository, which gives each case its worktree, is an integration of type
+        ${GitRepositoryIntegration.TYPE} (one per namespace, shared) with parameters ${GitRepositoryIntegration.PARAM_REPOSITORY_URL},
+        ${GitRepositoryIntegration.PARAM_MAIN_BRANCH}, ${GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID} (id of a shared auth setting of
+        that namespace), ${GitRepositoryIntegration.PARAM_AUTO_WORKTREE}, ${GitRepositoryIntegration.PARAM_SETUP_COMMAND}.
+        To copy an integration exactly, give 'copyFrom' its id: the server copies its real parameters, which you never
+        see, and 'value' only overrides some fields (e.g. {"parameters": {"${GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID}": {"${'$'}op": "<ref>"}}}).
         To use the id of an entity created earlier in the same plan, write {"${'$'}op": "<ref>"}.
         Never write a secret (API key, token, password, client secret): declare its path in 'secrets' and the user types it in the card.
-        A new agent needs 'deployTo': NAMESPACE so members can use it, or NONE.
-        Entities live on the platform, in this namespace, or in a namespace the same plan creates (CREATE NAMESPACE, then
-        scope.namespaceId {"${'$'}op": "<its ref>"} on the entities created in it and on the DEPLOY of existing platform agents).
-        No other namespace can be read or changed from here.
+        A new agent needs 'enabled' (true, or false for a draft nobody can use) and 'deployTo': NAMESPACE so members can
+        use it, or NONE. A new namespace should name its defaultAgentName.
+        Entities live on the platform, in this namespace, in a namespace the user administers (scope.namespaceId = its id,
+        listed by ${ConfigAgentIntegration.READ_TOOL_NAME} kind 'namespace'), or in a namespace the same plan creates
+        (CREATE NAMESPACE, then scope.namespaceId {"${'$'}op": "<its ref>"}). DEPLOY and UNDEPLOY take the same scope for
+        the namespace to deploy on (default: this one). UPDATE NAMESPACE changes a namespace's settings.
+        Configure and diagnose AgentOS only with these tools, never through its REST API, a shell or a browser: if a change
+        is out of their reach, tell the user what is missing instead.
         """.trimIndent()
 
     override val inputSchema: String =
@@ -63,12 +75,12 @@ class ConfigProposeTool(
                 "type": "object",
                 "properties": {
                   "ref": { "type": "string", "description": "Short unique name of this operation, used by {\"${'$'}op\": ref}." },
-                  "kind": { "type": "string", "enum": ["AGENT", "SKILL", "PROMPT", "INTEGRATION", "AUTH_SETTING", "NAMESPACE"] },
+                  "kind": { "type": "string", "enum": ["AGENT", "SKILL", "PROMPT", "INTEGRATION", "AUTH_SETTING", "NAMESPACE"], "description": "NAMESPACE: CREATE and UPDATE only." },
                   "action": { "type": "string", "enum": ["CREATE", "UPDATE", "ENABLE", "DISABLE", "DEPLOY", "UNDEPLOY"] },
                   "id": { "type": "string", "description": "Target id, for every action but CREATE." },
                   "scope": {
                     "type": "object",
-                    "description": "CREATE (but not of a NAMESPACE), and DEPLOY or UNDEPLOY on a namespace the plan creates. namespaceId: \"current\" for this namespace, {\"${'$'}op\": \"<ref>\"} for a namespace created by this plan, null for platform. userId: \"me\" for a personal entity, null for a shared one.",
+                    "description": "CREATE (but not of a NAMESPACE), and DEPLOY or UNDEPLOY on another namespace. namespaceId: \"current\" for this namespace, the id of a namespace the user administers, {\"${'$'}op\": \"<ref>\"} for a namespace created by this plan, null for platform. userId: \"me\" for a personal entity, null for a shared one.",
                     "properties": {
                       "namespaceId": { "type": ["string", "object", "null"] },
                       "userId": { "type": ["string", "null"] }
@@ -97,7 +109,8 @@ class ConfigProposeTool(
                       "required": ["path"]
                     }
                   },
-                  "deployTo": { "type": "string", "enum": ["NAMESPACE", "NONE"], "description": "CREATE of an AGENT only." }
+                  "deployTo": { "type": "string", "enum": ["NAMESPACE", "NONE"], "description": "CREATE of an AGENT only." },
+                  "copyFrom": { "type": "string", "description": "CREATE of an INTEGRATION only: id of the integration whose fields the server copies; 'value' overrides some of them." }
                 },
                 "required": ["kind", "action"]
               }

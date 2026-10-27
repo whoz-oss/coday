@@ -11,6 +11,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
 import io.mockk.every
 import io.mockk.slot
@@ -26,6 +27,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -124,7 +126,10 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         every { userService.getCurrentUser() } returns user
     }
 
-    private fun proposeTool(caller: User): StandardTool<*> =
+    private fun configTool(
+        caller: User,
+        name: String,
+    ): StandardTool<*> =
         configToolGrantService
             .grantTools(
                 integrations = mapOf(ConfigAgentIntegration.TYPE to null),
@@ -132,7 +137,29 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                 namespaceId = namespace.id,
                 userId = caller.id,
                 caseId = case.id,
-            ).single { it.name == ConfigAgentIntegration.PROPOSE_TOOL_NAME }
+            ).single { it.name == name }
+
+    private fun proposeTool(caller: User): StandardTool<*> = configTool(caller, ConfigAgentIntegration.PROPOSE_TOOL_NAME)
+
+    /** Runs the read tool as [caller] and returns its JSON output, or fails the test with the tool's error. */
+    private suspend fun read(
+        caller: User,
+        input: String,
+    ): JsonNode {
+        val result = configTool(caller, ConfigAgentIntegration.READ_TOOL_NAME).executeWithJson(input, toolContext(caller))
+        result.success shouldBe true
+        return objectMapper.readTree(result.output)
+    }
+
+    private fun toolContext(caller: User) = ToolContext(namespaceId = namespace.id, userId = caller.id, userExternalId = null, caseEvents = emptyList())
+
+    /** Another namespace, administered by [admin] when given. */
+    private fun otherNamespace(admin: User?): Namespace =
+        namespaceService
+            .create(Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "cfg-other-${UUID.randomUUID()}", name = "Other $suffix"))
+            .also { other ->
+                admin?.let { permissionService.grantPermission(it.id.toString(), EntityType.NAMESPACE, other.id.toString(), PermissionRelation.ADMIN) }
+            }
 
     /** Runs the propose tool as [caller] and records what an agent run would have persisted. */
     private suspend fun propose(
@@ -180,7 +207,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                         { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
                           "changes": [ { "path": "/integrations/ACME_$suffix", "value": null } ] },
                         { "ref": "sup", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "support-$suffix", "instructions": "Help the user" }, "deployTo": "NAMESPACE" },
+                          "value": { "name": "support-$suffix", "instructions": "Help the user", "enabled": true }, "deployTo": "NAMESPACE" },
                         { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current", "userId": null },
                           "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
                       ] }
@@ -192,7 +219,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         { "summary": "Copy the setup into a new namespace",
           "operations": [
             { "ref": "dev", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
-              "value": { "name": "dev-copy-$suffix", "instructions": "Help the user" }, "deployTo": "NAMESPACE" },
+              "value": { "name": "dev-copy-$suffix", "instructions": "Help the user", "enabled": true }, "deployTo": "NAMESPACE" },
             { "ref": "shared", "kind": "AGENT", "action": "DEPLOY", "id": "${platformAgent.id}", "scope": { "namespaceId": { "${'$'}op": "ns" } } },
             { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
               "value": { "name": "ACME_$suffix", "integrationType": "JIRA" } },
@@ -372,7 +399,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                         { "ref": "q", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
                           "value": { "name": "Q-$suffix", "content": ["x"] } },
                         { "ref": "d", "kind": "AGENT", "action": "DEPLOY", "id": "${devAgent.id}", "scope": { "namespaceId": null } },
-                        { "ref": "u", "kind": "NAMESPACE", "action": "UPDATE", "id": "${namespace.id}" } ] }
+                        { "ref": "u", "kind": "NAMESPACE", "action": "ENABLE", "id": "${namespace.id}" } ] }
                     """.trimIndent(),
                     ToolContext(namespaceId = namespace.id, userId = alice.id, userExternalId = null, caseEvents = emptyList()),
                 )
@@ -381,7 +408,143 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             result.output shouldContain "ns: a namespace has no scope"
             result.output shouldContain "p: scope.namespaceId {\"${'$'}op\": \"q\"} must name an operation of this plan that creates a NAMESPACE"
             result.output shouldContain "d: a deployment needs a namespace"
-            result.output shouldContain "u: UPDATE is not supported for NAMESPACE"
+            result.output shouldContain "u: ENABLE is not supported for NAMESPACE"
+        }
+
+        "from this case, a namespace admin diagnoses a namespace they administer, then sets its default agent and enables it" {
+            val other = otherNamespace(admin = alice)
+            val helper =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "helper-$suffix", enabled = false),
+                )
+            namespaceService.deployAgents(other.id, listOf(helper.id))
+
+            read(alice, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText() shouldBe "NOT_SET"
+            read(alice, """{ "kind": "agent", "namespaceId": "${other.id}", "scope": "namespace" }""").map { it["name"].asText() } shouldContain
+                "helper-$suffix"
+
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "default", "kind": "NAMESPACE", "action": "UPDATE", "id": "${other.id}",
+                          "changes": [ { "path": "/defaultAgentName", "value": "helper-$suffix" } ] },
+                        { "ref": "enable", "kind": "AGENT", "action": "ENABLE", "id": "${helper.id}" } ] }
+                    """.trimIndent(),
+                )
+            val shown = view(proposal.questionId)
+            shown["operations"].map { it["ref"].asText() } shouldContainExactly listOf("enable", "default")
+            shown["operations"].map { it["namespaceName"].asText() }.toSet() shouldBe setOf("Other $suffix")
+
+            applied(proposal.questionId, shown["planHash"].asText())["decision"].asText() shouldBe "APPLIED"
+
+            namespaceService.findById(other.id)!!.defaultAgentName shouldBe "helper-$suffix"
+            val readiness = read(alice, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]
+            readiness["defaultAgentStatus"].asText() shouldBe "OK"
+            readiness["resolvedAgent"].asText() shouldBe "helper-$suffix"
+        }
+
+        "the readiness of a namespace names the condition that keeps a message from reaching its default agent" {
+            val other = otherNamespace(admin = alice)
+            suspend fun status(): String = read(alice, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText()
+            namespaceService.update(other.copy(defaultAgentName = "ghost-$suffix"))
+            status() shouldBe "NOT_FOUND"
+
+            val helper =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "ghost-$suffix", enabled = false),
+                )
+            status() shouldBe "DISABLED"
+
+            agentConfigService.enable(helper.id)
+            status() shouldBe "NOT_DEPLOYED"
+
+            namespaceService.deployAgents(other.id, listOf(helper.id))
+            status() shouldBe "OK"
+        }
+
+        "a namespace the user does not administer stays out of reach of the config tools" {
+            val other = otherNamespace(admin = null)
+            permissionService.grantPermission(alice.id.toString(), EntityType.NAMESPACE, other.id.toString(), PermissionRelation.MEMBER)
+            val stranger =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "stranger-$suffix", enabled = true),
+                )
+
+            configTool(alice, ConfigAgentIntegration.READ_TOOL_NAME)
+                .executeWithJson("""{ "kind": "agent", "namespaceId": "${other.id}" }""", toolContext(alice))
+                .errorType shouldBe "INVALID_INPUT"
+            val refused =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "p", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "${other.id}" },
+                          "value": { "name": "P-$suffix", "content": ["x"] } },
+                        { "ref": "e", "kind": "AGENT", "action": "ENABLE", "id": "${stranger.id}" } ] }
+                    """.trimIndent(),
+                    toolContext(alice),
+                )
+
+            refused.errorType shouldBe "INVALID_PROPOSAL"
+            refused.output shouldContain "p: scope.namespaceId must be this namespace"
+            refused.output shouldContain "e: no agent with id ${stranger.id} is visible to the user"
+        }
+
+        "an integration is copied by the server into an administered namespace, its parameters never reaching the agent" {
+            val other = otherNamespace(admin = alice)
+            val source =
+                integrationConfigService.create(
+                    IntegrationConfig(
+                        namespaceId = namespace.id,
+                        userId = null,
+                        name = "SRC_$suffix",
+                        integrationType = "JIRA",
+                        description = "Source",
+                        parameters =
+                            objectMapper.readTree(
+                                """{ "url": "https://jira.example.com", "command": "npx", "args": ["-y", "pkg"], "token": "t0k3n-$suffix", "project": "OLD" }""",
+                            ),
+                    ),
+                )
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "copy", "kind": "INTEGRATION", "action": "CREATE", "copyFrom": "${source.metadata.id}",
+                          "scope": { "namespaceId": "${other.id}" }, "value": { "parameters": { "project": "NEW" } } } ] }
+                    """.trimIndent(),
+                )
+            val plan = objectMapper.writeValueAsString(proposal.structuredOutput)
+            plan shouldNotContain "t0k3n-$suffix"
+            plan shouldNotContain "npx"
+            view(proposal.questionId)["operations"].single()["copyFrom"].asText() shouldBe "SRC_$suffix"
+
+            applied(proposal.questionId, view(proposal.questionId)["planHash"].asText())["decision"].asText() shouldBe "APPLIED"
+
+            val copy = integrationConfigService.findByNamespaceShared(other.id).single { it.name == "SRC_$suffix" }
+            copy.integrationType shouldBe "JIRA"
+            copy.description shouldBe "Source"
+            copy.parameters shouldBe
+                objectMapper.readTree(
+                    """{ "url": "https://jira.example.com", "command": "npx", "args": ["-y", "pkg"], "token": "t0k3n-$suffix", "project": "NEW" }""",
+                )
+        }
+
+        "creating an agent needs an explicit enabled flag" {
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "draft-$suffix" }, "deployTo": "NAMESPACE" } ] }
+                    """.trimIndent(),
+                    toolContext(alice),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "a: creating an agent needs 'value.enabled'"
         }
 
         "a newer plan supersedes an older one for good, even once answered" {

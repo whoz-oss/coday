@@ -53,7 +53,7 @@ class ConfigChangeService(
             plan.order.mapNotNull(plan::operation).mapIndexed { index, op ->
                 val evaluation = configChangeStatus.evaluate(op, plan, viewer.id, createdIds)
                 evaluation.entityId?.let { createdIds[op.ref] = it }
-                viewOf(op, index, evaluation, plan, createdIds)
+                viewOf(op, index, evaluation, plan, createdIds, viewer.id)
             }
         return ConfigChangeViewDto(
             questionId = questionId,
@@ -268,7 +268,8 @@ class ConfigChangeService(
         secrets: Map<String, String>,
         createdIds: Map<String, UUID>,
     ): ObjectNode {
-        val payload = (ConfigJson.resolveOpRefs(op.value, createdIds) as ObjectNode).deepCopy()
+        val overrides = (ConfigJson.resolveOpRefs(op.value, createdIds) as ObjectNode).deepCopy()
+        val payload = op.copyFrom?.let { source -> copyBase(op.kind, source).also { ConfigJson.merge(it, overrides) } } ?: overrides
         injectSecrets(payload, op, secrets)
         val namespaceId = op.scope?.namespaceIn(createdIds)
         check(op.scope?.namespaceRef == null || namespaceId != null) { "The namespace ${op.scope?.namespaceRef} of ${op.ref} was not created" }
@@ -277,6 +278,12 @@ class ConfigChangeService(
         payload.put("userId", op.scope?.userId?.toString())
         return payload
     }
+
+    /** The copied entity as the REST API returns it to the user who applies, without its identity and scope. */
+    private fun copyBase(
+        kind: ConfigKind,
+        source: PlannedTarget,
+    ): ObjectNode = configWriter.read(kind, source.id).apply { remove(COPY_EXCLUDED_FIELDS) }
 
     private fun applyChanges(
         dto: ObjectNode,
@@ -313,6 +320,7 @@ class ConfigChangeService(
         evaluation: OperationEvaluation,
         plan: ConfigChangePlan,
         createdIds: Map<String, UUID>,
+        viewerId: UUID,
     ): ConfigOperationViewDto {
         val masked = evaluation.entity?.let(configReadService::masked)
         return ConfigOperationViewDto(
@@ -324,9 +332,10 @@ class ConfigChangeService(
             targetId = op.target?.id ?: evaluation.entityId,
             namespaceId = op.target?.namespaceId ?: op.scope?.namespaceIn(createdIds),
             userId = op.target?.userId ?: op.scope?.userId,
-            namespaceName = op.scope?.namespaceRef?.let { plan.operation(it)?.value?.path("name")?.asText() },
+            namespaceName = namespaceNameOf(op, plan, viewerId),
             affects = op.affects,
             deployTo = op.deployTo,
+            copyFrom = op.copyFrom?.name,
             value = op.value,
             changes =
                 op.changes.map { change ->
@@ -340,6 +349,26 @@ class ConfigChangeService(
             secretInputs = op.secrets.map { ConfigSecretInputDto(key = secretKey(op, it), path = it.path, label = it.label) },
             status = evaluation.status,
         )
+    }
+
+    /**
+     * The namespace an operation acts in when it is not the plan's own: one the plan creates, the
+     * namespace an `UPDATE NAMESPACE` changes, or another one the viewer may read.
+     */
+    private fun namespaceNameOf(
+        op: PlannedOperation,
+        plan: ConfigChangePlan,
+        viewerId: UUID,
+    ): String? {
+        val ref = op.scope?.namespaceRef
+        val namespaceId = op.scope?.namespaceId ?: op.target?.namespaceId
+        return when {
+            ref != null -> plan.operation(ref)?.value?.path("name")?.asText()
+            op.kind == ConfigKind.NAMESPACE -> op.target?.name
+            namespaceId != null && namespaceId != plan.namespaceId ->
+                configReadService.find(ConfigKind.NAMESPACE, namespaceId, viewerId, plan.namespaceId)?.name
+            else -> null
+        }
     }
 
     private fun requireRecipient(
@@ -360,5 +389,8 @@ class ConfigChangeService(
 
     companion object : KLogging() {
         private const val UNEXPECTED_ERROR = "Unexpected error, see the server logs."
+
+        /** Fields of a copied entity the copy never keeps: the server assigns the id, the plan sets the scope. */
+        private val COPY_EXCLUDED_FIELDS = listOf("id", "namespaceId", "userId")
     }
 }

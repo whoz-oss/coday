@@ -87,6 +87,17 @@ internal object ConfigJson {
         }
     }
 
+    /** Writes [overrides] onto [target]: objects are merged key by key, anything else replaces the value. */
+    fun merge(
+        target: ObjectNode,
+        overrides: ObjectNode,
+    ) {
+        overrides.properties().forEach { (key, value) ->
+            val current = target.get(key)
+            if (current is ObjectNode && value is ObjectNode) merge(current, value) else target.set<JsonNode>(key, value.deepCopy())
+        }
+    }
+
     /** A copy of [node] where every `{"$op": "<ref>"}` is replaced by the id created for that ref. */
     fun resolveOpRefs(
         node: JsonNode?,

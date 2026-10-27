@@ -12,4 +12,5 @@ data class OperationInput(
     val changes: List<ChangeInput>? = null,
     val secrets: List<SecretInput>? = null,
     val deployTo: String? = null,
+    val copyFrom: String? = null,
 )

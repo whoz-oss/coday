@@ -1,9 +1,13 @@
 # Config Agent
 
 An agent that names the built-in `AGENTOS_CONFIG` integration can read the AgentOS configuration the
-user can see and propose changes to it: agents, skills, prompts, integrations, auth settings,
-agent deployment, and new namespaces with their configuration. The agent never writes. The user reviews the exact plan in a card and clicks
-Apply; the server then applies it with that user's rights and tells the agent what happened.
+user can see, diagnose a namespace, and propose changes: agents, skills, prompts, integrations, auth
+settings, agent deployment, namespace settings, and new namespaces with their configuration. The
+agent never writes. The user reviews the exact plan in a card and clicks Apply; the server then
+applies it with that user's rights and tells the agent what happened.
+
+The tools are meant to be the agent's only way to configure AgentOS: their description tells it
+never to go through the REST API, a shell or a browser, and to say what is missing instead.
 
 Issue: #1477.
 
@@ -43,9 +47,10 @@ agent    resumes with the per-operation report
 
 The user is responsible for what they apply. There is no ceiling on rights: each write is accepted
 or refused by the REST controllers with the identity of the user who clicked. The planner only
-refuses what the tool could not show or apply faithfully: a scope outside the current namespace or a
-namespace the plan creates, a personal scope for agents and skills (they have none), a secret
-outside a credential field, a path through a list.
+refuses what the tool could not show or apply faithfully: a scope outside the current namespace, the
+namespaces the user administers and a namespace the plan creates, a personal scope for agents and
+skills (they have none), a secret outside a credential field, a path through a list, an agent
+created without an explicit `enabled`.
 
 - **Writes** run inside the HTTP request of the Apply click, through the public `*Api` interfaces
   (`AgentConfigApi`, `SkillApi`, `PromptApi`, `IntegrationConfigApi`, `AuthSettingApi`,
@@ -65,36 +70,53 @@ outside a credential field, a path through a list.
 - **Reads** (tool and card) use the same rules as the REST read endpoints: a list follows the list
   endpoints, a single entity follows its `GET /{id}` guard, owner fallback included
   (`AgentOsPermissionEvaluator.hasPermission(userId, ...)`). They are bounded to the platform, the
-  current namespace and the caller's own entities, because what the tool reads is stored in the case
+  current namespace, the namespaces the user administers (Namespace WRITE, so all of them for a
+  super-admin) and the caller's own entities, because what the tool reads is stored in the case
   history. Integration parameters are masked closed by default (only keys such as `baseUrl` are
-  shown) and auth setting secrets are fully masked.
+  shown) and auth setting secrets are fully masked. To copy an integration faithfully the agent
+  uses `copyFrom` (below) rather than reading its parameters.
 
 ## Plans
 
 `propose` takes operations on `AGENT`, `SKILL`, `PROMPT`, `INTEGRATION`, `AUTH_SETTING` and
 `NAMESPACE`:
 
-- `CREATE` carries a `scope` (`namespaceId`: `"current"`, `{"$op": "<ref>"}` of a namespace the
-  plan creates, or null for platform; `userId`: `"me"` or null, and always null for agents and
-  skills, which have no personal scope) and a `value` with the REST DTO fields. `{"$op": "<ref>"}`
-  stands for the id an earlier operation of the plan creates. A new agent needs
-  `deployTo: NAMESPACE | NONE`; `NAMESPACE` deploys it on the namespace it is created in, or on the
-  current one for a platform agent.
+- `CREATE` carries a `scope` (`namespaceId`: `"current"`, the id of a namespace the user
+  administers, `{"$op": "<ref>"}` of a namespace the plan creates, or null for platform; `userId`:
+  `"me"` or null, and always null for agents and skills, which have no personal scope) and a `value`
+  with the REST DTO fields. `{"$op": "<ref>"}` stands for the id an earlier operation of the plan
+  creates. A new agent needs an explicit `value.enabled` (the REST API creates it disabled
+  otherwise, and nobody can use it) and `deployTo: NAMESPACE | NONE`; `NAMESPACE` deploys it on the
+  namespace it is created in, or on the current one for a platform agent.
+- `CREATE` of an `INTEGRATION` may name `copyFrom`, the id of an integration within the bounds: at
+  apply time the server reads it through `IntegrationConfigApi.getById` with the rights of the user
+  who clicks, drops its id and scope, and merges `value` over it (objects key by key), so the agent
+  copies parameters it never sees and only overrides some (for example a `GIT_REPOSITORY`'s
+  `serviceAuthSettingId`, set to `{"$op": ...}` of the auth setting created in the new namespace).
+  The card says which integration is copied.
+- A namespace's Git repository is an integration of type `GIT_REPOSITORY` (one per namespace,
+  shared): the generic integration API applies the same validation as the namespace Git screen, so
+  the tool creates or copies it like any other integration. Its parameters are listed in the tool's
+  description, since it is not a tool integration type.
 - The tool's description lists every auth setting type with its own fields and marks the secret
   ones, read from the `AuthSettingDto` subtypes (`ConfigAuthSettingTypes`), so a new type shows up
   without touching the tool.
-- `CREATE` of a `NAMESPACE` has a `value` only (`name`, `description`, the other `NamespaceDto`
-  fields). The REST API reserves it to super-admins. It is the only action on namespaces.
+- `CREATE` of a `NAMESPACE` has a `value` only (`name`, `description`, `defaultAgentName`, the
+  other `NamespaceDto` fields); the REST API reserves it to super-admins, and the card warns when
+  the new namespace names no default agent. `UPDATE` of a `NAMESPACE` changes its settings
+  (`/defaultAgentName`, `/description`, …; `externalId` is kept as created), with Namespace WRITE.
 - `UPDATE` targets an `id` and lists `changes` by JSON Pointer path (`/instructions`,
   `/integrations/MY_API`), merged by the server onto the full DTO it re-reads. A path cannot go
   through a list: the whole list is replaced (`/content`, `/subAgents`).
 - `ENABLE`, `DISABLE`, `DEPLOY`, `UNDEPLOY` (agents only) target an `id`. `DEPLOY` and `UNDEPLOY`
-  act on the current namespace, or on a namespace the plan creates when their `scope` names it.
+  act on the current namespace, or on the namespace their `scope` names (one the user administers or
+  one the plan creates).
 
 Validation only anticipates what the REST API would refuse (immutable fields, prompt attached after
 creation, unknown target) or what would make the plan ambiguous (unknown or cyclic reference). The
-order is a topological sort of the references, ties broken by kind: namespaces, auth settings,
-integrations, skills, agent creation, agent update, prompts, enable/disable, deployment.
+order is a topological sort of the references, ties broken by kind: namespace creation, auth
+settings, integrations, skills, agent creation, agent update, prompts, enable/disable, deployment,
+namespace update (so a namespace can name as default an agent the same plan creates).
 
 ### Setting up a new namespace
 
@@ -104,12 +126,22 @@ current namespace: `CREATE NAMESPACE` (ref `ns`), then the entities with
 Agents of the current namespace cannot be deployed elsewhere (the REST API refuses it): copy them
 with `CREATE` instead.
 
-The bound is widened for the namespace the plan creates only: the statuses of the operations that
-go into it are evaluated inside it. Like any other entity, a namespace that already exists with the
-proposed name and values counts as created, so proposing the plan again converges; it is then
-evaluated the same way, with the viewer's own rights and for the names the plan proposes only. The
-agent still cannot read it, nor any other namespace, and `UPDATE`, `ENABLE` and `DISABLE` still
-target the current namespace or the platform.
+The statuses of the operations that go into the new namespace are evaluated inside it. Like any
+other entity, a namespace that already exists with the proposed name and values counts as created,
+so proposing the plan again converges. Once it exists, the user administers it (the REST API grants
+its creator ADMIN), so later corrections (default agent, enabling an agent, a missing integration)
+are proposed from the same case, with `scope.namespaceId` or a target `id` in that namespace.
+
+### Diagnosing a namespace
+
+`read` with `kind: namespace` and an `id` returns the namespace's settings and its readiness for the
+user: whether a message without `@mention` reaches an agent, resolved like the runtime
+(`CaseServiceImpl.selectDefaultAgent`: the namespace's `defaultAgentName`, else
+`agentos.defaults.agent-name`, among the agents deployed and enabled for the user), and if not the
+first condition that fails: `NOT_SET`, `NOT_FOUND`, `DISABLED` or `NOT_DEPLOYED`, with the agents
+deployed on it. `namespaceId` points the other reads (agents, integrations, deployment,
+capabilities) at a namespace the user administers. The agent no longer needs the service logs or the
+source code to find why a namespace does not answer.
 
 Limits (`ConfigAgentLimits`): 20 operations per plan, plans expire after 24 hours.
 
@@ -147,5 +179,8 @@ The tools are granted in `AgentServiceImpl.resolveAgentDefinition` only:
 - A member cannot create a personal `HTTP_API` integration (refused in user scopes since #1314).
   The supported path is a shared integration created by an admin plus the member's own `API_KEY`
   auth setting in user x namespace scope, which wins at resolution.
-- Group deployment, AI providers and AI models are not covered yet, nor changing or deleting a
-  namespace.
+- Group deployment, AI providers and AI models are not covered yet, nor deleting a namespace.
+- Auth settings are not copied: their secrets are typed again in the card.
+- In local mode (`LocalSecurityService`) every request to the service acts as the OS user, so an
+  agent with a shell can still reach the REST API directly. The tool's description asks it not to;
+  only a dedicated configuration agent without shell, terminal or browser tools guarantees it.

@@ -15,10 +15,12 @@ data class ConfigOperationViewDto(
     @field:Schema(description = "Scope of the entity: null namespaceId and userId mean platform.")
     val namespaceId: UUID?,
     val userId: UUID?,
-    @field:Schema(description = "Name of the namespace this plan creates, when the operation writes into it or deploys on it.")
+    @field:Schema(description = "Name of the namespace the operation acts in when it is not the case's: one the plan creates or another one the user administers.")
     val namespaceName: String? = null,
     val affects: ConfigAffects,
     val deployTo: ConfigDeployTarget?,
+    @field:Schema(description = "Name of the integration this CREATE copies; the server reads its fields at apply time, and value only overrides some of them.")
+    val copyFrom: String? = null,
     @field:Schema(description = "CREATE only: the fields of the new entity, secrets excluded.")
     val value: JsonNode?,
     @field:Schema(description = "UPDATE only: each field with its current value (masked) and the proposed one.")

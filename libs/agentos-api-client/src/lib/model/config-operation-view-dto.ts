@@ -17,6 +17,10 @@ export interface ConfigOperationViewDto {
    * UPDATE only: each field with its current value (masked) and the proposed one.
    */
   changes: Array<ConfigFieldChangeDto>
+  /**
+   * Name of the integration this CREATE copies; the server reads its fields at apply time, and value only overrides some of them.
+   */
+  copyFrom?: string
   deployTo?: ConfigOperationViewDtoDeployToEnum
   kind: ConfigOperationViewDtoKindEnum
   /**
@@ -28,7 +32,7 @@ export interface ConfigOperationViewDto {
    */
   namespaceId?: string
   /**
-   * Name of the namespace this plan creates, when the operation writes into it or deploys on it.
+   * Name of the namespace the operation acts in when it is not the case\'s: one the plan creates or another one the user administers.
    */
   namespaceName?: string
   order: number

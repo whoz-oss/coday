@@ -9,7 +9,6 @@ import io.whozoss.agentos.namespace.NamespaceAgentDeployRequest
 import io.whozoss.agentos.namespace.NamespaceController
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
-import io.whozoss.agentos.sdk.api.common.EntityCrudApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.api.namespace.NamespaceApi
@@ -52,26 +51,42 @@ class ApiBeanConfigWriter(
         dto: ObjectNode,
     ): UUID =
         when (kind) {
-            ConfigKind.AGENT -> agentConfigApi.create(read(dto, AgentConfigDto::class.java)).id
-            ConfigKind.SKILL -> skillApi.create(read(dto, SkillDto::class.java)).id
-            ConfigKind.PROMPT -> promptApi.create(read(dto, PromptDto::class.java)).id
-            ConfigKind.INTEGRATION -> integrationConfigApi.create(read(dto, IntegrationConfigDto::class.java)).id
-            ConfigKind.AUTH_SETTING -> authSettingApi.create(read(dto, AuthSettingDto::class.java)).id
-            ConfigKind.NAMESPACE -> namespaceApi.create(read(dto, NamespaceDto::class.java)).id
+            ConfigKind.AGENT -> agentConfigApi.create(validated(dto, AgentConfigDto::class.java)).id
+            ConfigKind.SKILL -> skillApi.create(validated(dto, SkillDto::class.java)).id
+            ConfigKind.PROMPT -> promptApi.create(validated(dto, PromptDto::class.java)).id
+            ConfigKind.INTEGRATION -> integrationConfigApi.create(validated(dto, IntegrationConfigDto::class.java)).id
+            ConfigKind.AUTH_SETTING -> authSettingApi.create(validated(dto, AuthSettingDto::class.java)).id
+            ConfigKind.NAMESPACE -> namespaceApi.create(validated(dto, NamespaceDto::class.java)).id
         } ?: throw IllegalStateException("The REST API created a $kind without returning its id")
+
+    override fun read(
+        kind: ConfigKind,
+        id: UUID,
+    ): ObjectNode =
+        objectMapper.valueToTree(
+            when (kind) {
+                ConfigKind.AGENT -> agentConfigApi.getById(id)
+                ConfigKind.SKILL -> skillApi.getById(id)
+                ConfigKind.PROMPT -> promptApi.getById(id)
+                ConfigKind.INTEGRATION -> integrationConfigApi.getById(id)
+                ConfigKind.AUTH_SETTING -> authSettingApi.getById(id)
+                ConfigKind.NAMESPACE -> namespaceApi.getById(id)
+            },
+        )
 
     override fun update(
         kind: ConfigKind,
         id: UUID,
         change: (ObjectNode) -> Unit,
     ) {
+        val current = read(kind, id).also(change)
         when (kind) {
-            ConfigKind.AGENT -> update(agentConfigApi, id, AgentConfigDto::class.java, change)
-            ConfigKind.SKILL -> update(skillApi, id, SkillDto::class.java, change)
-            ConfigKind.PROMPT -> update(promptApi, id, PromptDto::class.java, change)
-            ConfigKind.INTEGRATION -> update(integrationConfigApi, id, IntegrationConfigDto::class.java, change)
-            ConfigKind.AUTH_SETTING -> update(authSettingApi, id, AuthSettingDto::class.java, change)
-            ConfigKind.NAMESPACE -> update(namespaceApi, id, NamespaceDto::class.java, change)
+            ConfigKind.AGENT -> agentConfigApi.update(id, validated(current, AgentConfigDto::class.java))
+            ConfigKind.SKILL -> skillApi.update(id, validated(current, SkillDto::class.java))
+            ConfigKind.PROMPT -> promptApi.update(id, validated(current, PromptDto::class.java))
+            ConfigKind.INTEGRATION -> integrationConfigApi.update(id, validated(current, IntegrationConfigDto::class.java))
+            ConfigKind.AUTH_SETTING -> authSettingApi.update(id, validated(current, AuthSettingDto::class.java))
+            ConfigKind.NAMESPACE -> namespaceApi.update(id, validated(current, NamespaceDto::class.java))
         }
     }
 
@@ -91,18 +106,7 @@ class ApiBeanConfigWriter(
         if (deployed) namespaceController.deployAgents(namespaceId, request) else namespaceController.undeployAgents(namespaceId, request)
     }
 
-    private fun <T : Any> update(
-        api: EntityCrudApi<T>,
-        id: UUID,
-        type: Class<T>,
-        change: (ObjectNode) -> Unit,
-    ) {
-        val current = objectMapper.valueToTree<ObjectNode>(api.getById(id))
-        change(current)
-        api.update(id, read(current, type))
-    }
-
-    private fun <T : Any> read(
+    private fun <T : Any> validated(
         dto: ObjectNode,
         type: Class<T>,
     ): T =
