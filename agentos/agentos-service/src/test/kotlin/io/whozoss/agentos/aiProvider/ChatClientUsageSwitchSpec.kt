@@ -110,7 +110,7 @@ class ChatClientUsageSwitchSpec : StringSpec({
                         .defaultOptions(OpenAiChatOptions.builder().model("test-model").build())
                         .build()
                     val factory = mockk<ChatModelFactory> {
-                        every { createChatModel(any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                        every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
                     }
                     val provider = AiProvider(
                         namespaceId = UUID.randomUUID(),

@@ -1,0 +1,17 @@
+{
+  "name": "@whoz-oss/benchmarks",
+  "private": true,
+  "description": "promptfoo benchmarks for AgentOS models and agents",
+  "type": "module",
+  "scripts": {
+    "eval": "promptfoo eval --no-cache",
+    "ui": "promptfoo view --yes"
+  },
+  "devDependencies": {
+    "promptfoo": "0.123.1"
+  },
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=22.22.0"
+  }
+}
