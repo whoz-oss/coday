@@ -1,34 +1,14 @@
 <div class="shell-topbar">
-  <!-- Logo -->
   <button class="shell-topbar__brand" type="button" title="Home" (click)="navigateHome()">
     <img src="CODAY-Logo.png" alt="Coday" class="shell-topbar__logo-img" />
     <span class="shell-topbar__logo-text">Coday</span>
   </button>
 
-  <!-- User menu -->
-  <div class="shell-topbar__user-menu">
-    <button class="shell-topbar__user-btn" type="button" title="Menu" (click)="toggleMenu($event)">
-      @if (userInitials()) {
-        {{ userInitials() }}
-      } @else {
-        &bull;&bull;&bull;
-      }
-    </button>
-
-    <agentos-shell-user-menu
-      [open]="menuOpen()"
-      [isAdmin]="isAdmin()"
-      [isDark]="isDark()"
-      [themeVariant]="themeVariant()"
-      [showTechnical]="showTechnical()"
-      [showToolCalls]="showToolCalls()"
-      variant="topbar"
-      (navigateTo)="onNavigate($event)"
-      (themeToggled)="onThemeToggle()"
-      (themeVariantChanged)="onThemeVariantChanged($event)"
-      (logsToggled)="onLogsToggle()"
-      (toolCallsToggled)="onToolCallsToggle()"
-      (closed)="closeMenu($event)"
-    />
-  </div>
+  <nav class="shell-topbar__links" aria-label="AgentOS navigation">
+    <a routerLink="/agentos/me" routerLinkActive="shell-topbar__link--active">User settings</a>
+    @if (isAdmin()) {
+      <a routerLink="/agentos/admin" routerLinkActive="shell-topbar__link--active">Administration</a>
+    }
+    <a routerLink="/agentos/namespaces" routerLinkActive="shell-topbar__link--active">Namespaces</a>
+  </nav>
 </div>

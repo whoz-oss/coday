@@ -243,6 +243,7 @@ class IntegrationConfigController(
 private fun toDto(entity: IntegrationConfig) =
     IntegrationConfigDto(
         id = entity.metadata.id,
+        source = entity.source,
         namespaceId = entity.namespaceId,
         userId = entity.userId,
         name = entity.name,
