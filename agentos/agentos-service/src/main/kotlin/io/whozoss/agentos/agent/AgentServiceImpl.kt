@@ -519,10 +519,11 @@ class AgentServiceImpl(
      * fetches all four overlay layers in a single query and folds them by precedence.
      * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
      *
-     * A non-null [caseReasoningEffort] replaces the model's reasoning effort only when the model has
-     * one configured above [ReasoningEffort.NONE]: setting a level on the model is how an admin declares
-     * that the model reasons, so a case-level choice cannot break a model that takes no effort (nor an
-     * Anthropic model, which never has one) or one kept at NONE on purpose (GPT-6 with tools on OpenAI).
+     * A non-null [caseReasoningEffort] replaces the model's reasoning effort, whatever the model has
+     * configured: the level chosen in the case is the one asked. The provider's API type then decides
+     * what is sent ([sentTo]): nothing for Anthropic and Gemini, which the agent's messages show as not
+     * applied. A model that rejects the parameter (gpt-4.x on OpenAI) fails the run with the provider's
+     * error until the case goes back to the default.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -537,19 +538,7 @@ class AgentServiceImpl(
             } else {
                 baseProvider
             }
-        val modelEffort = baseModel.reasoningEffort
-        val modelConfig =
-            when {
-                caseReasoningEffort == null -> baseModel
-                modelEffort == null || modelEffort == ReasoningEffort.NONE -> {
-                    logger.debug {
-                        "Case reasoning effort $caseReasoningEffort ignored: model " +
-                            "'${baseModel.alias ?: baseModel.apiModelName}' has reasoning effort $modelEffort"
-                    }
-                    baseModel
-                }
-                else -> baseModel.copy(reasoningEffort = caseReasoningEffort)
-            }
+        val modelConfig = caseReasoningEffort?.let { baseModel.copy(reasoningEffort = it) } ?: baseModel
 
         logger.info {
             "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
@@ -649,6 +638,7 @@ class AgentServiceImpl(
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
                     reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
+                    requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                 )
             }
@@ -674,6 +664,7 @@ class AgentServiceImpl(
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
                     reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
+                    requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )

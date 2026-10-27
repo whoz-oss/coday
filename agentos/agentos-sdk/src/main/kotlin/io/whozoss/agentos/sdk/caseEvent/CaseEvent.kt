@@ -220,6 +220,12 @@ data class MessageEvent(
      * and Ollama stop at HIGH); null for user messages and when no effort was sent.
      */
     val reasoningEffort: ReasoningEffort? = null,
+    /**
+     * Reasoning effort asked for this message (the case's, else the model's), before the provider's
+     * limits; null for user messages and when none was asked. When it is set and [reasoningEffort] is
+     * null, the level was not applied: the provider takes no effort (Anthropic, Gemini).
+     */
+    val requestedReasoningEffort: ReasoningEffort? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }

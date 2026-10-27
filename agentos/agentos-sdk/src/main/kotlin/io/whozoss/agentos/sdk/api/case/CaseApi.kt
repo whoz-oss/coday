@@ -115,8 +115,9 @@ interface CaseApi : EntityCrudApi<CaseDto> {
         description =
             "PUT /api/cases/{id}/reasoning-effort — set the case-level override of the reasoning effort " +
                 "of the agents running in the case, or remove it with a null value so each agent uses the " +
-                "effort of its model again. Read at the start of each agent run. Applies only to agents " +
-                "whose model has a reasoning effort configured above NONE. Returns the updated Case DTO.",
+                "effort of its model again. Read at the start of each agent run. Replaces the model effort " +
+                "of every agent; not sent to Anthropic and Gemini providers, whose agent messages show " +
+                "it as not applied. Returns the updated Case DTO.",
     )
     fun setReasoningEffort(
         id: UUID,

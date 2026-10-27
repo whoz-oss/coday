@@ -162,6 +162,8 @@ class MessageEventNode(
     val llmModel: String? = null,
     /** Enum name of the [io.whozoss.agentos.sdk.aiProvider.ReasoningEffort] the agent ran with. */
     val reasoningEffort: String? = null,
+    /** Enum name of the [io.whozoss.agentos.sdk.aiProvider.ReasoningEffort] asked, before the provider's limits. */
+    val requestedReasoningEffort: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

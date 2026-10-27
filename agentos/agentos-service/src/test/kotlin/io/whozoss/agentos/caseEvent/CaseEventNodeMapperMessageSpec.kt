@@ -86,7 +86,8 @@ class CaseEventNodeMapperMessageSpec :
                     content = listOf(MessageContent.Text("Done")),
                     llmProvider = "anthropic",
                     llmModel = "claude-sonnet",
-                    reasoningEffort = ReasoningEffort.XHIGH,
+                    reasoningEffort = ReasoningEffort.HIGH,
+                    requestedReasoningEffort = ReasoningEffort.XHIGH,
                 )
 
             val copied = nodeMapper.withRemoved(nodeMapper.fromDomain(original), true)
@@ -94,7 +95,8 @@ class CaseEventNodeMapperMessageSpec :
 
             roundTripped.llmProvider shouldBe "anthropic"
             roundTripped.llmModel shouldBe "claude-sonnet"
-            roundTripped.reasoningEffort shouldBe ReasoningEffort.XHIGH
+            roundTripped.reasoningEffort shouldBe ReasoningEffort.HIGH
+            roundTripped.requestedReasoningEffort shouldBe ReasoningEffort.XHIGH
             roundTripped.metadata.removed shouldBe true
         }
 

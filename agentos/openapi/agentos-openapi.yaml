@@ -1658,8 +1658,9 @@ paths:
       description: "PUT /api/cases/{id}/reasoning-effort — set the case-level override\
         \ of the reasoning effort of the agents running in the case, or remove it\
         \ with a null value so each agent uses the effort of its model again. Read\
-        \ at the start of each agent run. Applies only to agents whose model has a\
-        \ reasoning effort configured above NONE. Returns the updated Case DTO."
+        \ at the start of each agent run. Replaces the model effort of every agent;\
+        \ not sent to Anthropic and Gemini providers, whose agent messages show it\
+        \ as not applied. Returns the updated Case DTO."
       operationId: setReasoningEffortCase
       parameters:
       - in: path
@@ -4487,9 +4488,10 @@ components:
           description: Timestamp of the caller's last read. Null = never read (unread).
         reasoningEffort:
           $ref: "#/components/schemas/ReasoningEffort"
-          description: Per-case override of the reasoning effort of the agents running
-            in the case. Null means each agent uses the effort of its model. Applies
-            only to agents whose model has a reasoning effort configured above NONE.
+          description: "Per-case override of the reasoning effort of the agents running\
+            \ in the case. Null means each agent uses the effort of its model. Replaces\
+            \ the model effort of every agent, whatever the model has configured;\
+            \ not sent to Anthropic and Gemini providers."
         removed:
           type: boolean
         role:
@@ -5334,6 +5336,8 @@ components:
           llmProvider:
             type: string
           reasoningEffort:
+            $ref: "#/components/schemas/ReasoningEffort"
+          requestedReasoningEffort:
             $ref: "#/components/schemas/ReasoningEffort"
           sessionContext:
             type: object

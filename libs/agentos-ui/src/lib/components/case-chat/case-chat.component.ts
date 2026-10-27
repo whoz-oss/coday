@@ -65,7 +65,12 @@ import {
 } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
-import { EffortOption, effortLabel, parseEffortCommand } from '../composer-autocomplete/effort-command'
+import {
+  EffortOption,
+  effortLabel,
+  messageEffortLabel,
+  parseEffortCommand,
+} from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
@@ -1353,7 +1358,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */
   protected agentModelAttribution(message: CaseMessageEvent): string | null {
     if (message.actor.role !== 'AGENT') return null
-    const effort = message.reasoningEffort ? `effort ${message.reasoningEffort.toLowerCase()}` : null
+    const effort = messageEffortLabel(message.reasoningEffort, message.requestedReasoningEffort)
     const parts = [message.llmProvider, message.llmModel, effort].filter((part): part is string => !!part)
     return parts.length ? parts.join(' · ') : null
   }
