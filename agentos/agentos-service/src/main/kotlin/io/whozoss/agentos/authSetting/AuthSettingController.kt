@@ -64,7 +64,6 @@ class AuthSettingController(
             entityLabel = "AuthSetting",
             userService = userService,
             namespaceService = namespaceService,
-            permissionService = permissionService,
             scopedAccessPolicy = scopedAccessPolicy,
             ownerOf = { (it as AuthSetting).userId },
             userIdOf = { it.userId },

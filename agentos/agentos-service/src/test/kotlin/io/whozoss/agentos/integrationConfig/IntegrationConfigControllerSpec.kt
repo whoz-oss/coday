@@ -85,16 +85,9 @@ class IntegrationConfigControllerSpec : StringSpec({
     "toDto maps id, namespaceId, userId, name, integrationType, description, parameters, authSettingName" {
         val cfg = config(name = "SLACK_DEV", integrationType = "SLACK", userId = aliceId)
             .copy(description = "Dev Slack", authSettingName = "my-auth")
-        val r = IntegrationConfigDto(
-            id = cfg.metadata.id,
-            namespaceId = cfg.namespaceId,
-            userId = cfg.userId,
-            name = cfg.name,
-            integrationType = cfg.integrationType,
-            description = cfg.description,
-            parameters = cfg.parameters,
-            authSettingName = cfg.authSettingName,
-        )
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.READ, true) } returns cfg
+
+        val r = controller.getById(cfg.metadata.id)
 
         r.id shouldBe cfg.metadata.id
         r.namespaceId shouldBe namespaceId
@@ -222,7 +215,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
             it.copy(parameters = exportParams)
         }
-        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE, false) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -236,7 +229,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
             it.copy(parameters = exportParams)
         }
-        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE, false) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -256,7 +249,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val cfg = config(name = "MCP_HTTP", integrationType = "MCP_HTTP").let {
             it.copy(parameters = exportParams)
         }
-        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE, false) } returns cfg
 
         val body = controller.export(cfg.metadata.id).body!!
 
@@ -269,7 +262,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "export includes authSettingName when present" {
         val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = "my-oauth")
-        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE, false) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -280,7 +273,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "export omits authSettingName when null" {
         val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = null)
-        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE, false) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
@@ -290,7 +283,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "export keeps the existing Content-Disposition header and application/yaml content type" {
         val cfg = config(name = "BASH_LOCAL", integrationType = "BASH")
-        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE) } returns cfg
+        every { service.getByIdForCaller(aliceCaller, cfg.metadata.id, Action.WRITE, false) } returns cfg
 
         val response = controller.export(cfg.metadata.id)
 

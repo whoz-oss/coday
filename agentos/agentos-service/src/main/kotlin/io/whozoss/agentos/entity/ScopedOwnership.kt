@@ -5,11 +5,9 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.Caller
-import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.user.UserService
-import org.springframework.security.access.AccessDeniedException
 import java.util.UUID
 
 /**
@@ -41,7 +39,6 @@ class ScopedOwnershipCrudDelegate<ResourceType>(
     private val entityLabel: String,
     private val userService: UserService,
     private val namespaceService: NamespaceService,
-    private val permissionService: PermissionService,
     private val scopedAccessPolicy: ScopedAccessPolicy,
     private val ownerOf: (Entity) -> UUID?,
     private val userIdOf: (ResourceType) -> UUID?,

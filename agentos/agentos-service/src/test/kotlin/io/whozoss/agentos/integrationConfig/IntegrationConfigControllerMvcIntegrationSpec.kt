@@ -349,10 +349,11 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "PUT on an existing user-scoped config of a denied type returns 404 (hidden by @HideOnAccessDenied)" {
-            // Row created directly through the service (the API refuses it); alice owns it so the
-            // @PreAuthorize WRITE check passes and the controller body raises AccessDeniedException.
-            // `update` carries @HideOnAccessDenied, so AccessDeniedExceptionHandler translates that
-            // 403 into a 404: the endpoint deliberately never confirms the row's existence.
+            // Row created directly through the service (the API refuses it). Alice owns the row
+            // so `updateForCaller` grants WRITE access, but `IntegrationConfigScopePolicy` then
+            // raises AccessDeniedException for the denied integrationType.
+            // `update` carries @HideOnAccessDenied, so AccessDeniedExceptionHandler translates
+            // that 403 into a 404: the endpoint deliberately never confirms the row's existence.
             val created =
                 integrationConfigService.create(
                     IntegrationConfig(
@@ -406,8 +407,8 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "PUT /api/integration-configs/{id} with valid payload returns 200" {
-            // Owned by alice so the evaluator's ownership branch grants WRITE
-            // (PermissionService is fully mocked, no entity-level membership grant).
+            // Owned by alice so `updateForCaller` grants WRITE via the ownership branch in
+            // ScopedAccessPolicy (PermissionService is fully mocked, no entity-level membership grant).
             val created =
                 integrationConfigService.create(
                     IntegrationConfig(

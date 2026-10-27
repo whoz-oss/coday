@@ -76,6 +76,8 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
 
         verify(exactly = 0) { service.unsecuredCreate(any()) }
         verify(exactly = 0) { service.unsecuredUpdate(any()) }
+        verify(exactly = 0) { service.create(any()) }
+        verify(exactly = 0) { service.update(any()) }
     }
 
     "a concurrent create by another instance is not a startup failure" {
@@ -115,6 +117,7 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
         seeder(enabledByDefault = false, service = service).seed()
 
         verify(exactly = 0) { service.unsecuredCreate(any()) }
+        verify(exactly = 0) { service.create(any()) }
     }
 
     "create-only: disabling afterwards never deletes an already-seeded config" {
@@ -128,5 +131,7 @@ class UserGroupIntegrationConfigSeederSpec : StringSpec({
         verify(exactly = 0) { service.delete(any()) }
         verify(exactly = 0) { service.unsecuredUpdate(any()) }
         verify(exactly = 0) { service.unsecuredCreate(any()) }
+        verify(exactly = 0) { service.update(any()) }
+        verify(exactly = 0) { service.create(any()) }
     }
 })

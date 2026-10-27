@@ -64,7 +64,6 @@ class AiProviderController(
             entityLabel = "AiProvider",
             userService = userService,
             namespaceService = namespaceService,
-            permissionService = permissionService,
             scopedAccessPolicy = scopedAccessPolicy,
             ownerOf = { (it as AiProvider).userId },
             userIdOf = { it.userId },
