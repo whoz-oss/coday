@@ -37,10 +37,9 @@ export const AGENTOS_ROUTES: Route[] = [
               import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
           },
           {
+            // Legacy URL: edit now lives in the namespace settings shell (`:namespaceId/edit`).
             path: 'namespaces/:namespaceId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+            redirectTo: '/agentos/:namespaceId/edit',
           },
           {
             path: 'namespaces',
@@ -301,6 +300,13 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceSettingsLayoutComponent
               ),
             children: [
+              // --- Namespace details (edit form) ---
+              {
+                path: 'edit',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+              },
               // --- Auth Settings ---
               {
                 path: 'auth-settings/new',
