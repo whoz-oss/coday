@@ -2,7 +2,6 @@ package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.authSetting.AuthSetting
@@ -10,23 +9,21 @@ import io.whozoss.agentos.authSetting.AuthSettingService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
-import io.whozoss.agentos.integrationConfig.IntegrationsProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
-import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator
 import io.whozoss.agentos.skill.Skill
 import io.whozoss.agentos.skill.SkillAuthorizationService
 import io.whozoss.agentos.skill.SkillService
-import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
 import java.util.UUID
 import io.whozoss.agentos.agentConfig.toDto as agentToDto
 import io.whozoss.agentos.authSetting.toDto as authSettingToDto
+import io.whozoss.agentos.integrationConfig.toDto as integrationToDto
 import io.whozoss.agentos.namespace.toDto as namespaceToDto
 import io.whozoss.agentos.prompt.toDto as promptToDto
 import io.whozoss.agentos.skill.toDto as skillToDto
@@ -45,7 +42,7 @@ import io.whozoss.agentos.skill.toDto as skillToDto
  * operations in a namespace that plan creates are read with that namespace as the bound.
  *
  * Namespaces are platform-level entities, listed and read with the Namespace READ rule of the REST
- * API. [readiness] tells, for one user, whether a message reaches an agent in a namespace.
+ * API. What a namespace's state means for its members is [ConfigNamespaceDiagnosis]'s concern.
  */
 @Service
 class ConfigReadService(
@@ -55,12 +52,9 @@ class ConfigReadService(
     private val integrationConfigService: IntegrationConfigService,
     private val authSettingService: AuthSettingService,
     private val namespaceService: NamespaceService,
-    private val userService: UserService,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
-    private val integrationsProperties: IntegrationsProperties,
     private val permissionEvaluator: AgentOsPermissionEvaluator,
     private val skillAuthorizationService: SkillAuthorizationService,
-    private val agentConfigProperties: AgentConfigProperties,
     private val objectMapper: ObjectMapper,
 ) {
     /** The entity [id] of [kind] if [callerId] may read it by id within [namespaceId]'s bounds, else null. */
@@ -78,7 +72,7 @@ class ConfigReadService(
         callerId: UUID,
         namespaceId: UUID,
     ): List<ConfigEntity> {
-        val namespaceReadable = canReadNamespace(callerId, namespaceId)
+        val namespaceReadable = hasNamespaceRight(callerId, namespaceId, Action.READ)
         val candidates =
             buildList {
                 if (scope.includesPlatform) addAll(loadScope(kind, namespaceId = null, userId = null))
@@ -119,87 +113,14 @@ class ConfigReadService(
     fun canAdminister(
         callerId: UUID,
         namespaceId: UUID,
-    ): Boolean = canWriteNamespace(callerId, namespaceId) && namespaceService.findById(namespaceId) != null
+    ): Boolean = hasNamespaceRight(callerId, namespaceId, Action.WRITE) && namespaceService.findById(namespaceId) != null
 
-    /**
-     * Whether a member's message without `@mention` in [namespaceId] reaches an agent, resolved like
-     * `CaseServiceImpl.selectDefaultAgent`: the namespace default, else the platform default, matched as a
-     * case-insensitive name prefix among the enabled agents deployed on the namespace. When none is
-     * found, the first condition that fails. It speaks for members, not for the caller: a super-admin's
-     * own messages skip the deployment check, and an agent deployed on a user group only answers that
-     * group.
-     */
-    fun readiness(namespaceId: UUID): NamespaceReadiness? =
-        namespaceService.findById(namespaceId)?.let { namespace ->
-            val defaultName = namespace.defaultAgentName ?: agentConfigProperties.agentName
-            val deployed = deployedAgentIds(namespaceId)
-            val candidates =
-                defaultName?.let { prefix ->
-                    (agentConfigService.findByNamespace(namespaceId) + agentConfigService.findByNamespace(null))
-                        .filter { it.name.lowercase().startsWith(prefix.lowercase()) }
-                }.orEmpty()
-            val resolved = candidates.firstOrNull { it.enabled && it.metadata.id in deployed }
-            val status = defaultAgentStatus(defaultName, resolved, candidates)
-            NamespaceReadiness(
-                defaultAgentName = defaultName,
-                defaultAgentSource =
-                    when {
-                        namespace.defaultAgentName != null -> "namespace"
-                        defaultName != null -> "platform"
-                        else -> null
-                    },
-                defaultAgentStatus = status,
-                hint = status.hint,
-                resolvedAgent = resolved?.name,
-                deployedAgents =
-                    (agentConfigService.findByNamespace(namespaceId) + agentConfigService.findByNamespace(null))
-                        .filter { it.metadata.id in deployed }
-                        .map { DeployedAgent(name = it.name, enabled = it.enabled) },
-            )
-        }
-
-    private fun defaultAgentStatus(
-        defaultName: String?,
-        resolved: AgentConfig?,
-        candidates: List<AgentConfig>,
-    ): DefaultAgentStatus =
-        when {
-            defaultName == null -> DefaultAgentStatus.NOT_SET
-            resolved != null -> DefaultAgentStatus.OK
-            candidates.isEmpty() -> DefaultAgentStatus.NOT_FOUND
-            candidates.none { it.enabled } -> DefaultAgentStatus.DISABLED
-            else -> DefaultAgentStatus.NOT_DEPLOYED
-        }
-
-    fun capabilities(
+    /** Namespace READ (member) or WRITE (admin), with the same rule as the REST namespace endpoints. */
+    fun hasNamespaceRight(
         callerId: UUID,
         namespaceId: UUID,
-    ): Map<String, Any?> {
-        val superAdmin = userService.findById(callerId)?.isAdmin == true
-        val namespaceRole =
-            when {
-                canWriteNamespace(callerId, namespaceId) -> "ADMIN"
-                canReadNamespace(callerId, namespaceId) -> "MEMBER"
-                else -> "NONE"
-            }
-        return mapOf(
-            "userId" to callerId,
-            "namespaceId" to namespaceId,
-            "superAdmin" to superAdmin,
-            "namespaceRole" to namespaceRole,
-            "userScopeDeniedIntegrationTypes" to integrationsProperties.userScopeDeniedTypes,
-        )
-    }
-
-    private fun canReadNamespace(
-        callerId: UUID,
-        namespaceId: UUID,
-    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-
-    private fun canWriteNamespace(
-        callerId: UUID,
-        namespaceId: UUID,
-    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        action: Action,
+    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), action)
 
     /** Platform, current namespace, administered namespaces and the caller's own overlays only. */
     private fun inBounds(
@@ -218,7 +139,7 @@ class ConfigReadService(
     ): Boolean =
         when {
             entity.kind == ConfigKind.NAMESPACE -> canReadById(entity, callerId)
-            else -> entity.userId == callerId || entity.namespaceId == null || canReadNamespace(callerId, namespaceId)
+            else -> entity.userId == callerId || entity.namespaceId == null || hasNamespaceRight(callerId, namespaceId, Action.READ)
         }
 
     /** The `GET /{id}` rule of the entity's controller. */
@@ -327,20 +248,7 @@ class ConfigReadService(
             name = config.name,
             namespaceId = config.namespaceId,
             userId = config.userId,
-            dto =
-                objectMapper.valueToTree(
-                    IntegrationConfigDto(
-                        id = config.metadata.id,
-                        namespaceId = config.namespaceId,
-                        userId = config.userId,
-                        name = config.name,
-                        integrationType = config.integrationType,
-                        description = config.description,
-                        parameters = config.parameters,
-                        authSettingName = config.authSettingName,
-                        autoGrant = config.autoGrant,
-                    ),
-                ),
+            dto = objectMapper.valueToTree(integrationToDto(config)),
             integrationType = config.integrationType,
         )
 

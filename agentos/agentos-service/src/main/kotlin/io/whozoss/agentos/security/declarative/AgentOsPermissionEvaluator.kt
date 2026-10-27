@@ -73,8 +73,12 @@ class AgentOsPermissionEvaluator(
      * [Authentication] exists but the rule must stay identical to the REST endpoint's, owner
      * fallback included. [PermissionService.hasPermission] alone misses that fallback and would
      * refuse a user access to their own user-scoped integration, prompt, provider or auth setting.
+     *
+     * Contract: [userId] is the user the caller acts for, as the server established it (the run's
+     * user, the request's user). It must never come from client or LLM input: this answers for
+     * whoever it is given, it does not authenticate anyone.
      */
-    fun hasPermission(
+    internal fun hasPermission(
         userId: String,
         entityType: EntityType,
         targetId: String?,

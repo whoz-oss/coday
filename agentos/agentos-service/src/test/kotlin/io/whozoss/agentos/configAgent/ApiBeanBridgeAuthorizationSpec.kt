@@ -72,6 +72,7 @@ import java.util.UUID
 class ApiBeanBridgeAuthorizationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
+    @Autowired lateinit var configWriter: ConfigWriter
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var agentConfigApi: AgentConfigApi
     @Autowired lateinit var agentConfigService: AgentConfigService
@@ -199,6 +200,16 @@ class ApiBeanBridgeAuthorizationSpec : StringSpec() {
             }
 
             agentConfigService.findById(agent.id)!!.name shouldBe agent.name
+        }
+
+        "outside an HTTP request, the writer refuses with a clear message before reaching any Api bean" {
+            SecurityContextHolder.clearContext()
+            actAs(alice)
+
+            val refused = shouldThrow<IllegalStateException> { configWriter.setEnabled(agent.id, enabled = false) }
+
+            refused.message shouldBe "ConfigWriter must run inside the HTTP request of the user who applies the plan"
+            agentConfigService.findById(agent.id)!!.enabled shouldBe true
         }
     }
 }

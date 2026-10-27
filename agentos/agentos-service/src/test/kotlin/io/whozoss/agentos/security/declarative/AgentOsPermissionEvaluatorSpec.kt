@@ -169,6 +169,35 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
         evaluator.hasPermission(nameless, UUID.randomUUID(), "Case", "READ") shouldBe false
     }
 
+    "hasPermission for an explicit user asks PermissionService for that user, not the request's" {
+        val other = UUID.randomUUID().toString()
+        val targetId = UUID.randomUUID().toString()
+        every { permissionService.hasPermission(other, EntityType.AGENT_CONFIG, targetId, Action.WRITE) } returns true
+
+        evaluator.hasPermission(other, EntityType.AGENT_CONFIG, targetId, Action.WRITE) shouldBe true
+
+        verify(exactly = 1) { permissionService.hasPermission(other, EntityType.AGENT_CONFIG, targetId, Action.WRITE) }
+    }
+
+    "hasPermission for an explicit user keeps the owner fallback, for that user only" {
+        val owner = UUID.randomUUID()
+        val stranger = UUID.randomUUID().toString()
+        val targetId = UUID.randomUUID()
+        every { permissionService.hasPermission(any(), EntityType.INTEGRATION_CONFIG, targetId.toString(), Action.READ) } returns false
+        every { ownershipResolver.resolveOwner(EntityType.INTEGRATION_CONFIG, targetId) } returns owner
+
+        evaluator.hasPermission(owner.toString(), EntityType.INTEGRATION_CONFIG, targetId.toString(), Action.READ) shouldBe true
+        evaluator.hasPermission(stranger, EntityType.INTEGRATION_CONFIG, targetId.toString(), Action.READ) shouldBe false
+    }
+
+    "hasPermission for an explicit user passes a platform-level null target through" {
+        every { permissionService.hasPermission(userId, EntityType.PROMPT, null, Action.READ) } returns true
+
+        evaluator.hasPermission(userId, EntityType.PROMPT, null, Action.READ) shouldBe true
+
+        verify(exactly = 0) { ownershipResolver.resolveOwner(EntityType.PROMPT, any()) }
+    }
+
     "hasPermission(domainObject) maps Entity.id and class.simpleName" {
         val id = UUID.randomUUID()
         val entity = AgentConfig(id)

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
+import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.whozoss.agentos.authSetting.AuthSettingDto
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
@@ -13,6 +14,9 @@ import kotlin.reflect.full.primaryConstructor
  */
 internal object ConfigAuthSettingTypes {
     private val commonFields = AuthSettingDto::class.memberProperties.map { it.name }.toSet()
+
+    /** The DTO field naming the type (`authType`), read from its Jackson type information. */
+    val TYPE_FIELD: String = AuthSettingDto::class.findAnnotation<JsonTypeInfo>()!!.property
 
     /** The type-specific fields of each `authType`, in declaration order. */
     private val fieldsByType: Map<String, List<String>> =
@@ -28,10 +32,10 @@ internal object ConfigAuthSettingTypes {
     /** e.g. `API_KEY (apiKey*); BASIC_AUTH (username, password*); ...` */
     val description: String =
         fieldsByType.entries.joinToString("; ") { (type, fields) ->
-            "$type (${fields.joinToString(", ") { if (it in ConfigSecretMasker.AUTH_SETTING_SECRET_FIELDS) "$it*" else it }})"
+            "$type (${fields.joinToString(", ") { if (it in ConfigSecretPolicy.AUTH_SETTING_SECRET_FIELDS) "$it*" else it }})"
         }
 
     /** The secret fields of [authType], or null when it is not a known type (the REST API then refuses the setting). */
     fun secretFieldsOf(authType: String?): Set<String>? =
-        fieldsByType[authType?.trim()?.uppercase()]?.filter { it in ConfigSecretMasker.AUTH_SETTING_SECRET_FIELDS }?.toSet()
+        fieldsByType[authType?.trim()?.uppercase()]?.filter { it in ConfigSecretPolicy.AUTH_SETTING_SECRET_FIELDS }?.toSet()
 }

@@ -263,7 +263,8 @@ class IntegrationConfigController(
     }
 }
 
-private fun toDto(entity: IntegrationConfig) =
+/** The REST representation of an [IntegrationConfig], shared with the config agent's reads. */
+fun toDto(entity: IntegrationConfig) =
     IntegrationConfigDto(
         id = entity.metadata.id,
         source = entity.source,

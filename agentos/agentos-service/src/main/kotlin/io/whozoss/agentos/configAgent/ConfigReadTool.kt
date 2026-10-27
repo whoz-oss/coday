@@ -17,6 +17,7 @@ class ConfigReadTool(
     private val callerId: UUID?,
     private val namespaceId: UUID,
     private val configReadService: ConfigReadService,
+    private val configNamespaceDiagnosis: ConfigNamespaceDiagnosis,
     private val objectMapper: ObjectMapper,
 ) : StandardTool<ConfigReadTool.Input> {
     data class Input(
@@ -99,7 +100,7 @@ class ConfigReadTool(
         raw: String?,
         userId: UUID,
     ): UUID? {
-        val value = raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals(CURRENT, ignoreCase = true) }
+        val value = raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals(ScopeInput.CURRENT_NAMESPACE, ignoreCase = true) }
         return when (val id = value?.let { runCatching { UUID.fromString(it) }.getOrNull() }) {
             null -> namespaceId.takeIf { value == null }
             namespaceId -> namespaceId
@@ -116,7 +117,7 @@ class ConfigReadTool(
         target: UUID,
     ): Any? =
         when (kind) {
-            ReadKind.CAPABILITIES -> configReadService.capabilities(userId, target)
+            ReadKind.CAPABILITIES -> configNamespaceDiagnosis.capabilities(userId, target)
             ReadKind.INTEGRATION_TYPE -> integrationTypes(id)
             ReadKind.DEPLOYMENT -> deployment(userId, target)
             else -> entities(kind.configKind!!, id, scope, userId, target)
@@ -140,7 +141,7 @@ class ConfigReadTool(
 
     /** A namespace read by id also says whether a message reaches an agent there. */
     private fun readinessOf(entity: ConfigEntity): Map<String, Any?> =
-        if (entity.kind == ConfigKind.NAMESPACE) mapOf("readiness" to configReadService.readiness(entity.id)) else emptyMap()
+        if (entity.kind == ConfigKind.NAMESPACE) mapOf("readiness" to configNamespaceDiagnosis.readiness(entity.id)) else emptyMap()
 
     private fun integrationTypes(type: String?): Any? =
         if (type == null) {
@@ -177,7 +178,4 @@ class ConfigReadTool(
 
     private fun scopeOf(raw: String?): ReadScope = raw?.trim()?.uppercase()?.let { value -> ReadScope.entries.firstOrNull { it.name == value } } ?: ReadScope.ALL
 
-    private companion object {
-        const val CURRENT = "current"
-    }
 }
