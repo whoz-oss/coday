@@ -99,6 +99,26 @@ class HttpApiToolProviderUnitSpec : StringSpec({
 
     fun specRequests(): Int = server.requests.count { it.path == "/openapi.yaml" }
 
+    /** Serves the petstore document and answers every API call with an empty JSON list. */
+    fun servePetstoreApi() {
+        server.handler = { request ->
+            if (request.path == "/openapi.yaml") {
+                TestResponse(body = petstore, contentType = "application/yaml")
+            } else {
+                TestResponse(body = "[]")
+            }
+        }
+    }
+
+    fun bearer(token: String) = Credential(
+        userId = UUID.randomUUID(),
+        authSettingId = UUID.randomUUID(),
+        credentialType = CredentialType.BEARER_TOKEN,
+        data = mapOf("token" to token),
+    )
+
+    fun List<StandardTool<*>>.named(suffix: String): StandardTool<*> = single { it.name.endsWith(suffix) }
+
     "declares the HTTP_API integration type with a schema" {
         provider.integrationType shouldBe "HTTP_API"
         provider.configSchema shouldBe HttpApiConfigSchema.schema
@@ -198,27 +218,64 @@ class HttpApiToolProviderUnitSpec : StringSpec({
         failures.get(namespace, "PETS") shouldBe "3 operations selected, exceeds maxTools=2"
     }
 
-    "resolves the credential exactly once per run" {
-        servePetstore()
+    "resolves the credential on the first call of a tool, then once for the whole run" {
+        servePetstoreApi()
         val calls = AtomicInteger()
-        val credential = Credential(
-            userId = UUID.randomUUID(),
-            authSettingId = UUID.randomUUID(),
-            credentialType = CredentialType.BEARER_TOKEN,
-            data = mapOf("token" to "t"),
-        )
-        val tools = provider.provideTools(specConfig(), "PETS", context { calls.incrementAndGet(); credential })
+        val tools = provider.provideTools(specConfig(), "PETS", context { calls.incrementAndGet(); bearer("t") })
         tools.size shouldBe 3
+        calls.get() shouldBe 0
+
+        tools.named("listPets").executeWithJson("{}", context()).success shouldBe true
+        tools.named("showPetById").executeWithJson("""{"petId":"1"}""", context()).success shouldBe true
+
+        calls.get() shouldBe 1
+        server.requests.filter { it.path.startsWith("/v1/") }.map { it.header("Authorization") } shouldContainExactly
+            listOf("Bearer t", "Bearer t")
+    }
+
+    "a credential that could not be obtained is asked again on the next call" {
+        servePetstoreApi()
+        val answers = ArrayDeque(listOf(null, bearer("late")))
+        val tools = provider.provideTools(specConfig(), "PETS", context { answers.removeFirst() })
+
+        val refused = tools.named("listPets").executeWithJson("{}", context())
+        val accepted = tools.named("listPets").executeWithJson("{}", context())
+
+        refused.errorType shouldBe "AUTH_MISSING"
+        refused.output shouldContain "the next call asks for the credential again"
+        accepted.success shouldBe true
+        server.requests.single { it.path.startsWith("/v1/") }.header("Authorization") shouldBe "Bearer late"
+    }
+
+    "concurrent calls of a run resolve the credential once" {
+        servePetstoreApi()
+        val calls = AtomicInteger()
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context { calls.incrementAndGet(); Thread.sleep(200); bearer("t") },
+        )
+
+        coroutineScope {
+            (1..4).map { async { tools.named("listPets").executeWithJson("{}", context()) } }.awaitAll()
+        }.all { it.success } shouldBe true
+
         calls.get() shouldBe 1
     }
 
-    "a failing credential provider never escapes and its message stays in the logs" {
-        servePetstore()
+    "a failing credential provider never escapes: the call fails and the message stays in the logs" {
+        servePetstoreApi()
         CapturedLogs.clear()
-        val failing = context { throw IllegalStateException("vault down") }
-        provider.provideTools(specConfig(), "PETS", failing) shouldBe emptyList()
-        failures.get(namespace, "PETS") shouldBe "unexpected error while preparing the tools, see the service logs"
+        val tools = provider.provideTools(specConfig(), "PETS", context { throw IllegalStateException("vault down") })
+        tools.size shouldBe 3
+
+        val result = tools.named("listPets").executeWithJson("{}", context())
+
+        result.errorType shouldBe "AUTH_MISSING"
+        result.output shouldContain "unexpected error while resolving the credential, see the service logs"
+        result.output shouldNotContain "vault down"
         CapturedLogs.lines.joinToString("\n") shouldContain "vault down"
+        server.requests.none { it.path.startsWith("/v1/") } shouldBe true
     }
 
     "a customised API key placement without a credential provider is logged as unauthenticated" {
