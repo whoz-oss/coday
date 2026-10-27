@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
+import org.springframework.context.annotation.Lazy
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -67,10 +68,13 @@ import java.util.UUID
  *
  * That same boundary is what makes it safe for [listOwn] to return `parameters` in clear text:
  * every row it can reach belongs to the caller.
+ *
+ * [integrationConfigService] is a `@Lazy` proxy: its Git policy depends on the tool registry that
+ * collects the plugin using this class, so resolving it eagerly would close a cycle.
  */
 @Service
 class SelfConfigToolService(
-    private val integrationConfigService: IntegrationConfigService,
+    @Lazy private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
 ) {

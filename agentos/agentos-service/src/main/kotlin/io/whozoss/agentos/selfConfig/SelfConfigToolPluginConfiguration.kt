@@ -16,9 +16,10 @@ import org.springframework.context.annotation.Configuration
  * [io.whozoss.agentos.userGroup.UserGroupToolPluginConfiguration] and
  * [io.whozoss.agentos.redirect.RedirectConfiguration]: `ToolRegistryService` collects every
  * `ToolPlugin` bean, so a plugin that injects a service sitting above it in the dependency graph
- * closes a cycle. Here the only dependency is [SelfConfigToolService], which injects
- * `IntegrationConfigService`, `UserService` and `IntegrationTypeRegistry` -- none of which depends
- * on `ToolRegistryService` -- so no cycle forms.
+ * closes a cycle. Here the only dependency is [SelfConfigToolService], and that cycle does exist:
+ * `IntegrationConfigService` collects every `IntegrationConfigPolicy`, and the Git one reaches
+ * `ToolRegistryService` through `GitAvailability`. [SelfConfigToolService] therefore takes
+ * `IntegrationConfigService` as a `@Lazy` proxy, as `CaseStarterService` does with `CaseService`.
  *
  * This class holds no business logic: all authorization and all rules live in
  * [SelfConfigToolService].
