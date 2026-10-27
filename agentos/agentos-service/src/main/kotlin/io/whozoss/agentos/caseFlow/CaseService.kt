@@ -38,6 +38,20 @@ interface CaseService : EntityService<Case, UUID> {
     override fun findById(id: UUID, withRemoved: Boolean): Case?
 
     /**
+     * Creates [entity], letting the caller choose whether a new top-level case gets a worktree.
+     *
+     * [worktree] null leaves the choice to the namespace's settings, as [create] does. False creates an
+     * ordinary case. True creates the worktree even when the namespace does not create one for every case,
+     * and refuses the creation when it cannot be honoured.
+     *
+     * @throws io.whozoss.agentos.exception.BadRequestException if [worktree] is set for a sub-case, which
+     *   shares its root case's worktree
+     * @throws io.whozoss.agentos.exception.ConflictException if [worktree] is true and this instance or
+     *   namespace cannot create one
+     */
+    fun create(entity: Case, worktree: Boolean?): Case
+
+    /**
      * Applies a user edit to case [id]. [change] returns the edited case; status and namespace are kept
      * as they are, since the runtime drives the status and the namespace carries the permissions.
      *

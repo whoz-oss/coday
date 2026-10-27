@@ -10,10 +10,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.Called
+import io.mockk.Runs
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
@@ -254,6 +256,7 @@ class CaseServiceImplSpec :
             caseRepository: CaseRepository = InMemoryCaseRepository(),
             caseEventService: CaseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
             caseLaunchGate: CaseLaunchGate? = null,
+            caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
             runCostService: RunCostService? = null,
             agentService: AgentService =
                 mockk {
@@ -290,6 +293,7 @@ class CaseServiceImplSpec :
                 usageConfig = usageConfig,
                 caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 caseLaunchGate = caseLaunchGate,
+                caseWorkspaceProvisioning = caseWorkspaceProvisioning,
                 runCostService = runCostService,
                 coroutineContext = coroutineContext,
             )
@@ -2553,6 +2557,45 @@ class CaseServiceImplSpec :
 
             shouldThrow<ResourceNotFoundException> {
                 service.create(Case(namespaceId = namespaceId, parentCaseId = deletedParent.id))
+            }
+        }
+
+        "create refuses a worktree choice for a sub-case, which shares its root's" {
+            listOf(true, false).forEach { worktree ->
+                val repository = spyk(InMemoryCaseRepository())
+                val service = buildService(caseRepository = repository)
+                val parent = service.create(Case(namespaceId = namespaceId))
+
+                shouldThrow<BadRequestException> {
+                    service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id), worktree)
+                }
+                verify(exactly = 1) { repository.save(any()) }
+            }
+        }
+
+        "create refuses a requested worktree where Git workspaces are not enabled" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+
+            shouldThrow<ConflictException> { service.create(Case(namespaceId = namespaceId), worktree = true) }
+                .message shouldBe "Cannot create a worktree for this case: Git workspaces are not enabled on this instance"
+            verify(exactly = 0) { repository.save(any()) }
+        }
+
+        "create hands the creator's worktree choice to the workspace provisioning" {
+            listOf(null, true, false).forEach { worktree ->
+                val provisioning =
+                    mockk<CaseWorkspaceProvisioning> {
+                        every { aroundCreation<Case>(any(), any(), any()) } answers { thirdArg<() -> Case>()() }
+                        every { onCaseCreated(any(), any()) } just Runs
+                    }
+                val service = buildService(caseWorkspaceProvisioning = provisioning)
+                val case = Case(namespaceId = namespaceId)
+
+                service.create(case, worktree)
+
+                verify(exactly = 1) { provisioning.aroundCreation<Case>(case, worktree, any()) }
+                verify(exactly = 1) { provisioning.onCaseCreated(match { it.id == case.id }, worktree) }
             }
         }
 

@@ -13,13 +13,28 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { filter, firstValueFrom, Subject, takeUntil, throwError, timeout } from 'rxjs'
+import {
+  catchError,
+  combineLatest,
+  filter,
+  firstValueFrom,
+  map,
+  of,
+  shareReplay,
+  Subject,
+  switchMap,
+  takeUntil,
+  throwError,
+  timeout,
+} from 'rxjs'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   CaseControllerService,
   CaseStatusEnum,
   CaseWorkspaceViewStatusEnum,
+  IntegrationTypeControllerService,
+  NamespaceGitControllerService,
   Prompt,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
@@ -34,6 +49,8 @@ import { ComposerAttachmentsService } from '../composer-attachments/composer-att
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case-workspace.service'
 
+const GIT_INTEGRATION_TYPE = 'GIT'
+
 /**
  * CaseHomeComponent — landing page for a namespace.
  *
@@ -44,6 +61,10 @@ import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case
  *    explicit request) and referenced in the message content
  * 4. POST /api/cases/:id/messages sends the first message
  * 5. Only then does the app navigate to the case chat
+ *
+ * When this instance has Git workspaces and the GIT plugin, and the namespace a repository, a
+ * top-level case may get its own worktree: the choice starts from the namespace's setting and is
+ * sent with the creation.
  *
  * The first message is never stored in router state to avoid re-sending on refresh.
  * The created case id is remembered in [pendingCaseId] so a failed upload/send retries
@@ -66,6 +87,8 @@ import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case
 export class CaseHomeComponent implements OnInit {
   private readonly caseApi = inject(CaseControllerService)
   private readonly workspaces = inject(CaseWorkspaceService)
+  private readonly gitApi = inject(NamespaceGitControllerService)
+  private readonly integrationTypeApi = inject(IntegrationTypeControllerService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly caseState = inject(CaseStateService)
@@ -97,7 +120,24 @@ export class CaseHomeComponent implements OnInit {
   protected readonly submitError = signal('')
 
   /** Case created by a previous failed submit — reused on retry, never duplicated. */
-  private readonly pendingCaseId = signal<string | null>(null)
+  protected readonly pendingCaseId = signal<string | null>(null)
+
+  /** Offered with Git workspaces and the GIT plugin on this instance, and a repository on the namespace. */
+  protected readonly worktreeOffered = signal(false)
+  /** Whether the new case gets a worktree, starting from the namespace's setting for every top-level case. */
+  protected readonly worktree = signal(false)
+  private readonly worktreeNamespace = new Subject<string>()
+  /** Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows. */
+  private readonly gitWorkspaces$ = combineLatest([
+    this.workspaces.enabled$,
+    this.integrationTypeApi
+      .listTypesIntegrationType()
+      .pipe(map((types) => types.some((type) => type.type === GIT_INTEGRATION_TYPE))),
+  ]).pipe(
+    map(([enabled, gitPlugin]) => enabled && gitPlugin),
+    catchError(() => of(false)),
+    shareReplay({ bufferSize: 1, refCount: false })
+  )
 
   /** The async submit chain must stop touching state or navigating once the view is gone. */
   private destroyed = false
@@ -111,6 +151,7 @@ export class CaseHomeComponent implements OnInit {
     // Namespace-only exchange init: no case exists yet, but canWriteNamespace() gating
     // (namespace-intent badge and upload target) needs the namespace manifest.
     this.exchangeState.initializeForNamespace(this.namespaceId)
+    this.worktreeNamespace.next(this.namespaceId)
 
     // The composer is reused when switching namespaces or the parent of a new sub-case.
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -129,6 +170,8 @@ export class CaseHomeComponent implements OnInit {
         this.submitError.set('')
         this.isCreating.set(false)
         this.exchangeState.initializeForNamespace(newNs)
+        this.worktreeOffered.set(false)
+        this.worktreeNamespace.next(newNs)
       }
     })
   }
@@ -136,6 +179,23 @@ export class CaseHomeComponent implements OnInit {
   constructor() {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
     this.autocomplete.init(this.namespaceId)
+
+    // A namespace switch drops the answer still pending for the previous one.
+    this.worktreeNamespace
+      .pipe(
+        switchMap((namespaceId) =>
+          this.gitWorkspaces$.pipe(
+            switchMap((available) => (available ? this.gitApi.getAssociationNamespaceGit(namespaceId) : of(null))),
+            // An association that cannot be read offers nothing: the composer stays as it is without Git.
+            catchError(() => of(null))
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((association) => {
+        this.worktreeOffered.set(!!association?.associated)
+        this.worktree.set(!!association?.autoWorktreeForRootCases)
+      })
 
     // Track both the value and the view query. This covers programmatic writes
     // (autocomplete, namespace reset, and post-submit clear) once the textarea exists.
@@ -170,6 +230,10 @@ export class CaseHomeComponent implements OnInit {
 
     input.style.height = 'auto'
     input.style.height = `${input.scrollHeight}px`
+  }
+
+  protected onWorktreeChange(event: Event): void {
+    this.worktree.set((event.target as HTMLInputElement).checked)
   }
 
   protected onKeydown(event: KeyboardEvent): void {
@@ -225,6 +289,7 @@ export class CaseHomeComponent implements OnInit {
           this.caseApi.createCase({
             namespaceId,
             ...(parentCaseId ? { parentCaseId } : {}),
+            ...(this.worktreeOffered() && !parentCaseId ? { worktree: this.worktree() } : {}),
             status: CaseStatusEnum.PENDING,
             favorite: false,
             removed: false,
