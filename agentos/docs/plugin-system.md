@@ -93,7 +93,10 @@ and the credential comes from one of two sources:
 
 - **OAuth types** (`OAUTH_DISCOVERABLE`, `OAUTH_REGISTERED`, `OAUTH_CUSTOM`, `OAUTH_MCP_DISCOVERABLE`)
   are handled by `OAuthFlowService`: existing token -> refresh -> interactive authorization. These are
-  the only credentials ever persisted (one `Credential` row per user and auth setting).
+  the only credentials ever persisted (one `Credential` row per user and auth setting). The
+  authorization request asks for offline access (`access_type=offline`, unless the authorization
+  endpoint already sets `access_type`) so that Google issues a refresh token, and a refresh response
+  without a new refresh token keeps the current one.
 - **Static types** (`API_KEY`, `BEARER_TOKEN`, `BASIC_AUTH`): a per-user `Credential` row wins if one
   exists; otherwise `StaticCredentialFactory` synthesises the credential in memory from the resolved
   `AuthSetting`. Nothing is persisted on that path, and a blank secret yields no credential.
