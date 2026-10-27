@@ -7,6 +7,10 @@ export {
   NamespaceCaseListUpdateSseService,
   type NamespaceCaseListUpdateSignal,
 } from './custom/namespace-case-list-update-sse.service'
+export {
+  NamespaceCaseInvalidationSseService,
+  type NamespaceCaseInvalidationSignal,
+} from './custom/namespace-case-invalidation-sse.service'
 export { IntegrationConfigExportService } from './custom/integration-config-export.service'
 export { AgentConfigExportService } from './custom/agent-config-export.service'
 export { PromptExportService } from './custom/prompt-export.service'

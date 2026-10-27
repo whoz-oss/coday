@@ -75,7 +75,7 @@ export interface AgentosProcess {
  *
  * @returns { available: true, version } when a suitable JVM is found, otherwise { available: false }.
  */
-function detectJava(): { available: boolean; version?: string } {
+export function detectJava(): { available: boolean; version?: string } {
   // JAVA_HOME may not be set in non-interactive shells (e.g. SDKMAN, Homebrew).
   // Resolve the java binary path: prefer JAVA_HOME/bin/java, fall back to 'java' on PATH.
   const javaHome = process.env.JAVA_HOME

@@ -27,7 +27,7 @@ class SkillServiceImpl(
 
     override fun update(entity: Skill): Skill {
         val existing = getById(entity.metadata.id)
-        if (isFilesystemBacked(existing)) {
+        if (existing.isFilesystemBacked) {
             throw BadRequestException("Filesystem-backed skill '${existing.name}' is read-only through the API.")
         }
         validateSkillName(entity.name)
@@ -44,7 +44,7 @@ class SkillServiceImpl(
 
     override fun delete(id: UUID): Boolean {
         val existing = findById(id) ?: return false
-        if (isFilesystemBacked(existing)) {
+        if (existing.isFilesystemBacked) {
             throw BadRequestException("Filesystem-backed skill '${existing.name}' is read-only through the API.")
         }
         return skillRepository.delete(id)
@@ -132,25 +132,6 @@ class SkillServiceImpl(
             )
         }
     }
-
-    /**
-     * True when [skill] is backed by a filesystem SKILL.md rather than a persisted Neo4j node.
-     *
-     * [skillRepository] is [FilesystemSkillRepository] — a composite/decorator over the Neo4j
-     * repository — so `skillRepository.findByIds(...)` ALWAYS resolves filesystem-backed skills
-     * too (that's the whole point of the decorator). Checking "is the id absent from a
-     * findByIds() call through that same composite" is therefore never true for a
-     * filesystem-backed skill, and the read-only guard on [update]/[delete] would be silently
-     * bypassed.
-     *
-     * The reliable discriminator is [io.whozoss.agentos.sdk.entity.EntityMetadata.version]:
-     * filesystem skills are built in-memory on every read and never go through Spring Data
-     * Neo4j's `save()`, so `metadata.version` — set to a non-null value by SDN on first
-     * persistence — stays null for their entire lifetime. This mirrors the same idiom used by
-     * [io.whozoss.agentos.agentConfig.AgentConfig.isFilesystemOnly] and
-     * [io.whozoss.agentos.prompt.PromptServiceImpl.rejectIfFilesystemBacked].
-     */
-    private fun isFilesystemBacked(skill: Skill): Boolean = skill.metadata.version == null
 
     private fun requireUniqueName(
         namespaceId: UUID?,

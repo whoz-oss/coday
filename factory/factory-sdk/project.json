@@ -1,0 +1,7 @@
+{
+  "name": "factory-sdk",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "factory/factory-sdk/src",
+  "tags": ["type:lib", "platform:jvm-factory", "scope:lib"]
+}

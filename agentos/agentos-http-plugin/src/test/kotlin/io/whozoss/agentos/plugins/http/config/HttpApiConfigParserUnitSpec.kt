@@ -267,13 +267,13 @@ class HttpApiConfigParserUnitSpec : StringSpec({
         }
     }
 
-    "accepts a loopback baseUrl only with the explicit lenient policy" {
+    "accepts an http private baseUrl only with the explicit unsecure policy" {
         val json = mapper.readTree(
-            """{ "spec": { "inline": "openapi: 3.0.0" }, "baseUrl": "https://127.0.0.1:8443" }""",
+            """{ "spec": { "inline": "openapi: 3.0.0" }, "baseUrl": "http://10.0.0.1:8080" }""",
         )
         shouldThrow<IllegalArgumentException> { HttpApiConfigParser.parse(json) }
-        val lenient = HttpApiConfigParser.parse(json, OutboundUrlPolicy(allowLoopbackForTests = true))
-        lenient.baseUrl shouldBe "https://127.0.0.1:8443"
+        val lenient = HttpApiConfigParser.parse(json, OutboundUrlPolicy(allowUnsecure = true))
+        lenient.baseUrl shouldBe "http://10.0.0.1:8080"
     }
 
     "rejects an http spec url" {

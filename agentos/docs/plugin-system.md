@@ -34,6 +34,10 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
 
+`./gradlew deployPlugins` must be re-run after changing any plugin (it cleans, rebuilds and
+copies every plugin JAR into `plugins/`). For a one-shot local run, `./gradlew bootRunWithPlugins`
+deploys the plugins and then boots `agentos-service`.
+
 ## Filesystem Plugin
 
 The `agentos-plugins-filesystem` module provides filesystem-based providers for agents, AI models, and AI providers. They scan configured directories for YAML files and load definitions without recompilation.

@@ -17,7 +17,7 @@ export interface AgentConfig {
   createdBy?: string
   createdOn?: string
   /**
-   * Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.
+   * Seconds each outgoing delegation waits without any activity from its sub-case, nested delegations included, before stopping it. Null or omitted inherits the server default; on PUT this clears an existing override.
    */
   delegationTimeoutSeconds?: number
   description?: string

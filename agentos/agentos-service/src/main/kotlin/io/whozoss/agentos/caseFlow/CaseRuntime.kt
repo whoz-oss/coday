@@ -155,6 +155,9 @@ class CaseRuntime(
      */
     private val userTurnStartedAtNanos = AtomicLong(0)
 
+    /** Backs [activityCount]. */
+    private val activity = AtomicLong(0)
+
     /**
      * Job of the turn executing inside [run]: from the user's message until the agents hand back to
      * the user, so it may span several agent turns (redirects, answered questions, queued commands).
@@ -294,12 +297,15 @@ class CaseRuntime(
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
-     * Claim the [CaseStatus.PENDING] (gated-hold) transition atomically, in memory only.
+     * Claim the [CaseStatus.PENDING] transition atomically, in memory only: a turn is queued and has not
+     * started. [GatedRunLauncher] claims it for a turn its gate holds back, then publishes it.
+     * [CaseServiceImpl.resumeSubCase] claims it without a gate and does not publish it: [run] replaces it
+     * with RUNNING as soon as the turn starts.
      *
-     * Must be called under this instance's monitor (the admission lock). Returns the
-     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
-     * already running or already PENDING. The caller is responsible for calling
-     * [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
+     * Takes this instance's monitor (the admission lock); a caller that claims together with its own
+     * state holds the monitor around the call. Returns the [CaseStatus] to publish if the claim succeeded,
+     * or `null` if the runtime is already running or already PENDING. The caller is responsible for
+     * calling [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
      */
     fun claimPending(): CaseStatus? = synchronized(this) {
         if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
@@ -339,6 +345,21 @@ class CaseRuntime(
     /** Monotonic count of non-blocking live emissions rejected by the runtime buffer. */
     val deliveryFailureCount get() = emitter.deliveryFailureCount
 
+    /**
+     * Monotonic count of this case's activity: every event it emits and every [recordActivity].
+     * Only its changes matter: a delegation waiting on this case compares two readings to tell a
+     * sub-case that is working from a silent one.
+     */
+    val activityCount: Long get() = activity.get()
+
+    /**
+     * Record activity without an event. A delegation relays the activity of the sub-case it waits on
+     * to its own case this way, so that a delegation waiting on that case sees it working too.
+     */
+    fun recordActivity() {
+        activity.incrementAndGet()
+    }
+
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
     }
@@ -363,6 +384,12 @@ class CaseRuntime(
      */
     fun emitEvent(event: CaseEvent) {
         emit(event)
+    }
+
+    /** Every live emission, stored or not, is activity of the case (see [activityCount]). */
+    override fun emit(event: CaseEvent) {
+        recordActivity()
+        emitter.emit(event)
     }
 
     // -------------------------------------------------------------------------

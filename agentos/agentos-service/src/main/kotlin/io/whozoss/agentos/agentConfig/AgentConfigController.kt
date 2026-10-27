@@ -13,6 +13,7 @@ import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
 import io.whozoss.agentos.sdk.api.agentConfig.AgentDefinitionDto
+import io.whozoss.agentos.skill.toSummaryDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
@@ -242,6 +243,7 @@ class AgentConfigController(
                         inputSchema = tool.inputSchema,
                     )
                 },
+            skills = definition.skills.map(::toSummaryDto),
             executionMode = definition.executionMode,
             advancedExecution = definition.executionMode == ExecutionMode.ADVANCED,
             namespaceId = definition.namespaceId,

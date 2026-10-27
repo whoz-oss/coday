@@ -71,6 +71,7 @@ fi
 START_AGENTOS_PORT=8123
 START_SERVER_PORT=4100
 START_CLIENT_PORT=5100
+START_FACTORY_PORT=5200
 
 # Unset TMUX so we can create a new top-level session even when called from
 # inside an existing tmux session (e.g. via the Coday preview panel).
@@ -98,10 +99,12 @@ find_free_port() {
 AGENTOS_PORT=$(find_free_port "${START_AGENTOS_PORT}")
 SERVER_PORT=$(find_free_port "${START_SERVER_PORT}")
 CLIENT_PORT=$(find_free_port "${START_CLIENT_PORT}")
+FACTORY_PORT=$(find_free_port "${START_FACTORY_PORT}")
 
 SESSION_AGENTOS="agentos_${BRANCH_SLUG}_${AGENTOS_PORT}"
 SESSION_SERVER="server_${BRANCH_SLUG}_${SERVER_PORT}"
 SESSION_CLIENT="client_${BRANCH_SLUG}_${CLIENT_PORT}"
+SESSION_FACTORY="factory_${BRANCH_SLUG}_${FACTORY_PORT}"
 
 # ---------------------------------------------------------------------------
 # Summary (human + machine readable)
@@ -110,17 +113,19 @@ echo "Working directory : $(pwd)"
 echo "AGENTOS_PORT=${AGENTOS_PORT}"
 echo "SERVER_PORT=${SERVER_PORT}"
 echo "CLIENT_PORT=${CLIENT_PORT}"
+echo "FACTORY_PORT=${FACTORY_PORT}"
 echo
 echo "AgentOS session   : ${SESSION_AGENTOS}"
 echo "Server session    : ${SESSION_SERVER}"
 echo "Client session    : ${SESSION_CLIENT}"
+echo "Factory session   : ${SESSION_FACTORY}"
 
 # ---------------------------------------------------------------------------
 # Kill any existing sessions for this worktree (any port variant)
 # A previous run may have used a different port, leaving a stale session that
 # still holds the Neo4j store_lock. Match on branch slug prefix to catch all.
 # ---------------------------------------------------------------------------
-for PREFIX in "agentos_${BRANCH_SLUG}_" "server_${BRANCH_SLUG}_" "client_${BRANCH_SLUG}_"; do
+for PREFIX in "agentos_${BRANCH_SLUG}_" "server_${BRANCH_SLUG}_" "client_${BRANCH_SLUG}_" "factory_${BRANCH_SLUG}_"; do
   tmux list-sessions -F '#{session_name}' 2>/dev/null \
     | grep "^${PREFIX}" \
     | while read -r SESSION; do
@@ -145,7 +150,7 @@ tmux new-session -d -s "${SESSION_AGENTOS}" \
 # ANGULAR_CLIENT_PORT — tells the server where to proxy Angular HMR requests
 # ---------------------------------------------------------------------------
 tmux new-session -d -s "${SESSION_SERVER}" \
-  "AGENTOS_PORT=${AGENTOS_PORT} PORT=${SERVER_PORT} ANGULAR_CLIENT_PORT=${CLIENT_PORT} BUILD_ENV=development pnpm nx run server:serve"
+  "AGENTOS_PORT=${AGENTOS_PORT} PORT=${SERVER_PORT} ANGULAR_CLIENT_PORT=${CLIENT_PORT} FACTORY_COCKPIT_PORT=${FACTORY_PORT} BUILD_ENV=development pnpm nx run server:serve"
 
 # ---------------------------------------------------------------------------
 # Session: Angular dev server
@@ -154,9 +159,16 @@ tmux new-session -d -s "${SESSION_CLIENT}" \
   "pnpm nx run client:serve --port=${CLIENT_PORT}"
 
 # ---------------------------------------------------------------------------
+# Session: Factory cockpit dev server (baseHref /factory/, reached via Express)
+# ---------------------------------------------------------------------------
+tmux new-session -d -s "${SESSION_FACTORY}" \
+  "pnpm nx run factory-cockpit:serve --port=${FACTORY_PORT}"
+
+# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 echo
 echo "Started. Open: http://localhost:${SERVER_PORT}"
 echo "Attach with : tmux attach -t ${SESSION_SERVER}"
-echo "Stop with   : tmux kill-session -t ${SESSION_AGENTOS} && tmux kill-session -t ${SESSION_SERVER} && tmux kill-session -t ${SESSION_CLIENT}"
+echo "Factory     : http://localhost:${SERVER_PORT}/factory/"
+echo "Stop with   : tmux kill-session -t ${SESSION_AGENTOS} && tmux kill-session -t ${SESSION_SERVER} && tmux kill-session -t ${SESSION_CLIENT} && tmux kill-session -t ${SESSION_FACTORY}"

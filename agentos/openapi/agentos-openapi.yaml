@@ -2211,6 +2211,28 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/namespaces/{namespaceId}/case-invalidation:
+    get:
+      description: "Each 'namespace-case-invalidation' event carries the neutral JSON\
+        \ payload '{}', with no business data. Reload GET /api/cases/by-parentId/{namespaceId}/mine\
+        \ when it arrives or when the stream reconnects."
+      operationId: streamCaseInvalidationsNamespaceCaseInvalidationSse
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            text/event-stream: {}
+          description: "SSE stream of namespace case-list invalidations carrying data:\
+            \ {}."
+      summary: Stream namespace case-list invalidations via SSE
+      tags:
+      - sse
   /api/namespaces/{namespaceId}/case-list-updates:
     get:
       description: "Each 'namespace-case-list-updated' event carries the neutral JSON\
@@ -3261,6 +3283,32 @@ paths:
           description: OK
       tags:
       - skill-controller
+  /api/skills/effective:
+    get:
+      description: "Returns the skill catalogue a '*' selector resolves in this namespace:\
+        \ persisted and filesystem namespace skills merged with platform skills, namespace\
+        \ skills shadowing platform skills of the same name (case-insensitive). Summary\
+        \ projection — no body, no resources."
+      operationId: listEffectiveSkill
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SkillSummary"
+          description: OK
+      summary: Effective skills for a namespace
+      tags:
+      - skill-controller
   /api/skills/platform:
     get:
       operationId: listPlatformSkill
@@ -3924,9 +3972,10 @@ components:
         delegationTimeoutSeconds:
           type: integer
           format: int32
-          description: "Seconds allowed for each outgoing delegation, including nested\
-            \ work. Null or omitted inherits the server default; on PUT this clears\
-            \ an existing override."
+          description: "Seconds each outgoing delegation waits without any activity\
+            \ from its sub-case, nested delegations included, before stopping it.\
+            \ Null or omitted inherits the server default; on PUT this clears an existing\
+            \ override."
           minimum: 1
         description:
           type: string
@@ -4057,6 +4106,14 @@ components:
         resolvedProviderName:
           type: string
           description: The name of the resolved AI provider.
+        skills:
+          type: array
+          description: "Skills resolved for this agent from its skillSelectors, in\
+            \ catalog order. Namespace skills shadow platform skills of the same name.\
+            \ Empty when the agent declares no selectors. Bodies and resources are\
+            \ not included — fetch GET /api/skills/{id} for those."
+          items:
+            $ref: "#/components/schemas/SkillSummary"
         systemPrompt:
           type: string
           description: "Privileged namespace context block sent as a separate system\
@@ -4079,6 +4136,7 @@ components:
       - namespaceId
       - resolvedModelApiName
       - resolvedProviderName
+      - skills
       - tools
     AgentDefinitionToolSummary:
       type: object
@@ -6062,6 +6120,13 @@ components:
           - string
           - "null"
           format: uuid
+        readOnly:
+          type: boolean
+          description: "True when this skill is backed by a filesystem SKILL.md file\
+            \ and therefore cannot be modified or deleted through the API. Always\
+            \ present in responses, ignored on write. Reflects the storage origin,\
+            \ NOT the caller's permissions: a false value does not by itself mean\
+            \ the caller may write."
         resources:
           type: object
           additionalProperties:
@@ -6075,6 +6140,35 @@ components:
       - body
       - description
       - name
+    SkillSummary:
+      type: object
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: "The skill name, which is also the value a skillSelectors entry\
+            \ must match."
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+          description: "Owning namespace, or null for a platform-level skill. Makes\
+            \ the winner of namespace-over-platform shadowing explicit."
+        readOnly:
+          type: boolean
+          description: "True when the skill is backed by a filesystem SKILL.md file\
+            \ and cannot be modified through the API. Reflects the storage origin,\
+            \ NOT the caller's permissions."
+      required:
+      - description
+      - id
+      - name
+      - readOnly
     SubCaseFinishedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
