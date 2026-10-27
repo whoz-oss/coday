@@ -100,7 +100,7 @@ class ConfigReadTool(
         raw: String?,
         userId: UUID,
     ): UUID? {
-        val value = raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals(CURRENT, ignoreCase = true) }
+        val value = raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals(ScopeInput.CURRENT_NAMESPACE, ignoreCase = true) }
         return when (val id = value?.let { runCatching { UUID.fromString(it) }.getOrNull() }) {
             null -> namespaceId.takeIf { value == null }
             namespaceId -> namespaceId
@@ -178,7 +178,4 @@ class ConfigReadTool(
 
     private fun scopeOf(raw: String?): ReadScope = raw?.trim()?.uppercase()?.let { value -> ReadScope.entries.firstOrNull { it.name == value } } ?: ReadScope.ALL
 
-    private companion object {
-        const val CURRENT = "current"
-    }
 }

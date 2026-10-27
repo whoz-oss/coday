@@ -1,6 +1,7 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
+import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.whozoss.agentos.authSetting.AuthSettingDto
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
@@ -13,6 +14,9 @@ import kotlin.reflect.full.primaryConstructor
  */
 internal object ConfigAuthSettingTypes {
     private val commonFields = AuthSettingDto::class.memberProperties.map { it.name }.toSet()
+
+    /** The DTO field naming the type (`authType`), read from its Jackson type information. */
+    val TYPE_FIELD: String = AuthSettingDto::class.findAnnotation<JsonTypeInfo>()!!.property
 
     /** The type-specific fields of each `authType`, in declaration order. */
     private val fieldsByType: Map<String, List<String>> =

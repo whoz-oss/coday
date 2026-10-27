@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import com.ninjasquad.springmockk.SpykBean
 import io.kotest.assertions.fail
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldContain
@@ -28,6 +29,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
@@ -717,6 +719,28 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                 .andExpect(status().is2xxSuccessful)
 
             view(proposal.questionId)["state"].asText() shouldBe "ANSWERED"
+        }
+
+        "an integration configuration cannot take the config agent's built-in name, on the real save path" {
+            shouldThrow<UnprocessableEntityException> {
+                integrationConfigService.create(IntegrationConfig(namespaceId = namespace.id, name = "agentos_config", integrationType = "JIRA"))
+            }
+
+            integrationConfigService.findByNamespaceShared(namespace.id).none { it.name.equals(ConfigAgentIntegration.TYPE, ignoreCase = true) } shouldBe true
+        }
+
+        "capabilities tell the user's role in this namespace and in one they administer" {
+            val other = otherNamespace(admin = alice)
+
+            val own = read(alice, """{ "kind": "capabilities" }""")
+            val administered = read(alice, """{ "kind": "capabilities", "namespaceId": "${other.id}" }""")
+            val member = read(carol, """{ "kind": "capabilities" }""")
+
+            own["namespaceRole"].asText() shouldBe "ADMIN"
+            own["superAdmin"].asBoolean() shouldBe false
+            administered["namespaceId"].asText() shouldBe other.id.toString()
+            administered["namespaceRole"].asText() shouldBe "ADMIN"
+            member["namespaceRole"].asText() shouldBe "MEMBER"
         }
 
         "creating an agent needs an explicit enabled flag" {

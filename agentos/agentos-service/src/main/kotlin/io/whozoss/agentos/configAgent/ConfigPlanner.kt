@@ -180,7 +180,7 @@ class ConfigPlanner(
                 errors += "secret path '${slot.path}' must not carry a value in 'value'."
             }
         }
-        val authType = effective.path("authType").asText(null)
+        val authType = effective.path(ConfigAuthSettingTypes.TYPE_FIELD).asText(null)
         if (kind == ConfigKind.AUTH_SETTING) errors += ConfigSecretPolicy.misplacedAuthSettingSecrets(authType, secrets)
         errors += ConfigSecretPolicy.clearTextSecrets(kind, authType, effective, path = "").map(ConfigSecretPolicy::clearTextSecretError)
         val dependsOn = ConfigJson.opRefs(effective) + listOfNotNull(scope?.namespaceRef)
@@ -243,7 +243,7 @@ class ConfigPlanner(
         val target = current.toTarget()
         val masked = configReadService.masked(current)
         val secretPaths = secrets.map { it.path }.toSet()
-        val authType = current.dto.path("authType").asText(null)
+        val authType = current.dto.path(ConfigAuthSettingTypes.TYPE_FIELD).asText(null)
         if (kind == ConfigKind.AUTH_SETTING) errors += ConfigSecretPolicy.misplacedAuthSettingSecrets(authType, secrets)
         errors +=
             changes
@@ -381,8 +381,8 @@ class ConfigPlanner(
             }
             scope == null -> {
                 errors +=
-                    "CREATE needs 'scope': {\"namespaceId\": \"current\", {\"\$op\": \"<ref>\"} of a namespace this plan creates or null for platform, " +
-                    "\"userId\": \"me\" or null}."
+                    "CREATE needs 'scope': {\"namespaceId\": \"${ScopeInput.CURRENT_NAMESPACE}\", {\"\$op\": \"<ref>\"} of a namespace this plan creates or null for platform, " +
+                    "\"userId\": \"${ScopeInput.CALLER}\" or null}."
                 null
             }
             else -> scopeFrom(kind, scope, refs, context, errors)
@@ -410,17 +410,17 @@ class ConfigPlanner(
                     namespaceIdOf(namespaceNode, context).also { id ->
                         if (id == null || (id != context.namespaceId && !configReadService.canAdminister(context.callerId, id))) {
                             errors +=
-                                "scope.namespaceId must be this namespace (\"current\" or ${context.namespaceId}), the id of a namespace " +
+                                "scope.namespaceId must be this namespace (\"${ScopeInput.CURRENT_NAMESPACE}\" or ${context.namespaceId}), the id of a namespace " +
                                 "the user administers, {\"\$op\": \"<ref>\"} of a namespace this plan creates, or null for platform."
                         }
                     }
             }
         val userId =
             scope.userId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { raw ->
-                if (raw.equals("me", ignoreCase = true) || raw == context.callerId.toString()) {
+                if (raw.equals(ScopeInput.CALLER, ignoreCase = true) || raw == context.callerId.toString()) {
                     context.callerId
                 } else {
-                    errors += "scope.userId must be \"me\" or null: an entity can only be created for the user who applies the plan."
+                    errors += "scope.userId must be \"${ScopeInput.CALLER}\" or null: an entity can only be created for the user who applies the plan."
                     null
                 }
             }
@@ -439,7 +439,7 @@ class ConfigPlanner(
         context: ProposalContext,
     ): UUID? {
         val raw = node.takeIf { it.isTextual }?.textValue()?.trim()
-        return if (raw.equals("current", ignoreCase = true)) context.namespaceId else raw?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        return if (raw.equals(ScopeInput.CURRENT_NAMESPACE, ignoreCase = true)) context.namespaceId else raw?.let { runCatching { UUID.fromString(it) }.getOrNull() }
     }
 
     private fun isNamespaceCreate(op: OperationInput): Boolean =
@@ -545,7 +545,7 @@ class ConfigPlanner(
             when (kind) {
                 ConfigKind.PROMPT -> setOf("agentConfigId")
                 ConfigKind.INTEGRATION -> setOf("integrationType")
-                ConfigKind.AUTH_SETTING -> setOf("authType")
+                ConfigKind.AUTH_SETTING -> setOf(ConfigAuthSettingTypes.TYPE_FIELD)
                 // The REST API keeps a namespace's externalId as created.
                 ConfigKind.NAMESPACE -> setOf("externalId")
                 else -> emptySet()

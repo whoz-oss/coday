@@ -65,13 +65,13 @@ internal object ConfigSecretPolicy {
     fun misplacedAuthSettingSecrets(
         authType: String?,
         secrets: List<SecretSlot>,
-    ): List<String> {
-        val allowed = ConfigAuthSettingTypes.secretFieldsOf(authType) ?: return emptyList()
-        return secrets.filter { ConfigJson.segments(it.path).first() !in allowed }.map {
-            "'${it.path}' is not a secret field of a $authType auth setting: " +
-                if (allowed.isEmpty()) "it has none." else "use ${allowed.joinToString { field -> "/$field" }}."
-        }
-    }
+    ): List<String> =
+        ConfigAuthSettingTypes.secretFieldsOf(authType)?.let { allowed ->
+            secrets.filter { ConfigJson.segments(it.path).first() !in allowed }.map {
+                "'${it.path}' is not a secret field of a $authType auth setting: " +
+                    if (allowed.isEmpty()) "it has none." else "use ${allowed.joinToString { field -> "/$field" }}."
+            }
+        }.orEmpty()
 
     /**
      * Pointers, under [path], where [node] writes a secret in clear: a secret field of an auth setting

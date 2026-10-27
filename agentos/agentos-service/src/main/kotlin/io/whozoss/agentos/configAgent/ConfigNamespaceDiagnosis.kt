@@ -6,8 +6,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationsProperties
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -24,7 +22,7 @@ class ConfigNamespaceDiagnosis(
     private val agentConfigProperties: AgentConfigProperties,
     private val userService: UserService,
     private val integrationsProperties: IntegrationsProperties,
-    private val permissionEvaluator: AgentOsPermissionEvaluator,
+    private val configReadService: ConfigReadService,
 ) {
     /**
      * Whether a member's message without `@mention` in [namespaceId] reaches an agent, resolved like
@@ -46,8 +44,8 @@ class ConfigNamespaceDiagnosis(
                 defaultAgentName = defaultName,
                 defaultAgentSource =
                     when {
-                        namespace.defaultAgentName != null -> "namespace"
-                        defaultName != null -> "platform"
+                        namespace.defaultAgentName != null -> DefaultAgentSource.NAMESPACE
+                        defaultName != null -> DefaultAgentSource.PLATFORM
                         else -> null
                     },
                 defaultAgentStatus = status,
@@ -63,9 +61,9 @@ class ConfigNamespaceDiagnosis(
     ): Map<String, Any?> {
         val namespaceRole =
             when {
-                hasNamespaceRight(callerId, namespaceId, Action.WRITE) -> "ADMIN"
-                hasNamespaceRight(callerId, namespaceId, Action.READ) -> "MEMBER"
-                else -> "NONE"
+                configReadService.hasNamespaceRight(callerId, namespaceId, Action.WRITE) -> NamespaceRole.ADMIN
+                configReadService.hasNamespaceRight(callerId, namespaceId, Action.READ) -> NamespaceRole.MEMBER
+                else -> NamespaceRole.NONE
             }
         return mapOf(
             "userId" to callerId,
@@ -88,10 +86,4 @@ class ConfigNamespaceDiagnosis(
             candidates.none { it.enabled } -> DefaultAgentStatus.DISABLED
             else -> DefaultAgentStatus.NOT_DEPLOYED
         }
-
-    private fun hasNamespaceRight(
-        callerId: UUID,
-        namespaceId: UUID,
-        action: Action,
-    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), action)
 }

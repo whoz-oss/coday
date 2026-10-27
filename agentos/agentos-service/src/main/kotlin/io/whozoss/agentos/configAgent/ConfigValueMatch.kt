@@ -23,12 +23,12 @@ internal object ConfigValueMatch {
     ): Boolean =
         when {
             path in skip -> true
-            isEmpty(proposed) -> isEmpty(stored)
+            proposed == null || isEmpty(proposed) -> isEmpty(stored)
             proposed is ObjectNode ->
                 stored is ObjectNode && proposed.properties().all { (key, value) -> holdsMember(stored, key, value, childPath(path, key), skip) }
             proposed is ArrayNode ->
                 stored is ArrayNode && stored.size() == proposed.size() && (0 until proposed.size()).all { holds(stored[it], proposed[it], "$path/$it", skip) }
-            proposed!!.isNumber -> stored?.isNumber == true && stored.decimalValue().compareTo(proposed.decimalValue()) == 0
+            proposed.isNumber -> stored?.isNumber == true && stored.decimalValue().compareTo(proposed.decimalValue()) == 0
             proposed.isTextual -> stored?.isTextual == true && stored.textValue().trim() == proposed.textValue().trim()
             else -> stored == proposed
         }

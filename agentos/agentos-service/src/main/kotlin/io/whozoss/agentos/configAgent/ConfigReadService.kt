@@ -72,7 +72,7 @@ class ConfigReadService(
         callerId: UUID,
         namespaceId: UUID,
     ): List<ConfigEntity> {
-        val namespaceReadable = canReadNamespace(callerId, namespaceId)
+        val namespaceReadable = hasNamespaceRight(callerId, namespaceId, Action.READ)
         val candidates =
             buildList {
                 if (scope.includesPlatform) addAll(loadScope(kind, namespaceId = null, userId = null))
@@ -113,17 +113,14 @@ class ConfigReadService(
     fun canAdminister(
         callerId: UUID,
         namespaceId: UUID,
-    ): Boolean = canWriteNamespace(callerId, namespaceId) && namespaceService.findById(namespaceId) != null
+    ): Boolean = hasNamespaceRight(callerId, namespaceId, Action.WRITE) && namespaceService.findById(namespaceId) != null
 
-    private fun canReadNamespace(
+    /** Namespace READ (member) or WRITE (admin), with the same rule as the REST namespace endpoints. */
+    fun hasNamespaceRight(
         callerId: UUID,
         namespaceId: UUID,
-    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-
-    private fun canWriteNamespace(
-        callerId: UUID,
-        namespaceId: UUID,
-    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        action: Action,
+    ): Boolean = permissionEvaluator.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), action)
 
     /** Platform, current namespace, administered namespaces and the caller's own overlays only. */
     private fun inBounds(
@@ -142,7 +139,7 @@ class ConfigReadService(
     ): Boolean =
         when {
             entity.kind == ConfigKind.NAMESPACE -> canReadById(entity, callerId)
-            else -> entity.userId == callerId || entity.namespaceId == null || canReadNamespace(callerId, namespaceId)
+            else -> entity.userId == callerId || entity.namespaceId == null || hasNamespaceRight(callerId, namespaceId, Action.READ)
         }
 
     /** The `GET /{id}` rule of the entity's controller. */

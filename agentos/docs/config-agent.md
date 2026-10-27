@@ -143,12 +143,14 @@ are proposed from the same case, with `scope.namespaceId` or a target `id` in th
 
 ### Diagnosing a namespace
 
-`read` with `kind: namespace` and an `id` returns the namespace's settings and its readiness for the
-user: whether a message without `@mention` reaches an agent, resolved like the runtime
+`read` with `kind: namespace` and an `id` returns the namespace's settings and its readiness for its
+members: whether a message without `@mention` reaches an agent, resolved like the runtime
 (`CaseServiceImpl.selectDefaultAgent`: the namespace's `defaultAgentName`, else
-`agentos.defaults.agent-name`, among the agents deployed and enabled for the user), and if not the
-first condition that fails: `NOT_SET`, `NOT_FOUND`, `DISABLED` or `NOT_DEPLOYED`, with the agents
-deployed on it. `namespaceId` points the other reads (agents, integrations, deployment,
+`agentos.defaults.agent-name`, matched as a name prefix among the enabled agents deployed on the
+namespace), and if not the first condition that fails: `NOT_SET`, `NOT_FOUND`, `DISABLED` or
+`NOT_DEPLOYED`, with the agents deployed on it. It speaks for members rather than for the reader:
+a super-admin's own messages skip the deployment check, and an agent deployed on a user group only
+answers that group. `namespaceId` points the other reads (agents, integrations, deployment,
 capabilities) at a namespace the user administers. This is what the service logs would otherwise be
 needed for when a namespace does not answer.
 

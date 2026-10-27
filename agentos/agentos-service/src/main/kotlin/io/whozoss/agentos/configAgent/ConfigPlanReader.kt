@@ -38,31 +38,35 @@ class ConfigPlanReader(
     ): LoadedPlan {
         val events = caseEventService.findByParent(caseId)
         val planIndex = events.indexOfFirst { isPlanFor(it, questionId) }
-        val plan = trustedPlan(events, planIndex, caseId, questionId) ?: throw ResourceNotFoundException("No configuration plan for question $questionId in this case")
-        val question = events.first { it is QuestionEvent && it.id == questionId } as QuestionEvent
-        return LoadedPlan(plan, question, planIndex, events)
+        return trustedPlan(events, planIndex, caseId, questionId)
+            ?: throw ResourceNotFoundException("No configuration plan for question $questionId in this case")
     }
 
-    /** The plan at [planIndex] when it is announced by the question [questionId] that follows it, else null. */
+    /** The plan at [planIndex] when the question [questionId] that follows it announces it, else null. */
     private fun trustedPlan(
         events: List<CaseEvent>,
         planIndex: Int,
         caseId: UUID,
         questionId: UUID,
-    ): ConfigChangePlan? {
+    ): LoadedPlan? {
         val questionIndex = events.indexOfFirst { it is QuestionEvent && it.id == questionId }
         val question = events.getOrNull(questionIndex) as? QuestionEvent
         val planJson = (events.getOrNull(planIndex) as? ToolResponseEvent)?.structuredOutput
         val plan = planJson?.let { runCatching { objectMapper.treeToValue(it, ConfigChangePlan::class.java) }.getOrNull() }
-        return plan?.takeIf {
+        return if (
+            plan != null &&
             question != null &&
-                planIndex < questionIndex &&
-                it.schema == ConfigAgentIntegration.PLAN_SCHEMA &&
-                it.caseId == caseId &&
-                it.questionId == questionId &&
-                it.agentName == question.agentName &&
-                it.recipientUserId == question.userId &&
-                configPlanner.planHash(planJson) == it.planHash
+            planIndex < questionIndex &&
+            plan.schema == ConfigAgentIntegration.PLAN_SCHEMA &&
+            plan.caseId == caseId &&
+            plan.questionId == questionId &&
+            plan.agentName == question.agentName &&
+            plan.recipientUserId == question.userId &&
+            configPlanner.planHash(planJson) == plan.planHash
+        ) {
+            LoadedPlan(plan, question, planIndex, events)
+        } else {
+            null
         }
     }
 
