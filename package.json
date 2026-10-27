@@ -7,7 +7,7 @@
   "scripts": {
     "_bump": "4",
     "client": "nx run client:serve",
-    "coday": "pnpm dlx @whoz-oss/coday-web",
+    "coday": "source .env && pnpm dlx @whoz-oss/coday-web@workstream-forge",
     "desktop": "nx run desktop:serve",
     "desktop-twin": "nx run desktop-twin:serve",
     "factory-cockpit": "nx run factory-cockpit:serve",

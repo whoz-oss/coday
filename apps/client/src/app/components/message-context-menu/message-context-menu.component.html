@@ -1,7 +1,0 @@
-<div class="context-menu-wrapper">
-  @for (action of actions; track action.label) {
-    <button mat-icon-button [attr.title]="action.tooltip || action.label" (click)="executeAction(action, $event)">
-      <mat-icon [attr.aria-label]="action.label">{{ action.icon }}</mat-icon>
-    </button>
-  }
-</div>
