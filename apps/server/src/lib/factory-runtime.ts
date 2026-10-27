@@ -6,9 +6,8 @@
  *
  *   - Port: findAvailablePort(8141) — 8141 is the Factory's historical default
  *     (also the AgentOS factory-bridge default); falls back to the next free port.
- *   - cwd = <configDir>/factory: Factory loads plugins/ there by default, while
- *     FACTORY_PLUGINS_DIR can override that directory through the inherited env.
- *     Other relative paths (data/, factory/runs) also land inside that directory.
+ *   - cwd = <configDir>/factory: the Factory's relative paths (plugins/, data/,
+ *     factory/runs) land inside that directory.
  *   - AGENTOS_URL is passed through so the Factory talks to the AgentOS Coday manages.
  *   - Health probe: /actuator/health (Spring Boot actuator).
  *

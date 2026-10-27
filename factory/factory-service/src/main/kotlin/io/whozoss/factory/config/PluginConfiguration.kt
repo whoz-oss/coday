@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.CodeSource
 
 /**
  * Configuration of the PF4J plugin system.
@@ -30,11 +31,7 @@ import java.nio.file.Path
 class PluginConfiguration {
     @Bean
     fun factoryPluginsDirectory(): FactoryPluginsDirectory =
-        FactoryPluginsDirectory {
-            // Both the packaged launcher and the IntelliJ run configuration use factory/ as cwd.
-            // Keep plugin discovery on the real filesystem, never inside a Spring Boot nested JAR.
-            Path.of(System.getenv("FACTORY_PLUGINS_DIR")?.takeIf { it.isNotBlank() } ?: "plugins")
-        }
+        FactoryPluginsDirectory { factoryInstallationRoot().resolve("plugins") }
 
     @Bean
     fun pluginManager(
@@ -50,7 +47,26 @@ class PluginConfiguration {
 
         return NullSafeSpringPluginManager(pluginPath).also { it.applicationContext = applicationContext }
     }
-    companion object : KLogging()
+
+    companion object : KLogging() {
+        private fun factoryInstallationRoot(): Path {
+            val location = codeSourceLocation()
+            return when {
+                Files.isRegularFile(location) -> location.parent
+                location.fileName?.toString() == "main" && location.parent?.fileName?.toString() == "classes" ->
+                    location.parent.parent.parent
+                else -> location
+            }
+        }
+
+        private fun codeSourceLocation(): Path =
+            runCatching {
+                val source: CodeSource = PluginConfiguration::class.java.protectionDomain.codeSource
+                Path.of(source.location.toURI())
+            }.getOrElse { cause ->
+                throw IllegalStateException("Cannot resolve the Factory installation root", cause)
+            }
+    }
 }
 
 /**

@@ -105,8 +105,6 @@ When making changes to the web launcher:
 - `CODAY_CLIENT_PATH`: Set by the web launcher to tell server where client files are
 - `BUILD_ENV`: Set to `development` by server's serve target for dev mode
 - `PORT`: Override default server port (default: 3000 production, 4100 dev)
-- `FACTORY_PLUGINS_DIR`: Override Factory's plugin directory. Defaults to `plugins/`
-  relative to Factory's working directory (`<configDir>/factory` in the packaged launcher).
 
 ## Package Dependencies
 
