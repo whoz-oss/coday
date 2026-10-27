@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http'
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { ActivatedRoute, Router } from '@angular/router'
+import { ActivatedRoute } from '@angular/router'
 import { MemberItem, MemberItemRoleEnum, User, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
 import { forkJoin, of } from 'rxjs'
@@ -49,7 +49,6 @@ interface SelectedMember {
 })
 export class NamespaceMembersComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
-  private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly memberState = inject(NamespaceMemberStateService)
   private readonly userState = inject(UserStateService)
@@ -180,7 +179,6 @@ export class NamespaceMembersComponent implements OnInit {
 
     if (toUpsert.length === 0 && toRemove.length === 0) {
       this.isSubmitting.set(false)
-      this.navigateBack()
       return
     }
 
@@ -199,7 +197,6 @@ export class NamespaceMembersComponent implements OnInit {
         next: (refreshed) => {
           this.applyMembers(refreshed)
           this.isSubmitting.set(false)
-          this.navigateBack()
         },
         error: (err: HttpErrorResponse) => {
           this.isSubmitting.set(false)
@@ -219,13 +216,5 @@ export class NamespaceMembersComponent implements OnInit {
       )
     }
     return 'An unexpected error occurred while saving namespace members. Please try again.'
-  }
-
-  protected cancel(): void {
-    this.navigateBack()
-  }
-
-  private navigateBack(): void {
-    this.router.navigate(['/agentos', 'namespaces'])
   }
 }

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import {
@@ -6,7 +6,6 @@ import {
   ActionCardComponent,
   ActionCardMenuItem,
 } from '../action-card/action-card.component'
-import { UsageConfigurationService } from '../../services/usage-configuration.service'
 
 @Component({
   selector: 'agentos-namespace-item',
@@ -16,14 +15,9 @@ import { UsageConfigurationService } from '../../services/usage-configuration.se
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  private readonly usageConfiguration = inject(UsageConfigurationService)
-
   readonly namespace = input.required<Namespace>()
-  /** Git settings exist only while the GIT plugin is loaded on the server. */
-  readonly gitAvailable = input(false)
 
   readonly selected = output<Namespace>()
-  readonly editRequested = output<Namespace>()
   readonly integrationsRequested = output<Namespace>()
   readonly aiProvidersRequested = output<Namespace>()
   readonly aiModelsRequested = output<Namespace>()
@@ -32,23 +26,17 @@ export class NamespaceItemComponent {
   readonly skillsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
-  readonly usageRequested = output<Namespace>()
-  readonly membersRequested = output<Namespace>()
-  readonly gitRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
   readonly toolInvokeRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
   protected readonly pendingDelete = signal(false)
 
-  protected readonly menuItems = computed<ActionCardMenuItem[]>(() => [
-    { key: 'members', label: 'Members' },
-    ...(this.gitAvailable() ? [{ key: 'git', label: 'Git' }] : []),
-    ...(this.usageConfiguration.enabled() ? [{ key: 'usage', label: 'Usage and costs' }] : []),
-    { key: 'separator', label: '', variant: 'separator' },
-    { key: 'edit', label: 'Edit namespace' },
-    { key: 'delete', label: 'Delete namespace', variant: 'danger' },
-  ])
+  /**
+   * Namespace settings (members, git, usage, edit, ...) live in the settings layout.
+   * The kebab only keeps the destructive action.
+   */
+  protected readonly menuItems: ActionCardMenuItem[] = [{ key: 'delete', label: 'Delete namespace', variant: 'danger' }]
 
   protected onSelect(): void {
     this.selected.emit(this.namespace())
@@ -76,12 +64,6 @@ export class NamespaceItemComponent {
   }
   protected onUserGroups(): void {
     this.userGroupsRequested.emit(this.namespace())
-  }
-  protected onMembers(): void {
-    this.membersRequested.emit(this.namespace())
-  }
-  protected onGit(): void {
-    this.gitRequested.emit(this.namespace())
   }
   protected onAuthSettings(): void {
     this.authSettingsRequested.emit(this.namespace())
@@ -113,23 +95,11 @@ export class NamespaceItemComponent {
       case 'user-groups':
         this.onUserGroups()
         break
-      case 'members':
-        this.onMembers()
-        break
       case 'auth-settings':
         this.onAuthSettings()
         break
       case 'tool-invoke':
         this.onToolInvoke()
-        break
-      case 'usage':
-        this.usageRequested.emit(this.namespace())
-        break
-      case 'git':
-        this.onGit()
-        break
-      case 'edit':
-        this.editRequested.emit(this.namespace())
         break
       case 'delete':
         this.pendingDelete.set(true)

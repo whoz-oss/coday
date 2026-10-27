@@ -138,13 +138,6 @@ export class ToolInvokeComponent implements OnInit {
   }
 
   protected back(): void {
-    if (this.isPlatformMode) {
-      // Platform mode: return to the admin hub.
-      this.router.navigate(['/agentos', 'admin'])
-    } else {
-      // Namespace mode: return to the namespace agent-configs list, which is the
-      // primary landing page for namespace admins navigating from the namespace card.
-      this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
-    }
+    this.router.navigate(['/agentos', 'admin'])
   }
 }

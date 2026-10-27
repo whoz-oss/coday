@@ -15,9 +15,7 @@
   @if (namespacesById().get(item.id); as ns) {
     <agentos-namespace-item
       [namespace]="ns"
-      [gitAvailable]="gitAvailable()"
       (selected)="navigateToHome($event.id ?? '')"
-      (editRequested)="navigateToEdit($event)"
       (deleteRequested)="deleteNamespace($event)"
       (integrationsRequested)="openIntegrations($event)"
       (aiProvidersRequested)="openAiProviders($event)"
@@ -27,9 +25,6 @@
       (skillsRequested)="openSkills($event)"
       (scheduledPromptsRequested)="openScheduledPrompts($event)"
       (userGroupsRequested)="openUserGroups($event)"
-      (membersRequested)="openMembers($event)"
-      (usageRequested)="openUsage($event)"
-      (gitRequested)="openGit($event)"
       (authSettingsRequested)="openAuthSettings($event)"
       (toolInvokeRequested)="openToolInvoke($event)"
     />
