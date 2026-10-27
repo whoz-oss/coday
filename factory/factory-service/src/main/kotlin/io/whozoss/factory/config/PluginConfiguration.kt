@@ -12,12 +12,12 @@ import org.pf4j.PluginLoader
 import org.pf4j.PluginManager
 import org.pf4j.spring.SpringExtensionFactory
 import org.pf4j.spring.SpringPluginManager
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.CodeSource
 
 /**
  * Configuration of the PF4J plugin system.
@@ -29,9 +29,18 @@ import java.security.CodeSource
  */
 @Configuration
 class PluginConfiguration {
+    /**
+     * PF4J runtime directory, aligned with AgentOS (`agentos.plugins.dir`).
+     *
+     * Defaults to `plugins/`, resolved against the working directory: Coday launches the
+     * service with `cwd = <configDir>/factory` and the IntelliJ run configuration with
+     * `cwd = factory/`, so both land on the installation `plugins/` directory without any
+     * variable. `FACTORY_PLUGINS_DIR` remains available for other layouts.
+     */
     @Bean
-    fun factoryPluginsDirectory(): FactoryPluginsDirectory =
-        FactoryPluginsDirectory { factoryInstallationRoot().resolve("plugins") }
+    fun factoryPluginsDirectory(
+        @Value($$"${factory.plugins.dir:plugins/}") dir: String,
+    ): FactoryPluginsDirectory = FactoryPluginsDirectory { Path.of(dir) }
 
     @Bean
     fun pluginManager(
@@ -48,25 +57,7 @@ class PluginConfiguration {
         return NullSafeSpringPluginManager(pluginPath).also { it.applicationContext = applicationContext }
     }
 
-    companion object : KLogging() {
-        private fun factoryInstallationRoot(): Path {
-            val location = codeSourceLocation()
-            return when {
-                Files.isRegularFile(location) -> location.parent
-                location.fileName?.toString() == "main" && location.parent?.fileName?.toString() == "classes" ->
-                    location.parent.parent.parent
-                else -> location
-            }
-        }
-
-        private fun codeSourceLocation(): Path =
-            runCatching {
-                val source: CodeSource = PluginConfiguration::class.java.protectionDomain.codeSource
-                Path.of(source.location.toURI())
-            }.getOrElse { cause ->
-                throw IllegalStateException("Cannot resolve the Factory installation root", cause)
-            }
-    }
+    companion object : KLogging()
 }
 
 /**

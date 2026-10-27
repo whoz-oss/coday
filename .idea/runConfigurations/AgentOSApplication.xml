@@ -3,7 +3,7 @@
     <option name="ACTIVE_PROFILES" value="development" />
     <module name="coday.agentos-service.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
-    <option name="WORKING_DIRECTORY" value="file://agentos" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/agentos" />
     <method v="2">
       <option name="Gradle.BeforeRunTask" enabled="true" tasks="clean" externalProjectPath="$PROJECT_DIR$/agentos" vmOptions="" scriptParameters="" />
       <option name="Gradle.BeforeRunTask" enabled="true" tasks="cleanPlugins" externalProjectPath="$PROJECT_DIR$/agentos" vmOptions="" scriptParameters="" />

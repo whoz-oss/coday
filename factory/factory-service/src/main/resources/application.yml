@@ -40,6 +40,11 @@ springdoc:
     path: /v3/api-docs
 
 factory:
+  plugins:
+    # PF4J runtime directory, relative to the working directory (same model as
+    # agentos.plugins.dir). Coday and the IntelliJ run configuration both start the
+    # service from the Factory installation root, so the default needs no variable.
+    dir: ${FACTORY_PLUGINS_DIR:plugins/}
   persistence:
     # Persistence mode: `embedded-neo4j` (default, in-process engine, no Docker)
     # or `neo4j` (standalone server, configure spring.neo4j.*).
