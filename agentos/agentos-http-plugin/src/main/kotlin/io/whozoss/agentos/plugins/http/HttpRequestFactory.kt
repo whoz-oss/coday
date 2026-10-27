@@ -47,8 +47,9 @@ object HttpRequestFactory {
         class Rejected(val message: String) : HeadersBuild
     }
 
-    fun build(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode): RequestPlan {
-        val url = when (val built = buildUrl(descriptor, runtime, args)) {
+    /** [auth] is the run's authentication, already resolved by the caller. */
+    fun build(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode, auth: AuthHeaderSpec): RequestPlan {
+        val url = when (val built = buildUrl(descriptor, runtime, args, auth)) {
             is UrlBuild.Ok -> built.url
             is UrlBuild.Rejected -> return RequestPlan.Rejected(errorType = built.errorType, message = built.message)
         }
@@ -57,7 +58,7 @@ object HttpRequestFactory {
             is BodyBuild.Rejected ->
                 return RequestPlan.Rejected(errorType = HttpApiErrors.INVALID_INPUT, message = built.message)
         }
-        val headers = when (val built = buildHeaders(descriptor, runtime, args)) {
+        val headers = when (val built = buildHeaders(descriptor, runtime, args, auth)) {
             is HeadersBuild.Ok -> built.headers
             is HeadersBuild.Rejected ->
                 return RequestPlan.Rejected(errorType = HttpApiErrors.INVALID_INPUT, message = built.message)
@@ -70,7 +71,12 @@ object HttpRequestFactory {
         return RequestPlan.Ready(request)
     }
 
-    private fun buildUrl(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode): UrlBuild {
+    private fun buildUrl(
+        descriptor: OperationDescriptor,
+        runtime: HttpApiRuntime,
+        args: JsonNode,
+        auth: AuthHeaderSpec,
+    ): UrlBuild {
         val builder = runtime.baseUrl.newBuilder()
         for (template in descriptor.pathTemplate.split('/').filter { it.isNotEmpty() }) {
             val segment = when (val resolved = resolveSegment(template, args)) {
@@ -87,7 +93,6 @@ object HttpRequestFactory {
                     builder.addQueryParameter(name = parameter.name, value = value)
                 }
             }
-        val auth = runtime.authSpec
         if (auth is AuthHeaderSpec.Query) builder.addQueryParameter(name = auth.name, value = auth.value)
         val url = builder.build()
         if (!isUnder(url, base = runtime.baseUrl)) {
@@ -161,7 +166,12 @@ object HttpRequestFactory {
      * header argument must be a single line of printable ASCII: anything else (CR, LF, control or non-ASCII
      * characters) is refused before any request.
      */
-    private fun buildHeaders(descriptor: OperationDescriptor, runtime: HttpApiRuntime, args: JsonNode): HeadersBuild {
+    private fun buildHeaders(
+        descriptor: OperationDescriptor,
+        runtime: HttpApiRuntime,
+        args: JsonNode,
+        auth: AuthHeaderSpec,
+    ): HeadersBuild {
         val headers = LinkedHashMap(runtime.defaultHeaders)
         for (parameter in descriptor.parameters.filter { it.location == ParameterLocation.HEADER }) {
             if (headers.keys.any { it.equals(parameter.name, ignoreCase = true) }) continue
@@ -177,7 +187,6 @@ object HttpRequestFactory {
             }
             headers[parameter.name] = node.asText()
         }
-        val auth = runtime.authSpec
         if (auth is AuthHeaderSpec.Header) headers[auth.name] = auth.value
         if (headers.keys.none { it.equals(ACCEPT, ignoreCase = true) }) headers[ACCEPT] = ACCEPT_JSON
         headers[USER_AGENT] = "AgentOS-HTTP_API/${HttpApiTool.VERSION}"

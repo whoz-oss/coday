@@ -64,15 +64,16 @@ class HttpApiTool(
                 output = "arguments must be a JSON object matching the tool schema",
                 errorType = HttpApiErrors.INVALID_INPUT,
             )
-        val auth = runtime.authSpec
+        val auth = runtime.auth.spec()
         if (auth is AuthHeaderSpec.Missing) {
             return failure(
                 output = "Authentication is not available for HTTP_API integration '${runtime.configName}': " +
-                    "${auth.reason}. Ask an administrator to check the bound Auth Setting; do not retry.",
+                    "${auth.reason}. Do not retry on your own: tell the user, the next call asks for the " +
+                    "credential again.",
                 errorType = HttpApiErrors.AUTH_MISSING,
             )
         }
-        val request = when (val plan = HttpRequestFactory.build(descriptor, runtime, args)) {
+        val request = when (val plan = HttpRequestFactory.build(descriptor, runtime, args, auth)) {
             is RequestPlan.Ready -> plan.request
             is RequestPlan.Rejected -> return failure(output = plan.message, errorType = plan.errorType)
         }

@@ -188,6 +188,7 @@ class OAuthFlowServiceUnitSpec :
             q.questionType shouldBe QuestionType.OAUTH_AUTHORIZE
             q.question shouldContain "https://provider.example.com/auth"
             q.question shouldContain "code_challenge_method=S256"
+            q.question shouldContain "access_type=offline"
         }
 
         "returns null on flow cancellation" {

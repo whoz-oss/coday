@@ -289,7 +289,10 @@ class AgentServiceImpl(
                         // MCP integration by `McpHttpToolProvider.provideTools` (via
                         // `ToolResolverService.extractTools`) during the tool-resolution phase,
                         // before the agent processes any message. It establishes the HTTP MCP
-                        // connection and is NOT called again on each tool invocation.
+                        // connection and is NOT called again on each tool invocation. `HTTP_API`
+                        // calls it instead on the first call of one of its tools in the run
+                        // (`RunAuth`, on `Dispatchers.IO`), so a run that never uses them is not
+                        // asked to authorize.
                         //
                         // Blocked thread: `provideTools` is non-suspend (SDK public contract), so
                         // the call stack at this point is synchronous. The `runBlocking` therefore

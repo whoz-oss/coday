@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.http
 
-import io.whozoss.agentos.plugins.http.auth.AuthHeaderSpec
+import io.whozoss.agentos.plugins.http.auth.RunAuth
 import io.whozoss.agentos.plugins.http.net.OutboundUrlPolicy
 import kotlinx.coroutines.sync.Semaphore
 import okhttp3.HttpUrl
@@ -10,10 +10,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * What every tool of one integration config shares for the duration of a run: the normalised base URL,
- * the credential resolved once for the run, the transport settings, the plugin-wide client and the
- * plugin-wide semaphore of the config.
+ * the run's authentication (resolved by the first call, see [RunAuth]), the transport settings, the
+ * plugin-wide client and the plugin-wide semaphore of the config.
  *
- * Immutable and holding nothing that needs closing: the client belongs to the plugin.
+ * Holds nothing that needs closing: the client belongs to the plugin.
  *
  * @property baseUrl Effective base URL of the catalogue without query, fragment or trailing slash; every
  *   request URL is built from it and must stay under it.
@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
 class HttpApiRuntime(
     val configName: String,
     baseUrl: String,
-    val authSpec: AuthHeaderSpec,
+    val auth: RunAuth,
     val defaultHeaders: Map<String, String>,
     val timeoutSeconds: Int,
     val semaphore: Semaphore,
