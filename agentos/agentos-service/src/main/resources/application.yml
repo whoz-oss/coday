@@ -359,7 +359,7 @@ springdoc:
 logging:
   level:
     root: INFO
-    io.whozoss.agentos.service: DEBUG
+    io.whozoss.agentos: DEBUG
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
     # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning,
@@ -373,5 +373,6 @@ logging:
     org.neo4j.driver: ERROR
     org.springframework.data.neo4j.cypher: ERROR
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    # MDC keys (see io.whozoss.agentos.logging.LogContext) are empty outside a case run.
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} [case=%X{caseId:-} agent=%X{agentName:-}] - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} [case=%X{caseId:-} ns=%X{namespaceId:-} agent=%X{agentName:-} user=%X{userId:-}] - %msg%n"

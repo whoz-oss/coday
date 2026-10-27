@@ -198,6 +198,28 @@ repositories {
 }
 ```
 
+## Logging & correlation
+
+Every log line produced during a case run carries SLF4J MDC correlation keys, defined in
+`io.whozoss.agentos.logging.LogContext`:
+
+| Key | Set by | Scope |
+|---|---|---|
+| `caseId`, `namespaceId` | `CaseRuntime.run` | the whole turn, sub-cases included (each has its own runtime) |
+| `agentName`, `userId` | `CaseServiceImpl.runAgent` | one agent execution |
+| (all of the above) | `AgentSimple` tool callbacks | re-applied on Spring AI / Reactor threads |
+
+The context travels with coroutines (`kotlinx-coroutines-slf4j` `MDCContext`), so it survives
+dispatcher hops. Code that starts a new coroutine scope or runs on a foreign thread must carry it
+explicitly (`LogContext.mdcContext(...)`, `withLogContext`, `withMdc`).
+
+- **Console** (default profile): `... [case=<caseId> agent=<agentName>] - message`.
+- **Docker** profile: JSON via the Logstash encoder; MDC keys are top-level fields, ready to filter on.
+- **Levels**: `logging.level.io.whozoss.agentos` (DEBUG by default, INFO in docker). In docker, set
+  `LOGGING_LEVEL_IO_WHOZOSS_AGENTOS` (`LOGGING_LEVEL_IO_BIZNET_AGENTOS` is still read as a fallback).
+- **`debug` profile**: also logs Spring AI prompts/completions and HTTP traffic. Local debugging only.
+- **Rule**: tool arguments, tool outputs, prompts and secrets are never logged above TRACE.
+
 ## Detailed Documentation
 
 - **Full architecture**: [docs/ARCHITECTURE.md](docs/to-rework/ARCHITECTURE.md)

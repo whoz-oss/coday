@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.logging.withMdc
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -27,7 +28,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.slf4j.MDCContext
 import mu.KLogging
+import org.slf4j.MDC
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -121,6 +124,10 @@ class AgentSimple(
                         (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
                 }
 
+                // Tool callbacks run on Spring AI / Reactor threads where the thread-local MDC of this
+                // coroutine is absent: capture it now and re-apply it inside each callback.
+                val logContext: Map<String, String>? = MDC.getCopyOfContextMap()
+
                 // Bail out immediately if an interrupt/kill was requested before
                 // the LLM call even starts (e.g. kill fired while the previous
                 // tool response was being stored).
@@ -156,8 +163,14 @@ class AgentSimple(
                             toolEventChannel,
                             llmTurnMark,
                             llmTurnIndex,
+                            logContext,
                         )
                     }
+
+                logger.info {
+                    "[AgentSimple] $name calling LLM $llmProvider/$llmModel with ${allMessages.size} message(s) " +
+                        "and ${toolCallbacks.size} tool(s)"
+                }
 
                 // Make single LLM call with tools
                 val prompt = chatClient.prompt(Prompt(allMessages))
@@ -453,6 +466,7 @@ class AgentSimple(
         eventChannel: Channel<CaseEvent>,
         llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
         llmTurnIndex: AtomicInteger,
+        logContext: Map<String, String>? = null,
     ): ToolCallback =
         object : ToolCallback {
             // Expose the tool's own schema verbatim — no reflection-based generation.
@@ -470,7 +484,9 @@ class AgentSimple(
                 eventChannel.trySend(event)
             }
 
-            override fun call(toolInput: String): String {
+            override fun call(toolInput: String): String = withMdc(logContext) { callWithLogContext(toolInput) }
+
+            private fun callWithLogContext(toolInput: String): String {
                 val toolRequestId = UUID.randomUUID().toString()
 
                 // The LLM decided to call this tool: log how long it thought since
@@ -524,7 +540,9 @@ class AgentSimple(
                     measureTime {
                         executionResult =
                             try {
-                                runBlocking(Dispatchers.IO) { tool.executeWithJson(toolInput, context) }
+                                runBlocking(Dispatchers.IO + MDCContext(logContext ?: emptyMap())) {
+                                    tool.executeWithJson(toolInput, context)
+                                }
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.
@@ -570,7 +588,10 @@ class AgentSimple(
                                 )
                             }
                     }
-                logger.info { "tool '${tool.name}' executed in $toolDuration" }
+                logger.info {
+                    "tool '${tool.name}' executed in $toolDuration, success=${executionResult.success}" +
+                        (executionResult.errorType?.let { ", errorType=$it" } ?: "")
+                }
                 // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
                 // rethrowing; cancellation/interruption rethrow without recording a metric.
                 toolMetricsService?.stopTimerAndSendMetrics(

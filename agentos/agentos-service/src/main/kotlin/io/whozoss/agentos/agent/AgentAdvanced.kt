@@ -1601,6 +1601,12 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                             namespaceId = namespaceId,
                             success = result.success,
                         )
+                    logger.info {
+                        "[AgentAdvanced] $name tool '${toolRequest.toolName}' executed" +
+                            (durationMs?.let { " in ${it}ms" } ?: "") +
+                            ", success=${result.success}" +
+                            (result.errorType?.let { ", errorType=$it" } ?: "")
+                    }
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,

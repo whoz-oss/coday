@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
+import io.whozoss.agentos.logging.LogContext
 import io.whozoss.agentos.orchestration.CaseEventEmitter
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -455,8 +456,11 @@ class CaseRuntime(
         try {
             // The turn runs in its own child job so a stop cancels the turn, not run()'s caller.
             // Undispatched: the body always starts, so even a turn stopped at once publishes its status.
+            // The log context is attached to the launch itself (no cancellation check on entry), so every
+            // log line of the turn, on whatever thread, carries the case identity.
             coroutineScope {
-                val turn = launch(start = CoroutineStart.UNDISPATCHED) { executeTurn() }
+                val logContext = LogContext.mdcContext(LogContext.CASE_ID to id, LogContext.NAMESPACE_ID to namespaceId)
+                val turn = launch(logContext, start = CoroutineStart.UNDISPATCHED) { executeTurn() }
                 turnJob.set(turn)
                 // A stop requested between the claim and the line above found no job to cancel.
                 if (isStopRequested()) {
