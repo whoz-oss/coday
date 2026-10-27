@@ -15,7 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * ```
  *
  * Override with environment variable (Spring Boot relaxed binding):
- * - AGENTOS_SECURITY_MODE
+ * - FACTORY_SECURITY_MODE
  */
 @ConfigurationProperties(prefix = "agentos.security")
 data class SecurityConfigProperties(
@@ -23,7 +23,7 @@ data class SecurityConfigProperties(
      * Identity resolution mode.
      * [SecurityMode.LOCAL] is the default — suitable for single-user local development.
      * [SecurityMode.AUTH] requires an upstream proxy (Cloudflare Access or Express) that
-     * populates the CF_Authorization or x-forwarded-email header on every request.
+     * populates the Cf-Access-Jwt-Assertion or x-forwarded-email header on every request.
      */
     val mode: SecurityMode = SecurityMode.LOCAL,
 )

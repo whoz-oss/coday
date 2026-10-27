@@ -992,6 +992,10 @@ class CaseServiceImpl(
 
     override fun isCostPaused(caseId: UUID): Boolean = usageConfig.enabled && runCostService?.isPaused(caseId) == true
 
+    override fun recordActivity(caseId: UUID) {
+        activeRuntimes[caseId]?.recordActivity()
+    }
+
     override fun emitParentEvent(event: CaseEvent) {
         require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {
             "emitParentEvent is reserved for sub-case observation events; got ${event.type}."
@@ -1008,6 +1012,17 @@ class CaseServiceImpl(
         }
         descendants.forEach { descendant -> killSingleCase(descendant.id) }
         killSingleCase(caseId)
+    }
+
+    override fun reopenCase(caseId: UUID): Case {
+        val case = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        if (!case.status.isTerminal()) {
+            throw ConflictException("Only a terminated case can be reopened")
+        }
+        caseLaunchGate?.requireReopenable(caseId)
+        logger.info { "Reopening case: $caseId (was ${case.status})" }
+        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+        return findById(caseId) ?: error("Case $caseId not found after reopen status change")
     }
 
     override fun resumeSubCase(
@@ -1055,8 +1070,17 @@ class CaseServiceImpl(
 
         val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
+        // 6. The previous turn persists IDLE before it releases the runtime: a turn launched until then
+        //    would be skipped, and the delegation would return the previous answer.
+        check(!runtime.isRunning()) {
+            "Cannot resume sub-case $subCaseId: its previous turn is still ending, try again."
+        }
         caseLaunchGate?.requireAccepting(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
+        // A launch gate marks the queued turn PENDING itself. Without one, the turn starts asynchronously:
+        // mark it queued now, in memory (run() publishes RUNNING), so that the delegation waiting on this
+        // sub-case does not take the IDLE left by its previous turn for the end of this one.
+        if (gatedRuns == null) runtime.claimPending()
         launchRun(runtime)
         logger.info { "Sub-case $subCaseId resumed under parent $parentCaseId, agent=$agentName" }
         return runtime

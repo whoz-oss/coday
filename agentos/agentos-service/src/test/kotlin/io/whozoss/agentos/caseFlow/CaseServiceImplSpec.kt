@@ -1,11 +1,13 @@
 package io.whozoss.agentos.caseFlow
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.Called
 import io.mockk.clearMocks
@@ -25,6 +27,7 @@ import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
+import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.PromptResolutionException
@@ -62,6 +65,7 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.InMemoryUsageRecordRepository
 import io.whozoss.agentos.usage.RunCostService
@@ -78,6 +82,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -94,6 +99,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /**
@@ -2674,6 +2680,90 @@ class CaseServiceImplSpec :
             messageEvent.sessionContext shouldBe sessionCtx
         }
 
+        // -------------------------------------------------------------------------
+        // reopenCase: terminal -> IDLE transitions
+        // -------------------------------------------------------------------------
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminalStatus ->
+            "reopenCase transitions a $terminalStatus case back to IDLE and persists a CaseStatusEvent" {
+                val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val caseRepository = InMemoryCaseRepository()
+                val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
+                val case = service.create(Case(namespaceId = namespaceId))
+                // Drive to the target terminal status via the repository directly so the
+                // test does not depend on the kill machinery or any other service path.
+                caseRepository.save(caseRepository.findByIds(listOf(case.id)).single().copy(status = terminalStatus))
+                service.getById(case.id).status shouldBe terminalStatus
+
+                val reopened = service.reopenCase(case.id)
+
+                reopened.status shouldBe CaseStatus.IDLE
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                // A CaseStatusEvent with IDLE must have been persisted
+                caseEventService
+                    .findByParent(case.id)
+                    .filterIsInstance<CaseStatusEvent>()
+                    .last()
+                    .status shouldBe CaseStatus.IDLE
+            }
+        }
+
+        "reopenCase of a non-terminal case throws ConflictException" {
+            val service = buildService()
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Case starts in CREATED status — not terminal
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an IDLE case throws ConflictException" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseEventService = caseEventService)
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Drive to IDLE via a normal message + agent run
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+            awaiter.join()
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an unknown case throws ResourceNotFoundException" {
+            val service = buildService()
+            shouldThrow<ResourceNotFoundException> {
+                service.reopenCase(UUID.randomUUID())
+            }
+        }
+
+        "reopenCase is blocked when the launch gate vetoes it" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val blockingGate =
+                object : CaseLaunchGate {
+                    override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Admit
+
+                    override fun requireReopenable(caseId: UUID) {
+                        throw io.whozoss.agentos.exception.ConflictException("The workspace is being removed or has been removed")
+                    }
+                }
+            val service = buildService(caseEventService = caseEventService, caseLaunchGate = blockingGate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            service.killCase(case.id)
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+            // Status must not have changed
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
+        }
+
         "killing a parent case also kills its active sub-cases" {
             // Verifies that killCase propagates depth-first to sub-cases created by
             // delegation. The parent is killed; both sub-cases must reach KILLED status
@@ -3000,6 +3090,195 @@ class CaseServiceImplSpec :
             eventStore.findByParent(parent.id).filterIsInstance<SubCaseStartedEvent>().size shouldBe 1
             eventStore.findByParent(parent.id).filterIsInstance<AgentFinishedEvent>().size shouldBe 1
             runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
+        // Delegation timeout: an inactivity budget, after which the sub-case is stopped, not killed
+        // -------------------------------------------------------------------------
+
+        fun agentAnswer(
+            caseId: UUID,
+            text: String,
+        ) = MessageEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            actor = Actor(id = agentId.toString(), displayName = agentName, role = ActorRole.AGENT),
+            content = listOf(MessageContent.Text(text)),
+        )
+
+        fun agentFinished(caseId: UUID) =
+            AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName)
+
+        /** An agent whose successive runs follow [runs], in order, each given the id of the case it runs in. */
+        fun scriptedAgent(vararg runs: (UUID) -> Flow<CaseEvent>): Agent {
+            val calls = AtomicInteger()
+            return mockk {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    runs[calls.getAndIncrement()](firstArg<List<CaseEvent>>().first().caseId)
+                }
+            }
+        }
+
+        /** Shows activity every 100 ms for [durationMs], then answers [answer]. */
+        fun busyRun(
+            durationMs: Long,
+            answer: String,
+        ): (UUID) -> Flow<CaseEvent> =
+            { caseId ->
+                flow {
+                    repeat((durationMs / 100).toInt()) {
+                        delay(100)
+                        emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
+                    }
+                    emit(agentAnswer(caseId, answer))
+                    emit(agentFinished(caseId))
+                }
+            }
+
+        fun delegationTool(
+            service: CaseServiceImpl,
+            events: CaseEventService,
+            parentCaseId: UUID,
+            timeoutMs: Long,
+        ) = DelegationTool(
+            subCaseManager = service,
+            parentCaseId = parentCaseId,
+            namespaceId = namespaceId,
+            allowedAgents = listOf(agentName),
+            loadCaseEvents = { events.findByParent(it) },
+            timeoutMs = timeoutMs,
+        )
+
+        fun delegateTo(subCaseId: UUID? = null) =
+            DelegationTool.Args(listOf(DelegationTool.Delegation(agentName, "work", subCaseId)))
+
+        val delegationContext = ToolContext(namespaceId, userId, null, emptyList(), toolRequestId = "delegate-request")
+
+        "a delegation outlives its timeout while the sub-case shows activity, and returns its answer" {
+            runTest {
+                // The sub-agent works for three times the delegation timeout, showing activity every 100 ms.
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val service =
+                    buildService(
+                        agent = scriptedAgent(busyRun(durationMs = 1_500, answer = "done")),
+                        caseEventService = events,
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val parent = service.create(Case(namespaceId = namespaceId))
+
+                    val tool = delegationTool(service, events, parent.id, timeoutMs = 500)
+
+                    val result = tool.execute(delegateTo(), delegationContext)
+
+                    val delegation = jacksonObjectMapper().readTree(result.output)[0]
+                    delegation["success"].asBoolean() shouldBe true
+                    delegation["result"].asText() shouldBe "done"
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "a silent sub-case is stopped, not killed, when its delegation times out, and the parent can resume it" {
+            runTest {
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val service =
+                    buildService(
+                        agent =
+                            scriptedAgent(
+                                // First run: the sub-agent waits on a call that never answers.
+                                { _ -> flow { awaitCancellation() } },
+                                // Resumed run: it answers.
+                                { caseId ->
+                                    flow {
+                                        emit(agentAnswer(caseId, "resumed"))
+                                        emit(agentFinished(caseId))
+                                    }
+                                },
+                            ),
+                        caseEventService = events,
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val parent = service.create(Case(namespaceId = namespaceId))
+                    val tool = delegationTool(service, events, parent.id, timeoutMs = 500)
+
+                    val timedOutOutput = tool.execute(delegateTo(), delegationContext).output
+                    val timedOut = jacksonObjectMapper().readTree(timedOutOutput)[0]
+
+                    timedOut["errorType"].asText() shouldBe "TIMEOUT"
+                    val subCaseId = UUID.fromString(timedOut["subCaseId"].asText())
+                    service.getById(subCaseId).status shouldBe CaseStatus.IDLE
+                    timedOut["error"].asText() shouldContain "subCaseId"
+
+                    val resumedOutput = tool.execute(delegateTo(subCaseId), delegationContext).output
+                    val resumed = jacksonObjectMapper().readTree(resumedOutput)[0]
+
+                    resumed["success"].asBoolean() shouldBe true
+                    resumed["result"].asText() shouldBe "resumed"
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "recordActivity advances the activity of an active case and ignores an unknown one" {
+            val service = buildService()
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val runtime = service.getCaseRuntime(case.id)
+                val before = runtime.activityCount
+
+                service.recordActivity(case.id)
+                service.recordActivity(UUID.randomUUID())
+
+                runtime.activityCount shouldBe before + 1
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "activity in a nested delegation keeps the outer delegation waiting" {
+            runTest {
+                // Outer delegation → middle sub-case, which itself delegates → busy leaf sub-case. The middle
+                // emits nothing while it waits: only the activity it relays keeps the outer delegation alive.
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                lateinit var service: CaseServiceImpl
+                val middleRun: (UUID) -> Flow<CaseEvent> = { caseId ->
+                    flow {
+                        val leafTool = delegationTool(service, events, caseId, timeoutMs = 2_000)
+                        val leaf = leafTool.execute(delegateTo(), delegationContext)
+                        val leafAnswer = jacksonObjectMapper().readTree(leaf.output)[0].path("result").asText()
+                        emit(agentAnswer(caseId, "middle got: $leafAnswer"))
+                        emit(agentFinished(caseId))
+                    }
+                }
+                service =
+                    buildService(
+                        agent = scriptedAgent(middleRun, busyRun(durationMs = 6_000, answer = "leaf done")),
+                        caseEventService = events,
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val parent = service.create(Case(namespaceId = namespaceId))
+
+                    val tool = delegationTool(service, events, parent.id, timeoutMs = 3_000)
+
+                    val result = tool.execute(delegateTo(), delegationContext)
+
+                    val delegation = jacksonObjectMapper().readTree(result.output)[0]
+                    delegation["success"].asBoolean() shouldBe true
+                    delegation["result"].asText() shouldBe "middle got: leaf done"
+                } finally {
+                    service.shutdown()
+                }
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -4078,6 +4357,77 @@ class CaseServiceImplSpec :
                 )
 
             runtime.id shouldBe subCase.id
+        }
+
+        "resumeSubCase marks the resumed turn queued until it starts, instead of leaving it IDLE" {
+            runTest {
+                // Without a launch gate the turn starts asynchronously: a delegation waiting on the sub-case
+                // must not read the IDLE left by its previous turn as the end of the resumed one.
+                val service = buildService(coroutineContext = StandardTestDispatcher(testScheduler))
+                try {
+                    val parent = service.create(Case(namespaceId = namespaceId))
+                    val subCase =
+                        service.create(
+                            Case(namespaceId = namespaceId, parentCaseId = parent.id, status = CaseStatus.IDLE),
+                        )
+
+                    val runtime =
+                        service.resumeSubCase(subCase.id, parent.id, agentName, "more work", userId, listOf(agentName))
+
+                    runtime.statusFlow.value shouldBe CaseStatus.PENDING
+                    testScheduler.advanceUntilIdle()
+                    runtime.statusFlow.value shouldBe CaseStatus.IDLE
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "resumeSubCase refuses a sub-case whose previous turn has not released it yet" {
+            // The previous turn persists IDLE, then records its status event before it releases the runtime: a
+            // turn launched in between would be skipped, and the delegation would return the previous answer.
+            val idleEventReached = CountDownLatch(1)
+            val releaseIdleEvent = CountDownLatch(1)
+            val holdOnce = AtomicBoolean(true)
+            val events = spyk(CaseEventServiceImpl(InMemoryCaseEventRepository()))
+            every { events.create(match { it is CaseStatusEvent && it.status == CaseStatus.IDLE }) } answers {
+                if (holdOnce.compareAndSet(true, false)) {
+                    idleEventReached.countDown()
+                    releaseIdleEvent.await(5, TimeUnit.SECONDS)
+                }
+                callOriginal()
+            }
+            val answering = { text: String ->
+                { caseId: UUID ->
+                    flow {
+                        emit(agentAnswer(caseId, text))
+                        emit(agentFinished(caseId))
+                    }
+                }
+            }
+            val service =
+                buildService(agent = scriptedAgent(answering("first"), answering("second")), caseEventService = events)
+            try {
+                val parent = service.create(Case(namespaceId = namespaceId))
+                val tool = delegationTool(service, events, parent.id, timeoutMs = 5_000)
+                val first = jacksonObjectMapper().readTree(tool.execute(delegateTo(), delegationContext).output)[0]
+                val subCaseId = UUID.fromString(first["subCaseId"].asText())
+                idleEventReached.await(5, TimeUnit.SECONDS) shouldBe true
+
+                val refusedOutput = tool.execute(delegateTo(subCaseId), delegationContext).output
+                val refused = jacksonObjectMapper().readTree(refusedOutput)[0]
+
+                refused["success"].asBoolean() shouldBe false
+                refused["error"].asText() shouldContain "previous turn"
+                releaseIdleEvent.countDown()
+                val runtime = service.getCaseRuntime(subCaseId)
+                withTimeout(5_000) { while (runtime.isRunning()) delay(10) }
+                val resumedOutput = tool.execute(delegateTo(subCaseId), delegationContext).output
+                jacksonObjectMapper().readTree(resumedOutput)[0]["result"].asText() shouldBe "second"
+            } finally {
+                releaseIdleEvent.countDown()
+                service.shutdown()
+            }
         }
 
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {

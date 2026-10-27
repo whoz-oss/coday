@@ -24,6 +24,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -158,6 +159,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         r.description shouldBe "Dev Slack"
         r.parameters shouldBe params
         r.authSettingName shouldBe "my-auth"
+        r.source shouldBe IntegrationConfigSource.NEO4J
     }
 
     // -------------------------------------------------------------------------

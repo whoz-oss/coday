@@ -83,7 +83,7 @@ data class AgentConfigDto(
     val subAgents: List<String>? = null,
     @field:Positive
     @field:Schema(
-        description = "Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.",
+        description = "Seconds each outgoing delegation waits without any activity from its sub-case, nested delegations included, before stopping it. Null or omitted inherits the server default; on PUT this clears an existing override.",
         minimum = "1",
         nullable = true,
     )

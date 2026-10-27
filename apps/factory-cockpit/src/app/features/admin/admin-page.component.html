@@ -1,0 +1,97 @@
+<div class="page">
+  <header class="page-head">
+    <div class="titles">
+      <h1>Workflow definitions</h1>
+      <p class="sf-muted">Import and manage registered workflow definitions.</p>
+    </div>
+    <sf-status-chip [tone]="adminDisabled() ? 'red' : 'green'" dot>
+      {{ adminDisabled() ? 'Access denied' : 'Admin' }}
+    </sf-status-chip>
+  </header>
+
+  @if (forbiddenError(); as forbidden) {
+    <div class="banner banner--error" role="alert" data-admin-forbidden="true">
+      <mat-icon aria-hidden="true">gpp_bad</mat-icon>
+      <span>{{ forbidden }}</span>
+    </div>
+  }
+
+  <!-- Workflow definitions -->
+  <section class="section sf-panel" data-admin-definitions="true">
+    <h2 class="section-title">Workflow definitions</h2>
+    <p class="sf-muted section-desc">Import a JSON definition (v1 format) and manage registered definitions.</p>
+    <div class="row file-row">
+      <input
+        type="file"
+        accept=".json,application/json"
+        (change)="onFileSelected($event)"
+        [disabled]="adminDisabled() || uploading()"
+        data-admin-definition-file="true"
+      />
+      @if (selectedFile(); as file) {
+        <span class="result-chip" data-admin-definition-filename="true">{{ file.name }}</span>
+      }
+      <span class="sf-spacer"></span>
+      <button
+        mat-flat-button
+        class="sf-primary"
+        (click)="uploadDefinition()"
+        [disabled]="adminDisabled() || uploading()"
+        data-admin-definition-upload="true"
+      >
+        <mat-icon>upload</mat-icon>
+        {{ uploading() ? 'Importing…' : 'Import definition' }}
+      </button>
+      <button
+        mat-stroked-button
+        class="sf-secondary"
+        (click)="loadDefinitions()"
+        [disabled]="adminDisabled() || definitionsLoading()"
+        data-admin-definition-refresh="true"
+      >
+        <mat-icon>refresh</mat-icon>
+        Refresh
+      </button>
+    </div>
+
+    @if (definitionsError(); as message) {
+      <div class="banner banner--warn" role="alert" data-admin-definition-error="true">{{ message }}</div>
+    }
+
+    <table mat-table [dataSource]="definitions()" class="definitions-table">
+      <ng-container matColumnDef="workflowType">
+        <th mat-header-cell *matHeaderCellDef>Type</th>
+        <td mat-cell *matCellDef="let def" class="sf-mono" data-definition-type="true">{{ def.workflowType }}</td>
+      </ng-container>
+      <ng-container matColumnDef="version">
+        <th mat-header-cell *matHeaderCellDef>Version</th>
+        <td mat-cell *matCellDef="let def" class="sf-mono" data-definition-version="true">{{ def.version }}</td>
+      </ng-container>
+      <ng-container matColumnDef="definitionHash">
+        <th mat-header-cell *matHeaderCellDef>Hash</th>
+        <td mat-cell *matCellDef="let def" class="sf-mono" data-definition-hash="true">{{ def.definitionHash }}</td>
+      </ng-container>
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef></th>
+        <td mat-cell *matCellDef="let def">
+          <button
+            mat-stroked-button
+            class="sf-danger"
+            (click)="deleteDefinition(def)"
+            [disabled]="adminDisabled() || deletingKey() === definitionKey(def)"
+            data-admin-definition-delete="true"
+          >
+            {{ deletingKey() === definitionKey(def) ? 'Deleting…' : 'Delete' }}
+          </button>
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="definitionColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: definitionColumns"></tr>
+    </table>
+    @if (definitions().length === 0) {
+      <p class="sf-muted empty" data-definition-empty="true">
+        {{ definitionsLoading() ? 'Loading…' : 'No definitions registered.' }}
+      </p>
+    }
+  </section>
+</div>

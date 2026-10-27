@@ -63,6 +63,9 @@ class WorktreeSetupRunner(
                     env["PATH"] = System.getenv("PATH") ?: DEFAULT_PATH
                     env["HOME"] = home.toString()
                     env["XDG_CACHE_HOME"] = cache.toString()
+                    // pnpm derives its default store from HOME and may fall back to a location outside the
+                    // workspace support directory: pin it inside, so it is removed with the workspace.
+                    env["npm_config_store_dir"] = home.resolve(PNPM_STORE_DIRECTORY).toString()
                     env["LANG"] = "C"
                     env["LC_ALL"] = "C"
                     env["CI"] = "true"
@@ -79,8 +82,8 @@ class WorktreeSetupRunner(
             }
 
         if (result.exitCode != 0) {
-            // The output stays out of the message: a setup script can print secrets, and callers
-            // log this exception with its stack trace.
+            // The output stays out of the message and the logs: a setup script can print secrets,
+            // and callers log this exception with its stack trace.
             throw IllegalStateException("Setup command failed (exit ${result.exitCode})")
         }
         logger.info { "Setup completed for namespace ${settings.namespaceId}" }
@@ -88,5 +91,8 @@ class WorktreeSetupRunner(
 
     companion object : KLogging() {
         private const val DEFAULT_PATH = "/usr/local/bin:/usr/bin:/bin"
+
+        /** Name, under the setup home, of the directory holding the pnpm content-addressable store. */
+        const val PNPM_STORE_DIRECTORY = ".pnpm-store"
     }
 }

@@ -68,6 +68,15 @@ interface CaseApi : EntityCrudApi<CaseDto> {
     fun killCase(caseId: UUID)
 
     @Operation(
+        summary = "Reopen a case",
+        description =
+            "POST /api/cases/{caseId}/reopen — reopen a terminated case by transitioning it back to IDLE. " +
+                "Only cases in a terminal status (KILLED or ERROR) can be reopened. " +
+                "Returns the updated Case DTO.",
+    )
+    fun reopenCase(caseId: UUID): CaseDto
+
+    @Operation(
         summary = "Mark case as read",
         description =
             "POST /api/cases/{caseId}/read — record that the current user has read this case. " +
