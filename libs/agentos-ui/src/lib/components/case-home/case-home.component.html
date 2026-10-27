@@ -77,6 +77,20 @@
             [disabled]="isCreating()"
             (action)="attachmentsUi.openPicker()"
           />
+          @if (worktreeOffered() && !parentCaseId()) {
+            <label
+              class="case-home__worktree"
+              title="This case and its sub-cases work in their own Git worktree. Uncheck it for a case without Git."
+            >
+              <input
+                type="checkbox"
+                [checked]="worktree()"
+                [disabled]="isCreating() || !!pendingCaseId()"
+                (change)="onWorktreeChange($event)"
+              />
+              <span>Create a worktree</span>
+            </label>
+          }
           <span class="case-home__hint">{{ preferences.composerHint() }}</span>
         </div>
         <ds-icon-button

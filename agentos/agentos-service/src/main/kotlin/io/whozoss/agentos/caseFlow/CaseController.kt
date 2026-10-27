@@ -194,7 +194,7 @@ class CaseController(
                 runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
                 parentCaseId = resource.parentCaseId,
             )
-        val saved = caseService.create(domain)
+        val saved = caseService.create(domain, resource.worktree)
         val granted =
             runCatching {
                 permissionService.grantPermission(

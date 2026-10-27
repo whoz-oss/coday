@@ -39,6 +39,10 @@ import java.util.UUID
  *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement
  *   mechanism when the user chooses to continue after a breach. A stored value is always absolute
  *   and independent of platform or namespace config changes.
+ * @property worktree Create only, null in responses. Whether a new top-level case gets the worktree its
+ *   namespace creates for every case: null leaves it to the namespace's settings, false creates an ordinary
+ *   case, true requires it and refuses the creation when the namespace does not create one or cannot. Must be
+ *   null for a sub-case, which shares its root case's worktree.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -86,4 +90,12 @@ data class CaseDto(
      */
     @field:Schema(description = "Timestamp of the caller's last read. Null = never read (unread).")
     val readAt: Instant? = null,
+    @field:Schema(
+        description =
+            "Create only. Whether a new top-level case gets the worktree its namespace creates for every case. " +
+                "Null leaves it to the namespace's settings, false creates an ordinary case, true requires it " +
+                "and refuses the creation when the namespace does not create one or cannot. " +
+                "Must be null for a sub-case.",
+    )
+    val worktree: Boolean? = null,
 )
