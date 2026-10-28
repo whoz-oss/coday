@@ -75,7 +75,7 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
     @Transactional(readOnly = true)
     @Query(
         $$"""MATCH (root:Case {id: $rootCaseId})
-            WITH collect(root.id) + [desc IN [(root)-[:PARENT_OF*1..10]->(d:Case) | d.id] | desc] AS caseIds
+            WITH [root.id] + [(root)-[:PARENT_OF*1..10]->(d:Case) | d.id] AS caseIds
             MATCH (u:UsageRecord)
             WHERE u.caseId IN caseIds AND (u.removed IS NULL OR u.removed = false)
             WITH count(u) AS recordCount,
@@ -233,7 +233,7 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
     @Transactional(readOnly = true)
     @Query(
         $$"""MATCH (root:Case {id: $rootCaseId})
-            WITH collect(root.id) + [desc IN [(root)-[:PARENT_OF*1..10]->(d:Case) | d.id] | desc] AS caseIds
+            WITH [root.id] + [(root)-[:PARENT_OF*1..10]->(d:Case) | d.id] AS caseIds
             MATCH (u:UsageRecord)
             WHERE u.caseId IN caseIds
               AND u.timestamp >= $since
