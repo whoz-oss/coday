@@ -248,29 +248,32 @@ agentos:
     # Override with env var: AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT
     enabled-by-default: ${AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT:true}
   limits:
-  # Maximum number of internal steps per user message in the CaseRuntime before the case
-  # transitions to ERROR status. A "step" is one processNextStep() call covering agent
-  # selection, agent run, and redirect events. The counter resets to 0 on each
-  # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
-  # threshold across the full session without triggering it within a single turn.
-  # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
-  case-max-iterations: ${AGENTOS_LIMITS_CASE_MAX_ITERATIONS:100}
-  # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
-  # Each iteration consists of one intention-generation call followed by zero or one tool
-  # executions. When this limit is reached the agent emits a WarnEvent and breaks out
-  # of the loop, producing its final response based on what it has gathered so far.
-  # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
-  agent-max-iterations: ${AGENTOS_LIMITS_AGENT_MAX_ITERATIONS:100}
-  # Maximum number of entities processed by one AgentLoop run. Each entity starts one case
-  # immediately, so this bounds concurrent agent runs started by a single loop.
-  # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
-  agent-loop-max-items: ${AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS:50}
-  # Maximum amount the platform accepts spending without a human check-in, in the platform's
-  # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
-  # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
-  # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
-  # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
-  # run-cost-threshold: 10.0
+    # Maximum number of internal steps per user message in the CaseRuntime before the case
+    # transitions to ERROR status. A "step" is one processNextStep() call covering agent
+    # selection, agent run, and redirect events. The counter resets to 0 on each
+    # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
+    # threshold across the full session without triggering it within a single turn.
+    # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
+    case-max-iterations: ${AGENTOS_LIMITS_CASE_MAX_ITERATIONS:100}
+    # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
+    # Each iteration consists of one intention-generation call followed by zero or one tool
+    # executions. When this limit is reached the agent emits a WarnEvent and breaks out
+    # of the loop, producing its final response based on what it has gathered so far. It also
+    # bounds the automatic tool rounds of a simple agent. This is the platform default of the
+    # "maximum tool rounds" setting: a namespace overrides it (Namespace.maxToolRounds), and a
+    # namespace that sets none inherits this value.
+    # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
+    agent-max-iterations: ${AGENTOS_LIMITS_AGENT_MAX_ITERATIONS:1000}
+    # Maximum number of entities processed by one AgentLoop run. Each entity starts one case
+    # immediately, so this bounds concurrent agent runs started by a single loop.
+    # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
+    agent-loop-max-items: ${AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS:50}
+    # Maximum amount the platform accepts spending without a human check-in, in the platform's
+    # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
+    # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
+    # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
+    # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
+    # run-cost-threshold: 10.0
   defaults:
     # Seconds a delegation waits without activity from its sub-case before stopping it.
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.

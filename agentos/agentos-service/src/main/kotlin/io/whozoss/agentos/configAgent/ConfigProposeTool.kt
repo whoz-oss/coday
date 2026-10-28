@@ -41,7 +41,8 @@ class ConfigProposeTool(
         integrations {"INTEGRATION_NAME": null or ["tool"]}, subAgents; a prompt has name, content [..], agentConfigId;
         an integration has name, integrationType, description, parameters, authSettingName; a skill has name, description,
         body; a namespace has name, description, defaultAgentName (the agent that answers a message without @mention),
-        runCostThreshold; an auth setting has name, description, authType and the fields of that type:
+        runCostThreshold, maxToolRounds (cap on the tool rounds of one agent run; absent inherits the platform default);
+        an auth setting has name, description, authType and the fields of that type:
         ${ConfigAuthSettingTypes.description}, where * marks a secret).
         A namespace's Git repository, which gives each case its worktree, is an integration of type
         ${GitRepositoryIntegration.TYPE} (one per namespace, shared) with parameters ${GitRepositoryIntegration.PARAM_REPOSITORY_URL},

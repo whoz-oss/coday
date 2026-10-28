@@ -34,7 +34,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *
  * Override with environment variables (Spring Boot relaxed binding):
  * - `AGENTOS_LIMITS_CASE_MAX_ITERATIONS`  (default: 100)
- * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 20)
+ * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 1000)
  * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: unset)
  *
  * Example (`application.yml`):
@@ -42,7 +42,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * agentos:
  *   limits:
  *     case-max-iterations: 100
- *     agent-max-iterations: 20
+ *     agent-max-iterations: 1000
  *     agent-loop-max-items: 50
  *     run-cost-threshold: 10.0
  * ```
@@ -75,9 +75,12 @@ data class LimitsConfigProperties(
      * Also bounds automatic tool rounds for AgentSimple. At that bound the simple
      * agent emits a warning and finishes; no further provider request is made.
      *
-     * Defaults to 20.
+     * This is the platform default of the "maximum tool rounds" setting: a namespace overrides it with
+     * [io.whozoss.agentos.namespace.Namespace.maxToolRounds], and `null` there inherits this value.
+     *
+     * Defaults to 1000.
      */
-    val agentMaxIterations: Int = 20,
+    val agentMaxIterations: Int = 1000,
     /**
      * Maximum number of entities processed by a single [io.whozoss.agentos.agent.AgentLoop] run.
      *

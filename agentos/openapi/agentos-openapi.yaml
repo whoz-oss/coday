@@ -5737,6 +5737,13 @@ components:
         id:
           type: string
           format: uuid
+        maxToolRounds:
+          type: integer
+          format: int32
+          description: "Maximum number of tool rounds of one agent run in this namespace.\
+            \ Null means inherit from the platform default (agentos.limits.agent-max-iterations).\
+            \ On PUT, null clears an existing override."
+          minimum: 1
         name:
           type: string
           minLength: 1

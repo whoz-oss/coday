@@ -83,6 +83,46 @@ class NamespaceControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
             ).andExpect(status().isCreated)
         }
 
+        "POST /api/namespaces with zero maxToolRounds returns 400" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "bad-rounds", "maxToolRounds": 0 }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /api/namespaces with maxToolRounds returns 201 and echoes it" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "rounds-ns", "maxToolRounds": 250 }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.maxToolRounds").value(250))
+        }
+
+        "PUT /api/namespaces/{id} sets then clears maxToolRounds" {
+            val created = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "rounds-update"),
+            )
+
+            mockMvc.perform(
+                put("/api/namespaces/${created.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "rounds-update", "maxToolRounds": 42 }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.maxToolRounds").value(42))
+
+            mockMvc.perform(
+                put("/api/namespaces/${created.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "rounds-update" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.maxToolRounds").doesNotExist())
+        }
+
         "PUT /api/namespaces/{id} with negative runCostThreshold returns 400" {
             val created = namespaceService.create(
                 Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "threshold-update-neg"),
