@@ -13,42 +13,42 @@ services:
       # Spring Boot configuration
       - SPRING_PROFILES_ACTIVE=docker
       - SERVER_PORT=8080
-      
+
       # PF4J configuration
-      - PLUGINS_DIR=/app/plugins
-      
+      - AGENTOS_PLUGINS_DIR=/app/plugins
+
       # JVM options
       - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
-      
+
       # Spring AI API Keys (to be set via .env file or command line)
       # - SPRING_AI_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # - SPRING_AI_OPENAI_API_KEY=${OPENAI_API_KEY}
-      
+
       # Logging
       - LOGGING_LEVEL_ROOT=INFO
-      - LOGGING_LEVEL_IO_BIZNET_AGENTOS=DEBUG
-    
+      - LOGGING_LEVEL_IO_WHOZOSS_FACTORY=DEBUG
+
     volumes:
       # Keep managed Git repositories and case worktrees across container restarts.
       - agentos-data:/app/data
       # Mount plugins directory for hot-reload
       - ./plugins:/app/plugins:ro
-      
+
       # Optional: Mount logs directory
       - ./logs:/app/logs
-    
+
     networks:
       - agentos-network
-    
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    
+
     restart: unless-stopped
-    
+
     # Resource limits
     deploy:
       resources:

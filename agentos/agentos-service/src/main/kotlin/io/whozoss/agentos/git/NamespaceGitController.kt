@@ -123,8 +123,8 @@ class NamespaceGitController(
                 )
 
         when (existing) {
-            null -> integrationConfigService.create(config)
-            else -> integrationConfigService.update(config)
+            null -> integrationConfigService.unsecuredCreate(config)
+            else -> integrationConfigService.unsecuredUpdate(config)
         }
         logger.info { "Namespace $namespaceId associated with ${request.repositoryUrl}" }
 
@@ -148,6 +148,15 @@ class NamespaceGitController(
             integrationConfigService.findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE)
                 ?: throw ResourceNotFoundException("Namespace $namespaceId has no repository associated")
 
+        // Using the unchecked `delete` rather than a hypothetical `deleteForCaller` is deliberate
+        // here: this endpoint is a namespace capability, not a user-owned overlay. Authorization
+        // is already enforced by the `@PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")`
+        // annotation above — the caller has already proven WRITE on the namespace. A `deleteForCaller`
+        // path would require a `Caller` built from `userService.getCurrentUser()`, which would
+        // add a DB round-trip and then re-check the same namespace permission `ScopedAccessPolicy`
+        // already enforced by the annotation. The GIT_REPOSITORY config is always namespace-shared
+        // (namespaceId non-null, userId null), so `ScopedAccessPolicy.requireAdminForPlatform`
+        // would be a no-op anyway.
         integrationConfigService.delete(existing.id)
         logger.info { "Namespace $namespaceId disassociated from its repository" }
         return NamespaceGitResource(associated = false)

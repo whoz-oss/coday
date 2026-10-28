@@ -46,12 +46,12 @@ drops them before they reach it).
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `spec.url` | string (https URL) | – | Public URL of the OpenAPI 3.x document (JSON or YAML), fetched **without authentication**. Exactly one of `spec.url` / `spec.inline` / `spec.file`. |
+| `spec.url` | string (URL) | – | URL of the OpenAPI 3.x document (JSON or YAML), fetched **without authentication**. `https` and a public host are required only when `AGENTOS_HTTP_API_DISALLOW_UNSECURE=true` (see [Outbound URL policy](#outbound-url-policy)). Exactly one of `spec.url` / `spec.inline` / `spec.file`. |
 | `spec.inline` | string (textarea) | – | The OpenAPI 3.x document itself, for APIs without a published document. |
 | `spec.file` | string (absolute path) | – | A `.json`, `.yaml` or `.yml` document on the service host, typically `{{NAMESPACE_CONFIG_PATH}}/specs/<name>.yaml` in a filesystem config. See [Document sources](#document-sources). |
 | `spec.refreshMinutes` | integer >= 0 | `60` | Re-check interval of a URL document; `0` keeps the first fetched document until the service restarts or the config changes. |
 | `spec.maxBytes` | integer >= 1024 | `5242880` | Maximum document size (5 MiB). Larger documents are refused. |
-| `baseUrl` | string (https URL) | – | Prepended to every operation path. Optional when the document declares an absolute `servers[0].url` (variables replaced by their defaults), which it overrides. Private and local addresses, a query string and a fragment are refused. |
+| `baseUrl` | string (URL) | – | Prepended to every operation path. Optional when the document declares an absolute `servers[0].url` (variables replaced by their defaults), which it overrides. `https` is required and private and local addresses are refused only when `AGENTOS_HTTP_API_DISALLOW_UNSECURE=true`; a query string and a fragment are always refused. |
 | `includeTags` | string[] | `[]` | Keep only operations carrying at least one of these tags. |
 | `includePathPrefixes` | string[] | `[]` | Keep only operations whose path starts with one of these prefixes, e.g. `/api/v2/tickets`. |
 | `includeOperations` | string[] | `[]` | Keep only operations whose `operationId` matches one of these globs (`*`, `?`). |
@@ -79,7 +79,7 @@ the schema defaults equal to the Kotlin defaults.
 
 Exactly one of the three sources is set:
 
-- **`spec.url`**: a public https URL, fetched without authentication and refreshed every
+- **`spec.url`**: a URL (public https when `AGENTOS_HTTP_API_DISALLOW_UNSECURE=true`), fetched without authentication and refreshed every
   `spec.refreshMinutes` (conditional `If-None-Match` request).
 - **`spec.inline`**: the document text itself, for APIs without a published document; it never expires.
 - **`spec.file`**: an absolute path on the service host ending with `.json`, `.yaml` or `.yml`, naming a
@@ -114,8 +114,8 @@ replaced by its declared `default`, provided the result is absolute and passes t
 [outbound URL policy](#outbound-url-policy); a document without such a server URL fails with
 `'baseUrl' is required because the OpenAPI document declares no absolute server URL`, a server URL that
 keeps a `{variable}` without `default` fails naming it (`... server URL keeps an unresolved variable
-'{region}'`), and a server URL the policy refuses fails with the policy reason (`... server URL must use
-the https scheme, got 'http'`).
+'{region}'`), and a server URL the policy refuses fails with the policy reason (with
+`AGENTOS_HTTP_API_DISALLOW_UNSECURE=true`: `... server URL must use the https scheme, got 'http'`).
 
 ## Authentication
 
@@ -129,8 +129,11 @@ work once the service synthesises the credential from the Auth Setting itself an
 which is not part of this plugin. Until it ships, bind an OAuth Auth Setting or expect `AUTH_MISSING`.
 
 The service resolves the credential of the Auth Setting named by `authSettingName` for the user
-running the agent, and hands the plugin a credential provider. The plugin invokes it **once per
-run** (`provideTools`) and maps the credential by its `CredentialType`:
+running the agent, and hands the plugin a credential provider. The plugin invokes it **on the first
+call of one of the integration's tools in a run**, never while it lists them (`provideTools`), and maps
+the credential by its `CredentialType`. For an OAuth Auth Setting without a valid stored token, that
+first call is where the user is asked to authorize: a run that never calls the integration's tools never
+shows the authorization card nor waits for it.
 
 | Auth Setting type | Credential type | What the plugin sends |
 |---|---|---|
@@ -151,9 +154,13 @@ Rules that follow from the service behaviour:
   `auth`, or one taken from the document) and no provider is bound.
 - **A provider that yields nothing usable is `AUTH_MISSING` before any request.** When the provider is
   present but returns no credential or a credential without material (blank token, key or password), the
-  tools are still listed (so the definition preview shows them) but every call fails fast with
-  `AUTH_MISSING` and no request is sent. Fix the Auth Setting or the user's credential.
-- The token is frozen for the run, like `MCP_HTTP`. A `401` is reported as `UNAUTHORIZED` with an
+  tools are still listed (so the definition preview shows them) but the call fails fast with
+  `AUTH_MISSING` and no request is sent. A provider that throws is `AUTH_MISSING` too, the detail staying
+  in the service logs.
+- The outcome of that first resolution is kept for the rest of the run, `AUTH_MISSING` included: an
+  authorization declined or timed out is not asked again by every later call, and the user's next message
+  (a new run) asks again. Concurrent calls wait for the single resolution. A call whose arguments are
+  invalid is refused before the credential is asked. A `401` is reported as `UNAUTHORIZED` with an
   instruction not to retry; the agent cannot refresh a token mid-run.
 - API key placement is a property of the called API, hence configured on the integration (`auth`), not
   on the Auth Setting.
@@ -267,15 +274,20 @@ leak) nor a header.
 ## Outbound URL policy
 
 Applied to `spec.url` and `baseUrl` at parse time (a violation is a configuration error) and to every
-request URL. A URL must be absolute, `https`, without userinfo, accepted by the HTTP client (a port above
-65535 passes `java.net.URI` but is refused at parse time), with a host that is neither
-`localhost` nor a literal address of a loopback, unspecified, link-local (`169.254.169.254`),
-site-local (RFC 1918), carrier-grade NAT (`100.64/10`), IPv6 unique-local or IPv4-mapped range. Host
-names are additionally checked when resolved: the plugin's DNS resolver keeps only addresses the policy
-allows, so a public name rebinding to a private range is refused with `UnknownHostException`.
+request URL. Two modes, selected by `AGENTOS_HTTP_API_DISALLOW_UNSECURE` (see
+[Unsecure HTTP](#unsecure-http-allowed-by-default)):
 
-**Consequence: intranet APIs on private networks are refused.** Phase 1 targets public SaaS APIs only;
-there is no allowlist.
+- **Default (permissive)**: `http` and `https` are accepted, and so are `localhost`, loopback, private/LAN
+  names and private ranges. Intranet APIs work without any configuration.
+- **Strict (`AGENTOS_HTTP_API_DISALLOW_UNSECURE=true`)**: a URL must be absolute, `https`, without userinfo,
+  accepted by the HTTP client (a port above 65535 passes `java.net.URI` but is refused at parse time), with
+  a host that is neither `localhost` nor a literal address of a loopback, unspecified, link-local
+  (`169.254.169.254`), site-local (RFC 1918), carrier-grade NAT (`100.64/10`), IPv6 unique-local or
+  IPv4-mapped range. Host names are additionally checked when resolved: the plugin's DNS resolver keeps only
+  addresses the policy allows, so a public name rebinding to a private range is refused with
+  `UnknownHostException`. Intranet APIs on private networks are then refused; there is no allowlist.
+
+In both modes userinfo, malformed URLs, other schemes, redirects and automatic retries are refused.
 
 ## Mutations
 
@@ -343,7 +355,7 @@ Error types returned by the tools (`errorType`), stable so prompts can rely on t
 | `errorType` | When | Agent guidance in the message |
 |---|---|---|
 | `INVALID_INPUT` | Arguments are not a JSON object, a required path or header parameter or body is missing, a header value is not a single printable line, a form body is not an object | Fix the arguments; no request was sent |
-| `AUTH_MISSING` | An Auth Setting is bound but no usable credential was resolved | Ask an administrator; no request was sent |
+| `AUTH_MISSING` | An Auth Setting is bound but no usable credential was resolved | Do not retry in the run; the user's next message asks again, otherwise ask an administrator; no request was sent |
 | `URL_POLICY_REJECTED` | The final URL would leave `baseUrl` or violates the policy | No request was sent |
 | `HTTP_CLIENT_ERROR` | `400`, `404`, `409`, `422` and other `4xx` (body capped at 2000 characters) | Correct the call |
 | `UNAUTHORIZED` | `401` | Do not retry; ask an administrator to check the Auth Setting |
@@ -369,9 +381,9 @@ process: `-Dhttps.proxyHost`, `-Dhttps.proxyPort`, `-Dhttp.nonProxyHosts`. A cor
 JVM trust store (`-Djavax.net.ssl.trustStore`). Nothing is configured in `application.yml`.
 
 With a proxy configured, host names are resolved by the proxy, not by the service: the DNS-based part of
-the [outbound URL policy](#outbound-url-policy) does not apply (only literal private addresses are still
-refused). The proxy must then enforce the private-range policy itself, or `http.nonProxyHosts` must keep
-internal hosts away from it.
+the strict [outbound URL policy](#outbound-url-policy) does not apply (only literal private addresses are
+still refused). The proxy must then enforce the private-range policy itself, or `http.nonProxyHosts` must
+keep internal hosts away from it.
 
 ## Examples
 
@@ -523,6 +535,32 @@ The plugin test suite reads the document it produces for that example (`converte
   base URL, a `baseUrl` with a query string, `Authorization` in `defaultHeaders`, duplicate `operationId`, an integration name outside
   `[A-Za-z0-9_-]` or containing `__`) exposes no tools; the message is logged at ERROR and shown in the
   namespace description.
+
+## Unsecure HTTP (allowed by default)
+
+By default, HTTP API destinations may use plain HTTP and may be any hostname or IP, including localhost,
+loopback addresses, private/LAN DNS names and private network ranges. The setting applies to every
+`HTTP_API` integration, including base URLs, OpenAPI document URLs and final operation URLs; it does not
+depend on an integration name, port or route. The effective mode is logged once at INFO when the plugin
+starts.
+
+An administrator restores the strict policy (public HTTPS only, see
+[Outbound URL policy](#outbound-url-policy)) by setting `AGENTOS_HTTP_API_DISALLOW_UNSECURE=true` before
+starting AgentOS. Value contract:
+
+| Value | Effect |
+|---|---|
+| absent or blank | unsecure HTTP allowed (default) |
+| `false` (case-insensitive) | unsecure HTTP allowed |
+| `true` (case-insensitive) | strict policy, public HTTPS only |
+| anything else (`1`, `yes`, ` true ` with spaces...) | strict policy (fail closed) and a WARN naming the variable |
+
+**Security caveat.** The permissive mode also relaxes the shared DNS filter for HTTPS, because DNS
+resolution cannot apply different policies by URL scheme. By default, therefore, DNS-rebinding protection
+and the block on cloud metadata addresses (`169.254.169.254`) are off: an HTTP_API integration can reach any
+host the service can reach. **Set `AGENTOS_HTTP_API_DISALLOW_UNSECURE=true` on any shared or production
+deployment.** Userinfo, malformed URLs, unsupported schemes, redirects and automatic retries remain refused
+in both modes.
 
 ## Deployment
 

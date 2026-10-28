@@ -25,15 +25,22 @@ import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CancellationException
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 
 class HttpApiToolProviderUnitSpec : StringSpec({
@@ -98,6 +105,26 @@ class HttpApiToolProviderUnitSpec : StringSpec({
         )
 
     fun specRequests(): Int = server.requests.count { it.path == "/openapi.yaml" }
+
+    /** Serves the petstore document and answers every API call with an empty JSON list. */
+    fun servePetstoreApi() {
+        server.handler = { request ->
+            if (request.path == "/openapi.yaml") {
+                TestResponse(body = petstore, contentType = "application/yaml")
+            } else {
+                TestResponse(body = "[]")
+            }
+        }
+    }
+
+    fun bearer(token: String) = Credential(
+        userId = UUID.randomUUID(),
+        authSettingId = UUID.randomUUID(),
+        credentialType = CredentialType.BEARER_TOKEN,
+        data = mapOf("token" to token),
+    )
+
+    fun List<StandardTool<*>>.named(suffix: String): StandardTool<*> = single { it.name.endsWith(suffix) }
 
     "declares the HTTP_API integration type with a schema" {
         provider.integrationType shouldBe "HTTP_API"
@@ -198,27 +225,155 @@ class HttpApiToolProviderUnitSpec : StringSpec({
         failures.get(namespace, "PETS") shouldBe "3 operations selected, exceeds maxTools=2"
     }
 
-    "resolves the credential exactly once per run" {
-        servePetstore()
+    "resolves the credential on the first call of a tool, then once for the whole run" {
+        servePetstoreApi()
         val calls = AtomicInteger()
-        val credential = Credential(
-            userId = UUID.randomUUID(),
-            authSettingId = UUID.randomUUID(),
-            credentialType = CredentialType.BEARER_TOKEN,
-            data = mapOf("token" to "t"),
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context {
+                calls.incrementAndGet()
+                bearer("t")
+            },
         )
-        val tools = provider.provideTools(specConfig(), "PETS", context { calls.incrementAndGet(); credential })
         tools.size shouldBe 3
+        calls.get() shouldBe 0
+
+        tools.named("listPets").executeWithJson("{}", context()).success shouldBe true
+        tools.named("showPetById").executeWithJson("""{"petId":"1"}""", context()).success shouldBe true
+
         calls.get() shouldBe 1
+        server.requests.filter { it.path.startsWith("/v1/") }.map { it.header("Authorization") } shouldContainExactly
+            listOf("Bearer t", "Bearer t")
     }
 
-    "a failing credential provider never escapes and its message stays in the logs" {
-        servePetstore()
+    "a credential that could not be obtained is not asked again in the run, the next run asks again" {
+        servePetstoreApi()
         CapturedLogs.clear()
-        val failing = context { throw IllegalStateException("vault down") }
-        provider.provideTools(specConfig(), "PETS", failing) shouldBe emptyList()
-        failures.get(namespace, "PETS") shouldBe "unexpected error while preparing the tools, see the service logs"
+        val answers = ArrayDeque(listOf(null, bearer("late")))
+        val askingContext = context { answers.removeFirst() }
+        val tools = provider.provideTools(specConfig(), "PETS", askingContext)
+
+        val refused = tools.named("listPets").executeWithJson("{}", context())
+        val again = tools.named("showPetById").executeWithJson("""{"petId":"1"}""", context())
+
+        listOf(refused, again).map { it.errorType } shouldContainExactly listOf("AUTH_MISSING", "AUTH_MISSING")
+        answers.size shouldBe 1
+        refused.output shouldContain "no credential available for the bound Auth Setting"
+        refused.output shouldContain "do not retry"
+        refused.output shouldContain "an administrator"
+        CapturedLogs.lines.joinToString("\n") shouldContain "no credential available for the bound Auth Setting"
+        server.requests.none { it.path.startsWith("/v1/") } shouldBe true
+
+        val nextRun = provider.provideTools(specConfig(), "PETS", askingContext)
+        nextRun.named("listPets").executeWithJson("{}", context()).success shouldBe true
+        server.requests.single { it.path.startsWith("/v1/") }.header("Authorization") shouldBe "Bearer late"
+    }
+
+    "a call refused for its arguments or its URL never asks for the credential" {
+        servePetstoreApi()
+        val calls = AtomicInteger()
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context {
+                calls.incrementAndGet()
+                bearer("t")
+            },
+        )
+
+        val missingArgument = tools.named("showPetById").executeWithJson("{}", context())
+        val leavingBaseUrl = tools.named("showPetById").executeWithJson("""{"petId":".."}""", context())
+
+        missingArgument.errorType shouldBe "INVALID_INPUT"
+        leavingBaseUrl.errorType shouldBe "URL_POLICY_REJECTED"
+        calls.get() shouldBe 0
+        server.requests.none { it.path.startsWith("/v1/") } shouldBe true
+    }
+
+    listOf<Credential?>(bearer("t"), null).forEach { answer ->
+        "concurrent calls of a run resolve the credential once (provider answers ${answer?.credentialType})" {
+            servePetstoreApi()
+            val calls = AtomicInteger()
+            val release = CountDownLatch(1)
+            val tools = provider.provideTools(
+                specConfig(),
+                "PETS",
+                context {
+                    calls.incrementAndGet()
+                    release.await()
+                    answer
+                },
+            )
+
+            // UNDISPATCHED runs each call up to its first suspension before the next one starts: the first
+            // is resolving, held by the latch, and the three others have all asked for the spec before it ends.
+            coroutineScope {
+                val results = (1..4).map {
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        tools.named("listPets").executeWithJson("{}", context())
+                    }
+                }
+                release.countDown()
+                results.awaitAll()
+            }.all { it.success } shouldBe (answer != null)
+
+            calls.get() shouldBe 1
+        }
+    }
+
+    "a cancellation thrown by the provider while the run goes on is AUTH_MISSING" {
+        servePetstoreApi()
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context { throw CancellationException("flow cancelled") },
+        )
+
+        tools.named("listPets").executeWithJson("{}", context()).errorType shouldBe "AUTH_MISSING"
+    }
+
+    "cancelling the run interrupts a provider waiting for the user" {
+        servePetstoreApi()
+        val started = CountDownLatch(1)
+        val interrupted = CountDownLatch(1)
+        val tools = provider.provideTools(
+            specConfig(),
+            "PETS",
+            context {
+                started.countDown()
+                try {
+                    Thread.sleep(10_000)
+                } catch (e: InterruptedException) {
+                    interrupted.countDown()
+                    throw e
+                }
+                bearer("t")
+            },
+        )
+
+        coroutineScope {
+            val call = launch(Dispatchers.Default) { tools.named("listPets").executeWithJson("{}", context()) }
+            runInterruptible(Dispatchers.IO) { started.await() }
+            call.cancelAndJoin()
+        }
+        // Without the interrupt the sleep runs to its end and the latch stays at 1.
+        interrupted.count shouldBe 0L
+    }
+
+    "a failing credential provider never escapes: the call fails and the message stays in the logs" {
+        servePetstoreApi()
+        CapturedLogs.clear()
+        val tools = provider.provideTools(specConfig(), "PETS", context { throw IllegalStateException("vault down") })
+        tools.size shouldBe 3
+
+        val result = tools.named("listPets").executeWithJson("{}", context())
+
+        result.errorType shouldBe "AUTH_MISSING"
+        result.output shouldContain "unexpected error while resolving the credential, see the service logs"
+        result.output shouldNotContain "vault down"
         CapturedLogs.lines.joinToString("\n") shouldContain "vault down"
+        server.requests.none { it.path.startsWith("/v1/") } shouldBe true
     }
 
     "a customised API key placement without a credential provider is logged as unauthenticated" {

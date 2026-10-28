@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.agentConfig
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
+import io.whozoss.agentos.sdk.api.skill.SkillSummaryDto
 import java.util.UUID
 
 /**
@@ -38,6 +39,13 @@ data class AgentDefinitionDto(
     val resolvedProviderName: String,
     @field:Schema(description = "Summary of tools that would be made available to this agent.")
     val tools: List<ToolSummary>,
+    @field:Schema(
+        description = "Skills resolved for this agent from its skillSelectors, in catalog order. " +
+            "Namespace skills shadow platform skills of the same name. Empty when the agent " +
+            "declares no selectors. Bodies and resources are not included — fetch " +
+            "GET /api/skills/{id} for those.",
+    )
+    val skills: List<SkillSummaryDto> = emptyList(),
     @field:Schema(
         description =
             "The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP). " +

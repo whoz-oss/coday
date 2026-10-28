@@ -5,8 +5,10 @@ import {
   CaseControllerService,
   CaseWorkspaceViewStatusEnum,
   ExchangeFileEntryScopeEnum,
+  IntegrationTypeControllerService,
+  NamespaceGitControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, of, Subject, throwError } from 'rxjs'
+import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -22,7 +24,9 @@ import { CaseWorkspaceService } from '../../services/case-workspace.service'
  */
 describe('CaseHomeComponent — first message with attachments', () => {
   let api: { createCase: jest.Mock; addMessageCase: jest.Mock }
-  let workspaces: { watch: jest.Mock }
+  let workspaces: { watch: jest.Mock; enabled$: Observable<boolean> }
+  let gitApi: { getAssociationNamespaceGit: jest.Mock }
+  let integrationTypes: { listTypesIntegrationType: jest.Mock }
   let router: { navigate: jest.Mock }
   let exchangeState: {
     uploadFile: jest.Mock
@@ -45,7 +49,9 @@ describe('CaseHomeComponent — first message with attachments', () => {
   beforeEach(() => {
     calls = []
     queryParams$ = new Subject<Record<string, string>>()
-    workspaces = { watch: jest.fn().mockReturnValue(of({ view: { equipped: false } })) }
+    workspaces = { watch: jest.fn().mockReturnValue(of({ view: { equipped: false } })), enabled$: of(true) }
+    gitApi = { getAssociationNamespaceGit: jest.fn().mockReturnValue(of({ associated: false })) }
+    integrationTypes = { listTypesIntegrationType: jest.fn().mockReturnValue(of([{ type: 'BASH' }, { type: 'GIT' }])) }
     api = {
       createCase: jest.fn().mockImplementation(() => {
         calls.push('create-case')
@@ -70,6 +76,8 @@ describe('CaseHomeComponent — first message with attachments', () => {
       providers: [
         { provide: CaseControllerService, useValue: api },
         { provide: CaseWorkspaceService, useValue: workspaces },
+        { provide: NamespaceGitControllerService, useValue: gitApi },
+        { provide: IntegrationTypeControllerService, useValue: integrationTypes },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: { ns: 'ns-1' } }, queryParams: queryParams$ } },
         { provide: ExchangeStateService, useValue: exchangeState },
@@ -305,6 +313,128 @@ describe('CaseHomeComponent — first message with attachments', () => {
     expect(state.observed).toBe(false)
     expect(api.addMessageCase).not.toHaveBeenCalled()
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+    ref.destroy()
+  })
+
+  it('offers the namespace worktree checked and sends only a declined one', async () => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    expect(gitApi.getAssociationNamespaceGit).toHaveBeenCalledWith('ns-1')
+    expect(ref.instance['worktreeOffered']()).toBe(true)
+    expect(ref.instance['worktree']()).toBe(true)
+
+    ref.instance['onWorktreeChange']({ target: { checked: false } } as unknown as Event)
+    ref.instance['inputValue'].set('what does this module do?')
+    await ref.instance['submit']()
+
+    expect(api.createCase).toHaveBeenCalledWith(expect.objectContaining({ namespaceId: 'ns-1', worktree: false }))
+    ref.destroy()
+  })
+
+  it('sends no worktree field when the box is left checked, so the namespace setting applies as before', async () => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    ref.instance['inputValue'].set('fix the export')
+    await ref.instance['submit']()
+
+    expect(ref.instance['worktreeOffered']()).toBe(true)
+    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
+    ref.destroy()
+  })
+
+  it.each([
+    ['the namespace does not create one for every case', of({ associated: true, autoWorktreeForRootCases: false })],
+    ['the namespace has just been associated', of({ associated: true })],
+    [
+      'the namespace association is unusable',
+      of({ associated: true, autoWorktreeForRootCases: false, checkoutStatus: 'FAILED' }),
+    ],
+  ])('does not offer a worktree when %s', async (_, association) => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(association)
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    ref.instance['inputValue'].set('hello')
+    await ref.instance['submit']()
+
+    expect(ref.instance['worktreeOffered']()).toBe(false)
+    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
+    ref.destroy()
+  })
+
+  it.each([
+    ['the instance has no Git workspaces', false, [{ type: 'GIT' }]],
+    ['the GIT plugin is not loaded', true, [{ type: 'BASH' }]],
+  ])('neither asks for the association nor offers a worktree when %s', async (_, enabled, types) => {
+    workspaces.enabled$ = of(enabled)
+    integrationTypes.listTypesIntegrationType.mockReturnValue(of(types))
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    ref.instance['inputValue'].set('hello')
+    await ref.instance['submit']()
+
+    expect(gitApi.getAssociationNamespaceGit).not.toHaveBeenCalled()
+    expect(ref.instance['worktreeOffered']()).toBe(false)
+    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
+    ref.destroy()
+  })
+
+  it.each([
+    ['the namespace has no repository', of({ associated: false })],
+    ['the association cannot be read', throwError(() => ({ status: 403 }))],
+    ['the integration types cannot be read', null],
+  ])('neither offers nor sends a worktree when %s', async (_, association) => {
+    if (association) gitApi.getAssociationNamespaceGit.mockReturnValue(association)
+    else integrationTypes.listTypesIntegrationType.mockReturnValue(throwError(() => ({ status: 500 })))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    ref.instance['inputValue'].set('hello')
+    await ref.instance['submit']()
+
+    expect(ref.instance['worktreeOffered']()).toBe(false)
+    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
+    ref.destroy()
+  })
+
+  it('neither asks for the association nor sends a worktree choice for a sub-case, which shares its root case worktree', async () => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    TestBed.inject(ActivatedRoute).snapshot.queryParams['parentCase'] = 'root'
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    queryParams$.next({ ns: 'ns-1', parentCase: 'other-root' })
+    ref.instance['inputValue'].set('@reviewer Analyse this change')
+    await ref.instance['submit']()
+
+    expect(gitApi.getAssociationNamespaceGit).not.toHaveBeenCalled()
+    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
+    ref.destroy()
+  })
+
+  it('asks the new namespace again when the composer switches namespace', () => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: false }))
+    queryParams$.next({ ns: 'ns-2' })
+
+    expect(gitApi.getAssociationNamespaceGit).toHaveBeenLastCalledWith('ns-2')
+    expect(ref.instance['worktreeOffered']()).toBe(false)
+    ref.destroy()
+  })
+
+  it('asks the integration types again on the next namespace after a failed read', () => {
+    integrationTypes.listTypesIntegrationType.mockReturnValueOnce(throwError(() => ({ status: 502 })))
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    expect(ref.instance['worktreeOffered']()).toBe(false)
+
+    queryParams$.next({ ns: 'ns-2' })
+
+    expect(integrationTypes.listTypesIntegrationType).toHaveBeenCalledTimes(2)
+    expect(ref.instance['worktreeOffered']()).toBe(true)
     ref.destroy()
   })
 })

@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -221,6 +222,8 @@ class CaseEventNodeMapper(
                     node.contextJson,
                     node.llmProvider,
                     node.llmModel,
+                    node.reasoningEffort,
+                    node.requestedReasoningEffort,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -499,6 +502,8 @@ class CaseEventNodeMapper(
             sessionContext = n.contextJson?.let { serializer.deserializeMetadata(it) },
             llmProvider = n.llmProvider,
             llmModel = n.llmModel,
+            reasoningEffort = n.reasoningEffort?.let(ReasoningEffort::valueOf),
+            requestedReasoningEffort = n.requestedReasoningEffort?.let(ReasoningEffort::valueOf),
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -746,6 +751,8 @@ class CaseEventNodeMapper(
             contextJson = e.sessionContext?.let { serializer.serializeMetadata(it) },
             llmProvider = e.llmProvider,
             llmModel = e.llmModel,
+            reasoningEffort = e.reasoningEffort?.name,
+            requestedReasoningEffort = e.requestedReasoningEffort?.name,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

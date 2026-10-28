@@ -1,9 +1,10 @@
-import { releaseChangelog, releasePublish, releaseVersion } from 'nx/release'
+import { releaseChangelog, releaseVersion } from 'nx/release'
 import { appendFileSync, readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { updateTomlVersions } from './utils/update-toml-version'
+import { publishPackages } from './utils/release-steps'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
@@ -41,36 +42,55 @@ async function main(): Promise<void> {
     appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${workspaceVersion}\n`)
   }
 
-  // Step 2: Update Gradle version catalog to match the new release version.
+  // Step 2: Update Gradle version catalogs to match the new release version.
   // This must happen AFTER releaseVersion (which determines the new version)
   // but BEFORE releaseChangelog (which commits, tags, and pushes).
   //
-  // Both agentosSdk (SDK library) and agentosService (service + all plugins) are
-  // kept in sync with the Nx workspace version. Add new keys here when new
-  // versioned Gradle artifacts are introduced.
-  const tomlRelativePath = 'agentos/gradle/libs.versions.toml'
-  const tomlVersionKeys = ['agentosSdk', 'agentosService']
+  // Both the agentos and factory catalogs are stamped in sync with the Nx workspace
+  // version. Add new keys here when new versioned Gradle artifacts are introduced.
+  const agentosTomlRelativePath = 'agentos/gradle/libs.versions.toml'
+  const agentosTomlVersionKeys = ['agentosSdk', 'agentosService']
+
+  const factoryTomlRelativePath = 'factory/gradle/libs.versions.toml'
+  const factoryTomlVersionKeys = ['factorySdk', 'factoryService']
 
   if (dryRun) {
-    tomlVersionKeys.forEach((key) =>
-      console.log(`[dry-run] Would update libs.versions.toml ${key} to ${workspaceVersion}`)
+    agentosTomlVersionKeys.forEach((key) =>
+      console.log(`[dry-run] Would update agentos/gradle/libs.versions.toml ${key} to ${workspaceVersion}`)
+    )
+    factoryTomlVersionKeys.forEach((key) =>
+      console.log(`[dry-run] Would update factory/gradle/libs.versions.toml ${key} to ${workspaceVersion}`)
     )
   } else {
-    const tomlPath = join(__dirname, '..', tomlRelativePath)
+    const agentosTomlPath = join(__dirname, '..', agentosTomlRelativePath)
     writeFileSync(
-      tomlPath,
-      updateTomlVersions(readFileSync(tomlPath, 'utf-8'), tomlVersionKeys, workspaceVersion),
+      agentosTomlPath,
+      updateTomlVersions(readFileSync(agentosTomlPath, 'utf-8'), agentosTomlVersionKeys, workspaceVersion),
       'utf-8'
     )
-    console.log(`Updated libs.versions.toml keys [${tomlVersionKeys.join(', ')}] to ${workspaceVersion}`)
+    console.log(
+      `Updated agentos/gradle/libs.versions.toml keys [${agentosTomlVersionKeys.join(', ')}] to ${workspaceVersion}`
+    )
 
-    // Explicitly stage the toml file so it's included in the release commit.
+    const factoryTomlPath = join(__dirname, '..', factoryTomlRelativePath)
+    writeFileSync(
+      factoryTomlPath,
+      updateTomlVersions(readFileSync(factoryTomlPath, 'utf-8'), factoryTomlVersionKeys, workspaceVersion),
+      'utf-8'
+    )
+    console.log(
+      `Updated factory/gradle/libs.versions.toml keys [${factoryTomlVersionKeys.join(', ')}] to ${workspaceVersion}`
+    )
+
+    // Explicitly stage both toml files so they're included in the release commit.
     // Nx's releaseChangelog only stages files it knows about (package.json, CHANGELOG.md),
-    // so we must stage our additional file manually.
-    execSync(`git add ${tomlRelativePath}`, { stdio: 'inherit' })
+    // so we must stage our additional files manually.
+    execSync(`git add ${agentosTomlRelativePath} ${factoryTomlRelativePath}`, { stdio: 'inherit' })
   }
 
-  // Step 3: Generate changelog, commit all staged changes (including toml), tag, and push
+  // Step 3: Generate changelog, commit all staged changes (including toml), tag, and push.
+  // releaseChangelog is NEVER shared with the workstream path — it commits, tags, and pushes,
+  // all of which are wrong on an integration branch.
   await releaseChangelog({
     dryRun,
     releaseGraph,
@@ -79,14 +99,10 @@ async function main(): Promise<void> {
     versionData: projectsVersionData,
   })
 
-  // Step 4: Publish packages — JVM projects are skipped via no-op nx-release-publish targets (published via Gradle in CI)
-  const publishResults = await releasePublish({
-    dryRun,
-    releaseGraph,
-    verbose: false,
-  })
-
-  process.exit(Object.values(publishResults).every((result) => result.code === 0) ? 0 : 1)
+  // Step 4: Publish packages — JVM projects are skipped via no-op nx-release-publish targets
+  // (published via Gradle in CI). Publishing to the 'latest' dist-tag is the standard
+  // master release behaviour; workstream builds use 'workstream-<slug>' instead.
+  await publishPackages(releaseGraph, projectsVersionData, 'latest', dryRun)
 }
 
 try {

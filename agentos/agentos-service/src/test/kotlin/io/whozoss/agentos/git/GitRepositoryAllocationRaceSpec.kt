@@ -14,7 +14,10 @@ import io.whozoss.agentos.integrationConfig.InMemoryIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy
 import io.whozoss.agentos.integrationConfig.IntegrationConfigPolicy
+import io.whozoss.agentos.integrationConfig.IntegrationConfigScopePolicy
 import io.whozoss.agentos.integrationConfig.IntegrationConfigServiceImpl
+import io.whozoss.agentos.integrationConfig.IntegrationsProperties
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -58,7 +61,14 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
                     }
                 }
             }
-            val service = IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy(), listOf(observedPolicy))
+            val service = IntegrationConfigServiceImpl(
+                InMemoryIntegrationConfigRepository(),
+                IntegrationConfigMergeStrategy(),
+                listOf(observedPolicy),
+                namespaceService = mockk(relaxed = true),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
+            )
             val associations = GitRepositoryAssociationService(service, factory)
             val allocation = GitCaseWorkspaceProvisioning(associations, bindings, mockk { every { isAvailable() } returns true }, workerOn())
             val parameters = mapper.createObjectNode()
@@ -76,7 +86,7 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
                 validated.await(5, TimeUnit.SECONDS) shouldBe true
                 val allocate = executor.submit {
                     allocationStarted.countDown()
-                    allocation.aroundCreation(case) { allocation.onCaseCreated(case) }
+                    allocation.aroundCreation(case, null) { allocation.onCaseCreated(case, null) }
                 }
                 allocationStarted.await(5, TimeUnit.SECONDS) shouldBe true
                 if (coordinated) {

@@ -11,9 +11,11 @@ import { UserStateService } from './user-state.service'
  *
  * ## Endpoint mapping
  *
- * | Method            | Backend endpoint                      |
- * |-------------------|---------------------------------------|
- * | listEffective()   | POST /api/agent-configs/search        |
+ * | Method              | Backend endpoint                           |
+ * |---------------------|--------------------------------------------|
+ * | listEffective()     | POST /api/agent-configs/search             |
+ * | listByNamespace()   | GET /api/agent-configs/by-parentId/{id}    |
+ * | listPlatform()      | GET /api/agent-configs/platform            |
  *
  * The `search` endpoint returns agents deployed and accessible to the user
  * within the given namespace — which is exactly the "effective" semantics
@@ -37,5 +39,21 @@ export class AgentStateService {
     const user = this.userState.currentUser()
     const userExternalId = user?.externalId ?? user?.email ?? ''
     return this.agentConfigController.searchAgentConfig({ namespaceId, userExternalId })
+  }
+
+  /**
+   * Every agent config of a namespace, as the admin screens list them.
+   *
+   * Unlike [listEffective], this is not filtered by deployment or by the enabled flag. That
+   * is what makes it the right set for an administration question such as "which agents
+   * reference this skill": a disabled agent still holds the reference.
+   */
+  listByNamespace(namespaceId: string): Observable<AgentConfig[]> {
+    return this.agentConfigController.listByParentAgentConfig(namespaceId)
+  }
+
+  /** Platform-level agent configs, which any namespace can deploy. */
+  listPlatform(): Observable<AgentConfig[]> {
+    return this.agentConfigController.listPlatformAgentsAgentConfig()
   }
 }

@@ -1,0 +1,1297 @@
+import { provideHttpClient } from '@angular/common/http'
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
+import { TestBed } from '@angular/core/testing'
+import { FactoryStore } from './factory.store'
+import { EVENT_SOURCE_FACTORY } from './sse.service'
+
+type Listener = (event: MessageEvent) => void
+
+/** Minimal in-memory `EventSource` double (jsdom has no implementation). */
+class FakeEventSource {
+  static instances: FakeEventSource[] = []
+
+  onopen: ((event: Event) => void) | null = null
+  onerror: ((event: Event) => void) | null = null
+  closed = false
+  private readonly listeners = new Map<string, Listener[]>()
+
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this)
+  }
+
+  addEventListener(type: string, listener: Listener): void {
+    const bucket = this.listeners.get(type) ?? []
+    bucket.push(listener)
+    this.listeners.set(type, bucket)
+  }
+
+  close(): void {
+    this.closed = true
+  }
+
+  emit(type: string, data: string): void {
+    for (const listener of this.listeners.get(type) ?? []) listener({ data } as MessageEvent)
+  }
+}
+
+const startedAt = '2026-09-30T16:00:00.000Z'
+
+const snapshot = {
+  workflowId: 'wf-1',
+  namespaceId: 'ns-1',
+  revision: 2,
+  relations: { rootWorkflowId: 'wf-1', ticket: 'ABC-1' },
+  projection: {
+    schemaVersion: '2',
+    title: 'Real workflow',
+    status: 'running',
+    steps: [
+      {
+        id: 'plan',
+        name: 'plan',
+        status: 'completed',
+        responsibility: { kind: 'agent', name: 'planner' },
+        startedAt,
+        durationMs: 30_000,
+      },
+      {
+        id: 'build',
+        name: 'build',
+        status: 'running',
+        responsibility: { kind: 'code' },
+        startedAt,
+        durationMs: 60_000,
+      },
+    ],
+  },
+}
+
+/** Build a minimal workflow snapshot with a distinct identity. */
+function snapshotFor(workflowId: string, namespaceId: string, title: string, status = 'running'): unknown {
+  return {
+    workflowId,
+    namespaceId,
+    relations: { rootWorkflowId: workflowId, ticket: `T-${workflowId}` },
+    projection: { schemaVersion: '2', title, status, steps: [] },
+  }
+}
+
+describe('FactoryStore', () => {
+  let store: FactoryStore
+  let http: HttpTestingController
+
+  beforeEach(() => {
+    FakeEventSource.instances = []
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: EVENT_SOURCE_FACTORY,
+          useValue: (url: string) => new FakeEventSource(url) as unknown as EventSource,
+        },
+      ],
+    })
+    store = TestBed.inject(FactoryStore)
+    http = TestBed.inject(HttpTestingController)
+  })
+
+  afterEach(() => http.verify({ ignoreCancelled: true }))
+
+  function flushNamespaces(items: unknown = []): void {
+    http.expectOne((r) => r.url === '/api/agentos/api/namespaces').flush({ data: items })
+  }
+
+  it('loads all accessible namespaces by default without opening multiple SSE connections', () => {
+    flushNamespaces([
+      { namespaceId: 'ns-a', name: 'Alpha' },
+      { namespaceId: 'ns-b', name: 'Beta' },
+    ])
+    const requests = http.match((r) => r.url === '/api/factory/workflows')
+    expect(requests).toHaveLength(4)
+    expect(new Set(requests.map((r) => r.request.params.get('namespaceId')))).toEqual(new Set(['ns-a', 'ns-b']))
+    requests.forEach((r) => r.flush({ data: { items: [] } }))
+    expect(store.selectedNamespaceId()).toBeNull()
+    expect(FakeEventSource.instances).toHaveLength(0)
+  })
+
+  it('cancels the previous namespace requests and ignores late responses', () => {
+    flushNamespaces([
+      { namespaceId: 'ns-a', name: 'Alpha' },
+      { namespaceId: 'ns-b', name: 'Beta' },
+    ])
+    http.match((r) => r.url === '/api/factory/workflows').forEach((r) => r.flush({ data: { items: [] } }))
+    store.selectNamespace('ns-a')
+    const stale = http.match((r) => r.url === '/api/factory/workflows' && r.params.get('namespaceId') === 'ns-a')
+    expect(stale).toHaveLength(2)
+
+    store.selectNamespace('ns-b')
+    expect(stale.every((request) => request.cancelled)).toBe(true)
+    expect(FakeEventSource.instances[0]?.closed).toBe(true)
+    expect(FakeEventSource.instances[1]?.url).toContain('namespaceId=ns-b')
+
+    const current = http.match((r) => r.url === '/api/factory/workflows' && r.params.get('namespaceId') === 'ns-b')
+    current.find((r) => r.request.params.get('state') === 'active')?.flush({ data: { items: [] } })
+    current.find((r) => r.request.params.get('state') === 'removed')?.flush({ data: { items: [] } })
+    expect(store.selectedNamespaceId()).toBe('ns-b')
+    expect(store.runs()).toEqual([])
+  })
+
+  it('distinguishes an empty mapped workstream from the documented missing-mapping error', () => {
+    store.selectNamespace('ns-a')
+    flushNamespaces([{ namespaceId: 'ns-a', name: 'Alpha' }])
+    const requests = http.match((r) => r.url === '/api/factory/workflows' && !r.params.has('unused'))
+    requests.find((r) => r.request.params.get('state') === 'active')?.flush({ data: { items: [] } })
+    requests.find((r) => r.request.params.get('state') === 'removed')?.flush({ data: { items: [] } })
+    expect(store.workstreamMappingMissing()).toBe(false)
+
+    store.selectNamespace(null)
+    store.selectNamespace('ns-a')
+    const missing = http.match((r) => r.url === '/api/factory/workflows').filter((r) => !r.cancelled)
+    missing[0]?.flush(
+      { error: { code: 'WORKFLOW_NOT_FOUND', message: 'No workstream is mapped to the requested namespace.' } },
+      { status: 404, statusText: 'Not Found' }
+    )
+    expect(store.workstreamMappingMissing()).toBe(true)
+    expect(FakeEventSource.instances.at(-1)?.closed).toBe(true)
+    for (const request of missing.slice(1)) if (!request.cancelled) request.flush({ data: { items: [] } })
+  })
+
+  function flushInitialWorkflows(items: unknown[] = [], removed: unknown[] = [], namespaces: unknown = []): void {
+    const pendingNamespaces = http.match((r) => r.url === '/api/agentos/api/namespaces')
+    const firstNamespace = items
+      .map((item) => (item as { namespaceId?: string } | null)?.namespaceId)
+      .find((value): value is string => typeof value === 'string' && value.length > 0)
+    if (!store.selectedNamespaceId()) store.selectNamespace(firstNamespace ?? 'ns-1')
+    for (const request of pendingNamespaces) request.flush({ data: namespaces })
+    const activeRequest = http.expectOne(
+      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active'
+    )
+    const removedRequest = http.expectOne(
+      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed'
+    )
+    activeRequest.flush({ data: { namespaceId: store.selectedNamespaceId(), state: 'active', items } })
+    removedRequest.flush({ data: { namespaceId: store.selectedNamespaceId(), state: 'removed', items: removed } })
+  }
+
+  function ensureNamespaceSelected(namespaceId = 'ns-1'): void {
+    const pendingNamespaces = http.match((r) => r.url === '/api/agentos/api/namespaces')
+    if (!store.selectedNamespaceId()) store.selectNamespace(namespaceId)
+    for (const request of pendingNamespaces) request.flush({ data: [{ namespaceId, name: namespaceId }] })
+  }
+
+  function flushEnrichment(
+    metrics: unknown = { workflowId: 'wf-1' },
+    interactions: unknown = { workflowId: 'wf-1', items: [] },
+    attempts: unknown = { workflowId: 'wf-1', data: [] },
+    actions: unknown = { allowedActions: [], blockers: [] }
+  ): void {
+    store.selectSession('wf-1')
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: metrics })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: interactions })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush(attempts as unknown as any)
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: actions })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+  }
+
+  /** Flush the 7 enrichment requests issued for an arbitrary active run. */
+  function flushRunEnrichment(wfId: string, select = true): void {
+    ensureNamespaceSelected()
+    if (select) store.selectSession(wfId)
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/evidence`)).flush({ data: { workflowId: wfId, items: [] } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/metrics`)).flush({ data: { workflowId: wfId } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/interactions`)).flush({ data: { workflowId: wfId, items: [] } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/attempts`)).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/actions`)).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/agent-questions`)).flush({ data: [] })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Derivation from the real active workflows
+  // ---------------------------------------------------------------------------
+
+  it('starts with no runs before any real workflow is loaded', () => {
+    flushInitialWorkflows()
+
+    expect(store.runs()).toEqual([])
+    expect(store.activeRuns()).toEqual([])
+    expect(store.workstreams()).toEqual([])
+    expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
+  })
+
+  it('loads bounded enrichment for every visible run so cards and detail share truth', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-1', 'Second')])
+
+    expect(store.runs()).toHaveLength(2)
+    flushRunEnrichment('wf-1', false)
+    flushRunEnrichment('wf-2', false)
+  })
+
+  it('reconstructs the same enriched card state after a fresh store reload', () => {
+    flushInitialWorkflows([snapshot])
+    flushRunEnrichment('wf-1', false)
+    const first = store.runs()[0]?.run
+
+    // Simulate authoritative reload through the public refresh path.
+    store.refresh()
+    flushInitialWorkflows([snapshot])
+    flushRunEnrichment('wf-1', false)
+    const reloaded = store.runs()[0]?.run
+
+    expect(reloaded?.status).toBe(first?.status)
+    expect(reloaded?.phases.map((phase) => phase.status)).toEqual(first?.phases.map((phase) => phase.status))
+    expect(reloaded?.costUsd).toBe(first?.costUsd)
+  })
+
+  it('does not duplicate fetches when selecting a run; other runs only get their bounded overview enrichment', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-1', 'Second')])
+
+    // Selecting wf-1 adopts its in-flight overview enrichment: expectOne inside
+    // flushEnrichment proves a single set of requests, and nothing else follows.
+    flushEnrichment()
+    http.expectNone((request) => request.url.includes('/wf-1/'))
+
+    // wf-2 only owns its single overview enrichment; selecting wf-1 added nothing.
+    flushRunEnrichment('wf-2', false)
+    http.expectNone((request) => request.url.includes('/wf-2/'))
+
+    expect(store.session('wf-1')?.id).toBe('wf-1')
+  })
+
+  it('coalesces overview enrichment bursts per workflow with one trailing refresh', () => {
+    flushInitialWorkflows([snapshot])
+    const first = http.match((request) => request.url.includes('/wf-1/'))
+    const source = FakeEventSource.instances[0]
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 3 }))
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 4 }))
+    // While the first enrichment is in flight the burst must NOT start a duplicate.
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
+    first.forEach((request) => request.flush({ data: [] }))
+    // Once it completes, the whole burst collapses into exactly ONE trailing refresh.
+    const trailing = http.match((request) => request.url.includes('/wf-1/'))
+    expect(trailing.filter((request) => request.request.url.endsWith('/evidence'))).toHaveLength(1)
+    trailing.forEach((request) => request.flush({ data: [] }))
+
+    // Drain the overview reloads the burst triggered (one in flight + one trailing).
+    flushInitialWorkflows([snapshot])
+    flushInitialWorkflows([snapshot])
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
+  })
+
+  it('coalesces same-run SSE bursts without cancelling the active detail and runs one trailing refresh', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    const firstRequests = http.match((request) => request.url.includes('/wf-1/'))
+    const firstEvidence = firstRequests.find((request) => request.request.url.endsWith('/evidence'))
+    const source = FakeEventSource.instances[0]
+
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 3 }))
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 4 }))
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 5 }))
+
+    // The burst must neither cancel the active detail nor start a duplicate while it is in flight.
+    expect(firstEvidence?.cancelled).toBe(false)
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
+    firstRequests.forEach((request) => request.flush({ data: [] }))
+
+    const trailingRequests = http.match((request) => request.url.includes('/wf-1/'))
+    expect(trailingRequests.filter((request) => request.request.url.endsWith('/evidence'))).toHaveLength(1)
+    trailingRequests.forEach((request) => request.flush({ data: [] }))
+
+    flushInitialWorkflows([snapshot])
+    flushInitialWorkflows([snapshot])
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
+  })
+
+  it('cancels A detail when switching to B and prevents late A overwrite', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-1', 'Second')])
+
+    store.selectSession('wf-1')
+    const oldEvidence = http.expectOne((request) => request.url.endsWith('/wf-1/evidence'))
+    store.selectSession('wf-2')
+
+    expect(oldEvidence.cancelled).toBe(true)
+    // Every other wf-1 request is cancelled too (drained: verify() counts cancelled-but-unflushed ones).
+    const oldRequests = http.match((request) => request.url.includes('/wf-1/'))
+    expect(oldRequests.length).toBeGreaterThan(0)
+    expect(oldRequests.every((request) => request.cancelled)).toBe(true)
+    http.expectOne((r) => r.url.endsWith('/wf-2/timing')).flush({ data: { workflowId: 'wf-2', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/evidence')).flush({ data: { workflowId: 'wf-2', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/metrics')).flush({ data: { workflowId: 'wf-2' } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-2/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/agent-questions')).flush({ data: [] })
+    expect(store.session('wf-2')?.id).toBe('wf-2')
+  })
+
+  it('cancels selected detail requests when leaving the session', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    const requests = http.match((request) => request.url.includes('/wf-1/'))
+    const evidence = requests.find((request) => request.request.url.endsWith('/evidence'))
+
+    store.clearSessionSelection('wf-1')
+
+    expect(evidence?.cancelled).toBe(true)
+    expect(requests.every((request) => request.cancelled)).toBe(true)
+  })
+
+  it('updates the affected card from enriched SSE state without corrupting another run', () => {
+    const second = snapshotFor('wf-2', 'ns-1', 'Second')
+    flushInitialWorkflows([snapshot, second])
+    flushRunEnrichment('wf-1', false)
+    flushRunEnrichment('wf-2', false)
+
+    FakeEventSource.instances[0]?.emit(
+      'workflow-projection-updated',
+      JSON.stringify({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    )
+    const failed = {
+      ...snapshot,
+      projection: {
+        ...snapshot.projection,
+        status: 'failed',
+        steps: [
+          { ...snapshot.projection.steps[0], status: 'completed' },
+          { ...snapshot.projection.steps[1], status: 'failed' },
+          { id: 'deploy', status: 'pending', responsibility: { kind: 'code' } },
+        ],
+      },
+    }
+    flushInitialWorkflows([failed, second])
+    flushRunEnrichment('wf-1', false)
+
+    expect(store.runs().find((run) => run.id === 'wf-1')?.run?.cardState).toBe('failed')
+    expect(
+      store
+        .runs()
+        .find((run) => run.id === 'wf-1')
+        ?.run?.phases.map((phase) => phase.status)
+    ).toEqual(['done', 'failed', 'pending'])
+    expect(store.runs().find((run) => run.id === 'wf-2')?.title).toBe('Second')
+  })
+
+  it('does not refresh selected detail for an unrelated targeted SSE event', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+    flushEnrichment()
+
+    FakeEventSource.instances[0]?.emit(
+      'workflow-projection-updated',
+      JSON.stringify({ workflowId: 'wf-2', namespaceId: 'other-ns' })
+    )
+
+    http.expectNone((request) => request.url === '/api/factory/workflows')
+    http.expectNone((request) => request.url.includes('/wf-1/'))
+  })
+
+  it('derives one FactoryRun per active workflow, from the real snapshot fields', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    expect(store.runs()).toHaveLength(1)
+    const [run] = store.runs()
+    if (!run) throw new Error('expected one derived run')
+
+    expect(run.id).toBe('wf-1')
+    expect(run.title).toBe('Real workflow')
+    expect(run.project).toBe('ns-1')
+    expect(run.namespaceId).toBe('ns-1')
+    expect(run.ticket).toBe('ABC-1')
+    expect(run.branch).toBe('ABC-1')
+    expect(run.status).toBe('working')
+    expect(run.run?.id).toBe('wf-1')
+    expect(run.run?.workflow).toBe('Real workflow')
+    expect(run.run?.status).toBe('running')
+  })
+
+  it('maps the top-level createdAt from the snapshot to run.createdAt', () => {
+    const withCreatedAt = { ...snapshot, createdAt: '2026-09-30T16:00:00.000Z' }
+    flushInitialWorkflows([withCreatedAt])
+    flushEnrichment()
+
+    expect(store.runs()[0]?.createdAt).toBe('2026-09-30T16:00:00.000Z')
+  })
+
+  it('leaves run.createdAt absent when the snapshot has no createdAt field', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    expect(store.runs()[0]?.createdAt).toBeUndefined()
+  })
+
+  it('drops an unparseable createdAt value silently', () => {
+    const withBadDate = { ...snapshot, createdAt: 'not-a-date' }
+    flushInitialWorkflows([withBadDate])
+    flushEnrichment()
+
+    expect(store.runs()[0]?.createdAt).toBeUndefined()
+  })
+
+  it('sorts visibleRuns by createdAt descending, unknowns last', () => {
+    const older = {
+      ...snapshot,
+      workflowId: 'wf-older',
+      createdAt: '2026-09-01T10:00:00.000Z',
+      projection: { ...snapshot.projection, title: 'Older workflow', workflowId: 'wf-older' },
+    }
+    const newer = {
+      ...snapshot,
+      workflowId: 'wf-newer',
+      createdAt: '2026-09-30T16:00:00.000Z',
+      projection: { ...snapshot.projection, title: 'Newer workflow', workflowId: 'wf-newer' },
+    }
+    const noDate = {
+      ...snapshot,
+      workflowId: 'wf-nodate',
+      projection: { ...snapshot.projection, title: 'No date workflow', workflowId: 'wf-nodate' },
+    }
+    flushInitialWorkflows([older, newer, noDate])
+
+    const titles = store.visibleRuns().map((run) => run.title)
+    expect(titles).toEqual(['Newer workflow', 'Older workflow', 'No date workflow'])
+
+    // Drain the bounded overview enrichment started for each visible run.
+    for (const id of ['wf-older', 'wf-newer', 'wf-nodate']) flushRunEnrichment(id, false)
+  })
+
+  it('maps an idle/pending workflow state onto an idle run', () => {
+    // A genuinely pending workflow: no step has started. A running step would, rightly,
+    // make the enriched card 'working' (cards share the detail's derived truth).
+    const idle = {
+      ...snapshot,
+      projection: {
+        ...snapshot.projection,
+        status: 'pending',
+        steps: snapshot.projection.steps.map((step) => ({
+          id: step.id,
+          name: step.name,
+          status: 'pending',
+          responsibility: step.responsibility,
+        })),
+      },
+    }
+    flushInitialWorkflows([idle])
+    flushEnrichment()
+
+    expect(store.runs()[0]?.status).toBe('idle')
+  })
+
+  it('keeps the active and visible lists consistent and toggles with showDestroyed', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    expect(store.visibleRuns()).toHaveLength(store.activeRuns().length)
+    expect(store.visibleRuns()[0]?.title).toBe(store.activeRuns()[0]?.title)
+    expect(store.destroyedRuns()).toEqual([])
+
+    store.showDestroyed.set(true)
+    expect(store.visibleRuns()).toHaveLength(store.runs().length)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Workstreams grouping (namespaceId)
+  // ---------------------------------------------------------------------------
+
+  it('groups runs into workstreams strictly by namespaceId', () => {
+    flushInitialWorkflows(
+      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-a', 'Run B')],
+      [],
+      [
+        { namespaceId: 'ns-a', name: 'Alpha' },
+        { namespaceId: 'ns-b', name: 'Beta' },
+      ]
+    )
+    flushRunEnrichment('wf-a')
+    flushRunEnrichment('wf-b')
+
+    const workstreams = store.workstreams()
+    expect(workstreams.map((ws) => ws.namespaceId)).toEqual(['ns-a'])
+    expect(workstreams[0]?.title).toBe('Alpha')
+    expect(workstreams[0]?.runs.map((r) => r.id)).toEqual(['wf-a', 'wf-b'])
+  })
+
+  it('keeps homonym namespace titles in distinct workstreams (never grouped by title)', () => {
+    flushInitialWorkflows(
+      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-a', 'Run B')],
+      [],
+      [
+        { namespaceId: 'ns-a', name: 'Same name' },
+        { namespaceId: 'ns-b', name: 'Same name' },
+      ]
+    )
+    flushRunEnrichment('wf-a')
+    flushRunEnrichment('wf-b')
+
+    const workstreams = store.workstreams()
+    expect(workstreams).toHaveLength(1)
+    expect(workstreams[0]?.title).toBe('Same name')
+    expect(workstreams[0]?.namespaceId).toBe('ns-a')
+  })
+
+  it('does not enrich a malformed run without a namespaceId', () => {
+    const orphan = {
+      workflowId: 'wf-orphan',
+      relations: { rootWorkflowId: 'wf-orphan', ticket: 'T-orphan' },
+      projection: { schemaVersion: '2', title: 'Orphan run', status: 'running', steps: [] },
+    }
+    flushInitialWorkflows([orphan])
+    http.expectNone((request) => request.url.includes('/wf-orphan/'))
+
+    const [workstream] = store.workstreams()
+    expect(workstream?.namespaceId).toBe('unassigned')
+    expect(workstream?.title).toBe('Sans namespace')
+    expect(workstream?.runs.map((run) => run.id)).toEqual(['wf-orphan'])
+    expect(workstream?.runs[0]?.namespaceId).toBeUndefined()
+  })
+
+  it('falls back to the namespace id as title when the catalogue is empty', () => {
+    flushInitialWorkflows([snapshotFor('wf-a', 'ns-unknown', 'Run A')])
+    flushRunEnrichment('wf-a')
+
+    expect(store.workstreams()[0]?.title).toBe('ns-unknown')
+  })
+
+  it('scopes a deep-linked workflow detail GET with the route namespace', () => {
+    store.selectNamespace('ns-deep')
+    store.selectSession('wf-deep', 'ns-deep')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-deep')
+    expect(request.request.params.get('namespaceId')).toBe('ns-deep')
+    expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-deep')
+    request.flush({ data: snapshotFor('wf-deep', 'ns-deep', 'Deep link') })
+    flushRunEnrichment('wf-deep', false)
+    flushInitialWorkflows([])
+  })
+
+  it('never issues an unscoped workflow detail GET for a legacy session URL', () => {
+    store.selectSession('wf-legacy')
+    http.expectNone((r) => r.url === '/api/factory/workflows/wf-legacy')
+    flushInitialWorkflows([])
+    http.expectNone((r) => r.url === '/api/factory/workflows/wf-legacy')
+  })
+
+  it('does not issue workflow requests when namespace discovery fails', () => {
+    http
+      .expectOne((r) => r.url === '/api/agentos/api/namespaces')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectNone((r) => r.url === '/api/factory/workflows')
+    expect(store.runs()).toEqual([])
+    expect(store.namespaceOptionsError()?.code).toBe('BOOM')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Real cost aggregation
+  // ---------------------------------------------------------------------------
+
+  it('maps blockers and real metrics into the same card summary as detail', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { realCost: { cost: 2.5, unknownCostCount: 0, liveTokens: 321 } },
+      { items: [] },
+      { data: [] },
+      { allowedActions: [], blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'blocked' }] }
+    )
+    const summary = store.runs()[0]?.run
+    expect(summary?.cardState).toBe('blocked')
+    expect(summary?.costUsd).toBe(2.5)
+    expect(summary?.tokens).toBe(321)
+  })
+
+  it('aggregates the real workflow costs and uncertainty into CostSummary', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: {
+        cost: 1.5,
+        unknownCostCount: 2,
+        liveTokens: 150,
+        paused: false,
+        active: true,
+        runCostThreshold: null,
+      },
+    })
+
+    const costs = store.costs()
+    expect(costs.active).toBe(1)
+    expect(costs.workflowsUsd).toBeCloseTo(1.5, 6)
+    expect(costs.totalUsd).toBeCloseTo(1.5, 6)
+    expect(costs.unknownCostCount).toBe(2)
+    expect(costs.archayUsd).toBeUndefined()
+    expect(costs.destroyedUsd).toBeUndefined()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Session detail + governed actions (preserved surface)
+  // ---------------------------------------------------------------------------
+
+  it('exposes a real session detail for a loaded workflow', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.workflow).toBe('Real workflow')
+    expect(session?.status).toBe('running')
+  })
+
+  it('enriches the session and its run cost with the real cost from metrics', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: {
+        cost: 1.0723,
+        unknownCostCount: 0,
+        liveTokens: 150,
+        paused: false,
+        active: true,
+        runCostThreshold: null,
+      },
+    })
+
+    expect(store.session('wf-1')?.costUsd).toBe(1.0723)
+    expect(store.activeRuns()[0]?.costUsd).toBe(1.0723)
+    expect(store.activeRuns()[0]?.run?.costUsd).toBe(1.0723)
+    expect(store.activeRuns()[0]?.run?.unknownCostCount).toBe(0)
+    expect(store.costs().workflowsUsd).toBeCloseTo(1.0723, 6)
+  })
+
+  it('propagates a partially unknown workflow cost into the summary', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: { cost: 0.5, unknownCostCount: 3, liveTokens: 0, paused: false, active: true, runCostThreshold: null },
+    })
+
+    expect(store.session('wf-1')?.unknownCostCount).toBe(3)
+    expect(store.activeRuns()[0]?.run?.unknownCostCount).toBe(3)
+    expect(store.costs().unknownCostCount).toBe(3)
+    expect(store.costs().totalUsd).toBeCloseTo(0.5, 6)
+  })
+
+  it('enriches the session with read-only human interactions', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      {
+        workflowId: 'wf-1',
+        items: [
+          {
+            interactionId: 'i-1',
+            stepId: 'build',
+            interactionType: 'approval',
+            status: 'waiting',
+            payload: { prompt: 'Approve the deploy?' },
+          },
+        ],
+      }
+    )
+
+    const session = store.session('wf-1')
+    expect(session?.interactions).toHaveLength(1)
+    expect(session?.phase.sections.find((section) => section.label === 'Gates')?.count).toBe(1)
+    expect(session?.events.some((event) => event.text.includes('Approve the deploy?'))).toBe(true)
+  })
+
+  it('degrades gracefully when the interactions fetch fails', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/interactions'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.interactions).toEqual([])
+    expect(session?.workflow).toBe('Real workflow')
+  })
+
+  it('enriches the session with real agent attempts and the dynamic attempt string', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      {
+        workflowId: 'wf-1',
+        data: [
+          {
+            attemptId: 'a-1',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'builder',
+            status: 'failed',
+            caseId: 'case-1',
+            failureCode: 'TEST_FAILED',
+          },
+          {
+            attemptId: 'a-2',
+            stepId: 'build',
+            attemptNumber: 2,
+            agentName: 'builder',
+            status: 'running',
+            caseId: 'case-2',
+          },
+        ],
+      }
+    )
+
+    const session = store.session('wf-1')
+    expect(session?.attempts).toHaveLength(2)
+    expect(session?.phase.attempt).toBe('2/2')
+    expect(session?.phase.currentAttemptNumber).toBe(2)
+    expect(session?.phase.totalAttempts).toBe(2)
+    expect(session?.phase.attemptStatus).toBe('running')
+  })
+
+  it('degrades gracefully when the attempts fetch fails', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/attempts'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.attempts).toEqual([])
+    expect(session?.phase.attempt).toBe('1/1')
+    expect(session?.workflow).toBe('Real workflow')
+  })
+
+  // ---------------------------------------------------------------------------
+  // SSE invalidation + graceful degradation
+  // ---------------------------------------------------------------------------
+
+  it('refetches the real active workflows on an SSE invalidation', () => {
+    flushInitialWorkflows([])
+    expect(store.runs()).toEqual([])
+
+    const source = FakeEventSource.instances[0]
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
+
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    expect(store.runs()).toHaveLength(1)
+    expect(store.runs()[0]?.id).toBe('wf-1')
+  })
+
+  it('preserves enrichment for surviving workflows across SSE refreshes (stable selection)', () => {
+    // First load: wf-1 gets enriched with attempts
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      {
+        workflowId: 'wf-1',
+        data: [
+          {
+            attemptId: 'a-1',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'builder',
+            status: 'running',
+            caseId: 'case-1',
+          },
+        ],
+      }
+    )
+    expect(store.session('wf-1')?.phase.caseId).toBe('case-1')
+
+    // SSE invalidation triggers a reload
+    const source = FakeEventSource.instances[0]
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
+
+    // The reload returns the same workflow (wf-1 survived)
+    // Enrichment requests are fired again, but BEFORE they complete the session
+    // must still carry the previously enriched data (not wiped to projection-only).
+    const activeReq = http.expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
+    const removedReq = http.expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
+    activeReq.flush({ data: { namespaceId: 'ns-1', state: 'active', items: [snapshot] } })
+    removedReq.flush({ data: { namespaceId: 'ns-1', state: 'removed', items: [] } })
+
+    // Immediately after the reload (before new enrichment arrives), the session
+    // must still reflect the previous enrichment (caseId from attempt preserved).
+    expect(store.session('wf-1')?.phase.caseId).toBe('case-1')
+
+    // Complete the new enrichment requests without starting another cycle.
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+  })
+
+  it('purges enrichment for workflows that disappear from the snapshot set', () => {
+    // Load two workflows
+    const snap2 = snapshotFor('wf-2', 'ns-1', 'Second workflow')
+    flushInitialWorkflows([snapshot, snap2])
+    flushEnrichment()
+    store.clearSessionSelection('wf-1')
+
+    expect(store.runs()).toHaveLength(2)
+
+    // SSE reload: wf-2 has been removed (disappears from active AND removed)
+    const source = FakeEventSource.instances[0]
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
+
+    flushInitialWorkflows([snapshot]) // only wf-1 survives
+
+    expect(store.runs()).toHaveLength(1)
+    expect(store.runs()[0]?.id).toBe('wf-1')
+    expect(store.session('wf-2')).toBeUndefined()
+
+    // The vanished run's in-flight enrichment (from the initial load) is aborted,
+    // so a late response can never resurrect it.
+    const abandoned = http.match((request) => request.url.includes('/wf-2/'))
+    expect(abandoned).toHaveLength(7)
+    expect(abandoned.every((request) => request.cancelled)).toBe(true)
+
+    // The survivor owns exactly one trailing refresh, queued by the SSE event.
+    flushRunEnrichment('wf-1', false)
+  })
+
+  it('degrades to an empty list (never the mock fleet) when the REST backend fails', () => {
+    flushNamespaces([{ namespaceId: 'ns-1', name: 'Namespace' }])
+    store.selectNamespace('ns-1')
+    const pending = http.match((r) => r.url === '/api/factory/workflows').filter((r) => !r.cancelled)
+    const active = pending.find((r) => r.request.params.get('state') === 'active')!
+    const removed = pending.find((r) => r.request.params.get('state') === 'removed')!
+    active.flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
+    expect(removed.cancelled).toBe(true)
+
+    expect(store.runs()).toEqual([])
+    expect(store.activeRuns()).toEqual([])
+    expect(store.workstreams()).toEqual([])
+    expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
+    expect(store.session('872641a8')?.id).toBe('872641a8')
+  })
+
+  it('does not fabricate a demo session for an unknown real run id', () => {
+    flushInitialWorkflows()
+    expect(store.session('unknown-run')).toBeUndefined()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Governed actions & blockers
+  // ---------------------------------------------------------------------------
+
+  it('preserves agent questions when later enrichment responses merge', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/agent-questions'))
+      .flush({
+        data: [
+          {
+            questionEventId: 'q-1',
+            caseId: 'case-1',
+            attemptId: 'a-1',
+            stepId: 'build',
+            question: 'Choose',
+            questionType: 'SINGLE_CHOICE',
+            options: ['A', 'B'],
+            answered: false,
+          },
+        ],
+      })
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+
+    expect(store.session('wf-1')?.agentQuestions?.map((question) => question.questionEventId)).toEqual(['q-1'])
+  })
+
+  it('keeps Case metadata when question projection is unavailable', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: {} })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/agent-questions'))
+      .flush(
+        {
+          error: {
+            code: 'AGENT_QUESTIONS_UNAVAILABLE',
+            message: 'AgentOS unavailable',
+            details: { caseId: 'case-9', namespaceId: 'ns-1', workflowId: 'wf-1', stepId: 'build' },
+          },
+        },
+        { status: 503, statusText: 'Unavailable' }
+      )
+
+    expect(store.session('wf-1')?.agentQuestionsError).toEqual(
+      expect.objectContaining({ code: 'AGENT_QUESTIONS_UNAVAILABLE', caseId: 'case-9', namespaceId: 'ns-1' })
+    )
+  })
+
+  it('enriches the session with backend allowedActions and blockers', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      { workflowId: 'wf-1', data: [] },
+      {
+        allowedActions: [
+          { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relaunch' },
+          { type: 'stop_cost', expectedRevision: 7 },
+        ],
+        blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Step build blocked' }],
+      }
+    )
+
+    const session = store.session('wf-1')
+    expect(session?.allowedActions).toEqual([
+      { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relaunch' },
+      { type: 'stop_cost', expectedRevision: 7 },
+    ])
+    expect(session?.blockers).toEqual([
+      { code: 'STEP_BLOCKED', stepId: 'build', label: 'Step build blocked', message: 'Step build blocked' },
+    ])
+  })
+
+  it('degrades gracefully when the actions fetch fails', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/actions'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.allowedActions).toEqual([])
+    expect(session?.blockers).toEqual([])
+    expect(session?.workflow).toBe('Real workflow')
+  })
+
+  it('replyInteraction posts the reply, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.replyInteraction('wf-1', 'i-1', { actionId: 'approve', text: 'ok', expectedRevision: 3 })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions/i-1/reply')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ actionId: 'approve', text: 'ok', expectedRevision: 3, namespaceId: 'ns-1' })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { ok: true } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('retry opens a retry, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/retries')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({
+      stepId: 'build',
+      expectedRevision: 7,
+      reasonCode: 'human_retry',
+      namespaceId: 'ns-1',
+    })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { ok: true } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('resumes research with a stable key after an ambiguous transport failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    const payload = { stepId: 'build', expectedRevision: 7, additionalContext: 'VPN access granted' }
+    store.resumeResearch('wf-1', payload)
+    const first = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/research-resumptions'))
+    const idempotencyKey = first.request.headers.get('Idempotency-Key')
+    expect(idempotencyKey).toBeTruthy()
+    expect(first.request.body).toEqual({
+      namespaceId: 'ns-1',
+      expectedRevision: 7,
+      additionalContext: 'VPN access granted',
+    })
+    first.error(new ProgressEvent('error'))
+
+    store.resumeResearch('wf-1', payload)
+    const replay = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/research-resumptions'))
+    expect(replay.request.headers.get('Idempotency-Key')).toBe(idempotencyKey)
+    replay.flush({
+      data: {
+        workflowId: 'wf-1',
+        stepId: 'build',
+        attemptId: 'a-2',
+        revision: 8,
+        idempotent: true,
+        submissionId: 'sub-1',
+        queued: true,
+      },
+    })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('prevents double submit and refetches after a revision conflict', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    const payload = { stepId: 'build', expectedRevision: 7, additionalContext: 'Credentials added' }
+    store.resumeResearch('wf-1', payload)
+    store.resumeResearch('wf-1', payload)
+    const requests = http.match((r) => r.url.endsWith('/wf-1/steps/build/research-resumptions'))
+    expect(requests).toHaveLength(1)
+    requests[0]!.flush(
+      { error: { code: 'WORKFLOW_REVISION_CONFLICT', message: 'Revision changed' } },
+      { status: 409, statusText: 'Conflict' }
+    )
+
+    expect(store.researchResumptionFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'conflict' }))
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('cancelAttempt cancels an attempt, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.cancelAttempt('wf-1', 'a-2', { expectedRevision: 4, reason: 'operator' })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-2/cancel')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator', namespaceId: 'ns-1' })
+    request.flush({ data: { ok: true } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('continueCost relays a threshold, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.continueCost('wf-1', { expectedThreshold: 12 })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/cost/continue')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ expectedThreshold: 12 })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { ok: true } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('stopCost relays a stop, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.stopCost('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/cost/stop')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({})
+    request.flush({ data: { ok: true } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  // ---------------------------------------------------------------------------
+  // Removed workflows → destroyed runs
+  // ---------------------------------------------------------------------------
+
+  it('merges active and removed workflows, mapping removed ones to destroyed runs', () => {
+    const removed = {
+      ...snapshot,
+      workflowId: 'wf-removed',
+      relations: { rootWorkflowId: 'wf-removed', ticket: 'ABC-9' },
+      projection: { ...snapshot.projection, title: 'Removed workflow', status: 'removed' },
+    }
+    flushInitialWorkflows([snapshot], [removed])
+    flushEnrichment()
+
+    expect(store.runs()).toHaveLength(2)
+    expect(store.activeRuns()).toHaveLength(1)
+    expect(store.destroyedRuns()).toHaveLength(1)
+    const [destroyed] = store.destroyedRuns()
+    expect(destroyed?.title).toBe('Removed workflow')
+    expect(destroyed?.status).toBe('destroyed')
+    expect(store.visibleRuns()).toHaveLength(store.activeRuns().length)
+    store.showDestroyed.set(true)
+    expect(store.visibleRuns()).toHaveLength(2)
+  })
+
+  it('clears the scoped overview when one list fetch fails', () => {
+    flushNamespaces([{ namespaceId: 'ns-1', name: 'Namespace' }])
+    store.selectNamespace('ns-1')
+    const current = http.match((r) => r.url === '/api/factory/workflows').filter((r) => !r.cancelled)
+    current
+      .find((r) => r.request.params.get('state') === 'active')!
+      .flush({ data: { namespaceId: '', state: 'active', items: [snapshot] } })
+    current
+      .find((r) => r.request.params.get('state') === 'removed')!
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    expect(store.activeRuns()).toEqual([])
+    expect(store.overviewError()?.code).toBe('BOOM')
+  })
+
+  // ---------------------------------------------------------------------------
+  // stop / remove / restore governed actions
+  // ---------------------------------------------------------------------------
+
+  it('stop cancels the active attempt resolved from the cancel_attempt allowed action', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      { workflowId: 'wf-1', data: [] },
+      { allowedActions: [{ type: 'cancel_attempt', attemptId: 'a-1', expectedRevision: 5 }], blockers: [] }
+    )
+
+    store.stop('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-1/cancel')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ expectedRevision: 5, reason: 'stop', namespaceId: 'ns-1' })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { ok: true } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('stop resolves the attempt and revision from a real running attempt', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      {
+        workflowId: 'wf-1',
+        data: [
+          {
+            attemptId: 'a-9',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'builder',
+            status: 'running',
+            caseId: 'case-9',
+            revision: 3,
+          },
+        ],
+      },
+      { allowedActions: [], blockers: [] }
+    )
+
+    store.stop('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-9/cancel')
+    expect(request.request.body).toEqual({ expectedRevision: 3, reason: 'stop', namespaceId: 'ns-1' })
+    request.flush({ data: { ok: true } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('stop does nothing (never fabricates) when no active attempt is resolvable', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.stop('wf-1')
+
+    http.expectNone((r) => r.url.includes('/cancel'))
+    http.expectNone((r) => r.url === '/api/factory/workflows')
+  })
+
+  it('remove deletes the workflow, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.remove('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1')
+    expect(request.request.method).toBe('DELETE')
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { status: 'removed' } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('remove degrades silently on failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.remove('wf-1')
+
+    http
+      .expectOne((r) => r.url === '/api/factory/workflows/wf-1')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    http.expectNone((r) => r.url === '/api/factory/workflows')
+  })
+
+  it('restore posts to /restore, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.restore('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/restore')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({})
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { status: 'active' } })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('restore degrades silently on failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.restore('wf-1')
+
+    http
+      .expectOne((r) => r.url === '/api/factory/workflows/wf-1/restore')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    http.expectNone((r) => r.url === '/api/factory/workflows')
+  })
+})

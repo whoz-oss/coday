@@ -68,6 +68,15 @@ interface CaseApi : EntityCrudApi<CaseDto> {
     fun killCase(caseId: UUID)
 
     @Operation(
+        summary = "Reopen a case",
+        description =
+            "POST /api/cases/{caseId}/reopen — reopen a terminated case by transitioning it back to IDLE. " +
+                "Only cases in a terminal status (KILLED or ERROR) can be reopened. " +
+                "Returns the updated Case DTO.",
+    )
+    fun reopenCase(caseId: UUID): CaseDto
+
+    @Operation(
         summary = "Mark case as read",
         description =
             "POST /api/cases/{caseId}/read — record that the current user has read this case. " +
@@ -100,4 +109,18 @@ interface CaseApi : EntityCrudApi<CaseDto> {
                 "Requires a direct user↔case relation, otherwise the call is rejected.",
     )
     fun unstarCase(id: UUID)
+
+    @Operation(
+        summary = "Set the reasoning effort of a case",
+        description =
+            "PUT /api/cases/{id}/reasoning-effort — set the case-level override of the reasoning effort " +
+                "of the agents running in the case, or remove it with a null value so each agent uses the " +
+                "effort of its model again. Read at the start of each agent run. Replaces the model effort " +
+                "of every agent; not sent to Anthropic and Gemini providers, whose agent messages show " +
+                "it as not applied. Returns the updated Case DTO.",
+    )
+    fun setReasoningEffort(
+        id: UUID,
+        request: CaseReasoningEffortRequest,
+    ): CaseDto
 }

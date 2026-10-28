@@ -7,15 +7,16 @@ import io.whozoss.agentos.sdk.credential.CredentialType
 import java.util.Base64
 
 /**
- * How one run authenticates its calls, resolved once from the credential of the bound Auth Setting.
+ * How one run authenticates its calls, resolved from the credential of the bound Auth Setting by the first
+ * call that needs it ([RunAuth]).
  *
  * The service injects a credential provider only when the integration config names an `authSettingName`
  * and it can build one for the run (a user identity, a credential for that user). When it cannot, the
  * plugin receives no provider and cannot tell that apart from an unbound config: the spec is [None], the
  * same tools are listed and calls are sent unauthenticated, typically ending in `UNAUTHORIZED`. An
  * authenticated config therefore needs a run with a user identity. Only a provider that is present but
- * yields nothing usable is [Missing]: the tools are still listed but every call fails fast without a
- * request. `toString` of every variant is redacted.
+ * yields nothing usable is [Missing]: the tools are still listed and every call of the run fails fast
+ * without a request, the next run asking the provider again. `toString` of every variant is redacted.
  */
 sealed interface AuthHeaderSpec {
 

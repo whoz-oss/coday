@@ -26,6 +26,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -151,9 +152,29 @@ class CaseServiceImpl(
     // ======================================================
 
     @Transactional
-    override fun create(entity: Case): Case = caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
+    override fun create(entity: Case): Case = create(entity, worktree = null)
 
-    private fun createCase(entity: Case): Case {
+    @Transactional
+    override fun create(
+        entity: Case,
+        worktree: Boolean?,
+    ): Case {
+        if (worktree != null && entity.parentCaseId != null) {
+            throw BadRequestException("A sub-case shares its root case's worktree and cannot choose one")
+        }
+        if (worktree == true && caseWorkspaceProvisioning == null) {
+            throw ConflictException(
+                "Cannot create a worktree for this case: Git workspaces are not enabled on this instance",
+            )
+        }
+        return caseWorkspaceProvisioning?.aroundCreation(entity, worktree) { createCase(entity, worktree) }
+            ?: createCase(entity, worktree)
+    }
+
+    private fun createCase(
+        entity: Case,
+        worktree: Boolean?,
+    ): Case {
         entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
@@ -171,7 +192,7 @@ class CaseServiceImpl(
         // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
         // transaction, so a failed link rolls the case back instead of leaving an orphan.
         saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
-        caseWorkspaceProvisioning?.onCaseCreated(saved)
+        caseWorkspaceProvisioning?.onCaseCreated(saved, worktree)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
@@ -219,6 +240,11 @@ class CaseServiceImpl(
             saveEdit(entity)
         }
     }
+
+    override fun setReasoningEffort(
+        caseId: UUID,
+        reasoningEffort: ReasoningEffort?,
+    ): Case = edit(caseId) { it.copy(reasoningEffort = reasoningEffort) }
 
     override fun edit(
         id: UUID,
@@ -730,6 +756,8 @@ class CaseServiceImpl(
                     saved
                 },
                 usageAccumulator = usageAccumulator,
+                // Read at every agent run, so a change applies from the next run on, never during one.
+                reasoningEffort = findById(caseId)?.reasoningEffort,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
@@ -1012,6 +1040,17 @@ class CaseServiceImpl(
         }
         descendants.forEach { descendant -> killSingleCase(descendant.id) }
         killSingleCase(caseId)
+    }
+
+    override fun reopenCase(caseId: UUID): Case {
+        val case = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        if (!case.status.isTerminal()) {
+            throw ConflictException("Only a terminated case can be reopened")
+        }
+        caseLaunchGate?.requireReopenable(caseId)
+        logger.info { "Reopening case: $caseId (was ${case.status})" }
+        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+        return findById(caseId) ?: error("Case $caseId not found after reopen status change")
     }
 
     override fun resumeSubCase(

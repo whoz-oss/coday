@@ -1,49 +1,57 @@
 import { TestBed } from '@angular/core/testing'
-import { Namespace, UsageConfigurationControllerService } from '@whoz-oss/agentos-api-client'
-import { of, Subject } from 'rxjs'
+import { Namespace } from '@whoz-oss/agentos-api-client'
 import { NamespaceItemComponent } from './namespace-item.component'
 
-describe('NamespaceItemComponent usage link', () => {
-  let configuration: { getUsageConfiguration: jest.Mock }
+describe('NamespaceItemComponent', () => {
+  const namespace = { id: 'ns', name: 'Test namespace' } as Namespace
 
   beforeEach(() => {
-    configuration = { getUsageConfiguration: jest.fn() }
-    TestBed.configureTestingModule({
-      imports: [NamespaceItemComponent],
-      providers: [{ provide: UsageConfigurationControllerService, useValue: configuration }],
-    })
+    TestBed.configureTestingModule({ imports: [NamespaceItemComponent] })
   })
 
   function render() {
     const fixture = TestBed.createComponent(NamespaceItemComponent)
-    fixture.componentRef.setInput('namespace', { id: 'ns', name: 'Test namespace' } as Namespace)
+    fixture.componentRef.setInput('namespace', namespace)
     fixture.detectChanges()
     return fixture
   }
 
-  it('hides usage while settings are loading and when tracking is disabled', () => {
-    const settings = new Subject<{ enabled: boolean }>()
-    configuration.getUsageConfiguration.mockReturnValue(settings)
-    const fixture = render()
-    expect(fixture.nativeElement.textContent).not.toContain('Usage and costs')
-    settings.next({ enabled: false })
-    settings.complete()
-    fixture.detectChanges()
-    expect(fixture.nativeElement.textContent).not.toContain('Usage and costs')
+  it('exposes only Open and Configure as visible card actions', () => {
+    const buttons = Array.from(render().nativeElement.querySelectorAll('button')).map((button) =>
+      button.textContent?.trim()
+    )
+    expect(buttons).toEqual(expect.arrayContaining(['Open', 'Configure']))
+    expect(buttons).not.toEqual(expect.arrayContaining(['Members', 'Git', 'Usage and costs']))
   })
 
-  it('shares settings across namespace cards and exposes usage when enabled', () => {
-    configuration.getUsageConfiguration.mockReturnValue(of({ enabled: true }))
-    const first = render()
-    const second = render()
-    expect(first.nativeElement.textContent).toContain('Usage and costs')
-    expect(second.nativeElement.textContent).toContain('Usage and costs')
-    expect(configuration.getUsageConfiguration).toHaveBeenCalledTimes(1)
-    const emit = jest.spyOn(first.componentInstance.usageRequested, 'emit')
-    const button = Array.from(first.nativeElement.querySelectorAll('button')).find((element) =>
-      (element as HTMLButtonElement).textContent?.includes('Usage and costs')
-    ) as HTMLButtonElement
-    button.click()
-    expect(emit).toHaveBeenCalledWith({ id: 'ns', name: 'Test namespace' })
+  it('keeps only the destructive action in the kebab, settings live in the settings layout', () => {
+    const labels = render().componentInstance['menuItems'].map((item) => item.label)
+    expect(labels).toEqual(['Delete namespace'])
+  })
+
+  it('asks for confirmation before emitting deleteRequested', () => {
+    const component = render().componentInstance
+    const emit = jest.fn()
+    component.deleteRequested.subscribe(emit)
+
+    component['onMenuAction']('delete')
+    expect(component['pendingDelete']()).toBe(true)
+    expect(emit).not.toHaveBeenCalled()
+
+    component['onDeleteConfirmed']()
+    expect(component['pendingDelete']()).toBe(false)
+    expect(emit).toHaveBeenCalledWith(namespace)
+  })
+
+  it('cancels a pending deletion without emitting', () => {
+    const component = render().componentInstance
+    const emit = jest.fn()
+    component.deleteRequested.subscribe(emit)
+
+    component['onMenuAction']('delete')
+    component['onDeleteCancelled']()
+
+    expect(component['pendingDelete']()).toBe(false)
+    expect(emit).not.toHaveBeenCalled()
   })
 })

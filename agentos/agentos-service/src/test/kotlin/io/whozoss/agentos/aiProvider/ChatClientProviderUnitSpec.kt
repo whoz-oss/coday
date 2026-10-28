@@ -12,6 +12,7 @@ import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
@@ -29,26 +30,31 @@ class ChatClientProviderUnitSpec :
 
         val aiProviderId = UUID.randomUUID()
 
-        fun provider(apiKey: String? = "sk-test") =
-            AiProvider(
-                metadata = EntityMetadata(id = aiProviderId),
-                namespaceId = UUID.randomUUID(),
-                name = "anthropic-prod",
-                apiType = AiApiType.Anthropic,
-                baseUrl = "https://api.anthropic.com",
-                apiKey = apiKey,
-            )
+        fun provider(
+            apiKey: String? = "sk-test",
+            apiType: AiApiType = AiApiType.Anthropic,
+            baseUrl: String = "https://api.anthropic.com",
+        ) = AiProvider(
+            metadata = EntityMetadata(id = aiProviderId),
+            namespaceId = UUID.randomUUID(),
+            name = "${apiType.name.lowercase()}-prod",
+            apiType = apiType,
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+        )
 
         fun model(
             apiName: String = "claude-sonnet-4-5",
             temperature: Double? = 0.7,
             maxCompletionTokens: Int? = null,
+            reasoningEffort: ReasoningEffort? = null,
         ) = AiModel(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             aiProviderId = aiProviderId,
             apiModelName = apiName,
             temperature = temperature,
             maxCompletionTokens = maxCompletionTokens,
+            reasoningEffort = reasoningEffort,
         )
 
         "getChatClient forwards model and provider fields to ChatModelFactory" {
@@ -101,6 +107,37 @@ class ChatClientProviderUnitSpec :
             chatClientProvider.getChatClient(m, p).shouldNotBeNull()
         }
 
+        "getChatClient forwards the model reasoning effort to ChatModelFactory" {
+            val m = model(apiName = "openai/gpt-6-astra", temperature = null, reasoningEffort = ReasoningEffort.XHIGH)
+            val p = provider(apiType = AiApiType.OpenAI, baseUrl = "https://router.eu.requesty.ai")
+            val chatModel = mockk<ChatModel>(relaxed = true)
+
+            every {
+                chatModelFactory.createChatModel(
+                    apiType = AiApiType.OpenAI,
+                    baseUrl = "https://router.eu.requesty.ai",
+                    apiKey = "sk-test",
+                    modelName = "openai/gpt-6-astra",
+                    temperature = null,
+                    maxCompletionTokens = null,
+                    reasoningEffort = ReasoningEffort.XHIGH,
+                )
+            } returns chatModel
+
+            chatClientProvider.getChatClient(m, p).shouldNotBeNull()
+            verify(exactly = 1) {
+                chatModelFactory.createChatModel(
+                    apiType = AiApiType.OpenAI,
+                    baseUrl = "https://router.eu.requesty.ai",
+                    apiKey = "sk-test",
+                    modelName = "openai/gpt-6-astra",
+                    temperature = null,
+                    maxCompletionTokens = null,
+                    reasoningEffort = ReasoningEffort.XHIGH,
+                )
+            }
+        }
+
         "enabled accounting still preserves native model behavior when no accumulator is supplied" {
             val nativeModel = mockk<ChatModel>()
             every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder()
@@ -111,7 +148,7 @@ class ChatClientProviderUnitSpec :
                 ChatResponse(listOf(Generation(AssistantMessage("Done"))))
             }
             val factory = mockk<ChatModelFactory> {
-                every { createChatModel(any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
             }
             val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
             val client = clientProvider.getChatClient(model(), provider())

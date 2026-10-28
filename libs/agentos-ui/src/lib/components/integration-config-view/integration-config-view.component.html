@@ -1,0 +1,43 @@
+<div class="integration-view">
+  <header class="integration-view__header">
+    <h1>Integration configuration</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="integration-view__status" role="status">Loading integration…</p>
+  } @else if (hasError()) {
+    <p class="integration-view__error">Failed to load this integration configuration.</p>
+  } @else if (config(); as integration) {
+    <section class="integration-view__section">
+      <div class="integration-view__section-title">
+        <h2>General</h2>
+        @if (source() === 'FILESYSTEM') {
+          <ds-tag variant="neutral">YAML</ds-tag>
+          <ds-tag variant="outline">Read-only</ds-tag>
+        }
+      </div>
+      <dl>
+        <dt>Name</dt>
+        <dd>{{ integration.name }}</dd>
+        <dt>Type</dt>
+        <dd class="integration-view__mono">{{ integration.integrationType }}</dd>
+        <dt>Description</dt>
+        <dd>{{ integration.description || '—' }}</dd>
+        <dt>Scope</dt>
+        <dd>{{ scopeOf(integration) }}</dd>
+        <dt>Source</dt>
+        <dd>{{ source() }}</dd>
+        <dt>Auto grant</dt>
+        <dd>{{ integration.autoGrant ? 'Enabled' : 'Disabled' }}</dd>
+        <dt>Auth setting</dt>
+        <dd>{{ integration.authSettingName || 'None' }}</dd>
+      </dl>
+    </section>
+
+    <section class="integration-view__section">
+      <h2>Parameters</h2>
+      <p class="integration-view__hint">Sensitive values are always redacted.</p>
+      <pre>{{ parameters() }}</pre>
+    </section>
+  }
+</div>

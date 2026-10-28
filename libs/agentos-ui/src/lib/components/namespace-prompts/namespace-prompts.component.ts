@@ -1,32 +1,20 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { BehaviorSubject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
+import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
-import { PromptItemComponent } from '../prompt-item/prompt-item.component'
-
-const GROUP_PLATFORM = 'platform'
-const GROUP_NAMESPACE = 'namespace'
-
-/**
- * NamespacePromptsComponent — list view for prompts of a namespace.
- *
- * Loaded at /:namespaceId/prompts. Responsibilities:
- * - Load and display namespace-level AND platform-level prompts
- * - Merge both levels into a grouped ds-entity-list (platform first, then namespace)
- * - Platform-level prompts are displayed read-only (no edit/delete actions)
- * - Navigate back to the namespace list
- * - Navigate to the create form (/:namespaceId/prompts/new)
- * - Deletion with inline two-step confirmation (delegated to PromptItemComponent)
- *
- * Create and edit are handled by PromptFormComponent on dedicated routes.
- */
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
+interface PromptRow {
+  key: string
+  prompt: Prompt
+  scope: 'platform' | 'namespace'
+}
 @Component({
   selector: 'agentos-namespace-prompts',
-  imports: [AsyncPipe, EntityListComponent, PromptItemComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
   templateUrl: './namespace-prompts.component.html',
   styleUrl: './namespace-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,14 +24,13 @@ export class NamespacePromptsComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly promptState = inject(PromptStateService)
-
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
-
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
-
   protected readonly isLoading = signal(true)
-
-  /** Fetches both namespace-level and platform-level prompts in parallel. */
+  protected readonly rows = signal<PromptRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.prompt.name, row.prompt.description, row.scope].filter(Boolean).join(' ')
+  )
   private readonly allPrompts$ = this.refresh$.pipe(
     switchMap(() => {
       this.isLoading.set(true)
@@ -53,66 +40,38 @@ export class NamespacePromptsComponent {
       })
     })
   )
-
-  /** Mapped to EntityListItem[] for ds-entity-list, platform group first. */
-  protected readonly promptItems$ = this.allPrompts$.pipe(
-    map(({ platform, namespace }) => [
-      ...platform.map(
-        (p: Prompt): EntityListItem => ({
-          id: p.id ?? '',
-          name: p.name,
-          description: p.description,
-          groupKey: GROUP_PLATFORM,
-          groupLabel: 'Platform (read-only)',
-        })
-      ),
-      ...namespace.map(
-        (p: Prompt): EntityListItem => ({
-          id: p.id ?? '',
-          name: p.name,
-          description: p.description,
-          groupKey: GROUP_NAMESPACE,
-          groupLabel: 'Namespace',
-        })
-      ),
-    ])
-  )
-
-  /** Full prompt objects indexed by id — used to resolve itemTemplate events. */
-  private namespacePromptsById = new Map<string, Prompt>()
-  private platformPromptsById = new Map<string, Prompt>()
-
   constructor() {
     this.allPrompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: ({ platform, namespace }) => {
-        this.platformPromptsById = new Map(platform.map((p: Prompt) => [p.id ?? '', p]))
-        this.namespacePromptsById = new Map(namespace.map((p: Prompt) => [p.id ?? '', p]))
+        this.rows.set([
+          ...platform.map((prompt, index) => ({
+            key: `platform:${prompt.id ?? index}`,
+            prompt,
+            scope: 'platform' as const,
+          })),
+          ...namespace.map((prompt, index) => ({
+            key: `namespace:${prompt.id ?? index}`,
+            prompt,
+            scope: 'namespace' as const,
+          })),
+        ])
         this.isLoading.set(false)
       },
       error: () => this.isLoading.set(false),
     })
   }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'namespaces'])
-  }
-
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'prompts', 'new'])
+    void this.router.navigate(['/agentos', this.namespaceId, 'prompts', 'new'])
   }
-
-  protected deletePrompt(prompt: Prompt): void {
+  protected edit(row: PromptRow): void {
+    if (row.scope === 'platform' || !row.prompt.id) return
+    void this.router.navigate(['/agentos', this.namespaceId, 'prompts', row.prompt.id, 'edit'])
+  }
+  protected delete(row: PromptRow): void {
+    if (row.scope === 'platform' || !row.prompt.id || !confirm(`Delete prompt “${row.prompt.name}”?`)) return
     this.promptState
-      .delete(prompt.id ?? '')
+      .delete(row.prompt.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
-  }
-
-  protected resolvePrompt(id: string): Prompt | null {
-    return this.platformPromptsById.get(id) ?? this.namespacePromptsById.get(id) ?? null
-  }
-
-  protected isPlatformPrompt(id: string): boolean {
-    return this.platformPromptsById.has(id)
   }
 }

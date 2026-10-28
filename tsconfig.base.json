@@ -16,6 +16,7 @@
     "noImplicitReturns": true,
     "noImplicitThis": true,
     "noUncheckedIndexedAccess": true,
+    "noUncheckedSideEffectImports": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "paths": {
@@ -70,7 +71,7 @@
       "@whoz-oss/agentos-dataflow": ["libs/agentos-dataflow/src/index.ts"],
       "@whoz-oss/agentos-ui": ["libs/agentos-ui/src/index.ts"],
       "@whoz-oss/design-system": ["libs/design-system/src/index.ts"],
-      "agentos-gradle": ["tools/plugins/agentos-gradle/src/index.ts"]
+      "gradle-plugins": ["tools/plugins/gradle-plugins/src/index.ts"]
     },
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
@@ -78,7 +79,6 @@
     "strict": true,
     "target": "ESNext",
     "typeRoots": ["node_modules/@types"],
-    "noUncheckedSideEffectImports": false,
     "types": ["*"]
   },
   "exclude": ["node_modules", "tmp", "dist"]

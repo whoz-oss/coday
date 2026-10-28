@@ -12,6 +12,7 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.aiProvider.AiModelDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
@@ -105,6 +106,31 @@ class AiModelControllerSpec : StringSpec({
         controller.update(existing.metadata.id, clientResource)
 
         verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update stores the reasoning effort and returns it" {
+        val existing = model()
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers { firstArg() }
+
+        val updated = controller.update(
+            existing.metadata.id,
+            resource(id = existing.metadata.id).copy(reasoningEffort = ReasoningEffort.HIGH),
+        )
+
+        updated.reasoningEffort shouldBe ReasoningEffort.HIGH
+        verify(exactly = 1) { service.update(match { it.reasoningEffort == ReasoningEffort.HIGH }) }
+    }
+
+    "update clears the reasoning effort when the payload omits it" {
+        val existing = model().copy(reasoningEffort = ReasoningEffort.LOW)
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers { firstArg() }
+
+        val updated = controller.update(existing.metadata.id, resource(id = existing.metadata.id))
+
+        updated.reasoningEffort shouldBe null
+        verify(exactly = 1) { service.update(match { it.reasoningEffort == null }) }
     }
 
     "update throws 404 when the AiModel does not exist" {

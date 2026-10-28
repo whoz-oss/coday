@@ -22,20 +22,23 @@ import java.net.URISyntaxException
  * A [UrlCheck.Rejected] reason never echoes the URL itself: userinfo or a query string may carry
  * credentials and the reason ends up in exception messages and logs.
  *
- * @param allowLoopbackForTests accepts loopback addresses and `localhost`, over plain `http` as well,
- *   so that tests can target a local mock server without TLS. Never enable it in production.
+ * @param allowUnsecure accepts plain `http` URLs and relaxes restricted-address checks so local and
+ *   private-network destinations can be reached. The OkHttp DNS policy is shared by HTTP and HTTPS
+ *   and cannot distinguish the request scheme, so this opt-in deliberately relaxes address checks
+ *   for both schemes. All other URL protections remain active.
  */
-class OutboundUrlPolicy(private val allowLoopbackForTests: Boolean = false) {
+open class OutboundUrlPolicy(private val allowUnsecure: Boolean = false) {
 
-    fun validate(url: String): UrlCheck {
+    open fun validate(url: String): UrlCheck {
         val uri = parse(url) ?: return UrlCheck.Rejected("is not a valid URL")
         if (!uri.isAbsolute) return UrlCheck.Rejected("must be an absolute URL")
         if (uri.rawUserInfo != null) return UrlCheck.Rejected("must not contain userinfo (credentials)")
         val host = uri.host?.takeIf { it.isNotBlank() } ?: return UrlCheck.Rejected("has no host")
-        if (!uri.scheme.equals(HTTPS, ignoreCase = true) && !isPlainHttpAllowed(uri.scheme, host)) {
+        val isUnsecureHttp = allowUnsecure && uri.scheme.equals(HTTP, ignoreCase = true)
+        if (!uri.scheme.equals(HTTPS, ignoreCase = true) && !isUnsecureHttp) {
             return UrlCheck.Rejected("must use the https scheme, got '${uri.scheme}'")
         }
-        val hostCheck = checkHost(uri, host)
+        val hostCheck = checkHost(uri, host, allowRestrictedAddress = allowUnsecure)
         if (hostCheck is UrlCheck.Rejected) return hostCheck
         return checkClientAccepts(url, uri)
     }
@@ -53,22 +56,15 @@ class OutboundUrlPolicy(private val allowLoopbackForTests: Boolean = false) {
             UrlCheck.Rejected("is not a URL the HTTP client accepts (${e.message})")
         }
 
-    /** Plain `http` is only ever accepted by the test seam, and only towards loopback. */
-    private fun isPlainHttpAllowed(scheme: String, host: String): Boolean =
-        allowLoopbackForTests && scheme.equals(HTTP, ignoreCase = true) && isLoopbackHost(host)
-
-    private fun isLoopbackHost(host: String): Boolean =
-        host.equals(LOCALHOST, ignoreCase = true) ||
-            (classifyLiteral(host) as? HostLiteral.Literal)?.address?.let { unmapIpv4(it).isLoopbackAddress } == true
-
     /**
      * Returns true when [address] belongs to a range the plugin must never connect to.
      * Reused by the DNS hook so that a public host name resolving to an internal address is refused.
      */
-    fun isDisallowedAddress(address: InetAddress): Boolean {
+    open fun isDisallowedAddress(address: InetAddress): Boolean {
+        if (allowUnsecure) return false
         val effective = unmapIpv4(address)
-        if (effective.isLoopbackAddress) return !allowLoopbackForTests
-        return effective.isAnyLocalAddress ||
+        return effective.isLoopbackAddress ||
+            effective.isAnyLocalAddress ||
             isThisNetwork(effective) ||
             effective.isLinkLocalAddress ||
             effective.isSiteLocalAddress ||
@@ -76,15 +72,15 @@ class OutboundUrlPolicy(private val allowLoopbackForTests: Boolean = false) {
             isUniqueLocal(effective)
     }
 
-    private fun checkHost(uri: URI, host: String): UrlCheck {
+    private fun checkHost(uri: URI, host: String, allowRestrictedAddress: Boolean): UrlCheck {
         if (host.equals(LOCALHOST, ignoreCase = true)) {
-            return if (allowLoopbackForTests) UrlCheck.Ok(uri) else UrlCheck.Rejected("'localhost' is not allowed")
+            return if (allowRestrictedAddress) UrlCheck.Ok(uri) else UrlCheck.Rejected("'localhost' is not allowed")
         }
         return when (val literal = classifyLiteral(host)) {
             HostLiteral.NotLiteral -> UrlCheck.Ok(uri)
             HostLiteral.Malformed -> UrlCheck.Rejected("host '$host' is not a valid IP literal")
             is HostLiteral.Literal ->
-                if (isDisallowedAddress(literal.address)) {
+                if (!allowRestrictedAddress && isDisallowedAddress(literal.address)) {
                     UrlCheck.Rejected("host '$host' is a private, loopback or link-local address")
                 } else {
                     UrlCheck.Ok(uri)

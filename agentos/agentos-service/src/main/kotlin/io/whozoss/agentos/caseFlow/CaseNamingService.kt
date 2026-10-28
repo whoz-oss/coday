@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.chat.forUtilityCall
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
@@ -118,7 +119,7 @@ class CaseNamingService(
         """.trimIndent()
 
         return runCatching {
-            val chatClient = chatClientProvider.getChatClient(model, provider, caseId.toString())
+            val chatClient = chatClientProvider.getChatClient(model.forUtilityCall(), provider, caseId.toString())
             withContext(Dispatchers.IO) {
                 chatClient
                     .prompt(Prompt(UserMessage(prompt)))

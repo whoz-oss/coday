@@ -1,6 +1,6 @@
 import { DecimalPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core'
-import { ActivatedRoute, RouterLink } from '@angular/router'
+import { ActivatedRoute } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { UsageAggregateByKey, UsageRecordControllerService } from '@whoz-oss/agentos-api-client'
 import { catchError, EMPTY, forkJoin, startWith, Subject, switchMap } from 'rxjs'
@@ -8,7 +8,7 @@ import { UsageConfigurationService } from '../../services/usage-configuration.se
 
 @Component({
   selector: 'agentos-namespace-usage',
-  imports: [DecimalPipe, FormsModule, RouterLink],
+  imports: [DecimalPipe, FormsModule],
   templateUrl: './namespace-usage.component.html',
   styleUrl: './namespace-usage.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

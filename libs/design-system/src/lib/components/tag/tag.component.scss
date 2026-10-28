@@ -1,0 +1,22 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.tag--accent {
+  background: var(--color-accent-100, #eef6ff);
+  color: var(--color-accent-800, #2c455d);
+}
+
+.tag--neutral {
+  background: var(--color-neutral-100, #f5f5f8);
+  color: var(--color-neutral-800, #424244);
+}
+
+.tag--outline {
+  border: 1px solid var(--color-accent, #5980a6);
+  color: var(--color-accent, #5980a6);
+}

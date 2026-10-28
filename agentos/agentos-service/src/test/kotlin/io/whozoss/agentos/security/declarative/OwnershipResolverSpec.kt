@@ -15,17 +15,11 @@ class OwnershipResolverSpec : StringSpec({
         override fun resolveOwner(targetId: UUID): UUID? = ownerId
     }
 
-    val integrationConfigAware = object : OwnershipAware {
-        override val ownershipEntityType = EntityType.INTEGRATION_CONFIG
-        override fun resolveOwner(targetId: UUID): UUID? = null
-    }
-
-    val resolver = OwnershipResolver(listOf(aiProviderAware, integrationConfigAware))
+    val resolver = OwnershipResolver(listOf(aiProviderAware))
 
     "supportedTypes returns entity types from all OwnershipAware beans" {
         resolver.supportedTypes shouldContainExactlyInAnyOrder listOf(
             EntityType.AI_PROVIDER,
-            EntityType.INTEGRATION_CONFIG,
         )
     }
 
@@ -34,15 +28,13 @@ class OwnershipResolverSpec : StringSpec({
         resolver.resolveOwner(EntityType.AI_PROVIDER, targetId) shouldBe ownerId
     }
 
-    "resolveOwner returns null when the OwnershipAware returns null" {
-        val targetId = UUID.randomUUID()
-        resolver.resolveOwner(EntityType.INTEGRATION_CONFIG, targetId) shouldBe null
-    }
-
     "resolveOwner returns null for unsupported entity types" {
         val targetId = UUID.randomUUID()
         resolver.resolveOwner(EntityType.NAMESPACE, targetId) shouldBe null
         resolver.resolveOwner(EntityType.AGENT_CONFIG, targetId) shouldBe null
+        // IntegrationConfig authorization now lives in IntegrationConfigServiceImpl's *ForCaller
+        // surface (via ScopedAccessPolicy) and is not registered with the OwnershipResolver.
+        resolver.resolveOwner(EntityType.INTEGRATION_CONFIG, targetId) shouldBe null
     }
 
     "supportedTypes is empty when no OwnershipAware beans are registered" {

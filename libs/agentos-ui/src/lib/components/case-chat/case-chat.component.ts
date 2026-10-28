@@ -45,19 +45,35 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
-import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import {
+  BlueprintDirective,
+  ConfirmDialogComponent,
+  CopyButtonComponent,
+  DrawerComponent,
+  IconButtonComponent,
+} from '@whoz-oss/design-system'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
+import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
+import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
+import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
 import {
   buildDelegations,
   DelegationPresentation,
   isCorrelatedDelegateTool,
 } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
+import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
+import {
+  EffortOption,
+  effortLabel,
+  messageEffortLabel,
+  parseEffortCommand,
+} from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
@@ -69,6 +85,7 @@ import { findLegitimateAnswer } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import { configChangeQuestionIds } from './config-change-questions'
 
 export interface ToolCall {
   requestId: string
@@ -112,6 +129,17 @@ export type TimelineItem =
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
 
+/**
+ * Debounce delay (ms) before closing the EventSource after a terminal CaseStatusEvent.
+ *
+ * Closing the stream is the one irreversible side effect triggered by a terminal status.
+ * The SSE protocol has no boundary marker between replayed history and live events, so a
+ * burst of replayed frames (e.g. KILLED then IDLE on reopen) must collapse into a single
+ * decision on the FINAL value. This heuristic should be removed once the protocol exposes
+ * a history/live boundary.
+ */
+const TERMINAL_CLOSE_DEBOUNCE_MS = 300
+
 /** True when the user has an active text selection (e.g. preparing to copy). */
 function hasActiveSelection(): boolean {
   const selection = window.getSelection()
@@ -142,12 +170,16 @@ function hasActiveSelection(): boolean {
     CaseMembersComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
+    EffortAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
+    ConfigChangeCardComponent,
     DelegationCardComponent,
+    ConfirmDialogComponent,
+    AgentActivityComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -233,6 +265,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
+  private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
@@ -245,7 +278,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected inputValue = signal('')
   protected isRunning = signal(false)
-  protected isTerminal = signal(false)
+
+  /**
+   * Derived terminal state — true when the effective case status is KILLED or ERROR.
+   * Because this is a computed from `caseStatus` (itself last-writer-wins from `_sseStatus`),
+   * it self-corrects the moment the final replayed status frame lands: a KILLED frame
+   * followed by an IDLE frame resolves to false with no extra bookkeeping.
+   */
+  protected readonly isTerminal = computed(() => {
+    const s = this.caseStatus()
+    return s === 'KILLED' || s === 'ERROR'
+  })
+
+  /** Handle for the debounced terminal-close timer. See TERMINAL_CLOSE_DEBOUNCE_MS. */
+  private terminalCloseTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Active case from the shared case list (title + stored status). */
   protected readonly activeCase = computed(
@@ -266,6 +312,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether the delete confirmation inline is showing. */
   protected readonly confirmingDelete = signal(false)
+
+  /** Whether the kill confirmation dialog is showing. */
+  protected readonly confirmingKill = signal(false)
+
+  /** The case-level reasoning effort shown next to the composer; "default" means each agent's model setting. */
+  protected readonly caseEffortLabel = computed(() => effortLabel(this.activeCase()?.reasoningEffort))
 
   /** Which panel is active in the right drawer: files exchange or case members. */
   protected readonly drawerPanel = signal<'files' | 'members'>('files')
@@ -372,6 +424,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   constructor() {
     this.autocomplete.init(this.namespaceId)
+    this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent)
@@ -438,11 +491,29 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   protected readonly delegations = computed(() => buildDelegations(this.events()))
 
+  /**
+   * What the agent is doing right now — shown in place of a spinner while the turn runs.
+   * Derived from the event stream and from the delegation pairing above, so it follows the turn
+   * without any extra bookkeeping.
+   */
+  protected readonly activity = computed<AgentActivity>(() => describeAgentActivity(this.events(), this.delegations()))
+
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
     const showTechnical = this.showTechnical()
     const showToolCalls = this.showToolCalls()
     const delegations = this.delegations()
+
+    // Identify the last CaseStatusEvent so that only it may emit a terminal notice.
+    // A superseded KILLED/ERROR status is a historical fact, not the current state,
+    // and must not assert a false "Execution was killed" banner to the user.
+    let lastCaseStatusEventId: string | null = null
+    for (let i = allEvents.length - 1; i >= 0; i--) {
+      if (allEvents[i]?.type === 'CaseStatusEvent') {
+        lastCaseStatusEventId = allEvents[i]!.id
+        break
+      }
+    }
 
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
@@ -530,7 +601,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
         // Execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
-        const notice = this.toExecutionNotice(e)
+        const notice = this.toExecutionNotice(e, lastCaseStatusEventId)
         if (notice) {
           items.push({ kind: 'notice', notice, eventId: e.id })
         } else {
@@ -561,6 +632,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     return null
   })
+
+  /** Questions answered through a configuration card: see {@link configChangeQuestionIds}. */
+  protected readonly configChangeQuestionIds = computed(() => configChangeQuestionIds(this.events()))
 
   /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
   protected readonly timeline = computed<TimelineItem[]>(() => {
@@ -685,6 +759,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.terminalCloseTimer !== null) {
+      clearTimeout(this.terminalCloseTimer)
+      this.terminalCloseTimer = null
+    }
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
   }
@@ -821,25 +899,41 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
             const status = (event as CaseStatusEvent).status as string
+            // _sseStatus is last-writer-wins: the final frame in a replay batch wins,
+            // so isTerminal (a computed from caseStatus) self-corrects automatically.
             this._sseStatus.set(status)
             // Sync the drawer list; usage refreshes separately on persisted AGENT messages.
             this.caseState.updateCaseStatus(event.caseId, status)
 
-            const isTerminal = status === 'KILLED' || status === 'ERROR'
-            this.isTerminal.set(isTerminal)
-
-            if (isTerminal) {
-              this.isRunning.set(false)
-              // Terminal: close SSE connection.
-              this.eventSource?.close()
-              this.eventSource = null
-            } else {
+            // Non-terminal transitions apply immediately.
+            if (status !== 'KILLED' && status !== 'ERROR') {
+              // Cancel any pending terminal-close: a non-terminal frame supersedes it.
+              if (this.terminalCloseTimer !== null) {
+                clearTimeout(this.terminalCloseTimer)
+                this.terminalCloseTimer = null
+              }
               const running = status === 'RUNNING'
               this.isRunning.set(running)
               if (!running) {
                 // End of turn / idle: reset streaming buffer.
                 this.streamingText.set('')
               }
+            } else {
+              // Terminal frame received. Debounce the irreversible close so a burst of
+              // replayed status frames (e.g. KILLED then IDLE) collapses to the final value.
+              // See TERMINAL_CLOSE_DEBOUNCE_MS for the rationale.
+              if (this.terminalCloseTimer !== null) {
+                clearTimeout(this.terminalCloseTimer)
+              }
+              this.terminalCloseTimer = setTimeout(() => {
+                this.terminalCloseTimer = null
+                // Re-read derived state: if a later IDLE frame arrived, isTerminal is false.
+                if (this.isTerminal()) {
+                  this.isRunning.set(false)
+                  this.eventSource?.close()
+                  this.eventSource = null
+                }
+              }, TERMINAL_CLOSE_DEBOUNCE_MS)
             }
             return
           }
@@ -965,7 +1059,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
+    const consumed = this.autocomplete.onKeydown(
+      event,
+      this.promptAutocompleteRef,
+      this.agentAutocompleteRef,
+      this.effortAutocompleteRef
+    )
     if (consumed) return
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
@@ -985,6 +1084,36 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.slashSuggestions.set([])
   }
 
+  /**
+   * Whether the case-level effort can be changed now: it is saved through the loaded case list (a case
+   * opened through namespace access only is not in it), and a run reads it at its start.
+   */
+  private canChangeEffort(): boolean {
+    return !!this.activeCase() && !this.isTerminal()
+  }
+
+  /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
+  protected onEffortSelected(option: EffortOption): void {
+    this.autocomplete.effortSuggestions.set([])
+    if (!this.canChangeEffort()) return
+    this.inputValue.set('')
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = ''
+      this.resizeComposer(input)
+    }
+    this.caseState
+      .setReasoningEffort(this.caseId, option.effort)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => console.error('[CaseChat] Failed to set the reasoning effort', err),
+      })
+  }
+
+  protected closeEffortAutocomplete(): void {
+    this.autocomplete.effortSuggestions.set([])
+  }
+
   protected closeAtAutocomplete(): void {
     this.autocomplete.atSuggestions.set([])
   }
@@ -994,13 +1123,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called when the router reuses this component instance for a different case.
    */
   private reinitialise(): void {
+    // Cancel any pending terminal-close timer before reconnecting: a stale timer must
+    // not close the freshly created EventSource for the reopened case.
+    if (this.terminalCloseTimer !== null) {
+      clearTimeout(this.terminalCloseTimer)
+      this.terminalCloseTimer = null
+    }
     this.eventSource?.close()
     this.eventSource = null
     this.events.set([])
     this.messageHtmlCache.clear()
     this.inputValue.set('')
     this.isRunning.set(false)
-    this.isTerminal.set(false)
+    // isTerminal is now computed; clearing _sseStatus is sufficient.
     this._sseStatus.set('')
     this.confirmingDelete.set(false)
     this.streamingText.set('')
@@ -1024,6 +1159,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected async submit(): Promise<void> {
     if (this.submitting || !this.canSend) return
     const content = this.inputValue().trim()
+    // A typed "/effort <level>" is a command for the case, never a message for the agent. When the
+    // effort cannot be changed here, the text stays in the composer.
+    const effortCommand = parseEffortCommand(content)
+    if (effortCommand !== undefined) {
+      if (effortCommand) {
+        this.onEffortSelected(effortCommand)
+      } else {
+        // Missing or unknown level: show the levels instead of doing nothing.
+        this.autocomplete.showEffortLevels()
+      }
+      return
+    }
     if (this.attachments.hasAttachments()) {
       this.submitting = true
       try {
@@ -1083,6 +1230,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/interrupt`, {}).subscribe({
       // Server transitions to IDLE; SSE stays open. We'll update isRunning on CaseStatusEvent.
       error: (err) => console.error('[CaseChat] Failed to interrupt case', err),
+    })
+  }
+
+  protected kill(): void {
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/kill`, {}).subscribe({
+      // Server transitions to KILLED; SSE handler will close the EventSource on CaseStatusEvent.
+      error: (err) => console.error('[CaseChat] Failed to kill case', err),
+    })
+    this.confirmingKill.set(false)
+  }
+
+  protected reopen(): void {
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/reopen`, {}).subscribe({
+      next: () => {
+        this.caseState.updateCaseStatus(this.caseId, 'IDLE')
+        this.reinitialise()
+      },
+      error: (err) => console.error('[CaseChat] Failed to reopen case', err),
     })
   }
 
@@ -1228,10 +1393,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.extractText(item.event)
   }
 
-  /** Durable provider/model attribution carried by the agent MessageEvent itself. */
+  /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */
   protected agentModelAttribution(message: CaseMessageEvent): string | null {
     if (message.actor.role !== 'AGENT') return null
-    const parts = [message.llmProvider, message.llmModel].filter((part): part is string => !!part)
+    const effort = messageEffortLabel(message.reasoningEffort, message.requestedReasoningEffort)
+    const parts = [message.llmProvider, message.llmModel, effort].filter((part): part is string => !!part)
     return parts.length ? parts.join(' · ') : null
   }
 
@@ -1280,13 +1446,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
-  private toExecutionNotice(event: CaseEvent): ExecutionNotice | null {
+  /**
+   * Map a CaseEvent to an ExecutionNotice for display in the timeline.
+   *
+   * WarnEvent and ErrorEvent are immutable historical facts and always produce a notice.
+   * CaseStatusEvent notices are assertions about the PRESENT state: only the LATEST
+   * CaseStatusEvent (identified by lastCaseStatusEventId) may emit a terminal banner.
+   * A superseded KILLED/ERROR falls through to the generic technical log item instead,
+   * preserving history without claiming a false current state.
+   */
+  private toExecutionNotice(event: CaseEvent, lastCaseStatusEventId: string | null = null): ExecutionNotice | null {
     switch (event.type) {
       case 'WarnEvent':
         return { severity: 'warning', title: 'Warning', detail: (event as WarnEvent).message }
       case 'ErrorEvent':
         return { severity: 'error', title: 'Execution error', detail: (event as ErrorEvent).message }
       case 'CaseStatusEvent': {
+        // Only the latest CaseStatusEvent may render a terminal notice.
+        if (event.id !== lastCaseStatusEventId) return null
         const status = (event as CaseStatusEvent).status
         if (status === 'ERROR') return { severity: 'terminal', title: 'Execution ended with an error' }
         if (status === 'KILLED') return { severity: 'terminal', title: 'Execution was killed' }

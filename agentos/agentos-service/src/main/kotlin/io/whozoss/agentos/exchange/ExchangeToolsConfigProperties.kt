@@ -54,12 +54,12 @@ data class ExchangeToolsConfigProperties(
      * Grants the case exchange to every agent that does not mention
      * [ExchangeIntegrationTypes.CASE] in its `integrations` map.
      *
-     * Off by default so switching it on stays an explicit operator decision: a default grant
-     * materialises a case exchange directory for every case a granted agent runs in, and widens the
-     * tool set every agent advertises to its LLM. An agent that declares the key always wins,
-     * including with an empty list — the explicit opt-out.
+     * On by default so agents receive case exchange tools unless they explicitly decide otherwise.
+     * A default grant materialises a case exchange directory for every case a granted agent runs in
+     * and widens the tool set every agent advertises to its LLM. An agent that declares the key
+     * always wins, including with an empty list — the explicit opt-out.
      */
-    val caseEnabledByDefault: Boolean = false,
+    val caseEnabledByDefault: Boolean = true,
     /**
      * Same platform default for [ExchangeIntegrationTypes.NAMESPACE]. Every namespace grant, this
      * default included, additionally requires the invoking user to hold Namespace READ; a run

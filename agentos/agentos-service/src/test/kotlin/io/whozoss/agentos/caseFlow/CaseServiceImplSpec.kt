@@ -10,10 +10,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.Called
+import io.mockk.Runs
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
@@ -254,6 +256,7 @@ class CaseServiceImplSpec :
             caseRepository: CaseRepository = InMemoryCaseRepository(),
             caseEventService: CaseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
             caseLaunchGate: CaseLaunchGate? = null,
+            caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
             runCostService: RunCostService? = null,
             agentService: AgentService =
                 mockk {
@@ -290,6 +293,7 @@ class CaseServiceImplSpec :
                 usageConfig = usageConfig,
                 caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 caseLaunchGate = caseLaunchGate,
+                caseWorkspaceProvisioning = caseWorkspaceProvisioning,
                 runCostService = runCostService,
                 coroutineContext = coroutineContext,
             )
@@ -2556,6 +2560,46 @@ class CaseServiceImplSpec :
             }
         }
 
+        "create refuses a worktree choice for a sub-case, which shares its root's" {
+            listOf(true, false).forEach { worktree ->
+                val repository = spyk(InMemoryCaseRepository())
+                val service = buildService(caseRepository = repository)
+                val parent = service.create(Case(namespaceId = namespaceId))
+
+                shouldThrow<BadRequestException> {
+                    service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id), worktree)
+                }
+                verify(exactly = 1) { repository.save(any()) }
+            }
+        }
+
+        "create refuses a requested worktree where Git workspaces are not enabled" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+
+            shouldThrow<ConflictException> { service.create(Case(namespaceId = namespaceId), worktree = true) }
+                .message shouldBe
+                "Cannot create a worktree for this case: Git workspaces are not enabled on this instance"
+            verify(exactly = 0) { repository.save(any()) }
+        }
+
+        "create hands the creator's worktree choice to the workspace provisioning" {
+            listOf(null, true, false).forEach { worktree ->
+                val provisioning =
+                    mockk<CaseWorkspaceProvisioning> {
+                        every { aroundCreation<Case>(any(), any(), any()) } answers { thirdArg<() -> Case>()() }
+                        every { onCaseCreated(any(), any()) } just Runs
+                    }
+                val service = buildService(caseWorkspaceProvisioning = provisioning)
+                val case = Case(namespaceId = namespaceId)
+
+                service.create(case, worktree)
+
+                verify(exactly = 1) { provisioning.aroundCreation<Case>(case, worktree, any()) }
+                verify(exactly = 1) { provisioning.onCaseCreated(match { it.id == case.id }, worktree) }
+            }
+        }
+
         "startSubCase propagates exception when linkParentToChild fails" {
             // Uses a mockk CaseRepository that delegates all operations to InMemoryCaseRepository
             // but throws on linkParentToChild.
@@ -2678,6 +2722,90 @@ class CaseServiceImplSpec :
             val allEvents = withTimeout(8_000) { receivedEvents.await() }
             val messageEvent = allEvents.filterIsInstance<MessageEvent>().first { it.actor.role == ActorRole.USER }
             messageEvent.sessionContext shouldBe sessionCtx
+        }
+
+        // -------------------------------------------------------------------------
+        // reopenCase: terminal -> IDLE transitions
+        // -------------------------------------------------------------------------
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminalStatus ->
+            "reopenCase transitions a $terminalStatus case back to IDLE and persists a CaseStatusEvent" {
+                val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val caseRepository = InMemoryCaseRepository()
+                val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
+                val case = service.create(Case(namespaceId = namespaceId))
+                // Drive to the target terminal status via the repository directly so the
+                // test does not depend on the kill machinery or any other service path.
+                caseRepository.save(caseRepository.findByIds(listOf(case.id)).single().copy(status = terminalStatus))
+                service.getById(case.id).status shouldBe terminalStatus
+
+                val reopened = service.reopenCase(case.id)
+
+                reopened.status shouldBe CaseStatus.IDLE
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                // A CaseStatusEvent with IDLE must have been persisted
+                caseEventService
+                    .findByParent(case.id)
+                    .filterIsInstance<CaseStatusEvent>()
+                    .last()
+                    .status shouldBe CaseStatus.IDLE
+            }
+        }
+
+        "reopenCase of a non-terminal case throws ConflictException" {
+            val service = buildService()
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Case starts in CREATED status — not terminal
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an IDLE case throws ConflictException" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseEventService = caseEventService)
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Drive to IDLE via a normal message + agent run
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+            awaiter.join()
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an unknown case throws ResourceNotFoundException" {
+            val service = buildService()
+            shouldThrow<ResourceNotFoundException> {
+                service.reopenCase(UUID.randomUUID())
+            }
+        }
+
+        "reopenCase is blocked when the launch gate vetoes it" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val blockingGate =
+                object : CaseLaunchGate {
+                    override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Admit
+
+                    override fun requireReopenable(caseId: UUID) {
+                        throw io.whozoss.agentos.exception.ConflictException("The workspace is being removed or has been removed")
+                    }
+                }
+            val service = buildService(caseEventService = caseEventService, caseLaunchGate = blockingGate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            service.killCase(case.id)
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+            // Status must not have changed
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
         }
 
         "killing a parent case also kills its active sub-cases" {

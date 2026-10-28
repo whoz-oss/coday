@@ -1,6 +1,8 @@
 spring:
   application:
     name: agentos
+  config:
+    import: "optional:file:../.env[.properties]"
   jackson:
     mapper:
       sort-properties-alphabetically: true
@@ -52,14 +54,14 @@ spring:
         options:
           model: gpt-4-turbo-preview
           temperature: 0.7
-    
+
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:}
       chat:
         options:
           model: claude-3-5-sonnet-20241022
           temperature: 0.7
-    
+
     ollama:
       init:
         # Prevent the Ollama starter from pulling models at startup.
@@ -106,15 +108,17 @@ agentos:
   usage:
     # Opt in to LLM usage accounting, analytical records and the run-cost guard.
     # Disabled by default in every profile, including Whoz.
-    enabled: ${AGENTOS_USAGE_ENABLED:false}
+    enabled: ${AGENTOS_USAGE_ENABLED:true}
   git:
+    worker:
+      enabled: ${AGENTOS_GIT_WORKER_ENABLED:false}
     workspaces:
       # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
       # runs exactly as without Git, whatever the namespace's Git association.
       enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
   encryption:
-    key: ${AGENTOS_ENCRYPTION_KEY}
-    salt: ${AGENTOS_ENCRYPTION_SALT}
+    key: ${AGENTOS_ENCRYPTION_KEY:NONE}
+    salt: ${AGENTOS_ENCRYPTION_SALT:NONE}
   case:
   # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
   # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
@@ -125,7 +129,7 @@ agentos:
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT
-    # mount-root: data/exchange/
+    mount-root: ${AGENTOS_EXCHANGE_MOUNT_ROOT:${user.home}/coday/agentos/data/exchange}
     # Comma-separated file extensions allowed for user uploads (lowercase, no dot). The default
     # covers text/doc/data/image/code; empty allows any. Expected to differ per AgentOS instance.
     # Override with env var: AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS
@@ -141,12 +145,12 @@ agentos:
     # Grant the case exchange to every agent that does not mention CASE_FILE_EXCHANGE in its
     # integrations map. An agent that lists the key decides for itself; an empty list opts out.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
-    # case-enabled-by-default: false
+      case-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT:true}
     # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
     # declared, also requires the invoking user to hold Namespace READ; a run without an
     # identified user is denied. Write access follows the user's Namespace WRITE right.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT
-    # namespace-enabled-by-default: false
+      namespace-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT:false}
     # Comma-separated extra patterns blocked for the agent file tools, on top of the plugin's
     # built-in sensitive-file list (.env, *.key, *.pem). Additive only, built-ins always apply.
     # A pattern matches the file or directory NAME only, never the path: *suffix, prefix*,
@@ -213,7 +217,7 @@ agentos:
     # integrations map opts out, which beats autoGrant — the right choice for fully autonomous
     # agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
-    enabled-by-default: true
+    enabled-by-default: ${AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT:true}
   user-group:
     # Declare that a platform-scoped 'USER_GROUP' integration configuration should exist.
     # When true (shipped default), UserGroupIntegrationConfigSeeder creates it at startup
@@ -224,7 +228,7 @@ agentos:
     # Existence, not content: once the row exists it belongs to the administrator.
     # Create-only: setting this back to false does NOT delete an existing row.
     # Override with env var: AGENTOS_USER_GROUP_ENABLED_BY_DEFAULT
-    enabled-by-default: true
+    enabled-by-default: ${AGENTOS_USER_GROUP_ENABLED_BY_DEFAULT:true}
   case-plugin:
     # Declare that a platform-scoped 'CASE' integration configuration should exist. When true
     # (shipped default), CaseIntegrationConfigSeeder creates it at startup if absent, so an agent
@@ -242,7 +246,7 @@ agentos:
     # Restrict the startable agents for a namespace by creating a configuration named 'CASE' scoped
     # to it. A user may also create one for themselves, to narrow their own runs.
     # Override with env var: AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT
-    enabled-by-default: true
+    enabled-by-default: ${AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT:true}
   limits:
   # Maximum number of internal steps per user message in the CaseRuntime before the case
   # transitions to ERROR status. A "step" is one processNextStep() call covering agent
@@ -250,7 +254,7 @@ agentos:
   # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
   # threshold across the full session without triggering it within a single turn.
   # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
-  # case-max-iterations: 100
+  case-max-iterations: ${AGENTOS_LIMITS_CASE_MAX_ITERATIONS:100}
   # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
   # Each iteration consists of one intention-generation call followed by zero or one tool
   # executions. When this limit is reached the agent emits a WarnEvent and breaks out
@@ -258,11 +262,11 @@ agentos:
   # With usage tracking enabled, it also bounds AgentSimple's tool rounds: at that bound the
   # model answers once more without running tools, summarizing its progress.
   # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
-  # agent-max-iterations: 20
+  agent-max-iterations: ${AGENTOS_LIMITS_AGENT_MAX_ITERATIONS:100}
   # Maximum number of entities processed by one AgentLoop run. Each entity starts one case
   # immediately, so this bounds concurrent agent runs started by a single loop.
   # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
-  agent-loop-max-items: 50
+  agent-loop-max-items: ${AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS:50}
   # Maximum amount the platform accepts spending without a human check-in, in the platform's
   # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
   # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
@@ -291,20 +295,24 @@ agentos:
   # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
   # prompt-caching-enabled: true
   plugins:
-    dir: ${PLUGINS_DIR:plugins/}
+    # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
+    # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,
+    # so the default needs no variable.
+    # Override with env var: AGENTOS_PLUGINS_DIR
+    dir: ${AGENTOS_PLUGINS_DIR:plugins/}
   security:
     # Identity resolution mode: 'local' (default) or 'auth'.
     # local: uses the OS username; auto-creates a User record on first access.
-    # auth:  decodes the Cloudflare JWT (CF_Authorization header) or falls back
+    # auth:  decodes the Cloudflare JWT (Cf-Access-Jwt-Assertion header) or falls back
     #        to x-forwarded-email; requires the User to be pre-registered.
     # Override with env var: AGENTOS_SECURITY_MODE
-    mode: local
+    mode: ${AGENTOS_SECURITY_MODE:local}
   oauth:
     # Absolute redirect URI sent to the OAuth provider as redirect_uri.
     # Must match the frontend OAuth callback page URL exactly.
     # In production, set to the deployed frontend callback URL (e.g. https://app.example.com/oauth/callback).
     # Override with env var: AGENTOS_OAUTH_REDIRECT_URI
-    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:http://localhost:4100/agentos/oauth/callback}
+    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:}
     # Maximum time in minutes to wait for the user to complete browser authorization.
     # Each pending flow holds one Dispatchers.IO thread for this duration; lower values
     # reduce the maximum blocking window. Default: 2 minutes.
@@ -324,7 +332,7 @@ agentos:
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
-    data-dir: data/
+    data-dir: ${AGENTOS_PERSISTENCE_DATA_DIR:${user.home}/coday/agentos/data/database}
     # Persistence mode:
     #   embedded-neo4j (default) - embedded Neo4j engine, no Docker required;
     #                              database stored under data-dir/neo4j/

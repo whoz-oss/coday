@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.http.testing
 import io.whozoss.agentos.plugins.http.HttpApiRuntime
 import io.whozoss.agentos.plugins.http.HttpApiTool
 import io.whozoss.agentos.plugins.http.auth.AuthHeaderSpec
+import io.whozoss.agentos.plugins.http.auth.RunAuth
 import io.whozoss.agentos.plugins.http.config.HttpApiConfig
 import io.whozoss.agentos.plugins.http.config.OperationOverride
 import io.whozoss.agentos.plugins.http.config.ResponseFormat
@@ -90,7 +91,7 @@ object ExecutionFixture {
               responses: { '200': { description: Nested } }
     """.trimIndent()
 
-    val policy = OutboundUrlPolicy(allowLoopbackForTests = true)
+    val policy = OutboundUrlPolicy(allowUnsecure = true)
 
     fun context(): ToolContext =
         ToolContext(namespaceId = UUID.randomUUID(), userId = null, userExternalId = null, caseEvents = emptyList())
@@ -134,7 +135,7 @@ object ExecutionFixture {
         HttpApiRuntime(
             configName = configName,
             baseUrl = requireNotNull(config.baseUrl) { "fixture configs always set baseUrl" },
-            authSpec = authSpec,
+            auth = RunAuth(configName) { authSpec },
             defaultHeaders = config.defaultHeaders,
             timeoutSeconds = config.timeoutSeconds,
             semaphore = semaphore,
