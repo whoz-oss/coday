@@ -182,6 +182,7 @@ class CaseEventNodeMapper(
                     node.usageCacheWriteTokens,
                     node.usageTotalTokens,
                     node.usageEstimatedCostUsd,
+                    node.maxIterationsReached,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -475,6 +476,7 @@ class CaseEventNodeMapper(
                 } else {
                     null
                 },
+            maxIterationsReached = n.maxIterationsReached,
         )
 
     private fun toDomain(n: AgentRunningEventNode) =
@@ -711,6 +713,7 @@ class CaseEventNodeMapper(
             usageCacheWriteTokens = e.llmUsage?.cacheWriteTokens,
             usageTotalTokens = e.llmUsage?.totalTokens,
             usageEstimatedCostUsd = e.llmUsage?.estimatedCostUsd,
+            maxIterationsReached = e.maxIterationsReached,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

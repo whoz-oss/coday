@@ -83,7 +83,7 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
         val mockChatClient = mockk<ChatClient>(relaxed = true)
         val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
         every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-        every { mockStreamSpec.content() } returns Flux.error(ex)
+        every { mockStreamSpec.chatResponse() } returns Flux.error(ex)
 
         val events = makeAgent(agentId, mockChatClient)
             .run(listOf(userMessage(namespaceId, caseId)))
@@ -121,7 +121,7 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
         val mockChatClient = mockk<ChatClient>(relaxed = true)
         val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
         every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-        every { mockStreamSpec.content() } returns Flux.error(wrapped)
+        every { mockStreamSpec.chatResponse() } returns Flux.error(wrapped)
 
         val events = makeAgent(agentId, mockChatClient)
             .run(listOf(userMessage(namespaceId, caseId)))
@@ -152,7 +152,7 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
         val mockChatClient = mockk<ChatClient>(relaxed = true)
         val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
         every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-        every { mockStreamSpec.content() } returns Flux.error(ex)
+        every { mockStreamSpec.chatResponse() } returns Flux.error(ex)
 
         val events = makeAgent(agentId, mockChatClient)
             .run(listOf(userMessage(namespaceId, caseId)))
@@ -181,7 +181,7 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
         val mockChatClient = mockk<ChatClient>(relaxed = true)
         val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
         every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-        every { mockStreamSpec.content() } returns Flux.error(RuntimeException("some generic error"))
+        every { mockStreamSpec.chatResponse() } returns Flux.error(RuntimeException("some generic error"))
 
         val events = makeAgent(agentId, mockChatClient)
             .run(listOf(userMessage(namespaceId, caseId)))
