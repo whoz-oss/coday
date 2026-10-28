@@ -129,8 +129,11 @@ work once the service synthesises the credential from the Auth Setting itself an
 which is not part of this plugin. Until it ships, bind an OAuth Auth Setting or expect `AUTH_MISSING`.
 
 The service resolves the credential of the Auth Setting named by `authSettingName` for the user
-running the agent, and hands the plugin a credential provider. The plugin invokes it **once per
-run** (`provideTools`) and maps the credential by its `CredentialType`:
+running the agent, and hands the plugin a credential provider. The plugin invokes it **on the first
+call of one of the integration's tools in a run**, never while it lists them (`provideTools`), and maps
+the credential by its `CredentialType`. For an OAuth Auth Setting without a valid stored token, that
+first call is where the user is asked to authorize: a run that never calls the integration's tools never
+shows the authorization card nor waits for it.
 
 | Auth Setting type | Credential type | What the plugin sends |
 |---|---|---|
@@ -151,9 +154,13 @@ Rules that follow from the service behaviour:
   `auth`, or one taken from the document) and no provider is bound.
 - **A provider that yields nothing usable is `AUTH_MISSING` before any request.** When the provider is
   present but returns no credential or a credential without material (blank token, key or password), the
-  tools are still listed (so the definition preview shows them) but every call fails fast with
-  `AUTH_MISSING` and no request is sent. Fix the Auth Setting or the user's credential.
-- The token is frozen for the run, like `MCP_HTTP`. A `401` is reported as `UNAUTHORIZED` with an
+  tools are still listed (so the definition preview shows them) but the call fails fast with
+  `AUTH_MISSING` and no request is sent. A provider that throws is `AUTH_MISSING` too, the detail staying
+  in the service logs.
+- The outcome of that first resolution is kept for the rest of the run, `AUTH_MISSING` included: an
+  authorization declined or timed out is not asked again by every later call, and the user's next message
+  (a new run) asks again. Concurrent calls wait for the single resolution. A call whose arguments are
+  invalid is refused before the credential is asked. A `401` is reported as `UNAUTHORIZED` with an
   instruction not to retry; the agent cannot refresh a token mid-run.
 - API key placement is a property of the called API, hence configured on the integration (`auth`), not
   on the Auth Setting.
@@ -348,7 +355,7 @@ Error types returned by the tools (`errorType`), stable so prompts can rely on t
 | `errorType` | When | Agent guidance in the message |
 |---|---|---|
 | `INVALID_INPUT` | Arguments are not a JSON object, a required path or header parameter or body is missing, a header value is not a single printable line, a form body is not an object | Fix the arguments; no request was sent |
-| `AUTH_MISSING` | An Auth Setting is bound but no usable credential was resolved | Ask an administrator; no request was sent |
+| `AUTH_MISSING` | An Auth Setting is bound but no usable credential was resolved | Do not retry in the run; the user's next message asks again, otherwise ask an administrator; no request was sent |
 | `URL_POLICY_REJECTED` | The final URL would leave `baseUrl` or violates the policy | No request was sent |
 | `HTTP_CLIENT_ERROR` | `400`, `404`, `409`, `422` and other `4xx` (body capped at 2000 characters) | Correct the call |
 | `UNAUTHORIZED` | `401` | Do not retry; ask an administrator to check the Auth Setting |

@@ -1,0 +1,72 @@
+package io.whozoss.agentos.plugins.http.auth
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import mu.KLogging
+
+/**
+ * The authentication of one run's calls, resolved by the first call that needs it rather than when the
+ * tools are built: for an OAuth Auth Setting the service's credential provider may ask the user to
+ * authorize and wait for the answer, which must only happen when one of the integration's tools is
+ * actually called, never on a run that does not use them.
+ *
+ * The spec is resolved once and kept for the rest of the run, [AuthHeaderSpec.Missing] included: an
+ * authorization declined or timed out is not asked again by every later call of the run, the next run asks
+ * again. Concurrent calls of the run wait for that single resolution. A resolution that throws is answered
+ * as [AuthHeaderSpec.Missing], the detail staying in the logs.
+ *
+ * A run is one agent turn. Every user message starts a new one, which resolves the tools again and so
+ * builds a new [RunAuth] (`CaseRuntime` -> `AgentServiceImpl.findAgentByName` ->
+ * `ToolResolverService.resolveToolsForRun` -> `provideTools`).
+ *
+ * While the user is asked to authorize, the call holds one `Dispatchers.IO` thread, on top of the one the
+ * service's OAuth flow holds until the answer or its timeout (see the bounded capacity noted on the
+ * service's `OAuthPendingRegistry`). Only a run that calls the integration's tools pays it, at most once.
+ *
+ * @param resolve Builds the spec. The credential provider is not suspending and may block until the user
+ *   answers, so it runs on the IO dispatcher, interrupted when the run is cancelled.
+ */
+class RunAuth(
+    private val configName: String,
+    private val resolve: () -> AuthHeaderSpec,
+) {
+    private val mutex = Mutex()
+
+    @Volatile
+    private var resolved: AuthHeaderSpec? = null
+
+    suspend fun spec(): AuthHeaderSpec = resolved ?: mutex.withLock { resolved ?: resolveOnce().also { resolved = it } }
+
+    private suspend fun resolveOnce(): AuthHeaderSpec {
+        val spec =
+            try {
+                runInterruptible(Dispatchers.IO) { resolve() }
+            } catch (e: CancellationException) {
+                // The run's own cancellation propagates; any other one is a failed resolution.
+                currentCoroutineContext().ensureActive()
+                failed(e)
+            } catch (e: Exception) {
+                failed(e)
+            }
+        val line = "HTTP_API integration '$configName': auth=$spec for the rest of the run"
+        when (spec) {
+            is AuthHeaderSpec.Missing -> logger.warn { line }
+            else -> logger.info { line }
+        }
+        return spec
+    }
+
+    private fun failed(e: Exception): AuthHeaderSpec {
+        logger.error(e) { "HTTP_API integration '$configName': credential resolution failed: ${e.message}" }
+        return AuthHeaderSpec.Missing(RESOLUTION_FAILED)
+    }
+
+    companion object : KLogging() {
+        const val RESOLUTION_FAILED = "unexpected error while resolving the credential, see the service logs"
+    }
+}

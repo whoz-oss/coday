@@ -1940,6 +1940,34 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
         }
 
+        // Every user message starts a new run through findAgentByName: per-run plugin state (the
+        // HTTP_API credential, for instance) relies on the tools being resolved again for each one.
+        "findAgentByName resolves the tools on every call, so no run reuses the tools of a previous one" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val factories = mutableListOf<(String) -> CredentialProvider?>()
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns mockk<ChatClient>(relaxed = true)
+            every {
+                toolResolverService.resolveToolsForRun(
+                    agentIntegrations = any(),
+                    context = any(),
+                    allIntegrationConfigs = any(),
+                    credentialProviderFactory = capture(factories),
+                )
+            } returns emptyList()
+
+            agentService.findAgentByName("my-agent", context)
+            agentService.findAgentByName("my-agent", context)
+
+            factories.size shouldBe 2
+            (factories[0] === factories[1]) shouldBe false
+        }
+
         // -------------------------------------------------------------------------
         // OAuth dispatch in credentialProviderFactory
         //

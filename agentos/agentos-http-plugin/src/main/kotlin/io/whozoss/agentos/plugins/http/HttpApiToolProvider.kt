@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.http
 
 import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.plugins.http.auth.AuthHeaderSpec
+import io.whozoss.agentos.plugins.http.auth.RunAuth
 import io.whozoss.agentos.plugins.http.cache.Catalogue
 import io.whozoss.agentos.plugins.http.cache.CatalogueOutcome
 import io.whozoss.agentos.plugins.http.config.HttpApiConfigParser
@@ -18,10 +19,11 @@ import java.util.UUID
  * OpenAPI document named by the config.
  *
  * [provideTools] parses the config, obtains the catalogue from the plugin-wide cache (fetching and curating
- * the document only when needed), resolves the credential of the bound Auth Setting once for the run and
- * builds the tools. Every failure is logged, recorded in the [LastFailureRegistry] (scoped to the namespace
- * of the run) for [describeNamespace] and answered with an empty list: nothing escapes, not even a plugin
- * that is not started.
+ * the document only when needed) and builds the tools. It never resolves the credential of the bound Auth
+ * Setting: the first call of one of the tools does ([RunAuth]), since for an OAuth Auth Setting that may ask
+ * the user to authorize, which a run that never calls them must not do. Every failure is logged, recorded
+ * in the [LastFailureRegistry] (scoped to the namespace of the run) for [describeNamespace] and answered with
+ * an empty list: nothing escapes, not even a plugin that is not started.
  *
  * [describeNamespace] is called for every config of a namespace with a context that carries no credential
  * provider: it answers from the cache and the registry only, without network access.
@@ -92,11 +94,14 @@ class HttpApiToolProvider @JvmOverloads constructor(
                     "identity): calls are sent unauthenticated"
             }
         }
-        val authSpec = AuthHeaderSpec.from(provider?.invoke(), catalogue.auth, providerBound = provider != null)
+        val authConfig = catalogue.auth
+        val auth = RunAuth(configName) {
+            AuthHeaderSpec.from(provider?.invoke(), authConfig, providerBound = provider != null)
+        }
         val runtime = HttpApiRuntime(
             configName = configName,
             baseUrl = catalogue.baseUrl,
-            authSpec = authSpec,
+            auth = auth,
             defaultHeaders = parsed.defaultHeaders,
             timeoutSeconds = parsed.timeoutSeconds,
             semaphore = services.limiters.limiterFor(namespaceId, configName, parsed.maxConcurrentCalls),
@@ -105,7 +110,7 @@ class HttpApiToolProvider @JvmOverloads constructor(
         )
         logger.info {
             "$INTEGRATION_TYPE integration '$configName': providing ${catalogue.operations.size} tool(s), " +
-                "auth=$authSpec"
+                "auth=${if (provider == null) "none" else "resolved by the first call"}"
         }
         return catalogue.operations.map { HttpApiTool(it, runtime) }
     }
