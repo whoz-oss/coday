@@ -95,8 +95,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   // Autocomplete state
   autocompleteVisible = false
   autocompleteTrigger: '@' | '/' | null = null
-  autocompleteItems: Array<{ name: string; description: string }> = []
+  autocompleteItems: Array<AgentAutocomplete | PromptAutocomplete> = []
   selectedAutocompleteIndex = 0
+  private autocompleteSub: Subscription | null = null
 
   // Modern Angular dependency injection
   private readonly preferencesService = inject(PreferencesService)
@@ -203,6 +204,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     // Clean up all subscriptions
     this.subscriptions.forEach((sub) => sub.unsubscribe())
     this.subscriptions = []
+    this.autocompleteSub?.unsubscribe()
+    this.autocompleteSub = null
 
     this.clearPendingLineBreaks()
     this.stopThinkingAnimation()
@@ -271,6 +274,12 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   onInput() {
+    // Sync message directly from textarea DOM value before checking autocomplete,
+    // because (input) fires before [(ngModel)] updates this.message.
+    if (this.messageInput?.nativeElement) {
+      this.message = this.messageInput.nativeElement.value
+    }
+
     // Adjust textarea height when content changes
     this.adjustTextareaHeight()
 
@@ -937,13 +946,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   private showAgentAutocomplete(query: string): void {
     this.autocompleteTrigger = '@'
+    this.autocompleteSub?.unsubscribe()
 
     try {
       // Get current project name
       const projectName = this.projectStateService.getSelectedProjectIdOrThrow()
 
       // Get filtered agents (uses cache if available)
-      this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
+      this.autocompleteSub = this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
         next: (agents: AgentAutocomplete[]) => {
           this.autocompleteItems = agents
           this.autocompleteVisible = agents.length > 0
@@ -966,13 +976,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   private showPromptAutocomplete(query: string): void {
     this.autocompleteTrigger = '/'
+    this.autocompleteSub?.unsubscribe()
 
     try {
       // Get current project name
       const projectName = this.projectStateService.getSelectedProjectIdOrThrow()
 
       // Get filtered prompts
-      this.promptApiService.getPromptsAutocomplete(projectName, query).subscribe({
+      this.autocompleteSub = this.promptApiService.getPromptsAutocomplete(projectName, query).subscribe({
         next: (prompts: PromptAutocomplete[]) => {
           this.autocompleteItems = prompts
           this.autocompleteVisible = prompts.length > 0
@@ -993,6 +1004,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    * Hide the autocomplete popup
    */
   private hideAutocomplete(): void {
+    this.autocompleteSub?.unsubscribe()
+    this.autocompleteSub = null
     this.autocompleteVisible = false
     this.autocompleteItems = []
     this.selectedAutocompleteIndex = 0
@@ -1010,9 +1023,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     // Build the completed text based on trigger type
     if (this.autocompleteTrigger === '/') {
       // For slash commands (prompts), append parameter format if available
-      const promptItem = item as any // Cast to access parameterFormat
-      const paramFormat = promptItem.parameterFormat
-      console.log(promptItem)
+      const paramFormat = this.getParameterFormat(item)
 
       if (paramFormat === undefined) {
         // No parameters: just command name
@@ -1071,15 +1082,15 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   /**
    * Get parameter format for a prompt item (slash commands only)
    */
-  getParameterFormat(item: any): string | undefined {
-    return item.parameterFormat
+  getParameterFormat(item: AgentAutocomplete | PromptAutocomplete): string | undefined {
+    return 'parameterFormat' in item ? item.parameterFormat : undefined
   }
 
   /**
    * Check if item has parameter format defined
    */
-  hasParameterFormat(item: any): boolean {
-    return this.autocompleteTrigger === '/' && item.parameterFormat !== undefined
+  hasParameterFormat(item: AgentAutocomplete | PromptAutocomplete): boolean {
+    return this.autocompleteTrigger === '/' && this.getParameterFormat(item) !== undefined
   }
 
   /**

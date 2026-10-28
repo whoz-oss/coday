@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
-import { Observable, of } from 'rxjs'
-import { map } from 'rxjs/operators'
+import { Observable, throwError } from 'rxjs'
+import { catchError, map, shareReplay } from 'rxjs/operators'
 import { ProjectStateService } from './project-state.service'
+import { filterAndSortAutocomplete } from '../../utils/autocomplete.utils'
 
 /**
  * Source location for prompt storage
@@ -66,8 +67,8 @@ export class PromptApiService {
   private readonly http = inject(HttpClient)
   private readonly projectState = inject(ProjectStateService)
 
-  // Cache for prompt lists by project
-  private promptsCache = new Map<string, PromptInfo[]>()
+  // Cache for prompt lists by project (shares in-flight and resolved responses)
+  private promptsCache = new Map<string, Observable<PromptInfo[]>>()
 
   private getBaseUrl(): string {
     return `/api/projects/${this.projectState.getSelectedProjectIdOrThrow()}/prompts`
@@ -90,37 +91,27 @@ export class PromptApiService {
    * @returns Observable of filtered prompts for autocomplete
    */
   getPromptsAutocomplete(projectName: string, query: string): Observable<PromptAutocomplete[]> {
-    // Check cache first
-    const cached = this.promptsCache.get(projectName)
+    let prompts$ = this.promptsCache.get(projectName)
 
-    if (cached) {
-      // Use cached data and filter client-side
-      return of(this.filterPromptsForAutocomplete(cached, query))
+    if (!prompts$) {
+      prompts$ = this.http.get<PromptInfo[]>(`/api/projects/${projectName}/prompts`).pipe(
+        catchError((error) => {
+          this.promptsCache.delete(projectName)
+          return throwError(() => error)
+        }),
+        shareReplay({ bufferSize: 1, refCount: false })
+      )
+      this.promptsCache.set(projectName, prompts$)
     }
 
-    // No cache, fetch from API
-    return this.http.get<PromptInfo[]>(`/api/projects/${projectName}/prompts`).pipe(
-      map((prompts) => {
-        // Store in cache
-        this.promptsCache.set(projectName, prompts)
-
-        // Filter and return
-        return this.filterPromptsForAutocomplete(prompts, query)
-      })
-    )
+    return prompts$.pipe(map((prompts) => this.filterPromptsForAutocomplete(prompts, query)))
   }
 
   /**
-   * Filter prompts for autocomplete (client-side filtering)
+   * Filter and sort prompts for autocomplete (client-side filtering + relevance sort)
    */
   private filterPromptsForAutocomplete(prompts: PromptInfo[], query: string): PromptAutocomplete[] {
-    const lowerQuery = query.toLowerCase()
-    const filtered = prompts.filter(
-      (prompt) =>
-        prompt.name.toLowerCase().includes(lowerQuery) || prompt.description.toLowerCase().includes(lowerQuery)
-    )
-
-    return filtered.map((prompt) => ({
+    return filterAndSortAutocomplete(prompts, query).map((prompt) => ({
       name: prompt.name,
       description: prompt.description,
       parameterFormat: prompt.parameterFormat,
