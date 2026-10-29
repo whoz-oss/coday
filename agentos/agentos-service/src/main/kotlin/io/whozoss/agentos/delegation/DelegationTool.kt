@@ -3,6 +3,7 @@ package io.whozoss.agentos.delegation
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -45,6 +46,8 @@ import java.util.UUID
  * - `pendingQuestion` — the question text when the sub-agent is waiting for input
  * - `options` — optional list of choices for the pending question
  * - `error` — error description when success is false
+ * - `maxIterationsReached` — the iteration limit the sub-agent reached before finishing; `result` is
+ *   then its summary of the work so far, and resuming the sub-case lets it continue
  *
  * **Timeout** is an inactivity budget, applied independently to each sub-case: any activity of the
  * sub-case, or of a delegation it waits on, restarts it, and human cost confirmation does not count.
@@ -108,6 +111,7 @@ class DelegationTool(
                 Delegate one or more tasks to specialized sub-agents and wait for all results. 
                 All delegations run in parallel — pass multiple entries to fan out work concurrently. 
                 Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. 
+                A result with maxIterationsReached is partial: the sub-agent hit its iteration limit and summarized its progress; resume via subCaseId to let it continue. 
                 Available agents: ${allowedAgents.joinToString(", ")}.
                 """.trimIndent()
             }
@@ -291,7 +295,9 @@ class DelegationTool(
             } else {
                 outcome = SubCaseOutcome.SUCCESS
                 finishErrorType = null
-                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true, result = extractLastAgentMessage(events))
+                val lastRun = events.filterIsInstance<AgentFinishedEvent>().lastOrNull()
+                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true,
+                    result = extractLastAgentMessage(events), maxIterationsReached = lastRun?.maxIterationsReached)
             }
         } catch (error: Exception) {
             outcome = SubCaseOutcome.ERROR
@@ -368,6 +374,7 @@ class DelegationTool(
         val options: List<String>? = null,
         val error: String? = null,
         val errorType: String? = null,
+        val maxIterationsReached: Int? = null,
     ) {
         fun toMap(): Map<String, Any?> =
             buildMap {
@@ -381,6 +388,7 @@ class DelegationTool(
                 options?.let { put("options", it) }
                 error?.let { put("error", it) }
                 errorType?.let { put("errorType", it) }
+                maxIterationsReached?.let { put("maxIterationsReached", it) }
             }
     }
 

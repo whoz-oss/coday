@@ -209,6 +209,13 @@
                 @if (item.notice.detail) {
                   <span class="case-chat__execution-notice-detail">{{ item.notice.detail }}</span>
                 }
+                @if (
+                  item.eventId === continuableStopId() && !isRunning() && !isTerminal() && !attachments.isUploading()
+                ) {
+                  <button type="button" class="case-chat__execution-notice-action" (click)="continueAfterLimit()">
+                    Continue
+                  </button>
+                }
               </div>
             } @else if (item.kind === 'technical') {
               <details class="case-chat__log">
