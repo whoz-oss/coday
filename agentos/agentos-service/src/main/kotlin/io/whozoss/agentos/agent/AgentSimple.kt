@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.logging.withMdc
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -30,8 +31,10 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.slf4j.MDCContext
 import kotlinx.coroutines.selects.select
 import mu.KLogging
+import org.slf4j.MDC
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -104,6 +107,10 @@ class AgentSimple(
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
 
+            // Tool callbacks run on Spring AI / Reactor threads where the thread-local MDC of this
+            // coroutine is absent: capture it once, at the start of the run, and re-apply it in each callback.
+            val logContext: Map<String, String>? = MDC.getCopyOfContextMap()
+
             // Channel to collect tool events from callbacks
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
 
@@ -125,7 +132,7 @@ class AgentSimple(
                     }
 
                 logger.debug {
-                    "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM" +
+                    "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM $llmProvider/$llmModel with ${tools.size} tool(s)" +
                         (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
                 }
 
@@ -167,6 +174,7 @@ class AgentSimple(
                             toolEventChannel,
                             llmTurnMark,
                             llmTurnIndex,
+                            logContext,
                         )
                     }
 
@@ -502,6 +510,7 @@ class AgentSimple(
         eventChannel: Channel<CaseEvent>,
         llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>?,
         llmTurnIndex: AtomicInteger?,
+        logContext: Map<String, String>? = null,
     ): ToolCallback =
         object : ToolCallback {
             // Expose the tool's own schema verbatim — no reflection-based generation.
@@ -519,7 +528,9 @@ class AgentSimple(
                 eventChannel.trySend(event)
             }
 
-            override fun call(toolInput: String): String {
+            override fun call(toolInput: String): String = withMdc(logContext) { callWithLogContext(toolInput) }
+
+            private fun callWithLogContext(toolInput: String): String {
                 val toolRequestId = UUID.randomUUID().toString()
 
                 // The LLM decided to call this tool: in DEBUG, log how long it thought
@@ -577,7 +588,11 @@ class AgentSimple(
                     measureTime {
                         executionResult =
                             try {
-                                runBlocking(Dispatchers.IO) { tool.executeWithJson(toolInput, context) }
+                                // MDCContext() captures the MDC of this thread, which withMdc has just merged:
+                                // the run's keys plus the foreign keys (e.g. an infra trace id) of the callback thread.
+                                runBlocking(Dispatchers.IO + MDCContext()) {
+                                    tool.executeWithJson(toolInput, context)
+                                }
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.
@@ -625,9 +640,8 @@ class AgentSimple(
                             }
                     }
                 if (llmTurnMark != null) {
-                    logger.debug {
-                        "[AgentSimple] agent=$name case=$caseId tool=${tool.name} completed in $toolDuration"
-                    }
+                    "tool '${tool.name}' executed in $toolDuration, success=${executionResult.success}" +
+                            (executionResult.errorType?.let { ", errorType=$it" } ?: "")
                 }
                 // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
                 // rethrowing; cancellation/interruption rethrow without recording a metric.

@@ -45,6 +45,7 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
+import kotlin.time.TimeSource
 
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -1543,7 +1544,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 
         val phaseJson = callLlmForParameters(messages)
 
-        logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
+        logger.trace { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 
         val toolCtx = buildToolContext(tool.name, namespaceId)
         val result = tool.enrich(phaseIndex, phaseJson, toolCtx)
@@ -1584,6 +1585,9 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
         val tool = context.tools.firstOrNull { it.name == toolRequest.toolName }
         return when {
             tool == null -> {
+                logger.warn {
+                    "[AgentAdvanced] $name tool '${toolRequest.toolName}' not found, success=false, errorType=TOOL_NOT_FOUND"
+                }
                 ToolResponseEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
@@ -1596,6 +1600,8 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 
             else -> {
                 val sample = toolMetricsService?.startTimer()
+                // Own clock: the metrics service is optional, and the outcome logs below need a duration either way.
+                val startedAt = TimeSource.Monotonic.markNow()
                 try {
                     val filteredEvents = filterEventsByIntegration(toolRequest.toolName, caseEventsProvider())
                     val result: ToolExecutionResult =
@@ -1617,6 +1623,11 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                             namespaceId = namespaceId,
                             success = result.success,
                         )
+                    logger.info {
+                        "[AgentAdvanced] $name tool '${toolRequest.toolName}' executed in ${startedAt.elapsedNow()}, " +
+                            "success=${result.success}" +
+                            (result.errorType?.let { ", errorType=$it" } ?: "")
+                    }
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
@@ -1646,7 +1657,8 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                     // ensureActive() then throws a CancellationException so the run ends without reporting an error.
                     currentCoroutineContext().ensureActive()
                     logger.warn(e) {
-                        "[AgentAdvanced] error during tool execution for ${tool.name}"
+                        "[AgentAdvanced] $name tool '${tool.name}' failed in ${startedAt.elapsedNow()}, " +
+                            "success=false, errorType=${e::class.simpleName}"
                     }
                     val durationMs =
                         toolMetricsService?.stopTimerAndSendMetrics(
