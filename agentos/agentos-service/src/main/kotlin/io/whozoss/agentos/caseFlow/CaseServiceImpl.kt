@@ -438,8 +438,10 @@ class CaseServiceImpl(
 
         fun resolvedText(cmd: ResolvedCommand): String {
             val agentConfigId = cmd.agentConfigId ?: return cmd.text
-            // Don't prefix if the content already starts with an @mention.
-            if (cmd.text.trimStart().startsWith("@")) return cmd.text
+            // Don't prefix when the text already carries a mention selectAgent will honour (plain or
+            // chip form). Anything else starting with "@" ("@ x", "@@x", "@éric") is not a mention
+            // for selectAgent, so the prompt's own agent is prefixed to keep it the one that runs.
+            if (AgentMention.extractName(cmd.text) != null) return cmd.text
             val agentName =
                 agentNameCache.getOrPut(agentConfigId) {
                     agentConfigService
