@@ -438,8 +438,12 @@ class CaseServiceImpl(
 
         fun resolvedText(cmd: ResolvedCommand): String {
             val agentConfigId = cmd.agentConfigId ?: return cmd.text
-            // Don't prefix if the content already starts with an @mention.
-            if (cmd.text.trimStart().startsWith("@")) return cmd.text
+            // Don't prefix if the content already starts with an @mention (plain or chip form).
+            // Route through AgentMention — the single source of truth — so the chip form
+            // [@Agent](#agent=…) is also recognised and never double-prefixed.
+            // Note: a bare "@ something" (@ followed by whitespace) is intentionally not a
+            // mention and will now be prefixed, which is correct behaviour.
+            if (AgentMention.extractName(cmd.text) != null) return cmd.text
             val agentName =
                 agentNameCache.getOrPut(agentConfigId) {
                     agentConfigService
