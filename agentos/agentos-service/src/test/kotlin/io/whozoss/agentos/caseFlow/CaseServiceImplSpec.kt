@@ -250,6 +250,7 @@ class CaseServiceImplSpec :
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 },
             coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
+            prompts: PromptService = promptService,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -273,7 +274,7 @@ class CaseServiceImplSpec :
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 limitsConfig = LimitsConfigProperties(),
                 permissionService = permissionService,
-                promptService = promptService,
+                promptService = prompts,
                 caseNamingService = noOpCaseNamingService,
                 usageRecordService = UsageRecordServiceImpl(usageRecordRepository),
                 usageConfig = usageConfig,
@@ -2259,217 +2260,184 @@ class CaseServiceImplSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Chip-form @mention regression (WZ-35031)
+        // Chip-form @mention routing (WZ-35031)
         // -------------------------------------------------------------------------
 
-        "chip-form mention routes to the named agent, not the namespace default (Problem 1)" {
-            // Regression: [@CastingManager](#agent=…) was not parsed by the old regex,
-            // so selectAgent fell through to step 3 (namespace default) instead of
-            // step 1 (explicit mention). The chip form must be treated exactly like
-            // the plain form @CastingManager.
-
-            val castingManagerName = "CastingManager"
-            val castingManagerId = UUID.nameUUIDFromBytes(castingManagerName.toByteArray())
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            val namespace =
-                Namespace(
-                    metadata = EntityMetadata(id = namespaceId),
-                    name = "test-namespace",
-                    defaultAgentName = agentName, // default is NOT CastingManager
-                )
-            val namespaceService =
-                mockk<NamespaceService> {
-                    every { findById(namespaceId) } returns namespace
-                    every { resolveRunCostThreshold(namespaceId) } returns null
-                }
-            val castingManagerAgent =
-                mockk<Agent> {
-                    every { metadata } returns EntityMetadata(id = castingManagerId)
-                    every { name } returns castingManagerName
-                    every { id } returns castingManagerId
-                    every { llmProvider } returns "test-provider"
-                    every { llmModel } returns "test-model"
-                    every { run(any<List<CaseEvent>>(), any()) } answers {
-                        val caseId = firstArg<List<CaseEvent>>().first().caseId
-                        flow {
-                            emit(
-                                AgentFinishedEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = caseId,
-                                    agentId = castingManagerId,
-                                    agentName = castingManagerName,
-                                ),
-                            )
-                        }
+        /** A mock agent named [agentLabel] that records its name in [ran] each time it runs. */
+        fun namedAgent(
+            agentLabel: String,
+            ran: MutableList<String>,
+        ): Agent {
+            val agentUuid = UUID.nameUUIDFromBytes(agentLabel.toByteArray())
+            return mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentUuid)
+                every { name } returns agentLabel
+                every { id } returns agentUuid
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    ran += agentLabel
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = agentUuid,
+                                agentName = agentLabel,
+                            ),
+                        )
                     }
                 }
-            val agentService =
-                mockk<AgentService> {
-                    every { resolveAgentName(castingManagerName, namespaceId, any()) } returns castingManagerName
-                    coEvery { findAgentByName(castingManagerName, any(), any()) } returns castingManagerAgent
-                }
-            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service =
-                CaseServiceImpl(
-                    agentService,
-                    allowAllAgentConfigService,
-                    AgentConfigProperties(),
-                    InMemoryCaseRepository(),
-                    caseEventService,
-                    userService,
-                    namespaceService,
-                    caseConfig = CaseConfigProperties(),
-                    limitsConfig = LimitsConfigProperties(),
-                    permissionService = permissionService,
-                    promptService = promptService,
-                    caseNamingService = noOpCaseNamingService,
-                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
-                )
-            val case = service.create(Case(namespaceId = namespaceId))
-            val runtime = service.getCaseRuntime(case.id)
-            val scope = CoroutineScope(Dispatchers.IO)
-
-            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
-            awaitSubscribers(runtime)
-            service.addMessage(
-                caseId = case.id,
-                actor = userActor,
-                content = listOf(MessageContent.Text("[@CastingManager](#agent=a8b12cb8-7d3a-42fe-a964-55cbb8f6e7aa) quelles sont les agents à ta disposition ?")),
-            )
-            awaiter.join()
-
-            service.getById(case.id).status shouldBe CaseStatus.IDLE
-            val persistedEvents = caseEventService.findByParent(case.id)
-            // Must select CastingManager, NOT the namespace default (agentName)
-            persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe castingManagerName
-            persistedEvents.filterIsInstance<WarnEvent>() shouldBe emptyList()
+            }
         }
 
-        "chip-form mention wins over last-selected agent, bypassing the redirect path (Problem 2)" {
-            // Regression: when a previous agent was selected and the user sends a chip-form
-            // mention for a different agent, the chip must win (step 1) and the redirect
-            // blacklist path (last-selected agent -> RedirectTool) must never be reached.
-            //
-            // Scenario:
-            //   Turn 1: @previousAgent is selected via plain mention.
-            //   Turn 2: [@CastingManager](#agent=…) — chip form. Must route to CastingManager,
-            //           NOT stay with previousAgent (which would then attempt a redirect).
+        /** An [AgentService] that knows exactly [agents], matched by name ignoring case. */
+        fun agentServiceKnowing(vararg agents: Agent): AgentService =
+            mockk {
+                every { resolveAgentName(any(), any(), any()) } answers {
+                    agents.firstOrNull { it.name.equals(firstArg<String>(), ignoreCase = true) }?.name
+                }
+                coEvery { findAgentByName(any(), any(), any()) } answers {
+                    agents.first { it.name.equals(firstArg<String>(), ignoreCase = true) }
+                }
+            }
 
+        /** Sends [text] and waits until the turn it triggers is over and the runtime is idle again. */
+        suspend fun sendAndAwaitIdle(
+            service: CaseServiceImpl,
+            caseId: UUID,
+            text: String,
+        ) {
+            val runtime = service.getCaseRuntime(caseId)
+            val awaiter = CoroutineScope(Dispatchers.IO).expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(caseId, userActor, listOf(MessageContent.Text(text)))
+            awaiter.join()
+            awaitNotRunning(runtime)
+        }
+
+        fun chip(label: String): String = "[@$label](#agent=${UUID.randomUUID()})"
+
+        // The label is whatever the composer emits for the agent's name: it is not limited to the
+        // characters of the plain `@name` form, and the link target is never what routes.
+        listOf("CastingManager", "Casting Manager", "\u00c9ric.v2").forEach { label ->
+            "a chip mention of '$label' selects that agent, not the namespace default" {
+                val ran = mutableListOf<String>()
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val service =
+                    buildService(
+                        caseEventService = events,
+                        agentService = agentServiceKnowing(namedAgent(label, ran), namedAgent(agentName, ran)),
+                    )
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                sendAndAwaitIdle(service, case.id, "${chip(label)} what can you do?")
+
+                ran shouldBe listOf(label)
+                val persisted = events.findByParent(case.id)
+                persisted.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe label
+                persisted.filterIsInstance<WarnEvent>() shouldBe emptyList()
+            }
+        }
+
+        "a chip mention wins over the agent selected on the previous turn" {
             val previousAgentName = "previous-agent"
-            val castingManagerName = "CastingManager"
-            val previousAgentId = UUID.nameUUIDFromBytes(previousAgentName.toByteArray())
-            val castingManagerId = UUID.nameUUIDFromBytes(castingManagerName.toByteArray())
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            val namespace =
-                Namespace(
-                    metadata = EntityMetadata(id = namespaceId),
-                    name = "test-namespace",
-                    defaultAgentName = previousAgentName,
-                )
-            val namespaceService =
-                mockk<NamespaceService> {
-                    every { findById(namespaceId) } returns namespace
-                    every { resolveRunCostThreshold(namespaceId) } returns null
-                }
-            val selectedAgentNames = mutableListOf<String>()
-            val previousAgent =
-                mockk<Agent> {
-                    every { metadata } returns EntityMetadata(id = previousAgentId)
-                    every { name } returns previousAgentName
-                    every { id } returns previousAgentId
-                    every { llmProvider } returns "test-provider"
-                    every { llmModel } returns "test-model"
-                    every { run(any<List<CaseEvent>>(), any()) } answers {
-                        selectedAgentNames += previousAgentName
-                        val caseId = firstArg<List<CaseEvent>>().first().caseId
-                        flow {
-                            emit(
-                                AgentFinishedEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = caseId,
-                                    agentId = previousAgentId,
-                                    agentName = previousAgentName,
-                                ),
-                            )
-                        }
-                    }
-                }
-            val castingManagerAgent =
-                mockk<Agent> {
-                    every { metadata } returns EntityMetadata(id = castingManagerId)
-                    every { name } returns castingManagerName
-                    every { id } returns castingManagerId
-                    every { llmProvider } returns "test-provider"
-                    every { llmModel } returns "test-model"
-                    every { run(any<List<CaseEvent>>(), any()) } answers {
-                        selectedAgentNames += castingManagerName
-                        val caseId = firstArg<List<CaseEvent>>().first().caseId
-                        flow {
-                            emit(
-                                AgentFinishedEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = caseId,
-                                    agentId = castingManagerId,
-                                    agentName = castingManagerName,
-                                ),
-                            )
-                        }
-                    }
-                }
-            val agentService =
-                mockk<AgentService> {
-                    every { resolveAgentName(previousAgentName, namespaceId, any()) } returns previousAgentName
-                    every { resolveAgentName(castingManagerName, namespaceId, any()) } returns castingManagerName
-                    coEvery { findAgentByName(previousAgentName, any(), any()) } returns previousAgent
-                    coEvery { findAgentByName(castingManagerName, any(), any()) } returns castingManagerAgent
-                }
-            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val castingManagerName = "Casting Manager"
+            val ran = mutableListOf<String>()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val service =
-                CaseServiceImpl(
-                    agentService,
-                    allowAllAgentConfigService,
-                    AgentConfigProperties(),
-                    InMemoryCaseRepository(),
-                    caseEventService,
-                    userService,
-                    namespaceService,
-                    caseConfig = CaseConfigProperties(),
-                    limitsConfig = LimitsConfigProperties(),
-                    permissionService = permissionService,
-                    promptService = promptService,
-                    caseNamingService = noOpCaseNamingService,
-                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                buildService(
+                    caseEventService = events,
+                    agentService =
+                        agentServiceKnowing(
+                            namedAgent(previousAgentName, ran),
+                            namedAgent(castingManagerName, ran),
+                        ),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
-            val runtime = service.getCaseRuntime(case.id)
-            val scope = CoroutineScope(Dispatchers.IO)
 
-            // Turn 1: plain mention of previousAgent
-            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
-            awaitSubscribers(runtime)
-            service.addMessage(
-                caseId = case.id,
-                actor = userActor,
-                content = listOf(MessageContent.Text("@$previousAgentName hello")),
-            )
-            firstIdle.join()
-            awaitNotRunning(runtime)
+            sendAndAwaitIdle(service, case.id, "@$previousAgentName hello")
+            sendAndAwaitIdle(service, case.id, "${chip(castingManagerName)} and you?")
 
-            // Turn 2: chip-form mention of CastingManager — must win over last-selected previousAgent
-            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
-            awaitSubscribers(runtime)
-            service.addMessage(
-                caseId = case.id,
-                actor = userActor,
-                content = listOf(MessageContent.Text("[@CastingManager](#agent=a8b12cb8-7d3a-42fe-a964-55cbb8f6e7aa) quelles sont les agents ?")),
-            )
-            secondIdle.join()
+            ran shouldBe listOf(previousAgentName, castingManagerName)
+            val persisted = events.findByParent(case.id)
+            persisted.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe castingManagerName
+            persisted.filterIsInstance<WarnEvent>() shouldBe emptyList()
+        }
 
-            // The agent sequence must be [previousAgent, castingManager] — chip won over sticky.
-            selectedAgentNames shouldBe listOf(previousAgentName, castingManagerName)
-            val persistedEvents = caseEventService.findByParent(case.id)
-            persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe castingManagerName
-            persistedEvents.filterIsInstance<WarnEvent>() shouldBe emptyList()
+        "a chip mention of an unknown agent warns and falls back to the namespace default" {
+            val ran = mutableListOf<String>()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service =
+                buildService(
+                    caseEventService = events,
+                    agentService = agentServiceKnowing(namedAgent(agentName, ran)),
+                )
+            val case = service.create(Case(namespaceId = namespaceId))
+
+            sendAndAwaitIdle(service, case.id, "${chip("Ghost Agent")} hello")
+
+            ran shouldBe listOf(agentName)
+            events
+                .findByParent(case.id)
+                .filterIsInstance<WarnEvent>()
+                .single()
+                .message shouldBe "Agent 'Ghost Agent' not found or not accessible"
+        }
+
+        // A prompt linked to an agent prefixes its own `@agent` to its content, unless the content
+        // already carries a mention selectAgent will honour. The chip form used to slip through and
+        // was double-prefixed; text starting with an `@` that is not a mention keeps being prefixed.
+        val starterConfigId: UUID = UUID.randomUUID()
+        listOf(
+            "[@Casting Manager](#agent=3f2c) hello" to "[@Casting Manager](#agent=3f2c) hello",
+            "@Casting hello" to "@Casting hello",
+            "hello" to "@Starter hello",
+            "@ hello" to "@Starter @ hello",
+            "@@Casting hello" to "@Starter @@Casting hello",
+            "@\u00e9ric hello" to "@Starter @\u00e9ric hello",
+        ).forEach { (promptContent, expectedMessage) ->
+            "an agent-linked prompt '$promptContent' reaches the conversation as '$expectedMessage'" {
+                val agentConfigService: AgentConfigService =
+                    mockk {
+                        every { findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } answers {
+                            listOf(AgentConfig(namespaceId = firstArg<UUID>(), name = thirdArg<String?>() ?: "any"))
+                        }
+                        every { findById(starterConfigId) } returns
+                            AgentConfig(
+                                metadata = EntityMetadata(id = starterConfigId),
+                                namespaceId = namespaceId,
+                                name = "Starter",
+                            )
+                    }
+                val prompts =
+                    mockk<PromptService>(relaxed = true) {
+                        every { findEffective(any(), any()) } returns
+                            listOf(Prompt(name = "starter", agentConfigId = starterConfigId, content = listOf(promptContent)))
+                    }
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val ran = mutableListOf<String>()
+                val service =
+                    buildService(
+                        caseEventService = events,
+                        agentConfigService = agentConfigService,
+                        agentService = agentServiceKnowing(namedAgent(agentName, ran)),
+                        prompts = prompts,
+                    )
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                sendAndAwaitIdle(service, case.id, "/starter")
+
+                events
+                    .findByParent(case.id)
+                    .filterIsInstance<MessageEvent>()
+                    .first { it.actor.role == ActorRole.USER }
+                    .content
+                    .filterIsInstance<MessageContent.Text>()
+                    .single()
+                    .content shouldBe expectedMessage
+            }
         }
 
         // -------------------------------------------------------------------------

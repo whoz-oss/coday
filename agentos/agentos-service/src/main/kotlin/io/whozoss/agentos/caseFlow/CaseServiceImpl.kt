@@ -438,11 +438,9 @@ class CaseServiceImpl(
 
         fun resolvedText(cmd: ResolvedCommand): String {
             val agentConfigId = cmd.agentConfigId ?: return cmd.text
-            // Don't prefix if the content already starts with an @mention (plain or chip form).
-            // Route through AgentMention — the single source of truth — so the chip form
-            // [@Agent](#agent=…) is also recognised and never double-prefixed.
-            // Note: a bare "@ something" (@ followed by whitespace) is intentionally not a
-            // mention and will now be prefixed, which is correct behaviour.
+            // Don't prefix when the text already carries a mention selectAgent will honour (plain or
+            // chip form). Anything else starting with "@" ("@ x", "@@x", "@éric") is not a mention
+            // for selectAgent, so the prompt's own agent is prefixed to keep it the one that runs.
             if (AgentMention.extractName(cmd.text) != null) return cmd.text
             val agentName =
                 agentNameCache.getOrPut(agentConfigId) {
