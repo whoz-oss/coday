@@ -55,16 +55,21 @@ sealed interface Caller {
      * [namespaceId] is the namespace in which the agent is running.
      * [caseId] is the case being processed, or `null` for background / scheduled runs.
      *
-     * ## Forward scaffolding
+     * ## Call sites
      *
-     * No production call site constructs `Caller.Agent` yet — agent tool dispatch still resolves
-     * identity through `UserService.getCurrentUser()` and builds a `Caller.Human`. `Agent` is
-     * declared here alongside `Human` rather than added later because:
-     * - The sealed interface is the right place to express the full principal taxonomy from day
-     *   one; adding a variant later would touch every exhaustive `when` branch in policies.
-     * - `isAgent` lets a policy opt into an explicit confirmation step for far-reaching writes
-     *   without needing a separate code path — the infrastructure is in place when the first
-     *   policy that needs it lands.
+     * [io.whozoss.agentos.selfConfig.SelfConfigToolService] is the first: it builds an `Agent` from
+     * the [io.whozoss.agentos.sdk.tool.ToolContext] of the run — `userId`, `namespaceId` and
+     * `caseId` all come from there, and `isAdmin` from the resolved `User` record.
+     *
+     * That construction site is not incidental. A tool must NOT build its principal from
+     * `UserService.getCurrentUser()`: that resolves the identity of the current HTTP *request*
+     * through a thread-local, and an agent run dispatches across `Dispatchers.IO` threads where
+     * the thread-local is either absent or belongs to an unrelated request. The `ToolContext` is
+     * the only identity that travels with the run — which is the same reason authority is an
+     * explicit parameter at all (see the section above).
+     *
+     * `isAgent` additionally lets a policy opt into an explicit confirmation step for far-reaching
+     * writes without a separate code path.
      */
     data class Agent(
         override val userId: UUID,
