@@ -31,10 +31,13 @@ Domain entities are never exposed directly. Each controller defines a companion 
 
 Two modes are available, selected via `agentos.persistence.mode`:
 
-| Mode | Beans active |
+| Mode | Engine |
 |---|---|
-| `embedded-neo4j` (default) | `Neo4jPersistenceConfiguration` active; in-process Neo4j engine |
-| `neo4j` | `Neo4jPersistenceConfiguration` active; standalone Neo4j server |
+| `embedded-neo4j` (default) | In-process Neo4j engine started by `EmbeddedNeo4jConfiguration` |
+| `neo4j` | Standalone Neo4j server; `Driver` from Spring Boot auto-configuration |
+
+Both modes register the exact same repository beans — `Neo4jPersistenceConfiguration` is
+unconditional. Only the origin of the `Driver` bean differs.
 
 `Neo4jPersistenceConfiguration` (`config/Neo4jPersistenceConfiguration.kt`) registers one `@Bean` per entity type, wiring the Spring Data Neo4j interface into a hand-written implementation class.
 

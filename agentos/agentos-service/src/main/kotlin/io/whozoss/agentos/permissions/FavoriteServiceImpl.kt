@@ -1,13 +1,8 @@
 package io.whozoss.agentos.permissions
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.stereotype.Service
 
 @Service
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
-)
 class FavoriteServiceImpl(
     private val favoriteRepository: FavoriteRepository,
 ) : FavoriteService {

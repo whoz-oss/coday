@@ -3,6 +3,25 @@ package io.whozoss.agentos.config
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 /**
+ * Supported persistence backends.
+ *
+ * Both modes run on a live Neo4j engine, so they share the exact same repository beans;
+ * they differ only in who owns the engine. The historical `in-memory` mode was removed
+ * along with the `InMemory*Repository` Spring beans and no longer exists.
+ *
+ * Spring Boot relaxed binding maps the kebab-case YAML / env values onto these constants:
+ * `embedded-neo4j` -> [EMBEDDED_NEO4J], `neo4j` -> [NEO4J]. Any other value fails the
+ * binding at startup with an explicit message, instead of silently disabling beans.
+ */
+enum class PersistenceMode {
+    /** In-process Neo4j engine started by [EmbeddedNeo4jConfiguration]. No Docker required. */
+    EMBEDDED_NEO4J,
+
+    /** Standalone Neo4j server; the Driver comes from Spring Boot auto-configuration. */
+    NEO4J,
+}
+
+/**
  * Configuration properties for persistence mode.
  *
  * Bound from the `agentos.persistence` prefix in application.yml.
@@ -31,10 +50,10 @@ data class PersistenceConfigProperties(
     val dataDir: String = "data/",
     /**
      * Persistence mode:
-     * - 'embedded-neo4j' (default) — in-process Neo4j engine, no Docker required
-     * - 'neo4j'                    — standalone Neo4j server (configure spring.neo4j.*)
+     * - [PersistenceMode.EMBEDDED_NEO4J] (default) — in-process Neo4j engine, no Docker required
+     * - [PersistenceMode.NEO4J]                    — standalone Neo4j server (configure spring.neo4j.*)
      */
-    val mode: String = "embedded-neo4j",
+    val mode: PersistenceMode = PersistenceMode.EMBEDDED_NEO4J,
     /**
      * Bolt port for the embedded Neo4j engine.
      * Defaults to 7688 to avoid conflicting with a standalone Neo4j instance

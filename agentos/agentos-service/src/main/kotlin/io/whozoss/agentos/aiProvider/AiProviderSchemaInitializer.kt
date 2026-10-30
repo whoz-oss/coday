@@ -4,7 +4,6 @@ import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.stereotype.Component
 
@@ -24,10 +23,6 @@ import org.springframework.stereotype.Component
  * which the Spring container will already log clearly.
  */
 @Component
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
-)
 class AiProviderSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {

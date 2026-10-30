@@ -45,7 +45,7 @@ Controllers require two complementary test classes:
 
 **Unit test (`FooControllerUnitSpec` — `StringSpec`)** — instantiates the controller directly with MockK stubs, no Spring context. Covers `toResource`/`toDomain` mapping and all endpoints (including inherited ones from `EntityController`). Fast, no infrastructure needed.
 
-**Integration test (`FooControllerIntegrationSpec` — `@SpringBootTest` + `@AutoConfigureMockMvc`)** — loads the full Spring context with `@ActiveProfiles("test")` and `SpringExtension`. Verifies that Bean Validation (`@Valid`) is triggered by the dispatcher on create/update endpoints. Use `MockMvc` with raw JSON payloads to assert 400 on invalid input and 201/200 on valid input. The `test` profile enables in-memory persistence so no external services are needed.
+**Integration test (`FooControllerIntegrationSpec` — `@SpringBootTest` + `@AutoConfigureMockMvc`)** — loads the full Spring context with `@ActiveProfiles("test")` and `SpringExtension`. Verifies that Bean Validation (`@Valid`) is triggered by the dispatcher on create/update endpoints. Use `MockMvc` with raw JSON payloads to assert 400 on invalid input and 201/200 on valid input. The `test` profile uses the `embedded-neo4j` mode with its data directory under `build/test-neo4j-data/`, so no external service (and no Docker) is needed.
 
 The two classes are complementary: the unit spec covers logic, the integration spec covers the validation layer that only activates through the dispatcher.
 
