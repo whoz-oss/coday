@@ -16,4 +16,5 @@ export interface User {
   id?: string
   isAdmin: boolean
   lastname?: string
+  preferredLanguage?: string
 }

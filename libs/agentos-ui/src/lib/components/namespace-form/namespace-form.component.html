@@ -1,9 +1,5 @@
 <div class="namespace-form">
   <header class="namespace-form__header">
-    <button class="namespace-form__back" type="button" (click)="cancel()" title="Back to namespaces">
-      <span class="namespace-form__back-icon">&#8592;</span>
-      Namespaces
-    </button>
     <h1 class="namespace-form__title">{{ isEditMode() ? 'Edit namespace' : 'New namespace' }}</h1>
   </header>
 
@@ -68,6 +64,20 @@
           [formControl]="configPathControl"
           autocomplete="off"
         />
+      </div>
+
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-run-cost-threshold">Run cost threshold</label>
+        <input
+          id="ns-run-cost-threshold"
+          class="namespace-form__input"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Optional maximum cost per run (e.g. 0.50)"
+          [formControl]="runCostThresholdControl"
+        />
+        <span class="namespace-form__hint">Leave empty to inherit the platform default.</span>
       </div>
 
       <div class="namespace-form__actions">

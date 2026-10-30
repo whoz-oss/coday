@@ -8,16 +8,22 @@
  * Do not edit the class manually.
  */
 import { AgentDefinitionToolSummary } from './agent-definition-tool-summary'
+import { SkillSummary } from './skill-summary'
 
 export interface AgentDefinition {
   /**
-   * Whether the agent uses the advanced multi-step execution engine.
+   * Whether the agent uses the advanced multi-step execution engine. Deprecated: use executionMode instead.
+   * @deprecated
    */
   advancedExecution: boolean
   /**
    * The ID of the AgentConfig this definition was resolved from.
    */
   agentConfigId: string
+  /**
+   * The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP). LOOP is experimental and may change or be removed without notice.
+   */
+  executionMode: AgentDefinitionExecutionModeEnum
   /**
    * Final system instructions sent to the LLM, including injected namespace / integration / user context blocks.
    */
@@ -39,6 +45,10 @@ export interface AgentDefinition {
    */
   resolvedProviderName: string
   /**
+   * Skills resolved for this agent from its skillSelectors, in catalog order. Namespace skills shadow platform skills of the same name. Empty when the agent declares no selectors. Bodies and resources are not included — fetch GET /api/skills/{id} for those.
+   */
+  skills: Array<SkillSummary>
+  /**
    * Privileged namespace context block sent as a separate system message, before instructions. Null when no namespace context is available.
    */
   systemPrompt?: string
@@ -50,4 +60,9 @@ export interface AgentDefinition {
    * The user whose overlay was applied, or null for namespace-only resolution.
    */
   userId?: string
+}
+export enum AgentDefinitionExecutionModeEnum {
+  SIMPLE = 'SIMPLE',
+  ADVANCED = 'ADVANCED',
+  LOOP = 'LOOP',
 }

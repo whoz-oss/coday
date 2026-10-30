@@ -1,0 +1,19 @@
+.namespace-skills__back {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-primary, #007aff);
+  font-family: inherit;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.namespace-skills__error {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-error, var(--red, #dc2626));
+}

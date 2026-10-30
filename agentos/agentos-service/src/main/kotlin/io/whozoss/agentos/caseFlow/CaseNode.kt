@@ -1,8 +1,10 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
@@ -12,6 +14,11 @@ import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [Case].
+ *
+ * [version] carries optimistic locking and tells Spring Data whether a save creates the node: a
+ * save based on a stale read is refused, and so is the creation of a case whose id already exists.
+ *
+ * [reasoningEffort] is stored as its enum name string and round-tripped via [ReasoningEffort.valueOf].
  */
 @Node("Case")
 data class CaseNode(
@@ -22,11 +29,15 @@ data class CaseNode(
     val title: String,
     val parentCaseId: String? = null,
     val scheduledPromptId: String? = null,
+    val originCaseId: String? = null,
+    val runCostThreshold: Double? = null,
+    val reasoningEffort: String? = null,
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    @Version val version: Long? = null,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     var namespace: NamespaceNode? = null,
 ) {
@@ -40,12 +51,16 @@ data class CaseNode(
                     modified = modified,
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
+                    version = version,
                 ),
             namespaceId = UUID.fromString(namespaceId),
             status = CaseStatus.valueOf(status),
             title = title,
             parentCaseId = parentCaseId?.let { UUID.fromString(it) },
             scheduledPromptId = scheduledPromptId?.let { UUID.fromString(it) },
+            originCaseId = originCaseId?.let { UUID.fromString(it) },
+            runCostThreshold = runCostThreshold,
+            reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
         )
 
     companion object {
@@ -57,11 +72,15 @@ data class CaseNode(
                 title = case.title,
                 parentCaseId = case.parentCaseId?.toString(),
                 scheduledPromptId = case.scheduledPromptId?.toString(),
+                originCaseId = case.originCaseId?.toString(),
+                runCostThreshold = case.runCostThreshold,
+                reasoningEffort = case.reasoningEffort?.name,
                 created = case.metadata.created,
                 createdBy = case.metadata.createdBy,
                 modified = case.metadata.modified,
                 modifiedBy = case.metadata.modifiedBy,
                 removed = case.metadata.removed.takeIf { it },
+                version = case.metadata.version,
             )
     }
 }

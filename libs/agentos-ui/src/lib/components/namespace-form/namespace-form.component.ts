@@ -9,7 +9,8 @@ import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-cli
  *
  * Mode is determined by the presence of `:namespaceId` in the route params:
  * - `/agentos/namespaces/new`                  → create mode
- * - `/agentos/namespaces/:namespaceId/edit`    → edit mode (loads existing data)
+ * - `/agentos/:namespaceId/edit`              → edit mode (loads existing data), rendered inside the
+ *                                                namespace settings layout (the id comes from the parent route)
  *
  * On success, navigates back to /agentos/namespaces.
  */
@@ -35,6 +36,7 @@ export class NamespaceFormComponent implements OnInit {
     configPath: new FormControl<string>('', { nonNullable: true }),
     externalId: new FormControl<string>('', { nonNullable: true }),
     defaultAgentName: new FormControl<string>('', { nonNullable: true }),
+    runCostThreshold: new FormControl<number | null>(null),
   })
 
   protected get nameControl() {
@@ -57,6 +59,10 @@ export class NamespaceFormComponent implements OnInit {
     return this.form.controls.defaultAgentName
   }
 
+  protected get runCostThresholdControl() {
+    return this.form.controls.runCostThreshold
+  }
+
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
@@ -65,7 +71,8 @@ export class NamespaceFormComponent implements OnInit {
   private existingNamespace: Namespace | null = null
 
   ngOnInit(): void {
-    const namespaceId = this.route.snapshot.paramMap.get('namespaceId')
+    const namespaceId =
+      this.route.snapshot.paramMap.get('namespaceId') ?? this.route.parent?.snapshot.paramMap.get('namespaceId')
     if (namespaceId) {
       this.isEditMode.set(true)
       this.loadNamespace(namespaceId)
@@ -85,6 +92,7 @@ export class NamespaceFormComponent implements OnInit {
           this.configPathControl.setValue(ns.configPath ?? '')
           this.externalIdControl.setValue(ns.externalId ?? '')
           this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
+          this.runCostThresholdControl.setValue(ns.runCostThreshold ?? null)
           this.isLoading.set(false)
         },
         error: () => {
@@ -106,6 +114,7 @@ export class NamespaceFormComponent implements OnInit {
       configPath: this.configPathControl.value.trim() || undefined,
       externalId: this.externalIdControl.value.trim() || undefined,
       defaultAgentName: this.defaultAgentNameControl.value.trim() || undefined,
+      runCostThreshold: this.runCostThresholdControl.value ?? undefined,
     }
 
     const call$ = this.isEditMode()

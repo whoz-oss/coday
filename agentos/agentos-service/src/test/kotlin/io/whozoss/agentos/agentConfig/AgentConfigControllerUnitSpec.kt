@@ -2,6 +2,7 @@ package io.whozoss.agentos.agentConfig
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
@@ -21,8 +22,10 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.skill.Skill
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -113,7 +116,7 @@ class AgentConfigControllerUnitSpec :
             instructions: String? = "Be helpful.",
             resolvedModelApiName: String = "claude-sonnet-4-5",
             resolvedProviderName: String = "anthropic-prod",
-            advancedExecution: Boolean = false,
+            executionMode: ExecutionMode = ExecutionMode.SIMPLE,
             nsId: UUID = namespaceId,
             userId: UUID? = null,
         ) = ResolvedAgentDefinition(
@@ -142,7 +145,7 @@ class AgentConfigControllerUnitSpec :
                     apiKey = "sk-ant-test",
                 ),
             tools = emptyList(),
-            advancedExecution = advancedExecution,
+            executionMode = executionMode,
             namespaceId = nsId,
             userId = userId,
         )
@@ -174,6 +177,7 @@ class AgentConfigControllerUnitSpec :
                     description = "Writes code",
                     instructions = "Write clean code.",
                     modelName = "claude-3-opus",
+                    executionMode = ExecutionMode.SIMPLE,
                     createdOn = c.metadata.created,
                     updatedOn = c.metadata.modified,
                     enabled = false,
@@ -204,6 +208,25 @@ class AgentConfigControllerUnitSpec :
             val result = toDto(c)
 
             result.advancedExecution shouldBe true
+        }
+
+        "toDto exposes the resolved executionMode for a legacy config without executionMode" {
+            val c = config().copy(executionMode = null, advancedExecution = true)
+
+            val result = toDto(c)
+
+            result.executionMode shouldBe ExecutionMode.ADVANCED
+            result.advancedExecution shouldBe true
+        }
+
+        "toDto derives advancedExecution from executionMode, never contradicting it" {
+            // Stored inconsistently by a client that only sent executionMode before the derivation existed.
+            val advanced = toDto(config().copy(executionMode = ExecutionMode.ADVANCED, advancedExecution = false))
+            val loop = toDto(config().copy(executionMode = ExecutionMode.LOOP, advancedExecution = true))
+
+            advanced.advancedExecution shouldBe true
+            loop.executionMode shouldBe ExecutionMode.LOOP
+            loop.advancedExecution shouldBe null
         }
 
         "toDto maps externalMetadata when present" {
@@ -314,6 +337,25 @@ class AgentConfigControllerUnitSpec :
             val result = toDomain(r)
 
             result.advancedExecution shouldBe true
+        }
+
+        "toDomain resolves the legacy advancedExecution flag into executionMode" {
+            toDomain(resource().copy(advancedExecution = true)).executionMode shouldBe ExecutionMode.ADVANCED
+            toDomain(resource().copy(advancedExecution = null)).executionMode shouldBe ExecutionMode.SIMPLE
+        }
+
+        "toDomain derives advancedExecution from executionMode when only executionMode is sent" {
+            val result = toDomain(resource().copy(executionMode = ExecutionMode.ADVANCED, advancedExecution = null))
+
+            result.executionMode shouldBe ExecutionMode.ADVANCED
+            result.advancedExecution shouldBe true
+        }
+
+        "toDomain lets executionMode win over a contradicting advancedExecution" {
+            val result = toDomain(resource().copy(executionMode = ExecutionMode.LOOP, advancedExecution = true))
+
+            result.executionMode shouldBe ExecutionMode.LOOP
+            result.advancedExecution shouldBe false
         }
 
         "toDomain maps externalMetadata when present" {
@@ -720,6 +762,67 @@ class AgentConfigControllerUnitSpec :
             result.tools[0].name shouldBe "get-issue"
             result.tools[0].description shouldBe "Fetches a Jira issue"
             result.tools[0].inputSchema shouldBe "{\"type\":\"object\"}"
+        }
+
+        "getDefinition maps skill summaries without bodies" {
+            val configId = UUID.randomUUID()
+            val agentConfig = config(id = configId)
+            val persistedSkill =
+                Skill(
+                    metadata = EntityMetadata(id = UUID.randomUUID(), version = 0L),
+                    namespaceId = namespaceId,
+                    name = "spec-writing",
+                    description = "Writes specs",
+                    body = "A very long markdown body that must never reach the definition payload",
+                    resources = mapOf("references/style.md" to "long reference content"),
+                )
+            val definition = resolvedDefinition(agentConfigId = configId).copy(skills = listOf(persistedSkill))
+            every { service.findById(configId) } returns agentConfig
+            every { userService.getCurrentUser() } returns superAdmin
+            coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+
+            val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
+
+            result.skills.size shouldBe 1
+            result.skills[0].id shouldBe persistedSkill.metadata.id
+            result.skills[0].namespaceId shouldBe namespaceId
+            result.skills[0].name shouldBe "spec-writing"
+            result.skills[0].description shouldBe "Writes specs"
+            result.skills[0].readOnly shouldBe false
+        }
+
+        "getDefinition reports readOnly true for a filesystem-backed resolved skill" {
+            val configId = UUID.randomUUID()
+            val agentConfig = config(id = configId)
+            val filesystemSkill =
+                Skill(
+                    metadata = EntityMetadata(id = UUID.randomUUID(), version = null),
+                    namespaceId = namespaceId,
+                    name = "fs-review",
+                    description = "Reviews code",
+                    body = "Body",
+                )
+            val definition = resolvedDefinition(agentConfigId = configId).copy(skills = listOf(filesystemSkill))
+            every { service.findById(configId) } returns agentConfig
+            every { userService.getCurrentUser() } returns superAdmin
+            coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+
+            val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
+
+            result.skills[0].readOnly shouldBe true
+        }
+
+        "getDefinition maps an empty skill list when the agent declares no selectors" {
+            val configId = UUID.randomUUID()
+            val agentConfig = config(id = configId)
+            every { service.findById(configId) } returns agentConfig
+            every { userService.getCurrentUser() } returns superAdmin
+            coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns
+                resolvedDefinition(agentConfigId = configId)
+
+            val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
+
+            result.skills.shouldBeEmpty()
         }
 
         "getDefinition throws 404 when AgentConfig is not found" {

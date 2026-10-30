@@ -31,6 +31,7 @@ bower_components
 # Editors
 .idea/*
 !.idea/runConfigurations
+!.idea/gradle.xml
 *.iml
 
 # IntelliJ IDEA build output
@@ -48,10 +49,6 @@ Thumbs.db
 .nx/cache
 .nx/workspace-data
 projects.json
-
-# Electron build output
-dist/electron
-apps/desktop/release
 
 .angular
 

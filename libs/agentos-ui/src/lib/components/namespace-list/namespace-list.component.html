@@ -4,7 +4,7 @@
   [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No namespaces yet. Create one to get started."
-  cardMinWidth="400px"
+  cardMinWidth="300px"
   [itemTemplate]="namespaceItemTpl"
   (itemSelected)="navigateToHome($event)"
   (createRequested)="navigateToCreate()"
@@ -16,17 +16,17 @@
     <agentos-namespace-item
       [namespace]="ns"
       (selected)="navigateToHome($event.id ?? '')"
-      (editRequested)="navigateToEdit($event)"
       (deleteRequested)="deleteNamespace($event)"
       (integrationsRequested)="openIntegrations($event)"
       (aiProvidersRequested)="openAiProviders($event)"
       (aiModelsRequested)="openAiModels($event)"
       (agentConfigsRequested)="openAgentConfigs($event)"
       (promptsRequested)="openPrompts($event)"
+      (skillsRequested)="openSkills($event)"
       (scheduledPromptsRequested)="openScheduledPrompts($event)"
       (userGroupsRequested)="openUserGroups($event)"
-      (membersRequested)="openMembers($event)"
       (authSettingsRequested)="openAuthSettings($event)"
+      (toolInvokeRequested)="openToolInvoke($event)"
     />
   }
 </ng-template>

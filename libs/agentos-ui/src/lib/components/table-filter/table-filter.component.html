@@ -1,0 +1,18 @@
+<label class="table-filter">
+  <span class="table-filter__icon" aria-hidden="true">&#128269;</span>
+  <span class="table-filter__label">{{ label() }}</span>
+  <input
+    class="table-filter__input"
+    type="search"
+    [attr.aria-label]="label()"
+    [placeholder]="placeholder()"
+    [value]="query()"
+    (input)="queryChange.emit($any($event.target).value)"
+    autocomplete="off"
+  />
+  @if (query()) {
+    <button class="table-filter__clear" type="button" aria-label="Clear filter" (click)="queryChange.emit('')">
+      &#x2715;
+    </button>
+  }
+</label>

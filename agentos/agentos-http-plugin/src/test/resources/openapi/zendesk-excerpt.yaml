@@ -1,0 +1,97 @@
+openapi: 3.0.3
+info:
+  title: Zendesk Support API (excerpt)
+  version: 2.0.0
+servers:
+  - url: https://example.zendesk.com
+paths:
+  /api/v2/search:
+    get:
+      operationId: ListSearchResults
+      summary: List Search Results
+      description: Returns the search results.
+      tags: [Search]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: The search query
+          schema:
+            type: string
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [updated_at, created_at, priority, status, ticket_type]
+      responses:
+        '200':
+          description: Success response
+  /api/v2/tickets:
+    get:
+      operationId: ListTickets
+      summary: List Tickets
+      tags: [Tickets]
+      parameters:
+        - name: external_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tickets
+  /api/v2/tickets/{ticket_id}:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    get:
+      operationId: ShowTicket
+      summary: Show Ticket
+      tags: [Tickets]
+      responses:
+        '200':
+          description: The ticket
+    put:
+      operationId: UpdateTicket
+      summary: Update Ticket
+      tags: [Tickets]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketUpdateRequest'
+      responses:
+        '200':
+          description: Updated ticket
+  /api/v2/tickets/{ticket_id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    get:
+      operationId: ListTicketComments
+      summary: List Comments
+      tags: [Tickets, Ticket Comments]
+      responses:
+        '200':
+          description: Comments
+components:
+  parameters:
+    TicketId:
+      name: ticket_id
+      in: path
+      required: true
+      description: The ID of the ticket
+      schema:
+        type: integer
+  schemas:
+    TicketUpdateRequest:
+      type: object
+      properties:
+        ticket:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [new, open, pending, hold, solved, closed]
+            comment:
+              type: object
+              properties:
+                body:
+                  type: string

@@ -4,12 +4,10 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, MemberItem, UserGroupMemberRoleEnum, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
-import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
+import { AgentConfig, UserGroupMemberRoleEnum, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
 import { Observable } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
-import { UserGroupMemberAutocompleteDataSource } from './user-group-member.data-source'
-import { computeMemberDiff, computeTakenElsewhere, memberLabel } from './user-group-form.util'
+import { computeMemberDiff, memberLabel } from './user-group-form.util'
 
 /** A user currently selected as a member, with a display label and their role in the group. */
 interface SelectedMember {
@@ -30,7 +28,7 @@ const MAX_NAME_LENGTH = 250
  * - /:namespaceId/user-groups/:userGroupId/edit → edit
  *
  * The form manages the group name, its deployed agents (a grouped checklist of platform +
- * namespace agent configs, disabling any already deployed to another group in the namespace),
+ * namespace agent configs, which can be shared across multiple groups),
  * and its members (an inline list with a per-member MEMBER/ADMIN role select + a type-ahead over
  * the namespace's users). On submit, member changes are diffed into the add/remove lists and the
  * full ADMIN set is sent as adminExternalIds.
@@ -42,7 +40,7 @@ const MAX_NAME_LENGTH = 250
  */
 @Component({
   selector: 'agentos-user-group-form',
-  imports: [NgTemplateOutlet, ReactiveFormsModule, AutocompleteInputComponent],
+  imports: [NgTemplateOutlet, ReactiveFormsModule],
   templateUrl: './user-group-form.component.html',
   styleUrl: './user-group-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -77,19 +75,13 @@ export class UserGroupFormComponent implements OnInit {
   // --- Deployed agents ---
   protected readonly platformAgents = signal<AgentConfig[]>([])
   protected readonly namespaceAgents = signal<AgentConfig[]>([])
-  /** agentId -> owning group name, for agents deployed to another group in this namespace. */
-  protected readonly takenElsewhere = signal<Map<string, string>>(new Map())
   protected readonly selectedAgentIds = signal<Set<string>>(new Set())
 
   // --- Members ---
-  protected readonly candidateUsers = signal<MemberItem[]>([])
   protected readonly selectedMembers = signal<SelectedMember[]>([])
+  protected readonly memberInputValue = signal('')
+  protected readonly memberInputError = signal<string | null>(null)
   private originalMemberExternalIds: string[] = []
-
-  protected readonly memberDataSource = new UserGroupMemberAutocompleteDataSource(
-    () => this.candidateUsers(),
-    () => new Set(this.selectedMembers().map((member) => member.externalId))
-  )
 
   ngOnInit(): void {
     this.isEditMode.set(!!this.userGroupId)
@@ -102,11 +94,9 @@ export class UserGroupFormComponent implements OnInit {
       .loadFormData(this.namespaceId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ namespaceAgents, platformAgents, groups, users }) => {
+        next: ({ namespaceAgents, platformAgents }) => {
           this.namespaceAgents.set(namespaceAgents)
           this.platformAgents.set(platformAgents)
-          this.takenElsewhere.set(computeTakenElsewhere(groups, this.userGroupId))
-          this.candidateUsers.set(users)
           if (this.userGroupId) {
             this.loadExistingGroup(this.userGroupId)
           } else {
@@ -156,21 +146,13 @@ export class UserGroupFormComponent implements OnInit {
   // Agent selection
   // ---------------------------------------------------------------------------
 
-  protected isAgentDisabled(agent: AgentConfig): boolean {
-    return this.takenElsewhere().has(agent.id ?? '')
-  }
-
-  protected agentOwnerGroup(agent: AgentConfig): string | undefined {
-    return this.takenElsewhere().get(agent.id ?? '')
-  }
-
   protected isAgentSelected(agent: AgentConfig): boolean {
     return this.selectedAgentIds().has(agent.id ?? '')
   }
 
   protected toggleAgent(agent: AgentConfig): void {
     const id = agent.id
-    if (!id || this.isAgentDisabled(agent)) return
+    if (!id) return
     const next = new Set(this.selectedAgentIds())
     if (next.has(id)) {
       next.delete(id)
@@ -181,15 +163,34 @@ export class UserGroupFormComponent implements OnInit {
   }
 
   // ---------------------------------------------------------------------------
-  // Member selection
+  // Member input (free-text externalId entry)
   // ---------------------------------------------------------------------------
 
-  protected onMemberSelected(item: AutocompleteItem): void {
-    if (this.selectedMembers().some((member) => member.externalId === item.id)) return
+  protected onMemberInputChange(value: string): void {
+    this.memberInputValue.set(value)
+    this.memberInputError.set(null)
+  }
+
+  protected addMemberFromInput(): void {
+    const externalId = this.memberInputValue().trim()
+    if (!externalId) return
+    if (this.selectedMembers().some((member) => member.externalId === externalId)) {
+      this.memberInputError.set('This member is already in the list.')
+      return
+    }
     this.selectedMembers.update((members) => [
       ...members,
-      { externalId: item.id, label: item.name, email: item.description, role: UserGroupMemberRoleEnum.MEMBER },
+      { externalId, label: externalId, role: UserGroupMemberRoleEnum.MEMBER },
     ])
+    this.memberInputValue.set('')
+    this.memberInputError.set(null)
+  }
+
+  protected onMemberInputKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      this.addMemberFromInput()
+    }
   }
 
   protected removeMember(externalId: string): void {

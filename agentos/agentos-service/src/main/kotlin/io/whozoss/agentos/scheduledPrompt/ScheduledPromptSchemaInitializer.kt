@@ -26,6 +26,7 @@ class ScheduledPromptSchemaInitializer(
         ensureUserIdIndex()
         ensureAgentConfigIdIndex()
         ensureNextRunAtIndex()
+        ensureModifiedIndex()
     }
 
     private fun ensureIdUniqueConstraint() {
@@ -76,6 +77,14 @@ class ScheduledPromptSchemaInitializer(
                 "CREATE INDEX scheduled_prompt_next_run IF NOT EXISTS FOR (sp:ScheduledPrompt) ON (sp.nextRunAt, sp.enabled)",
             ).run()
         logger.info { "[ScheduledPromptSchema] index 'scheduled_prompt_next_run' ensured" }
+    }
+
+    private fun ensureModifiedIndex() {
+        neo4jClient
+            .query(
+                "CREATE INDEX scheduled_prompt_modified IF NOT EXISTS FOR (sp:ScheduledPrompt) ON (sp.modified)",
+            ).run()
+        logger.info { "[ScheduledPromptSchema] index 'scheduled_prompt_modified' ensured" }
     }
 
     companion object : KLogging()

@@ -161,15 +161,6 @@
     &:hover {
       background: var(--color-surface-hover, rgba(0, 0, 0, 0.03));
     }
-
-    &--disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
-
-      &:hover {
-        background: transparent;
-      }
-    }
   }
 
   &__agent-checkbox {
@@ -180,12 +171,6 @@
   &__agent-name {
     font-size: 0.9rem;
     color: var(--color-text, #1d1d1f);
-  }
-
-  &__agent-note {
-    font-size: 0.75rem;
-    color: var(--color-text-secondary, #6e6e73);
-    font-style: italic;
   }
 
   // ---------------------------------------------------------------------------
@@ -274,6 +259,27 @@
       background: var(--color-error-light, rgba(255, 59, 48, 0.12));
       color: var(--color-error, #ff3b30);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Member free-text add row
+  // ---------------------------------------------------------------------------
+
+  &__member-add {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+
+    .user-group-form__input {
+      flex: 1;
+      // Override the default width: 100% so it shares the row with the button
+      width: auto;
+    }
+  }
+
+  &__btn--secondary {
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   // ---------------------------------------------------------------------------

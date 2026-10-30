@@ -1,25 +1,69 @@
-<ds-entity-list
-  title="Scheduled Prompts"
-  [items]="promptItems()"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No scheduled prompts yet. Create one to get started."
-  cardMinWidth="420px"
-  [itemTemplate]="scheduledPromptItemTpl"
-  (createRequested)="openCreateForm()"
+<ds-section-header
+  title="Scheduled prompts"
+  description="Scheduled prompts for this namespace, including schedules inherited from the platform."
+  ><button class="scheduled-prompts__new" type="button" (click)="openCreateForm()">
+    New scheduled prompt
+  </button></ds-section-header
 >
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<ng-template #scheduledPromptItemTpl let-item>
-  @if (resolvePrompt(item.id); as definition) {
-    <agentos-scheduled-prompt-item
-      [definition]="definition"
-      [namespaceId]="namespaceId"
-      [readOnly]="isPlatformPrompt(item.id)"
-      (enableRequested)="enablePrompt($event)"
-      (disableRequested)="disablePrompt($event)"
-      (deleteRequested)="deletePrompt($event)"
-    />
-  }
-</ng-template>
+@if (isLoading()) {
+  <p class="scheduled-prompts__status" role="status">Loading scheduled prompts…</p>
+} @else if (rows().length === 0) {
+  <p class="scheduled-prompts__status">No scheduled prompts available.</p>
+} @else {
+  <agentos-table-filter
+    label="Filter scheduled prompts"
+    placeholder="Filter scheduled prompts…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <div class="scheduled-prompts__table-wrap">
+    <table dsTable>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Schedule</th>
+          <th>Status</th>
+          <th>Scope</th>
+          <th><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rowFilter.filteredRows(); track row.key) {
+          <tr>
+            <td>
+              <span class="scheduled-prompts__name">{{ row.prompt.name }}</span>
+              @if (row.prompt.description) {
+                <span class="scheduled-prompts__description">{{ row.prompt.description }}</span>
+              }
+            </td>
+            <td>{{ scheduleLabel(row.prompt) }}</td>
+            <td>
+              <ds-tag [variant]="row.prompt.enabled ? 'accent' : 'outline'">{{
+                row.prompt.enabled ? 'Enabled' : 'Disabled'
+              }}</ds-tag>
+            </td>
+            <td>
+              <div class="scheduled-prompts__tags">
+                <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
+                  row.scope === 'platform' ? 'Platform' : 'Namespace'
+                }}</ds-tag>
+                @if (row.scope === 'platform') {
+                  <ds-tag variant="outline">Read-only</ds-tag>
+                }
+              </div>
+            </td>
+            <td class="scheduled-prompts__actions">
+              @if (row.scope === 'namespace') {
+                <button type="button" (click)="toggle(row)">{{ row.prompt.enabled ? 'Disable' : 'Enable' }}</button
+                ><button type="button" (click)="edit(row)">Edit</button
+                ><button class="scheduled-prompts__delete" type="button" (click)="delete(row)">Delete</button>
+              } @else {
+                <button type="button" disabled>Inherited</button>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import java.time.Instant
@@ -61,9 +62,24 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
         )
 
     init {
+        "SSE protocol uses stable case-event channel" {
+            CaseEventSseController.CASE_EVENT_CHANNEL shouldBe "case-event"
+        }
+
         // -------------------------------------------------------------------------
         // Past / completed case — only history, no live instance
         // -------------------------------------------------------------------------
+
+        "omitted includePreviousEvents replays persisted events" {
+            val caseId = UUID.randomUUID()
+            val caseService = mockk<CaseService> { every { findActiveRuntime(caseId) } returns null }
+            val caseEventService = mockk<CaseEventService> { every { findByParent(caseId) } returns emptyList() }
+            val controller = CaseEventSseController(caseService, caseEventService, CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE))
+
+            controller.streamEvents(caseId)
+
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
+        }
 
         "past case: replays persisted events and completes the emitter" {
             val caseId = UUID.randomUUID()
@@ -136,6 +152,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             val activeCase =
                 mockk<CaseRuntime> {
                     every { events } returns liveFlow
+                    every { deliveryFailureCount } returns MutableStateFlow(0L)
                 }
             val caseService =
                 mockk<CaseService> {
@@ -158,7 +175,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
-            verify(exactly = 1) { caseEventService.findByParent(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
             verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 
@@ -170,6 +187,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             val activeCase =
                 mockk<CaseRuntime> {
                     every { events } returns liveFlow
+                    every { deliveryFailureCount } returns MutableStateFlow(0L)
                 }
             val caseService =
                 mockk<CaseService> {
@@ -192,7 +210,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
-            verify(exactly = 1) { caseEventService.findByParent(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
             verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 
@@ -218,7 +236,11 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             val liveFlow = MutableSharedFlow<CaseEvent>(replay = 0)
             val subscriptionCount: StateFlow<Int> = liveFlow.subscriptionCount
 
-            val activeCase = mockk<CaseRuntime> { every { events } returns liveFlow }
+            val activeCase =
+                mockk<CaseRuntime> {
+                    every { events } returns liveFlow
+                    every { deliveryFailureCount } returns MutableStateFlow(0L)
+                }
             val caseService = mockk<CaseService> { every { findActiveRuntime(caseId) } returns activeCase }
             val caseEventService = mockk<CaseEventService> { every { findByParent(caseId) } returns emptyList() }
 

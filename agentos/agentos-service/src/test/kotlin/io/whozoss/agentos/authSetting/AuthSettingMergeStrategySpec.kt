@@ -3,6 +3,7 @@ package io.whozoss.agentos.authSetting
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -227,5 +228,30 @@ class AuthSettingMergeStrategySpec :
         val merged = strategy.merge(base, override)
         merged.data["clientId"] shouldBe "override-client"
         merged.data["resourceUrl"] shouldBe "https://mcp.example.com"
+    }
+
+    // -------------------------------------------------------------------------
+    // BASIC_AUTH — static credential delivered to plugins (StaticCredentialFactory)
+    // -------------------------------------------------------------------------
+
+    "BASIC_AUTH: user overlay with a username only inherits the shared password field by field" {
+        // Pins the current per-field semantics: a user overlay that sets only `username`
+        // is merged with the inherited shared `password`, and it is that combined pair
+        // that StaticCredentialFactory later hands to plugins.
+        val base = setting(
+            authType = AuthType.BASIC_AUTH,
+            data = mapOf("username" to "shared-user", "password" to "shared-secret"),
+        )
+        val override = setting(
+            uid = userId,
+            authType = AuthType.BASIC_AUTH,
+            data = mapOf("username" to "alice", "password" to ""),
+        )
+
+        val merged = strategy.merge(base, override)
+
+        merged.shouldBeInstanceOf<BasicAuthAuthSetting>()
+        merged.username shouldBe "alice"
+        merged.password shouldBe "shared-secret"
     }
 })

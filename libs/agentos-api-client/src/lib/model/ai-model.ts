@@ -7,16 +7,21 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ModelPricing } from './model-pricing'
+import { ReasoningEffort } from './reasoning-effort'
 
 export interface AiModel {
   aiProviderId: string
   alias?: string
   apiModelName: string
+  contextWindow?: number
   description?: string
   id?: string
-  maxTokens?: number
+  maxCompletionTokens?: number
   namespaceId?: string
+  pricing?: ModelPricing
   priority: number
+  reasoningEffort?: ReasoningEffort
   temperature?: number
   userId?: string
 }

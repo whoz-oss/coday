@@ -9,6 +9,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -56,13 +57,14 @@ class AuthSettingController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
 ) : AuthSettingApi {
     private val crud =
         ScopedOwnershipCrudDelegate<AuthSettingDto>(
             entityLabel = "AuthSetting",
             userService = userService,
             namespaceService = namespaceService,
-            permissionService = permissionService,
+            scopedAccessPolicy = scopedAccessPolicy,
             ownerOf = { (it as AuthSetting).userId },
             userIdOf = { it.userId },
             namespaceIdOf = { it.namespaceId },
@@ -117,7 +119,8 @@ class AuthSettingController(
             "Scope is inferred from the query params:\n\n" +
                 "| query                            | mode             | required permission                            |\n" +
                 "|----------------------------------|------------------|------------------------------------------------|\n" +
-                "| (no params)                      | platform         | authenticated                                  |\n" +
+                "| (no params)                      | all caller's     | authenticated                                  |\n" +
+                "| `?namespaceId=none` (no userId)  | platform         | authenticated                                  |\n" +
                 "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
                 "| `?namespaceId=<uuid>&userId=me`  | user \u00d7 namespace | authenticated                                  |\n" +
                 "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +

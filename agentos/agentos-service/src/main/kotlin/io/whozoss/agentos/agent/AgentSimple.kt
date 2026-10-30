@@ -1,9 +1,11 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.logging.withMdc
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -14,20 +16,25 @@ import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.usage.CostRunStopped
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.slf4j.MDCContext
+import kotlinx.coroutines.selects.select
 import mu.KLogging
+import org.slf4j.MDC
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -80,6 +87,10 @@ class AgentSimple(
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     override val llmProvider: String,
     override val llmModel: String,
+    /** Reasoning effort the provider receives, carried on the agent's messages. */
+    override val reasoningEffort: ReasoningEffort? = null,
+    /** Reasoning effort asked (the case's, else the model's), carried on the agent's messages. */
+    override val requestedReasoningEffort: ReasoningEffort? = null,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
     /**
@@ -95,6 +106,10 @@ class AgentSimple(
         flow {
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
+
+            // Tool callbacks run on Spring AI / Reactor threads where the thread-local MDC of this
+            // coroutine is absent: capture it once, at the start of the run, and re-apply it in each callback.
+            val logContext: Map<String, String>? = MDC.getCopyOfContextMap()
 
             // Channel to collect tool events from callbacks
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
@@ -117,7 +132,7 @@ class AgentSimple(
                     }
 
                 logger.debug {
-                    "[$name] sending ${allMessages.size} messages to LLM" +
+                    "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM $llmProvider/$llmModel with ${tools.size} tool(s)" +
                         (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
                 }
 
@@ -140,11 +155,14 @@ class AgentSimple(
 
                 emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
-                // Shared timer: reset to markNow() each time the LLM hands back control
-                // (prompt sent, or tool response returned). Measures pure LLM thinking time
-                // per turn, including both tool-calling turns and the final text turn.
-                val llmTurnMark = AtomicReference(TimeSource.Monotonic.markNow())
-                val llmTurnIndex = AtomicInteger(1)
+                // Timing is diagnostic-only: do not even take a monotonic-clock reading unless
+                // DEBUG is enabled. When enabled, the mark is reset each time the LLM hands back
+                // control (prompt sent, or tool response returned), so it measures pure LLM
+                // thinking time per turn, including tool-calling and final-text turns.
+                val latencyLoggingEnabled = logger.isDebugEnabled
+                val llmTurnMark =
+                    if (latencyLoggingEnabled) AtomicReference(TimeSource.Monotonic.markNow()) else null
+                val llmTurnIndex = if (latencyLoggingEnabled) AtomicInteger(1) else null
 
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
@@ -156,6 +174,7 @@ class AgentSimple(
                             toolEventChannel,
                             llmTurnMark,
                             llmTurnIndex,
+                            logContext,
                         )
                     }
 
@@ -173,45 +192,81 @@ class AgentSimple(
                 // Use stream() for progressive text display
                 val streamSpec = promptWithTools.stream()
 
-                // Collect streamed chunks
+                // Collect tool events and streamed chunks concurrently. Spring AI executes a
+                // tool callback while its content stream is still open; draining the callback
+                // channel only when a text chunk arrives used to hide a long-running tool (and
+                // the following LLM round) from the UI until the model eventually produced text.
+                // Keeping those two sources separate makes the live activity timeline truthful.
                 val contentBuilder = StringBuilder()
                 var currentTurnLogged = false
 
-                // Convert stream to Flow.
-                // takeWhile cancels the upstream reactive stream as soon as shouldContinue()
-                // returns false, so we stop consuming the LLM HTTP stream immediately
-                // rather than merely skipping chunks with return@collect.
-                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
-                    // Emit any pending tool events and reset the text-turn log flag so the
-                    // next text chunk after a tool call is correctly recognised as a new turn.
-                    var toolEvent = toolEventChannel.tryReceive().getOrNull()
-                    while (toolEvent != null) {
-                        emit(toolEvent)
-                        if (toolEvent is ToolResponseEvent) {
-                            currentTurnLogged = false
+                coroutineScope {
+                    // Keep the producer/consumer bridge bounded: unlike tool callbacks,
+                    // streamed text can safely suspend until the event flow catches up.
+                    // This preserves streaming back-pressure instead of accumulating an
+                    // arbitrarily large response in memory.
+                    val textChunkChannel = Channel<String>(Channel.BUFFERED)
+                    val streamJob =
+                        launch {
+                            try {
+                                // takeWhile cancels the upstream reactive stream as soon as
+                                // shouldContinue() returns false, rather than merely skipping chunks.
+                                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
+                                    textChunkChannel.send(chunk)
+                                }
+                                textChunkChannel.close()
+                            } catch (e: Throwable) {
+                                textChunkChannel.close(e)
+                                // Cancellation is control flow, not a stream failure. Let it
+                                // propagate through the structured scope so the HTTP stream and
+                                // every child coroutine are cancelled promptly.
+                                if (e is CancellationException) throw e
+                            }
                         }
-                        toolEvent = toolEventChannel.tryReceive().getOrNull()
-                    }
 
-                    // Log LLM thinking time once per turn on the first text chunk of that turn
-                    if (!currentTurnLogged) {
-                        currentTurnLogged = true
-                        logger.info {
-                            "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${
-                                llmTurnMark.get().elapsedNow()
-                            }"
+                    var streamCompleted = false
+                    while (!streamCompleted) {
+                        select<Unit> {
+                            toolEventChannel.onReceiveCatching { received ->
+                                received.exceptionOrNull()?.let { throw it }
+                                received.getOrNull()?.let { toolEvent ->
+                                    emit(toolEvent)
+                                    if (toolEvent is ToolResponseEvent) {
+                                        currentTurnLogged = false
+                                        // The tool response has been handed back to Spring AI.
+                                        // Tell live consumers that the next LLM turn is underway.
+                                        emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
+                                    }
+                                }
+                            }
+                            textChunkChannel.onReceiveCatching { received ->
+                                received.exceptionOrNull()?.let { throw it }
+                                val chunk = received.getOrNull()
+                                if (chunk == null) {
+                                    streamCompleted = true
+                                } else {
+                                    // Log LLM thinking time once per turn on its first text chunk.
+                                    if (latencyLoggingEnabled && !currentTurnLogged) {
+                                        currentTurnLogged = true
+                                        logger.debug {
+                                            "[AgentSimple] agent=$name case=$caseId LLM turn=${llmTurnIndex!!.get()} " +
+                                                "first response after ${llmTurnMark!!.get().elapsedNow()}"
+                                        }
+                                    }
+
+                                    contentBuilder.append(chunk)
+                                    emit(
+                                        TextChunkEvent(
+                                            namespaceId = namespaceId,
+                                            caseId = caseId,
+                                            chunk = chunk,
+                                        ),
+                                    )
+                                }
+                            }
                         }
                     }
-
-                    contentBuilder.append(chunk)
-                    // Emit text chunk for progressive display
-                    emit(
-                        TextChunkEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            chunk = chunk,
-                        ),
-                    )
+                    streamJob.join()
                 }
 
                 // Strip any conversation tags the LLM may have hallucinated in its response.
@@ -236,6 +291,8 @@ class AgentSimple(
                             content = listOf(MessageContent.Text(content)),
                             llmProvider = llmProvider,
                             llmModel = llmModel,
+                            reasoningEffort = reasoningEffort,
+                            requestedReasoningEffort = requestedReasoningEffort,
                         ),
                     )
                 }
@@ -262,25 +319,14 @@ class AgentSimple(
             } catch (e: NonTransientAiException) {
                 emitProviderErrorAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
-                logger.error(e) { "Error during agent execution" }
-                emit(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "Error during agent execution: ${e.message}",
-                    ),
-                )
-
-                emit(
-                    AgentFinishedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = id,
-                        agentName = name,
-                        llmProvider = llmProvider,
-                        llmModel = llmModel,
-                    ),
-                )
+                if (generateSequence<Throwable>(e) { it.cause }.any { it is CostRunStopped }) {
+                    // Tool-only rounds may still have events buffered when a cost stop arrives.
+                    toolEventChannel.close()
+                    for (toolEvent in toolEventChannel) {
+                        emit(toolEvent)
+                    }
+                }
+                handleGenericAgentException(this@AgentSimple, e, namespaceId, caseId, logger)
             }
         }
 
@@ -462,8 +508,9 @@ class AgentSimple(
         namespaceId: UUID,
         caseId: UUID,
         eventChannel: Channel<CaseEvent>,
-        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
-        llmTurnIndex: AtomicInteger,
+        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>?,
+        llmTurnIndex: AtomicInteger?,
+        logContext: Map<String, String>? = null,
     ): ToolCallback =
         object : ToolCallback {
             // Expose the tool's own schema verbatim — no reflection-based generation.
@@ -481,15 +528,21 @@ class AgentSimple(
                 eventChannel.trySend(event)
             }
 
-            override fun call(toolInput: String): String {
+            override fun call(toolInput: String): String = withMdc(logContext) { callWithLogContext(toolInput) }
+
+            private fun callWithLogContext(toolInput: String): String {
                 val toolRequestId = UUID.randomUUID().toString()
 
-                // The LLM decided to call this tool: log how long it thought since
-                // the prompt was sent (or since the previous tool response was returned).
-                val turn = llmTurnIndex.get()
-                logger.info { "$name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+                // The LLM decided to call this tool: in DEBUG, log how long it thought
+                // since the prompt was sent (or since the previous tool response was returned).
+                if (llmTurnMark != null && llmTurnIndex != null) {
+                    logger.debug {
+                        "[AgentSimple] agent=$name case=$caseId LLM turn=${llmTurnIndex.get()} " +
+                            "requested tool=${tool.name} after ${llmTurnMark.get().elapsedNow()}"
+                    }
+                }
 
-                logger.trace { "[$name] tool '${tool.name}' called with args: $toolInput" }
+                logger.trace { "[AgentSimple] agent=$name tool '${tool.name}' called with args: $toolInput" }
 
                 sendEvent(
                     ToolRequestEvent(
@@ -513,9 +566,8 @@ class AgentSimple(
                         } else {
                             all.filter { event ->
                                 when (event) {
-                                    is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
                                     is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
-                                    else -> true
+                                    else -> false
                                 }
                             }
                         }
@@ -526,6 +578,7 @@ class AgentSimple(
                         userId = userId,
                         userExternalId = userExternalId,
                         caseEvents = filteredEvents,
+                        toolRequestId = toolRequestId,
                     )
 
                 val executionResult: ToolExecutionResult
@@ -534,7 +587,11 @@ class AgentSimple(
                     measureTime {
                         executionResult =
                             try {
-                                runBlocking(Dispatchers.IO) { tool.executeWithJson(toolInput, context) }
+                                // MDCContext() captures the MDC of this thread, which withMdc has just merged:
+                                // the run's keys plus the foreign keys (e.g. an infra trace id) of the callback thread.
+                                runBlocking(Dispatchers.IO + MDCContext()) {
+                                    tool.executeWithJson(toolInput, context)
+                                }
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.
@@ -558,6 +615,7 @@ class AgentSimple(
                                         toolName = tool.name,
                                         output = MessageContent.Text(message),
                                         success = true,
+                                        structuredOutput = (e as? AgentInterrupt.AwaitAnswer)?.structuredOutput,
                                     ),
                                 )
                                 throw e
@@ -580,7 +638,10 @@ class AgentSimple(
                                 )
                             }
                     }
-                logger.info { "tool '${tool.name}' executed in $toolDuration" }
+                if (llmTurnMark != null) {
+                    "tool '${tool.name}' executed in $toolDuration, success=${executionResult.success}" +
+                            (executionResult.errorType?.let { ", errorType=$it" } ?: "")
+                }
                 // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
                 // rethrowing; cancellation/interruption rethrow without recording a metric.
                 toolMetricsService?.stopTimerAndSendMetrics(
@@ -593,8 +654,10 @@ class AgentSimple(
 
                 // Reset the turn mark so the next measurement starts from when
                 // we hand the tool result back to the LLM.
-                llmTurnMark.set(TimeSource.Monotonic.markNow())
-                llmTurnIndex.incrementAndGet()
+                if (llmTurnMark != null && llmTurnIndex != null) {
+                    llmTurnMark.set(TimeSource.Monotonic.markNow())
+                    llmTurnIndex.incrementAndGet()
+                }
 
                 sendEvent(
                     ToolResponseEvent(
@@ -610,6 +673,7 @@ class AgentSimple(
                         // They will be delivered to the LLM via the conversation history
                         // on subsequent turns (convertEventsToMessages injects UserMessage+Media).
                         images = executionResult.images,
+                        structuredOutput = executionResult.structuredOutput,
                     ),
                 )
 

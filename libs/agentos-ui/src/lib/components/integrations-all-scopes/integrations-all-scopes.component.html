@@ -1,29 +1,70 @@
-<ds-entity-list
+<ds-section-header
   title="Integrations"
-  [items]="(listItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No integrations available."
-  cardMinWidth="400px"
-  [itemTemplate]="integrationItemTpl"
-  (createRequested)="openCreateForm()"
+  [description]="'Integrations for ' + namespaceName() + ', including entries inherited from the platform.'"
 >
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
+  <button class="integrations__new" type="button" (click)="openCreateForm()">New integration</button>
+</ds-section-header>
 
-<!-- Item template: synthetic '__empty__*' rows are rendered as a placeholder line; everything else
-     is delegated to IntegrationConfigItemComponent. -->
-<ng-template #integrationItemTpl let-item>
-  @if (isEmptyPlaceholder(item.id)) {
-    <p class="integrations-all-scopes__empty">{{ item.name }}</p>
-  } @else if (resolve(item.id); as resolved) {
-    <agentos-integration-config-item
-      [config]="resolved.config"
-      [scope]="resolved.scope"
-      [readOnly]="resolved.scope === 'platform' || (resolved.scope === 'namespace' && !isAdmin())"
-      (editRequested)="onEdit(resolved)"
-      (deleteRequested)="onDelete(resolved)"
-      (duplicateRequested)="onDuplicate(resolved)"
-    />
-  }
-</ng-template>
+@if (isLoading()) {
+  <p class="integrations__status" role="status">Loading integrations…</p>
+} @else if (rows().length === 0) {
+  <p class="integrations__status">No integrations available.</p>
+} @else {
+  <agentos-table-filter
+    label="Filter integrations"
+    placeholder="Filter integrations…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <div class="integrations__table-wrap">
+    <table dsTable>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Scope</th>
+          <th><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rowFilter.filteredRows(); track row.key) {
+          <tr>
+            <td class="integrations__name">{{ row.config.name }}</td>
+            <td class="integrations__type">{{ row.config.integrationType }}</td>
+            <td>
+              <div class="integrations__tags">
+                <ds-tag
+                  [variant]="
+                    row.scopeLabel === 'Platform' ? 'neutral' : row.scopeLabel === 'Personal' ? 'outline' : 'accent'
+                  "
+                >
+                  {{ row.scopeLabel }}
+                </ds-tag>
+                @if (row.source === 'FILESYSTEM') {
+                  <ds-tag variant="neutral">YAML</ds-tag>
+                  <ds-tag variant="outline">Read-only</ds-tag>
+                }
+              </div>
+            </td>
+            <td class="integrations__actions">
+              @if (row.source === 'FILESYSTEM') {
+                <button type="button" (click)="view(row)">View</button>
+              } @else {
+                <button type="button" (click)="duplicate(row)">Duplicate</button>
+                @if (row.canEdit) {
+                  <button type="button" (click)="edit(row)">Edit</button>
+                }
+                @if (row.canDelete) {
+                  <button class="integrations__delete" type="button" (click)="delete(row)">Delete</button>
+                }
+                @if (!row.canEdit && !row.canDelete) {
+                  <button type="button" disabled>Inherited</button>
+                }
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

@@ -1,0 +1,33 @@
+openapi: 3.0.3
+info:
+  title: Keyed
+  version: 1.0.0
+servers:
+  - url: https://keyed.example.com
+components:
+  securitySchemes:
+    Session:
+      type: apiKey
+      in: cookie
+      name: session
+    Bearer:
+      type: http
+      scheme: bearer
+    HeaderKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    QueryKey:
+      type: apiKey
+      in: query
+      name: api_key
+security:
+  - QueryKey: []
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items
+      responses:
+        '200':
+          description: Items

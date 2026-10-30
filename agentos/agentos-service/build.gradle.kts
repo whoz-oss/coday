@@ -79,6 +79,9 @@ dependencies {
     // Coordinates are substituted by composite build (see settings.gradle.kts)
     api("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
+    // Hardened server-side Git execution, kept outside the service so plugins can share it
+    implementation("whoz-oss.agentos:agentos-git:${libs.versions.agentosService.get()}")
+
     // PF4J Spring Integration (for service only, not SDK)
     implementation(libs.pf4j.spring) {
         exclude(group = "org.slf4j", module = "slf4j-reload4j")
@@ -129,12 +132,16 @@ dependencies {
 
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)
+    // agentos-http-plugin reads YAML OpenAPI documents through the service classloader (explicit contract)
+    implementation(libs.jackson.dataformat.yaml)
 
     // Kotlin
     implementation(libs.bundles.kotlin.common)
 
     // Kotlin Coroutines
     implementation(libs.bundles.kotlin.coroutines)
+    // MDC propagation across coroutines (log correlation, see io.whozoss.agentos.logging.LogContext)
+    implementation(libs.kotlinx.coroutines.slf4j)
 
     // Spring AI
     implementation(libs.bundles.spring.ai)

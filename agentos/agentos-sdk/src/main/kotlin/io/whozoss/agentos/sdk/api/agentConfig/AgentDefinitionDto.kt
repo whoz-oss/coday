@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.agentConfig
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
+import io.whozoss.agentos.sdk.api.skill.SkillSummaryDto
 import java.util.UUID
 
 /**
@@ -38,7 +39,21 @@ data class AgentDefinitionDto(
     val resolvedProviderName: String,
     @field:Schema(description = "Summary of tools that would be made available to this agent.")
     val tools: List<ToolSummary>,
-    @field:Schema(description = "Whether the agent uses the advanced multi-step execution engine.")
+    @field:Schema(
+        description = "Skills resolved for this agent from its skillSelectors, in catalog order. " +
+            "Namespace skills shadow platform skills of the same name. Empty when the agent " +
+            "declares no selectors. Bodies and resources are not included — fetch " +
+            "GET /api/skills/{id} for those.",
+    )
+    val skills: List<SkillSummaryDto> = emptyList(),
+    @field:Schema(
+        description =
+            "The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP). " +
+                "LOOP is experimental and may change or be removed without notice.",
+    )
+    val executionMode: ExecutionMode,
+    @field:Schema(description = "Whether the agent uses the advanced multi-step execution engine. Deprecated: use executionMode instead.")
+    @Deprecated("Use executionMode instead")
     val advancedExecution: Boolean,
     @field:Schema(description = "The namespace this agent belongs to.")
     val namespaceId: UUID,

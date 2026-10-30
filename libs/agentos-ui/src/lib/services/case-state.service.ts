@@ -1,6 +1,21 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
-import { catchError, defer, Observable, Subscription, tap, throwError } from 'rxjs'
+import { Case, CaseControllerService, MessageEvent, ReasoningEffort } from '@whoz-oss/agentos-api-client'
+import {
+  catchError,
+  concatMap,
+  defer,
+  EMPTY,
+  endWith,
+  finalize,
+  ignoreElements,
+  Observable,
+  of,
+  shareReplay,
+  Subject,
+  takeUntil,
+  tap,
+  throwError,
+} from 'rxjs'
 
 /**
  * CaseStateService — reactive state for the case list within a namespace.
@@ -20,11 +35,24 @@ export class CaseStateService {
   /** Reactive case list. Empty until loadCases() completes. */
   readonly cases = signal<Case[]>([])
 
-  /** Tracks the in-flight load subscription so a newer call can cancel a stale one. */
-  private loadSubscription: Subscription | null = null
+  /** Agent answer messages received from the active SSE stream. */
+  private readonly agentMessageEventSubject = new Subject<MessageEvent>()
+  readonly agentMessageEvent$ = this.agentMessageEventSubject.asObservable()
+
+  /** Completes the current load when switching namespaces. */
+  private readonly cancelLoad$ = new Subject<void>()
+
+  /** Whether the active namespace currently has a list request in flight. */
+  private loadInFlight = false
+
+  /** Coalesces same-namespace refreshes while retaining one trailing invalidation. */
+  private refreshPending = false
 
   /** Namespace of the currently held cases — used to detect a namespace switch. */
   private currentNamespaceId: string | null = null
+
+  /** Last queued save per case. Different cases can still save independently. */
+  private readonly pendingUpdates = new Map<string, { request: Observable<Case>; state: { confirmed: Case } }>()
 
   /**
    * Load (or reload) the cases the current user is directly related to in a namespace.
@@ -35,21 +63,58 @@ export class CaseStateService {
    * cleared first, so a failed load can't leave the previous namespace's cases showing.
    */
   loadCases(namespaceId: string): void {
-    if (namespaceId !== this.currentNamespaceId) {
-      this.currentNamespaceId = namespaceId
-      this.cases.set([])
+    if (namespaceId === this.currentNamespaceId) {
+      this.refreshCases(namespaceId)
+      return
     }
-    this.loadSubscription?.unsubscribe()
-    this.loadSubscription = this.caseController.listMineByParentCase(namespaceId).subscribe({
-      next: (cases) => {
-        this.cases.set(cases)
-        this.loadSubscription = null
-      },
-      error: (err) => {
-        console.error(`[CaseState] Failed to load cases for namespace ${namespaceId}:`, err)
-        this.loadSubscription = null
-      },
-    })
+
+    this.currentNamespaceId = namespaceId
+    this.cases.set([])
+    this.refreshPending = false
+    this.cancelLoad$.next()
+    this.loadInFlight = false
+    this.startLoad(namespaceId)
+  }
+
+  /**
+   * Refresh the active namespace without clearing the visible list. Repeated signals
+   * during a request are collapsed into one trailing refresh, so the last invalidation
+   * is never lost and an older response can never overwrite a newer one.
+   */
+  refreshCases(namespaceId: string): void {
+    if (namespaceId !== this.currentNamespaceId) return
+    if (this.loadInFlight) {
+      this.refreshPending = true
+      return
+    }
+    this.startLoad(namespaceId)
+  }
+
+  private startLoad(namespaceId: string): void {
+    this.loadInFlight = true
+    this.caseController
+      .listMineByParentCase(namespaceId)
+      .pipe(
+        takeUntil(this.cancelLoad$),
+        finalize(() => this.finishLoad(namespaceId))
+      )
+      .subscribe({
+        next: (cases) => {
+          if (namespaceId === this.currentNamespaceId) this.cases.set(cases)
+        },
+        error: (err) => {
+          console.error(`[CaseState] Failed to load cases for namespace ${namespaceId}:`, err)
+        },
+      })
+  }
+
+  private finishLoad(namespaceId: string): void {
+    if (namespaceId !== this.currentNamespaceId) return
+    this.loadInFlight = false
+    if (this.refreshPending) {
+      this.refreshPending = false
+      this.startLoad(namespaceId)
+    }
   }
 
   /**
@@ -80,43 +145,145 @@ export class CaseStateService {
     })
   }
 
-  /**
-   * Rename a case. The title is applied optimistically to the list (so the drawer reflects it at
-   * once) and reverted locally if the request fails, exactly like [setStarred].
-   *
-   * Sends the whole resource: PUT /api/cases/{id} only honours `title` (namespaceId and status
-   * are mass-assignment guarded server-side), but the endpoint is @Valid and CaseDto.namespaceId
-   * is @NotNull, so a title-only body would be rejected with a 400.
-   *
-   * The response is deliberately ignored. Single-case endpoints build their DTO with a mapper
-   * that sets neither `favorite` nor `role`, so merging it back would silently un-star the case
-   * and drop the ADMIN-gated actions until the next full reload. No reload either: a title-only
-   * update does not bump `modified`, so the drawer's ordering is unaffected.
-   *
-   * Note the rename is not broadcast: the server emits no CaseUpdatedEvent on this path, so
-   * other clients only see the new title on their next list load.
-   */
+  /** Rename through the same queue as header edits to preserve save ordering. */
   renameCase(caseId: string, title: string): Observable<Case> {
-    // defer for the same reason as setStarred: the optimistic patch is tied to subscription.
+    return this.updateCaseFields(caseId, { title })
+  }
+
+  /**
+   * Save editable fields in order for each case. Wait for the previous save to settle
+   * before reading the current state or applying the optimistic patch, so a failed
+   * save can never become the rollback snapshot of the next one.
+   *
+   * Once subscribed, a save finishes even if its caller navigates away. Sharing the
+   * request also lets the next queued save await it without issuing it twice.
+   */
+  updateCaseFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): Observable<Case> {
+    return this.enqueueSave(caseId, (state) => this.saveCaseFields(caseId, patch, state))
+  }
+
+  /**
+   * Set the case-level reasoning effort, or remove it with null so each agent uses the effort of its
+   * model again. Queued with the other saves of the case: the server rewrites the whole case on each
+   * save, so a rename sent at the same time could otherwise restore the previous effort.
+   */
+  setReasoningEffort(caseId: string, effort: ReasoningEffort | null): Observable<Case> {
+    return this.enqueueSave(caseId, (state) => this.saveReasoningEffort(caseId, effort, state))
+  }
+
+  private enqueueSave(caseId: string, save: (state: { confirmed: Case }) => Observable<Case>): Observable<Case> {
     return defer(() => {
+      const pending = this.pendingUpdates.get(caseId)
       const existing = this.cases().find((c) => c.id === caseId)
-      if (!existing) {
+      if (!existing && !pending) {
         return throwError(() => new Error(`[CaseState] Case ${caseId} is not in the current list`))
       }
-      const previousTitle = existing.title
-      this.patchTitle(caseId, title)
-      return this.caseController.updateCase(caseId, { ...existing, title }).pipe(
+      // Keep confirmed state outside the visible list, which navigation may replace
+      // while an already subscribed save is waiting in the queue.
+      const state = pending?.state ?? { confirmed: existing! }
+      const ready = pending
+        ? pending.request.pipe(
+            catchError(() => EMPTY),
+            ignoreElements(),
+            endWith(undefined)
+          )
+        : of(undefined)
+      const request = ready.pipe(
+        concatMap(() => save(state)),
+        finalize(() => {
+          if (this.pendingUpdates.get(caseId)?.request === request) this.pendingUpdates.delete(caseId)
+        }),
+        shareReplay({ bufferSize: 1, refCount: false })
+      )
+      this.pendingUpdates.set(caseId, { request, state })
+      return request
+    })
+  }
+
+  /** Refresh configuration after a cost confirmation without copying the live run snapshot. */
+  refreshCaseThreshold(caseId: string): void {
+    const pending = this.pendingUpdates.get(caseId)
+    const ready = pending
+      ? pending.request.pipe(
+          catchError(() => EMPTY),
+          ignoreElements(),
+          endWith(undefined)
+        )
+      : of(undefined)
+    ready.pipe(concatMap(() => this.caseController.getByIdCase(caseId))).subscribe({
+      next: (updated) => {
+        if (!this.pendingUpdates.has(caseId)) {
+          this.patchFields(caseId, { runCostThreshold: updated.runCostThreshold })
+        }
+      },
+      error: () => {
+        /* The next case load will refresh configuration. */
+      },
+    })
+  }
+
+  private saveCaseFields(
+    caseId: string,
+    patch: { title?: string; runCostThreshold?: number },
+    state: { confirmed: Case }
+  ): Observable<Case> {
+    return defer(() => {
+      const existing = state.confirmed
+      const previous = { title: existing.title, runCostThreshold: existing.runCostThreshold }
+      this.patchFields(caseId, patch)
+      // Keep required fields such as namespaceId. Undefined values are omitted from
+      // JSON; the server treats an omitted threshold as "keep existing".
+      const payload: Case = { ...existing, ...patch, runCostThreshold: patch.runCostThreshold }
+      return this.caseController.updateCase(caseId, payload).pipe(
+        tap((updated) => {
+          state.confirmed = { ...existing, title: updated.title, runCostThreshold: updated.runCostThreshold }
+          this.patchFields(caseId, { title: updated.title, runCostThreshold: updated.runCostThreshold })
+        }),
         catchError((err) => {
-          this.patchTitle(caseId, previousTitle)
+          this.patchFields(caseId, previous)
           return throwError(() => err)
         })
       )
     })
   }
 
+  private saveReasoningEffort(
+    caseId: string,
+    effort: ReasoningEffort | null,
+    state: { confirmed: Case }
+  ): Observable<Case> {
+    return defer(() => {
+      const previous = state.confirmed.reasoningEffort
+      this.patchReasoningEffort(caseId, effort ?? undefined)
+      // An omitted field removes the override.
+      return this.caseController.setReasoningEffortCase(caseId, { reasoningEffort: effort ?? undefined }).pipe(
+        tap((updated) => {
+          state.confirmed = { ...state.confirmed, reasoningEffort: updated.reasoningEffort }
+          this.patchReasoningEffort(caseId, updated.reasoningEffort)
+        }),
+        catchError((err) => {
+          this.patchReasoningEffort(caseId, previous)
+          return throwError(() => err)
+        })
+      )
+    })
+  }
+
+  private patchReasoningEffort(caseId: string, reasoningEffort: ReasoningEffort | undefined): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, reasoningEffort } : c)))
+  }
+
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */
   private patchFavorite(caseId: string, favorite: boolean): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, favorite } : c)))
+  }
+
+  /**
+   * Apply a partial field patch to a single case in-place.
+   * Uses a mapped type to allow `undefined` for optional fields without carrying `null`.
+   */
+  private patchFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, ...patch } : c)))
   }
 
   /**
@@ -129,9 +296,9 @@ export class CaseStateService {
   }
 
   /** Reload the currently held namespace (no-op before the first load). */
-  private reloadCurrent(): void {
+  reloadCurrent(): void {
     if (this.currentNamespaceId) {
-      this.loadCases(this.currentNamespaceId)
+      this.refreshCases(this.currentNamespaceId)
     }
   }
 
@@ -164,5 +331,10 @@ export class CaseStateService {
         c.id === caseId ? { ...c, status: status as import('@whoz-oss/agentos-api-client').CaseStatusEnum } : c
       )
     )
+  }
+
+  /** Forward a persisted agent answer to consumers that need an event-driven refresh. */
+  notifyAgentMessageEvent(event: MessageEvent): void {
+    this.agentMessageEventSubject.next(event)
   }
 }

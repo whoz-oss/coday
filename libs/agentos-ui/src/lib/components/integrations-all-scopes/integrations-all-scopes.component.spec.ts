@@ -1,10 +1,8 @@
 import { ChangeDetectorRef } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
-import { ActivatedRoute, Router } from '@angular/router'
-import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
-import { EntityListItem } from '@whoz-oss/design-system'
+import { ActivatedRoute, convertToParamMap, Router } from '@angular/router'
+import { IntegrationConfig, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of } from 'rxjs'
-import { convertToParamMap } from '@angular/router'
 import {
   IntegrationConfigStateService,
   IntegrationConfigViewModel,
@@ -14,18 +12,15 @@ import { IntegrationsAllScopesComponent } from './integrations-all-scopes.compon
 
 describe('IntegrationsAllScopesComponent', () => {
   const NS_ID = '11111111-1111-1111-1111-111111111111'
-
-  const platformConfig: IntegrationConfig = {
-    id: 'p-1',
-    name: 'Slack Platform',
-    integrationType: 'slack',
-  }
-  const nsConfig: IntegrationConfig = {
-    id: 'ns-1',
+  const platformConfig: IntegrationConfig = { id: 'p-1', name: 'Slack Platform', integrationType: 'slack' }
+  const yamlConfig = {
+    id: 'y-1',
     namespaceId: NS_ID,
-    name: 'Slack NS',
-    integrationType: 'slack',
-  }
+    name: 'YAML config',
+    integrationType: 'git',
+    source: 'FILESYSTEM',
+  } as IntegrationConfig
+  const nsConfig: IntegrationConfig = { id: 'ns-1', namespaceId: NS_ID, name: 'Slack NS', integrationType: 'slack' }
   const userOnNsConfig: IntegrationConfig = {
     id: 'u-ns-1',
     namespaceId: NS_ID,
@@ -39,36 +34,22 @@ describe('IntegrationsAllScopesComponent', () => {
     name: 'Slack mine global',
     integrationType: 'slack',
   }
-
   const fullVm: IntegrationConfigViewModel = {
     platform: [platformConfig],
-    namespace: [nsConfig],
+    namespace: [nsConfig, yamlConfig],
     userOnNs: [userOnNsConfig],
     userGlobal: [userGlobalConfig],
   }
 
   let vm$: BehaviorSubject<IntegrationConfigViewModel>
   let stateMock: Partial<IntegrationConfigStateService>
-  let namespaceRoleMock: Partial<NamespaceRoleStateService>
   let routerMock: { navigate: jest.Mock }
   let component: IntegrationsAllScopesComponent
 
-  function makeComponent(): IntegrationsAllScopesComponent {
-    return TestBed.runInInjectionContext(() => new IntegrationsAllScopesComponent())
-  }
-
   beforeEach(() => {
-    vm$ = new BehaviorSubject<IntegrationConfigViewModel>(fullVm)
-    stateMock = {
-      vm$: vm$.asObservable(),
-      setNamespace: jest.fn(),
-      delete: jest.fn().mockReturnValue(of(undefined)),
-    }
-    namespaceRoleMock = {
-      isAdminOfNamespace$: jest.fn().mockReturnValue(of(false)),
-    }
+    vm$ = new BehaviorSubject(fullVm)
+    stateMock = { vm$: vm$, setNamespace: jest.fn(), delete: jest.fn().mockReturnValue(of(undefined)) }
     routerMock = { navigate: jest.fn() }
-
     TestBed.configureTestingModule({
       providers: [
         {
@@ -80,151 +61,100 @@ describe('IntegrationsAllScopesComponent', () => {
         },
         { provide: Router, useValue: routerMock },
         { provide: IntegrationConfigStateService, useValue: stateMock },
-        { provide: NamespaceRoleStateService, useValue: namespaceRoleMock },
+        { provide: NamespaceRoleStateService, useValue: { isAdminOfNamespace$: jest.fn().mockReturnValue(of(false)) } },
+        {
+          provide: NamespaceControllerService,
+          useValue: { getByIdNamespace: jest.fn().mockReturnValue(of({ id: NS_ID, name: 'Acme' })) },
+        },
         ChangeDetectorRef,
       ],
     })
-    component = makeComponent()
+    component = TestBed.runInInjectionContext(() => new IntegrationsAllScopesComponent())
   })
 
-  describe('list mapping', () => {
-    it('emits a flat list with the 4 sections grouped by scope and the configured French labels', async () => {
-      const items = await new Promise<EntityListItem[]>((resolve) =>
-        component['listItems$'].subscribe((v) => resolve(v))
-      )
-      const byGroup = (key: string) => items.filter((i) => i.groupKey === key)
-
-      expect(byGroup('platform').map((i) => i.name)).toEqual(['Slack Platform'])
-      expect(byGroup('namespace').map((i) => i.name)).toEqual(['Slack NS'])
-      expect(byGroup('userOnNs').map((i) => i.name)).toEqual(['Slack mine on NS'])
-      expect(byGroup('userGlobal').map((i) => i.name)).toEqual(['Slack mine global'])
-
-      expect(byGroup('platform')[0].groupLabel).toBe('Configurations plateforme')
-      expect(byGroup('namespace')[0].groupLabel).toBe('Configurations du namespace')
-      expect(byGroup('userOnNs')[0].groupLabel).toBe('Mes overrides sur ce namespace')
-      expect(byGroup('userGlobal')[0].groupLabel).toBe('Mes overrides globaux')
-    })
-
-    it('emits a placeholder row in each empty section so all 4 sections remain visible', async () => {
-      vm$.next({ platform: [], namespace: [], userOnNs: [userOnNsConfig], userGlobal: [] })
-      const items = await new Promise<EntityListItem[]>((resolve) =>
-        component['listItems$'].subscribe((v) => resolve(v))
-      )
-      const platformPlaceholder = items.find((i) => i.groupKey === 'platform')
-      const namespacePlaceholder = items.find((i) => i.groupKey === 'namespace')
-      const userGlobalPlaceholder = items.find((i) => i.groupKey === 'userGlobal')
-
-      expect(platformPlaceholder?.id).toMatch(/^__empty__platform$/)
-      expect(platformPlaceholder?.name).toBe('Aucune configuration')
-      expect(namespacePlaceholder?.id).toMatch(/^__empty__namespace$/)
-      expect(namespacePlaceholder?.name).toBe('Aucune configuration')
-      expect(userGlobalPlaceholder?.id).toMatch(/^__empty__userGlobal$/)
-      // The non-empty section keeps its real data — no placeholder injected.
-      // List item ids are composite (`<scope>:<id>`) to prevent cross-scope collisions.
-      expect(items.filter((i) => i.groupKey === 'userOnNs').map((i) => i.id)).toEqual(['userOnNs:u-ns-1'])
-    })
+  it('builds one consolidated row table with scopes, source and non-admin permissions', () => {
+    component.ngOnInit()
+    const rows = component['rows']()
+    expect(rows.map((row) => [row.scope, row.scopeLabel, row.source])).toEqual([
+      ['platform', 'Platform', 'NEO4J'],
+      ['namespace', 'Namespace', 'NEO4J'],
+      ['namespace', 'Namespace', 'FILESYSTEM'],
+      ['userOnNs', 'Personal', 'NEO4J'],
+      ['userGlobal', 'Personal', 'NEO4J'],
+    ])
+    expect(rows.map((row) => [row.config.id, row.canEdit, row.canDelete])).toEqual([
+      ['p-1', false, false],
+      ['ns-1', false, false],
+      ['y-1', false, false],
+      ['u-ns-1', true, true],
+      ['u-g-1', true, true],
+    ])
   })
 
-  describe('lifecycle', () => {
-    it('initialises the state service with the active namespaceId on init', () => {
-      component.ngOnInit()
-      expect(stateMock.setNamespace).toHaveBeenCalledWith(NS_ID)
-    })
+  it('makes namespace rows editable for admins while platform and YAML remain read-only', () => {
+    TestBed.inject(NamespaceRoleStateService).isAdminOfNamespace$ = jest.fn().mockReturnValue(of(true))
+    component.ngOnInit()
+    const rows = component['rows']()
+    expect(rows.find((row) => row.config.id === 'ns-1')).toMatchObject({ canEdit: true, canDelete: true })
+    expect(rows.find((row) => row.config.id === 'p-1')).toMatchObject({ canEdit: false, canDelete: false })
+    expect(rows.find((row) => row.config.id === 'y-1')).toMatchObject({ canEdit: false, canDelete: false })
+  })
 
-    it('builds the resolved index so the item template can route events to the right scope', () => {
-      component.ngOnInit()
-      expect(component['resolve']('platform:p-1')?.scope).toBe('platform')
-      expect(component['resolve']('namespace:ns-1')?.scope).toBe('namespace')
-      expect(component['resolve']('userOnNs:u-ns-1')?.scope).toBe('userOnNs')
-      expect(component['resolve']('userGlobal:u-g-1')?.scope).toBe('userGlobal')
-      expect(component['resolve']('unknown')).toBeNull()
+  it('initialises the active namespace', () => {
+    component.ngOnInit()
+    expect(stateMock.setNamespace).toHaveBeenCalledWith(NS_ID)
+  })
+
+  it.each([
+    ['platform admin', true, platformConfig, 'platform', 'platform'],
+    ['platform non-admin', false, platformConfig, 'platform', 'userOnNs'],
+    ['namespace admin', true, nsConfig, 'namespace', 'namespace'],
+    ['namespace non-admin', false, nsConfig, 'namespace', 'userOnNs'],
+    ['personal namespace', false, userOnNsConfig, 'userOnNs', 'userOnNs'],
+    ['personal global', false, userGlobalConfig, 'userGlobal', 'userGlobal'],
+  ])('duplicates %s with the correct source and destination scope', (_label, admin, config, scope, destination) => {
+    component['isAdmin'].set(admin)
+    component['duplicate']({ config, scope, source: 'NEO4J' } as never)
+    expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+      queryParams: { scope: destination, template: config.id, templateScope: scope },
     })
   })
 
-  describe('navigation events', () => {
-    it('duplicates a platform card AS ADMIN → form opens with scope=platform (clone strict)', () => {
-      component['isAdmin'].set(true)
-      component['onDuplicate']({ config: platformConfig, scope: 'platform' })
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'platform', template: 'p-1', templateScope: 'platform' },
-      })
-    })
+  it('does not duplicate YAML integrations and opens them read-only', () => {
+    const row = { config: yamlConfig, scope: 'namespace', source: 'FILESYSTEM' } as never
+    component['duplicate'](row)
+    expect(routerMock.navigate).not.toHaveBeenCalled()
+    component['view'](row)
+    expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'y-1', 'view'])
+  })
 
-    it('duplicates a platform card AS NON-ADMIN → form opens with scope=userOnNs (smart-redirect, avoids silent 403)', () => {
-      component['onDuplicate']({ config: platformConfig, scope: 'platform' })
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'userOnNs', template: 'p-1', templateScope: 'platform' },
-      })
+  it('edits mutable rows preserving scope and ignores read-only rows', () => {
+    component['edit']({ config: userOnNsConfig, scope: 'userOnNs', canEdit: true } as never)
+    expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'u-ns-1', 'edit'], {
+      queryParams: { scope: 'userOnNs' },
     })
+    routerMock.navigate.mockClear()
+    component['edit']({ config: nsConfig, scope: 'namespace', canEdit: false } as never)
+    expect(routerMock.navigate).not.toHaveBeenCalled()
+  })
 
-    it('duplicates a namespace card AS ADMIN → form opens with scope=namespace (clone strict)', () => {
-      component['isAdmin'].set(true)
-      component['onDuplicate']({ config: nsConfig, scope: 'namespace' })
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'namespace', template: 'ns-1', templateScope: 'namespace' },
-      })
-    })
-
-    it('duplicates a namespace card AS NON-ADMIN → form opens with scope=userOnNs (smart-redirect, avoids silent 403)', () => {
-      // isAdmin defaults to false in this spec.
-      component['onDuplicate']({ config: nsConfig, scope: 'namespace' })
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        // destination scope flips to userOnNs but templateScope stays at the source.
-        queryParams: { scope: 'userOnNs', template: 'ns-1', templateScope: 'namespace' },
-      })
-    })
-
-    it('duplicates a userOnNs card → templateScope=userOnNs so the form loads via the user controller', () => {
-      component['onDuplicate']({ config: userOnNsConfig, scope: 'userOnNs' })
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'userOnNs', template: 'u-ns-1', templateScope: 'userOnNs' },
-      })
-    })
-
-    it('duplicates a userGlobal card → templateScope=userGlobal', () => {
-      component['onDuplicate']({ config: userGlobalConfig, scope: 'userGlobal' })
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'userGlobal', template: 'u-g-1', templateScope: 'userGlobal' },
-      })
-    })
-
-    it('navigates to the edit form preserving the scope query param', () => {
-      component['onEdit']({ config: userOnNsConfig, scope: 'userOnNs' })
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'u-ns-1', 'edit'], {
-        queryParams: { scope: 'userOnNs' },
-      })
-    })
-
-    it('opens create with scope=namespace when current user is admin', () => {
-      component['isAdmin'].set(true)
-      component['openCreateForm']()
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'namespace' },
-      })
-    })
-
-    it('opens create with scope=userOnNs when current user is NOT admin (avoids silent 403)', () => {
-      component['openCreateForm']()
-      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'userOnNs' },
-      })
+  it.each([
+    [true, 'namespace'],
+    [false, 'userOnNs'],
+  ])('opens create using the permission-aware default scope', (admin, scope) => {
+    component['isAdmin'].set(admin)
+    component['openCreateForm']()
+    expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+      queryParams: { scope },
     })
   })
 
-  describe('delete dispatch', () => {
-    it('forwards the delete to the state service with the matching scope (userGlobal)', () => {
-      component['onDelete']({ config: userGlobalConfig, scope: 'userGlobal' })
-      expect(stateMock.delete).toHaveBeenCalledWith('u-g-1', 'userGlobal')
-    })
-
-    it('forwards the delete to the state service with the matching scope (namespace)', () => {
-      component['onDelete']({ config: nsConfig, scope: 'namespace' })
-      expect(stateMock.delete).toHaveBeenCalledWith('ns-1', 'namespace')
-    })
-
-    it('forwards the delete to the state service with the matching scope (platform)', () => {
-      component['onDelete']({ config: platformConfig, scope: 'platform' })
-      expect(stateMock.delete).toHaveBeenCalledWith('p-1', 'platform')
-    })
+  it('confirms and dispatches deletion only for mutable rows', () => {
+    const confirmSpy = jest.spyOn(globalThis, 'confirm').mockReturnValue(true)
+    component['delete']({ config: userGlobalConfig, scope: 'userGlobal', canDelete: true } as never)
+    expect(stateMock.delete).toHaveBeenCalledWith('u-g-1', 'userGlobal')
+    component['delete']({ config: platformConfig, scope: 'platform', canDelete: false } as never)
+    expect(stateMock.delete).toHaveBeenCalledTimes(1)
+    confirmSpy.mockRestore()
   })
 })

@@ -1,6 +1,8 @@
 package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
@@ -58,23 +60,36 @@ data class AgentConfig(
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
      *
-     * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
+     * Reserved keys `CASE_FILE_EXCHANGE` and `NAMESPACE_FILE_EXCHANGE`
      * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
      * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
-     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path. For those two keys
+     * `AgentServiceImpl.resolveCaseScope` / `resolveNamespaceScope` and granted by
+     * `grantExchangeTools`, rather than by the normal plugin path. For those two keys
      * only, an **empty list is an explicit opt-out** rather than an empty allow-list, and an
      * **absent key does not mean "never granted"**: the platform defaults
-     * `agentos.exchange.tools.case-enabled-by-default` /
+     * `agentos.exchange.tools.case-enabled-by-default` and
      * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
      * The namespace key is further gated at run time: whatever this map says, the scope is only
      * granted when the invoking user holds Namespace READ.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**
-     * When true, this agent runs with the advanced multi-step orchestration loop
-     * ([AgentAdvanced]) instead of the default single-call mode ([AgentSimple]).
-     * Defaults to false so existing agents are unaffected.
+     * Execution mode for this agent. When non-null, takes precedence over [advancedExecution].
+     * - [ExecutionMode.SIMPLE]: single LLM call per turn (default).
+     * - [ExecutionMode.ADVANCED]: multi-step LLM orchestration loop.
+     * - [ExecutionMode.LOOP]: zero LLM calls, programmatic tool sequence.
+     *
+     * Null means: fall back to [advancedExecution] for backward compatibility.
      */
+    val executionMode: ExecutionMode? = null,
+    /**
+     * Legacy flag kept for backward compatibility with persisted configs that predate [executionMode].
+     * When [executionMode] is non-null, this field is ignored.
+     * When [executionMode] is null: `true` → ADVANCED, `false` → SIMPLE.
+     *
+     * @deprecated Prefer [executionMode].
+     */
+    @Deprecated("Use executionMode instead")
     val advancedExecution: Boolean = false,
     /**
      * Opaque metadata map for external consumers (e.g. Copilot).
@@ -105,18 +120,54 @@ data class AgentConfig(
      */
     val subAgents: List<String>? = null,
     /**
+     * Inactivity budget for each outgoing delegation, in seconds: activity of the sub-case or of its own
+     * delegations restarts it. Null inherits the server default.
+     */
+    val delegationTimeoutSeconds: Int? = null,
+    /**
      * Paths to documents whose full content is injected into the agent's instructions.
      *
      * Three path patterns are supported (resolved relative to the namespace configPath):
      * - explicit file path: single file, content injected verbatim
-     * - path ending with slash: directory listing (first-level only, no content)
+     * - path ending with a slash: directory listing (first-level only, no content)
      * - path ending with slash-star: all readable files in the directory, content injected
      *
      * Only applicable for filesystem-backed agents (namespace with a configPath).
      * Silently ignored when configPath is absent.
      */
     val docs: List<String>? = null,
+    /**
+     * Selectors controlling which namespace skills are advertised to this agent.
+     *
+     * - null or empty list: no skills
+     * - a single star entry: all discovered skills
+     * - other entries: exact skill name match (case-insensitive), against the flat
+     *   `skills/{name}/SKILL.md` layout — no folder/glob patterns are supported
+     *
+     * Skills are SKILL.md files under `configPath/skills/{name}/`. Only name and description
+     * are injected into the agent catalog; bodies are read on demand via the readSkill tool.
+     *
+     * Only applicable for filesystem-backed agents (namespace with a configPath).
+     */
+    val skillSelectors: List<String>? = null,
+    /**
+     * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object.
+     *
+     * When an [AgentLoop] run starts, the first user message is inspected first: if it contains
+     * a valid [io.whozoss.agentos.workflow.AgentLoopPayload] JSON, that value is used (override).
+     * When the message carries no parseable payload, [loopConfig] is used as the default.
+     * If neither source provides a valid payload, the run is aborted with a warning.
+     *
+     * Only meaningful when [executionMode] is [ExecutionMode.LOOP]; ignored otherwise.
+     */
+    val loopConfig: JsonNode? = null,
 ) : Entity {
+    init {
+        require(delegationTimeoutSeconds == null || delegationTimeoutSeconds > 0) {
+            "delegationTimeoutSeconds must be positive"
+        }
+    }
+
     /**
      * True when this [AgentConfig] was loaded from a filesystem YAML definition
      * ([io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository]) rather than persisted
@@ -133,4 +184,12 @@ data class AgentConfig(
      */
     val isFilesystemOnly: Boolean
         get() = metadata.version == null
+
+    /**
+     * Resolves the effective [ExecutionMode] for this agent, applying backward-compatibility
+     * fallback: when [executionMode] is null, [advancedExecution] is used
+     * (`true` → [ExecutionMode.ADVANCED], `false` → [ExecutionMode.SIMPLE]).
+     */
+    val resolvedExecutionMode: ExecutionMode
+        get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
 }

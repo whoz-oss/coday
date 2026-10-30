@@ -2,13 +2,26 @@ import { HttpClient } from '@angular/common/http'
 import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
-import { Configuration, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import {
+  ActorRoleEnum,
+  AnswerEvent,
+  Case,
+  Configuration,
+  ExchangeFileEntryScopeEnum,
+  QuestionEvent,
+  QuestionEventQuestionTypeEnum,
+  ReasoningEffort,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
+import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { CaseChatComponent } from './case-chat.component'
 
 /**
@@ -69,7 +82,17 @@ describe('CaseChatComponent — submit with attachments', () => {
           useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
         },
         { provide: ExchangeStateService, useValue: exchangeState },
-        { provide: CaseStateService, useValue: { addCase: jest.fn(), updateCaseTitle: jest.fn() } },
+        {
+          provide: CaseStateService,
+          useValue: {
+            cases: signal<import('@whoz-oss/agentos-api-client').Case[]>([]),
+            addCase: jest.fn(),
+            updateCaseTitle: jest.fn(),
+            updateCaseStatus: jest.fn(),
+            notifyAgentMessageEvent: jest.fn(),
+            setReasoningEffort: jest.fn().mockReturnValue(of({})),
+          },
+        },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         {
           provide: USER_PREFERENCES_PORT,
@@ -80,6 +103,85 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   afterEach(() => TestBed.resetTestingModule())
+
+  it('does not refresh Files again when a reconnection replays tool and completion events', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-1')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      for (let reconnect = 0; reconnect < 3; reconnect++) {
+        emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+        emit('AgentFinishedEvent', 'finished-1')
+      }
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      // Fresh activity still updates Files after the replay.
+      emit('ToolResponseEvent', 'tool-2', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-2')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(2)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(2)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('restores RUNNING after a transport error without replaying chunks, files or older statuses', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      source.onerror!(new Event('error'))
+      expect(ref.instance['isRunning']()).toBe(false)
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      expect(ref.instance['streamingText']()).toBe('Hello')
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['streamingText']()).toBe('Hello')
+      expect(ref.instance['events']()).toHaveLength(4)
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+
+      emit('AgentFinishedEvent', 'finished-1')
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
+    }
+  })
 
   it('uploads the attachments before sending, and appends the mention to the message', async () => {
     const ref = makeComponent()
@@ -157,6 +259,47 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
   })
 
+  describe('/effort command', () => {
+    const loadCase = (): void => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'IDLE' } as Case])
+    }
+
+    it('sets the case effort and sends nothing to the agent', async () => {
+      loadCase()
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).toHaveBeenCalledWith('c-1', ReasoningEffort.HIGH)
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('keeps the text and sends nothing when the case is not in the loaded list', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/effort high')
+    })
+
+    it('opens the level picker on an unknown level instead of doing nothing', async () => {
+      loadCase()
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/effort hihg')
+
+      await ref.instance['submit']()
+
+      expect(ref.injector.get(ComposerAutocompleteService).effortSuggestions()).toHaveLength(EFFORT_OPTIONS.length)
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+    })
+  })
+
   it('a failed message send keeps the text and the uploaded chips for a retry', async () => {
     const ref = makeComponent()
     ref.instance['inputValue'].set('analyse this file')
@@ -221,7 +364,365 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(ref.instance['canSend']).toBe(false)
 
     attachments(ref).isUploading.set(false)
-    ref.instance['isTerminal'].set(true)
+    // isTerminal is now a computed derived from _sseStatus; drive it via the signal.
+    ref.instance['_sseStatus'].set('KILLED')
     expect(ref.instance['canSend']).toBe(false)
+  })
+
+  describe('kill with confirmation', () => {
+    it('clicking kill does not call the API until confirmed', () => {
+      const ref = makeComponent()
+      // Simulate clicking the kill button (sets confirmingKill to true, does NOT call API)
+      ref.instance['confirmingKill'].set(true)
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('cancelling the kill dialog fires no request and closes the dialog', () => {
+      const ref = makeComponent()
+      ref.instance['confirmingKill'].set(true)
+      // Simulate cancel (what the (cancelled) output does)
+      ref.instance['confirmingKill'].set(false)
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['confirmingKill']()).toBe(false)
+    })
+
+    it('confirming kill POSTs to the kill endpoint and closes the dialog', () => {
+      const ref = makeComponent()
+      ref.instance['confirmingKill'].set(true)
+      // Simulate confirming (what the (confirmed) output does)
+      ref.instance['kill']()
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/kill', {})
+      expect(ref.instance['confirmingKill']()).toBe(false)
+    })
+  })
+
+  describe('reopen', () => {
+    let caseState: { addCase: jest.Mock; updateCaseTitle: jest.Mock; updateCaseStatus: jest.Mock }
+
+    beforeEach(() => {
+      caseState = TestBed.inject(CaseStateService) as typeof caseState
+    })
+
+    it('POSTs to the reopen endpoint, clears terminal state, and notifies CaseStateService', () => {
+      const original = globalThis.EventSource
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+      const ref = makeComponent()
+      try {
+        ref.instance['connectSse']()
+        // Put the component in terminal state via _sseStatus (isTerminal is now a computed).
+        ref.instance['_sseStatus'].set('KILLED')
+        expect(ref.instance['isTerminal']()).toBe(true)
+
+        ref.instance['reopen']()
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/reopen', {})
+
+        // http.post returns of({}) by default, so the next callback fires synchronously
+        expect(caseState.updateCaseStatus).toHaveBeenCalledWith('c-1', 'IDLE')
+        // reinitialise() resets _sseStatus to '', so isTerminal() becomes false.
+        expect(ref.instance['isTerminal']()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+      }
+    })
+
+    describe('SSE replay regression — reopen after kill', () => {
+      it('leaves isTerminal false and EventSource OPEN when KILLED is followed by IDLE in replay', () => {
+        jest.useFakeTimers()
+        const original = globalThis.EventSource
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        const ref = makeComponent()
+        try {
+          ref.instance['connectSse']()
+
+          const emit = (type: string, id: string, fields: object = {}) =>
+            source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+          // Replay: history contains KILLED then IDLE (written by reopen).
+          emit('CaseStatusEvent', 'status-killed', { status: 'KILLED' })
+          emit('CaseStatusEvent', 'status-idle', { status: 'IDLE' })
+
+          // Before the debounce fires, isTerminal must already be false (computed is live).
+          expect(ref.instance['isTerminal']()).toBe(false)
+
+          // Advance past the debounce — the close must NOT fire because isTerminal() is false.
+          jest.advanceTimersByTime(400)
+
+          expect(source.close).not.toHaveBeenCalled()
+          expect(ref.instance['eventSource']).not.toBeNull()
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          jest.useRealTimers()
+        }
+      })
+
+      it('closes the stream once the debounce elapses when a lone KILLED has no following IDLE', () => {
+        jest.useFakeTimers()
+        const original = globalThis.EventSource
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        const ref = makeComponent()
+        try {
+          ref.instance['connectSse']()
+
+          const emit = (type: string, id: string, fields: object = {}) =>
+            source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+          emit('CaseStatusEvent', 'status-killed', { status: 'KILLED' })
+
+          // Before debounce: stream still open.
+          expect(source.close).not.toHaveBeenCalled()
+
+          jest.advanceTimersByTime(400)
+
+          // After debounce: isTerminal() is true, so the stream must have been closed.
+          expect(source.close).toHaveBeenCalledTimes(1)
+          expect(ref.instance['eventSource']).toBeNull()
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          jest.useRealTimers()
+        }
+      })
+
+      it('superseded KILLED produces no terminal notice; only the latest CaseStatusEvent does', () => {
+        const ref = makeComponent()
+        try {
+          const emit = (type: string, id: string, fields: object = {}) =>
+            source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+          const original = globalThis.EventSource
+          const source = Object.assign(new EventTarget(), { close: jest.fn() })
+          globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+          ref.instance['connectSse']()
+          ref.setInput('showTechnicalOverride', true)
+
+          // Replay: KILLED superseded by IDLE
+          ref.instance['events'].set([
+            {
+              type: 'CaseStatusEvent',
+              id: 'status-killed',
+              caseId: 'c-1',
+              namespaceId: 'ns-1',
+              timestamp: '',
+              metadata: { id: 'status-killed', created: '', modified: '', removed: false },
+              status: 'KILLED',
+            } as import('@whoz-oss/agentos-api-client').CaseStatusEvent,
+            {
+              type: 'CaseStatusEvent',
+              id: 'status-idle',
+              caseId: 'c-1',
+              namespaceId: 'ns-1',
+              timestamp: '',
+              metadata: { id: 'status-idle', created: '', modified: '', removed: false },
+              status: 'IDLE',
+            } as import('@whoz-oss/agentos-api-client').CaseStatusEvent,
+          ])
+          ref.instance['_sseStatus'].set('IDLE')
+
+          const timeline = ref.instance['timeline']()
+          const terminalNotices = timeline.filter(
+            (item) => item.kind === 'notice' && item.notice.severity === 'terminal'
+          )
+          // The superseded KILLED must NOT produce a terminal notice.
+          expect(terminalNotices).toHaveLength(0)
+
+          // Now set only the KILLED event as the sole CaseStatusEvent — it IS the latest.
+          ref.instance['events'].set([
+            {
+              type: 'CaseStatusEvent',
+              id: 'status-killed',
+              caseId: 'c-1',
+              namespaceId: 'ns-1',
+              timestamp: '',
+              metadata: { id: 'status-killed', created: '', modified: '', removed: false },
+              status: 'KILLED',
+            } as import('@whoz-oss/agentos-api-client').CaseStatusEvent,
+          ])
+          ref.instance['_sseStatus'].set('KILLED')
+
+          const timeline2 = ref.instance['timeline']()
+          const terminalNotices2 = timeline2.filter(
+            (item) => item.kind === 'notice' && item.notice.severity === 'terminal'
+          )
+          expect(terminalNotices2).toHaveLength(1)
+
+          globalThis.EventSource = original
+        } finally {
+          ref.destroy()
+        }
+      })
+    })
+  })
+
+  it('replaces the generic delegate tool card when its real content-wrapped output contains delegation JSON', () => {
+    const ref = makeComponent()
+    const toolRequestId = 'tool-request-1'
+    const output = JSON.stringify([
+      {
+        delegationId: 'delegation-1',
+        toolRequestId,
+        subCaseId: 'sub-case-1',
+        agentName: 'Research',
+        success: true,
+        result: '**Done**',
+      },
+    ])
+    const request: ToolRequestEvent = {
+      id: 'request-event-id',
+      type: 'ToolRequestEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata: { id: 'request-event-id', created: '', modified: '', removed: false },
+      toolName: 'DELEGATE__delegate',
+      toolRequestId,
+      args: '{"delegations":[]}',
+    }
+    const response: ToolResponseEvent = {
+      id: 'response-event-id',
+      type: 'ToolResponseEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:01Z',
+      metadata: { id: 'response-event-id', created: '', modified: '', removed: false },
+      toolName: 'DELEGATE__delegate',
+      toolRequestId,
+      output: { content: output },
+      success: true,
+      images: [],
+      toolMetadata: {},
+    }
+
+    // This is the exact source used by the generic tool-card OUTPUT block. Compare
+    // semantically because structured tool output is pretty-printed for display.
+    const extractedOutput = ref.instance['extractToolOutput']({
+      requestId: toolRequestId,
+      toolName: request.toolName,
+      args: request.args,
+      response,
+    })
+    expect(extractedOutput).not.toBeNull()
+    expect(JSON.parse(extractedOutput!)).toEqual(JSON.parse(output))
+
+    ref.instance['events'].set([request, response])
+
+    const timeline = ref.instance['timeline']()
+    expect(timeline).toHaveLength(1)
+    expect(timeline[0]).toEqual(
+      expect.objectContaining({
+        kind: 'delegation',
+        delegation: expect.objectContaining({
+          delegationId: 'delegation-1',
+          toolRequestId,
+          subCaseId: 'sub-case-1',
+        }),
+      })
+    )
+    expect(timeline.some((item) => item.kind === 'tool')).toBe(false)
+  })
+
+  describe('question timeline items', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const question = (userId?: string): QuestionEvent => ({
+      id: 'q-1',
+      type: 'QuestionEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata,
+      agentId: 'agent-1',
+      agentName: 'Agent',
+      question: 'Which color?',
+      questionType: QuestionEventQuestionTypeEnum.FREE_TEXT,
+      userId,
+    })
+    const answer = (id: string, actorId: string, text: string): AnswerEvent => ({
+      id,
+      type: 'AnswerEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:01Z',
+      metadata,
+      questionId: 'q-1',
+      answer: text,
+      actor: { id: actorId, role: ActorRoleEnum.USER, displayName: 'Someone' },
+    })
+
+    it('carries the matching answer on the question item', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
+
+      const timeline = ref.instance['timeline']()
+      expect(timeline).toHaveLength(1)
+      const item = timeline[0]
+      expect(item).toEqual(expect.objectContaining({ kind: 'question' }))
+      expect(item?.kind === 'question' && item.answer?.answer).toBe('blue')
+    })
+
+    it('leaves answer undefined while the question is unanswered', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([question()])
+
+      const item = ref.instance['timeline']()[0]
+      expect(item?.kind).toBe('question')
+      expect(item?.kind === 'question' && item.answer).toBeUndefined()
+    })
+
+    it('keeps a question addressed to A pending on an answer from B, then picks the answer from A', () => {
+      const ref = makeComponent()
+      const fromB = answer('a-b', 'user-b', 'from B')
+      ref.instance['events'].set([question('user-a'), fromB])
+
+      let item = ref.instance['timeline']()[0]
+      expect(item?.kind === 'question' && item.answer).toBeUndefined()
+
+      const fromA = answer('a-a', 'user-a', 'from A')
+      ref.instance['events'].set([question('user-a'), fromB, fromA])
+
+      item = ref.instance['timeline']()[0]
+      expect(item?.kind === 'question' && item.answer).toBe(fromA)
+    })
+
+    it('labels the answer with the respondent name, falling back to You for an unnamed user', () => {
+      const ref = makeComponent()
+      const named = answer('a-1', 'u-1', 'blue')
+      const unnamed = { ...named, actor: { id: 'u-1', role: ActorRoleEnum.USER } }
+      expect(ref.instance['answerLabel'](named)).toBe('Someone')
+      expect(ref.instance['answerLabel'](unnamed)).toBe('You')
+    })
+
+    it('only treats an unanswered, non-OAuth question as pending (focus target)', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([question()])
+      expect(ref.instance['pendingQuestionId']()).toBe('q-1')
+
+      ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
+      expect(ref.instance['pendingQuestionId']()).toBeNull()
+
+      ref.instance['events'].set([{ ...question(), questionType: QuestionEventQuestionTypeEnum.OAUTH_AUTHORIZE }])
+      expect(ref.instance['pendingQuestionId']()).toBeNull()
+    })
+
+    it('does not post a second answer while one is in flight', () => {
+      const ref = makeComponent()
+      ref.instance['onQuestionAnswered'](question(), 'blue')
+      ref.instance['onQuestionAnswered'](question(), 'blue')
+
+      expect(http.post).toHaveBeenCalledTimes(1)
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'blue', answerToEventId: 'q-1' })
+    })
+
+    it('does not render the AnswerEvent as its own timeline item, even in technical mode', () => {
+      const ref = makeComponent()
+      ref.setInput('showTechnicalOverride', true)
+      ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
+
+      expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['question'])
+    })
   })
 })

@@ -3,6 +3,14 @@ export * from './lib/index'
 
 // Custom — hand-written, safe from regeneration
 export { CaseEventSseService } from './custom/case-event-sse.service'
+export {
+  NamespaceCaseListUpdateSseService,
+  type NamespaceCaseListUpdateSignal,
+} from './custom/namespace-case-list-update-sse.service'
+export {
+  NamespaceCaseInvalidationSseService,
+  type NamespaceCaseInvalidationSignal,
+} from './custom/namespace-case-invalidation-sse.service'
 export { IntegrationConfigExportService } from './custom/integration-config-export.service'
 export { AgentConfigExportService } from './custom/agent-config-export.service'
 export { PromptExportService } from './custom/prompt-export.service'
@@ -14,3 +22,5 @@ export {
   DAY_OF_WEEK_LABELS,
   DAY_OF_WEEK_FULL_LABELS,
 } from './custom/scheduler-enums'
+export { ToolInvokeApiService } from './custom/tool-invoke-api.service'
+export type { ToolInvokeRequest, ToolInvokeResponse } from './custom/tool-invoke-api.service'

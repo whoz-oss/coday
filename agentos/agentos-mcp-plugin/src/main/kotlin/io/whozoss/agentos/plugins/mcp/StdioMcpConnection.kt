@@ -49,9 +49,9 @@ class StdioMcpConnection(
         }
         val command = config.command!!
         val connectStart = System.currentTimeMillis()
-        // Fix 4: log arg count at INFO, full args only at DEBUG (args may contain credentials)
+        // Fix 4: log arg count at INFO, full args only at TRACE (args may contain credentials)
         logger.info { "[MCP] Connecting to server: $command (${config.args.size} args)" }
-        logger.debug { "[MCP] Full command: $command ${config.args.joinToString(" ")}" }
+        logger.trace { "[MCP] Full command: $command ${config.args.joinToString(" ")}" }
 
         val paramsBuilder =
             ServerParameters

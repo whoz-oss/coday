@@ -1,5 +1,6 @@
 package io.whozoss.agentos.sdk.tool
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool.Companion.objectMapper
 
@@ -9,6 +10,20 @@ interface StandardTool<T> {
     val inputSchema: String
     val version: String
     val paramType: Class<T>?
+
+    /**
+     * JSON Schema describing the structure of [ToolExecutionResult.structuredOutput].
+     *
+     * Return a non-null [JsonNode] when this tool produces machine-readable structured
+     * output in addition to its textual [ToolExecutionResult.output]. The schema is a
+     * JSON Schema object. Returning null (the default)
+     * signals that this tool is text-only and [ToolExecutionResult.structuredOutput]
+     * will always be null.
+     *
+     * Plugin authors who override this MUST populate [ToolExecutionResult.structuredOutput]
+     * in every successful [execute] call so that the declared schema is always honoured.
+     */
+    fun outputSchema(): JsonNode? = null
 
     /**
      * Execute the tool with a typed input and return a [ToolExecutionResult].

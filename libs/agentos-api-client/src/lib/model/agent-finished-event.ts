@@ -8,6 +8,7 @@
  * Do not edit the class manually.
  */
 import { EntityMetadata } from './entity-metadata'
+import { LlmUsage } from './llm-usage'
 
 export interface AgentFinishedEvent {
   caseId: string
@@ -20,4 +21,5 @@ export interface AgentFinishedEvent {
   agentName: string
   llmModel?: string
   llmProvider?: string
+  llmUsage?: LlmUsage
 }

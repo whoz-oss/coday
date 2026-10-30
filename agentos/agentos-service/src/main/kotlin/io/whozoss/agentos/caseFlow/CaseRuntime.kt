@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
+import io.whozoss.agentos.logging.LogContext
 import io.whozoss.agentos.orchestration.CaseEventEmitter
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -13,25 +14,45 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mu.KLogging
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /** Holds a pending command to be executed sequentially after the current agent turn. */
-private data class PendingCommand(val content: List<MessageContent>)
+private data class PendingCommand(
+    val content: List<MessageContent>,
+)
 
 /**
  * Runtime execution engine for a case.
  *
- * Owns only execution state: the event list, the SSE flow, and the kill flag.
+ * Owns only execution state: the event list, the SSE flow, and the stop requested for the turn, if any.
  * All business logic is delegated back to [CaseService] through four callbacks:
+ *
+ * ## Admission lock
+ * This instance's monitor is the admission lock, shared with [GatedRunLauncher]:
+ * it serialises claiming a run against Stop and Kill. Anything holding it must be
+ * short and non-blocking — no I/O, no network call, no suspension. Persisting a
+ * status transition happens outside it (see [claimPending]/[publishStatus]).
  *
  * @param updateStatusCallback called whenever the runtime transitions to a new [CaseStatus].
  * @param storeEvent called for every event produced by this runtime.
@@ -74,26 +95,51 @@ class CaseRuntime(
         shouldContinue: () -> Boolean,
     ) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
-    initialStatus: CaseStatus = CaseStatus.PENDING,
+    initialStatus: CaseStatus = CaseStatus.CREATED,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
+    /**
+     * Maximum number of internal steps per user message before the runtime transitions to
+     * [CaseStatus.ERROR]. Configurable via [io.whozoss.agentos.config.LimitsConfigProperties].
+     * Defaults to 100 to preserve the previous hardcoded value.
+     */
+    private val maxIterations: Int = 100,
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
     /**
-     * Set by [processNextStep] when it finds an [AgentFinishedEvent] for the current
-     * turn (exits the inner loop), by [requestInterrupt] (same exit, transitions to
-     * [CaseStatus.IDLE]), and by [requestKill] (transitions to [CaseStatus.KILLED]).
+     * The stop requested for the current turn, [StopRequest.NOT_REQUESTED] while there is none. Raised by
+     * [requestInterrupt], [requestKill] and [requestShutdownStop], reset when [run] claims the runtime.
+     * The run loop exits on any request, [stoppedStatus] reads the final status from it, and
+     * [agentMayContinue] tells the agent whether it must stop between its steps.
      */
-    private val interruptRequested = AtomicBoolean(false)
-
-    /**
-     * Set only by [requestKill]. Distinguishes a normal turn-end (→ IDLE)
-     * from an explicit kill (→ KILLED).
-     */
-    private val killRequested = AtomicBoolean(false)
+    private val stopRequest = AtomicReference(StopRequest.NOT_REQUESTED)
 
     /** What [processNextStep] signals back to the run loop. */
     private enum class StepResult { CONTINUE, AGENT_FINISHED, STOP }
+
+    /**
+     * The stop requested for a turn, ordered from the weakest to the strongest: [raiseStopRequest] never
+     * lowers the request already recorded, so a Kill is not downgraded by a later Stop.
+     *
+     * [NOT_REQUESTED] is the state of a turn nobody asked to stop. It is also what a turn cancelled from
+     * the outside (e.g. its caller was cancelled) finds: it ends [CaseStatus.IDLE].
+     *
+     * Any request other than [NOT_REQUESTED] tells the agent to stop between its steps ([agentMayContinue]), an
+     * [INTERRUPT] included, so an agent that does not suspend (a loop over blocking steps) still stops at its
+     * next step. Reaching an agent suspended in a tool or an LLM stream is a separate step: the cancellation of
+     * the turn ([cancelInterruptedTurn]), which a Stop does in a second pass.
+     *
+     * @property finalStatus the status a stopped turn ends in: only a Kill is terminal. A shutdown stop
+     *   ends [CaseStatus.IDLE], so a conversation kept open across a restart is not closed.
+     */
+    private enum class StopRequest(
+        val finalStatus: CaseStatus,
+    ) {
+        NOT_REQUESTED(CaseStatus.IDLE),
+        INTERRUPT(CaseStatus.IDLE),
+        SHUTDOWN(CaseStatus.IDLE),
+        KILL(CaseStatus.KILLED),
+    }
 
     /**
      * Guards against concurrent [run] invocations.
@@ -103,7 +149,32 @@ class CaseRuntime(
      */
     private val runInFlight = AtomicBoolean(false)
 
-    private val maxIterations = 100
+    /**
+     * Monotonic start time of the latest user turn. It is recorded before persistence so the
+     * resulting duration includes the full locally observable path: message storage, scheduling,
+     * orchestration, LLM calls, tools, and final status publication.
+     */
+    private val userTurnStartedAtNanos = AtomicLong(0)
+
+    /** Backs [activityCount]. */
+    private val activity = AtomicLong(0)
+
+    /**
+     * Job of the turn executing inside [run]: from the user's message until the agents hand back to
+     * the user, so it may span several agent turns (redirects, answered questions, queued commands).
+     * Cancelled by [requestKill], [requestShutdownStop] and [cancelInterruptedTurn] so they reach a turn
+     * suspended in a tool or an LLM stream.
+     * Owned by [run] (not its caller's job), so cancelling it never cancels the caller.
+     * Cancelling it is non-blocking: safe under the admission lock.
+     *
+     * Written by the thread running [run], read by the thread requesting the stop. A request always
+     * records its stop request before reading this job, and [run] publishes it before re-reading [stopRequest], so a
+     * request racing with the start of a turn is never lost. Only plain get/set are needed (no
+     * compare-and-set), so `@Volatile` would suffice: it gives the same visibility and ordering.
+     * AtomicReference is used to match the other shared fields of this class.
+     */
+    private val turnJob = AtomicReference<Job?>(null)
+
     private var iterationCount = 0
 
     /**
@@ -112,6 +183,17 @@ class CaseRuntime(
      * they are plain text, never slash-commands.
      */
     private val commandQueue = ConcurrentLinkedQueue<PendingCommand>()
+
+    /**
+     * Questions found answered during the pre-flight, after the first one has been
+     * scheduled. They are deliberately executed one at a time by [runTurns].
+     *
+     * The runtime is single-threaded while [runInFlight] is held: persisting all
+     * AgentSelectedEvents up front would make the newest selection hide earlier ones
+     * from [processNextStep]'s backwards scan. Keeping this queue lets each completed
+     * resumption yield before the next selection is emitted.
+     */
+    private val pendingQuestionResumptions = ArrayDeque<QuestionEvent>()
 
     private val _statusFlow = MutableStateFlow(initialStatus)
 
@@ -123,33 +205,86 @@ class CaseRuntime(
      * Reactive view of the current [CaseStatus].
      * Updated synchronously inside [run] before and after each transition.
      * Initialised to [initialStatus] so rehydrated runtimes start with the
-     * correct persisted status rather than always [CaseStatus.PENDING].
+     * correct persisted status rather than always [CaseStatus.CREATED].
      * Consumers can combine this with [subscriptionCount] to react to the
      * conjunction of "case is idle" and "no SSE subscribers".
      */
     val statusFlow: StateFlow<CaseStatus> = _statusFlow.asStateFlow()
 
     /**
-     * Interrupt the current agent turn, clear the command queue, and return to [CaseStatus.IDLE].
+     * Mark the current turn stopped and clear the command queue: the turn ends as [CaseStatus.IDLE].
+     * `shouldContinue` turns false at once, but an agent only reads it between two steps: on its own it does
+     * not interrupt a call in progress, that is the cancellation's job.
      *
-     * Takes effect after the current [processNextStep] returns. The runtime stays alive
-     * and the SSE flow stays open for the next user message.
+     * Only marks the turn, it does not cancel it: [cancelInterruptedTurn] does, as a second step.
+     * The split is deliberate, so as not to break the forge (Git workspaces) cases. A cancelled child
+     * turn ends [CaseStatus.IDLE], which completes its parent's delegation, so the parent must already
+     * be marked by then. The same goes for a turn held back by the launch gate: releasing it sets it
+     * [CaseStatus.IDLE]. Stopping a case family is
+     * therefore done in two passes (see [CaseServiceImpl.interruptCase]): mark every runtime with this
+     * method, then cancel every turn with [cancelInterruptedTurn]. [requestKill] and
+     * [requestShutdownStop] cancel directly because they act on a single runtime.
+     *
+     * Without the second step, the agent stops at its next step and the turn ends once the current
+     * [processNextStep] returns: an agent suspended in a tool or an LLM stream is not interrupted by the
+     * mark alone. The runtime stays alive and the SSE flow stays open for the next user message.
      */
     fun requestInterrupt() {
         commandQueue.clear()
-        interruptRequested.set(true)
+        raiseStopRequest(StopRequest.INTERRUPT)
     }
 
     /**
+     * Cancel the running turn if a stop is pending ([requestInterrupt] only marks it), so it does not
+     * wait for a tool or an LLM stream to return. The turn then ends as [CaseStatus.IDLE], or
+     * [CaseStatus.KILLED] when a Kill was requested. Does nothing while no stop is pending.
+     */
+    fun cancelInterruptedTurn() = cancelTurn()
+
+    /**
      * Request permanent termination of this runtime.
-     * Sets both [stopRequested] (to break the run loop) and [killRequested] (so
-     * [run] transitions to [CaseStatus.KILLED] rather than [CaseStatus.IDLE]).
-     * Also clears the command queue so no orphaned commands are left behind.
+     * Raises the stop request to [StopRequest.KILL] (so the run loop breaks and [run] transitions to
+     * [CaseStatus.KILLED] rather than [CaseStatus.IDLE]), then cancels the running turn. Also clears
+     * the command queue so no orphaned commands are left behind.
      */
     fun requestKill() {
-        killRequested.set(true)
-        interruptRequested.set(true)
+        raiseStopRequest(StopRequest.KILL)
         commandQueue.clear()
+        cancelTurn()
+    }
+
+    /**
+     * Stop the current turn for a server shutdown that keeps the case open: the turn is cancelled,
+     * as with [requestKill], but ends as [CaseStatus.IDLE].
+     */
+    fun requestShutdownStop() {
+        raiseStopRequest(StopRequest.SHUTDOWN)
+        commandQueue.clear()
+        cancelTurn()
+    }
+
+    /** Whether a Kill was requested since the current turn started. */
+    fun isKillRequested(): Boolean = stopRequest.get() == StopRequest.KILL
+
+    private fun isStopRequested(): Boolean = stopRequest.get() != StopRequest.NOT_REQUESTED
+
+    /** What the agent checks between its steps: any stop request (Stop, Kill, shutdown) ends its turn. */
+    private fun agentMayContinue(): Boolean = !isStopRequested()
+
+    /** Records the stop requested for the turn, never lowering a stronger request already recorded. */
+    private fun raiseStopRequest(request: StopRequest) {
+        stopRequest.updateAndGet { maxOf(it, request) }
+    }
+
+    /**
+     * Cancels the turn job, if it is published and a stop is requested. Non-blocking. Callers raise the
+     * stop request first: one racing with the publication of the job is caught by [run].
+     */
+    private fun cancelTurn() {
+        val request = stopRequest.get()
+        if (request != StopRequest.NOT_REQUESTED) {
+            turnJob.get()?.cancel(CancellationException("Case $id stopped (${request.name.lowercase()})"))
+        }
     }
 
     /**
@@ -162,8 +297,69 @@ class CaseRuntime(
 
     fun isRunning(): Boolean = runInFlight.get()
 
+    /**
+     * Claim the [CaseStatus.PENDING] transition atomically, in memory only: a turn is queued and has not
+     * started. [GatedRunLauncher] claims it for a turn its gate holds back, then publishes it.
+     * [CaseServiceImpl.resumeSubCase] claims it without a gate and does not publish it: [run] replaces it
+     * with RUNNING as soon as the turn starts.
+     *
+     * Takes this instance's monitor (the admission lock); a caller that claims together with its own
+     * state holds the monitor around the call. Returns the [CaseStatus] to publish if the claim succeeded,
+     * or `null` if the runtime is already running or already PENDING. The caller is responsible for
+     * calling [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
+     */
+    fun claimPending(): CaseStatus? = synchronized(this) {
+        if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
+            _statusFlow.value = CaseStatus.PENDING
+            CaseStatus.PENDING
+        } else null
+    }
+
+    /**
+     * Claim the [CaseStatus.IDLE] transition atomically, in memory only, for a gated turn
+     * that was held back and never started (mirror of [claimPending] for the cancel path).
+     *
+     * Must be called under this instance's monitor (the admission lock). Returns the
+     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
+     * running or not in [CaseStatus.PENDING] state. The caller is responsible for calling
+     * [publishStatus] **outside** the monitor.
+     */
+    fun claimCancelPending(): CaseStatus? = synchronized(this) {
+        if (!isRunning() && _statusFlow.value == CaseStatus.PENDING) {
+            _statusFlow.value = CaseStatus.IDLE
+            CaseStatus.IDLE
+        } else null
+    }
+
+    /**
+     * Persist and broadcast a status transition that was previously claimed atomically
+     * via [claimPending] or [claimCancelPending].
+     *
+     * **Must be called outside the admission lock** — the callback reaches
+     * [CaseServiceImpl.handleStatusChange] which performs blocking Neo4j round-trips.
+     */
+    fun publishStatus(status: CaseStatus) = updateStatusCallback(id, status)
+
     /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
     val subscriptionCount get() = emitter.subscriptionCount
+
+    /** Monotonic count of non-blocking live emissions rejected by the runtime buffer. */
+    val deliveryFailureCount get() = emitter.deliveryFailureCount
+
+    /**
+     * Monotonic count of this case's activity: every event it emits and every [recordActivity].
+     * Only its changes matter: a delegation waiting on this case compares two readings to tell a
+     * sub-case that is working from a silent one.
+     */
+    val activityCount: Long get() = activity.get()
+
+    /**
+     * Record activity without an event. A delegation relays the activity of the sub-case it waits on
+     * to its own case this way, so that a delegation waiting on that case sees it working too.
+     */
+    fun recordActivity() {
+        activity.incrementAndGet()
+    }
 
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
@@ -191,6 +387,12 @@ class CaseRuntime(
         emit(event)
     }
 
+    /** Every live emission, stored or not, is activity of the case (see [activityCount]). */
+    override fun emit(event: CaseEvent) {
+        recordActivity()
+        emitter.emit(event)
+    }
+
     // -------------------------------------------------------------------------
     // User message entry point
     // -------------------------------------------------------------------------
@@ -209,9 +411,12 @@ class CaseRuntime(
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
     ) {
-        logger.info {
-            "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
-                "content: ${content.size} part(s), answerTo: $answerToEventId"
+        if (logger.isDebugEnabled) {
+            userTurnStartedAtNanos.set(System.nanoTime())
+            logger.debug {
+                "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
+                    "content: ${content.size} part(s), answerTo: $answerToEventId"
+            }
         }
 
         if (answerToEventId != null) {
@@ -268,15 +473,59 @@ class CaseRuntime(
      * - Max iterations reached: transitions to [CaseStatus.ERROR]. Terminal.
      */
     suspend fun run() {
-        if (!runInFlight.compareAndSet(false, true)) {
+        val context = currentCoroutineContext()
+        val claimed =
+            synchronized(this) {
+                // A launch admitted by a CaseLaunchGate can be cancelled by Stop or Kill before it
+                // starts. Claiming the runtime and resetting the stop request must be atomic with that.
+                context.ensureActive()
+                if (!runInFlight.compareAndSet(false, true)) {
+                    false
+                } else {
+                    stopRequest.set(StopRequest.NOT_REQUESTED)
+                    true
+                }
+            }
+        if (!claimed) {
             logger.debug { "[CaseRuntime $id] run() already in-flight, skipping" }
             return
         }
 
+        try {
+            // The turn runs in its own child job so a stop cancels the turn, not run()'s caller.
+            // Undispatched: the body always starts, so even a turn stopped at once publishes its status.
+            // The log context is attached to the launch itself (no cancellation check on entry), so every
+            // log line of the turn, on whatever thread, carries the case identity.
+            coroutineScope {
+                val logContext = LogContext.mdcContext(LogContext.CASE_ID to id, LogContext.NAMESPACE_ID to namespaceId)
+                val turn = launch(logContext, start = CoroutineStart.UNDISPATCHED) { executeTurn() }
+                turnJob.set(turn)
+                // A stop requested between the claim and the line above found no job to cancel.
+                if (isStopRequested()) {
+                    turn.cancel(CancellationException("Case $id stopped before its turn started"))
+                }
+            }
+        } finally {
+            turnJob.set(null)
+            runInFlight.set(false)
+        }
+    }
+
+    /**
+     * Body of [run], executed in [turnJob]. On cancellation (Stop, Kill, shutdown stop or cancelled caller),
+     * closes the open turn and publishes the final status before rethrowing, so the case is never
+     * left [CaseStatus.RUNNING] with a dangling [AgentRunningEvent].
+     */
+    private suspend fun executeTurn() {
         logger.info { "[CaseRuntime $id] run() started" }
-        interruptRequested.set(false)
-        killRequested.set(false)
+        val statusUpdateStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
         updateStatus(CaseStatus.RUNNING)
+        if (statusUpdateStartedAtNanos != 0L) {
+            logger.debug {
+                "[CaseRuntime $id] RUNNING status persistence and publication completed in " +
+                    "${(System.nanoTime() - statusUpdateStartedAtNanos) / 1_000_000}ms"
+            }
+        }
         iterationCount = 0
 
         try {
@@ -285,31 +534,85 @@ class CaseRuntime(
             // guard (above) to avoid double execution on concurrent callers, and BEFORE
             // runTurns() so the AgentSelectedEvent is in the history before the loop
             // starts scanning backward.
-            findUnresolvedQuestion(eventList.getAll())?.let { question ->
-                logger.info { "[CaseRuntime $id] Resuming agent '${question.agentName}' after user answer" }
-                storeAndEmitEvent(
-                    AgentSelectedEvent(
-                        namespaceId = namespaceId,
-                        caseId = id,
-                        agentId = question.agentId,
-                        agentName = question.agentName,
-                    ),
-                )
+            pendingQuestionResumptions.clear()
+            findQuestionsToResume(eventList.getAll()).let { questions ->
+                questions.firstOrNull()?.let(::resumeQuestion)
+                questions.drop(1).forEach(pendingQuestionResumptions::addLast)
             }
 
             val finalStatus = runTurns()
             logger.info { "[CaseRuntime $id] Exited loop → $finalStatus, iterations: $iterationCount" }
             if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
             updateStatus(finalStatus)
-        } catch (e: kotlinx.coroutines.CancellationException) {
+            logResponseFinished(finalStatus)
+        } catch (e: CancellationException) {
+            // Cancelled by a Stop, a Kill, a shutdown stop or a cancelled caller: close the turn before
+            // rethrowing, so the case is never left RUNNING with a dangling AgentRunningEvent.
+            withContext(NonCancellable) {
+                commandQueue.clear()
+                pendingQuestionResumptions.clear()
+                val status = stoppedStatus()
+                logger.info { "[CaseRuntime $id] Turn cancelled → $status" }
+                // Emit the AgentFinishedEvent the agent could not emit (otherwise a rehydration would
+                // restart it from its AgentRunningEvent). Each step is best-effort: a store failure
+                // must not replace the cancellation.
+                runCatching { closeAgentLeftOpenByCurrentTurn() }
+                    .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not close the cancelled turn" } }
+                runCatching { updateStatus(status) }
+                    .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not publish status $status" } }
+                logResponseFinished(status)
+            }
             throw e
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
             commandQueue.clear()
             updateStatus(CaseStatus.ERROR)
-        } finally {
-            runInFlight.set(false)
+            logResponseFinished(CaseStatus.ERROR)
         }
+    }
+
+    private fun logResponseFinished(status: CaseStatus) {
+        if (!logger.isDebugEnabled) return
+        val startedAtNanos = userTurnStartedAtNanos.getAndSet(0)
+        if (startedAtNanos == 0L) return
+        logger.debug {
+            "[CaseRuntime $id] response finished in " +
+                "${(System.nanoTime() - startedAtNanos) / 1_000_000}ms (status=$status)"
+        }
+    }
+
+    /** Status a stopped turn ends in: only a Kill is terminal. */
+    private fun stoppedStatus(): CaseStatus = stopRequest.get().finalStatus
+
+    /**
+     * Emits the [AgentFinishedEvent] that an interrupted turn could not emit itself, so that the history
+     * is consistent and a rehydration does not restart the agent from its [AgentRunningEvent].
+     *
+     * The agent is left open when the latest orchestration event since the last user message is an
+     * [AgentRunningEvent] or an [AgentSelectedEvent] (selected, but not yet started or not yet finished).
+     * Otherwise there is nothing to close and no event is emitted: either the turn has no orchestration
+     * event at all, or its latest one is already an [AgentFinishedEvent]. Emitting that one again would
+     * duplicate it in the history and on the SSE flow.
+     */
+    private fun closeAgentLeftOpenByCurrentTurn() {
+        val events = eventList.getAll()
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val lastOrchestration =
+            events
+                .drop(lastUserMessageIndex + 1)
+                .lastOrNull { it is AgentFinishedEvent || it is AgentRunningEvent || it is AgentSelectedEvent }
+        when (lastOrchestration) {
+            is AgentRunningEvent -> closeAgent(lastOrchestration.agentId, lastOrchestration.agentName)
+            is AgentSelectedEvent -> closeAgent(lastOrchestration.agentId, lastOrchestration.agentName)
+            else -> Unit // no agent in this turn, or already closed by an AgentFinishedEvent
+        }
+    }
+
+    private fun closeAgent(
+        agentId: UUID,
+        agentName: String,
+    ) {
+        storeAndEmitEvent(AgentFinishedEvent(namespaceId = namespaceId, caseId = id, agentId = agentId, agentName = agentName))
     }
 
     /**
@@ -324,20 +627,32 @@ class CaseRuntime(
      */
     private suspend fun runTurns(): CaseStatus {
         while (iterationCount < maxIterations) {
-            if (interruptRequested.get()) return CaseStatus.IDLE
+            if (isStopRequested()) return stoppedStatus()
             logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
             when (processNextStep()) {
                 StepResult.CONTINUE -> iterationCount++
                 StepResult.STOP -> return CaseStatus.KILLED
                 StepResult.AGENT_FINISHED -> {
-                    if (interruptRequested.get()) return CaseStatus.IDLE
+                    if (isStopRequested()) return stoppedStatus()
+
+                    // A pre-flight may have found several independently answered
+                    // questions. Resume them in QuestionEvent history order, strictly
+                    // one agent turn at a time; runInFlight remains held throughout.
+                    val nextQuestion = pendingQuestionResumptions.removeFirstOrNull()
+                    if (nextQuestion != null) {
+                        resumeQuestion(nextQuestion)
+                        iterationCount = 0
+                        continue
+                    }
+
                     val nextCommand = commandQueue.poll()
                         ?: return CaseStatus.IDLE
                     logger.info {
                         "[CaseRuntime $id] Draining command queue, ${commandQueue.size} command(s) remaining"
                     }
-                    val actor = resolveLastUserActor(eventList.getAll())
-                        ?: return CaseStatus.ERROR
+                    val actor =
+                        resolveLastUserActor(eventList.getAll())
+                            ?: return CaseStatus.ERROR
                     addUserMessage(actor, nextCommand.content)
                     iterationCount = 0
                 }
@@ -397,7 +712,7 @@ class CaseRuntime(
                         eventList.getAll(),
                         { eventList.getAll() },
                         resolveUserId(events),
-                    ) { !killRequested.get() }
+                    ) { agentMayContinue() }
                     return StepResult.CONTINUE
                 }
 
@@ -409,9 +724,10 @@ class CaseRuntime(
                     // current turn (strictly after the last user MessageEvent). The current
                     // event is included in the slice — intentional, see spec.
                     val sliceStart = (lastUserMessageIndex + 1).coerceAtLeast(0)
-                    val sameAgentSelectionCount = events
-                        .subList(sliceStart, events.size)
-                        .count { it is AgentSelectedEvent && it.agentName == event.agentName }
+                    val sameAgentSelectionCount =
+                        events
+                            .subList(sliceStart, events.size)
+                            .count { it is AgentSelectedEvent && it.agentName == event.agentName }
 
                     if (sameAgentSelectionCount >= MAX_SAME_AGENT_SELECTIONS_PER_TURN) {
                         logger.warn {
@@ -422,8 +738,9 @@ class CaseRuntime(
                             WarnEvent(
                                 namespaceId = namespaceId,
                                 caseId = id,
-                                message = "Agent ${event.agentName} could not complete the task, " +
-                                    "try rephrasing, precising or addressing another agent.",
+                                message =
+                                    "Agent ${event.agentName} could not complete the task, " +
+                                        "try rephrasing, precising or addressing another agent.",
                             ),
                         )
                         storeAndEmitEvent(
@@ -458,8 +775,8 @@ class CaseRuntime(
                         eventList.getAll(),
                         { eventList.getAll() },
                         userId,
-                    ) { !killRequested.get() }
-                    return if (killRequested.get()) StepResult.STOP else StepResult.CONTINUE
+                    ) { agentMayContinue() }
+                    return if (isKillRequested()) StepResult.STOP else StepResult.CONTINUE
                 }
 
                 else -> { // keep scanning
@@ -473,6 +790,70 @@ class CaseRuntime(
         return StepResult.AGENT_FINISHED
     }
 
+    private fun resumeQuestion(question: QuestionEvent) {
+        logger.info { "[CaseRuntime $id] Resuming agent '${question.agentName}' after user answer" }
+        // Persist the per-question correlation with the selection itself. On replay,
+        // this prevents exactly this question (not merely this agent) from re-running.
+        storeAndEmitEvent(
+            AgentSelectedEvent(
+                namespaceId = namespaceId,
+                caseId = id,
+                agentId = question.agentId,
+                agentName = question.agentName,
+                questionId = question.id,
+            ),
+        )
+    }
+
+    /**
+     * Returns every [QuestionEvent] that should trigger an agent wake-up, in their
+     * deterministic event-history order.
+     *
+     * The caller schedules the returned questions sequentially, never concurrently.
+     */
+    private fun findQuestionsToResume(events: List<CaseEvent>): List<QuestionEvent> =
+        events.filterIsInstance<QuestionEvent>().filter { question ->
+            findLegitimateAnswerIndex(question, events) >= 0
+        }
+
+    /**
+     * Returns the index of the legitimate answer for [question], or -1 when that
+     * question must remain pending (or was already handled).
+     */
+    private fun findLegitimateAnswerIndex(question: QuestionEvent, events: List<CaseEvent>): Int {
+        // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
+        // The recipient check is intentionally inside this predicate — see KDoc for why moving
+        // it outside causes a permanent-deadlock bug on shared cases.
+        val legitimateAnswerIndex = events.indexOfFirst { event ->
+            if (event !is AnswerEvent || event.questionId != question.id) return@indexOfFirst false
+            val targetUserId = question.userId
+                ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
+            val respondentId = runCatching { UUID.fromString(event.actor.id) }.getOrElse {
+                logger.debug {
+                    "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
+                        "does not qualify as a legitimate answer for question ${question.id}"
+                }
+                return@indexOfFirst false
+            }
+            respondentId == targetUserId
+        }
+        if (legitimateAnswerIndex < 0) return -1
+
+        // A durable per-question claim means this exact question was already
+        // scheduled. Unlike AgentSelectedEvent, it remains unambiguous when one agent
+        // has several outstanding questions.
+        if (events.any { it is AgentSelectedEvent && it.questionId == question.id }) return -1
+
+        // OAuth questions are answered inside the still-running OAuth flow; they must
+        // never schedule an AwaitAnswer resumption. QuestionType is a durable, explicit
+        // delivery-mode signal, unlike an AgentFinishedEvent whose ownership cannot be
+        // inferred reliably when several questions are interleaved.
+        return when (question.questionType) {
+            QuestionType.OAUTH_AUTHORIZE -> -1
+            else -> legitimateAnswerIndex
+        }
+    }
+
     /**
      * Returns the [QuestionEvent] that should trigger an agent wake-up, or null when
      * no wake-up is warranted.
@@ -480,7 +861,9 @@ class CaseRuntime(
      * A wake-up is warranted when ALL of the following hold:
      * 1. There is at least one [QuestionEvent] in the history.
      * 2. A **legitimate** [AnswerEvent] exists for that question (see below).
-     * 3. No [AgentFinishedEvent] appears STRICTLY AFTER that legitimate answer.
+     * 3. The question is not an OAuth authorization question. OAuth waits inside its
+     *    existing agent run; its durable [QuestionEvent.questionType] explicitly carries
+     *    that delivery mode, so it must not schedule an AwaitAnswer resumption.
      *
      * ## Legitimate answer — recipient check
      *
@@ -506,62 +889,19 @@ class CaseRuntime(
      * The recipient predicate must therefore be part of the `indexOfFirst` call so that
      * only a legitimate answer can anchor the search.
      *
-     * ## OAuth guard — condition 3, do not remove
+     * ## OAuth delivery mode — condition 3, do not remove
      *
-     * During an OAuth flow the agent is blocked INSIDE its run when the answer arrives.
-     * The agent finishes its turn normally, emitting an [AgentFinishedEvent] AFTER the
-     * [AnswerEvent]. Waking up again would plant a spurious [AgentSelectedEvent] in the
-     * middle of a completed turn, potentially triggering a phantom agent run.
+     * OAuth is distinguished by [io.whozoss.agentos.sdk.caseEvent.QuestionType.OAUTH_AUTHORIZE],
+     * persisted on the question itself. The OAuth flow remains alive while the user authorizes
+     * and completes without an AwaitAnswer wake-up. Looking for a later [AgentFinishedEvent]
+     * is not sound: with several questions, a finish cannot be assigned unambiguously from
+     * event position or agent id (OAuth and AwaitAnswer ids differ). The explicit question
+     * type remains correct after replay and arbitrary event interleavings.
      *
-     * For [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer], the run terminated
-     * BEFORE the answer arrived, so no [AgentFinishedEvent] follows the legitimate answer.
-     * The guard therefore lets exactly the right cases through.
-     *
-     * ## Known limitation — only the LAST question is considered
-     *
-     * Only the most recent [QuestionEvent] in the history is examined. An earlier question
-     * left unanswered is invisible to this pre-flight and its agent will never be woken up.
-     *
-     * This holds today because a case can only ever have one question outstanding: a
-     * [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer] terminates the run that raised
-     * it, and [run] admits a single turn at a time via [runInFlight] — so no second agent
-     * can ask anything while the first is waiting.
-     *
-     * The assumption breaks as soon as two agents can be in flight on the same case (e.g.
-     * concurrent delegation). At that point the search must iterate over all unanswered
-     * questions rather than only the last one, and the wake-up must emit one
-     * [AgentSelectedEvent] per resolved question. Revisit this method — and the recipient
-     * check below, whose `indexOfFirst` anchoring assumes a single candidate question.
+     * Multiple answered questions are evaluated independently. Their resumption
+     * order is the ascending [QuestionEvent] history order, and each is completed
+     * before the next is selected.
      */
-    private fun findUnresolvedQuestion(events: List<CaseEvent>): QuestionEvent? {
-        val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull() ?: return null
-
-        // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
-        // The recipient check is intentionally inside this predicate — see KDoc for why moving
-        // it outside causes a permanent-deadlock bug on shared cases.
-        val legitimateAnswerIndex = events.indexOfFirst { event ->
-            if (event !is AnswerEvent || event.questionId != lastQuestion.id) return@indexOfFirst false
-            val targetUserId = lastQuestion.userId
-                ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
-            val respondentId = runCatching { UUID.fromString(event.actor.id) }.getOrElse {
-                logger.debug {
-                    "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
-                        "does not qualify as a legitimate answer for question ${lastQuestion.id}"
-                }
-                return@indexOfFirst false
-            }
-            respondentId == targetUserId
-        }
-        if (legitimateAnswerIndex < 0) return null // no legitimate answer yet
-
-        // OAuth guard: if any AgentFinishedEvent appears STRICTLY AFTER the legitimate
-        // answer, the agent already handled it — do not wake up again.
-        val hasAgentFinishedAfterAnswer = events
-            .subList(legitimateAnswerIndex + 1, events.size)
-            .any { it is AgentFinishedEvent }
-
-        return if (hasAgentFinishedAfterAnswer) null else lastQuestion
-    }
 
     /**
      * Scans the event history backward and returns the UUID of the last user actor,

@@ -10,7 +10,7 @@ import { UserStateService } from './user-state.service'
 
 /**
  * Scope of an integration config row in the unified 4-section view.
- * - `platform`  : config shared at the platform level (super-admin only, no namespaceId, no userId)
+ * - `platform`  : config shared at the platform level (writes require super-admin, no namespaceId, no userId)
  * - `namespace` : config shared at the namespace level
  * - `userOnNs`  : the caller's personal override scoped to the current namespace
  * - `userGlobal`: the caller's personal override that applies cross-namespace
@@ -39,9 +39,14 @@ export interface IntegrationConfigDraft {
   description: string | null
   parameters?: unknown
   authSettingName?: string | null
+  /**
+   * Hands this configuration to every agent within its scope without the agent naming it.
+   * Only accepted by the backend on auto-grantable types (HTTP 422 otherwise).
+   */
+  autoGrant?: boolean
 }
 
-/** Backend sentinel: `?namespaceId=none` means `namespaceId IS NULL` (user-global rows). */
+/** Backend sentinel: `?namespaceId=none` means `namespaceId IS NULL` (platform or user-global rows). */
 const NAMESPACE_NONE_SENTINEL = 'none'
 /** Backend sentinel: `?userId=me` means "the authenticated user". */
 const USER_ME_SENTINEL = 'me'
@@ -51,10 +56,13 @@ const USER_ME_SENTINEL = 'me'
  * Integrations page. All calls land on
  * `IntegrationConfigControllerService.listIntegrationConfig(namespaceId, userId, …)` :
  *
- *   0. platform         → `listIntegrationConfig()` (no params — super-admin only)
+ *   0. platform         → `listIntegrationConfig(namespaceId='none')` (no `userId`)
  *   1. NS-shared        → `listIntegrationConfig(namespaceId=<uuid>)` (no `userId`)
  *   2. user × namespace → `listIntegrationConfig(namespaceId=<uuid>, userId='me')`
  *   3. user-global      → `listIntegrationConfig(namespaceId='none', userId='me')`
+ *
+ * Without query parameters, the endpoint returns all of the caller's personal overlays.
+ * Platform listing is available to authenticated users; platform writes require super-admin.
  *
  * The implicit-scope dispatch on `POST` (Decision 15) lives server-side ; on the FE the
  * payload's `(namespaceId, userId)` pair encodes the intent — the create method assembles
@@ -77,8 +85,7 @@ export class IntegrationConfigStateService {
    * Multicast via `shareReplay` so concurrent subscribers (template async pipe + ngOnInit
    * derivations) share a single fan-out of HTTP calls instead of redoing all 4 GETs each.
    * Per-source `catchError` keeps the page rendering when one of the layers fails — a
-   * 5xx on user-global must not blank the namespace section. The platform section returns
-   * an empty array for non-admins (backend returns 403, caught here).
+   * 5xx on user-global must not blank the namespace section.
    */
   readonly vm$: Observable<IntegrationConfigViewModel> = combineLatest([this.namespaceId$, this.refresh$]).pipe(
     switchMap(([namespaceId]) => {
@@ -115,13 +122,9 @@ export class IntegrationConfigStateService {
     this.refresh$.next()
   }
 
-  /**
-   * Platform-level slice — no namespaceId, no userId. Super-admin only on the backend;
-   * a non-admin will receive a 403 which is caught by `vm$`'s per-source `catchError`
-   * (empty array fallback), so the page still renders for regular users.
-   */
+  /** Platform-level slice: explicit namespaceId=none, no userId. */
   loadPlatformConfigs(): Observable<IntegrationConfig[]> {
-    return this.nsController.listIntegrationConfig()
+    return this.nsController.listIntegrationConfig(NAMESPACE_NONE_SENTINEL)
   }
 
   /**
@@ -177,6 +180,7 @@ export class IntegrationConfigStateService {
         description: draft.description as string | undefined,
         parameters: draft.parameters,
         authSettingName: draft.authSettingName ?? undefined,
+        autoGrant: draft.autoGrant ?? false,
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
@@ -190,6 +194,7 @@ export class IntegrationConfigStateService {
         namespaceId,
         parameters: draft.parameters,
         authSettingName: draft.authSettingName ?? undefined,
+        autoGrant: draft.autoGrant ?? false,
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
@@ -208,6 +213,7 @@ export class IntegrationConfigStateService {
       namespaceId: scope === 'userOnNs' ? (namespaceId as string) : undefined,
       parameters: draft.parameters,
       authSettingName: draft.authSettingName ?? undefined,
+      autoGrant: draft.autoGrant ?? false,
     }
     return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
   }
@@ -229,6 +235,7 @@ export class IntegrationConfigStateService {
       namespaceId: existing.namespaceId,
       parameters: draft.parameters,
       authSettingName: draft.authSettingName ?? undefined,
+      autoGrant: draft.autoGrant ?? false,
     }
     void scope
     return this.nsController.updateIntegrationConfig(id, payload).pipe(tap(() => this.refresh()))

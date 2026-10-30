@@ -9,6 +9,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.aiProvider.AiProviderApi
 import io.whozoss.agentos.sdk.api.aiProvider.AiProviderDto
@@ -56,13 +57,14 @@ class AiProviderController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
 ) : AiProviderApi {
     private val crud =
         ScopedOwnershipCrudDelegate<AiProviderDto>(
             entityLabel = "AiProvider",
             userService = userService,
             namespaceService = namespaceService,
-            permissionService = permissionService,
+            scopedAccessPolicy = scopedAccessPolicy,
             ownerOf = { (it as AiProvider).userId },
             userIdOf = { it.userId },
             namespaceIdOf = { it.namespaceId },

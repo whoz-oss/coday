@@ -1,0 +1,20 @@
+<ul class="prompt-autocomplete" role="listbox" aria-label="Reasoning effort">
+  @for (option of options(); track option.label; let i = $index) {
+    <li
+      #effortItem
+      class="prompt-autocomplete__item"
+      [class.prompt-autocomplete__item--active]="isActive(i)"
+      role="option"
+      tabindex="-1"
+      [attr.aria-selected]="isActive(i)"
+      (click)="onItemClick(option)"
+      (keydown.enter)="onItemClick(option)"
+      (mouseenter)="activeIndex.set(i)"
+    >
+      <span class="prompt-autocomplete__name">/effort {{ option.label }}</span>
+      <span class="prompt-autocomplete__description">
+        {{ option.description }}{{ isCurrent(option) ? ' · current' : '' }}
+      </span>
+    </li>
+  }
+</ul>

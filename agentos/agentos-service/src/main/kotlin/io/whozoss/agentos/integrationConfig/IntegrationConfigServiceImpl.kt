@@ -1,10 +1,22 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.entity.EntityCrudDelegate
+import io.whozoss.agentos.entity.validateAndResolveScope
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.Caller
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
-import org.springframework.http.HttpStatus
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -13,9 +25,11 @@ import java.util.UUID
  * Delegates persistence to [IntegrationConfigRepository].
  *
  * Four scope modes are supported: platform `(null, null)`, namespace-shared `(ns, null)`,
- * user-global `(null, user)`, and user×namespace `(ns, user)`. The service accepts all four;
- * authorization (only Super Admins may write platform-level configs) is enforced in the
- * controller where the security context is available.
+ * user-global `(null, user)`, and user×namespace `(ns, user)`. Authorization is enforced
+ * by this service's `*ForCaller` methods ([getByIdForCaller], [findByIdsForCaller],
+ * [findFilteredForCaller], [createForCaller], [updateForCaller], [deleteForCaller]).
+ * The inherited [EntityService] methods are unchecked internal composition and must not
+ * be called directly from controllers or agent tools.
  *
  * Uniqueness on the (namespaceId, userId, name) triple is enforced on [create] (409 on
  * conflict) and on [update] when a rename would collide with another row in the same scope.
@@ -29,29 +43,56 @@ import java.util.UUID
 class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
     private val mergeStrategy: IntegrationConfigMergeStrategy,
+    /**
+     * Type-specific policies, collected by Spring. Empty by default so a context without any
+     * — and every unit test building this service directly — behaves as before.
+     */
+    private val policies: List<IntegrationConfigPolicy> = emptyList(),
+    private val integrationsProperties: IntegrationsProperties = IntegrationsProperties(),
+    private val namespaceService: NamespaceService,
+    private val scopePolicy: IntegrationConfigScopePolicy,
+    private val scopedAccessPolicy: ScopedAccessPolicy,
 ) : IntegrationConfigService {
-    override fun create(entity: IntegrationConfig): IntegrationConfig {
+    override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                conflictMessage(entity),
-            )
+            throw ConflictException(conflictMessage(entity))
         }
+        assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
     }
 
-    override fun update(entity: IntegrationConfig): IntegrationConfig {
+    override fun update(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
+        requireMutable(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    conflictMessage(entity),
-                )
+                throw ConflictException(conflictMessage(entity))
             }
+        assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
+    }
+
+    private fun requireMutable(entity: IntegrationConfig) {
+        if (entity.source == IntegrationConfigSource.FILESYSTEM) {
+            throw UnprocessableEntityException("Filesystem IntegrationConfig '${entity.name}' is read-only")
+        }
+    }
+
+    private fun <T> withSavePolicies(entity: IntegrationConfig, action: () -> T): T {
+        val applicable = policies.filter { it.supports(entity.integrationType) }
+        fun proceed(index: Int): T = if (index == applicable.size) action()
+            else applicable[index].aroundSave(entity) { proceed(index + 1) }
+        return proceed(0)
     }
 
     override fun findByIds(
@@ -61,7 +102,10 @@ class IntegrationConfigServiceImpl(
 
     override fun findByParent(parentId: UUID): List<IntegrationConfig> = repository.findByParent(parentId)
 
-    override fun delete(id: UUID): Boolean = repository.delete(id)
+    override fun delete(id: UUID): Boolean {
+        findByIds(listOf(id)).firstOrNull()?.let(::requireMutable)
+        return repository.delete(id)
+    }
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
@@ -81,6 +125,11 @@ class IntegrationConfigServiceImpl(
     override fun findPlatform(): List<IntegrationConfig> = repository.findPlatform()
 
     override fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig> = repository.findByParent(namespaceId)
+
+    override fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig? = repository.findActiveNamespaceSingleton(namespaceId, integrationType)
 
     override fun findEffective(
         namespaceId: UUID?,
@@ -109,17 +158,48 @@ class IntegrationConfigServiceImpl(
                 }
             }
 
-    override fun findFiltered(
+    // -------------------------------------------------------------------------
+    // Unchecked composition surface
+    // -------------------------------------------------------------------------
+
+    override fun unsecuredCreate(entity: IntegrationConfig): IntegrationConfig = create(entity)
+
+    override fun unsecuredUpdate(entity: IntegrationConfig): IntegrationConfig = update(entity)
+
+    override fun unsecuredFindById(id: UUID, withRemoved: Boolean): IntegrationConfig? = findById(id, withRemoved)
+
+    // --- Authorized surface ---
+
+    override fun getByIdForCaller(caller: Caller, id: UUID, action: Action, withRemoved: Boolean): IntegrationConfig {
+        val config = findById(id, withRemoved = withRemoved)
+            ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, config, action)
+        return config
+    }
+
+    override fun findByIdsForCaller(caller: Caller, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig> {
+        if (ids.size > EntityCrudDelegate.MAX_BATCH_SIZE) throw BadRequestException("Batch size ${ids.size} exceeds maximum of ${EntityCrudDelegate.MAX_BATCH_SIZE}")
+        if (ids.isEmpty()) return emptyList()
+
+        val rows = findByIds(ids.toSet(), withRemoved)
+        val permittedIds = scopedAccessPolicy.filterVisible(caller, EntityType.INTEGRATION_CONFIG, rows, Action.READ)
+        val byId = rows.filter { it.id in permittedIds }.associateBy { it.metadata.id }
+        return ids.mapNotNull { byId[it] }
+    }
+
+    override fun findFilteredForCaller(
+        caller: Caller,
         namespaceId: UUID?,
         namespaceIsNone: Boolean,
-        callerId: UUID,
         userRequested: Boolean,
-        canReadNamespace: (UUID) -> Boolean,
     ): List<IntegrationConfig> =
         when {
+            // Explicit platform scope, available to all authenticated users.
+            namespaceIsNone && !userRequested -> findPlatform()
+
             // NS-shared layer of a specific namespace (no userId param) : check READ permission
             namespaceId != null && !userRequested -> {
-                if (!canReadNamespace(namespaceId)) {
+                if (!scopedAccessPolicy.canReadNamespace(caller, namespaceId)) {
                     emptyList()
                 } else {
                     findByNamespaceShared(namespaceId)
@@ -134,14 +214,57 @@ class IntegrationConfigServiceImpl(
                         namespaceId != null -> { nsId -> nsId == namespaceId }
                         else -> { _ -> true }
                     }
-                findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+                findByUserId(caller.userId).filter { nsFilter(it.namespaceId) }
             }
 
             // No filter at all : surface the caller's own overlays
             else -> {
-                findByUserId(callerId)
+                findByUserId(caller.userId)
             }
         }
+
+    override fun createForCaller(caller: Caller, entity: IntegrationConfig): IntegrationConfig {
+        if (entity.namespaceId == null && entity.userId == null) {
+            if (!caller.isAdmin) throw AccessDeniedException("Platform-level IntegrationConfig requires Super Admin")
+            return create(entity.copy(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, userId = null))
+        }
+        scopePolicy.requireScopeAllowed(userId = entity.userId, integrationType = entity.integrationType)
+        val scope = validateAndResolveScope(
+            entityLabel = "IntegrationConfig",
+            caller = caller,
+            requestedUserId = entity.userId,
+            requestedNamespaceId = entity.namespaceId,
+            namespaceService = namespaceService,
+            scopedAccessPolicy = scopedAccessPolicy,
+        )
+        return create(entity.copy(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = scope.namespaceId, userId = scope.userId))
+    }
+
+    override fun updateForCaller(caller: Caller, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig {
+        val existing = findById(id) ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, existing, Action.WRITE)
+        scopedAccessPolicy.requireAdminForPlatform(caller, "IntegrationConfig", existing)
+        scopePolicy.requireScopeAllowed(userId = existing.userId, integrationType = existing.integrationType)
+        // id, namespaceId, userId and integrationType are preserved from the persisted row —
+        // this is the mass-assignment guard, now a business rule owned by the service.
+        return update(
+            existing.copy(
+                name = changes.name,
+                integrationType = existing.integrationType,
+                description = changes.description,
+                parameters = changes.parameters,
+                authSettingName = changes.authSettingName,
+                autoGrant = changes.autoGrant,
+            )
+        )
+    }
+
+    override fun deleteForCaller(caller: Caller, id: UUID) {
+        val existing = findById(id) ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        scopedAccessPolicy.requireAccess(caller, EntityType.INTEGRATION_CONFIG, existing, Action.DELETE)
+        scopedAccessPolicy.requireAdminForPlatform(caller, "IntegrationConfig", existing)
+        if (!delete(id)) throw ResourceNotFoundException("IntegrationConfig not found: $id")
+    }
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
@@ -169,8 +292,7 @@ class IntegrationConfigServiceImpl(
         val entityId = entity.id
 
         fun reject(other: IntegrationConfig): Nothing =
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
+            throw ConflictException(
                 "An IntegrationConfig named '$name' already exists in another layer with " +
                     "integrationType='${other.integrationType}' (this entity wants " +
                     "integrationType='$type'). Overlay layers for the same name must share the " +
@@ -219,10 +341,85 @@ class IntegrationConfigServiceImpl(
         }
     }
 
+    /**
+     * The rules of [IntegrationTypeConstraints]: namespace-shared scope only, and one active row. The
+     * uniqueness check only gives a clear message; the database constraint is the guarantee.
+     */
+    private fun assertNamespaceSingletonRules(entity: IntegrationConfig) {
+        if (!IntegrationTypeConstraints.isNamespaceSingleton(entity.integrationType)) return
+
+        val namespaceId = entity.namespaceId
+        if (namespaceId == null || entity.userId != null) {
+            throw UnprocessableEntityException(
+                "An integration of type '${entity.integrationType}' configures the namespace itself, so it must " +
+                    "be namespace-shared (namespaceId set, userId null). It was requested with " +
+                    "namespaceId=${entity.namespaceId}, userId=${entity.userId}. A personal or platform-level " +
+                    "row of this type would be merged by name into a member's effective configuration and could " +
+                    "redirect the namespace's provisioning.",
+            )
+        }
+
+        repository
+            .findActiveNamespaceSingleton(namespaceId, entity.integrationType)
+            ?.takeIf { it.id != entity.id }
+            ?.let { existing ->
+                throw ConflictException(
+                    "Namespace $namespaceId already has an active '${entity.integrationType}' configuration " +
+                        "('${existing.name}'). Update that one, or remove it first.",
+                )
+            }
+    }
+
+    /**
+     * Only a type listed in [IntegrationsProperties.autoGrantableTypes] may set
+     * [IntegrationConfig.autoGrant].
+     *
+     * `autoGrant` hands the integration to every agent in the config's scope without any agent
+     * naming it. At platform scope that is the whole environment at once, which is acceptable for
+     * a conversational primitive and not for a type that reaches the network with a shared
+     * credential. Rejecting here keeps the refusal where the mistake was made, rather than
+     * surfacing it as a surprising tool in some unrelated agent's prompt weeks later.
+     */
+    private fun assertAutoGrantRules(entity: IntegrationConfig) {
+        if (entity.autoGrant) {
+            if (integrationsProperties.isAutoGrantable(entity.integrationType)) {
+                logger.debug { "integration: ${entity.name} is allowed to be auto-granted" }
+            } else {
+                throw UnprocessableEntityException(
+                    "An integration of type '${entity.integrationType}' cannot be auto-granted. Setting autoGrant hands " +
+                            "this configuration to every agent within its scope without any agent declaring it \u2014 at platform " +
+                            "scope, that is every agent of the environment. Only these types may be auto-granted: " +
+                            "${integrationsProperties.autoGrantableTypes.joinToString(", ")}. Reference this " +
+                            "configuration explicitly from the agents that need it instead.",
+                )
+            }
+        }
+    }
+
+    /**
+     * Apply the validation owned by this configuration's type.
+     *
+     * Without this, the generic CRUD accepts any JSON in `parameters` and a malformed association
+     * is stored with a 201, failing only when something later tries to use it. Validating here
+     * keeps the failure where the mistake was made.
+     */
+    private fun assertTypeSpecificRules(entity: IntegrationConfig) {
+        policies
+            .filter { it.supports(entity.integrationType) }
+            .forEach { it.validate(entity) }
+    }
+
     private fun saveOrConflict(entity: IntegrationConfig): IntegrationConfig =
         try {
             repository.save(entity)
         } catch (e: DataIntegrityViolationException) {
+            if (isSingletonKeyConflict(e)) {
+                logger.warn {
+                    "[IntegrationConfigService] singletonKey unique-constraint violation on save " +
+                        "(namespaceId=${entity.namespaceId}, integrationType='${entity.integrationType}')"
+                }
+                throw ConflictException(singletonConflictMessage(entity), e)
+            }
             // Catches the race window: two concurrent creates pass the applicative pre-check,
             // both reach `save`, the DB unique constraint on `tripleKey` rejects one of them.
             // We only translate to 409 when the violation is identifiably the triple-uniqueness
@@ -235,13 +432,13 @@ class IntegrationConfigServiceImpl(
             // Do NOT chain `e` to the logger: the Neo4j driver's `DataIntegrityViolationException`
             // message can echo property values (incl. the offending row's `parameters` JSON which
             // may contain credentials, cf. NFR-SEC-4). The exception is preserved as the cause of
-            // the rethrown `ResponseStatusException` for stack-trace continuity at the framework
+            // the rethrown `ConflictException` for stack-trace continuity at the framework
             // boundary.
             logger.warn {
                 "[IntegrationConfigService] tripleKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
             }
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+            throw ConflictException(conflictMessage(entity), e)
         }
 
     /**
@@ -258,16 +455,31 @@ class IntegrationConfigServiceImpl(
         return TRIPLE_KEY_CONSTRAINT_NAME in haystack || TRIPLE_KEY_PROPERTY in haystack
     }
 
+    /** Same inspection as [isTripleKeyConflict], for the one-per-namespace constraint. */
+    private fun isSingletonKeyConflict(e: DataIntegrityViolationException): Boolean {
+        val haystack =
+            generateSequence<Throwable>(e) { it.cause }
+                .mapNotNull { it.message }
+                .joinToString(separator = " | ")
+        return SINGLETON_KEY_CONSTRAINT_NAME in haystack || SINGLETON_KEY_PROPERTY in haystack
+    }
+
     private fun conflictMessage(entity: IntegrationConfig): String =
         "An integration config named '${entity.name}' already exists for this scope " +
             "(namespaceId=${entity.namespaceId}, userId=${entity.userId})"
 
+    private fun singletonConflictMessage(entity: IntegrationConfig): String =
+        "Namespace ${entity.namespaceId} already has an active '${entity.integrationType}' configuration. " +
+            "Only one is allowed per namespace."
+
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "integration_config_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+        private const val SINGLETON_KEY_CONSTRAINT_NAME = "integration_config_singleton_key_unique"
+        private const val SINGLETON_KEY_PROPERTY = "singletonKey"
 
         /**
-         * Comparator defining the 3-tier overlay precedence (lowest → highest priority).
+         * Comparator defining the 4-tier overlay precedence (lowest → highest priority).
          *
          * | Scope            | namespaceId | userId   | rank |
          * |------------------|-------------|----------|------|

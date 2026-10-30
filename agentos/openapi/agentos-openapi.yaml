@@ -75,6 +75,18 @@ paths:
           description: OK
       tags:
       - agent-config-controller
+  /api/agent-configs/defaults:
+    get:
+      operationId: getAgentConfigDefaults
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfigDefaultsDto"
+          description: OK
+      tags:
+      - agent-config-defaults-controller
   /api/agent-configs/platform:
     get:
       operationId: listPlatformAgentsAgentConfig
@@ -572,7 +584,8 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
+        | (no params)                      | all caller's     | authenticated                                  |
+        | `?namespaceId=none` (no userId)  | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
@@ -790,6 +803,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -829,6 +844,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -866,6 +883,8 @@ paths:
                 - $ref: "#/components/schemas/MessageEvent"
                 - $ref: "#/components/schemas/PendingConfirmationEvent"
                 - $ref: "#/components/schemas/QuestionEvent"
+                - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                - $ref: "#/components/schemas/SubCaseStartedEvent"
                 - $ref: "#/components/schemas/TextChunkEvent"
                 - $ref: "#/components/schemas/ThinkingEvent"
                 - $ref: "#/components/schemas/ToolRequestEvent"
@@ -1056,11 +1075,98 @@ paths:
       summary: Count unread cases
       tags:
       - case-controller
+  /api/cases/{caseId}/config-changes/{questionId}:
+    get:
+      operationId: viewConfigChange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: questionId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigChangeViewDto"
+          description: OK
+      summary: "View a configuration plan proposed by an agent, with the live status\
+        \ of each operation"
+      tags:
+      - config-change-controller
+  /api/cases/{caseId}/config-changes/{questionId}/apply:
+    post:
+      operationId: applyConfigChange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: questionId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigChangeApplyRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigChangeReportDto"
+          description: OK
+      summary: "Apply a configuration plan with the rights of the calling user, then\
+        \ answer the agent"
+      tags:
+      - config-change-controller
+  /api/cases/{caseId}/config-changes/{questionId}/reject:
+    post:
+      operationId: rejectConfigChange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: questionId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigChangeRejectRequest"
+      responses:
+        "204":
+          description: No Content
+      summary: "Reject a configuration plan, then answer the agent"
+      tags:
+      - config-change-controller
   /api/cases/{caseId}/events:
     get:
-      description: "Server-Sent Events stream emitting all events generated during\
-        \ case execution. Use the browser EventSource API to consume this endpoint,\
-        \ not a regular HTTP client."
+      description: Every SSE frame uses the stable event name 'case-event'. Its JSON
+        CaseEvent payload carries the subtype in its 'type' discriminant. includePreviousEvents
+        defaults to true.
       operationId: streamEventsCaseEventSse
       parameters:
       - in: path
@@ -1074,13 +1180,13 @@ paths:
         required: false
         schema:
           type: boolean
+          default: true
       responses:
         "200":
           content:
             text/event-stream: {}
-          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
-            \ (MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant\
-            \ field."
+          description: SSE stream — every event is named 'case-event' and carries
+            a JSON-serialized CaseEvent subtype with a 'type' discriminant.
       summary: Stream case events via SSE
       tags:
       - sse
@@ -1165,6 +1271,45 @@ paths:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
       summary: Read case exchange file content
+      tags:
+      - exchange-controller
+  /api/cases/{caseId}/files/directory:
+    get:
+      operationId: browseCaseFilesExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
       tags:
       - exchange-controller
   /api/cases/{caseId}/files/download:
@@ -1296,6 +1441,193 @@ paths:
       summary: Mark case as read
       tags:
       - case-controller
+  /api/cases/{caseId}/reopen:
+    post:
+      description: "POST /api/cases/{caseId}/reopen — reopen a terminated case by\
+        \ transitioning it back to IDLE. Only cases in a terminal status (KILLED or\
+        \ ERROR) can be reopened. Returns the updated Case DTO."
+      operationId: reopenCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Reopen a case
+      tags:
+      - case-controller
+  /api/cases/{caseId}/run-cost:
+    get:
+      operationId: getRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/continue:
+    post:
+      operationId: continueCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContinueCostRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/stop:
+    post:
+      operationId: stopCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/workspace:
+    get:
+      operationId: getCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/changes:
+    get:
+      operationId: changesCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeEnvironment"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/diff:
+    get:
+      operationId: diffCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileDiff"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/refresh:
+    post:
+      operationId: refreshCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/retry:
+    post:
+      operationId: retryCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceRetryRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/cases/{entityId}/members:
     get:
       description: Returns all users holding a direct ADMIN or MEMBER relation on
@@ -1408,6 +1740,38 @@ paths:
           description: OK
       tags:
       - case-controller
+  /api/cases/{id}/reasoning-effort:
+    put:
+      description: "PUT /api/cases/{id}/reasoning-effort — set the case-level override\
+        \ of the reasoning effort of the agents running in the case, or remove it\
+        \ with a null value so each agent uses the effort of its model again. Read\
+        \ at the start of each agent run. Replaces the model effort of every agent;\
+        \ not sent to Anthropic and Gemini providers, whose agent messages show it\
+        \ as not applied. Returns the updated Case DTO."
+      operationId: setReasoningEffortCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseReasoningEffortRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Set the reasoning effort of a case
+      tags:
+      - case-controller
   /api/cases/{id}/star:
     delete:
       description: "DELETE /api/cases/{id}/star — remove the case from the current\
@@ -1504,6 +1868,18 @@ paths:
           description: OK
       tags:
       - feedback-controller
+  /api/git-workspaces-configuration:
+    get:
+      operationId: getGitWorkspacesConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitWorkspacesConfiguration"
+          description: OK
+      tags:
+      - git-workspaces-configuration-controller
   /api/integration-configs:
     get:
       description: |-
@@ -1511,15 +1887,14 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
+        | (no params)                      | all caller's     | authenticated                                  |
+        | `?namespaceId=none` (no userId)  | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
 
         `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
-
-        When called with no params, returns platform-level configs.
       operationId: listIntegrationConfig
       parameters:
       - in: query
@@ -1555,7 +1930,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404.
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created in either user scope (403).
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -1955,6 +2330,49 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/namespaces/{namespaceId}/case-invalidation:
+    get:
+      description: "Each 'namespace-case-invalidation' event carries the neutral JSON\
+        \ payload '{}', with no business data. Reload GET /api/cases/by-parentId/{namespaceId}/mine\
+        \ when it arrives or when the stream reconnects."
+      operationId: streamCaseInvalidationsNamespaceCaseInvalidationSse
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            text/event-stream: {}
+          description: "SSE stream of namespace case-list invalidations carrying data:\
+            \ {}."
+      summary: Stream namespace case-list invalidations via SSE
+      tags:
+      - sse
+  /api/namespaces/{namespaceId}/case-list-updates:
+    get:
+      description: "Each 'namespace-case-list-updated' event carries the neutral JSON\
+        \ payload '{}'. Reload GET /api/cases/by-parentId/{namespaceId}/mine when\
+        \ it arrives or when the stream reconnects."
+      operationId: streamCaseListUpdatesNamespaceCaseListUpdateSse
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            text/event-stream: {}
+          description: "SSE stream of namespace case-list updates carrying data: {}."
+      summary: Stream namespace case-list updates via SSE
+      tags:
+      - sse
   /api/namespaces/{namespaceId}/deploy-agents:
     post:
       operationId: deployAgentsNamespace
@@ -2059,6 +2477,45 @@ paths:
       summary: Read namespace exchange file content
       tags:
       - exchange-controller
+  /api/namespaces/{namespaceId}/files/directory:
+    get:
+      operationId: browseNamespaceFilesExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
+      tags:
+      - exchange-controller
   /api/namespaces/{namespaceId}/files/download:
     get:
       operationId: downloadNamespaceFileExchange
@@ -2106,6 +2563,67 @@ paths:
       summary: List namespace exchange files
       tags:
       - exchange-controller
+  /api/namespaces/{namespaceId}/git:
+    delete:
+      operationId: removeAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
+    get:
+      operationId: getAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
+    put:
+      operationId: setAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceGitRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     delete:
       operationId: revokeMember
@@ -2168,6 +2686,27 @@ paths:
           description: No Content
       tags:
       - namespace-controller
+  /api/namespaces/{namespaceId}/workspaces:
+    get:
+      operationId: listCaseWorkspace
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/oauth/callback:
     post:
       description: "Called by the frontend popup after the OAuth provider redirects\
@@ -2459,6 +2998,41 @@ paths:
                   $ref: "#/components/schemas/Prompt"
           description: OK
       summary: List Prompts at an exact scope level
+      tags:
+      - prompt-controller
+  /api/prompts/translations/{languageCode}:
+    post:
+      description: "Translates each prompt in `ids` into `languageCode` using the\
+        \ same caching and LLM-fallback semantics as `POST /{id}/translations/{languageCode}`.\
+        \ The response list preserves the order of the input `ids`. Prompts for which\
+        \ the caller lacks READ permission are silently omitted from the result. For\
+        \ namespace-scoped prompts the namespace is inferred from each prompt itself.\
+        \ For platform-scoped prompts (namespaceId IS NULL on the prompt), at least\
+        \ one of `namespaceId` / `namespaceExternalId` is required in the request\
+        \ body."
+      operationId: translateBatchPrompt
+      parameters:
+      - in: path
+        name: languageCode
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptBatchTranslateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PromptBatchTranslation"
+          description: OK
+      summary: Batch-translate a list of prompts into a target language
       tags:
       - prompt-controller
   /api/prompts/{id}:
@@ -2768,6 +3342,384 @@ paths:
       summary: Enable a scheduled prompt (idempotent)
       tags:
       - scheduled-prompt-controller
+  /api/skills:
+    post:
+      operationId: createSkill
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Skill"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Skill"
+          description: Created
+      summary: Create a Skill
+      tags:
+      - skill-controller
+  /api/skills/by-ids:
+    post:
+      operationId: getByIdsSkill
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+  /api/skills/by-parentId/{parentId}:
+    get:
+      operationId: listByParentSkill
+      parameters:
+      - in: path
+        name: parentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+  /api/skills/effective:
+    get:
+      description: "Returns the skill catalogue a '*' selector resolves in this namespace:\
+        \ persisted and filesystem namespace skills merged with platform skills, namespace\
+        \ skills shadowing platform skills of the same name (case-insensitive). Summary\
+        \ projection — no body, no resources."
+      operationId: listEffectiveSkill
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SkillSummary"
+          description: OK
+      summary: Effective skills for a namespace
+      tags:
+      - skill-controller
+  /api/skills/platform:
+    get:
+      operationId: listPlatformSkill
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+  /api/skills/{id}:
+    delete:
+      operationId: deleteSkill
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: Delete a Skill
+      tags:
+      - skill-controller
+    get:
+      operationId: getByIdSkill
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+    put:
+      operationId: updateSkill
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Skill"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Skill"
+          description: OK
+      summary: Update a Skill
+      tags:
+      - skill-controller
+  /api/tools:
+    get:
+      operationId: listToolInvoke
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: userId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ToolSummary"
+          description: OK
+      tags:
+      - tool-invoke-controller
+  /api/tools/invoke:
+    post:
+      operationId: invokeToolInvoke
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolInvokeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolInvokeResponse"
+          description: OK
+      tags:
+      - tool-invoke-controller
+  /api/usage-configuration:
+    get:
+      operationId: getUsageConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageConfiguration"
+          description: OK
+      tags:
+      - usage-configuration-controller
+  /api/usage-records/aggregate/by-agent:
+    get:
+      operationId: aggregateByAgentUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case-tree/{rootCaseId}:
+    get:
+      operationId: aggregateByCaseTreeUsageRecord
+      parameters:
+      - in: path
+        name: rootCaseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case/{caseId}:
+    get:
+      operationId: aggregateByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-model:
+    get:
+      operationId: aggregateByModelUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-user:
+    get:
+      operationId: aggregateByUserUsageRecord
+      parameters:
+      - in: query
+        name: userId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/by-case/{caseId}:
+    get:
+      operationId: listByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageRecord"
+          description: OK
+      tags:
+      - usage-record-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup
@@ -3129,15 +4081,34 @@ components:
       properties:
         advancedExecution:
           type: boolean
+          deprecated: true
+          description: Use executionMode instead
         createdBy:
           type: string
         createdOn:
           type: string
           format: date-time
+        delegationTimeoutSeconds:
+          type: integer
+          format: int32
+          description: "Seconds each outgoing delegation waits without any activity\
+            \ from its sub-case, nested delegations included, before stopping it.\
+            \ Null or omitted inherits the server default; on PUT this clears an existing\
+            \ override."
+          minimum: 1
         description:
           type: string
         enabled:
           type: boolean
+        executionMode:
+          type: string
+          description: "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental\
+            \ and may change or be removed without notice). Takes precedence over\
+            \ advancedExecution on input; always resolved on output."
+          enum:
+          - SIMPLE
+          - ADVANCED
+          - LOOP
         externalMetadata:
           type: object
           additionalProperties: {}
@@ -3152,6 +4123,12 @@ components:
             type: array
             items:
               type: string
+        loopConfig:
+          $ref: "#/components/schemas/JsonNode"
+          description: Default AgentLoopPayload for LOOP-mode agents. Used when the
+            triggering message carries no parseable payload. A payload in the first
+            user message always takes precedence. Ignored for SIMPLE and ADVANCED
+            agents.
         modelName:
           type: string
         name:
@@ -3160,6 +4137,17 @@ components:
         namespaceId:
           type: string
           format: uuid
+        skillSelectors:
+          type: array
+          items:
+            type: string
+            description: "Selectors controlling which skills are advertised to this\
+              \ agent. Skills live in a flat layout: skills/{name}/SKILL.md. Null\
+              \ or empty means no skills. Use ['*'] for all skills, or list exact\
+              \ skill names (matched against the SKILL.md frontmatter 'name', case-insensitive).\
+              \ Folder/glob patterns (e.g. 'core/**') are NOT supported and will simply\
+              \ never match."
+            minLength: 1
         subAgents:
           type: array
           items:
@@ -3177,6 +4165,14 @@ components:
           format: date-time
       required:
       - name
+    AgentConfigDefaultsDto:
+      type: object
+      properties:
+        delegationTimeoutSeconds:
+          type: integer
+          format: int32
+      required:
+      - delegationTimeoutSeconds
     AgentConfigSearchRequest:
       type: object
       properties:
@@ -3196,11 +4192,22 @@ components:
       properties:
         advancedExecution:
           type: boolean
-          description: Whether the agent uses the advanced multi-step execution engine.
+          deprecated: true
+          description: "Whether the agent uses the advanced multi-step execution engine.\
+            \ Deprecated: use executionMode instead."
         agentConfigId:
           type: string
           format: uuid
           description: The ID of the AgentConfig this definition was resolved from.
+        executionMode:
+          type: string
+          description: "The resolved execution mode for this agent (SIMPLE, ADVANCED,\
+            \ or LOOP). LOOP is experimental and may change or be removed without\
+            \ notice."
+          enum:
+          - SIMPLE
+          - ADVANCED
+          - LOOP
         instructions:
           type: string
           description: "Final system instructions sent to the LLM, including injected\
@@ -3218,6 +4225,14 @@ components:
         resolvedProviderName:
           type: string
           description: The name of the resolved AI provider.
+        skills:
+          type: array
+          description: "Skills resolved for this agent from its skillSelectors, in\
+            \ catalog order. Namespace skills shadow platform skills of the same name.\
+            \ Empty when the agent declares no selectors. Bodies and resources are\
+            \ not included — fetch GET /api/skills/{id} for those."
+          items:
+            $ref: "#/components/schemas/SkillSummary"
         systemPrompt:
           type: string
           description: "Privileged namespace context block sent as a separate system\
@@ -3235,10 +4250,12 @@ components:
       required:
       - advancedExecution
       - agentConfigId
+      - executionMode
       - name
       - namespaceId
       - resolvedModelApiName
       - resolvedProviderName
+      - skills
       - tools
     AgentDefinitionToolSummary:
       type: object
@@ -3267,6 +4284,8 @@ components:
             type: string
           llmProvider:
             type: string
+          llmUsage:
+            $ref: "#/components/schemas/LlmUsage"
       required:
       - agentId
       - agentName
@@ -3309,6 +4328,9 @@ components:
             format: uuid
           agentName:
             type: string
+          questionId:
+            type: string
+            format: uuid
       required:
       - agentId
       - agentName
@@ -3329,20 +4351,27 @@ components:
         apiModelName:
           type: string
           minLength: 1
+        contextWindow:
+          type: integer
+          format: int64
         description:
           type: string
         id:
           type: string
           format: uuid
-        maxTokens:
+        maxCompletionTokens:
           type: integer
           format: int32
         namespaceId:
           type: string
           format: uuid
+        pricing:
+          $ref: "#/components/schemas/ModelPricing"
         priority:
           type: integer
           format: int32
+        reasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
         temperature:
           type: number
           format: double
@@ -3544,6 +4573,12 @@ components:
           type: string
           format: date-time
           description: Timestamp of the caller's last read. Null = never read (unread).
+        reasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
+          description: "Per-case override of the reasoning effort of the agents running\
+            \ in the case. Null means each agent uses the effort of its model. Replaces\
+            \ the model effort of every agent, whatever the model has configured;\
+            \ not sent to Anthropic and Gemini providers."
         removed:
           type: boolean
         role:
@@ -3552,12 +4587,21 @@ components:
           enum:
           - ADMIN
           - MEMBER
+        runCostThreshold:
+          type: number
+          format: double
+          description: "Per-case override of the run cost threshold, in the platform\
+            \ currency unit. Null means inherit from the namespace or platform default\
+            \ (never \"no limit\" or \"zero\"). Set upfront for costly runs, or written\
+            \ by the enforcement mechanism on continuation."
+          minimum: 0
         scheduledPromptId:
           type: string
           format: uuid
         status:
           type: string
           enum:
+          - CREATED
           - PENDING
           - RUNNING
           - IDLE
@@ -3565,6 +4609,13 @@ components:
           - ERROR
         title:
           type: string
+        worktree:
+          type: boolean
+          description: "Create only. Whether a new top-level case gets the worktree\
+            \ its namespace creates for every case. Null leaves it to the namespace's\
+            \ settings, false creates an ordinary case, true requires it and refuses\
+            \ the creation when the namespace does not create one or cannot. Must\
+            \ be null for a sub-case."
       required:
       - favorite
       - namespaceId
@@ -3610,6 +4661,8 @@ components:
           - PendingConfirmationEvent
           - ConfirmationResolvedEvent
           - CaseUpdatedEvent
+          - SubCaseStartedEvent
+          - SubCaseFinishedEvent
       required:
       - caseId
       - id
@@ -3617,6 +4670,11 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseReasoningEffortRequest:
+      type: object
+      properties:
+        reasoningEffort:
+          $ref: "#/components/schemas/ReasoningEffort"
     CaseStatusEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3625,6 +4683,7 @@ components:
           status:
             type: string
             enum:
+            - CREATED
             - PENDING
             - RUNNING
             - IDLE
@@ -3652,6 +4711,296 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseWorkspaceView:
+      type: object
+      properties:
+        branchName:
+          type: string
+          description: Last observed branch of the worktree. Null for a detached HEAD
+            or a family that is not equipped
+        cleanupReason:
+          type: string
+          description: Why the workspace of a deleted family is still kept. Never
+            a secret
+        equipped:
+          type: boolean
+          description: Whether the case's family owns a Git workspace
+        failureReason:
+          type: string
+          description: Why the last preparation failed. Never a secret
+        git:
+          $ref: "#/components/schemas/GitWorkspaceSummary"
+          description: Last observed Git and pull request state of the worktree. Null
+            until first observed
+        rootCaseId:
+          type: string
+          format: uuid
+          description: Root case that owns the family's workspace. Null when the family
+            is not equipped
+        status:
+          type: string
+          description: Lifecycle of the workspace. Null when the family is not equipped
+          enum:
+          - REQUESTED
+          - PREPARING
+          - READY
+          - FAILED
+          - DELETING
+          - REMOVED
+      required:
+      - equipped
+    ConfigChangeApplyRequest:
+      type: object
+      properties:
+        expectedPlanHash:
+          type: string
+          description: planHash of the view the user approved; the server refuses
+            to apply anything else.
+        secrets:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Secret values typed by the user, keyed '<ref>.<path>'."
+      required:
+      - expectedPlanHash
+      - secrets
+    ConfigChangeRejectRequest:
+      type: object
+      properties:
+        comment:
+          type: string
+    ConfigChangeReportDto:
+      type: object
+      properties:
+        answerPosted:
+          type: boolean
+          description: False when the configuration was written but the agent could
+            not be told; applying again re-sends it.
+        appliedBy:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          enum:
+          - APPLIED
+          - PARTIAL
+          - FAILED
+          - REJECTED
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigOperationResultDto"
+      required:
+      - answerPosted
+      - appliedBy
+      - decision
+      - results
+    ConfigChangeViewDto:
+      type: object
+      description: "A frozen configuration plan as the viewer may see it, with the\
+        \ live status of each operation."
+      properties:
+        agentName:
+          type: string
+        canApply:
+          type: boolean
+          description: True when the viewer is the recipient and the plan is open.
+        canReject:
+          type: boolean
+          description: "True when the viewer is the recipient and the plan is open\
+            \ or expired: rejecting an expired plan still answers the agent."
+        caseId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigOperationViewDto"
+        planHash:
+          type: string
+        questionId:
+          type: string
+          format: uuid
+        recipientUserId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+          - OPEN
+          - IN_PROGRESS
+          - ANSWERED
+          - EXPIRED
+          - SUPERSEDED
+        summary:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+      - agentName
+      - canApply
+      - canReject
+      - caseId
+      - createdAt
+      - expiresAt
+      - operations
+      - planHash
+      - questionId
+      - recipientUserId
+      - state
+      - summary
+      - warnings
+    ConfigFieldChangeDto:
+      type: object
+      properties:
+        after:
+          $ref: "#/components/schemas/JsonNode"
+        before:
+          $ref: "#/components/schemas/JsonNode"
+          description: "Current value, masked; null when absent or not visible to\
+            \ the viewer."
+        path:
+          type: string
+        remove:
+          type: boolean
+      required:
+      - path
+      - remove
+    ConfigOperationResultDto:
+      type: object
+      properties:
+        entityId:
+          type: string
+          format: uuid
+        message:
+          type: string
+        ref:
+          type: string
+        status:
+          type: string
+          enum:
+          - APPLIED
+          - ALREADY_APPLIED
+          - DENIED
+          - NOT_FOUND
+          - CONFLICT
+          - INVALID
+          - FAILED
+          - NOT_RUN
+      required:
+      - ref
+      - status
+    ConfigOperationViewDto:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - CREATE
+          - UPDATE
+          - ENABLE
+          - DISABLE
+          - DEPLOY
+          - UNDEPLOY
+        affects:
+          type: string
+          enum:
+          - CALLER_ONLY
+          - NAMESPACE_MEMBERS
+          - PLATFORM
+        changes:
+          type: array
+          description: "UPDATE only: each field with its current value (masked) and\
+            \ the proposed one."
+          items:
+            $ref: "#/components/schemas/ConfigFieldChangeDto"
+        copyFrom:
+          type: string
+          description: "Name of the integration this CREATE copies; the server reads\
+            \ its fields at apply time, and value only overrides some of them."
+        deployTo:
+          type: string
+          enum:
+          - NAMESPACE
+          - NONE
+        kind:
+          type: string
+          enum:
+          - AGENT
+          - SKILL
+          - PROMPT
+          - INTEGRATION
+          - AUTH_SETTING
+          - NAMESPACE
+        name:
+          type: string
+          description: Name of the entity created or targeted.
+        namespaceId:
+          type: string
+          format: uuid
+          description: "Scope of the entity: null namespaceId and userId mean platform."
+        namespaceName:
+          type: string
+          description: "Name of the namespace the operation acts in when it is not\
+            \ the case's: one the plan creates or another one the user administers."
+        order:
+          type: integer
+          format: int32
+        ref:
+          type: string
+        secretInputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigSecretInputDto"
+        status:
+          type: string
+          enum:
+          - PENDING
+          - APPLIED
+          - ALREADY_APPLIED
+          - CONFLICT
+          - NOT_VISIBLE
+        targetId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        value:
+          $ref: "#/components/schemas/JsonNode"
+          description: "CREATE only: the fields of the new entity, secrets excluded."
+      required:
+      - action
+      - affects
+      - changes
+      - kind
+      - name
+      - order
+      - ref
+      - secretInputs
+      - status
+    ConfigSecretInputDto:
+      type: object
+      properties:
+        key:
+          type: string
+          description: "Key to send in ConfigChangeApplyRequest.secrets: '<ref>.<path>'."
+        label:
+          type: string
+        path:
+          type: string
+      required:
+      - key
+      - label
+      - path
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3674,6 +5023,14 @@ components:
       - resultText
       - timestamp
       - type
+    ContinueCostRequest:
+      type: object
+      properties:
+        expectedThreshold:
+          type: number
+          format: double
+      required:
+      - expectedThreshold
     EnrichmentPhaseTrace:
       type: object
       properties:
@@ -3744,6 +5101,124 @@ components:
       required:
       - message
       - success
+    ExchangeDiffFile:
+      type: object
+      properties:
+        additions:
+          type: integer
+          format: int32
+        deletions:
+          type: integer
+          format: int32
+        path:
+          type: string
+        status:
+          type: string
+          enum:
+          - ADDED
+          - MODIFIED
+          - DELETED
+          - TYPE_CHANGED
+          - CONFLICTED
+          - UNTRACKED
+        untracked:
+          type: boolean
+      required:
+      - path
+      - status
+      - untracked
+    ExchangeDirectoryEntry:
+      type: object
+      description: A file or sub-directory at one level of an exchange scope.
+      properties:
+        directory:
+          type: boolean
+          description: "True for a sub-directory, false for a file."
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp.
+        mimeType:
+          type: string
+          description: "Detected MIME type for a file, null otherwise."
+        name:
+          type: string
+          description: Entry name (last path segment).
+        path:
+          type: string
+          description: "Path relative to the exchange root, using forward slashes."
+        size:
+          type: integer
+          format: int64
+          description: "File size in bytes; null for a directory, whose size is not\
+            \ computed."
+      required:
+      - directory
+      - name
+      - path
+    ExchangeDirectoryListing:
+      type: object
+      description: "A page of one directory level, plus the caller's capability."
+      properties:
+        capability:
+          type: string
+          description: Capability the caller has over this scope.
+          enum:
+          - NONE
+          - READ
+          - READ_WRITE
+        entries:
+          type: array
+          description: "Entries in this page: sub-directories first, then files, each\
+            \ alphabetically."
+          items:
+            $ref: "#/components/schemas/ExchangeDirectoryEntry"
+        hasMore:
+          type: boolean
+          description: Whether further pages exist for this directory.
+        page:
+          type: integer
+          format: int32
+          description: Zero-based index of the page returned.
+        pageSize:
+          type: integer
+          format: int32
+          description: Maximum number of entries per page.
+        path:
+          type: string
+          description: "Directory being listed, relative to the exchange root. Empty\
+            \ string for the root itself."
+        totalEntries:
+          type: integer
+          format: int32
+          description: "Total number of entries in this directory, across all pages."
+      required:
+      - capability
+      - entries
+      - hasMore
+      - page
+      - pageSize
+      - path
+      - totalEntries
+    ExchangeEnvironment:
+      type: object
+      properties:
+        branch:
+          type: string
+        changes:
+          $ref: "#/components/schemas/ExchangeGitChanges"
+        equipped:
+          type: boolean
+        error:
+          type: string
+        git:
+          $ref: "#/components/schemas/GitWorkspaceSummary"
+        path:
+          type: string
+        status:
+          type: string
+      required:
+      - equipped
     ExchangeFileContent:
       type: object
       description: Text content and metadata of a single exchange file.
@@ -3764,6 +5239,15 @@ components:
       required:
       - content
       - size
+    ExchangeFileDiff:
+      type: object
+      properties:
+        message:
+          type: string
+        patch:
+          type: string
+      required:
+      - patch
     ExchangeFileEntry:
       type: object
       description: Metadata for a single file in an exchange scope.
@@ -3801,6 +5285,26 @@ components:
       - path
       - scope
       - size
+    ExchangeGitChanges:
+      type: object
+      properties:
+        additions:
+          type: integer
+          format: int32
+        base:
+          type: string
+        deletions:
+          type: integer
+          format: int32
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExchangeDiffFile"
+      required:
+      - additions
+      - base
+      - deletions
+      - files
     ExchangeManifest:
       type: object
       description: Files in an exchange scope plus the caller's capability.
@@ -3889,6 +5393,74 @@ components:
       required:
       - ids
       - withRemoved
+    GitWorkspaceSummary:
+      type: object
+      properties:
+        branchState:
+          type: string
+          description: Where the workspace branch stands against the remote
+          enum:
+          - DETACHED
+          - LOCAL_ONLY
+          - PUSHED
+          - UNPUSHED_COMMITS
+          - UNKNOWN
+        dirty:
+          type: boolean
+          description: "Whether the worktree has local changes, untracked files included.\
+            \ Null when it could not be read"
+        error:
+          type: string
+          description: Why the observation failed. Null when it succeeded. Never a
+            secret
+        headSha:
+          type: string
+          description: Commit checked out in the workspace. Null when it could not
+            be read
+        observedAt:
+          type: string
+          format: date-time
+          description: When this observation started
+        prHeadSha:
+          type: string
+          description: Head commit of the pull request. Null without one
+        prNumber:
+          type: integer
+          format: int32
+          description: Number of the pull request. Null without one
+        prState:
+          type: string
+          description: The pull request of the workspace branch. UNKNOWN never means
+            that there is none
+          enum:
+          - DRAFT
+          - OPEN
+          - MERGED
+          - CLOSED_UNMERGED
+          - NONE
+          - UNKNOWN
+        prUrl:
+          type: string
+          description: Web address of the pull request. Null without one
+        remoteSha:
+          type: string
+          description: Commit of the remote branch. Null when the branch is not on
+            the remote
+        unpushedCommits:
+          type: integer
+          format: int32
+          description: Commits of the workspace branch missing from the remote. Null
+            unless the branch is on the remote
+      required:
+      - branchState
+      - prState
+    GitWorkspacesConfiguration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
     GroupsByExternalIdsRequest:
       type: object
       properties:
@@ -3925,6 +5497,8 @@ components:
       properties:
         authSettingName:
           type: string
+        autoGrant:
+          type: boolean
         description:
           type: string
         id:
@@ -3943,17 +5517,33 @@ components:
           format: uuid
         parameters:
           $ref: "#/components/schemas/JsonNode"
+        source:
+          type: string
+          description: Configuration origin. FILESYSTEM entries are read-only; no
+            local path is exposed.
+          enum:
+          - NEO4J
+          - FILESYSTEM
+          readOnly: true
         userId:
           type:
           - string
           - "null"
           format: uuid
       required:
+      - autoGrant
       - integrationType
       - name
+      - source
     IntegrationTypeDescriptor:
       type: object
       properties:
+        autoGrantable:
+          type: boolean
+          description: "Whether a configuration of this type may set autoGrant, handing\
+            \ itself to every agent within its scope without the agent naming it.\
+            \ Clients should show the toggle only when this is true; the server rejects\
+            \ the flag on any other type with HTTP 422."
         builtIn:
           type: boolean
         configSchema:
@@ -3972,6 +5562,7 @@ components:
         type:
           type: string
       required:
+      - autoGrantable
       - builtIn
       - description
       - displayName
@@ -4013,6 +5604,33 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    LlmUsage:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        estimatedCostUsd:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - inputTokens
+      - outputTokens
+      - totalTokens
     MemberItem:
       type: object
       properties:
@@ -4063,6 +5681,10 @@ components:
             type: string
           llmProvider:
             type: string
+          reasoningEffort:
+            $ref: "#/components/schemas/ReasoningEffort"
+          requestedReasoningEffort:
+            $ref: "#/components/schemas/ReasoningEffort"
           sessionContext:
             type: object
             additionalProperties: {}
@@ -4075,6 +5697,25 @@ components:
       - namespaceId
       - timestamp
       - type
+    ModelPricing:
+      type: object
+      properties:
+        cacheRead:
+          type: number
+          format: double
+        cacheWrite:
+          type: number
+          format: double
+        inputMTokens:
+          type: number
+          format: double
+        isEmpty:
+          type: boolean
+        outputMTokens:
+          type: number
+          format: double
+      required:
+      - isEmpty
     Namespace:
       type: object
       properties:
@@ -4099,6 +5740,14 @@ components:
         name:
           type: string
           minLength: 1
+        runCostThreshold:
+          type: number
+          format: double
+          description: "Namespace-level default for the run cost threshold, in the\
+            \ platform currency unit. Null means inherit from the platform default.\
+            \ Applies to all cases in this namespace that do not declare their own\
+            \ threshold."
+          minimum: 0
       required:
       - name
     NamespaceAgentDeployRequest:
@@ -4111,6 +5760,57 @@ components:
             format: uuid
       required:
       - agentIds
+    NamespaceGit:
+      type: object
+      properties:
+        associated:
+          type: boolean
+        autoWorktreeForRootCases:
+          type: boolean
+        checkoutFailureReason:
+          type: string
+        checkoutStatus:
+          type: string
+          description: Preparation state of the namespace repository. Null while no
+            clone has been attempted
+          enum:
+          - PREPARING
+          - READY
+          - FAILED
+        lastFetchedAt:
+          type: string
+          format: date-time
+        mainBranch:
+          type: string
+        repositoryUrl:
+          type: string
+        serviceAuthSettingId:
+          type: string
+          format: uuid
+        setupCommand:
+          type: string
+      required:
+      - associated
+      - autoWorktreeForRootCases
+    NamespaceGitRequest:
+      type: object
+      properties:
+        autoWorktreeForRootCases:
+          type: boolean
+        mainBranch:
+          type: string
+        repositoryUrl:
+          type: string
+          minLength: 1
+        serviceAuthSettingId:
+          type: string
+          format: uuid
+        setupCommand:
+          type: string
+      required:
+      - autoWorktreeForRootCases
+      - repositoryUrl
+      - serviceAuthSettingId
     NamespaceListItem:
       type: object
       properties:
@@ -4280,6 +5980,28 @@ components:
       required:
       - authType
       - name
+    PausedCostDto:
+      type: object
+      properties:
+        ancestor:
+          type: boolean
+        canContinue:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        threshold:
+          type: number
+          format: double
+      required:
+      - ancestor
+      - canContinue
+      - caseId
+      - cost
+      - threshold
     PendingConfirmationEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4441,6 +6163,48 @@ components:
       - name
       - parameters
       - sourceLanguage
+    PromptBatchTranslateRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          description: IDs of the prompts to translate. Order is preserved in the
+            response.
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          minLength: 1
+        namespaceExternalId:
+          type: string
+          description: Namespace external ID for AI model resolution (resolved server-side).
+            Required only when the batch contains platform-scoped prompts. Mutually
+            exclusive with namespaceId.
+        namespaceId:
+          type: string
+          format: uuid
+          description: Namespace UUID for AI model resolution. Required only when
+            the batch contains platform-scoped prompts. Mutually exclusive with namespaceExternalId.
+      required:
+      - ids
+    PromptBatchTranslation:
+      type: object
+      properties:
+        content:
+          type: array
+          description: Translated content list. Same indices as the source content.
+          items:
+            type: string
+        id:
+          type: string
+          format: uuid
+          description: ID of the prompt.
+        title:
+          type: string
+          description: Translated display label. Null when the prompt has no title.
+      required:
+      - content
+      - id
     PromptEffectiveRequest:
       type: object
       properties:
@@ -4560,6 +6324,15 @@ components:
       - questionType
       - timestamp
       - type
+    ReasoningEffort:
+      type: string
+      enum:
+      - NONE
+      - LOW
+      - MEDIUM
+      - HIGH
+      - XHIGH
+      - MAX
     Recurrence:
       type: object
       properties:
@@ -4586,6 +6359,44 @@ components:
       - days
       - timeUtc
       - unit
+    RunCostDto:
+      type: object
+      properties:
+        active:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        liveTokens:
+          type: integer
+          format: int64
+        paused:
+          type: boolean
+        pausedCases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PausedCostDto"
+        runCostThreshold:
+          type: number
+          format: double
+        since:
+          type: string
+          format: date-time
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - active
+      - caseId
+      - cost
+      - liveTokens
+      - paused
+      - pausedCases
+      - since
+      - unknownCostCount
     ScheduledPrompt:
       type: object
       properties:
@@ -4601,6 +6412,9 @@ components:
           type: string
         enabled:
           type: boolean
+        externalMetadata:
+          type: object
+          additionalProperties: {}
         id:
           type: string
           format: uuid
@@ -4625,6 +6439,8 @@ components:
           minLength: 1
         recurrence:
           $ref: "#/components/schemas/Recurrence"
+        removed:
+          type: boolean
         updatedBy:
           type: string
         updatedOn:
@@ -4642,6 +6458,7 @@ components:
       - planning
       - promptContent
       - recurrence
+      - removed
     ScheduledPromptEffectiveRequest:
       type: object
       properties:
@@ -4667,6 +6484,9 @@ components:
           items:
             type: string
             format: uuid
+        modifiedSince:
+          type: string
+          format: date-time
         namespaceExternalId:
           type:
           - string
@@ -4685,6 +6505,152 @@ components:
           - string
           - "null"
           format: uuid
+        withRemoved:
+          type: boolean
+          default: false
+    Skill:
+      type: object
+      properties:
+        body:
+          type: string
+          minLength: 1
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        description:
+          type: string
+          minLength: 1
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        readOnly:
+          type: boolean
+          description: "True when this skill is backed by a filesystem SKILL.md file\
+            \ and therefore cannot be modified or deleted through the API. Always\
+            \ present in responses, ignored on write. Reflects the storage origin,\
+            \ NOT the caller's permissions: a false value does not by itself mean\
+            \ the caller may write."
+        resources:
+          type: object
+          additionalProperties:
+            type: string
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - body
+      - description
+      - name
+    SkillSummary:
+      type: object
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: "The skill name, which is also the value a skillSelectors entry\
+            \ must match."
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+          description: "Owning namespace, or null for a platform-level skill. Makes\
+            \ the winner of namespace-over-platform shadowing explicit."
+        readOnly:
+          type: boolean
+          description: "True when the skill is backed by a filesystem SKILL.md file\
+            \ and cannot be modified through the API. Reflects the storage origin,\
+            \ NOT the caller's permissions."
+      required:
+      - description
+      - id
+      - name
+      - readOnly
+    SubCaseFinishedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          errorType:
+            type: string
+          outcome:
+            type: string
+            enum:
+            - SUCCESS
+            - WAITING_USER
+            - ERROR
+            - TIMEOUT
+            - KILLED
+          subCaseId:
+            type: string
+            format: uuid
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - outcome
+      - subCaseId
+      - timestamp
+      - toolRequestId
+      - type
+    SubCaseStartedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          resumed:
+            type: boolean
+          subCaseId:
+            type: string
+            format: uuid
+          task:
+            type: string
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - resumed
+      - subCaseId
+      - task
+      - timestamp
+      - toolRequestId
+      - type
     SyncUserRolesRequest:
       type: object
       properties:
@@ -4732,6 +6698,45 @@ components:
       - namespaceId
       - timestamp
       - type
+    ToolInvokeRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+        payload:
+          type: string
+        toolName:
+          type: string
+        userId:
+          type: string
+          format: uuid
+      required:
+      - namespaceId
+      - toolName
+    ToolInvokeResponse:
+      type: object
+      properties:
+        errorMessage:
+          type: string
+        errorType:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: {}
+        output:
+          type: string
+        structuredOutput:
+          $ref: "#/components/schemas/JsonNode"
+        success:
+          type: boolean
+        toolName:
+          type: string
+      required:
+      - metadata
+      - output
+      - success
+      - toolName
     ToolRequestEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4772,6 +6777,8 @@ components:
             oneOf:
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
+          structuredOutput:
+            $ref: "#/components/schemas/JsonNode"
           success:
             type: boolean
           toolMetadata:
@@ -4813,6 +6820,19 @@ components:
       - timestamp
       - toolName
       - type
+    ToolSummary:
+      type: object
+      properties:
+        description:
+          type: string
+        inputSchema:
+          type: string
+        name:
+          type: string
+      required:
+      - description
+      - inputSchema
+      - name
     UnreadCountResponse:
       type: object
       properties:
@@ -4821,6 +6841,127 @@ components:
           format: int64
       required:
       - unreadCount
+    UsageAggregate:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        cost:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        recordCount:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - cost
+      - inputTokens
+      - outputTokens
+      - recordCount
+      - totalTokens
+      - unknownCostCount
+    UsageAggregateByKey:
+      type: object
+      properties:
+        aggregate:
+          $ref: "#/components/schemas/UsageAggregate"
+        key:
+          type: string
+      required:
+      - aggregate
+      - key
+    UsageConfiguration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
+    UsageRecord:
+      type: object
+      properties:
+        agentConfigId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        apiModelName:
+          type: string
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type:
+          - number
+          - "null"
+          format: double
+        createdOn:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        inputTokens:
+          type: integer
+          format: int64
+        namespaceId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+        outputTokens:
+          type: integer
+          format: int64
+        providerName:
+          type: string
+        source:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        totalTokens:
+          type: integer
+          format: int64
+        userId:
+          type: string
+          format: uuid
+      required:
+      - agentName
+      - cacheReadTokens
+      - cacheWriteTokens
+      - caseId
+      - createdOn
+      - id
+      - inputTokens
+      - namespaceId
+      - outcome
+      - outputTokens
+      - source
+      - timestamp
+      - totalTokens
     User:
       type: object
       properties:
@@ -4839,6 +6980,9 @@ components:
           type: boolean
         lastname:
           type: string
+        preferredLanguage:
+          type: string
+          pattern: "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
       required:
       - isAdmin
     UserGroupCreateRequest:
@@ -5023,3 +7167,10 @@ components:
       - namespaceId
       - timestamp
       - type
+    WorkspaceRetryRequest:
+      type: object
+      properties:
+        acknowledgeSetupReplay:
+          type: boolean
+      required:
+      - acknowledgeSetupReplay

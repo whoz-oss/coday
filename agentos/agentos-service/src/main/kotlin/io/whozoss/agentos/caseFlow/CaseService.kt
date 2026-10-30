@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import java.util.UUID
 
 /**
@@ -36,6 +37,31 @@ interface CaseService : EntityService<Case, UUID> {
      * to the repository, bypassing the interface default entirely.
      */
     override fun findById(id: UUID, withRemoved: Boolean): Case?
+
+    /**
+     * Creates [entity], letting the caller decline the worktree its namespace gives a new top-level case.
+     *
+     * [worktree] null leaves it to the namespace's settings, as [create] does. False creates an ordinary
+     * case. True requires the worktree: the creation is refused when the namespace does not create one for
+     * every case or this instance cannot.
+     *
+     * @throws io.whozoss.agentos.exception.BadRequestException if [worktree] is set for a sub-case, which
+     *   shares its root case's worktree
+     * @throws io.whozoss.agentos.exception.ConflictException if [worktree] is true and no worktree can be created
+     */
+    fun create(entity: Case, worktree: Boolean?): Case
+
+    /**
+     * Applies a user edit to case [id]. [change] returns the edited case; status and namespace are kept
+     * as they are, since the runtime drives the status and the namespace carries the permissions.
+     *
+     * When a concurrent write wins, such as a status change or a generated title, the case is read again
+     * and [change] applied to that copy, so [change] must be side-effect-free.
+     *
+     * @throws io.whozoss.agentos.exception.ResourceNotFoundException if the case does not exist
+     * @throws io.whozoss.agentos.exception.ConflictException if concurrent writes keep winning
+     */
+    fun edit(id: UUID, change: (Case) -> Case): Case
 
     // ========================================
     // Permission-filtered listing
@@ -88,6 +114,9 @@ interface CaseService : EntityService<Case, UUID> {
      * (e.g. SSE streaming) without creating unintended side effects.
      */
     fun findActiveRuntime(caseId: UUID): CaseRuntime?
+
+    /** Whether any of [caseIds] has a run in progress or admitted and about to start. */
+    fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean = caseIds.any { findActiveRuntime(it)?.isRunning() == true }
 
     /**
      * Retrieve all active [CaseRuntime] instances for a given namespace.
@@ -154,4 +183,48 @@ interface CaseService : EntityService<Case, UUID> {
      * @param caseId The unique identifier of the case to kill
      */
     fun killCase(caseId: UUID)
+
+    /**
+     * Reopen a terminal case by transitioning it back to [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE].
+     *
+     * The case must currently be in a terminal status ([io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED]
+     * or [io.whozoss.agentos.sdk.caseFlow.CaseStatus.ERROR]). Soft-deleted cases are excluded.
+     *
+     * The [io.whozoss.agentos.caseFlow.CaseLaunchGate] is consulted via
+     * [CaseLaunchGate.requireReopenable] — a case whose underlying resource (e.g. Git worktree)
+     * has been removed cannot be reopened.
+     *
+     * No runtime is created by this call. The frontend is expected to reconnect via SSE,
+     * which will rehydrate the runtime on demand.
+     *
+     * @param caseId The unique identifier of the case to reopen
+     * @return The updated case with status [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE]
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if the case is not in a terminal status
+     */
+    fun reopenCase(caseId: UUID): Case
+
+    /**
+     * Set the case-level reasoning effort ([Case.reasoningEffort]), or remove it with null.
+     *
+     * Goes through [edit], so only that field changes: the status stays as the runtime left it, and
+     * the change is applied again to a fresh read when a concurrent write wins (a run ending, a
+     * generated title).
+     *
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if concurrent writes keep winning
+     */
+    fun setReasoningEffort(
+        caseId: UUID,
+        reasoningEffort: ReasoningEffort?,
+    ): Case
+
+    /**
+     * Start a turn that a [CaseLaunchGate] held back, if there is one to start.
+     *
+     * Resumes a `PENDING` case whose turn was deferred by this process and nothing else: a case
+     * that was killed, errored or has already consumed its message is left alone, and nothing is
+     * replayed after a restart.
+     */
+    fun resumeIfPending(caseId: UUID) = Unit
 }

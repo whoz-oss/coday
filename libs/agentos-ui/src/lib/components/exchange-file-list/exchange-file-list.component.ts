@@ -28,6 +28,7 @@ export class ExchangeFileListComponent {
   readonly fileSelected = output<ExchangeFileRef>()
   readonly downloadRequested = output<ExchangeFileRef>()
   readonly deleteRequested = output<ExchangeFileRef>()
+  readonly diffRequested = output<ExchangeFileRef>()
 
   protected isActive(row: ExchangeFileRow): boolean {
     const active = this.activeFile()
@@ -35,7 +36,12 @@ export class ExchangeFileListComponent {
   }
 
   protected onView(row: ExchangeFileRow): void {
-    this.fileSelected.emit({ scope: this.scope(), path: row.path })
+    if (row.missing) this.onDiff(row)
+    else this.fileSelected.emit({ scope: this.scope(), path: row.path })
+  }
+
+  protected onDiff(row: ExchangeFileRow): void {
+    this.diffRequested.emit({ scope: this.scope(), path: row.path })
   }
 
   protected onDownload(row: ExchangeFileRow): void {

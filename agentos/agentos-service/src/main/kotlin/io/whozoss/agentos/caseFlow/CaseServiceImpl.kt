@@ -7,9 +7,18 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
+import io.whozoss.agentos.chat.UsageAccumulator
+import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.delegation.SubCaseManager
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.logging.LogContext
+import io.whozoss.agentos.logging.withLogContext
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -19,6 +28,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -26,24 +36,36 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.usage.RunCostService
+import io.whozoss.agentos.usage.UsageOutcome
+import io.whozoss.agentos.usage.UsageRecord
+import io.whozoss.agentos.usage.UsageRecordService
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.dao.OptimisticLockingFailureException
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -63,6 +85,24 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
+    private val limitsConfig: LimitsConfigProperties,
+    private val usageRecordService: UsageRecordService,
+    private val runCostService: RunCostService? = null,
+    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
+    /**
+     * Installed only by an optional capability (Git workspaces behind
+     * `agentos.git.workspaces.enabled`). Null: every run starts immediately, as it always did.
+     */
+    private val caseLaunchGate: CaseLaunchGate? = null,
+    /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
+    private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
+    /**
+     * Coroutine context used to build the service scope.
+     * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
+     * in tests so all coroutines run on the test scheduler and virtual time applies.
+     */
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
+    coroutineContext: CoroutineContext = Dispatchers.IO,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -70,7 +110,7 @@ class CaseServiceImpl(
      * post-processing tasks (e.g. automatic naming) in the background.
      * Each [run] call and naming trigger is launched here so HTTP threads are never blocked.
      */
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val scope = CoroutineScope(coroutineContext + SupervisorJob())
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
@@ -81,6 +121,21 @@ class CaseServiceImpl(
      */
     private val watcherJobs = ConcurrentHashMap<UUID, Job>()
 
+    /** Turns held back by [caseLaunchGate]; null without a gate. */
+    private val gatedRuns =
+        caseLaunchGate?.let {
+            GatedRunLauncher(
+                it,
+                scope,
+                activeRuntimes::get,
+                { id -> findById(id)?.status },
+                ::storeEvent,
+            )
+        }
+
+    override fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean =
+        caseIds.any { gatedRuns?.isAdmitted(it) == true || activeRuntimes[it]?.isRunning() == true }
+
     /**
      * Number of active coroutines running in the service scope.
      * Counts all child jobs of the scope — watcher coroutines and any in-flight run() launches.
@@ -90,19 +145,87 @@ class CaseServiceImpl(
     internal val activeCoroutineCount: Int
         get() = scope.coroutineContext[Job]?.children?.count() ?: 0
 
+    /** Launches admitted by the gate that have not finished yet. Exposed for lifecycle tests. */
+    internal val trackedExecutionCount: Int
+        get() = gatedRuns?.trackedExecutionCount ?: 0
+
     // ======================================================
     // EntityService
     // ======================================================
 
-    override fun create(entity: Case): Case {
-        require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
-        // Persist the full entity so client-supplied title and status are preserved
-        // .
-        val saved = caseRepository.save(entity)
+    @Transactional
+    override fun create(entity: Case): Case = create(entity, worktree = null)
+
+    @Transactional
+    override fun create(
+        entity: Case,
+        worktree: Boolean?,
+    ): Case {
+        if (worktree != null && entity.parentCaseId != null) {
+            throw BadRequestException("A sub-case shares its root case's worktree and cannot choose one")
+        }
+        if (worktree == true && caseWorkspaceProvisioning == null) {
+            throw ConflictException(
+                "Cannot create a worktree for this case: Git workspaces are not enabled on this instance",
+            )
+        }
+        return caseWorkspaceProvisioning?.aroundCreation(entity, worktree) { createCase(entity, worktree) }
+            ?: createCase(entity, worktree)
+    }
+
+    private fun createCase(
+        entity: Case,
+        worktree: Boolean?,
+    ): Case {
+        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
+        // Materialise runCostThreshold at creation time from the resolution chain:
+        // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
+        // A non-null value on the incoming entity is an explicit caller override — kept as-is.
+        // Materialising at creation rather than resolving at runtime means the case is
+        // unaffected by later namespace or platform config changes (same principle as
+        // UsageRecord denormalising provider pricing at record time).
+        val resolvedThreshold: Double? =
+            entity.runCostThreshold
+                ?: namespaceService.resolveRunCostThreshold(entity.namespaceId)
+        val caseToSave =
+            entity.copy(runCostThreshold = resolvedThreshold)
+
+        val saved = saveNewCase(caseToSave)
+        // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
+        // transaction, so a failed link rolls the case back instead of leaving an orphan.
+        saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
+        caseWorkspaceProvisioning?.onCaseCreated(saved, worktree)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
         return saved
+    }
+
+    /**
+     * Inserts a new case. A versioned node is only created when its id is free, soft-deleted
+     * cases included, so a client-supplied id can neither overwrite nor resurrect another case.
+     */
+    private fun saveNewCase(case: Case): Case =
+        try {
+            caseRepository.save(case)
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Duplicate entity id: ${case.id}", e)
+        }
+
+    /** A sub-case needs an existing parent in its namespace, below the depth limit, that still accepts input. */
+    private fun requireValidParent(
+        parentId: UUID,
+        namespaceId: UUID,
+    ) {
+        // A soft-deleted parent does not exist for this purpose (getById would include it).
+        val parent = findById(parentId) ?: throw ResourceNotFoundException("Parent case not found: $parentId")
+        if (caseRepository.countAncestorDepth(parentId) >= MAX_DELEGATION_DEPTH) {
+            throw UnprocessableEntityException("Case hierarchy depth limit reached")
+        }
+        if (parent.namespaceId != namespaceId) {
+            throw BadRequestException("A sub-case must belong to its parent's namespace")
+        }
+        caseLaunchGate?.requireAccepting(parentId)
     }
 
     override fun update(entity: Case): Case {
@@ -116,9 +239,36 @@ class CaseServiceImpl(
             // handleStatusChange already persisted the new status; return fresh view.
             findById(entity.id) ?: entity
         } else {
-            caseRepository.save(entity)
+            saveEdit(entity)
         }
     }
+
+    override fun setReasoningEffort(
+        caseId: UUID,
+        reasoningEffort: ReasoningEffort?,
+    ): Case = edit(caseId) { it.copy(reasoningEffort = reasoningEffort) }
+
+    override fun edit(
+        id: UUID,
+        change: (Case) -> Case,
+    ): Case {
+        val current = findById(id) ?: throw ResourceNotFoundException("Case not found: $id")
+        return try {
+            caseRepository.saveChange(current) { case ->
+                change(case).copy(status = case.status, namespaceId = case.namespaceId)
+            }
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Case $id kept changing concurrently, retry", e)
+        }
+    }
+
+    /** An edit read before a concurrent write is refused rather than overwriting it: the client reloads. */
+    private fun saveEdit(entity: Case): Case =
+        try {
+            caseRepository.save(entity)
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Case ${entity.id} was changed concurrently, reload it and retry", e)
+        }
 
     override fun findById(
         id: UUID,
@@ -265,17 +415,21 @@ class CaseServiceImpl(
                         ).isNotEmpty()
             },
             runAgent = { agentName, events, eventsProvider, userId, shouldContinue ->
-                runAgent(
-                    agentName,
-                    case.id,
-                    events,
-                    eventsProvider,
-                    userId,
-                    shouldContinue,
-                )
+                // caseId/namespaceId are already set by CaseRuntime.run for the whole turn.
+                withLogContext(LogContext.AGENT_NAME to agentName, LogContext.USER_ID to userId) {
+                    runAgent(
+                        agentName,
+                        case.id,
+                        events,
+                        eventsProvider,
+                        userId,
+                        shouldContinue,
+                    )
+                }
             },
             inputEvents = inputEvents,
             initialStatus = case.status,
+            maxIterations = limitsConfig.caseMaxIterations,
         ).also { startEvictionWatcher(case.id, it) }
 
     // ======================================================
@@ -289,6 +443,7 @@ class CaseServiceImpl(
         answerToEventId: UUID?,
         sessionContext: Map<String, Any?>?,
     ) {
+        caseLaunchGate?.requireAccepting(caseId)
         val runtime = getCaseRuntime(caseId)
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
@@ -325,7 +480,7 @@ class CaseServiceImpl(
                     // an AgentSelectedEvent. Without run(), the runtime has a pending
                     // AgentSelectedEvent in its history but no execution loop to process it,
                     // leaving the case blocked in PENDING status forever.
-                    scope.launch { runtime.run() }
+                    launchRun(runtime)
                     return
                 }
             } else {
@@ -373,7 +528,7 @@ class CaseServiceImpl(
         }
 
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
-        scope.launch { runtime.run() }
+        launchRun(runtime)
         // Trigger post-processing after each user message (e.g. automatic title generation).
         // Events are fetched fresh from the service so the newly stored MessageEvent is included.
         val case = findById(caseId) ?: return
@@ -413,8 +568,7 @@ class CaseServiceImpl(
                 .filterIsInstance<MessageContent.Text>()
                 .firstOrNull()
                 ?.content
-                ?.trim()
-                ?.let { MENTION_REGEX.find(it)?.groupValues?.get(1) }
+                ?.let { AgentMention.extractName(it) }
 
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
         val userId = pastEvents.lastUserIdOrNull()
@@ -593,6 +747,7 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
+        val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
         val context =
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
@@ -605,45 +760,134 @@ class CaseServiceImpl(
                     runtime.emitEvent(saved)
                     saved
                 },
+                usageAccumulator = usageAccumulator,
+                // Read at every agent run, so a change applies from the next run on, never during one.
+                reasoningEffort = findById(caseId)?.reasoningEffort,
             )
+        // Resolve the agent before registering so resolution failures cannot leave a live cost session.
+        val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
         val agent = agentService.findAgentByName(agentName, context, this)
-
-        if (shouldEmitRunningEvent(events)) {
-            val runningEvent =
-                AgentRunningEvent(
-                    namespaceId = runtime.namespaceId,
-                    caseId = caseId,
-                    agentId = agent.id,
-                    agentName = agent.name,
-                    llmProvider = agent.llmProvider,
-                    llmModel = agent.llmModel,
-                )
-            storeEvent(runningEvent).also { saved ->
-                runtime.pushEvents(listOf(saved))
-                runtime.emitEvent(saved)
+        if (agentResolutionStartedAtNanos != 0L) {
+            logger.debug {
+                "Case $caseId: agent $agentName resolved in " +
+                    "${(System.nanoTime() - agentResolutionStartedAtNanos) / 1_000_000}ms"
             }
         }
-
-        agent
-            .run(events, shouldContinue)
-            .catch { error ->
-                logger.error(error) { "Error in agent $agentName for case $caseId" }
-                storeEvent(
-                    WarnEvent(
+        var outcome = UsageOutcome.COMPLETED
+        val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
+        try {
+            if (shouldEmitRunningEvent(events)) {
+                val runningEvent =
+                    AgentRunningEvent(
                         namespaceId = runtime.namespaceId,
                         caseId = caseId,
-                        message = "Agent $agentName error: ${error.message}",
-                    ),
-                ).also { saved ->
+                        agentId = agent.id,
+                        agentName = agent.name,
+                        llmProvider = agent.llmProvider,
+                        llmModel = agent.llmModel,
+                    )
+                storeEvent(runningEvent).also { saved ->
+                    runtime.pushEvents(listOf(saved))
                     runtime.emitEvent(saved)
                 }
-            }.collect { event ->
-                val saved = storeEvent(event)
-                if (event.caseId == caseId && event !is TransientCaseEvent) {
-                    runtime.pushEvents(listOf(saved))
-                }
-                runtime.emitEvent(saved)
             }
+
+            agent
+                .run(events, shouldContinue)
+                .catch { error ->
+                    outcome = UsageOutcome.FAILED
+                    logger.error(error) { "Error in agent $agentName for case $caseId" }
+                    storeEvent(
+                        WarnEvent(
+                            namespaceId = runtime.namespaceId,
+                            caseId = caseId,
+                            message = "Agent $agentName error: ${error.message}",
+                        ),
+                    ).also { saved ->
+                        runtime.emitEvent(saved)
+                    }
+                    // Emit a synthetic AgentFinishedEvent so the runtime's processNextStep
+                    // sees a closed turn and exits the loop cleanly. Without this, the loop
+                    // would find the AgentRunningEvent still as the latest orchestration event
+                    // and call runAgent again indefinitely.
+                    val finishedEvent =
+                        storeEvent(
+                            AgentFinishedEvent(
+                                namespaceId = runtime.namespaceId,
+                                caseId = caseId,
+                                agentId = agent.id,
+                                agentName = agent.name,
+                            ),
+                        )
+                    runtime.pushEvents(listOf(finishedEvent))
+                    runtime.emitEvent(finishedEvent)
+                }.collect { event ->
+                    // Enrich AgentFinishedEvent with accumulated LLM usage before persisting.
+                    // The accumulator is populated by UsageTrackingChatModel as each LLM call
+                    // completes; by the time the agent emits AgentFinishedEvent, all calls for
+                    // this run are done and the total is stable.
+                    val enriched =
+                        if (event is AgentFinishedEvent && usageAccumulator?.hasData == true) {
+                            event.copy(llmUsage = usageAccumulator.total)
+                        } else {
+                            event
+                        }
+                    val saved = storeEvent(enriched)
+                    if (enriched.caseId == caseId && enriched !is TransientCaseEvent) {
+                        runtime.pushEvents(listOf(saved))
+                    }
+                    runtime.emitEvent(saved)
+                }
+            // If shouldContinue() is false at end of collect, the run was interrupted by a
+            // kill request — the flow drained without exception but the agent was cut short.
+            // This check runs only when outcome is still COMPLETED (exception path sets FAILED
+            // above and we must not overwrite it).
+            if (outcome == UsageOutcome.COMPLETED && !shouldContinue()) {
+                outcome = UsageOutcome.INTERRUPTED
+            }
+        } catch (e: Exception) {
+            // A stopped turn is interrupted, not failed: let the cancellation unwind the runtime.
+            outcome = if (currentCoroutineContext().isActive) UsageOutcome.FAILED else UsageOutcome.INTERRUPTED
+            currentCoroutineContext().ensureActive()
+            throw e
+        } finally {
+            if (usageAccumulator?.failed == true) {
+                outcome = UsageOutcome.FAILED
+            } else if (outcome == UsageOutcome.COMPLETED && costRegistration?.isStopped() == true) {
+                outcome = UsageOutcome.INTERRUPTED
+            }
+            val persistUsage: () -> Unit = {
+                // Write an analytical UsageRecord only when the accumulator has data.
+                // A run with no LLM calls must not produce a zero-cost record.
+                // The write is wrapped in runCatching so that a Neo4j failure or constraint
+                // violation never propagates into the agent execution path — observability
+                // must not bring down the domain.
+                if (usageAccumulator?.hasData == true) {
+                    runCatching {
+                        usageAccumulator.recordGroups().forEach { group ->
+                            usageRecordService.create(
+                                UsageRecord.fromLlmUsage(
+                                    llmUsage = group,
+                                    namespaceId = runtime.namespaceId,
+                                    caseId = caseId,
+                                    agentName = agent.name,
+                                    outcome = outcome,
+                                    userId = userId,
+                                    agentConfigId = agent.id,
+                                    providerName = agent.llmProvider,
+                                    apiModelName = agent.llmModel,
+                                ),
+                            )
+                        }
+                    }.onFailure { e ->
+                        logger.error(
+                            e,
+                        ) { "[UsageRecord] Failed to write usage record for agent $agentName, case $caseId — run outcome unaffected" }
+                    }
+                }
+            }
+            if (costRegistration != null) costRegistration.finish(persistUsage) else persistUsage()
+        }
         logger.info { "Agent $agentName finished for case $caseId" }
     }
 
@@ -677,10 +921,11 @@ class CaseServiceImpl(
     private fun handleStatusChange(
         caseId: UUID,
         newStatus: CaseStatus,
+        postProcess: Boolean = true,
     ) {
         val case = getById(caseId)
         val oldStatus = case.status
-        val updated = caseRepository.save(case.copy(status = newStatus))
+        val updated = caseRepository.saveChange(case) { it.copy(status = newStatus) }
 
         if (newStatus == CaseStatus.ERROR) {
             logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
@@ -690,7 +935,7 @@ class CaseServiceImpl(
 
         // Trigger post-processing on turn completion so processors can refine their
         // work with the full agent response available (e.g. naming refinement on 2nd turn).
-        if (newStatus == CaseStatus.IDLE) {
+        if (newStatus == CaseStatus.IDLE && postProcess) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
                 triggerNamingIfNeeded(
@@ -734,7 +979,23 @@ class CaseServiceImpl(
             activeRuntimes[caseId]
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Interrupting case: $caseId" }
-        runtime.requestInterrupt()
+        val family = caseRepository.findActiveDescendants(caseId).mapNotNull { activeRuntimes[it.id] } + runtime
+        // Mark every runtime interrupted before unblocking any waiting model call. With a gate, a
+        // launch admitted but not running yet is cancelled in the same pass.
+        family.forEach { if (gatedRuns != null) gatedRuns.cancelAdmitted(it) else it.requestInterrupt() }
+        if (usageConfig.enabled) runCostService?.stop(caseId)
+        // Cancel the running turns, so an agent waiting in a tool or an LLM stream stops now. Only once
+        // every runtime is marked: a cancelled child ends IDLE, which completes its parent's delegation.
+        family.forEach(CaseRuntime::cancelInterruptedTurn)
+        // Releasing a held turn sets it IDLE, which completes a parent's delegation: only once everything
+        // above is stopped. Interrupting again covers a turn a resume started in between.
+        gatedRuns?.let { gated ->
+            family.forEach {
+                gated.interrupt(it)
+                it.requestInterrupt()
+                it.cancelInterruptedTurn()
+            }
+        }
     }
 
     /**
@@ -756,8 +1017,24 @@ class CaseServiceImpl(
 
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
-        activeRuntimes[caseId]?.requestKill()
+        val runtime = activeRuntimes[caseId]
+        if (gatedRuns != null) gatedRuns.kill(caseId, runtime) else runtime?.requestKill()
+        if (usageConfig.enabled) runCostService?.stop(caseId)
         handleStatusChange(caseId, CaseStatus.KILLED)
+    }
+
+    override fun isCostPaused(caseId: UUID): Boolean = usageConfig.enabled && runCostService?.isPaused(caseId) == true
+
+    override fun recordActivity(caseId: UUID) {
+        activeRuntimes[caseId]?.recordActivity()
+    }
+
+    override fun emitParentEvent(event: CaseEvent) {
+        require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {
+            "emitParentEvent is reserved for sub-case observation events; got ${event.type}."
+        }
+        val saved = storeEvent(event)
+        activeRuntimes[event.caseId]?.emitEvent(saved)
     }
 
     override fun killCase(caseId: UUID) {
@@ -770,27 +1047,75 @@ class CaseServiceImpl(
         killSingleCase(caseId)
     }
 
+    override fun reopenCase(caseId: UUID): Case {
+        val case = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        if (!case.status.isTerminal()) {
+            throw ConflictException("Only a terminated case can be reopened")
+        }
+        caseLaunchGate?.requireReopenable(caseId)
+        logger.info { "Reopening case: $caseId (was ${case.status})" }
+        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+        return findById(caseId) ?: error("Case $caseId not found after reopen status change")
+    }
+
     override fun resumeSubCase(
         subCaseId: UUID,
+        parentCaseId: UUID,
         agentName: String,
         task: String,
         userId: UUID,
         allowedAgents: List<String>,
     ): CaseRuntime {
+        // 1. Existence check (neutral message: does not confirm or deny ownership)
         val subCase =
             findById(subCaseId)
-                ?: throw ResourceNotFoundException("Sub-case not found: $subCaseId")
+                ?: throw IllegalStateException(
+                    "Cannot resume sub-case $subCaseId: not found or not resumable from this context.",
+                )
+
+        // 2. Ownership check: the sub-case must be a direct child of the calling parent.
+        //    Message reveals nothing about the actual parent to avoid leaking foreign state.
+        check(subCase.parentCaseId == parentCaseId) {
+            "Cannot resume sub-case $subCaseId: it does not belong to the current delegation context."
+        }
+
+        // 3. Namespace isolation: parent and sub-case must share the same namespace.
+        //    We derive the parent's namespace from the persisted parent case rather than
+        //    trusting a caller-supplied value, so a compromised caller cannot forge it.
+        val parentCase =
+            findById(parentCaseId)
+                ?: throw IllegalStateException(
+                    "Cannot resume sub-case $subCaseId: parent case context is unavailable.",
+                )
+        check(subCase.namespaceId == parentCase.namespaceId) {
+            "Cannot resume sub-case $subCaseId: namespace mismatch detected."
+        }
+
+        // 4. Status check (after confinement: do not reveal IDLE/non-IDLE to unauthorised callers)
         check(subCase.status == CaseStatus.IDLE) {
-            "Sub-case $subCaseId is in status ${subCase.status}, expected IDLE to resume."
+            "Cannot resume sub-case $subCaseId: it is not currently awaiting input."
         }
+
+        // 5. Allowlist check: secondary consistency guard (ownership already established above)
         check(agentName in allowedAgents) {
-            "Agent '$agentName' is not in the delegation allowlist for sub-case $subCaseId."
+            "Agent '$agentName' is not available for delegation in this context."
         }
+
         val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
+        // 6. The previous turn persists IDLE before it releases the runtime: a turn launched until then
+        //    would be skipped, and the delegation would return the previous answer.
+        check(!runtime.isRunning()) {
+            "Cannot resume sub-case $subCaseId: its previous turn is still ending, try again."
+        }
+        caseLaunchGate?.requireAccepting(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
-        scope.launch { runtime.run() }
-        logger.info { "Sub-case $subCaseId resumed, agent=$agentName" }
+        // A launch gate marks the queued turn PENDING itself. Without one, the turn starts asynchronously:
+        // mark it queued now, in memory (run() publishes RUNNING), so that the delegation waiting on this
+        // sub-case does not take the IDLE left by its previous turn for the end of this one.
+        if (gatedRuns == null) runtime.claimPending()
+        launchRun(runtime)
+        logger.info { "Sub-case $subCaseId resumed under parent $parentCaseId, agent=$agentName" }
         return runtime
     }
 
@@ -821,11 +1146,6 @@ class CaseServiceImpl(
                 ),
             )
 
-        // Create the [:PARENT_OF] graph edge so countAncestorDepth can traverse the chain.
-        // This runs inside the same @Transactional boundary as create() above: if the
-        // link fails, the sub-case node is rolled back too — no orphaned cases.
-        caseRepository.linkParentToChild(parentCaseId, subCase.id)
-
         // Grant the delegating user ADMIN on the sub-case so they can list, open, and
         // stream it — same grant that CaseController.create applies for user-created cases.
         // The permission write runs outside the Neo4j transaction boundary (it is a separate
@@ -845,14 +1165,41 @@ class CaseServiceImpl(
                 .onFailure { killErr ->
                     logger.warn(killErr) { "Failed to kill orphaned sub-case ${subCase.id} after permission grant failure" }
                 }
-            throw IllegalStateException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
+            throw AccessDeniedException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
+        caseListUpdateBroadcaster.publishCaseCreated(subCase.namespaceId)
 
         val runtime = activeRuntimes[subCase.id]!!
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
-        scope.launch { runtime.run() }
+        launchRun(runtime)
         logger.info { "Sub-case ${subCase.id} started under parent $parentCaseId, agent=$agentName (depth=${ancestorDepth + 1})" }
         return runtime
+    }
+
+    // ======================================================
+    // Launch gate
+    // ======================================================
+
+    /** Start an agent turn: now without a [caseLaunchGate], once it admits the turn with one. */
+    private fun launchRun(runtime: CaseRuntime) {
+        if (gatedRuns != null) {
+            gatedRuns.launch(runtime)
+        } else {
+            val scheduledAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
+            scope.launch {
+                if (scheduledAtNanos != 0L) {
+                    logger.debug {
+                        "Case ${runtime.id}: coroutine dispatch delayed by " +
+                            "${(System.nanoTime() - scheduledAtNanos) / 1_000_000}ms"
+                    }
+                }
+                runtime.run()
+            }
+        }
+    }
+
+    override fun resumeIfPending(caseId: UUID) {
+        gatedRuns?.resumeIfPending(caseId)
     }
 
     // ======================================================
@@ -862,11 +1209,24 @@ class CaseServiceImpl(
     @PreDestroy
     fun shutdown() {
         logger.info { "Shutting down CaseService..." }
-        activeRuntimes.keys.toList().forEach {
+        activeRuntimes.entries.toList().forEach { (caseId, runtime) ->
             try {
-                killSingleCase(it)
+                if (gatedRuns?.keepOpenOnShutdown(caseId) != true) {
+                    killSingleCase(caseId)
+                } else {
+                    gatedRuns.stopForShutdown(runtime)
+                    // Stopping this process is not a user Kill: its workspace survives, so an
+                    // unfinished conversation accepts a fresh instruction after the restart.
+                    if (!getById(caseId).status.isTerminal()) {
+                        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+                        // A Kill landing while that release was written keeps its terminal status.
+                        if (runtime.isKillRequested()) handleStatusChange(caseId, CaseStatus.KILLED)
+                    }
+                    activeRuntimes.remove(caseId, runtime)
+                    watcherJobs.remove(caseId)?.cancel()
+                }
             } catch (e: Exception) {
-                logger.warn(e) { "Error killing case $it during shutdown" }
+                logger.warn(e) { "Error killing case $caseId during shutdown" }
             }
         }
         activeRuntimes.clear()
@@ -928,7 +1288,7 @@ class CaseServiceImpl(
                 (titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1)
 
         if (shouldTrigger) {
-            scope.launch {
+            scope.launch(LogContext.mdcContext(LogContext.CASE_ID to case.id, LogContext.NAMESPACE_ID to case.namespaceId)) {
                 runCatching { caseNamingService.nameCase(case, events, emitEvent) }
                     .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }
             }
@@ -948,18 +1308,5 @@ class CaseServiceImpl(
 
         /** Maximum character length for a sub-case title derived from the task description. */
         private const val MAX_SUBCASE_TITLE_LENGTH = 50
-
-        /**
-         * Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`.
-         *
-         * Agent names may contain letters, digits, hyphens and underscores only.
-         * Using `\S+` was too broad: a message like `@inspector https://...` would
-         * capture the entire `inspector https://...` string when the separator is a
-         * non-breaking space (U+00A0) or any other non-ASCII whitespace character,
-         * because `\S` in Java/Kotlin regex only excludes ASCII whitespace by default.
-         * The tighter character class `[\w-]+` stops at the first space-like or
-         * special character, ensuring only the agent name token is captured.
-         */
-        private val MENTION_REGEX = """^@([\w-]+)""".toRegex()
     }
 }

@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "whoz-oss.agentos"
-version = "0.0.1-SNAPSHOT"
+version = libs.versions.agentosSdk.get()
 
 tasks.named("clean") {
     dependsOn(gradle.includedBuilds.map { it.task(":clean") })
@@ -33,6 +33,8 @@ val pluginBuilds =
         "agentos-bash-plugin",
         "agentos-file-plugin",
         "agentos-mcp-plugin",
+        "agentos-http-plugin",
+        "agentos-git-plugin",
     )
 
 // Resolve all paths at configuration time into plain File values
@@ -75,27 +77,12 @@ tasks.register("deployPlugins") {
                     ?: emptyList<File>().also { logger.warn("No JAR found in $buildDir") }
             }
 
-        // Derive the base name (artifact id without version) of each JAR we are about to deploy.
-        // Convention: "<artifactId>-<version>.jar" — the artifact id never contains a digit
-        // immediately after a hyphen, so we split on the first "-<digit>" boundary.
-        // This lets us remove any previously deployed version of the same artifact
-        // without touching JARs that were placed in plugins/ from an external source.
-        val baseNames: Set<String> =
-            jarsToDeploy
-                .map { jar ->
-                    jar.nameWithoutExtension.replace(Regex("-\\d.*$"), "")
-                }.toSet()
-
-        // Remove only JARs in the destination that belong to one of our plugin artifacts
-        // (version-insensitive match). External JARs are left untouched.
-        if (dest.exists()) {
-            dest.listFiles { f -> f.extension == "jar" }?.forEach { existing ->
-                val existingBase = existing.nameWithoutExtension.replace(Regex("-\\d.*$"), "")
-                if (existingBase in baseNames) {
-                    existing.delete()
-                    logger.lifecycle("Removed stale: ${existing.name}")
-                }
-            }
+        // Strict cleanup: plugins/ must contain exactly what was just built, nothing else.
+        // Any other JAR (old version, plugin removed from the build, hand-copied file) would be
+        // loaded by PF4J and make the running behaviour impossible to explain.
+        dest.listFiles { f -> f.extension == "jar" }?.forEach { existing ->
+            existing.delete()
+            logger.lifecycle("Removed stale: ${existing.name}")
         }
 
         jarsToDeploy.forEach { jar ->
@@ -103,6 +90,17 @@ tasks.register("deployPlugins") {
             logger.lifecycle("Deployed: ${jar.name} → plugins/")
         }
     }
+}
+
+// Convenience entry point for local runs: deploy the plugin JARs into plugins/ *before*
+// booting the service, so the PF4J plugin manager picks up a freshly-built factory bridge.
+// `deployPlugins` is kept out of `build` on purpose: it cleans the included plugin builds,
+// which would race the included `build` tasks.
+tasks.register("bootRunWithPlugins") {
+    group = "plugins"
+    description = "Deploys all plugin JARs into plugins/ then boots agentos-service."
+    dependsOn("deployPlugins")
+    dependsOn(gradle.includedBuild("agentos-service").task(":bootRun"))
 }
 
 allprojects {

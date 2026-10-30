@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -13,9 +14,11 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.CaseReasoningEffortRequest
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -23,6 +26,7 @@ import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -65,6 +69,7 @@ class CaseController(
     private val permissionService: PermissionService,
     private val favoriteService: FavoriteService,
     private val caseReadService: CaseReadService,
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
@@ -139,7 +144,7 @@ class CaseController(
     }
 
     /**
-     * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
+     * Map domain [Case] to [CaseDto]s, enriching each with [userId]'s direct
      * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
@@ -177,16 +182,21 @@ class CaseController(
     override fun create(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
+        val userId = userService.getCurrentUser().id.toString()
+        resource.parentCaseId?.let { checkParentCasePermission(userId, it) }
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
             Case(
                 metadata = metadata,
                 namespaceId = resource.namespaceId,
-                status = resource.status,
+                status = CaseStatus.CREATED,
                 title = resource.title ?: "Case ${metadata.id}",
+                runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
+                reasoningEffort = resource.reasoningEffort,
+                parentCaseId = resource.parentCaseId,
             )
-        val saved = caseService.create(domain)
-        val userId = userService.getCurrentUser().id.toString()
+        val saved = caseService.create(domain, resource.worktree)
         val granted =
             runCatching {
                 permissionService.grantPermission(
@@ -202,6 +212,9 @@ class CaseController(
                         "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
                 }
             }.isSuccess
+        if (granted) {
+            caseListUpdateBroadcaster.publishCaseCreated(saved.namespaceId)
+        }
 
         // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
         // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
@@ -217,18 +230,38 @@ class CaseController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
-        val existing =
-            caseService.findById(id)
-                ?: throw ResourceNotFoundException("Case not found: $id")
+        // namespaceId and status are mass-assignment-guarded by edit: namespaceId is the
+        // transitivity key for permissions; status is driven by the runtime lifecycle, not PUT.
+        // The change is applied again to the fresh case if a concurrent write wins.
         val updated =
-            caseService.update(
+            caseService.edit(id) { existing ->
                 existing.copy(
-                    // namespaceId and status are mass-assignment-guarded:
-                    // namespaceId is the transitivity key for permissions;
-                    // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
-                ),
-            )
+                    // runCostThreshold: keep the existing value when the caller omits the field
+                    // (null in DTO = not provided, not an explicit reset). An explicit reset to
+                    // the inherited regime is not supported via PUT — the value materialised at
+                    // creation is sticky. The enforcement mechanism raises the limit by writing
+                    // a concrete value here when the user chooses to continue after a breach.
+                    runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
+                    // reasoningEffort is not changed here: an absent field must not erase the
+                    // override, and null is a meaningful value. See setReasoningEffort.
+                )
+            }
+        return updated.withCallerMeta(userService.getCurrentUser().id.toString())
+    }
+
+    /**
+     * PUT /api/cases/{id}/reasoning-effort — set the case-level reasoning effort, or remove it with a
+     * null value. Same permission as renaming the case.
+     */
+    @PutMapping("/{id}/reasoning-effort", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
+    override fun setReasoningEffort(
+        @PathVariable id: UUID,
+        @RequestBody request: CaseReasoningEffortRequest,
+    ): CaseDto {
+        val updated = caseService.setReasoningEffort(id, request.reasoningEffort)
+        logger.info { "Case $id reasoning effort set to ${request.reasoningEffort}" }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 
@@ -329,6 +362,20 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
+    /** POST /api/cases/{caseId}/reopen — reopen a terminal case, transitioning it back to IDLE. */
+    @PostMapping("/{caseId}/reopen")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'DELETE')")
+    override fun reopenCase(
+        @PathVariable caseId: UUID,
+    ): CaseDto {
+        logger.info { "Reopening case: $caseId" }
+        val userId = userService.getCurrentUser().id.toString()
+        val reopened = caseService.reopenCase(caseId)
+        logger.info { "Case reopened: $caseId" }
+        return reopened.withCallerMeta(userId)
+    }
+
     /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
     @PostMapping("/{caseId}/read", consumes = [MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE])
     @ResponseStatus(HttpStatus.OK)
@@ -407,6 +454,19 @@ class CaseController(
         return map { toDto(it).copy(lastMessageAt = lastMessageTimestamps[it.id]) }
     }
 
+    /**
+     * Namespace READ lets a member create a case; attaching it under another case also
+     * needs WRITE on that parent, as delegation from it would.
+     */
+    private fun checkParentCasePermission(
+        userId: String,
+        parentCaseId: UUID,
+    ) {
+        if (!permissionService.hasPermission(userId, EntityType.CASE, parentCaseId.toString(), Action.WRITE)) {
+            throw AccessDeniedException("No write permission on the parent case")
+        }
+    }
+
     companion object : KLogging()
 }
 
@@ -418,6 +478,8 @@ internal fun toDto(entity: Case) =
         title = entity.title,
         parentCaseId = entity.parentCaseId,
         scheduledPromptId = entity.scheduledPromptId,
+        runCostThreshold = entity.runCostThreshold,
+        reasoningEffort = entity.reasoningEffort,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by

@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *
  * | Property | Env var | Default | Description |
  * |---|---|---|---|
- * | `agentos.prompt.scheduler.enabled` | `AGENTOS_PROMPT_SCHEDULER_ENABLED` | false | Enable/disable the scheduler |
+ * | `agentos.prompt.scheduler.enabled` | `AGENTOS_PROMPT_SCHEDULER_ENABLED` | true | Enable/disable the scheduler |
  * | `agentos.prompt.scheduler.tick-interval-ms` | `AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS` | 60000 | Interval between claim ticks (ms) — read directly by `@Scheduled`, not via this class. Also drives the Run parent completion scan (`recoverOrphanedRunningRuns`) and the consumer-loop watchdog (`tickWatchdog`) |
  * | `agentos.prompt.scheduler.batch-size` | `AGENTOS_PROMPT_SCHEDULER_BATCH_SIZE` | 25 | Max UserRuns claimed per producer iteration |
  * | `agentos.prompt.scheduler.worker-count` | `AGENTOS_PROMPT_SCHEDULER_WORKER_COUNT` | 5 | Number of parallel consumer workers |
@@ -22,8 +22,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  */
 @ConfigurationProperties(prefix = "agentos.prompt.scheduler")
 data class SchedulerProperties(
-    /** Disabled by default; enable in production via env var AGENTOS_PROMPT_SCHEDULER_ENABLED=true. */
-    val enabled: Boolean = false,
+    /** Enabled by default; disable via env var AGENTOS_PROMPT_SCHEDULER_ENABLED=false. */
+    val enabled: Boolean = true,
     /**
      * Maximum number of UserRuns claimed per producer iteration.
      * A larger batch reduces DB round-trips; the channel capacity should be at least

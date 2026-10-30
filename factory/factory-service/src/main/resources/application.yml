@@ -1,0 +1,113 @@
+server:
+  port: 8141
+
+spring:
+  application:
+    name: factory-service
+# Neo4j reports every idempotent `CREATE ... IF NOT EXISTS` as an INFO
+# notification when the schema already exists. Keep actionable warnings while
+# hiding this expected startup noise.
+logging:
+  level:
+    org.springframework.data.neo4j.cypher: WARN
+    # SDN projects optional properties that Neo4j may never have stored (null
+    # properties are absent). Suppress repetitive unrecognized-schema notices
+    # only; keep query failures and other Cypher warning categories visible.
+    # Set to WARN temporarily when diagnosing missing labels/property typos.
+    org.springframework.data.neo4j.cypher.unrecognized: ${FACTORY_NEO4J_UNRECOGNIZED_LOG_LEVEL:ERROR}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+factory:
+  plugins:
+    # PF4J runtime directory, relative to the working directory (same model as
+    # agentos.plugins.dir). Coday and the IntelliJ run configuration both start the
+    # service from the Factory installation root, so the default needs no variable.
+    dir: ${FACTORY_PLUGINS_DIR:plugins/}
+  persistence:
+    # Persistence mode: `embedded-neo4j` (default, in-process engine, no Docker)
+    # or `neo4j` (standalone server, configure spring.neo4j.*).
+    mode: ${FACTORY_PERSISTENCE_MODE:embedded-neo4j}
+    data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:${user.home}/.coday/factory/data/database}
+    embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
+    embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:0}
+  cockpit:
+    # Optional external override. When unset, Factory serves the cockpit
+    # embedded in its JAR from classpath:/static/factory/.
+    assets-dir: ${FACTORY_COCKPIT_ASSETS_DIR:}
+  bind:
+    host: ${FACTORY_BIND_HOST:127.0.0.1}
+    unsafe-allow-remote-bind: ${FACTORY_UNSAFE_ALLOW_REMOTE_BIND:false}
+  encryption:
+    key: ${FACTORY_ENCRYPTION_KEY:NONE}
+    salt: ${FACTORY_ENCRYPTION_SALT:NONE}
+  tenant:
+    organization-id: ${FACTORY_ORGANIZATION_ID:default}
+    workstream-id: ${FACTORY_WORKSTREAM_ID:default}
+  security:
+    # Identity resolution mode, SHARED with AgentOS (same variable, same values):
+    #  - local (default): every caller is the OS user running Factory; headers and
+    #    bearers are ignored. Single-user machines only.
+    #  - auth: identity comes from a Factory JWT (Authorization: Bearer) or from the
+    #    headers of an authenticating proxy (X-External-User-Id, Cf-Access-Jwt-Assertion,
+    #    x-forwarded-email); no identity gives 401.
+    mode: ${FACTORY_SECURITY_MODE:local}
+    # Secret the HS256 JWTs of the Factory users are signed with. Mint a token with
+    # `./gradlew :factory-service:mintToken` (see factory/tools/FACTORY_WORKSTREAM_HTTP_API.md).
+    fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
+  runs:
+    dir: ${FACTORY_RUNS_DIR:factory/runs}
+    agentos-url: ${AGENTOS_URL:http://localhost:8124}
+    jira-base-url: ${JIRA_BASE_URL:}
+    jira-email: ${JIRA_EMAIL:}
+    jira-api-token: ${JIRA_API_TOKEN:}
+  proxy:
+    agentos-url: ${AGENTOS_URL:http://localhost:8124}
+  outbox:
+    # Background drain of the transactional outbox (`result_submitted` →
+    # sequencer continuation). Enabled in production; the shared integration
+    # test context disables it so background drains never race test fixtures.
+    drain-enabled: ${FACTORY_OUTBOX_DRAIN_ENABLED:true}
+    drain-interval-ms: ${FACTORY_OUTBOX_DRAIN_INTERVAL_MS:5000}
+    drain-initial-delay-ms: ${FACTORY_OUTBOX_DRAIN_INITIAL_DELAY_MS:10000}
+  workspace:
+    # Lot F: read-only workspace pre-check + run-worktree binding of code steps.
+    enabled: ${FACTORY_WORKSPACE_ENABLED:true}
+    git-workspaces-enabled: ${FACTORY_WORKSPACE_GIT_WORKSPACES_ENABLED:true}
+    auto-worktree-for-root-cases: ${FACTORY_WORKSPACE_AUTO_WORKTREE_FOR_ROOT_CASES:true}
+    ready-timeout-ms: ${FACTORY_WORKSPACE_READY_TIMEOUT_MS:120000}
+    ready-poll-interval-ms: ${FACTORY_WORKSPACE_READY_POLL_INTERVAL_MS:1000}
+  verification:
+    front:
+      # Factory-owned policy: targets do not need factory/verification.json for these names.
+      build-hosts: ${FACTORY_FRONT_BUILD_HOSTS:aphrodite,admin,agentic-studio,copilot-chat}
+      build-target: ${FACTORY_FRONT_BUILD_TARGET:build}
+      build-configuration: ${FACTORY_FRONT_BUILD_CONFIGURATION:development}
+      test-target: ${FACTORY_FRONT_TEST_TARGET:frontend-test}
+      timeout-ms: ${FACTORY_FRONT_TIMEOUT_MS:1800000}
+  workflow:
+    seed:
+      # Registers the bundled declarative session definitions
+      # (`classpath:sessions/*.json`) into the configured default tenant on startup.
+      enabled: ${FACTORY_WORKFLOW_SEED_ENABLED:true}
+  artifact:
+    retention-days: ${ARTIFACT_RETENTION_DAYS:90}
+    signed-url-ttl-seconds: ${ARTIFACT_SIGNED_URL_TTL:900}
+    blob-client: ${ARTIFACT_BLOB_CLIENT:in-memory}
+    s3:
+      endpoint: ${S3_ENDPOINT:http://localhost:9000}
+      region: ${S3_REGION:us-east-1}
+      bucket: ${S3_BUCKET:coday-artifacts}
+      access-key-id: ${S3_ACCESS_KEY_ID:minioadmin}
+      secret-access-key: ${S3_SECRET_ACCESS_KEY:minioadmin}

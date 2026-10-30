@@ -2,19 +2,46 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
+import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 /**
- * Unit tests for [ScheduledPromptNode.computeTripleKey].
+ * Unit tests for [ScheduledPromptNode].
  *
- * Verifies that the tripleKey is computed by slugifying the name,
- * so that names differing only by case or spacing produce the same key
- * and would be detected as conflicts by the UNIQUE constraint.
+ * Covers:
+ * - [ScheduledPromptNode.computeTripleKey]: slugification and scope encoding
+ * - [ScheduledPromptNode.fromDomain] / [ScheduledPromptNode.toDomain]: externalMetadata round-trip
  */
 class ScheduledPromptNodeUnitSpec : StringSpec({
 
     val nsId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     val userId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000002")
+
+    /** Builds a minimal [ScheduledPrompt] with all required fields populated. */
+    fun minimalPrompt(
+        externalMetadata: Map<String, Any?>? = null,
+    ) = ScheduledPrompt(
+        metadata = EntityMetadata(id = UUID.randomUUID()),
+        agentConfigId = UUID.randomUUID(),
+        promptTemplateId = UUID.randomUUID(),
+        name = "test-prompt",
+        recurrence = Recurrence(
+            unit = SchedulerUnit.WEEK,
+            timeUtc = LocalTime.of(8, 0),
+        ),
+        planning = Planning(
+            startDate = LocalDate.of(2026, 1, 1),
+            endType = SchedulerEndType.NEVER,
+        ),
+        nextRunAt = Instant.parse("2026-01-01T08:00:00Z"),
+        externalMetadata = externalMetadata,
+    )
 
     // -------------------------------------------------------------------------
     // Platform scope (null, null)
@@ -69,5 +96,31 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
         val k1 = ScheduledPromptNode.computeTripleKey(nsId, null, "Daily Digest")
         val k2 = ScheduledPromptNode.computeTripleKey(nsId, null, "Weekly Report")
         (k1 == k2) shouldBe false
+    }
+
+    // -------------------------------------------------------------------------
+    // externalMetadata — fromDomain / toDomain round-trip
+    // -------------------------------------------------------------------------
+
+    "fromDomain with non-null externalMetadata serializes to non-null externalMetadataJson" {
+        val metadata = mapOf("isStandard" to true, "source" to "integration")
+        val node = ScheduledPromptNode.fromDomain(minimalPrompt(externalMetadata = metadata))
+        node.externalMetadataJson shouldNotBe null
+    }
+
+    "toDomain restores externalMetadata map correctly from serialized node" {
+        val metadata = mapOf("isStandard" to true, "source" to "integration")
+        val restored = ScheduledPromptNode.fromDomain(minimalPrompt(externalMetadata = metadata)).toDomain()
+        restored.externalMetadata shouldBe metadata
+    }
+
+    "fromDomain with null externalMetadata produces null externalMetadataJson" {
+        val node = ScheduledPromptNode.fromDomain(minimalPrompt(externalMetadata = null))
+        node.externalMetadataJson shouldBe null
+    }
+
+    "toDomain with null externalMetadataJson produces null externalMetadata" {
+        val restored = ScheduledPromptNode.fromDomain(minimalPrompt(externalMetadata = null)).toDomain()
+        restored.externalMetadata shouldBe null
     }
 })

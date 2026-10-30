@@ -92,7 +92,7 @@ test.fixme('story 6.5 — Integrations all-scopes golden path', async ({ page })
     await route.continue()
   })
 
-  await page.goto(`/agentos/${NS_ID}/integrations`)
+  await page.goto(`/${NS_ID}/integrations`)
 
   // 1 — three sections rendered with the right labels
   await expect(page.getByText('Configurations du namespace')).toBeVisible()

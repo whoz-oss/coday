@@ -2,7 +2,9 @@ package io.whozoss.agentos.chat
 
 import com.google.genai.Client
 import io.micrometer.observation.ObservationRegistry
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.anthropic.api.AnthropicApi
@@ -50,6 +52,7 @@ data class AnthropicProperties(
 class ChatModelFactory(
     private val observationRegistry: ObservationRegistry,
     private val anthropicProperties: AnthropicProperties,
+    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
     fun createChatModel(
         apiType: AiApiType,
@@ -57,8 +60,11 @@ class ChatModelFactory(
         apiKey: String?,
         modelName: String,
         temperature: Double? = null,
-        maxTokens: Int? = null,
+        /** Maximum tokens to generate in the completion. Does not affect the input context window. */
+        maxCompletionTokens: Int? = null,
         headers: Map<String, String> = emptyMap(),
+        /** Null keeps the provider default; ignored for Anthropic and Gemini, where it is rejected at save time. */
+        reasoningEffort: ReasoningEffort? = null,
     ): ChatModel {
         val resolvedApiKey = apiKey ?: ""
         return when (apiType) {
@@ -68,7 +74,8 @@ class ChatModelFactory(
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
+                    maxCompletionTokens = maxCompletionTokens,
+                    reasoningEffort = reasoningEffort,
                 )
             }
 
@@ -78,8 +85,9 @@ class ChatModelFactory(
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
+                    maxCompletionTokens = maxCompletionTokens,
                     headers = headers,
+                    reasoningEffort = reasoningEffort,
                 )
             }
 
@@ -89,7 +97,7 @@ class ChatModelFactory(
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
+                    maxCompletionTokens = maxCompletionTokens,
                 )
             }
 
@@ -98,7 +106,7 @@ class ChatModelFactory(
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
+                    maxCompletionTokens = maxCompletionTokens,
                 )
             }
 
@@ -107,7 +115,8 @@ class ChatModelFactory(
                     baseUrl = baseUrl ?: OLLAMA_DEFAULT_BASE_URL,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
+                    maxCompletionTokens = maxCompletionTokens,
+                    reasoningEffort = reasoningEffort,
                 )
             }
         }
@@ -118,7 +127,8 @@ class ChatModelFactory(
         apiKey: String,
         model: String,
         temp: Double,
-        maxTokens: Int?,
+        maxCompletionTokens: Int?,
+        reasoningEffort: ReasoningEffort?,
     ): ChatModel {
         val api =
             OpenAiApi
@@ -132,10 +142,13 @@ class ChatModelFactory(
                 .builder()
                 .temperature(temp)
                 .model(model)
-        if (maxTokens != null) {
-            optionsBuilder.maxCompletionTokens(maxTokens)
+        if (usageConfig.enabled) {
+            optionsBuilder.streamUsage(true)
         }
-        val options = optionsBuilder.build()
+        if (maxCompletionTokens != null) {
+            optionsBuilder.maxCompletionTokens(maxCompletionTokens)
+        }
+        val options = optionsBuilder.applyReasoningEffort(reasoningEffort).build()
 
         return OpenAiChatModel(
             api,
@@ -152,8 +165,9 @@ class ChatModelFactory(
         apiKey: String,
         model: String,
         temp: Double,
-        maxTokens: Int?,
+        maxCompletionTokens: Int?,
         headers: Map<String, String>,
+        reasoningEffort: ReasoningEffort?,
     ): ChatModel {
         var builder = OpenAiApi.Builder().baseUrl(baseUrl).apiKey(apiKey)
         if (headers.isNotEmpty()) {
@@ -170,10 +184,13 @@ class ChatModelFactory(
                 .builder()
                 .temperature(temp)
                 .model(model)
-        if (maxTokens != null) {
-            optionsBuilder.maxTokens(maxTokens)
+        if (usageConfig.enabled) {
+            optionsBuilder.streamUsage(true)
         }
-        val options = optionsBuilder.extraBody(mapOf("chat_template_kwargs" to mapOf("enable_thinking" to false))).build()
+        if (maxCompletionTokens != null) {
+            optionsBuilder.maxTokens(maxCompletionTokens)
+        }
+        val options = optionsBuilder.applyVllmReasoningEffort(reasoningEffort).build()
 
         return OpenAiChatModel(
             api,
@@ -190,7 +207,7 @@ class ChatModelFactory(
         apiKey: String,
         model: String,
         temp: Double,
-        maxTokens: Int?,
+        maxCompletionTokens: Int?,
     ): ChatModel {
         val builder = AnthropicApi.Builder().baseUrl(baseUrl).apiKey(apiKey)
         val api = builder.build()
@@ -201,8 +218,8 @@ class ChatModelFactory(
                 .temperature(temp)
                 .model(model)
 
-        if (maxTokens != null) {
-            options.maxTokens(maxTokens)
+        if (maxCompletionTokens != null) {
+            options.maxTokens(maxCompletionTokens)
         }
 
         if (anthropicProperties.promptCachingEnabled) {
@@ -227,7 +244,7 @@ class ChatModelFactory(
         apiKey: String,
         model: String,
         temp: Double,
-        maxTokens: Int?,
+        maxCompletionTokens: Int?,
     ): ChatModel {
         val api = Client.builder().apiKey(apiKey).build()
 
@@ -236,8 +253,8 @@ class ChatModelFactory(
                 .builder()
                 .model(model)
                 .temperature(temp)
-        if (maxTokens != null) {
-            optionsBuilder.maxOutputTokens(maxTokens)
+        if (maxCompletionTokens != null) {
+            optionsBuilder.maxOutputTokens(maxCompletionTokens)
         }
         val options = optionsBuilder.build()
 
@@ -254,7 +271,8 @@ class ChatModelFactory(
         baseUrl: String,
         model: String,
         temp: Double,
-        maxTokens: Int?,
+        maxCompletionTokens: Int?,
+        reasoningEffort: ReasoningEffort?,
     ): ChatModel {
         val api = OllamaApi.builder().baseUrl(baseUrl).build()
 
@@ -263,11 +281,10 @@ class ChatModelFactory(
                 .builder()
                 .model(model)
                 .temperature(temp)
-        if (maxTokens != null) {
-            optionsBuilder.numPredict(maxTokens)
+        if (maxCompletionTokens != null) {
+            optionsBuilder.numPredict(maxCompletionTokens)
         }
-        optionsBuilder.disableThinking()
-        val options = optionsBuilder.build()
+        val options = optionsBuilder.applyReasoningEffort(reasoningEffort).build()
 
         return OllamaChatModel(
             api,

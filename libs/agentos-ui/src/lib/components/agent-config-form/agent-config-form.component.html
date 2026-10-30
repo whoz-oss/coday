@@ -124,17 +124,124 @@
               </div>
             }
           }
+          @if (configAgentExposureWarning()) {
+            <p class="agent-config-form__integration-warning" role="note">
+              This agent can read the AgentOS configuration and also has a network integration or sub-agents: what it
+              reads could be sent outside without any confirmation. Prefer a dedicated configuration agent without them.
+            </p>
+          }
         </fieldset>
       }
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__toggle-label">
-          <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="advancedExecutionControl" />
-          <span class="agent-config-form__toggle-text">Advanced mode</span>
+
+      <!-- Skills section: writes AgentConfig.skillSelectors -->
+      <fieldset class="agent-config-form__skills">
+        <legend class="agent-config-form__label">Skills</legend>
+        <p class="agent-config-form__skills-hint">
+          Instruction bundles this agent can read on demand. Selecting at least one grants it the
+          <code class="agent-config-form__code">readSkill</code> and
+          <code class="agent-config-form__code">readSkillResource</code> tools; selecting none grants neither.
+          @if (isPlatformMode) {
+            A platform config can only list platform skills here: namespace skills are resolved per namespace when the
+            agent runs.
+          }
+        </p>
+
+        <label class="agent-config-form__skill-all">
+          <input
+            class="agent-config-form__skill-checkbox"
+            type="checkbox"
+            [checked]="allSkillsSelected()"
+            (change)="toggleAllSkills()"
+          />
+          <span class="agent-config-form__skill-name">
+            Every skill in the catalogue (<code class="agent-config-form__code">*</code>)
+          </span>
         </label>
-        <p class="agent-config-form__toggle-hint">
-          When enabled, this agent uses a multi-step reasoning loop instead of a single LLM call.
+        <p class="agent-config-form__field-hint">
+          Resolved at run time, so skills added later are granted too, without editing this agent.
+        </p>
+
+        @if (namedSkillSelectionDropped()) {
+          <p class="agent-config-form__skills-warning" role="alert">
+            Saving with this on replaces the selection below with
+            <code class="agent-config-form__code">*</code>.
+          </p>
+        }
+
+        @if (skillCatalogueUnavailable()) {
+          <p class="agent-config-form__skills-warning" role="alert">
+            The skill catalogue could not be loaded. What this agent already declares is listed below and preserved on
+            save.
+          </p>
+        }
+
+        @if (skillRows().length === 0) {
+          <p class="agent-config-form__skills-empty">No skill available in this scope yet.</p>
+        } @else {
+          @for (row of skillRows(); track row.selector) {
+            <div class="agent-config-form__skill-row">
+              <label class="agent-config-form__skill-toggle">
+                <input
+                  class="agent-config-form__skill-checkbox"
+                  type="checkbox"
+                  [checked]="row.selected()"
+                  [disabled]="allSkillsSelected()"
+                  (change)="toggleSkill(row)"
+                />
+                <span class="agent-config-form__skill-name">{{ row.name }}</span>
+                @if (row.platform) {
+                  <span class="agent-config-form__skill-badge">platform</span>
+                }
+                @if (row.unresolved) {
+                  <span class="agent-config-form__skill-badge agent-config-form__skill-badge--unresolved">
+                    {{ skillCatalogueUnavailable() ? 'not verified' : 'no matching skill' }}
+                  </span>
+                }
+              </label>
+              @if (row.description) {
+                <p class="agent-config-form__skill-desc">{{ row.description }}</p>
+              }
+            </div>
+          }
+        }
+      </fieldset>
+
+      <!-- Execution mode — replaces the old advancedExecution checkbox -->
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="agent-config-execution-mode">Execution mode</label>
+        <select id="agent-config-execution-mode" class="agent-config-form__select" [formControl]="executionModeControl">
+          <option [value]="ExecutionMode.SIMPLE">SIMPLE — Standard agent (single LLM call)</option>
+          <option [value]="ExecutionMode.ADVANCED">ADVANCED — Multi-step reasoning loop</option>
+          <option [value]="ExecutionMode.LOOP">LOOP — Bulk loop agent (no LLM, experimental)</option>
+        </select>
+        <p class="agent-config-form__field-hint">
+          SIMPLE runs a single LLM pass. ADVANCED uses an intention loop for complex tasks. LOOP (experimental) starts
+          one case per result of a tool, without an LLM — run it with "Launch loop" in the agent list menu.
         </p>
       </div>
+
+      @if (isLoopMode()) {
+        <div class="agent-config-form__field">
+          <label class="agent-config-form__label" for="agent-config-loop-config">Loop configuration (JSON)</label>
+          <textarea
+            id="agent-config-loop-config"
+            class="agent-config-form__textarea agent-config-form__textarea--mono"
+            rows="10"
+            [placeholder]="loopConfigPlaceholder"
+            [formControl]="loopConfigControl"
+            spellcheck="false"
+            autocomplete="off"
+          ></textarea>
+          @if (loopConfigControl.invalid && loopConfigControl.touched) {
+            <p class="agent-config-form__field-error" role="alert">Invalid JSON — please fix the syntax.</p>
+          }
+          <p class="agent-config-form__field-hint">
+            Default payload for this loop agent. Overridden at launch time if the first message contains a valid
+            <code class="agent-config-form__code">AgentLoopPayload</code>. Leave empty if you always provide the payload
+            at launch.
+          </p>
+        </div>
+      }
 
       <div class="agent-config-form__field">
         <label class="agent-config-form__toggle-label">
@@ -148,7 +255,7 @@
         <span class="agent-config-form__label">Sub-agents</span>
         <p class="agent-config-form__field-hint">
           Glob patterns for agents this agent may delegate to. <code class="agent-config-form__code">*</code> matches
-          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
+          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
           <code class="agent-config-form__code">*</code> for all). Leave empty to disable delegation.
         </p>
 
@@ -194,6 +301,41 @@
             +
           </button>
         </div>
+      </div>
+
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="delegation-timeout">Delegation timeout (seconds)</label>
+        <p class="agent-config-form__field-hint" id="delegation-timeout-hint">
+          How long each delegation launched by this agent waits without activity from the sub-agent, including its own
+          delegations. When it runs out, the sub-agent and its active descendants are stopped and can be resumed. Leave
+          empty to use the server default
+          @if (defaultDelegationTimeoutSeconds() !== null) {
+            : {{ defaultDelegationTimeoutSeconds() }} s ({{ defaultDelegationTimeoutSeconds()! / 60 }} min)
+          }
+          .
+        </p>
+        <input
+          id="delegation-timeout"
+          class="agent-config-form__input"
+          type="number"
+          min="1"
+          max="2147483647"
+          step="1"
+          placeholder="Server default"
+          aria-describedby="delegation-timeout-hint delegation-timeout-error"
+          [attr.aria-invalid]="delegationTimeoutControl.invalid"
+          [formControl]="delegationTimeoutControl"
+        />
+        @if (delegationTimeoutControl.invalid) {
+          <p id="delegation-timeout-error" class="agent-config-form__field-hint" role="alert">
+            Enter a valid positive whole number of seconds, or leave empty to inherit the server default.
+          </p>
+        }
+        @if (delegationTimeoutControl.value !== null) {
+          <button class="agent-config-form__sub-agent-btn" type="button" (click)="useDefaultDelegationTimeout()">
+            Use server default
+          </button>
+        }
       </div>
 
       <div class="agent-config-form__actions">

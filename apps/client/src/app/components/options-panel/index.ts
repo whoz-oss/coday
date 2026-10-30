@@ -1,1 +1,0 @@
-export { OptionsPanelComponent } from './options-panel.component'

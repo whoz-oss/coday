@@ -7,6 +7,7 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ReasoningEffort } from './reasoning-effort'
 
 export interface Case {
   created?: string
@@ -16,19 +17,37 @@ export interface Case {
   modified?: string
   namespaceId: string
   parentCaseId?: string
+  /**
+   * Timestamp of the caller\'s last read. Null = never read (unread).
+   */
+  readAt?: string
+  /**
+   * Per-case override of the reasoning effort of the agents running in the case. Null means each agent uses the effort of its model. Replaces the model effort of every agent, whatever the model has configured; not sent to Anthropic and Gemini providers.
+   */
+  reasoningEffort?: ReasoningEffort
   removed: boolean
   /**
    * The caller\'s direct relation on this case
    */
   role?: CaseRoleEnum
+  /**
+   * Per-case override of the run cost threshold, in the platform currency unit. Null means inherit from the namespace or platform default (never \"no limit\" or \"zero\"). Set upfront for costly runs, or written by the enforcement mechanism on continuation.
+   */
+  runCostThreshold?: number
+  scheduledPromptId?: string
   status: CaseStatusEnum
   title?: string
+  /**
+   * Create only. Whether a new top-level case gets the worktree its namespace creates for every case. Null leaves it to the namespace\'s settings, false creates an ordinary case, true requires it and refuses the creation when the namespace does not create one or cannot. Must be null for a sub-case.
+   */
+  worktree?: boolean
 }
 export enum CaseRoleEnum {
   ADMIN = 'ADMIN',
   MEMBER = 'MEMBER',
 }
 export enum CaseStatusEnum {
+  CREATED = 'CREATED',
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
   IDLE = 'IDLE',

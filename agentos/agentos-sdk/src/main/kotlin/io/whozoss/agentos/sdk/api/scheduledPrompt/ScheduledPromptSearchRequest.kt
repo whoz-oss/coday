@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.scheduledPrompt
 import com.fasterxml.jackson.annotation.JsonIgnore
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.AssertTrue
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -30,6 +31,17 @@ import java.util.UUID
  * [agentConfigIds] is an optional filter: when provided, only scheduled prompts linked
  * to one of those agents are returned. When null or empty, all scheduled prompts at the
  * resolved scope level are returned.
+ *
+ * [withRemoved] — when true, soft-deleted (tombstoned) entries are included in the result.
+ * Tombstoned entries are identified by [ScheduledPromptDto.removed] == true.
+ * Use together with [modifiedSince] to discover deletions during a delta-sync poll.
+ *
+ * [modifiedSince] — returns only entries whose modification timestamp is strictly after the
+ * given instant (exclusive). Intended as a delta-sync cursor: a client stores the timestamp
+ * of its last successful poll and passes it on the next call to receive only changes.
+ * Note that `nextRunAt` and `lastRunAt` updates are **not** reflected in the modification
+ * timestamp — scheduler bookkeeping does not mark an entry as modified — so a client
+ * tracking those values must refetch by id.
  */
 @Schema(name = "ScheduledPromptSearchRequest")
 data class ScheduledPromptSearchRequest(
@@ -42,6 +54,9 @@ data class ScheduledPromptSearchRequest(
     @field:Schema(types = ["string", "null"])
     val userExternalId: String? = null,
     val agentConfigIds: List<UUID>? = null,
+    @field:Schema(defaultValue = "false")
+    val withRemoved: Boolean = false,
+    val modifiedSince: Instant? = null,
 ) {
     @get:AssertTrue(message = "namespaceId and namespaceExternalId cannot both be provided")
     @get:JsonIgnore

@@ -45,6 +45,8 @@ interface PromptRepository : EntityRepository<Prompt, UUID> {
     /**
      * Soft-delete all non-removed prompts linked to the given agentConfigId.
      * Called on AgentConfig soft-delete for cascade.
+     *
+     * @return the number of prompts that were soft-deleted
      */
-    fun softDeleteByAgentConfigId(agentConfigId: UUID)
+    fun softDeleteByAgentConfigId(agentConfigId: UUID): Int
 }

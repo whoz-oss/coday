@@ -1,6 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -20,7 +21,7 @@ import java.util.UUID
 data class Case(
     override val metadata: EntityMetadata = EntityMetadata(),
     val namespaceId: UUID,
-    val status: CaseStatus = CaseStatus.PENDING,
+    val status: CaseStatus = CaseStatus.CREATED,
     val title: String = "Case ${metadata.id}",
     /**
      * Id of the parent case when this case was created by a delegation tool.
@@ -32,4 +33,36 @@ data class Case(
      * Null for cases started by a human user or a delegation tool.
      */
     val scheduledPromptId: UUID? = null,
+    /**
+     * Id of the case whose agent started this one with the `FreeCaseStarter` tool
+     * ([io.whozoss.agentos.casePlugin.CaseStarterService]). Null for cases started otherwise.
+     *
+     * A trace of provenance, unlike [parentCaseId]: a started case is a top-level case in every other
+     * respect (own lifecycle, workspace, cost and delegation depth). The only thing that reads it is the rule
+     * that keeps a started case, and the cases delegated from it, from starting another one.
+     */
+    val originCaseId: UUID? = null,
+    /**
+     * Per-case override of the run cost threshold, expressed in the platform's currency unit.
+     *
+     * **`null` means "inherit from the namespace or platform default", never "no limit" or "zero".**
+     *
+     * This field serves two purposes:
+     * - **Upfront configuration**: set before a run when the caller knows the work ahead will
+     *   be costly (e.g. a large refactoring session). Lets the user pre-authorise a higher spend
+     *   without being interrupted mid-run.
+     * - **Negotiation materialisation**: written by the cost-enforcement mechanism when the user chooses to continue after a threshold breach. A new absolute
+     *   value is persisted, never a delta or a multiplier, so the stored fact is independent of
+     *   any platform or namespace configuration that may change later.
+     */
+    val runCostThreshold: Double? = null,
+    /**
+     * Per-case override of the reasoning effort of the agents that run in this case.
+     *
+     * **`null` means "use the effort of each agent's model"** ([io.whozoss.agentos.sdk.aiProvider.AiModel.reasoningEffort]).
+     * Read at the start of each agent run (each step of a message, redirects included), never during one.
+     * Replaces the effort of every agent's model, whatever it has configured; the provider's API type then
+     * decides what is sent (nothing for Anthropic and Gemini). Sub-cases do not inherit it.
+     */
+    val reasoningEffort: ReasoningEffort? = null,
 ) : Entity

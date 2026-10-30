@@ -1,0 +1,149 @@
+<div class="skill-inspect">
+  <header class="skill-inspect__header">
+    <button class="skill-inspect__back" type="button" (click)="back()" title="Back to skills">
+      <span class="skill-inspect__back-icon">&#8592;</span>
+      Skills
+    </button>
+    <h1 class="skill-inspect__title">Skill</h1>
+    @if (skill() && !isFilesystemBacked()) {
+      <a class="skill-inspect__sibling-link" [routerLink]="editRoute()">Edit skill &rarr;</a>
+    }
+    @if (isPlatformMode) {
+      <span class="skill-inspect__platform-badge">Platform level</span>
+    }
+  </header>
+
+  @if (isLoading()) {
+    <p class="skill-inspect__loading">Loading&hellip;</p>
+  } @else if (hasError()) {
+    <p class="skill-inspect__error" role="alert">Failed to load skill.</p>
+  } @else if (skill(); as sk) {
+    <div class="skill-inspect__content">
+      <!-- General info -->
+      <section class="skill-inspect__section">
+        <h2 class="skill-inspect__section-title">General</h2>
+        <dl class="skill-inspect__dl">
+          <dt class="skill-inspect__dt">Name</dt>
+          <dd class="skill-inspect__dd skill-inspect__dd--mono">{{ sk.name }}</dd>
+
+          <dt class="skill-inspect__dt">Description</dt>
+          <dd class="skill-inspect__dd">{{ sk.description }}</dd>
+
+          <dt class="skill-inspect__dt">Scope</dt>
+          <dd class="skill-inspect__dd">{{ sk.namespaceId ? 'Namespace' : 'Platform' }}</dd>
+
+          <dt class="skill-inspect__dt">Storage</dt>
+          <dd class="skill-inspect__dd">
+            <span class="skill-inspect__badge" [class.skill-inspect__badge--readonly]="isFilesystemBacked()">
+              {{ isFilesystemBacked() ? 'SKILL.md file (read-only)' : 'Database' }}
+            </span>
+          </dd>
+
+          <!-- Audit fields are meaningless for a filesystem skill: the entity is rebuilt on
+               every read, so its timestamps are the read time. -->
+          @if (!isFilesystemBacked()) {
+            @if (sk.createdBy) {
+              <dt class="skill-inspect__dt">Created by</dt>
+              <dd class="skill-inspect__dd">{{ sk.createdBy }}</dd>
+            }
+            @if (sk.updatedOn) {
+              <dt class="skill-inspect__dt">Last updated</dt>
+              <dd class="skill-inspect__dd">{{ sk.updatedOn }}</dd>
+            }
+          }
+        </dl>
+      </section>
+
+      <!-- Which agents reference this skill, computed from their selectors -->
+      <section class="skill-inspect__section">
+        <h2 class="skill-inspect__section-title">
+          Used by
+          @if (!isPlatformMode && !consumersLoading() && !consumersUnavailable()) {
+            <span class="skill-inspect__count">({{ consumers().length }})</span>
+          }
+        </h2>
+
+        @if (isPlatformMode) {
+          <p class="skill-inspect__empty">
+            A platform skill is offered to every namespace. Open it from a namespace to see which of its agents use it.
+          </p>
+        } @else if (consumersLoading()) {
+          <p class="skill-inspect__empty">Loading&hellip;</p>
+        } @else if (consumersUnavailable()) {
+          <p class="skill-inspect__error" role="alert">
+            The agent configs could not be read, so it is unknown whether any agent uses this skill.
+          </p>
+        } @else if (consumers().length === 0) {
+          <p class="skill-inspect__empty">No agent references this skill.</p>
+        } @else {
+          <ul class="skill-inspect__consumers">
+            @for (consumer of consumers(); track consumer.name + consumer.grant) {
+              <li class="skill-inspect__consumer">
+                <span class="skill-inspect__consumer-name">{{ consumer.name }}</span>
+                @if (consumer.platform) {
+                  <span class="skill-inspect__badge">platform agent</span>
+                }
+                @if (consumer.grant === 'all') {
+                  <span class="skill-inspect__badge">via *</span>
+                }
+              </li>
+            }
+          </ul>
+          <p class="skill-inspect__consumers-hint">
+            An agent listed <code>via *</code> takes the whole catalogue and keeps working without this skill. The
+            others name it, so deleting the skill leaves their selector resolving to nothing.
+          </p>
+        }
+      </section>
+
+      <!-- Body -->
+      <section class="skill-inspect__section">
+        <button
+          class="skill-inspect__collapsible"
+          type="button"
+          (click)="toggleBody()"
+          [attr.aria-expanded]="!bodyCollapsed()"
+        >
+          <h2 class="skill-inspect__section-title">Body</h2>
+          <span class="skill-inspect__chevron" [class.skill-inspect__chevron--open]="!bodyCollapsed()">&#9660;</span>
+        </button>
+        @if (!bodyCollapsed()) {
+          <div class="skill-inspect__body" [innerHTML]="sk.body | agentosMarkdown"></div>
+        }
+      </section>
+
+      <!-- Resources -->
+      <section class="skill-inspect__section">
+        <h2 class="skill-inspect__section-title">
+          Resources
+          <span class="skill-inspect__count">({{ resourcePaths().length }})</span>
+        </h2>
+
+        @if (resourcePaths().length === 0) {
+          <p class="skill-inspect__empty">No resources bundled with this skill.</p>
+        } @else {
+          <ul class="skill-inspect__resources">
+            @for (path of resourcePaths(); track path) {
+              <li class="skill-inspect__resource">
+                <button
+                  class="skill-inspect__resource-header"
+                  type="button"
+                  (click)="toggleResource(path)"
+                  [attr.aria-expanded]="isResourceExpanded(path)"
+                >
+                  <span class="skill-inspect__resource-path">{{ path }}</span>
+                  <span class="skill-inspect__chevron" [class.skill-inspect__chevron--open]="isResourceExpanded(path)"
+                    >&#9660;</span
+                  >
+                </button>
+                @if (isResourceExpanded(path)) {
+                  <pre class="skill-inspect__resource-content">{{ resourceContent(path) }}</pre>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
+  }
+</div>

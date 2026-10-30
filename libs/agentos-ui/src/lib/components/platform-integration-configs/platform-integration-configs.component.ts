@@ -5,13 +5,15 @@ import { Router } from '@angular/router'
 import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
 /**
  * PlatformIntegrationConfigsComponent — list view for platform-level integration configs.
  *
  * Loaded at /agentos/admin/integration-configs. Accessible to super-admins only
- * (backend enforces via 403; frontend shows the link only when user.isAdmin).
+ * (the admin UI is restricted; backend platform writes require super-admin).
+ * The list endpoint itself is available to any authenticated user.
  *
  * Platform integration configs have no namespaceId and no userId — they are shared
  * across all namespaces.
@@ -26,6 +28,7 @@ import { IntegrationConfigItemComponent } from '../integration-config-item/integ
 export class PlatformIntegrationConfigsComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly state = inject(IntegrationConfigStateService)
   private readonly integrationConfigController = inject(IntegrationConfigControllerService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
@@ -36,7 +39,7 @@ export class PlatformIntegrationConfigsComponent {
   private readonly configs$ = this.refresh$.pipe(
     switchMap(() => {
       this.isLoading.set(true)
-      return this.integrationConfigController.listIntegrationConfig()
+      return this.state.loadPlatformConfigs()
     })
   )
 

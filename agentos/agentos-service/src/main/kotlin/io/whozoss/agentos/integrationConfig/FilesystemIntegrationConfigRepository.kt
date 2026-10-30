@@ -8,6 +8,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.plugin.filesystem.substituteConfigPath
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import java.nio.file.Path
@@ -91,6 +92,27 @@ class FilesystemIntegrationConfigRepository(
         return fromDelegate + filesystem
     }
 
+    /** Resolves synthetic filesystem IDs surfaced by listings, while preferring persisted rows. */
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<IntegrationConfig> {
+        val fromDelegate = delegate.findByIds(ids, withRemoved)
+        val foundIds = fromDelegate.mapTo(HashSet()) { it.metadata.id }
+        val missing = ids.filter { it !in foundIds }
+        if (missing.isEmpty()) return fromDelegate
+
+        val missingSet = missing.toHashSet()
+        val fromFilesystem =
+            namespaceRepository
+                .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+                .filter { it.configPath != null }
+                .flatMap { namespace ->
+                    filesystemConfigs(namespace.metadata.id).filter { it.metadata.id in missingSet }
+                }
+        return fromDelegate + fromFilesystem
+    }
+
     /**
      * Point lookup by the (namespaceId, userId, name) triple.
      *
@@ -168,6 +190,8 @@ class FilesystemIntegrationConfigRepository(
             description = integrationConfigYaml.description,
             parameters = substituteConfigPath(integrationConfigYaml.parameters, configPath),
             authSettingName = integrationConfigYaml.authSettingName,
+            source = IntegrationConfigSource.FILESYSTEM,
+            autoGrant = integrationConfigYaml.autoGrant,
         )
     }
 
@@ -204,4 +228,14 @@ private data class IntegrationConfigYamlModel(
     val description: String? = null,
     val parameters: JsonNode? = null,
     val authSettingName: String? = null,
+    /**
+     * Grants this config to every agent of the namespace without any agent naming it. Omitted
+     * means `false`.
+     *
+     * Note that a filesystem config bypasses [IntegrationConfigServiceImpl]'s save-time checks,
+     * including the restriction of `autoGrant` to
+     * [IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES]: files under `configPath` are part of the
+     * deployment, trusted like the rest of it, and are never written through the API.
+     */
+    val autoGrant: Boolean = false,
 )

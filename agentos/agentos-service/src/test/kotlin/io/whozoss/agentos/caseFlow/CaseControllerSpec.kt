@@ -10,6 +10,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
@@ -24,6 +25,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
@@ -51,6 +53,7 @@ class CaseControllerSpec :
         val permissionService = mockk<PermissionService>()
         val favoriteService = mockk<FavoriteService>()
         val caseReadService = mockk<CaseReadService>()
+        val caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true)
         val controller =
             CaseController(
                 caseService,
@@ -60,6 +63,7 @@ class CaseControllerSpec :
                 permissionService,
                 favoriteService,
                 caseReadService,
+                caseListUpdateBroadcaster,
             )
 
         val callerId = UUID.randomUUID()
@@ -79,7 +83,7 @@ class CaseControllerSpec :
         ) = Case(
             metadata = EntityMetadata(id = id),
             namespaceId = namespaceId,
-            status = CaseStatus.PENDING,
+            status = CaseStatus.CREATED,
             title = title,
         )
 
@@ -89,7 +93,7 @@ class CaseControllerSpec :
         ) = CaseDto(
             id = id,
             namespaceId = namespaceId,
-            status = CaseStatus.PENDING,
+            status = CaseStatus.CREATED,
             title = title,
         )
 
@@ -100,6 +104,8 @@ class CaseControllerSpec :
             every { favoriteService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
             // Default: no messages in any case. Tests that assert lastMessageAt override this.
             every { caseEventService.findLastMessageTimestamps(any()) } returns emptyMap()
+            // Default: namespace defines no runCostThreshold. Tests that need a specific value override this.
+            every { namespaceService.resolveRunCostThreshold(any()) } returns null
         }
 
         // -------------------------------------------------------------------------
@@ -135,7 +141,7 @@ class CaseControllerSpec :
 
             result.id shouldBe entity.metadata.id
             result.namespaceId shouldBe namespaceId
-            result.status shouldBe CaseStatus.PENDING
+            result.status shouldBe CaseStatus.CREATED
             result.title shouldBe "engineering case"
             result.created shouldBe now
             result.modified shouldBe later
@@ -149,7 +155,7 @@ class CaseControllerSpec :
             val r = caseResource(id = null)
             val saved = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every { caseService.create(any()) } returns saved
+            every { caseService.create(any(), any()) } returns saved
             every {
                 permissionService.grantPermission(
                     callerId.toString(),
@@ -167,7 +173,7 @@ class CaseControllerSpec :
             result.role shouldBe "ADMIN"
             // No messages exist at create time — lastMessageAt is always null, no round-trip needed.
             result.lastMessageAt shouldBe null
-            verify(exactly = 1) { caseService.create(any()) }
+            verify(exactly = 1) { caseService.create(any(), any()) }
             verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
             verify(exactly = 1) {
                 permissionService.grantPermission(
@@ -177,13 +183,67 @@ class CaseControllerSpec :
                     PermissionRelation.ADMIN,
                 )
             }
+            verify(exactly = 1) { caseListUpdateBroadcaster.publishCaseCreated(namespaceId) }
+        }
+
+        "create preserves runCostThreshold from the request" {
+            val threshold = 42.5
+            val r = caseResource(id = null).copy(runCostThreshold = threshold)
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.create(any(), any()) } answers {
+                val arg = firstArg<Case>()
+                arg.runCostThreshold shouldBe threshold
+                saved
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(r)
+
+            verify(exactly = 1) { caseService.create(any(), any()) }
+        }
+
+        "create uses namespace runCostThreshold when none is provided in the request" {
+            val namespaceThreshold = 10.0
+            val r = caseResource(id = null) // runCostThreshold is null
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { namespaceService.resolveRunCostThreshold(namespaceId) } returns namespaceThreshold
+            every { caseService.create(any(), any()) } answers {
+                val arg = firstArg<Case>()
+                arg.runCostThreshold shouldBe namespaceThreshold
+                saved
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(r)
+
+            verify(exactly = 1) { caseService.create(any(), any()) }
+            verify(exactly = 1) { namespaceService.resolveRunCostThreshold(namespaceId) }
+        }
+
+        "create passes null runCostThreshold to the service when neither request nor namespace defines one" {
+            val r = caseResource(id = null) // runCostThreshold is null
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { namespaceService.resolveRunCostThreshold(namespaceId) } returns null
+            every { caseService.create(any(), any()) } answers {
+                val arg = firstArg<Case>()
+                arg.runCostThreshold shouldBe null
+                saved
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(r)
+
+            verify(exactly = 1) { caseService.create(any(), any()) }
         }
 
         "create still succeeds when the auto-ADMIN grant fails (logs warning, no rollback)" {
             val r = caseResource(id = null)
             val saved = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every { caseService.create(any()) } returns saved
+            every { caseService.create(any(), any()) } returns saved
             every {
                 permissionService.grantPermission(
                     callerId.toString(),
@@ -199,15 +259,53 @@ class CaseControllerSpec :
             // Grant failed → no direct edge yet, so role is left null (not a misleading ADMIN).
             result.role shouldBe null
             result.lastMessageAt shouldBe null
-            verify(exactly = 1) { caseService.create(any()) }
+            verify(exactly = 1) { caseService.create(any(), any()) }
             verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
+            verify(exactly = 0) { caseListUpdateBroadcaster.publishCaseCreated(any()) }
+        }
+
+        "create under a parent case requires WRITE on that parent" {
+            val parentId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.hasPermission(callerId.toString(), EntityType.CASE, parentId.toString(), Action.WRITE) } returns false
+
+            shouldThrow<AccessDeniedException> { controller.create(caseResource(id = null).copy(parentCaseId = parentId)) }
+
+            verify(exactly = 0) { caseService.create(any(), any()) }
+        }
+
+        "create under a writable parent case passes the parent to the service" {
+            val parentId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.hasPermission(callerId.toString(), EntityType.CASE, parentId.toString(), Action.WRITE) } returns true
+            every { caseService.create(any(), any()) } answers {
+                firstArg<Case>().parentCaseId shouldBe parentId
+                caseEntity()
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(caseResource(id = null).copy(parentCaseId = parentId))
+
+            verify(exactly = 1) { caseService.create(any(), any()) }
+        }
+
+        "create passes the creator's worktree choice to the service" {
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.create(any(), any()) } returns caseEntity()
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            listOf(null, true, false).forEach { worktree ->
+                controller.create(caseResource(id = null).copy(worktree = worktree))
+
+                verify(exactly = 1) { caseService.create(any(), worktree) }
+            }
         }
 
         "create auto-grants ADMIN on the new case to the creator" {
             val r = caseResource(id = null)
             val saved = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every { caseService.create(any()) } returns saved
+            every { caseService.create(any(), any()) } returns saved
             every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
 
             controller.create(r).id shouldBe saved.metadata.id
@@ -899,9 +997,8 @@ class CaseControllerSpec :
                 caseResource(id = existing.metadata.id, title = "renamed")
                     .copy(namespaceId = otherNs, status = CaseStatus.RUNNING)
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } answers {
-                val saved = firstArg<Case>()
+            every { caseService.edit(existing.metadata.id, any()) } answers {
+                val saved = secondArg<(Case) -> Case>()(existing)
                 saved.namespaceId shouldBe namespaceId
                 saved.status shouldBe existing.status
                 saved.title shouldBe "renamed"
@@ -910,12 +1007,13 @@ class CaseControllerSpec :
 
             controller.update(existing.metadata.id, payload)
 
-            verify(exactly = 1) { caseService.update(any()) }
+            verify(exactly = 1) { caseService.edit(existing.metadata.id, any()) }
         }
 
         "update throws 404 when the Case does not exist" {
             val id = UUID.randomUUID()
-            every { caseService.findById(id) } returns null
+            every { caseService.edit(id, any()) } throws
+                io.whozoss.agentos.exception.ResourceNotFoundException("Case not found: $id")
 
             shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
                 controller.update(id, caseResource(id = id))
@@ -926,8 +1024,7 @@ class CaseControllerSpec :
             val existing = caseEntity()
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } returns existing
+            every { caseService.edit(existing.metadata.id, any()) } returns existing
             every {
                 caseEventService.findLastMessageTimestamps(listOf(existing.id))
             } returns mapOf(existing.id to msgTimestamp)
@@ -940,8 +1037,7 @@ class CaseControllerSpec :
         "update populates favorite and role from favoriteService" {
             val existing = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every { caseService.findById(existing.metadata.id) } returns existing
-            every { caseService.update(any()) } returns existing
+            every { caseService.edit(existing.metadata.id, any()) } returns existing
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns

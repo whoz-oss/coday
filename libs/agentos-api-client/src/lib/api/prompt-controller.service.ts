@@ -18,6 +18,10 @@ import { GetByIdsRequest } from '../model/get-by-ids-request'
 // @ts-ignore
 import { Prompt } from '../model/prompt'
 // @ts-ignore
+import { PromptBatchTranslateRequest } from '../model/prompt-batch-translate-request'
+// @ts-ignore
+import { PromptBatchTranslation } from '../model/prompt-batch-translation'
+// @ts-ignore
 import { PromptEffectiveRequest } from '../model/prompt-effective-request'
 // @ts-ignore
 import { PromptSearchRequest } from '../model/prompt-search-request'
@@ -585,8 +589,97 @@ export class PromptControllerService extends BaseService {
   }
 
   /**
+   * Batch-translate a list of prompts into a target language
+   * Translates each prompt in &#x60;ids&#x60; into &#x60;languageCode&#x60; using the same caching and LLM-fallback semantics as &#x60;POST /{id}/translations/{languageCode}&#x60;. The response list preserves the order of the input &#x60;ids&#x60;. Prompts for which the caller lacks READ permission are silently omitted from the result. For namespace-scoped prompts the namespace is inferred from each prompt itself. For platform-scoped prompts (namespaceId IS NULL on the prompt), at least one of &#x60;namespaceId&#x60; / &#x60;namespaceExternalId&#x60; is required in the request body.
+   * @param languageCode
+   * @param promptBatchTranslateRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public translateBatchPrompt(
+    languageCode: string,
+    promptBatchTranslateRequest: PromptBatchTranslateRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Array<PromptBatchTranslation>>
+  public translateBatchPrompt(
+    languageCode: string,
+    promptBatchTranslateRequest: PromptBatchTranslateRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Array<PromptBatchTranslation>>>
+  public translateBatchPrompt(
+    languageCode: string,
+    promptBatchTranslateRequest: PromptBatchTranslateRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Array<PromptBatchTranslation>>>
+  public translateBatchPrompt(
+    languageCode: string,
+    promptBatchTranslateRequest: PromptBatchTranslateRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (languageCode === null || languageCode === undefined) {
+      throw new Error('Required parameter languageCode was null or undefined when calling translateBatchPrompt.')
+    }
+    if (promptBatchTranslateRequest === null || promptBatchTranslateRequest === undefined) {
+      throw new Error(
+        'Required parameter promptBatchTranslateRequest was null or undefined when calling translateBatchPrompt.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/prompts/translations/${this.configuration.encodeParam({ name: 'languageCode', value: languageCode, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: undefined })}`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Array<PromptBatchTranslation>>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: promptBatchTranslateRequest,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
    * Translate prompt content into a target language
-   * Returns the translated content list (same indices as &#x60;content&#x60;). If the requested language matches &#x60;sourceLanguage&#x60;, returns &#x60;content&#x60; as-is. If a cached translation exists it is returned without an LLM call. Otherwise the content is translated via the namespace\&#39;s AI model, persisted, and returned. At least one of &#x60;namespaceId&#x60; / &#x60;namespaceExternalId&#x60; is required for model resolution.
+   * Returns the translated content list (same indices as &#x60;content&#x60;). If the requested language matches &#x60;sourceLanguage&#x60;, returns &#x60;content&#x60; as-is. If a cached translation exists it is returned without an LLM call. Otherwise the content is translated via the namespace\&#39;s AI model, persisted, and returned. For namespace-scoped prompts the namespace is inferred from the prompt itself. For platform-scoped prompts (namespaceId IS NULL on the prompt), at least one of &#x60;namespaceId&#x60; / &#x60;namespaceExternalId&#x60; is required in the request body.
    * @param id
    * @param languageCode
    * @param promptTranslateRequest

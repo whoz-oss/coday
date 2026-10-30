@@ -43,7 +43,10 @@
   "useDaemonProcess": true,
   "plugins": [
     {
-      "plugin": "./tools/plugins/agentos-gradle/src/index.ts"
+      "plugin": "./tools/plugins/gradle-plugins/src/index.ts"
+    },
+    {
+      "plugin": "./tools/plugins/gradle-plugins/src/factory-gradle.ts"
     },
     {
       "plugin": "@nx/jest/plugin",
@@ -65,7 +68,7 @@
     }
   ],
   "release": {
-    "projects": ["tag:platform:npm", "tag:platform:jvm"],
+    "projects": ["tag:platform:npm", "tag:platform:jvm-agentos", "tag:platform:jvm-factory"],
     "changelog": {
       "workspaceChangelog": {
         "file": "CHANGELOG.md",
@@ -76,6 +79,9 @@
         "tag": true
       }
     },
+    "conventionalCommits": {
+      "useCommitScope": false
+    },
     "version": {
       "conventionalCommits": true,
       "manifestRootsToUpdate": ["apps/{projectName}"],
@@ -85,8 +91,7 @@
       "git": {
         "commit": false,
         "tag": false
-      },
-        "adjustSemverBumpsForZeroMajorVersion": false
+      }
     },
     "releaseTag": {
       "pattern": "release/{version}"

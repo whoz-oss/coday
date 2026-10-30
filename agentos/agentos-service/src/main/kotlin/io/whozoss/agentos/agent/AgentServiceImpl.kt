@@ -8,39 +8,58 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.auth.StaticCredentialFactory
+import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.chat.sentTo
+import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.configAgent.ConfigToolGrantService
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
+import io.whozoss.agentos.exchange.ExchangeGrant
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.ExchangeScopeGuidance
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.queryUser.QueryUserToolGrantService
+import io.whozoss.agentos.redirect.RedirectToolPlugin
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
+import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.skill.Skill
+import io.whozoss.agentos.skill.SkillCatalogRenderer
+import io.whozoss.agentos.skill.SkillService
+import io.whozoss.agentos.skill.SkillToolGrantService
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.IdCompressorService
+import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
+import java.nio.file.Path
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -65,14 +84,22 @@ class AgentServiceImpl(
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
     private val oAuthFlowService: OAuthFlowService,
+    private val staticCredentialFactory: StaticCredentialFactory,
     private val authServiceFactory: AuthServiceFactory,
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val exchangeToolGrantService: ExchangeToolGrantService,
     private val agentDocumentResolver: AgentDocumentResolver,
+    private val skillService: SkillService,
+    private val skillToolGrantService: SkillToolGrantService,
+    private val configToolGrantService: ConfigToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
-    private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val limitsConfig: LimitsConfigProperties,
+    private val exchangeRootResolver: ExchangeRootResolver,
+    /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
+    private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
+    private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -217,8 +244,14 @@ class AgentServiceImpl(
                 baseModel = baseModel,
                 namespaceId = context.namespaceId,
                 userId = context.userId,
+                caseReasoningEffort = context.reasoningEffort,
             )
-        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val effectiveIntegrationConfigs =
+            runIntegrationCustomizers.fold(
+                integrationConfigService.findEffective(context.namespaceId, context.userId),
+            ) { configs, customizer ->
+                customizer.customize(configs, context)
+            }
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceSystemPrompt =
             buildNamespaceSystemPrompt(
@@ -227,13 +260,10 @@ class AgentServiceImpl(
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
             )
-        val instructions =
-            buildInstructions(
-                baseInstructions = agentConfig.instructions,
-                agentIntegrations = agentConfig.integrations,
-                resolvedUser = resolvedUser,
-                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
-                docs = agentConfig.docs,
+        val resolvedSkills =
+            skillService.findSkills(
+                namespaceId = context.namespaceId,
+                selectors = agentConfig.skillSelectors,
             )
         val toolContext =
             context.toToolContext(
@@ -261,7 +291,10 @@ class AgentServiceImpl(
                         // MCP integration by `McpHttpToolProvider.provideTools` (via
                         // `ToolResolverService.extractTools`) during the tool-resolution phase,
                         // before the agent processes any message. It establishes the HTTP MCP
-                        // connection and is NOT called again on each tool invocation.
+                        // connection and is NOT called again on each tool invocation. `HTTP_API`
+                        // calls it instead on the first call of one of its tools in the run
+                        // (`RunAuth`, on `Dispatchers.IO`), so a run that never uses them is not
+                        // asked to authorize.
                         //
                         // Blocked thread: `provideTools` is non-suspend (SDK public contract), so
                         // the call stack at this point is synchronous. The `runBlocking` therefore
@@ -276,6 +309,13 @@ class AgentServiceImpl(
                         // it requires making `suspend` the entire chain `ToolPlugin.provideTools` →
                         // `ToolContext.credentialProvider` → `CredentialProvider` — three elements
                         // of the SDK public contract. Tracked in #1198.
+                        //
+                        // Non-OAuth types (API_KEY / BEARER_TOKEN / BASIC_AUTH) take the `else`
+                        // branch below: the per-user Credential row is looked up first and wins
+                        // when present; otherwise the static secret carried by the resolved
+                        // AuthSetting is synthesised in memory by `StaticCredentialFactory`.
+                        // Nothing is persisted on that path, and OAuth types are never
+                        // synthesised — their credentials only ever come from OAuthFlowService.
                         val credential =
                             kotlinx.coroutines.runBlocking {
                                 oAuthFlowService.resolveOAuthCredential(
@@ -306,13 +346,18 @@ class AgentServiceImpl(
                                 "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup"
                             }
                         }
-                        val credential = scopedAuthService.resolveCredential(setting.metadata.id)
+                        val credential =
+                            scopedAuthService.resolveCredential(setting.metadata.id)
+                                ?: staticCredentialFor(userId, setting)
                         if (credential == null) {
                             logger.warn {
                                 "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}"
                             }
                         } else {
-                            logger.debug { "CredentialProvider for '$authSettingName': direct credential resolved" }
+                            logger.debug {
+                                "CredentialProvider for '$authSettingName': credential resolved " +
+                                    "(per-user row or static AuthSetting secret)"
+                            }
                         }
                         credential
                     }
@@ -323,6 +368,30 @@ class AgentServiceImpl(
                 null
             }
         }
+        // Decided here, granted later: the block describes what the run was granted, and the two
+        // decisions carry everything it needs. Keeping them before the tool assembly means a failure
+        // in buildInstructions still happens before resolveToolsForRun's side effects -- an
+        // interactive OAuth prompt, a pooled MCP child process -- and before the grant creates the
+        // scope directories.
+        val exchangeScopes =
+            ResolvedExchangeScopes(
+                case = resolveCaseScope(agentConfig.integrations, context),
+                namespace = resolveNamespaceScope(agentConfig.integrations, context),
+            )
+        val instructions =
+            buildInstructions(
+                baseInstructions = agentConfig.instructions,
+                agentIntegrations = agentConfig.integrations,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+                docs = agentConfig.docs,
+                resolvedSkills = resolvedSkills,
+                exchangeScopesBlock =
+                    ExchangeScopeGuidance.buildBlock(
+                        case = exchangeScopes.case?.access,
+                        namespace = exchangeScopes.namespace?.access,
+                    ),
+            )
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
@@ -333,15 +402,28 @@ class AgentServiceImpl(
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
         // collision (e.g. a user FILE_ACCESS integration named "case-exchange") crashing downstream.
-        val queryUserTools =
-            if (queryUserToolGrantService.isGranted(agentConfig.integrations)) {
-                queryUserToolGrantService.grantTools(toolContext)
+        val skillTools =
+            if (skillToolGrantService.isGranted(resolvedSkills)) {
+                skillToolGrantService.grantTools(resolvedSkills, toolContext)
             } else {
                 emptyList()
             }
+        val exchangeTools = grantExchangeTools(exchangeScopes, toolContext)
+        val configTools =
+            configToolGrantService.grantTools(
+                integrations = agentConfig.integrations,
+                agentName = agentConfig.name,
+                namespaceId = context.namespaceId,
+                userId = context.userId,
+                caseId = context.caseId,
+            )
+        // The config tools go first so the de-dup keeps them over an integration of the same name: a
+        // configuration named AGENTOS_CONFIG must not stand in for the tool that freezes plans
+        // (BuiltInNameConfigPolicy also refuses that name; built-ins become an extension point in #1520).
         val tools =
             toolResolverService.dedupToolsByName(
-                baseTools +
+                configTools +
+                    baseTools +
                     listOfNotNull(
                         subCaseManager?.let {
                             buildDelegationTools(
@@ -351,9 +433,10 @@ class AgentServiceImpl(
                             )
                         },
                     ) +
-                    buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools,
+                    exchangeTools +
+                    skillTools,
             )
+        val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
@@ -367,11 +450,53 @@ class AgentServiceImpl(
             resolvedModel = modelConfig,
             resolvedProvider = providerConfig,
             tools = tools,
-            advancedExecution = agentConfig.advancedExecution,
+            skills = resolvedSkills,
+            executionMode = agentConfig.resolvedExecutionMode,
             namespaceId = context.namespaceId,
             userId = context.userId,
+            redirectGuideline = redirectGuideline,
+            loopConfig = agentConfig.loopConfig,
         )
     }
+
+    /**
+     * Resolves the merged redirect guideline for [agentConfig] from [effectiveIntegrationConfigs].
+     *
+     * Several [io.whozoss.agentos.integrationConfig.IntegrationConfig] entries of type
+     * [RedirectToolPlugin.INTEGRATION_TYPE] can be referenced by the same agent (via
+     * [AgentConfig.integrations]). Rather than arbitrarily picking one (the previous
+     * `firstNotNullOfOrNull` behaviour, which depended on the unspecified return order of
+     * [IntegrationConfigService.findEffective]), all matching, non-blank guidelines are
+     * concatenated into a single text.
+     *
+     * The matching configs are sorted by [io.whozoss.agentos.integrationConfig.IntegrationConfig.name]
+     * before concatenation. This is not cosmetic: [IntegrationConfigService.findEffective]'s
+     * return order is not a contract, and an agent's resolved prompt must not vary from one
+     * resolution to the next for the same configuration — an unstable order would produce a
+     * different [redirectGuideline] string on each run, which would defeat prompt caching on
+     * the LLM provider side (and make the resolved prompt non-reproducible for debugging).
+     * Sorting by name gives a simple, deterministic, and stable order.
+     *
+     * @return the concatenated guideline text (guidelines joined with a blank line), or `null`
+     *   when no referenced REDIRECT config carries a non-blank guideline.
+     */
+    private fun resolveRedirectGuideline(
+        agentConfig: AgentConfig,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
+    ): String? =
+        effectiveIntegrationConfigs
+            .filter {
+                it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(
+                    it.name,
+                ) == true
+            }.sortedBy { it.name }
+            .mapNotNull {
+                it.parameters
+                    ?.get(RedirectToolPlugin.GUIDELINE_PARAM)
+                    ?.asText()
+                    ?.takeIf { g -> g.isNotBlank() }
+            }.joinToString("\n\n")
+            .takeUnless { it.isBlank() }
 
     /**
      * Phase 2: instantiate a live [Agent] from a [ResolvedAgentDefinition].
@@ -393,12 +518,14 @@ class AgentServiceImpl(
             agentId = definition.agentConfigId,
             resolvedInstructions = definition.instructions,
             resolvedSystemPrompt = definition.systemPrompt,
-            advancedExecution = definition.advancedExecution,
+            executionMode = definition.executionMode,
             modelConfig = modelConfig,
             providerConfig = providerConfig,
             context = context,
             resolvedTools = definition.tools,
             resolvedUser = resolvedUser,
+            redirectGuideline = definition.redirectGuideline,
+            loopConfig = definition.loopConfig,
         )
     }
 
@@ -408,11 +535,18 @@ class AgentServiceImpl(
      * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
      * fetches all four overlay layers in a single query and folds them by precedence.
      * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
+     *
+     * A non-null [caseReasoningEffort] replaces the model's reasoning effort, whatever the model has
+     * configured: the level chosen in the case is the one asked. The provider's API type then decides
+     * what is sent ([sentTo]): nothing for Anthropic and Gemini, which the agent's messages show as not
+     * applied. A model that rejects the parameter (gpt-4.x on OpenAI) fails the run with the provider's
+     * error until the case goes back to the default.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
         namespaceId: UUID,
         userId: UUID?,
+        caseReasoningEffort: ReasoningEffort? = null,
     ): Pair<AiModel, AiProvider> {
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
         val providerConfig =
@@ -421,13 +555,15 @@ class AgentServiceImpl(
             } else {
                 baseProvider
             }
+        val modelConfig = caseReasoningEffort?.let { baseModel.copy(reasoningEffort = it) } ?: baseModel
 
         logger.info {
             "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
                 "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
+                "reasoningEffort=${modelConfig.reasoningEffort}, " +
                 "provider='${providerConfig.name}', userId=$userId)"
         }
-        return baseModel to providerConfig
+        return modelConfig to providerConfig
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
@@ -444,69 +580,112 @@ class AgentServiceImpl(
      * [resolvedInstructions] are the final system instructions (built by [resolveAgentDefinition]).
      * [resolvedTools] is the pre-resolved and pre-filtered tool set.
      * [resolvedUser] is the pre-resolved user (may be null for anonymous / system runs).
+     *
+     * [redirectGuideline] destination depends on [advancedExecution]: for an `AgentAdvanced`
+     * it is passed to [AgentAdvancedContext.redirectGuideline] and consumed by
+     * [AgentIntentionGenerator]'s planning prompt; for an `AgentSimple` it is appended to
+     * [resolvedInstructions] instead (see [withRedirectGuideline]). It is never put in both
+     * places for the same agent: [AgentAdvancedContext.buildMessages] already merges
+     * [AgentAdvancedContext.instructions] into the last user message, so injecting the
+     * guideline there as well would duplicate it in the advanced-mode prompt.
      */
     private fun createAgentInstance(
         agentName: String,
         agentId: UUID,
         resolvedInstructions: String?,
         resolvedSystemPrompt: String?,
-        advancedExecution: Boolean,
+        executionMode: ExecutionMode,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
         resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
+        redirectGuideline: String? = null,
+        loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
     ): Agent {
-        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
+        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
         logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
+        return when (executionMode) {
+            ExecutionMode.LOOP -> {
+                AgentLoop(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    objectMapper = objectMapper,
+                    runner = loopWorkflowRunnerService,
+                    resolvedTools = resolvedTools,
+                    triggerUser = resolvedUser,
+                    loopConfig = loopConfig,
+                )
+            }
 
-        return if (advancedExecution) {
-            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
-            val advancedContext =
-                AgentAdvancedContext(
-                    chatClient = compressingChatClient,
-                    tools = resolvedTools.toList(),
-                    instructions = resolvedInstructions,
-                    agentId = agentId,
-                    confirmationManager = confirmationManager,
+            ExecutionMode.ADVANCED -> {
+                val chatClient =
+                    chatClientProvider.getChatClient(
+                        modelConfig,
+                        providerConfig,
+                        context.caseId?.toString(),
+                        context.usageAccumulator,
+                    )
+                val advancedContext =
+                    AgentAdvancedContext(
+                        chatClient = CompressingChatClient(chatClient, idCompressorService),
+                        tools = resolvedTools.toList(),
+                        instructions = resolvedInstructions,
+                        agentId = agentId,
+                        confirmationManager = confirmationManager,
+                        systemPrompt = resolvedSystemPrompt,
+                        imageCharCost = agentConfigProperties.imageCharCost,
+                        maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                        redirectGuideline = redirectGuideline,
+                    )
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    context = advancedContext,
+                    intentionGenerator = intentionGenerator,
+                    objectMapper = objectMapper,
+                    userId = resolvedUser?.metadata?.id,
+                    userExternalId = resolvedUser?.externalId,
+                    caseEventsProvider = context.caseEventsProvider,
+                    maxIterations = limitsConfig.agentMaxIterations,
+                    llmProvider = providerConfig.name,
+                    llmModel = modelConfig.apiModelName,
+                    reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
+                    requestedReasoningEffort = modelConfig.reasoningEffort,
+                    toolMetricsService = toolMetricsService,
+                )
+            }
+
+            ExecutionMode.SIMPLE -> {
+                val chatClient =
+                    chatClientProvider.getChatClient(
+                        modelConfig,
+                        providerConfig,
+                        context.caseId?.toString(),
+                        context.usageAccumulator,
+                    )
+                AgentSimple(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    chatClient = chatClient,
+                    tools = resolvedTools,
                     systemPrompt = resolvedSystemPrompt,
-                    imageCharCost = agentConfigProperties.imageCharCost,
+                    instructions = withRedirectGuideline(resolvedInstructions, redirectGuideline),
+                    userId = resolvedUser?.metadata?.id,
+                    userExternalId = resolvedUser?.externalId,
+                    caseEventsProvider = context.caseEventsProvider,
+                    llmProvider = providerConfig.name,
+                    llmModel = modelConfig.apiModelName,
+                    reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
+                    requestedReasoningEffort = modelConfig.reasoningEffort,
+                    toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )
-            AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = agentName,
-                context = advancedContext,
-                intentionGenerator = intentionGenerator,
-                objectMapper = objectMapper,
-                userId = resolvedUser?.metadata?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEventsProvider = context.caseEventsProvider,
-                llmProvider = providerConfig.name,
-                llmModel = modelConfig.apiModelName,
-                toolMetricsService = toolMetricsService,
-            )
-        } else {
-            AgentSimple(
-                metadata = EntityMetadata(id = agentId),
-                name = agentName,
-                chatClient = chatClient,
-                tools = resolvedTools,
-                systemPrompt = resolvedSystemPrompt,
-                instructions = resolvedInstructions,
-                userId = resolvedUser?.metadata?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEventsProvider = context.caseEventsProvider,
-                llmProvider = providerConfig.name,
-                llmModel = modelConfig.apiModelName,
-                toolMetricsService = toolMetricsService,
-                maxAttachedImages = agentConfigProperties.maxAttachedImages,
-            )
+            }
         }
     }
 
@@ -530,8 +709,9 @@ class AgentServiceImpl(
         val integrationDescriptions =
             coroutineScope {
                 effectiveIntegrationConfigs
-                    .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
-                    .map { (config, plugin) ->
+                    .mapNotNull { config ->
+                        toolRegistryService.findPlugin(config.integrationType)?.let { config to it }
+                    }.map { (config, plugin) ->
                         async {
                             plugin
                                 .runCatching { describeNamespace(config.parameters, config.name, toolContext) }
@@ -553,7 +733,8 @@ class AgentServiceImpl(
 
     /**
      * Compose the agent's instructions from [baseInstructions] (the agent's own instructions
-     * from [AgentConfig]), an integrations block, and a user context block.
+     * from [AgentConfig]), an integrations block, a user context block, a docs block, and
+     * a skills block.
      *
      * The namespace context is intentionally NOT part of this — it is built separately
      * by [buildNamespaceSystemPrompt] and sent as a system prompt.
@@ -566,6 +747,11 @@ class AgentServiceImpl(
      *
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
+     *
+     * [exchangeScopesBlock] is the already-rendered `## File scopes` block of
+     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance], null for every run that was not granted
+     * both exchange scopes. It is passed in rather than computed here because the scopes are
+     * settled earlier, by [resolveCaseScope] and [resolveNamespaceScope].
      */
     private suspend fun buildInstructions(
         baseInstructions: String?,
@@ -573,6 +759,8 @@ class AgentServiceImpl(
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
         docs: List<String>? = null,
+        resolvedSkills: List<Skill> = emptyList(),
+        exchangeScopesBlock: String? = null,
     ): String {
         val integrationsBlock =
             when {
@@ -624,9 +812,50 @@ class AgentServiceImpl(
             }
 
         val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
+        val skillsBlock = SkillCatalogRenderer.buildBlock(resolvedSkills)
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
+        return listOfNotNull(
+            baseInstructions.takeUnless { it.isNullOrBlank() },
+            integrationsBlock,
+            exchangeScopesBlock,
+            userBlock,
+            docsBlock,
+            skillsBlock,
+        ).joinToString("\n")
+    }
+
+    /**
+     * Appends a `## Redirect Guideline` block to [instructions] when [redirectGuideline] is
+     * present, for the `AgentSimple` path only.
+     *
+     * Mirrors the block style already used by [buildInstructions] (blank line, `##` title,
+     * content, `trimEnd()`), and composes with [instructions] the same way [buildInstructions]
+     * composes its own blocks: via `listOfNotNull(...).joinToString("\n")`, so a null
+     * [instructions] does not produce a leading blank line.
+     *
+     * Only called from the `else` (non-`advancedExecution`) branch of [createAgentInstance]:
+     * for `AgentAdvanced`, the guideline goes exclusively into
+     * [AgentAdvancedContext.redirectGuideline] (consumed by [AgentIntentionGenerator]), never
+     * here, because [AgentAdvancedContext.buildMessages] already merges [instructions] into the
+     * last user message — adding the guideline to both would duplicate it in that mode.
+     */
+    private fun withRedirectGuideline(
+        instructions: String?,
+        redirectGuideline: String?,
+    ): String? {
+        val guidelineBlock =
+            redirectGuideline
+                ?.takeIf { it.isNotBlank() }
+                ?.let {
+                    buildString {
+                        appendLine()
+                        appendLine("## Redirect Guideline")
+                        append(it)
+                    }.trimEnd()
+                }
+        return listOfNotNull(instructions.takeUnless { it.isNullOrBlank() }, guidelineBlock)
             .joinToString("\n")
+            .takeUnless { it.isBlank() }
     }
 
     /**
@@ -672,6 +901,10 @@ class AgentServiceImpl(
             return null
         }
 
+        logger.info {
+            "Delegation timeout for ${config.name}: ${config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds}s " +
+                "(source=${if (config.delegationTimeoutSeconds == null) "server" else "agent"})"
+        }
         logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
         return DelegationTool(
             subCaseManager = subCaseManager,
@@ -679,11 +912,32 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            timeoutMs =
+                (
+                    config.delegationTimeoutSeconds
+                        ?: agentConfigProperties.delegationTimeoutSeconds
+                ).toLong() * 1_000L,
         )
     }
 
     /**
-     * Builds the file-exchange tools enabled on [config], scoped to the current run.
+     * The exchange scopes this run gets, decided by [resolveCaseScope] and [resolveNamespaceScope]
+     * before anything is granted.
+     *
+     * A null side is a scope this run does not get, which is how
+     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance.buildBlock] knows to stay silent about it.
+     * Deciding first is what lets the instructions name the scopes without waiting for the tool
+     * assembly, and each side carries the permission answers that decision already paid for.
+     */
+    private data class ResolvedExchangeScopes(
+        val case: ExchangeScope?,
+        val namespace: ExchangeScope?,
+    )
+
+    /**
+     * Builds the file-exchange tools of the scopes [scopes] already holds, and nothing else: who
+     * gets which scope, and read-only or not, is settled by [resolveCaseScope] and
+     * [resolveNamespaceScope] before this runs.
      *
      * The case/namespace exchange is exposed to the agent as a **built-in integration of the
      * file-plugin** (integration type [ExchangeIntegrationTypes.FILE_ACCESS]): we point the plugin's own tools
@@ -702,56 +956,141 @@ class AgentServiceImpl(
      * [io.whozoss.agentos.exchange.ExchangeController] path, which applies no deny-list (users manage
      * their own files); the two views of the same directory can therefore differ for such files.
      *
-     * Gating: the agent's own [AgentConfig.integrations] map decides, with a platform-level fallback
-     * for agents that say nothing at all
-     * ([io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.caseEnabledByDefault] /
-     * [io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.namespaceEnabledByDefault], both off
-     * by default, so an upgrade changes no agent's tool set):
-     * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
-     * - key absent → the platform default decides, and no per-tool filter applies;
-     * - key present, null → granted, all tools;
-     * - key present, non-empty → granted, filtered to the listed tools;
-     * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
-     *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
-     *   root);
-     * - the case scope additionally requires a live [context.caseId]; it needs no permission gate of
-     *   its own because its root is the run's own case, which the invoking user already holds Case
-     *   WRITE on to have reached this point;
-     * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
-     *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
-     *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
-     *   exchange tools. Read/write when the user also holds Namespace WRITE (admin/super-admin),
-     *   read-only otherwise.
-     *
-     * The default is a decision local to [ExchangeToolGrantService] and never a mutation of
+     * Gating lives in two other places, on purpose. What an agent's own
+     * [AgentConfig.integrations] map means — key absent and the platform default deciding, present
+     * and null, present and filtered, present and empty as an explicit opt-out — is
+     * [io.whozoss.agentos.exchange.ExchangeToolGrantService.resolveCaseGrant] and its siblings. Who
+     * may reach each directory, and whether the scope is writable, is [resolveCaseScope] and
+     * [resolveNamespaceScope]. Neither default is ever written back into
      * [AgentConfig.integrations]: materialising it in the map would leak into the persisted config,
      * the YAML export, and the peer descriptions the redirect tool puts in every agent's prompt.
      */
-    private fun buildExchangeTools(
-        config: AgentConfig,
-        context: AgentExecutionContext,
+    private fun grantExchangeTools(
+        scopes: ResolvedExchangeScopes,
         toolContext: ToolContext,
     ): List<StandardTool<*>> {
-        val integrations = config.integrations
-        val tools = mutableListOf<StandardTool<*>>()
+        // The per-tool sentence only makes sense when there are two surfaces to arbitrate between,
+        // which is why both scopes are decided before either is granted. An agent that ends up with
+        // a single scope keeps the file-plugin's own descriptions byte for byte, and with them its
+        // cached prompt prefix -- the same both-scopes condition [ExchangeScopeGuidance.buildBlock]
+        // applies to the instructions block.
+        val bothGranted = scopes.case != null && scopes.namespace != null
+        return listOfNotNull(scopes.case, scopes.namespace).flatMap { grantScope(it, toolContext, bothGranted) }
+    }
+
+    /**
+     * One exchange scope, decided but not yet granted.
+     *
+     * [userCanWrite] and [access] answer two different questions and must not be folded into one.
+     * The first is the invoking user's right on the directory, and it alone decides what the file
+     * plugin builds. The second is what the prompt says about the scope, which also depends on the
+     * agent's own allowlist: a scope restricted to read tools is described as read-only, but the
+     * tools it did allow are still built from the user's rights. Deriving the plugin's `readOnly`
+     * from the stance instead would make a write tool unreachable as soon as the allowlist names
+     * one that [ExchangeIntegrationTypes.MUTATING_TOOLS] does not know.
+     */
+    private data class ExchangeScope(
+        val root: Path,
+        val configName: String,
+        val grant: ExchangeGrant,
+        val userCanWrite: Boolean,
+        val access: ExchangeScopeGuidance.Access,
+        val toolGuidance: String,
+    )
+
+    /**
+     * The stance to describe for a scope: writable only when the user may write *and* the agent's
+     * own allowlist left a tool to write with.
+     */
+    private fun accessFor(
+        userCanWrite: Boolean,
+        configName: String,
+        grant: ExchangeGrant,
+    ): ExchangeScopeGuidance.Access =
+        ExchangeScopeGuidance.Access.forWrite(
+            userCanWrite && exchangeToolGrantService.grantsMutatingTool(configName, grant.allowedTools),
+        )
+
+    private fun grantScope(
+        scope: ExchangeScope,
+        toolContext: ToolContext,
+        withGuidance: Boolean,
+    ): List<StandardTool<*>> =
+        exchangeToolGrantService.grantTools(
+            root = scope.root,
+            readOnly = !scope.userCanWrite,
+            configName = scope.configName,
+            allowedTools = scope.grant.allowedTools,
+            toolContext = toolContext,
+            scopeGuidance = scope.toolGuidance.takeIf { withGuidance },
+        )
+
+    /**
+     * The case scope of this run, or null when the agent was not granted it or the run has no live
+     * case (a definition preview).
+     *
+     * The run's own directory needs no permission query: the invoking user already holds Case WRITE
+     * on that case to have reached this point. A directory owned by *another* case, a family's
+     * shared workspace, additionally requires that user's permission on the owner, and is read-only
+     * without WRITE on both, because delegation does not confer its rights.
+     */
+    private fun resolveCaseScope(
+        integrations: Map<String, List<String>?>?,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
         val caseId = context.caseId
         val caseCreatedAt = context.caseCreatedAt
-
-        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
-        if (caseGrant != null && caseId != null && caseCreatedAt != null) {
-            // The agent gets read/write on the case exchange by design (it produces files during a run).
-            // User-facing write is separately gated: the exchange upload/delete endpoints require Case
-            // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            tools +=
-                exchangeToolGrantService.grantTools(
-                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
-                    readOnly = false,
-                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                    allowedTools = caseGrant.allowedTools,
-                    toolContext = toolContext,
-                )
+        return when {
+            caseGrant == null || caseId == null || caseCreatedAt == null -> null
+            else -> caseScope(caseGrant, caseId, caseCreatedAt, context)
         }
+    }
 
+    private fun caseScope(
+        caseGrant: ExchangeGrant,
+        caseId: UUID,
+        caseCreatedAt: Instant,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        // The agent gets read/write on the case exchange by design (it produces files during a run).
+        // User-facing write is separately gated: the exchange upload/delete endpoints require Case
+        // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
+        // A directory owned by another case (a family's shared workspace) also requires the
+        // invoking user's permission on that owner: delegation does not confer its rights.
+        val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
+        val userId = context.userId?.toString()
+        val canRead =
+            root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+        return when {
+            !canRead -> null
+            else -> {
+                val canWrite =
+                    root.ownerCaseId == caseId ||
+                        exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                ExchangeScope(
+                    root = root.requireUsable(),
+                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    grant = caseGrant,
+                    userCanWrite = canWrite,
+                    access = accessFor(canWrite, ExchangeIntegrationTypes.CASE_CONFIG_NAME, caseGrant),
+                    toolGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                )
+            }
+        }
+    }
+
+    /**
+     * The namespace scope of this run, or null when the agent was not granted it or the invoking
+     * user does not hold Namespace READ, the floor every REST namespace-file endpoint enforces via
+     * `@PreAuthorize`. A run without an identified user is denied fail-closed, so a definition
+     * preview resolved without a user reports no namespace exchange tools. Read/write when that
+     * user also holds Namespace WRITE (admin, super-admin included), read-only otherwise.
+     */
+    private fun resolveNamespaceScope(
+        integrations: Map<String, List<String>?>?,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
         // The agent inherits the invoking user's namespace rights. Namespace READ is the floor the
         // REST namespace-file endpoints already enforce via @PreAuthorize, so the agent path must
@@ -760,14 +1099,26 @@ class AgentServiceImpl(
         // permission queries run only once the grant stands, so a scope nobody was granted costs
         // no permission query.
         val namespaceUserId = context.userId?.toString()
-        if (namespaceGrant != null && namespaceUserId != null) {
-            val userCanReadNamespace =
-                exchangeCapabilityService.canRead(
-                    userId = namespaceUserId,
-                    entityType = EntityType.NAMESPACE,
-                    entityId = context.namespaceId.toString(),
-                )
-            if (userCanReadNamespace) {
+        return when {
+            namespaceGrant == null || namespaceUserId == null -> null
+            else -> namespaceScope(namespaceGrant, namespaceUserId, context)
+        }
+    }
+
+    private fun namespaceScope(
+        namespaceGrant: ExchangeGrant,
+        namespaceUserId: String,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        val userCanReadNamespace =
+            exchangeCapabilityService.canRead(
+                userId = namespaceUserId,
+                entityType = EntityType.NAMESPACE,
+                entityId = context.namespaceId.toString(),
+            )
+        return when {
+            !userCanReadNamespace -> null
+            else -> {
                 // Read/write for a namespace admin (Namespace WRITE, super-admin included),
                 // read-only for a plain member.
                 val userCanWriteNamespace =
@@ -776,18 +1127,32 @@ class AgentServiceImpl(
                         entityType = EntityType.NAMESPACE,
                         entityId = context.namespaceId.toString(),
                     )
-                tools +=
-                    exchangeToolGrantService.grantTools(
-                        root = exchangeStorageService.namespaceRoot(context.namespaceId),
-                        readOnly = !userCanWriteNamespace,
-                        configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                        allowedTools = namespaceGrant.allowedTools,
-                        toolContext = toolContext,
-                    )
+                ExchangeScope(
+                    root = exchangeStorageService.namespaceRoot(context.namespaceId),
+                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                    grant = namespaceGrant,
+                    userCanWrite = userCanWriteNamespace,
+                    access =
+                        accessFor(
+                            userCanWriteNamespace,
+                            ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                            namespaceGrant,
+                        ),
+                    toolGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                )
             }
         }
-        return tools
     }
+
+    /**
+     * Static-secret fallback used when no per-user Credential row exists: synthesised in memory
+     * from the resolved [setting], never persisted. OAuth types are never synthesised — their
+     * credentials only come from [OAuthFlowService].
+     */
+    private fun staticCredentialFor(
+        userId: UUID,
+        setting: AuthSetting,
+    ): Credential? = if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
 
     companion object : KLogging() {
         private val OAUTH_AUTH_TYPES =

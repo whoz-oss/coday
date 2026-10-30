@@ -145,15 +145,17 @@ interface PromptNodeNeo4jRepository : Neo4jRepository<PromptNode, String> {
     /**
      * Soft-delete all non-removed prompts linked to the given agentConfigId.
      * Rewrites tripleKey to a tombstone to free the unique slot immediately.
+     * Returns the number of nodes updated.
      */
     @Query(
         $$"""
             MATCH (p:Prompt {agentConfigId: $agentConfigId})
             WHERE NOT COALESCE(p.removed, false)
             SET p.removed = true, p.tripleKey = 'tombstone:' + p.id
+            RETURN count(p)
             """,
     )
-    fun softDeleteByAgentConfigId(agentConfigId: String)
+    fun softDeleteByAgentConfigId(agentConfigId: String): Int
 
     /**
      * Find all non-removed prompts at an exact scope level, optionally filtered by agentConfigIds.

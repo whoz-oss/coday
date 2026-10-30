@@ -50,4 +50,10 @@ interface IntegrationConfigRepository : EntityRepository<IntegrationConfig, UUID
         namespaceId: UUID?,
         userId: UUID?,
     ): List<IntegrationConfig>
+
+    /** The active namespace-shared row of a singleton [integrationType]; persisted rows only, never YAML. */
+    fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig?
 }

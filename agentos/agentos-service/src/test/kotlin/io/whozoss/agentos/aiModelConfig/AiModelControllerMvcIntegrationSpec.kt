@@ -1,10 +1,10 @@
 package io.whozoss.agentos.aiModelConfig
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -27,8 +27,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class AiModelControllerMvcIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class AiModelControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
 
@@ -38,13 +37,16 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
 
     private val namespaceId = UUID.randomUUID()
 
-    private fun createParentAiProvider(nsId: UUID = namespaceId): AiProvider =
+    private fun createParentAiProvider(
+        nsId: UUID = namespaceId,
+        apiType: AiApiType = AiApiType.Anthropic,
+    ): AiProvider =
         aiProviderService.create(
             AiProvider(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
                 namespaceId = nsId,
-                name = "anthropic-${UUID.randomUUID()}",
-                apiType = AiApiType.Anthropic,
+                name = "${apiType.name.lowercase()}-${UUID.randomUUID()}",
+                apiType = apiType,
             ),
         )
 
@@ -77,6 +79,39 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "claude-haiku-4-5" }"""),
                 ).andExpect(status().isCreated)
+        }
+
+        "POST /api/ai-models stores the reasoning effort of an OpenAI model and returns it" {
+            val parent = createParentAiProvider(apiType = AiApiType.OpenAI)
+            mockMvc
+                .perform(
+                    post("/api/ai-models")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "gpt-6-astra", "reasoningEffort": "XHIGH" }"""),
+                ).andExpect(status().isCreated)
+                .andExpect(jsonPath("$.reasoningEffort").value("XHIGH"))
+        }
+
+        "POST /api/ai-models with an unknown reasoning effort returns 400" {
+            val parent = createParentAiProvider(apiType = AiApiType.OpenAI)
+            mockMvc
+                .perform(
+                    post("/api/ai-models")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "gpt-5-mini", "reasoningEffort": "minimal" }"""),
+                ).andExpect(status().isBadRequest)
+            aiModelService.findByParent(parent.id).shouldBeEmpty()
+        }
+
+        "POST /api/ai-models with a reasoning effort under an Anthropic provider returns 400" {
+            val parent = createParentAiProvider(apiType = AiApiType.Anthropic)
+            mockMvc
+                .perform(
+                    post("/api/ai-models")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "claude-opus-5-5", "reasoningEffort": "HIGH" }"""),
+                ).andExpect(status().isBadRequest)
+            aiModelService.findByParent(parent.id).shouldBeEmpty()
         }
 
         "PUT /api/ai-models/{id} with blank apiName returns 400" {

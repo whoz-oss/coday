@@ -1,45 +1,21 @@
 import express from 'express'
 import path from 'path'
 import fs from 'fs'
-import { ThreadCodayManager } from './lib/thread-coday-manager'
+import { createProxyMiddleware } from 'http-proxy-middleware'
 
 import { debugLog } from './lib/log'
-import { CodayLoggerUtils } from '@coday/utils'
-import {
-  ThreadCleanupService,
-  PromptService,
-  SchedulerService,
-  PromptExecutionService,
-  ConfigServiceRegistry,
-  ProjectService,
-  ThreadFileService,
-  ThreadService,
-} from '@coday/service'
-import { findAvailablePort } from './lib/find-available-port'
-import { ServerInteractor } from '@coday/model'
-import { registerConfigRoutes } from './lib/config.routes'
-import { registerProjectRoutes } from './lib/project.routes'
-import { registerThreadRoutes } from './lib/thread.routes'
-import { registerMessageRoutes } from './lib/message.routes'
-import { registerUserRoutes } from './lib/user.routes'
-import { registerAgentRoutes } from './lib/agent.routes'
-import { AgentCrudService } from '@coday/service'
-import { registerPromptRoutes } from './lib/prompt.routes'
-import { registerSchedulerRoutes } from './lib/scheduler.routes'
-import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
-import { registerTokenUsageRoutes } from './lib/token-usage.routes'
-import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
-import { registerTranscribeRoutes } from './lib/transcribe.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
-import { ProjectFileRepository } from '@coday/repository'
-import { McpInstancePool } from '@coday/mcp'
-import { createProxyMiddleware } from 'http-proxy-middleware'
+import { findAvailablePort } from './lib/find-available-port'
 import { resolveUsername } from './lib/resolve-username'
-import { checkAgentosJars } from './lib/agentos-lifecycle'
-import { getAgentosVersion } from './lib/version'
-import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
+import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
+import { getAgentosVersion, getFactoryVersion } from './lib/version'
+import { downloadAgentosJars } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
+import { downloadFactoryJars } from './lib/factory-download'
+import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
+import { createAgentOsProxy } from './lib/agentos-proxy'
+import { createFactoryProxy } from './lib/factory-proxy'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -57,24 +33,6 @@ const PORT_PROMISE = findAvailablePort(DEFAULT_PORT, isPortForced ? 0 : 10, isPo
 const codayOptions = parseCodayOptions()
 debugLog('INIT', 'Coday options:', codayOptions)
 
-// Create single usage logger instance for all clients
-// Logging is enabled when --log flag is used and not in no-auth mode
-const loggingEnabled = !codayOptions.noLog
-const logger = new CodayLoggerUtils(loggingEnabled, codayOptions.logFolder)
-debugLog(
-  'INIT',
-  `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${
-    codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''
-  }`
-)
-
-// Create webhook service instance (delegates to prompt execution)
-debugLog('INIT', 'Webhook service initialized (will be initialized with prompt execution service)')
-
-// Create prompt service instance and execution service
-// Note: projectPath will be set after projectService is initialized
-let promptService: PromptService
-let promptExecutionService: PromptExecutionService
 // ---------------------------------------------------------------------------
 // AgentOS proxy — two mutually exclusive modes, discriminated by AGENTOS_URL
 //
@@ -92,33 +50,57 @@ let promptExecutionService: PromptExecutionService
 
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
 const AGENTOS_URL_ENV = process.env.AGENTOS_URL
+// Same two modes for the Factory, discriminated by FACTORY_URL:
+//   EXTERNAL (FACTORY_URL defined): proxy to it unchanged.
+//   MANAGED  (FACTORY_URL absent):  download the Factory JARs from the GitHub
+//   release, spawn the process (default port 8141, next free one otherwise),
+//   stop it at shutdown. The Factory is provisioned AFTER AgentOS because it
+//   needs AgentOS's URL.
+const FACTORY_URL_ENV = process.env.FACTORY_URL
 
-// Validate the env var if provided (fail fast on misconfiguration)
+// Validate proxy targets (fail fast on misconfiguration)
 if (AGENTOS_URL_ENV) {
   validateAgentOsUrl(AGENTOS_URL_ENV)
+}
+if (FACTORY_URL_ENV) {
+  validateAgentOsUrl(FACTORY_URL_ENV)
 }
 
 // Mutable proxy target — updated to the managed URL once AgentOS is running.
 // In external mode this is set once and never changes.
 let currentAgentosUrl = AGENTOS_URL_ENV ?? `http://localhost:8124`
 
-// Track the managed AgentOS process handle (null in external mode or before startup)
+// Mutable Factory proxy target — updated to the managed URL once the Factory is running.
+let currentFactoryUrl = FACTORY_URL_ENV ?? 'http://localhost:8141'
+
+// Track the managed process handles (null in external mode or before startup)
 let agentosProcess: AgentosProcess | null = null
+let factoryProcess: FactoryProcess | null = null
+
+/**
+ * All incoming headers are already forwarded by http-proxy-middleware. This hook
+ * adds the caller identity expected by the upstream services in X-External-User-Id
+ * (see ./lib/proxy-identity.ts). `getUsername` is a hoisted function declaration
+ * and is only invoked at request time, once codayOptions is initialised.
+ */
+function forwardIdentity(proxyReq: import('http').ClientRequest, req: import('http').IncomingMessage): void {
+  applyProxyIdentity(
+    proxyReq,
+    decideProxyIdentity({
+      authEnabled: !!codayOptions.auth,
+      envUserId: AGENTOS_EXTERNAL_USERID,
+      resolveUser: () => getUsername(req as express.Request),
+    })
+  )
+}
 
 app.use(
   '/api/agentos',
-  (req, _res, next) => {
-    debugLog('AGENTOS', `[PROXY] ${req.method} ${req.path}`)
-    if (AGENTOS_EXTERNAL_USERID) {
-      req.headers['X-External-User-Id'] = AGENTOS_EXTERNAL_USERID
-    }
-    next()
-  },
-  createProxyMiddleware({
-    // router callback reads currentAgentosUrl at request time, not at setup time
-    router: () => currentAgentosUrl,
-    changeOrigin: true,
-    pathRewrite: { '^/api/agentos': '' },
+  createAgentOsProxy(() => currentAgentosUrl, {
+    onProxyReq: (proxyReq, req) => {
+      debugLog('AGENTOS', `[PROXY] ${req.method} ${req.url}`)
+      forwardIdentity(proxyReq, req)
+    },
   })
 )
 debugLog(
@@ -126,39 +108,68 @@ debugLog(
   `AgentOS proxy configured: /api/agentos → ${currentAgentosUrl} (${AGENTOS_URL_ENV ? 'external mode' : 'managed mode'})`
 )
 
-// Middleware to parse JSON bodies with increased limit for image uploads
+// Factory exposes its API with the /api/factory prefix already, so the complete request path is
+// forwarded unchanged (mounted at the root with a pathFilter, see ./lib/factory-proxy.ts).
+// Same identity forwarding and stream-abort propagation as the AgentOS proxy above.
+app.use(
+  createFactoryProxy(() => currentFactoryUrl, {
+    onProxyReq: (proxyReq, req) => {
+      debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
+      forwardIdentity(proxyReq, req)
+    },
+  })
+)
+debugLog(
+  'INIT',
+  `Factory proxy configured: /api/factory → ${currentFactoryUrl}/api/factory (${FACTORY_URL_ENV ? 'external mode' : 'managed mode'})`
+)
+
+// Middleware to parse JSON bodies with increased limit
 app.use(express.json({ limit: '20mb' }))
 
-// Development mode: proxy to Angular dev server
+// Development mode: proxy to the Angular dev servers, mirroring the production
+// split between the main client (/) and the factory cockpit (/factory).
+//
+// Both proxies are mounted at the root with a `pathFilter` rather than via
+// `app.use('/factory', …)`:
+//  - Express strips the mount prefix, but the factory dev server serves its
+//    bundles under /factory/ (baseHref), so the full path must be preserved.
+//    Stripping it makes the dev server answer its SPA fallback (index.html)
+//    for /main.js → "Expected a JavaScript module script… MIME type text/html".
+//  - With `ws: true` each proxy also subscribes to the server's WebSocket
+//    `upgrade` events, where only `pathFilter` applies. Disjoint filters keep
+//    each app's HMR socket routed to its own dev server.
 if (process.env.BUILD_ENV === 'development') {
-  const angularClientPort = process.env.ANGULAR_CLIENT_PORT ?? '4200'
-  const ANGULAR_DEV_SERVER = `http://localhost:${angularClientPort}`
-  debugLog('INIT', `Development mode: proxying to Angular dev server at ${ANGULAR_DEV_SERVER}`)
+  const ANGULAR_DEV_SERVER = `http://localhost:${process.env.ANGULAR_CLIENT_PORT ?? '4200'}`
+  const FACTORY_COCKPIT_DEV_SERVER = `http://localhost:${process.env.FACTORY_COCKPIT_PORT ?? '4300'}`
 
-  // Import http-proxy-middleware dynamically
-  import('http-proxy-middleware')
-    .then(({ createProxyMiddleware: devProxyMiddleware }) => {
-      // Proxy all non-API requests to Angular dev server
-      const proxyMiddleware = devProxyMiddleware({
-        target: ANGULAR_DEV_SERVER,
-        changeOrigin: true,
-        ws: true, // Enable WebSocket proxying for Angular HMR
-      })
+  const isFactoryPath = (p: string) => {
+    return p === '/factory' || p.startsWith('/factory/')
+  }
+  const isBackendPath = (p: string) => p.startsWith('/api') || p.startsWith('/events')
 
-      // Only proxy if not an API route
-      app.use('/', (req, res, next) => {
-        if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
-          next()
-        } else {
-          proxyMiddleware(req, res, next as any)
-        }
-      })
-
-      debugLog('INIT', 'Proxy middleware configured successfully')
+  app.use(
+    createProxyMiddleware({
+      target: FACTORY_COCKPIT_DEV_SERVER,
+      changeOrigin: true,
+      ws: true,
+      pathFilter: (p) => isFactoryPath(p),
     })
-    .catch((error) => {
-      console.error('Failed to load http-proxy-middleware:', error)
+  )
+
+  app.use(
+    createProxyMiddleware({
+      target: ANGULAR_DEV_SERVER,
+      changeOrigin: true,
+      ws: true,
+      pathFilter: (p) => !isBackendPath(p) && !isFactoryPath(p),
     })
+  )
+
+  debugLog(
+    'INIT',
+    `Development mode: /factory → ${FACTORY_COCKPIT_DEV_SERVER}, other non-API routes → ${ANGULAR_DEV_SERVER}`
+  )
 } else {
   // Production mode: serve static Angular app
   // Check for CODAY_CLIENT_PATH environment variable (set by web launcher)
@@ -186,87 +197,31 @@ if (process.env.BUILD_ENV === 'development') {
     }
   }
 
-  // Serve static files from the Angular build output
+  // Serve the factory cockpit before the main client so /factory assets are not
+  // intercepted by the root static application.
+  const factoryCockpitPath = process.env.CODAY_FACTORY_COCKPIT_PATH
+    ? path.resolve(process.env.CODAY_FACTORY_COCKPIT_PATH)
+    : path.resolve(__dirname, '../coday-factory-cockpit/browser')
+
+  debugLog('INIT', `Production mode: serving factory cockpit static files from ${factoryCockpitPath}`)
+  if (!fs.existsSync(factoryCockpitPath)) {
+    console.error(`ERROR: Factory cockpit path does not exist: ${factoryCockpitPath}`)
+    console.error('Please build the factory cockpit first with: pnpm nx run factory-cockpit:build')
+  } else {
+    const factoryIndexPath = path.join(factoryCockpitPath, 'index.html')
+    if (!fs.existsSync(factoryIndexPath)) {
+      console.error(`ERROR: index.html not found at: ${factoryIndexPath}`)
+      console.error('Factory cockpit build may be incomplete. Try rebuilding with: pnpm nx run factory-cockpit:build')
+    } else {
+      debugLog('INIT', `Verified factory cockpit index.html exists at ${factoryIndexPath}`)
+    }
+  }
+
+  app.use('/factory', express.static(factoryCockpitPath))
+
+  // Serve static files from the main Angular build output.
   app.use(express.static(clientPath))
 }
-// Initialize project service for REST API endpoints
-const projectRepository = new ProjectFileRepository(codayOptions.configDir)
-
-// Resolve the actual project ID (with hash) if we're in default mode
-let resolvedProjectName = codayOptions.project
-if (resolvedProjectName && !codayOptions.forcedProject) {
-  // In default mode, check for existing project first
-  const cwd = process.cwd()
-  const basename = path.basename(cwd)
-
-  // First, check if a non-volatile project exists with the simple name and matches the path
-  if (projectRepository.exists(basename)) {
-    const config = projectRepository.getConfig(basename)
-    if (config && config.path === cwd && !config.volatile) {
-      debugLog('INIT', `Default mode: found existing non-volatile project '${basename}' for current directory`)
-      resolvedProjectName = basename
-    } else {
-      // Project exists but path doesn't match or is volatile, use volatile ID
-      const volatileProjectId = ProjectService.generateProjectId(cwd)
-      debugLog(
-        'INIT',
-        `Default mode: existing project '${basename}' doesn't match path, using volatile ID ${volatileProjectId}`
-      )
-      resolvedProjectName = volatileProjectId
-    }
-  } else {
-    // No project with simple name, use volatile ID
-    const volatileProjectId = ProjectService.generateProjectId(cwd)
-    debugLog('INIT', `Default mode: no existing project found, using volatile ID ${volatileProjectId}`)
-    resolvedProjectName = volatileProjectId
-  }
-}
-
-const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
-
-promptService = new PromptService(codayOptions.configDir, projectService)
-
-// Register native command handler stubs so they appear in the autocomplete
-// (the actual execution is handled by DelegateCommandHandler in the looper)
-promptService.registerNativeHandler({
-  id: 'handler-delegate',
-  name: 'delegate',
-  description: 'Delegate a task to a specific agent in an isolated sub-thread',
-  source: 'builtin',
-  webhookEnabled: false,
-  createdBy: 'system',
-  createdAt: new Date('2024-01-01').toISOString(),
-  parameterFormat: '@AgentName <task>',
-})
-debugLog('INIT', 'Prompt service initialized')
-
-// Create prompt execution service
-promptExecutionService = new PromptExecutionService(promptService)
-debugLog('INIT', 'Prompt execution service initialized (will be initialized with dependencies after thread manager)')
-
-// Initialize thread file service for REST API endpoints
-const projectsDir = path.join(codayOptions.configDir, 'projects')
-const threadFileService = new ThreadFileService(projectsDir)
-
-// Initialize thread service for REST API endpoints
-const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
-
-// Initialize MCP instance pool for shared MCP instances
-const mcpPool = new McpInstancePool()
-debugLog('INIT', 'MCP instance pool initialized')
-
-// Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, promptService, mcpPool)
-
-// Initialize prompt execution dependencies now that thread manager is ready
-promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
-debugLog('INIT', 'Prompt execution service initialized')
-
-debugLog('INIT', 'Webhook service initialized with prompt execution delegation')
-
-// Initialize config service registry for REST API endpoints
-const configInteractor = new ServerInteractor('config-api')
-const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configInteractor)
 
 /**
  * System and service account usernames that are forbidden for security reasons.
@@ -295,7 +250,7 @@ const FORBIDDEN_USERNAMES = [
  * Extract username for authentication and logging purposes.
  *
  * Resolution order when `--auth` is enabled:
- *  1. `CF_Authorization` header — Cloudflare Access JWT (email claim decoded
+ *  1. `Cf-Access-Jwt-Assertion` header — Cloudflare Access JWT (email claim decoded
  *     from the base64url payload; no signature verification needed as
  *     Cloudflare validates the token at the edge).
  *  2. `x-forwarded-email` header — standard reverse-proxy header.
@@ -304,7 +259,7 @@ const FORBIDDEN_USERNAMES = [
  * When `--auth` is NOT enabled, uses the local OS username (development mode).
  *
  * @param req - Express request object containing headers
- * @returns Username string for logging and thread ownership
+ * @returns Username string used for proxy identity
  * @throws Error if username is a system/service account (security protection)
  * @throws Error if `--auth` is enabled but no valid identity header is found
  */
@@ -324,75 +279,6 @@ function getUsername(req: express.Request): string {
   return username
 }
 
-// Register user information routes
-registerUserRoutes(app, getUsername, codayOptions.configDir, !!codayOptions.auth)
-
-// Register configuration management routes
-registerConfigRoutes(app, configRegistry, getUsername)
-
-// Register audio transcription routes (project-level, no thread required)
-registerTranscribeRoutes(app, configRegistry, getUsername)
-
-// Note: Legacy webhook routes removed - use prompt routes instead
-// Webhook execution is now handled by prompt-execution.routes.ts
-
-// Register prompt management routes
-registerPromptRoutes(app, promptService, getUsername)
-
-// Register prompt execution routes (webhook execution)
-registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
-
-// Register project management routes
-registerProjectRoutes(
-  app,
-  projectService,
-  threadCodayManager.projectEventManager,
-  threadService,
-  getUsername,
-  threadCodayManager,
-  codayOptions
-)
-
-// Register project preview routes
-registerProjectPreviewRoutes(app, projectService)
-
-// Register thread management routes
-registerThreadRoutes(
-  app,
-  threadService,
-  threadFileService,
-  threadCodayManager,
-  getUsername,
-  codayOptions,
-  configRegistry
-)
-
-// Register message management routes
-registerMessageRoutes(app, threadCodayManager, getUsername, threadService)
-
-// Register agent management routes
-const agentCrudService = new AgentCrudService(codayOptions.configDir, projectService)
-registerAgentRoutes(
-  app,
-  projectService,
-  getUsername,
-  codayOptions.configDir,
-  logger,
-  promptService,
-  threadService,
-  agentCrudService,
-  codayOptions
-)
-
-// Initialize scheduler service early so routes can be registered before catch-all
-const schedulerService = new SchedulerService(logger, promptService, codayOptions.configDir)
-
-// Register scheduler routes (service will be initialized after server starts)
-registerSchedulerRoutes(app, schedulerService, getUsername)
-
-// Register token usage reporting routes
-registerTokenUsageRoutes(app, logger, getUsername, codayOptions.auth)
-
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
 // This allows Angular router to handle routes on page refresh
@@ -403,22 +289,30 @@ if (process.env.BUILD_ENV !== 'development') {
     : path.resolve(__dirname, '../coday-client/browser')
 
   const indexPath = path.resolve(clientPath, 'index.html')
+  const factoryCockpitPath = process.env.CODAY_FACTORY_COCKPIT_PATH
+    ? path.resolve(process.env.CODAY_FACTORY_COCKPIT_PATH)
+    : path.resolve(__dirname, '../coday-factory-cockpit/browser')
+  const factoryIndexPath = path.resolve(factoryCockpitPath, 'index.html')
   debugLog('INIT', `Catch-all route will serve: ${indexPath}`)
+  debugLog('INIT', `Factory cockpit catch-all route will serve: ${factoryIndexPath}`)
 
   // Use a middleware instead of route pattern to catch all remaining requests
   app.use((req, res, next) => {
-    // API routes should have been handled above, but double-check to avoid masking real 404s
+    // API routes should have been handled above, but double-check to avoid masking real 404s.
     if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
       res.status(404).send('Not found')
       return
     }
+
+    const requestedIndexPath =
+      req.path === '/factory' || req.path.startsWith('/factory/') ? factoryIndexPath : indexPath
     debugLog('ROUTER', `Serving index.html for client route: ${req.path}`)
 
     // Read and send the file manually to avoid Express sendFile issues in bundled code
-    fs.readFile(indexPath, 'utf8', (err, data) => {
+    fs.readFile(requestedIndexPath, 'utf8', (err, data) => {
       if (err) {
-        debugLog('ERROR', `Failed to read index.html from ${indexPath}:`, err)
-        debugLog('ERROR', `File exists check: ${fs.existsSync(indexPath)}`)
+        debugLog('ERROR', `Failed to read index.html from ${requestedIndexPath}:`, err)
+        debugLog('ERROR', `File exists check: ${fs.existsSync(requestedIndexPath)}`)
         next(err)
       } else {
         res.type('html').send(data)
@@ -426,9 +320,6 @@ if (process.env.BUILD_ENV !== 'development') {
     })
   })
 }
-
-// Initialize thread cleanup service (server-only)
-let cleanupService: ThreadCleanupService | null = null
 
 // ---------------------------------------------------------------------------
 // AgentOS provisioning entry point (managed mode only)
@@ -438,7 +329,8 @@ let cleanupService: ThreadCleanupService | null = null
  * Single entry point called after app.listen() to provision and start AgentOS.
  *
  * In EXTERNAL mode (AGENTOS_URL defined): logs and returns immediately.
- * In MANAGED mode: checks JAR inventory → downloads missing → starts the process.
+ * In MANAGED mode: downloads the requested version unless its JAR set (derived from the
+ * release manifest) is already complete — never starts an older cached version → starts the process.
  *
  * Never throws — any error is logged and the function returns gracefully.
  * The Express server stays up regardless of AgentOS provisioning outcome.
@@ -456,71 +348,29 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   try {
     const agentosVersion = getAgentosVersion()
 
-    // --- 1. Apply pending update from next/ (swap before inventory check) ---
-    const swapResult = checkAndSwapNext(codayOptions.configDir, agentosVersion)
-    if (swapResult.outcome === 'swapped') {
-      debugLog('AGENTOS', `[PROVISION] Swap applied: ${swapResult.message}`)
+    // --- 1. Download the requested version unless its JAR set is already complete ---
+    // The set of JARs comes from the release manifest, nothing is listed by hand. The requested
+    // version always wins over what is cached on disk: no older version is started in the
+    // meantime, and every other version is removed after the download.
+    const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion)
+    debugLog('AGENTOS', `[PROVISION] Download outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
+
+    if (
+      downloadResult.outcome !== 'success' &&
+      downloadResult.outcome !== 'skipped:all-present' &&
+      downloadResult.outcome !== 'skipped:dev-version'
+    ) {
+      debugLog('AGENTOS', '[PROVISION] Download failed — AgentOS will not be started. The proxy will return errors.')
+      return
     }
 
-    // --- 2. Check JAR inventory ---
-    const jarStatus = checkAgentosJars(codayOptions.configDir, agentosVersion)
+    // --- 2. Start the requested version ---
+    debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
+    agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
 
-    // Derive the version currently on disk (from the service JAR, first artifact).
-    // null means no JAR present at all — first run.
-    const activeVersion = jarStatus.artifacts[0]?.foundVersion ?? null
-    const hasUsableJars = activeVersion !== null && jarStatus.artifacts.every((a) => a.foundVersion === activeVersion)
-
-    if (!jarStatus.allPresent && hasUsableJars) {
-      // --- 3a. We have a coherent set of JARs at a different version ---
-      // Spawn immediately with what we have, pre-fetch the target version in background.
-      debugLog(
-        'AGENTOS',
-        `[PROVISION] Active version ${activeVersion} differs from target ${agentosVersion} — spawning current, pre-fetching target in background`
-      )
-
-      // --- 4a. Start with current version ---
-      debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
-      agentosProcess = await startAgentos(codayOptions.configDir, activeVersion, expressPort)
-
-      if (!agentosProcess) {
-        debugLog(
-          'AGENTOS',
-          '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.'
-        )
-        return
-      }
-
-      // --- 5a. Pre-fetch target version into next/ ---
-      downloadAgentosJarsToNext(codayOptions.configDir, agentosVersion).catch((err) =>
-        debugLog('AGENTOS', '[UPDATE] Unhandled error in background pre-fetch:', err)
-      )
-    } else {
-      // --- 3b. JARs missing or already at target version ---
-      // Download blocking only if something is actually missing.
-      const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion, jarStatus.missing)
-      debugLog('AGENTOS', `[PROVISION] Download outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
-
-      if (
-        downloadResult.outcome !== 'success' &&
-        downloadResult.outcome !== 'skipped:all-present' &&
-        downloadResult.outcome !== 'skipped:dev-version'
-      ) {
-        debugLog('AGENTOS', '[PROVISION] Download failed — AgentOS will not be started. The proxy will return errors.')
-        return
-      }
-
-      // --- 4b. Start with target version ---
-      debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
-      agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
-
-      if (!agentosProcess) {
-        debugLog(
-          'AGENTOS',
-          '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.'
-        )
-        return
-      }
-      // No background pre-fetch needed — already at target version
+    if (!agentosProcess) {
+      debugLog('AGENTOS', '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.')
+      return
     }
 
     // Update the proxy target (always localhost:8124 in managed mode, but kept
@@ -533,6 +383,57 @@ async function provisionAgentos(expressPort: number): Promise<void> {
     )
   } catch (error) {
     debugLog('AGENTOS', '[PROVISION] Unexpected error during provisioning (non-fatal):', error)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Factory provisioning entry point (managed mode only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Provision and start the Factory. Must run after provisionAgentos() so that
+ * `currentAgentosUrl` is the final AgentOS URL.
+ *
+ * EXTERNAL mode (FACTORY_URL defined): returns immediately.
+ * MANAGED mode, same flow as AgentOS: download the requested version (blocking) unless its
+ * JAR set is already complete, never starting an older cached version → spawn.
+ * With the 'dev' version sentinel nothing is downloaded: the Factory only starts if
+ * its JARs were placed by hand in <configDir>/factory/.
+ *
+ * Never throws.
+ */
+async function provisionFactory(): Promise<void> {
+  if (FACTORY_URL_ENV) {
+    debugLog('FACTORY', `[PROVISION] External mode — target: ${FACTORY_URL_ENV}. No provisioning performed.`)
+    return
+  }
+
+  debugLog('FACTORY', '[PROVISION] Managed mode — starting Factory provisioning...')
+  try {
+    const factoryVersion = getFactoryVersion()
+
+    // --- 1. Download the requested version unless its JAR set is already complete ---
+    // The set of JARs comes from the release manifest, nothing is listed by hand. The requested
+    // version always wins over what is cached on disk: no older version is started in the
+    // meantime, and every other version is removed after the download.
+    const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
+    debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
+    if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
+      debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
+      return
+    }
+
+    // --- 2. Start the requested version ---
+    factoryProcess = await startFactory(codayOptions.configDir, factoryVersion, currentAgentosUrl)
+    if (!factoryProcess) {
+      debugLog('FACTORY', '[PROVISION] Factory did not start. The proxy will return errors until it is available.')
+      return
+    }
+
+    currentFactoryUrl = `http://localhost:${factoryProcess.port}`
+    debugLog('FACTORY', `[PROVISION] Factory is ready. Proxy target: ${currentFactoryUrl}`)
+  } catch (error) {
+    debugLog('FACTORY', '[PROVISION] Unexpected error during provisioning (non-fatal):', error)
   }
 }
 
@@ -553,62 +454,8 @@ app.use((err: any, req: express.Request, res: express.Response, _: express.NextF
   }
 })
 
-/**
- * Auto-close threads that have been paused (not closedByUser) for more than 7 days.
- * Runs once at server startup, best-effort: errors are logged but never block startup.
- */
-async function autoCloseStaleThreads(): Promise<void> {
-  const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-  const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS).toISOString()
-
-  try {
-    // At startup there is no HTTP request, so we resolve the username directly.
-    // In --auth mode we cannot determine the user here, so we skip auto-close.
-    if (codayOptions.auth) {
-      debugLog('CLEANUP', 'autoCloseStaleThreads: skipped in --auth mode (no server-side user identity at startup)')
-      return
-    }
-    const osUsername = resolveUsername({}, false)
-
-    const projects = projectService.listProjects()
-    let totalClosed = 0
-
-    for (const project of projects) {
-      try {
-        const threads = await threadService.listThreads(project.name, osUsername)
-        const stale = threads.filter((t) => !t.closedByUser && t.modifiedDate < cutoff)
-
-        for (const t of stale) {
-          try {
-            await threadService.updateThread(project.name, t.id, { closedByUser: true })
-            totalClosed++
-          } catch (err) {
-            console.error(`autoClose: failed to close thread ${t.id} in project ${project.name}:`, err)
-          }
-        }
-      } catch (err) {
-        console.error(`autoClose: failed to process project ${project.name}:`, err)
-      }
-    }
-
-    if (totalClosed > 0) {
-      console.log(`✅ Auto-close: ${totalClosed} thread(s) paused depuis plus d'1 semaine marqués comme done`)
-    }
-  } catch (err) {
-    console.error('autoCloseStaleThreads: unexpected error (non-fatal):', err)
-  }
-}
-
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
-  // Set baseUrl if not already configured
-  if (!codayOptions.baseUrl) {
-    codayOptions.baseUrl = `http://localhost:${PORT}`
-    debugLog('INIT', `Base URL set to: ${codayOptions.baseUrl}`)
-  } else {
-    debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
-  }
-
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
@@ -616,38 +463,11 @@ PORT_PROMISE.then(async (PORT) => {
   // AgentOS provisioning — fire-and-forget: runs in background so downloads
   // (up to ~230 MB) never block server startup or other services.
   // The proxy will return errors until AgentOS is ready, which is acceptable.
-  provisionAgentos(PORT).catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
-
-  // Auto-close stale threads — fire-and-forget, non-blocking
-  autoCloseStaleThreads().catch((err) => console.error('autoCloseStaleThreads: unhandled error:', err))
-
-  // Start thread cleanup service after server is running
-  try {
-    debugLog('CLEANUP', 'Starting thread cleanup service...')
-
-    const projectsConfigPath = path.join(codayOptions.configDir, 'projects')
-
-    cleanupService = new ThreadCleanupService(projectsConfigPath, logger)
-    await cleanupService.start()
-    debugLog('CLEANUP', 'Thread cleanup service started successfully')
-  } catch (error) {
-    console.error('Failed to start thread cleanup service:', error)
-  }
-
-  // Initialize and start scheduler service after server is running
-  // Routes are already registered, just need to initialize the service
-  try {
-    debugLog('SCHEDULER', 'Initializing scheduler service...')
-
-    await schedulerService.initialize()
-
-    // Initialize execution dependencies
-    schedulerService.initializeExecution(promptExecutionService)
-
-    debugLog('SCHEDULER', 'Scheduler service initialized successfully')
-  } catch (error) {
-    console.error('Failed to initialize scheduler service:', error)
-  }
+  // Factory is chained after AgentOS (it needs AgentOS's final URL). provisionAgentos never rejects.
+  provisionAgentos(PORT)
+    .catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
+    .then(() => provisionFactory())
+    .catch((err) => debugLog('FACTORY', '[PROVISION] Unhandled error:', err))
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
@@ -661,9 +481,9 @@ PORT_PROMISE.catch((error) => {
 })
 
 // Graceful shutdown with proper cleanup
-// Counter-based guard: 1st signal starts shutdown, 2nd is tolerated (MCP child cascading),
+// Counter-based guard: 1st signal starts shutdown, 2nd is tolerated (child process cascade),
 // 3rd force-exits. This prevents data loss from SIGINT propagating to child processes
-// in the same process group (e.g. MCP FETCH via uvx) which cascades back as a second signal.
+// in the same process group (managed JVMs) which cascades back as a second signal.
 let shutdownSignalCount = 0
 
 async function gracefulShutdown(signal: string) {
@@ -684,25 +504,17 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
-    // Stop AgentOS first (only if we spawned it — not if adopted or external mode)
+    // Stop the Factory first (it depends on AgentOS); only set when we spawned it
+    if (factoryProcess) {
+      console.log('Stopping Factory...')
+      await factoryProcess.shutdown()
+    }
+
+    // Stop AgentOS (only if we spawned it — not if adopted or external mode)
     if (agentosProcess?.spawned) {
       console.log('Stopping AgentOS...')
       await agentosProcess.shutdown()
     }
-
-    // Stop scheduler service
-    console.log('Stopping scheduler service...')
-    schedulerService.stop()
-
-    // Stop thread cleanup service
-    if (cleanupService) {
-      console.log('Stopping thread cleanup service...')
-      await cleanupService.stop()
-    }
-
-    // Cleanup thread-based Coday instances
-    console.log('Cleaning up thread Coday instances...')
-    await threadCodayManager.shutdown()
 
     console.log('Graceful shutdown completed')
     process.exit(0)
@@ -715,19 +527,12 @@ async function gracefulShutdown(signal: string) {
 // Handle various termination signals
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
 process.on('SIGINT', () => gracefulShutdown('SIGINT'))
-process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // nodemon restart
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // watcher restart
 process.on('SIGHUP', () => gracefulShutdown('SIGHUP')) // terminal closed
 
 // Handle uncaught exceptions to prevent hanging
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error)
-
-  // Special handling for RxJS EmptyError during system sleep
-  if (error.message === 'no elements in sequence' || error.constructor.name === 'EmptyErrorImpl') {
-    console.log('Detected RxJS EmptyError during system sleep - this is expected behavior')
-    console.log('Process will continue normally after system wake')
-    return // Don't shutdown for this specific error
-  }
 
   if (shutdownSignalCount === 0) {
     gracefulShutdown('uncaughtException')
@@ -737,18 +542,12 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled rejection at:', promise, 'reason:', reason)
 
-  // Special handling for RxJS errors during system sleep
+  // Handle timeout and abort errors gracefully - these are expected during high load
   if (reason && typeof reason === 'object') {
-    const error = reason as any // Type assertion for error object
-    if (error.message === 'no elements in sequence' || error.constructor?.name === 'EmptyErrorImpl') {
-      console.log('Detected RxJS EmptyError rejection during system sleep - this is expected behavior')
-      return // Don't shutdown for this specific error
-    }
-
-    // Handle timeout errors gracefully - these are expected during high load
+    const error = reason as { name?: string; message?: string }
     if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
       console.log('Detected timeout error - handling gracefully without shutdown')
-      return // Don't shutdown for timeout errors
+      return
     }
 
     // Handle AbortError from timeouts

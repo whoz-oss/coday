@@ -56,6 +56,13 @@ export class AdminHomeComponent {
       path: '/agentos/admin/ai-models',
     },
     {
+      key: 'skills',
+      mark: '\u{1F9E9}',
+      name: 'Platform skills',
+      description: 'Manage skills shared across all namespaces.',
+      path: '/agentos/admin/skills',
+    },
+    {
       key: 'prompts',
       mark: '\u{1F4C4}',
       name: 'Platform prompts',
@@ -68,6 +75,13 @@ export class AdminHomeComponent {
       name: 'Platform case definitions',
       description: 'Manage scheduled case definitions shared across all namespaces.',
       path: '/agentos/admin/case-definitions',
+    },
+    {
+      key: 'tool-invoke',
+      mark: '\u{1F9EA}',
+      name: 'Tool invoke',
+      description: 'Debug: execute any registered tool directly with a custom payload.',
+      path: '/agentos/admin/tool-invoke',
     },
   ] as const
 

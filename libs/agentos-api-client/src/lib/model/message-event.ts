@@ -9,6 +9,7 @@
  */
 import { EntityMetadata } from './entity-metadata'
 import { Actor } from './actor'
+import { ReasoningEffort } from './reasoning-effort'
 import { MessageEventAllOfContent } from './message-event-all-of-content'
 
 export interface MessageEvent {
@@ -20,7 +21,9 @@ export interface MessageEvent {
   type: 'MessageEvent'
   actor: Actor
   content: Array<MessageEventAllOfContent>
-  sessionContext?: { [key: string]: any }
-  llmProvider?: string
   llmModel?: string
+  llmProvider?: string
+  reasoningEffort?: ReasoningEffort
+  requestedReasoningEffort?: ReasoningEffort
+  sessionContext?: { [key: string]: any }
 }

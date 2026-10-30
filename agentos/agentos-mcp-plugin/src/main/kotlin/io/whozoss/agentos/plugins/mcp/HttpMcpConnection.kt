@@ -16,7 +16,7 @@ import java.time.Duration
  *
  * Unlike [StdioMcpConnection], HTTP connections are NOT pooled — each instance is
  * created per agent run and closed after tool resolution. The [CredentialProvider]
- * supplies per-user auth tokens, making connection sharing across users unsafe.
+ * supplies per-user credentials, making connection sharing across users unsafe.
  *
  * Uses [HttpClientStreamableHttpTransport] from the MCP Java SDK 2.0.
  *
@@ -43,16 +43,18 @@ class HttpMcpConnection(
     /**
      * Connects to the remote MCP server, performs the MCP handshake, and discovers tools.
      *
-     * Bearer token injection uses [HttpClientStreamableHttpTransport.Builder.requestBuilder]:
+     * Header injection uses [HttpClientStreamableHttpTransport.Builder.requestBuilder]:
      * a pre-configured [HttpRequest.Builder] with the `Authorization` header is passed to
      * the transport. The builder is copied internally on every request, so the header
      * is applied consistently across all JSON-RPC calls (initialize, listTools, callTool).
      *
-     * @param bearerToken Optional Bearer token for the `Authorization` header.
-     *   When non-null, injected via a pre-configured [HttpRequest.Builder].
+     * @param authorization Optional `Authorization` header (Bearer or Basic). When non-null,
+     *   its [AuthorizationHeader.headerValue] is injected via a pre-configured [HttpRequest.Builder].
+     *   Sending it over plain `http` exposes the credential in cleartext and is logged as a warning
+     *   (this covers bound credentials; [McpConfigParser] already warns for a static `authToken`).
      * @throws McpConnectionException if the HTTP connection or MCP handshake fails.
      */
-    fun connect(bearerToken: String? = null) {
+    fun connect(authorization: AuthorizationHeader? = null) {
         require(config.transport == McpTransport.HTTP) {
             "HttpMcpConnection requires HTTP transport config"
         }
@@ -74,12 +76,13 @@ class HttpMcpConnection(
             .also { if (endpoint != null) it.endpoint(endpoint) }
             .connectTimeout(Duration.ofSeconds(config.timeoutSeconds))
 
-        // Inject Bearer token via a pre-configured request builder.
+        // Inject the Authorization header via a pre-configured request builder.
         // The transport copies this builder for each request, so the header is applied
         // to every JSON-RPC call without needing a per-request customizer.
-        if (bearerToken != null) {
+        if (authorization != null) {
+            warnIfCleartext(url)
             transportBuilder.requestBuilder(
-                HttpRequest.newBuilder().header("Authorization", "Bearer $bearerToken")
+                HttpRequest.newBuilder().header("Authorization", authorization.headerValue())
             )
         }
 
@@ -141,6 +144,13 @@ class HttpMcpConnection(
         logger.debug { "[MCP-HTTP] Closing connection to ${config.url}" }
         runCatching { client.closeGracefully() }
             .onFailure { runCatching { client.close() } }
+    }
+
+    private fun warnIfCleartext(url: String) {
+        val uri = java.net.URI.create(url)
+        if (uri.scheme.equals("http", ignoreCase = true)) {
+            logger.warn { "[MCP-HTTP] Sending credentials over cleartext http to '${uri.host}' — use https" }
+        }
     }
 
     private fun formatResult(result: McpSchema.CallToolResult): String {

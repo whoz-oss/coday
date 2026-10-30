@@ -10,6 +10,7 @@
 
 export interface IntegrationConfig {
   authSettingName?: string
+  autoGrant: boolean
   description?: string
   id?: string
   integrationType: string

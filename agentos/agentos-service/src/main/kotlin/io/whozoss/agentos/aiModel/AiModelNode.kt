@@ -2,6 +2,8 @@ package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ModelPricing
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -23,6 +25,11 @@ import java.util.UUID
  * [namespaceId] and [userId] are denormalised from the parent [io.whozoss.agentos.aiProvider.AiProviderNode] at
  * creation time so that namespace-scoped queries can be served with a single
  * WHERE clause without graph traversal.
+ *
+ * [ModelPricing] is stored as four flat scalar properties — Neo4j nodes cannot hold
+ * nested objects. [toDomain] / [fromDomain] assemble / disassemble the object.
+ *
+ * [reasoningEffort] is stored as its enum name string and round-tripped via [ReasoningEffort.valueOf].
  */
 @Node("AiModel")
 data class AiModelNode(
@@ -36,7 +43,14 @@ data class AiModelNode(
     val alias: String? = null,
     val priority: Int = 0,
     val temperature: Double? = null,
-    val maxTokens: Int? = null,
+    val maxCompletionTokens: Int? = null,
+    val contextWindow: Long? = null,
+    // Pricing stored as flat scalars — ModelPricing is assembled/disassembled in toDomain()/fromDomain().
+    val pricingInputMTokens: Double? = null,
+    val pricingOutputMTokens: Double? = null,
+    val pricingCacheRead: Double? = null,
+    val pricingCacheWrite: Double? = null,
+    val reasoningEffort: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -46,8 +60,21 @@ data class AiModelNode(
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     val namespace: NamespaceNode? = null,
 ) {
-    fun toDomain(): AiModel =
-        AiModel(
+    fun toDomain(): AiModel {
+        val pricing =
+            if (pricingInputMTokens != null || pricingOutputMTokens != null ||
+                pricingCacheRead != null || pricingCacheWrite != null
+            ) {
+                ModelPricing(
+                    inputMTokens = pricingInputMTokens,
+                    outputMTokens = pricingOutputMTokens,
+                    cacheRead = pricingCacheRead,
+                    cacheWrite = pricingCacheWrite,
+                )
+            } else {
+                null
+            }
+        return AiModel(
             metadata =
                 EntityMetadata(
                     id = UUID.fromString(id),
@@ -65,8 +92,12 @@ data class AiModelNode(
             alias = alias,
             priority = priority,
             temperature = temperature,
-            maxTokens = maxTokens,
+            maxCompletionTokens = maxCompletionTokens,
+            contextWindow = contextWindow,
+            pricing = pricing,
+            reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
         )
+    }
 
     companion object {
         fun fromDomain(model: AiModel): AiModelNode =
@@ -80,7 +111,13 @@ data class AiModelNode(
                 alias = model.alias,
                 priority = model.priority,
                 temperature = model.temperature,
-                maxTokens = model.maxTokens,
+                maxCompletionTokens = model.maxCompletionTokens,
+                contextWindow = model.contextWindow,
+                pricingInputMTokens = model.pricing?.inputMTokens,
+                pricingOutputMTokens = model.pricing?.outputMTokens,
+                pricingCacheRead = model.pricing?.cacheRead,
+                pricingCacheWrite = model.pricing?.cacheWrite,
+                reasoningEffort = model.reasoningEffort?.name,
                 created = model.metadata.created,
                 createdBy = model.metadata.createdBy,
                 modified = model.metadata.modified,

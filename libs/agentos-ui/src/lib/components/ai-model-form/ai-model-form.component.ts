@@ -1,13 +1,16 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { catchError, of } from 'rxjs'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   AiProvider,
+  AiProviderApiTypeEnum,
   AiProviderControllerService,
   AiModel,
   AiModelControllerService,
+  ModelPricing,
+  ReasoningEffort,
 } from '@whoz-oss/agentos-api-client'
 
 /**
@@ -23,6 +26,12 @@ import {
  *
  * On success or cancel, navigates back to /:namespaceId/ai-models.
  */
+/** API types where the backend rejects a reasoning effort (mirrors `AiApiType.supportsReasoningEffort`). */
+const NO_REASONING_EFFORT_API_TYPES: readonly AiProviderApiTypeEnum[] = [
+  AiProviderApiTypeEnum.Anthropic,
+  AiProviderApiTypeEnum.Gemini,
+]
+
 @Component({
   selector: 'agentos-ai-model-form',
   imports: [ReactiveFormsModule],
@@ -80,7 +89,15 @@ export class AiModelFormComponent implements OnInit {
     alias: new FormControl<string>('', { nonNullable: true }),
     priority: new FormControl<number>(0, { nonNullable: true }),
     temperature: new FormControl<number | null>(null),
-    maxTokens: new FormControl<number | null>(null),
+    contextWindow: new FormControl<number | null>(null),
+    maxCompletionTokens: new FormControl<number | null>(null),
+    reasoningEffort: new FormControl<ReasoningEffort | null>(null),
+    pricing: new FormGroup({
+      inputMTokens: new FormControl<number | null>(null),
+      outputMTokens: new FormControl<number | null>(null),
+      cacheWrite: new FormControl<number | null>(null),
+      cacheRead: new FormControl<number | null>(null),
+    }),
   })
 
   protected get aiProviderIdControl() {
@@ -107,9 +124,51 @@ export class AiModelFormComponent implements OnInit {
     return this.form.controls.temperature
   }
 
-  protected get maxTokensControl() {
-    return this.form.controls.maxTokens
+  protected get contextWindowControl() {
+    return this.form.controls.contextWindow
   }
+
+  protected get maxCompletionTokensControl() {
+    return this.form.controls.maxCompletionTokens
+  }
+
+  protected get reasoningEffortControl() {
+    return this.form.controls.reasoningEffort
+  }
+
+  protected get pricingGroup() {
+    return this.form.controls.pricing
+  }
+
+  /** Effort levels offered in the select; the empty option (null) keeps the provider default. */
+  protected readonly reasoningEffortOptions = Object.values(ReasoningEffort)
+
+  private readonly selectedProviderId = toSignal(this.form.controls.aiProviderId.valueChanges, {
+    initialValue: this.form.controls.aiProviderId.value,
+  })
+
+  /**
+   * True when the selected provider cannot take a reasoning effort yet (the backend rule is
+   * `AiApiType.supportsReasoningEffort`): the select is cleared and disabled.
+   */
+  protected readonly reasoningEffortUnsupported = computed(() => {
+    const apiType = this.providers().find((p) => p.id === this.selectedProviderId())?.apiType
+    return apiType !== undefined && NO_REASONING_EFFORT_API_TYPES.includes(apiType)
+  })
+
+  private readonly temperatureValue = toSignal(this.form.controls.temperature.valueChanges, {
+    initialValue: this.form.controls.temperature.value,
+  })
+
+  private readonly reasoningEffortValue = toSignal(this.form.controls.reasoningEffort.valueChanges, {
+    initialValue: this.form.controls.reasoningEffort.value,
+  })
+
+  /** OpenAI reasoning models (GPT-5.1 and later) refuse a temperature other than 1 together with an effort. */
+  protected readonly temperatureMayConflictWithEffort = computed(() => {
+    const temperature = this.temperatureValue()
+    return this.reasoningEffortValue() != null && temperature != null && temperature !== 1
+  })
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
@@ -128,6 +187,17 @@ export class AiModelFormComponent implements OnInit {
 
   /** Kept for the update payload (preserves server-side fields). */
   private existingModel: AiModel | null = null
+
+  constructor() {
+    effect(() => {
+      if (this.reasoningEffortUnsupported()) {
+        this.reasoningEffortControl.setValue(null)
+        this.reasoningEffortControl.disable()
+      } else {
+        this.reasoningEffortControl.enable()
+      }
+    })
+  }
 
   ngOnInit(): void {
     const modelId = this.route.snapshot.paramMap.get('modelId')
@@ -153,7 +223,15 @@ export class AiModelFormComponent implements OnInit {
           this.aliasControl.setValue(model.alias ?? '')
           this.priorityControl.setValue(model.priority ?? 0)
           this.temperatureControl.setValue(model.temperature ?? null)
-          this.maxTokensControl.setValue(model.maxTokens ?? null)
+          this.contextWindowControl.setValue(model.contextWindow ?? null)
+          this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
+          this.reasoningEffortControl.setValue(model.reasoningEffort ?? null)
+          this.pricingGroup.setValue({
+            inputMTokens: model.pricing?.inputMTokens ?? null,
+            outputMTokens: model.pricing?.outputMTokens ?? null,
+            cacheWrite: model.pricing?.cacheWrite ?? null,
+            cacheRead: model.pricing?.cacheRead ?? null,
+          })
           this.isLoading.set(false)
         },
         error: () => {
@@ -171,6 +249,22 @@ export class AiModelFormComponent implements OnInit {
     // getRawValue() includes disabled controls (aiProviderId in edit mode)
     const raw = this.form.getRawValue()
 
+    const rawPricing = raw.pricing
+    const hasPricing =
+      rawPricing.inputMTokens != null ||
+      rawPricing.outputMTokens != null ||
+      rawPricing.cacheWrite != null ||
+      rawPricing.cacheRead != null
+    const pricing: ModelPricing | undefined = hasPricing
+      ? {
+          isEmpty: false,
+          inputMTokens: rawPricing.inputMTokens ?? undefined,
+          outputMTokens: rawPricing.outputMTokens ?? undefined,
+          cacheWrite: rawPricing.cacheWrite ?? undefined,
+          cacheRead: rawPricing.cacheRead ?? undefined,
+        }
+      : undefined
+
     const payload: AiModel = {
       ...(this.existingModel ?? {}),
       aiProviderId: raw.aiProviderId,
@@ -183,7 +277,10 @@ export class AiModelFormComponent implements OnInit {
       alias: raw.alias.trim() || undefined,
       priority: raw.priority,
       temperature: raw.temperature ?? undefined,
-      maxTokens: raw.maxTokens ?? undefined,
+      contextWindow: raw.contextWindow ?? undefined,
+      maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
+      reasoningEffort: raw.reasoningEffort ?? undefined,
+      pricing,
     }
 
     const call$ = this.isEditMode()

@@ -1,7 +1,7 @@
 spring:
   application:
     name: agentos
-  
+
   # Spring AI configuration (using environment variables)
   ai:
     anthropic:
@@ -36,11 +36,12 @@ management:
 
 agentos:
   plugins:
-    dir: ${PLUGINS_DIR:/app/plugins/}
+    dir: ${AGENTOS_PLUGINS_DIR:/app/plugins/}
 
 logging:
   level:
     root: ${LOGGING_LEVEL_ROOT:INFO}
-    io.whozoss.agentos.service: ${LOGGING_LEVEL_IO_BIZNET_AGENTOS:INFO}
+    # LOGGING_LEVEL_IO_BIZNET_AGENTOS kept as a fallback for existing deployments.
+    io.whozoss.agentos: ${LOGGING_LEVEL_IO_WHOZOSS_AGENTOS:${LOGGING_LEVEL_IO_WHOZOSS_FACTORY:INFO}}
     org.pf4j: INFO
     org.springframework.boot: INFO

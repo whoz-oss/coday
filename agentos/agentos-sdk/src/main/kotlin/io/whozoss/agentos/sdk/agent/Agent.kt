@@ -1,5 +1,6 @@
 package io.whozoss.agentos.sdk.agent
 
+import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.entity.Entity
 import kotlinx.coroutines.flow.Flow
@@ -8,6 +9,18 @@ interface Agent : Entity {
     val name: String
     val llmProvider: String
     val llmModel: String
+
+    /** Reasoning effort the provider receives with this agent's model requests, or null when none is sent. */
+    val reasoningEffort: ReasoningEffort?
+        get() = null
+
+    /**
+     * Reasoning effort asked for this agent's model requests (the case's, else the model's), before the
+     * provider's limits; null when none is asked. Differs from [reasoningEffort] when the provider caps the
+     * level (vLLM, Ollama) or takes none (Anthropic, Gemini).
+     */
+    val requestedReasoningEffort: ReasoningEffort?
+        get() = null
 
     /**
      * Run the agent with the given case events.

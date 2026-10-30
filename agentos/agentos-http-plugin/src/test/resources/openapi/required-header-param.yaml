@@ -1,0 +1,41 @@
+openapi: 3.0.0
+info:
+  title: Headers
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      operationId: listThings
+      parameters:
+        - name: X-Tenant
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Things
+  /others:
+    get:
+      operationId: listOthers
+      parameters:
+        - name: X-Trace
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Others
+  /session:
+    get:
+      operationId: getSession
+      parameters:
+        - name: session_id
+          in: cookie
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session

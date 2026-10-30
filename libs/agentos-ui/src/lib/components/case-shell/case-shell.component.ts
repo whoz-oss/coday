@@ -1,3 +1,5 @@
+import { CaseWorkspaceService } from '../../services/case-workspace.service'
+import { CaseWorkspaceComponent } from '../case-workspace/case-workspace.component'
 import {
   ChangeDetectionStrategy,
   Component,
@@ -10,7 +12,11 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import {
+  NamespaceCaseListUpdateSseService,
+  NamespaceControllerService,
+  NamespaceListItem,
+} from '@whoz-oss/agentos-api-client'
 import { debounceTime, map, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
@@ -41,6 +47,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
 @Component({
   selector: 'agentos-case-shell',
   imports: [
+    CaseWorkspaceComponent,
     CaseChatComponent,
     CaseHomeComponent,
     ShellSidebarComponent,
@@ -58,6 +65,8 @@ export class CaseShellComponent {
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
+  private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
+  protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
   private readonly destroyRef = inject(DestroyRef)
 
@@ -152,7 +161,19 @@ export class CaseShellComponent {
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
+  protected readonly canWriteActiveCase = computed(() => {
+    const namespaceRole = this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.role
+    const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
+    return this.isAdmin() || namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN' || caseRole === 'ADMIN'
+  })
+
   constructor() {
+    effect((cleanup) => {
+      const namespaceId = this.selectedNamespace()?.id
+      if (!namespaceId) return
+      const sub = this.workspaceService.watchNamespace(namespaceId).subscribe()
+      cleanup(() => sub.unsubscribe())
+    })
     // Load the current user eagerly so isAdmin() and userInitials() are available
     // as soon as the shell renders, without waiting for a /me navigation.
     if (!this.userState.currentUser()) {
@@ -185,12 +206,15 @@ export class CaseShellComponent {
       }
     })
 
-    // Reload the case list whenever the namespace changes.
-    effect(() => {
+    // Load the list and independently watch namespace-level list invalidations.
+    // Effect cleanup closes the previous EventSource on namespace switches.
+    effect((cleanup) => {
       const nsId = this.namespaceId()
-      if (nsId) {
-        this.caseState.loadCases(nsId)
-      }
+      if (!nsId) return
+
+      this.caseState.loadCases(nsId)
+      const subscription = this.caseListUpdates.connect(nsId).subscribe(() => this.caseState.refreshCases(nsId))
+      cleanup(() => subscription.unsubscribe())
     })
   }
 
@@ -228,6 +252,13 @@ export class CaseShellComponent {
   protected onCreateRequested(): void {
     this.router.navigate(['/agentos/home'], {
       queryParams: { ns: this.namespaceId() },
+    })
+  }
+
+  protected onSubCaseCreateRequested(parentCaseId: string): void {
+    this.mobileDrawerOpen.set(false)
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId(), parentCase: parentCaseId },
     })
   }
 
@@ -272,6 +303,26 @@ export class CaseShellComponent {
         error: (err) => {
           console.error(`[CaseShell] Failed to rename case ${event.id}:`, err)
           alert('Could not rename the case. Please try again.')
+        },
+      })
+  }
+
+  /**
+   * Persist field updates (title and/or runCostThreshold) requested from the chat header.
+   * Applied optimistically by the service; reverted on failure.
+   */
+  protected onCaseUpdateRequested(event: { id: string; title?: string; runCostThreshold?: number | null }): void {
+    this.caseState
+      .updateCaseFields(event.id, {
+        title: event.title,
+        // Convert null ("clear the threshold") to undefined (Case type doesn't carry null)
+        runCostThreshold: event.runCostThreshold ?? undefined,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to update case ${event.id}:`, err)
+          alert('Could not save the changes. Please try again.')
         },
       })
   }

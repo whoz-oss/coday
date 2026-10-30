@@ -22,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * into an agent's LLM context (see [AgentAdvancedContext]).
  *
  * Override with environment variables (Spring Boot relaxed binding):
+ * - AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS (explicit application.yml binding)
  * - AGENTOS_DEFAULTS_AGENT_NAME
  * - AGENTOS_DEFAULTS_IMAGE_CHAR_COST
  * - AGENTOS_DEFAULTS_MAX_ATTACHED_IMAGES
@@ -30,6 +31,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * ```yaml
  * agentos:
  *   defaults:
+ *     delegation-timeout-seconds: 1800
  *     agent-name: copilot
  *     image-char-cost: 6000
  *     max-attached-images: 20
@@ -39,6 +41,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class AgentConfigProperties(
     val agentName: String? = null,
     /**
+     * Default inactivity budget for each outgoing delegation, in seconds: how long it waits without activity
+     * from its sub-case, or from the sub-case's own delegations, before stopping it. Cost confirmation does
+     * not count.
+     */
+    val delegationTimeoutSeconds: Int = 600,
+    /**
      * Char-equivalent cost of one attached image against the detailed-tool budget.
      * Derived from the legacy Coday estimate: (width * height) / 750 tokens at
      * ~3.5 chars per token, ~4 900 chars for a full-size 1024x1024 image,
@@ -47,4 +55,8 @@ data class AgentConfigProperties(
     val imageCharCost: Int = 6_000,
     /** Maximum images attached as Media across the whole prompt, newest first. */
     val maxAttachedImages: Int = 20,
-)
+) {
+    init {
+        require(delegationTimeoutSeconds > 0) { "agentos.defaults.delegation-timeout-seconds must be positive" }
+    }
+}

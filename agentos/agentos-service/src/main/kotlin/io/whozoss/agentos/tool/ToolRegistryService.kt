@@ -1,5 +1,6 @@
 package io.whozoss.agentos.tool
 
+import io.whozoss.agentos.configAgent.ConfigAgentIntegration
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
@@ -44,6 +45,8 @@ class ToolRegistryService(
         logger.info { "Initializing Tool Registry" }
         loadPlugins()
         registerBuiltInExchangeTypes()
+        // Built into the service, so always available; granted by io.whozoss.agentos.configAgent.ConfigToolGrantService.
+        integrationTypeRegistry.registerBuiltIn(ConfigAgentIntegration.descriptor())
         logger.info { "Tool Registry initialized with ${pluginsByType.size} plugin(s)" }
     }
 

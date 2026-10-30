@@ -28,6 +28,7 @@ data class UserNode(
     val lastname: String? = null,
     val bio: String? = null,
     val isAdmin: Boolean = false,
+    val preferredLanguage: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -52,6 +53,7 @@ data class UserNode(
             lastname = lastname,
             bio = bio,
             isAdmin = isAdmin,
+            preferredLanguage = preferredLanguage,
         )
 
     companion object {
@@ -64,6 +66,7 @@ data class UserNode(
                 lastname = user.lastname,
                 bio = user.bio,
                 isAdmin = user.isAdmin,
+                preferredLanguage = user.preferredLanguage,
                 created = user.metadata.created,
                 createdBy = user.metadata.createdBy,
                 modified = user.metadata.modified,

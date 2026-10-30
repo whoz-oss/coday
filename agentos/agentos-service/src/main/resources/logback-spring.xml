@@ -13,7 +13,8 @@
       - Root cause displayed first
       - Max 10 lines per cause
       - Framework packages stripped (Spring, Tomcat, Hibernate, CGLib, JDK internals)
-      - Business package io.biznet always preserved
+      - Business package io.whozoss always preserved
+      - MDC correlation keys (caseId, namespaceId, agentName, userId) emitted as JSON fields
 
   -->
   <springProfile name="docker">

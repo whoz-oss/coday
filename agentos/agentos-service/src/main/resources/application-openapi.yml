@@ -22,6 +22,11 @@ agentos:
     data-dir: build/openapi-neo4j-data/
   bootstrap:
     enabled: false
+  # Document every endpoint, including those registered only with Git workspaces enabled:
+  # the committed spec and the generated client must not depend on an instance's flags.
+  git:
+    workspaces:
+      enabled: true
   # OpenAPI spec generation does not need encryption — disable it explicitly.
   # FieldEncryptorConfiguration requires both values to be set; NONE opts out.
   encryption:

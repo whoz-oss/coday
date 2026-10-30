@@ -12,10 +12,10 @@ import { NamespaceItemComponent } from '../namespace-item/namespace-item.compone
  *
  * Responsibilities:
  * - Load and display the list of namespaces via ds-entity-list
- * - Navigate to create/edit pages
+ * - Navigate to the create page and to namespace settings
  * - Delete with immediate list refresh (confirmation handled by NamespaceItemComponent)
  *
- * Create and edit logic live in NamespaceFormComponent.
+ * Create and edit logic live in NamespaceFormComponent (edit is reached from the namespace settings).
  */
 @Component({
   selector: 'agentos-namespace-list',
@@ -79,10 +79,6 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos/namespaces/new'])
   }
 
-  protected navigateToEdit(ns: Namespace): void {
-    this.router.navigate(['/agentos/namespaces', ns.id ?? '', 'edit'])
-  }
-
   protected openIntegrations(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'integrations'])
   }
@@ -103,6 +99,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'prompts'])
   }
 
+  protected openSkills(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'skills'])
+  }
+
   protected openScheduledPrompts(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'scheduled-prompts'])
   }
@@ -115,8 +115,8 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'auth-settings'])
   }
 
-  protected openMembers(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'members'])
+  protected openToolInvoke(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'tool-invoke'])
   }
 
   // --- Delete ---

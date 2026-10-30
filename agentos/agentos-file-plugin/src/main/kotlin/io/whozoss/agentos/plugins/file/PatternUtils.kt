@@ -9,9 +9,9 @@ package io.whozoss.agentos.plugins.file
  * - "*substring*" (contains match)
  * - "exact" (exact match)
  */
-internal fun matchesPattern(fileName: String, pattern: String): Boolean = when {
-    pattern.startsWith("*") && pattern.endsWith("*") -> fileName.contains(pattern.trim('*'))
-    pattern.startsWith("*") -> fileName.endsWith(pattern.removePrefix("*"))
-    pattern.endsWith("*") -> fileName.startsWith(pattern.removeSuffix("*"))
-    else -> fileName == pattern
+internal fun matchesPattern(fileName: String, pattern: String, ignoreCase: Boolean = false): Boolean = when {
+    pattern.startsWith("*") && pattern.endsWith("*") -> fileName.contains(pattern.trim('*'), ignoreCase = ignoreCase)
+    pattern.startsWith("*") -> fileName.endsWith(pattern.removePrefix("*"), ignoreCase = ignoreCase)
+    pattern.endsWith("*") -> fileName.startsWith(pattern.removeSuffix("*"), ignoreCase = ignoreCase)
+    else -> fileName.equals(pattern, ignoreCase = ignoreCase)
 }

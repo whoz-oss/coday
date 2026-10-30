@@ -31,4 +31,11 @@ data class Namespace(
     val configPath: String? = null,
     val externalId: String? = null,
     val defaultAgentName: String? = null,
+    /**
+     * Namespace-level default for the run cost threshold, applicable to all cases in this
+     * namespace.
+     *
+     * **`null` means "inherit from the platform default", never "no limit" or "zero".**
+     */
+    val runCostThreshold: Double? = null,
 ) : Entity

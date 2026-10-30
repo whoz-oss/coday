@@ -9,7 +9,12 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import org.springframework.web.server.ResponseStatusException
+import io.mockk.mockk
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.ScopedAccessPolicy
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -23,7 +28,13 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
     private val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
 
     private fun newService(): IntegrationConfigServiceImpl =
-        IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy())
+        IntegrationConfigServiceImpl(
+            InMemoryIntegrationConfigRepository(),
+            IntegrationConfigMergeStrategy(),
+            scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
+            namespaceService = mockk<NamespaceService>(relaxed = true),
+            scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+        )
 
     private fun config(
         namespaceId: UUID? = UUID.randomUUID(),
@@ -130,9 +141,9 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val nsId = UUID.randomUUID()
             service.create(config(namespaceId = nsId, name = "JIRA"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(config(namespaceId = nsId, name = "JIRA"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create allows same name in different namespaces" {
@@ -181,9 +192,9 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val userId = UUID.randomUUID()
             service.create(config(namespaceId = null, userId = userId, name = "JIRA"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(config(namespaceId = null, userId = userId, name = "JIRA"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create throws 409 on duplicate user × namespace triple (ns, user, name)" {
@@ -192,9 +203,9 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val userId = UUID.randomUUID()
             service.create(config(namespaceId = nsId, userId = userId, name = "JIRA"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(config(namespaceId = nsId, userId = userId, name = "JIRA"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "three rows differing only by scope coexist for the same name (AC2 grid)" {
@@ -239,9 +250,9 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             service.create(config(namespaceId = nsId, userId = alice, name = "OLD"))
             val toUpdate = service.create(config(namespaceId = nsId, userId = alice, name = "OTHER"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.update(toUpdate.copy(name = "OLD"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -317,6 +328,27 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             service.findByParent(nsB) shouldHaveSize 1
         }
 
+        "update refuses a filesystem-backed config" {
+            val service = newService()
+            val filesystem = config().copy(source = IntegrationConfigSource.FILESYSTEM)
+
+            shouldThrow<UnprocessableEntityException> { service.update(filesystem) }
+        }
+
+        "delete refuses a filesystem-backed config resolved by id" {
+            val repository = InMemoryIntegrationConfigRepository()
+            val service = IntegrationConfigServiceImpl(
+                repository,
+                IntegrationConfigMergeStrategy(),
+                scopedAccessPolicy = ScopedAccessPolicy(mockk(relaxed = true)),
+                namespaceService = mockk<NamespaceService>(relaxed = true),
+                scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties()),
+            )
+            val filesystem = repository.save(config().copy(source = IntegrationConfigSource.FILESYSTEM))
+
+            shouldThrow<UnprocessableEntityException> { service.delete(filesystem.id) }
+        }
+
         // -------------------------------------------------------------------------
         // Update
         // -------------------------------------------------------------------------
@@ -363,7 +395,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             // NS-shared layer with type=JIRA
             service.create(config(namespaceId = nsId, name = "JIRA", integrationType = "JIRA"))
             // User tries to create a user×ns override with the same name but different type
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
                 )
@@ -379,7 +411,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                 config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "JIRA"),
             )
             // Same user creates a user-global with the same name but different type
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
                 )
@@ -395,7 +427,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                 config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "JIRA"),
             )
             // Same user adds a user×ns override with a different type — would break the merge
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
                 )
@@ -439,7 +471,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             )
             // Rename the user override from "FILES" to "JIRA" — would now collide with the NS
             // layer's "JIRA"/JIRA but the user override carries integrationType=FILE_ACCESS
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.update(userOverride.copy(name = "JIRA"))
             }
         }
@@ -454,7 +486,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             // Platform layer with type=JIRA
             service.create(config(namespaceId = null, userId = null, name = "JIRA", integrationType = "JIRA"))
             // NS-shared layer with the same name but a different type — would break the merge
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = nsId, userId = null, name = "JIRA", integrationType = "FILE_ACCESS"),
                 )
@@ -465,7 +497,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             val service = newService()
             val userId = UUID.randomUUID()
             service.create(config(namespaceId = null, userId = null, name = "JIRA", integrationType = "JIRA"))
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(
                     config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
                 )

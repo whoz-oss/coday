@@ -9,6 +9,7 @@ const adminNode = (overrides: Partial<CaseTreeItem> = {}): CaseTreeItem => ({
   favorite: false,
   canDelete: true,
   canRename: true,
+  canCreateSubCase: true,
   status: 'IDLE',
   children: [],
   ...overrides,
@@ -124,6 +125,29 @@ describe('CaseDrawerComponent', () => {
     const roots = component['rootItems']()
     expect(roots.map((i) => i.id)).toEqual(['parent'])
     expect(roots[0].children.map((i) => i.id)).toEqual(['child'])
+  })
+
+  it('offers sub-case creation only for writable root cases and emits the parent without selecting it', () => {
+    const ref = makeComponentRef(
+      [
+        { id: 'root', namespaceId: 'ns', title: 'Root', role: CaseRoleEnum.ADMIN } as Case,
+        { id: 'member', namespaceId: 'ns', title: 'Member', role: CaseRoleEnum.MEMBER } as Case,
+        { id: 'child', namespaceId: 'ns', title: 'Child', role: CaseRoleEnum.ADMIN, parentCaseId: 'root' } as Case,
+        { id: 'orphan', namespaceId: 'ns', title: 'Orphan', role: CaseRoleEnum.ADMIN, parentCaseId: 'hidden' } as Case,
+      ],
+      'child'
+    )
+    const created: string[] = []
+    const selected: string[] = []
+    ref.instance.subCaseCreateRequested.subscribe((id) => created.push(id))
+    ref.instance.caseSelected.subscribe((id) => selected.push(id))
+    render(ref)
+
+    const buttons = host(ref).querySelectorAll<HTMLButtonElement>('button[title="Create sub-case"]')
+    expect(buttons).toHaveLength(1)
+    buttons[0].click()
+    expect(created).toEqual(['root'])
+    expect(selected).toEqual([])
   })
 
   it('carries favorite, canDelete and canRename onto each tree node', () => {

@@ -96,7 +96,7 @@ test.fixme('story 6.6 — AI Providers all-scopes golden path', async ({ page })
     await route.continue()
   })
 
-  await page.goto(`/agentos/${NS_ID}/ai-providers`)
+  await page.goto(`/${NS_ID}/ai-providers`)
 
   // 1 — three sections rendered
   await expect(page.getByText('AI Providers du namespace')).toBeVisible()

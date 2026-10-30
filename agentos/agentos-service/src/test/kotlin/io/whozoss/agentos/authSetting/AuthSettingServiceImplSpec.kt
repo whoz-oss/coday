@@ -12,7 +12,7 @@ import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
-import org.springframework.web.server.ResponseStatusException
+import io.whozoss.agentos.exception.ConflictException
 import java.util.UUID
 
 // Convenience accessor for tests that reason about the flat data map.
@@ -30,7 +30,7 @@ private val AuthSetting.data: Map<String, String> get() = toDataMap()
  */
 class AuthSettingServiceImplSpec : StringSpec() {
     // PermissionService and UserService are only used by findFiltered, which is not
-    // exercised in this spec (tested via controller + integration tests).
+    // exercised in this spec (AuthSettingScopeContractSpec uses the real controller and service).
     // Relaxed mocks satisfy the constructor without interfering with the tested methods.
     private fun newService(repository: AuthSettingRepository) =
         AuthSettingServiceImpl(
@@ -138,9 +138,9 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val existing = setting(namespaceId = nsId, userId = null, name = "github")
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "github") } returns existing
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 newService(repo).create(setting(namespaceId = nsId, userId = null, name = "github"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -166,9 +166,9 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val toUpdate = setting(namespaceId = nsId, name = "github")
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "gitlab") } returns other
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 newService(repo).update(toUpdate.withName("gitlab"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -187,9 +187,9 @@ class AuthSettingServiceImplSpec : StringSpec() {
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, userId, "primary") } returns null
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "primary") } returns nsShared
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 newService(repo).create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.API_KEY))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create user-global rejects when same-user user×ns layer has same name with different authType" {
@@ -203,9 +203,9 @@ class AuthSettingServiceImplSpec : StringSpec() {
             // The conflicting layer is the user×ns row, surfaced via findByUserId.
             every { repo.findByUserId(userId) } returns listOf(userNs)
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 newService(repo).create(setting(namespaceId = null, userId = userId, name = "primary", authType = AuthType.API_KEY))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create user×ns rejects when same-user user-global layer has same name with different authType" {
@@ -217,9 +217,9 @@ class AuthSettingServiceImplSpec : StringSpec() {
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "primary") } returns null
             every { repo.findByNamespaceIdAndUserIdAndName(null, userId, "primary") } returns userGlobal
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 newService(repo).create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.API_KEY))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create allows same name across layers when authType matches" {
@@ -268,9 +268,9 @@ class AuthSettingServiceImplSpec : StringSpec() {
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, userId, "mcp-setting") } returns null
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "mcp-setting") } returns nsShared
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 newService(repo).create(setting(namespaceId = nsId, userId = userId, name = "mcp-setting", authType = AuthType.API_KEY))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "OAUTH_MCP_DISCOVERABLE merges across layers correctly" {
@@ -318,9 +318,9 @@ class AuthSettingServiceImplSpec : StringSpec() {
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, userId, "primary") } returns null
             every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "primary") } returns nsShared
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 newService(repo).update(mine.withName("primary"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         // -------------------------------------------------------------------------

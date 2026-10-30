@@ -10,6 +10,8 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.context.UserSessionContextResolver
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
@@ -115,6 +117,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
         caseService: CaseService,
         agentConfigService: AgentConfigService = mockk<AgentConfigService>().also {
             every { it.findById(agentId) } returns activeAgent
+            every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
         },
         userService: UserService = mockk<UserService>().also {
             every { it.findById(userId1) } returns user1
@@ -134,8 +137,10 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             caseService = caseService,
             permissionService = mockk<PermissionService>(relaxed = true),
             userService = userService,
+            userSessionContextResolver = UserSessionContextResolver(),
             properties = properties,
             clock = clock,
+            caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
         )
         val scanner = SchedulerScanner(
             scheduledPromptRepository = spRepo,
@@ -160,15 +165,23 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
      */
     private fun eventuallyIdleCaseService(): CaseService {
         val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
+        val caseMap = mutableMapOf<UUID, Case>()
         return mockk<CaseService>(relaxed = true).also { svc ->
             every { svc.create(any()) } answers {
                 val id = UUID.randomUUID()
                 val flow = MutableStateFlow(CaseStatus.IDLE)
                 val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
                 runtimeMap[id] = rt
-                Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                val created = Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId, status = CaseStatus.IDLE)
+                caseMap[id] = created
+                created
             }
             every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
+            every { svc.findById(any(), any()) } answers { caseMap[firstArg<UUID>()] }
+            every { svc.findByIds(any(), any()) } answers {
+                val ids = firstArg<Collection<UUID>>()
+                ids.mapNotNull { caseMap[it] }
+            }
         }
     }
 
@@ -317,6 +330,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns activeAgent
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
             }
 
             runRepo.userRunRepository = userRunRepo
@@ -332,8 +346,10 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 caseService = eventuallyIdleCaseService(),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
+                userSessionContextResolver = UserSessionContextResolver(),
                 properties = smallBatchProperties,
                 clock = clock,
+                caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
             )
             val scanner = SchedulerScanner(
                 scheduledPromptRepository = spRepo,

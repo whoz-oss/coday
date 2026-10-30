@@ -75,7 +75,7 @@ export interface AgentosProcess {
  *
  * @returns { available: true, version } when a suitable JVM is found, otherwise { available: false }.
  */
-function detectJava(): { available: boolean; version?: string } {
+export function detectJava(): { available: boolean; version?: string } {
   // JAVA_HOME may not be set in non-interactive shells (e.g. SDKMAN, Homebrew).
   // Resolve the java binary path: prefer JAVA_HOME/bin/java, fall back to 'java' on PATH.
   const javaHome = process.env.JAVA_HOME
@@ -273,16 +273,9 @@ export async function startAgentos(
 
   const child: ChildProcess = spawn(javaBin, ['-jar', jarPath, `--server.port=${agentosPort}`], {
     cwd: agentosDir,
-    // Inherit env from parent process, then add our overrides.
-    // AGENTOS_ENCRYPTION_KEY/SALT=NONE: explicitly disables field encryption
-    // (temporary — credentials stored in plaintext on disk; AgentOS logs a WARN).
-    // Replace with real cryptographic values when secret management is in place.
+    // Inherit the environment, then apply explicit fallbacks for managed settings.
     env: {
       ...process.env,
-      // Fallback to NONE only if not already set — real values from the environment
-      // take precedence (production deployments with actual encryption keys).
-      AGENTOS_ENCRYPTION_KEY: process.env.AGENTOS_ENCRYPTION_KEY ?? 'NONE',
-      AGENTOS_ENCRYPTION_SALT: process.env.AGENTOS_ENCRYPTION_SALT ?? 'NONE',
       // Derive the OAuth redirect URI from the actual Express port so the
       // browser callback URL is correct regardless of which port was assigned.
       // An existing env var takes precedence (e.g. production reverse-proxy URL).

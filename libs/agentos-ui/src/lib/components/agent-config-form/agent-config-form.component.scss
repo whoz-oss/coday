@@ -115,6 +115,38 @@
     resize: vertical;
     min-height: 120px;
     line-height: 1.5;
+
+    &--mono {
+      font-family: monospace;
+      font-size: 0.8125rem;
+    }
+  }
+
+  &__field-error {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-error, var(--red, #dc2626));
+    line-height: 1.4;
+  }
+
+  &__select {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+    appearance: auto;
+
+    &:focus {
+      border-color: var(--color-accent);
+    }
   }
 
   &__integrations {
@@ -202,6 +234,13 @@
     }
   }
 
+  &__integration-warning {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-warning, #b25000);
+    line-height: 1.4;
+  }
+
   &__integration-restriction {
     margin: 0 0 0 1.5rem;
     font-size: 0.8rem;
@@ -211,6 +250,76 @@
   }
 
   &__integration-builtin-desc {
+    margin: 0 0 0 1.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+  }
+
+  &__skills {
+    border: 1px solid var(--color-divider);
+    border-radius: 0;
+    padding: 1rem;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  &__skills-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+  }
+
+  &__skills-warning {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--color-error, var(--red, #dc2626));
+  }
+
+  &__skills-empty {
+    margin: 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--color-text-secondary);
+  }
+
+  &__skill-all,
+  &__skill-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  &__skill-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  &__skill-checkbox {
+    flex: 0 0 auto;
+  }
+
+  &__skill-name {
+    font-size: 0.875rem;
+  }
+
+  &__skill-badge {
+    font-size: 0.75rem;
+    font-family: monospace;
+    color: var(--color-text-secondary);
+
+    &--unresolved {
+      color: var(--color-error, var(--red, #dc2626));
+    }
+  }
+
+  &__skill-desc {
     margin: 0 0 0 1.5rem;
     font-size: 0.8rem;
     color: var(--color-text-secondary);
@@ -345,6 +454,8 @@
     color: var(--color-text-secondary);
     line-height: 1.4;
   }
+
+  // ── Actions row ───────────────────────────────────────────────
 
   &__actions {
     display: flex;

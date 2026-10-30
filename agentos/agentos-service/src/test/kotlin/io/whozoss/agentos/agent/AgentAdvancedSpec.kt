@@ -883,6 +883,142 @@ class AgentAdvancedSpec :
             guidelines shouldNotBe ""
         }
 
+        "buildUserFacingGuidelines uses preferredLanguage from sessionContext when no user messages to detect from" {
+            // Scheduled cases: no conversational user text, but preferredLanguage was injected
+            // by ScheduledPromptExecutor into the first user message's sessionContext.
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        // System-injected prompt — no human language to detect from
+                        content = listOf(MessageContent.Text("@agent Run the weekly digest report.")),
+                        sessionContext = mapOf("preferredLanguage" to "fr"),
+                    ),
+                )
+            // makeParserAgent has a relaxed mock chatClient that returns null for .call().content()
+            // so detectUserLanguage returns null — the fallback path is exercised
+            val guidelines = agent.buildUserFacingGuidelines(events)
+            guidelines shouldNotBe null
+            guidelines!! shouldContain "fr"
+            guidelines shouldContain "IMPORTANT"
+            guidelines shouldContain "hard constraint"
+        }
+
+        "buildUserFacingGuidelines prefers detected language over preferredLanguage in sessionContext" {
+            // Interactive case where the user writes in Spanish but has preferredLanguage=fr stored.
+            // The detected language (Spanish) must win — priority 1.
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "<language>Spanish</language>"
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("Busca desarrolladores Angular en Madrid")),
+                        sessionContext = mapOf("preferredLanguage" to "fr"),
+                    ),
+                )
+            val guidelines = agent.buildUserFacingGuidelines(events)
+            guidelines shouldNotBe null
+            guidelines!! shouldContain "Spanish"
+            // The stored preference must NOT override the detected language
+            (guidelines.contains("fr") && !guidelines.contains("Spanish")) shouldBe false
+        }
+
+        "buildUserFacingGuidelines does not traverse event list for sessionContext when language is detected" {
+            // Verifies the lazy evaluation: if detectUserLanguage succeeds, getSessionPreferredLanguage
+            // must never be called (no event list traversal). We can't directly assert the local
+            // function isn't called, but we can verify the detected language is used and the
+            // sessionContext value does not appear in the output.
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "<language>German</language>"
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("Finde mir Angular-Entwickler in Berlin")),
+                        sessionContext = mapOf("preferredLanguage" to "should-not-appear"),
+                    ),
+                )
+            val guidelines = agent.buildUserFacingGuidelines(events)
+            guidelines shouldNotBe null
+            guidelines!! shouldContain "German"
+            // The sessionContext value must not leak into the constraint
+            (guidelines.contains("should-not-appear")) shouldBe false
+        }
+
+        "buildUserFacingGuidelines ignores blank preferredLanguage in sessionContext" {
+            // A blank or whitespace-only preferredLanguage must be treated as absent.
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("@agent Run the report.")),
+                        sessionContext = mapOf("preferredLanguage" to "   "),
+                    ),
+                )
+            val guidelines = agent.buildUserFacingGuidelines(events)
+            guidelines shouldNotBe null
+            // Static rules present but no language constraint
+            guidelines!! shouldContain "discriminate"
+            guidelines shouldNotBe ""  // not empty
+            // No IMPORTANT language constraint should be present
+            (guidelines.lines().any { it.startsWith("IMPORTANT") }) shouldBe false
+        }
+
         // -------------------------------------------------------------------------
         // buildLanguageHint unit tests (kept for backward compatibility)
         // -------------------------------------------------------------------------
@@ -1731,8 +1867,13 @@ class AgentAdvancedSpec :
         }
 
         // Wiring: the orchestrator must forward the raw LLM-generated args AND the
-        // accumulated (non-empty) caseEvents to the dynamic hook. Without this, a plugin
+        // accumulated caseEvents to the dynamic hook. Without this, a plugin
         // cannot perform a programmatic bypass (core use case of this PR).
+        //
+        // The tool name has no "__" prefix so filterEventsByIntegration passes the full
+        // caseEventsProvider list through unchanged, letting us assert on MessageEvent
+        // presence. Tools with a prefix only receive their integration's ToolResponseEvents
+        // in caseEvents — that filtering is tested separately via filterEventsByIntegration.
         "getConfirmationMode receives the LLM-generated args and the accumulated caseEvents" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1745,7 +1886,8 @@ class AgentAdvancedSpec :
                     .AtomicReference<List<CaseEvent>?>(null)
             val tool =
                 object : StandardTool<Map<String, Any>> {
-                    override val name = "TEST__capturingTool"
+                    // No "__" prefix: filterEventsByIntegration passes all events through.
+                    override val name = "capturingTool"
                     override val description = "captures args/ctx seen at getConfirmationMode"
                     override val inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}"""
                     override val version = "1.0.0"
@@ -1783,7 +1925,7 @@ class AgentAdvancedSpec :
                     caseId = caseId,
                     agentId = agentId,
                     intention = "call capturing tool",
-                    toolName = "TEST__capturingTool",
+                    toolName = "capturingTool",
                 )
 
             // Wire caseEventsProvider explicitly so the hook sees the same events the
@@ -1807,9 +1949,12 @@ class AgentAdvancedSpec :
             // persists on the resulting ToolRequestEvent.
             argsCaptured.get() shouldBe expectedArgs
 
-            // caseEvents : non-null, includes at least the initial USER MessageEvent
-            // from `caseEventsProvider`. Proves the hook is wired to the live event
-            // history exposed by the orchestrator, not to an empty/default snapshot.
+            // caseEvents : non-null and contains the initial USER MessageEvent from
+            // caseEventsProvider. Proves the hook is wired to the live event history
+            // exposed by the orchestrator, not to an empty/default snapshot.
+            // (For prefixed tools like "FILES__remove", filterEventsByIntegration would
+            // restrict caseEvents to matching ToolResponseEvents only — that is the
+            // intended behaviour for integration-scoped context.)
             val seenEvents = eventsCaptured.get()
             seenEvents shouldNotBe null
             seenEvents!!.filterIsInstance<MessageEvent>().any { it.actor.role == ActorRole.USER } shouldBe true

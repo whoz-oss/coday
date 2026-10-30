@@ -1,4 +1,3 @@
-import { HttpClient } from '@angular/common/http'
 import {
   afterNextRender,
   Component,
@@ -14,9 +13,31 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { firstValueFrom } from 'rxjs'
+import {
+  catchError,
+  combineLatest,
+  defer,
+  filter,
+  firstValueFrom,
+  map,
+  of,
+  shareReplay,
+  Subject,
+  switchMap,
+  takeUntil,
+  throwError,
+  timeout,
+} from 'rxjs'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  CaseControllerService,
+  CaseStatusEnum,
+  CaseWorkspaceViewStatusEnum,
+  IntegrationTypeControllerService,
+  NamespaceGitControllerService,
+  Prompt,
+} from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
 import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
@@ -27,6 +48,9 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case-workspace.service'
+
+const GIT_INTEGRATION_TYPE = 'GIT'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
@@ -38,6 +62,9 @@ import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments
  *    explicit request) and referenced in the message content
  * 4. POST /api/cases/:id/messages sends the first message
  * 5. Only then does the app navigate to the case chat
+ *
+ * When this instance has Git workspaces and the GIT plugin, and the namespace creates a worktree
+ * for every top-level case, the composer offers it checked: unchecking it creates the case without Git.
  *
  * The first message is never stored in router state to avoid re-sending on refresh.
  * The created case id is remembered in [pendingCaseId] so a failed upload/send retries
@@ -58,10 +85,12 @@ import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments
   styleUrl: './case-home.component.scss',
 })
 export class CaseHomeComponent implements OnInit {
-  private readonly http = inject(HttpClient)
+  private readonly caseApi = inject(CaseControllerService)
+  private readonly workspaces = inject(CaseWorkspaceService)
+  private readonly gitApi = inject(NamespaceGitControllerService)
+  private readonly integrationTypeApi = inject(IntegrationTypeControllerService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
-  private readonly config = inject(Configuration)
   private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
@@ -78,12 +107,39 @@ export class CaseHomeComponent implements OnInit {
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
 
   protected namespaceId = this.route.snapshot.queryParams['ns'] as string
+  protected readonly parentCaseId = signal<string | null>(this.route.snapshot.queryParams['parentCase'] ?? null)
+  protected readonly parentCaseTitle = computed(() => {
+    const parentId = this.parentCaseId()
+    return parentId ? this.caseState.cases().find((c) => c.id === parentId)?.title || parentId : null
+  })
+  private creationContext = 0
+  private readonly creationChanged = new Subject<void>()
 
   protected readonly inputValue = signal('')
   protected readonly isCreating = signal(false)
+  protected readonly submitError = signal('')
 
   /** Case created by a previous failed submit — reused on retry, never duplicated. */
-  private readonly pendingCaseId = signal<string | null>(null)
+  protected readonly pendingCaseId = signal<string | null>(null)
+
+  /** Offered with Git workspaces and the GIT plugin, where the namespace gives every top-level case a worktree. */
+  protected readonly worktreeOffered = signal(false)
+  /** False once the creator declines the worktree the namespace gives the new case. */
+  protected readonly worktree = signal(true)
+  private readonly worktreeNamespace = new Subject<string>()
+  /**
+   * Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows.
+   * A failure is not kept: the next namespace asks again.
+   */
+  private readonly gitWorkspaces$ = combineLatest([
+    this.workspaces.enabled$,
+    defer(() => this.integrationTypeApi.listTypesIntegrationType()).pipe(
+      map((types) => types.some((type) => type.type === GIT_INTEGRATION_TYPE))
+    ),
+  ]).pipe(
+    map(([enabled, gitPlugin]) => enabled && gitPlugin),
+    shareReplay({ bufferSize: 1, refCount: false })
+  )
 
   /** The async submit chain must stop touching state or navigating once the view is gone. */
   private destroyed = false
@@ -97,20 +153,27 @@ export class CaseHomeComponent implements OnInit {
     // Namespace-only exchange init: no case exists yet, but canWriteNamespace() gating
     // (namespace-intent badge and upload target) needs the namespace manifest.
     this.exchangeState.initializeForNamespace(this.namespaceId)
+    this.worktreeNamespace.next(this.namespaceId)
 
-    // React to ?ns query param changes — the component is reused across namespace switches.
-    // The handler skips the initial emission (newNs === this.namespaceId), hence the
-    // explicit init above.
+    // The composer is reused when switching namespaces or the parent of a new sub-case.
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       const newNs = params['ns'] as string
-      if (newNs && newNs !== this.namespaceId) {
+      const newParent = (params['parentCase'] as string) || null
+      if (newNs && (newNs !== this.namespaceId || newParent !== this.parentCaseId())) {
+        this.creationContext++
+        this.creationChanged.next()
         this.namespaceId = newNs
+        this.parentCaseId.set(newParent)
         this.autocomplete.init(newNs)
         this.autocomplete.reset()
         this.inputValue.set('')
         this.attachments.reset()
         this.pendingCaseId.set(null)
+        this.submitError.set('')
+        this.isCreating.set(false)
         this.exchangeState.initializeForNamespace(newNs)
+        this.worktreeOffered.set(false)
+        this.worktreeNamespace.next(newNs)
       }
     })
   }
@@ -118,6 +181,27 @@ export class CaseHomeComponent implements OnInit {
   constructor() {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
     this.autocomplete.init(this.namespaceId)
+
+    // A namespace switch drops the answer still pending for the previous one. A sub-case shares its
+    // root's worktree, so its composer asks nothing.
+    this.worktreeNamespace
+      .pipe(
+        switchMap((namespaceId) =>
+          this.parentCaseId()
+            ? of(null)
+            : this.gitWorkspaces$.pipe(
+                switchMap((available) => (available ? this.gitApi.getAssociationNamespaceGit(namespaceId) : of(null))),
+                // Nothing readable offers nothing: the composer stays as it is without Git.
+                catchError(() => of(null))
+              )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((association) => {
+        // Only an associated namespace creates worktrees; an unusable association reports false.
+        this.worktreeOffered.set(association?.autoWorktreeForRootCases === true)
+        this.worktree.set(true)
+      })
 
     // Track both the value and the view query. This covers programmatic writes
     // (autocomplete, namespace reset, and post-submit clear) once the textarea exists.
@@ -154,6 +238,10 @@ export class CaseHomeComponent implements OnInit {
     input.style.height = `${input.scrollHeight}px`
   }
 
+  protected onWorktreeChange(event: Event): void {
+    this.worktree.set((event.target as HTMLInputElement).checked)
+  }
+
   protected onKeydown(event: KeyboardEvent): void {
     const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
     if (consumed) return
@@ -179,14 +267,23 @@ export class CaseHomeComponent implements OnInit {
     this.autocomplete.atSuggestions.set([])
   }
 
+  protected returnToParent(): void {
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId, case: this.parentCaseId() },
+    })
+  }
+
   // NOTE: this file exceeds the ~200-line guideline. The submit orchestration is kept
   // inline for now: extracting a shared case-creation/composer service (which should also
   // deduplicate the slash-autocomplete logic copied from case-chat) is follow-up work.
   protected async submit(): Promise<void> {
     if (!this.canSend) return
     const firstMessage = this.inputValue().trim()
-    // Captured for the whole chain: a namespace switch mid-flight abandons the submit.
+    // Switching namespace or parent abandons this submit, even if the user switches back.
     const namespaceId = this.namespaceId
+    const parentCaseId = this.parentCaseId()
+    const creationContext = this.creationContext
+    this.submitError.set('')
     this.isCreating.set(true)
 
     try {
@@ -195,18 +292,53 @@ export class CaseHomeComponent implements OnInit {
       let caseId = this.pendingCaseId()
       if (!caseId) {
         const createdCase = await firstValueFrom(
-          this.http.post<Case>(`${this.config.basePath}/api/cases`, {
+          this.caseApi.createCase({
             namespaceId,
-            metadata: {},
+            ...(parentCaseId ? { parentCaseId } : {}),
+            // Only a declined worktree is sent: left checked, the namespace's setting applies as before.
+            ...(this.worktreeOffered() && !parentCaseId && !this.worktree() ? { worktree: false } : {}),
+            status: CaseStatusEnum.PENDING,
+            favorite: false,
+            removed: false,
           })
         )
+        if (this.abandoned(creationContext)) return
         this.caseState.addCase(createdCase)
         caseId = createdCase.id ?? ''
         this.pendingCaseId.set(caseId)
       }
-      if (this.abandoned(namespaceId)) {
-        this.isCreating.set(false)
-        return
+      if (this.abandoned(creationContext)) return
+
+      // Keep the same case and local attachments on retry; never fill the worktree before Git does.
+      if (this.attachments.hasAttachments()) {
+        const state = await firstValueFrom(
+          this.workspaces.watch(caseId).pipe(
+            filter(
+              ({ view }) =>
+                !view?.equipped ||
+                (view.status !== CaseWorkspaceViewStatusEnum.REQUESTED &&
+                  view.status !== CaseWorkspaceViewStatusEnum.PREPARING)
+            ),
+            timeout({
+              first: 120_000,
+              with: () =>
+                throwError(
+                  () =>
+                    new Error(
+                      'Workspace preparation is still in progress. Your message and attachments are saved here. Retry shortly to continue with the same case.'
+                    )
+                ),
+            }),
+            takeUntil(this.creationChanged),
+            takeUntilDestroyed(this.destroyRef)
+          )
+        )
+        // Without Git workspaces on this instance there is nothing to wait for.
+        const unready = !state.view || (state.view.equipped && state.view.status !== CaseWorkspaceViewStatusEnum.READY)
+        if (!workspacesUnavailable(state) && unready) {
+          throw new Error(state.view?.failureReason || 'Workspace is not ready. Retry this submission shortly.')
+        }
+        if (this.abandoned(creationContext)) return
       }
 
       // Step 2: upload the attachments to the fresh case (or the namespace on explicit
@@ -216,11 +348,10 @@ export class CaseHomeComponent implements OnInit {
         this.exchangeState.initializeForCase(namespaceId, caseId)
         const scope = resolveUploadScope(firstMessage, this.exchangeState.canWriteNamespace())
         const mention = await this.attachments.uploadAllAndBuildMention(scope)
-        if (mention === null || this.abandoned(namespaceId)) {
+        if (mention === null || this.abandoned(creationContext)) {
           // Partial failure (or an abandoned submit): stay on home with the failed chips
           // and the intact text; a retry reuses the created case and skips the files
           // already uploaded.
-          this.isCreating.set(false)
           return
         }
         content = content ? `${content}\n\n${mention}` : mention
@@ -228,15 +359,11 @@ export class CaseHomeComponent implements OnInit {
 
       // Step 3: send the first message before navigating.
       await firstValueFrom(
-        this.http.post(`${this.config.basePath}/api/cases/${caseId}/messages`, {
+        this.caseApi.addMessageCase(caseId, {
           content,
-          userId: 'default-user',
         })
       )
-      if (this.abandoned(namespaceId)) {
-        this.isCreating.set(false)
-        return
-      }
+      if (this.abandoned(creationContext)) return
 
       // Step 4: navigate — no firstMessage in state, the message is already posted.
       this.attachments.reset()
@@ -244,13 +371,20 @@ export class CaseHomeComponent implements OnInit {
       this.pendingCaseId.set(null)
       this.router.navigate(['/agentos/home'], { queryParams: { ns: namespaceId, case: caseId } })
     } catch (err) {
+      if (this.abandoned(creationContext)) return
       console.error('[CaseHome] Failed to create case or send first message', err)
-      this.isCreating.set(false)
+      this.submitError.set(
+        (err as { error?: { message?: string }; message?: string })?.error?.message ||
+          (err as Error)?.message ||
+          'Could not send the message. Retry to continue with the same case.'
+      )
+    } finally {
+      if (!this.abandoned(creationContext)) this.isCreating.set(false)
     }
   }
 
-  /** True when the in-flight submit no longer matches the live view (destroyed or ns switch). */
-  private abandoned(namespaceId: string): boolean {
-    return this.destroyed || this.namespaceId !== namespaceId
+  /** True when the in-flight submit no longer belongs to the displayed composer. */
+  private abandoned(creationContext: number): boolean {
+    return this.destroyed || this.creationContext !== creationContext
   }
 }

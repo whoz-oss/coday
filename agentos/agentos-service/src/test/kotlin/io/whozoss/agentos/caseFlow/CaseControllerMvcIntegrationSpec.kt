@@ -1,11 +1,10 @@
 package io.whozoss.agentos.caseFlow
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
@@ -41,8 +40,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class CaseControllerMvcIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
@@ -90,6 +88,32 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isCreated)
                 // scheduledPromptId is null for cases created directly by a user
                 .andExpect(jsonPath("$.scheduledPromptId").doesNotExist())
+        }
+
+        "POST /api/cases with runCostThreshold preserves the value in the response" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-threshold"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "runCostThreshold": 25.0 }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.runCostThreshold").value(25.0))
+        }
+
+        "POST /api/cases with negative runCostThreshold returns 400" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-threshold-neg"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "runCostThreshold": -1.0 }""")
+            ).andExpect(status().isBadRequest)
         }
 
         "POST /api/cases without title still returns 201 (title optional)" {
@@ -153,6 +177,64 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.id").value(caseId))
                 .andExpect(jsonPath("$.title").value("updated"))
                 .andExpect(jsonPath("$.namespaceId").value(ns.id.toString()))
+        }
+
+        "PUT /api/cases/{id}/reasoning-effort sets and clears the override, which PUT /api/cases/{id} keeps" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-effort"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "title": "initial", "reasoningEffort": "LOW" }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.reasoningEffort").value("LOW"))
+                .andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/reasoning-effort")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "reasoningEffort": "XHIGH" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.reasoningEffort").value("XHIGH"))
+
+            mockMvc.perform(
+                put("/api/cases/$caseId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "$caseId", "namespaceId": "${ns.id}", "title": "renamed" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.title").value("renamed"))
+                .andExpect(jsonPath("$.reasoningEffort").value("XHIGH"))
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/reasoning-effort")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "reasoningEffort": null }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.reasoningEffort").doesNotExist())
+        }
+
+        "PUT /api/cases/{id}/reasoning-effort with an unknown level returns 400" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-effort-400"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/reasoning-effort")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "reasoningEffort": "minimal" }""")
+            ).andExpect(status().isBadRequest)
         }
 
         "PUT /api/cases/{id} returns 404 when case does not exist" {
