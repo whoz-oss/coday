@@ -391,7 +391,9 @@ springdoc:
 logging:
   level:
     root: INFO
-    io.whozoss.agentos.service: DEBUG
+    # INFO: some DEBUG lines of the tree carry prompts and tool payloads. For a debugging session, activate
+    # the 'debug' profile (application-debug.yml), which raises it to DEBUG.
+    io.whozoss.agentos: INFO
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
     # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning,
@@ -405,5 +407,7 @@ logging:
     org.neo4j.driver: ERROR
     org.springframework.data.neo4j.cypher: ERROR
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    # MDC keys (see io.whozoss.agentos.logging.LogContext) are empty outside a case run: %replace then
+    # removes the whole bracket block, so Spring startup, pf4j or Neo4j lines carry no empty "[case= ...]".
+    # No file pattern: logback-spring.xml configures no file appender (console only).
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36}%replace( [case=%X{caseId:-} ns=%X{namespaceId:-} agent=%X{agentName:-} user=%X{userId:-}]){' ?.case= ns= agent= user=.', ''} - %msg%n"
