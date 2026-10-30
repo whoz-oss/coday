@@ -80,11 +80,35 @@
         <span class="namespace-form__hint">Leave empty to inherit the platform default.</span>
       </div>
 
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-max-tool-rounds">Maximum tool rounds</label>
+        <input
+          id="ns-max-tool-rounds"
+          class="namespace-form__input"
+          type="number"
+          min="1"
+          step="1"
+          placeholder="Server default"
+          aria-describedby="ns-max-tool-rounds-hint"
+          [attr.aria-invalid]="maxToolRoundsControl.invalid"
+          [formControl]="maxToolRoundsControl"
+        />
+        <span id="ns-max-tool-rounds-hint" class="namespace-form__hint">
+          Most tool rounds one agent run may take. Leave empty to inherit the server default. A change applies from the
+          next agent run.
+        </span>
+        @if (maxToolRoundsControl.invalid && (maxToolRoundsControl.dirty || maxToolRoundsControl.touched)) {
+          <span id="ns-max-tool-rounds-error" class="namespace-form__error" role="alert">
+            Enter a whole number of at least 1, or leave the field empty.
+          </span>
+        }
+      </div>
+
       <div class="namespace-form__actions">
         <button
           class="namespace-form__btn namespace-form__btn--primary"
           type="submit"
-          [disabled]="nameControl.invalid || isSubmitting()"
+          [disabled]="form.invalid || isSubmitting()"
         >
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>

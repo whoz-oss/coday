@@ -8,6 +8,9 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.kotest.assertions.throwables.shouldThrow
+import io.whozoss.agentos.chat.UsageAccumulator
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -20,7 +23,10 @@ import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.model.tool.ToolCallingChatOptions
+import org.springframework.ai.tool.ToolCallback
+import org.springframework.ai.tool.definition.ToolDefinition
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 class ChatClientProviderUnitSpec :
     StringSpec({
@@ -136,6 +142,62 @@ class ChatClientProviderUnitSpec :
                     reasoningEffort = ReasoningEffort.XHIGH,
                 )
             }
+        }
+
+        // The tool-round cap: the namespace's value when given, else the platform's. A model that answers
+        // with a tool call forever lets the number of executed tools show which cap applied.
+        fun toolExecutionsUntilCapped(
+            limits: LimitsConfigProperties,
+            namespaceMaxToolRounds: Int?,
+        ): Int {
+            val executed = AtomicInteger()
+            val callback =
+                object : ToolCallback {
+                    override fun getToolDefinition(): ToolDefinition =
+                        ToolDefinition
+                            .builder()
+                            .name("lookup")
+                            .description("Return a test result")
+                            .inputSchema("{\"type\":\"object\",\"properties\":{}}")
+                            .build()
+
+                    override fun call(input: String): String {
+                        executed.incrementAndGet()
+                        return "tool result"
+                    }
+                }
+            val toolCall =
+                AssistantMessage
+                    .builder()
+                    .content("")
+                    .toolCalls(listOf(AssistantMessage.ToolCall("call-1", "function", "lookup", "{}")))
+                    .build()
+            val nativeModel = mockk<ChatModel>()
+            every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { nativeModel.call(any<Prompt>()) } returns ChatResponse(listOf(Generation(toolCall)))
+            val factory =
+                mockk<ChatModelFactory> {
+                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                }
+            val client =
+                ChatClientProvider(factory, limits, UsageConfigProperties(enabled = true))
+                    .getChatClient(
+                        model(),
+                        provider(),
+                        accumulator = UsageAccumulator(),
+                        maxToolRounds = namespaceMaxToolRounds,
+                    )
+
+            shouldThrow<IllegalStateException> { client.prompt("Hello").toolCallbacks(callback).call().content() }
+            return executed.get()
+        }
+
+        "the namespace tool rounds override the platform value" {
+            toolExecutionsUntilCapped(LimitsConfigProperties(agentMaxIterations = 1000), namespaceMaxToolRounds = 2) shouldBe 2
+        }
+
+        "a namespace without tool rounds inherits the platform value" {
+            toolExecutionsUntilCapped(LimitsConfigProperties(agentMaxIterations = 3), namespaceMaxToolRounds = null) shouldBe 3
         }
 
         "enabled accounting still preserves native model behavior when no accumulator is supplied" {

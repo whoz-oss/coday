@@ -23,6 +23,10 @@ export interface Namespace {
    */
   externalId?: string
   id?: string
+  /**
+   * Maximum number of tool rounds of one agent run in this namespace. Null means inherit from the platform default (agentos.limits.agent-max-iterations). On PUT, null clears an existing override.
+   */
+  maxToolRounds?: number
   name: string
   /**
    * Namespace-level default for the run cost threshold, in the platform currency unit. Null means inherit from the platform default. Applies to all cases in this namespace that do not declare their own threshold.

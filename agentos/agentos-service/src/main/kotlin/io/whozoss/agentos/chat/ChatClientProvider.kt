@@ -22,6 +22,9 @@ import org.springframework.stereotype.Service
  * When usage is enabled, tracking is applied to the model so every call/stream terminal and internal tool
  * round goes through accounting and the cost gate. Clients outside agent execution
  * (no accumulator) retain their existing behaviour.
+ *
+ * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
+ * when given, else the platform's `agentos.limits.agent-max-iterations`.
  */
 @Service
 class ChatClientProvider(
@@ -34,6 +37,7 @@ class ChatClientProvider(
         providerConfig: AiProvider,
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
+        maxToolRounds: Int? = null,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(
@@ -53,7 +57,7 @@ class ChatClientProvider(
                     accumulator,
                     providerConfig.apiType,
                     modelConfig,
-                    maxToolRounds = limits.agentMaxIterations,
+                    maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
                 )
             } else {
                 chatModel

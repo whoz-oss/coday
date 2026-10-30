@@ -102,6 +102,11 @@ class NamespaceControllerSpec : StringSpec({
         ns(configPath = null).toDto().configPath shouldBe null
     }
 
+    "toDto exposes maxToolRounds, null when the namespace sets none" {
+        ns().copy(maxToolRounds = 250).toDto().maxToolRounds shouldBe 250
+        ns().toDto().maxToolRounds shouldBe null
+    }
+
     // -------------------------------------------------------------------------
     // listByExternalIds
     // -------------------------------------------------------------------------
@@ -260,6 +265,30 @@ class NamespaceControllerSpec : StringSpec({
         controller.update(existing.id, r)
 
         verify(exactly = 1) { namespaceService.update(match { it.defaultAgentName == "my-agent" }) }
+    }
+
+    "update carries maxToolRounds from resource into the saved entity" {
+        val existing = ns()
+        val r = resource(id = existing.id).copy(maxToolRounds = 250)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r).maxToolRounds shouldBe 250
+
+        verify(exactly = 1) { namespaceService.update(match { it.maxToolRounds == 250 }) }
+    }
+
+    "update clears maxToolRounds when resource sends null" {
+        val existing = ns().copy(maxToolRounds = 250)
+        val r = resource(id = existing.id).copy(maxToolRounds = null)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r)
+
+        verify(exactly = 1) { namespaceService.update(match { it.maxToolRounds == null }) }
     }
 
     "update clears defaultAgentName when resource sends null" {

@@ -22,6 +22,10 @@ import java.util.UUID
  * @property runCostThreshold Namespace-level default for the run cost threshold. Null means
  *   "inherit from the platform default", never "no limit" or "zero". When set, applies to
  *   all cases in this namespace that do not declare their own threshold.
+ * @property maxToolRounds Namespace-level override of the maximum number of tool rounds of one
+ *   agent run. Null means "inherit from the platform default", never "no limit". On update, a
+ *   null value clears an existing override, so clients editing another property must send the
+ *   current value back.
  */
 @Schema(name = "Namespace")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -50,4 +54,11 @@ data class NamespaceDto(
     )
     @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,
+    @field:Schema(
+        description =
+            "Maximum number of tool rounds of one agent run in this namespace. Null means inherit from the " +
+                "platform default (agentos.limits.agent-max-iterations). On PUT, null clears an existing override.",
+    )
+    @field:Min(value = 1, message = "maxToolRounds must be at least 1")
+    val maxToolRounds: Int? = null,
 )
