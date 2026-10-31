@@ -1,0 +1,161 @@
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
+import { inspectJava, javaInstallHint, parseJavaVersionOutput } from './java'
+import { agentosDataDir } from './paths'
+import { decideProfile } from './profile'
+import { pickPorts } from './ports'
+import { initialState, mergeState, overallDownload, readState, updateState } from './state'
+import { isValidEmail, markSetupDone, normalizeEmail, readIdentityEmail, readWebSetup, saveIdentity } from './web-setup'
+import { parseCommand } from './command-names'
+
+let configDir: string
+beforeEach(() => {
+  configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-'))
+})
+afterEach(() => fs.rmSync(configDir, { recursive: true, force: true }))
+
+describe('decideProfile', () => {
+  const base = () => ({ auth: false, configDir })
+
+  it('is laptop on a fresh install', () => {
+    expect(decideProfile(base())).toMatchObject({ profile: 'laptop', setupEnabled: true })
+  })
+
+  it.each([
+    ['--auth deployments', { auth: true }],
+    ['an external AgentOS', { agentosUrl: 'http://agentos:8124' }],
+    ['an imposed AGENTOS_EXTERNAL_USERID', { externalUserId: 'service' }],
+  ])('stays managed (no wizard) for %s', (_label, extra) => {
+    expect(decideProfile({ ...base(), ...extra })).toMatchObject({ profile: 'managed', setupEnabled: false })
+  })
+
+  it('keeps an existing install without wizard identity on the pre-wizard behaviour', () => {
+    fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
+    expect(decideProfile(base())).toMatchObject({ profile: 'managed', setupEnabled: false })
+  })
+
+  it('goes laptop once the wizard identity exists, even with data', () => {
+    fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
+    saveIdentity(configDir, 'me@acme.com')
+    expect(decideProfile(base()).profile).toBe('laptop')
+  })
+})
+
+describe('state', () => {
+  it('merges ports and downloads one level deep and stamps updatedAt', () => {
+    const t = new Date('2030-01-01T00:00:00Z')
+    const merged = mergeState(
+      { ...initialState('nx', 'laptop'), ports: { express: 1 }, downloads: { agentos: { state: 'running' } } },
+      { ports: { agentos: 2 }, downloads: { factory: { state: 'done' } } },
+      () => t
+    )
+    expect(merged.ports).toEqual({ express: 1, agentos: 2 })
+    expect(merged.downloads).toEqual({ agentos: { state: 'running' }, factory: { state: 'done' } })
+    expect(merged.updatedAt).toBe(t.toISOString())
+  })
+
+  it('lets each writer update its own keys without clobbering the others', () => {
+    updateState(configDir, { ports: { express: 1 } }, initialState('nx', 'laptop'))
+    updateState(configDir, { downloads: { agentos: { state: 'running', percent: 10 } } })
+    updateState(configDir, { downloads: { factory: { state: 'done' } } })
+    expect(readState(configDir)).toMatchObject({
+      ports: { express: 1 },
+      downloads: { agentos: { state: 'running', percent: 10 }, factory: { state: 'done' } },
+    })
+  })
+
+  it('combines downloads: done only when all done, error wins', () => {
+    expect(overallDownload({})).toEqual({ state: 'idle' })
+    expect(overallDownload({ agentos: { state: 'done' }, factory: { state: 'done' } })).toEqual({
+      state: 'done',
+      percent: 100,
+    })
+    expect(overallDownload({ agentos: { state: 'done' } })).toMatchObject({ state: 'done' })
+    expect(
+      overallDownload({ agentos: { state: 'running', percent: 5 }, factory: { state: 'error', message: 'x' } })
+    ).toEqual({
+      state: 'error',
+      message: 'x',
+    })
+  })
+})
+
+describe('web-setup', () => {
+  it('validates and normalises emails', () => {
+    expect(isValidEmail('me@acme.com')).toBe(true)
+    for (const bad of ['', 'me', 'me@', '@acme.com', 'a b@c.d', 42, undefined]) expect(isValidEmail(bad)).toBe(false)
+    expect(normalizeEmail('  Me@Acme.COM ')).toBe('me@acme.com')
+  })
+
+  it('persists the identity and the done flag without ever storing keys', () => {
+    saveIdentity(configDir, 'Me@Acme.com')
+    expect(readIdentityEmail(configDir)).toBe('me@acme.com')
+    markSetupDone(configDir, () => new Date('2030-01-01T00:00:00Z'))
+    const raw = fs.readFileSync(path.join(configDir, 'web-setup.json'), 'utf8')
+    expect(JSON.parse(raw)).toEqual({
+      identity: { email: 'me@acme.com' },
+      setupDone: true,
+      setupDoneAt: '2030-01-01T00:00:00.000Z',
+    })
+    expect(readWebSetup(configDir).setupDone).toBe(true)
+  })
+})
+
+describe('java', () => {
+  it('parses the first line of java --version', () => {
+    expect(parseJavaVersionOutput('openjdk 25 2025-09-16\nOpenJDK Runtime')).toMatchObject({ major: 25 })
+    expect(parseJavaVersionOutput('openjdk 21.0.3 2024-04-16')).toMatchObject({ major: 21 })
+    expect(parseJavaVersionOutput('garbage')).toBeNull()
+  })
+
+  it('classifies ok / too-old / missing with an install hint', () => {
+    expect(inspectJava(() => 'openjdk 25 2025-09-16', {})).toMatchObject({ state: 'ok', major: 25 })
+    expect(inspectJava(() => 'openjdk 21.0.3 2024-04-16', {}, 'darwin')).toMatchObject({
+      state: 'too-old',
+      hint: expect.stringContaining('brew install'),
+    })
+    expect(
+      inspectJava(
+        () => {
+          throw new Error('ENOENT')
+        },
+        {},
+        'linux'
+      )
+    ).toMatchObject({ state: 'missing', hint: expect.stringContaining('adoptium') })
+  })
+
+  it('uses JAVA_HOME when set', () => {
+    const bins: string[] = []
+    inspectJava((bin) => (bins.push(bin), 'openjdk 25 2025'), { JAVA_HOME: '/jdk' })
+    expect(bins[0]).toBe(path.join('/jdk', 'bin', 'java'))
+  })
+
+  it('has a hint per platform', () => {
+    expect(javaInstallHint('win32')).toContain('winget')
+  })
+})
+
+describe('pickPorts', () => {
+  it('places AgentOS after Express, Bolt after AgentOS, and Factory on 8141', async () => {
+    const find = async (start: number) => start
+    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 3001, agentosBolt: 3002, factory: 8141 })
+  })
+
+  it('never gives two services the same port', async () => {
+    const find = async (start: number) => start
+    expect(await pickPorts(8140, find)).toMatchObject({ agentos: 8141, agentosBolt: 8142 })
+    const ports = await pickPorts(8140, find)
+    expect(new Set(Object.values(ports)).size).toBe(4)
+  })
+})
+
+describe('parseCommand', () => {
+  it('recognises the commands and ignores options and unknown words', () => {
+    expect(parseCommand(['agentos', '--configDir', '/x'])).toBe('agentos')
+    expect(parseCommand(['--auth'])).toBeUndefined()
+    expect(parseCommand(['whatever'])).toBeUndefined()
+    expect(parseCommand([])).toBeUndefined()
+  })
+})
