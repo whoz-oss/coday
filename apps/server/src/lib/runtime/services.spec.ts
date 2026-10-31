@@ -73,6 +73,8 @@ describe('buildFactorySpec', () => {
     expect(spec.env['FACTORY_SECURITY_MODE']).toBe('auth')
     expect(spec.env['AGENTOS_SECURITY_MODE']).toBeUndefined()
     expect(spec.env['FACTORY_BIND_HOST']).toBe('127.0.0.1')
+    // FACTORY_BIND_HOST alone does not bind Tomcat: the Spring flag does.
+    expect(spec.args).toContain('--server.address=127.0.0.1')
     expect(spec.env['FACTORY_FAKE_IDP_SECRET']).toBe('idp-secret')
     expect(spec.env['FACTORY_ENCRYPTION_KEY']).toBe('fk')
     expect(spec.env['FACTORY_ENCRYPTION_SALT']).toBe('fs')
@@ -86,6 +88,7 @@ describe('buildFactorySpec', () => {
   it('leaves the managed profile alone', () => {
     const spec = factory('managed')
     expect(spec.env['FACTORY_SECURITY_MODE']).toBeUndefined()
+    expect(spec.args.join(' ')).not.toContain('--server.address')
     expect(spec.env['FACTORY_FAKE_IDP_SECRET']).toBeUndefined()
     expect(spec.env['AGENTOS_URL']).toBe('http://127.0.0.1:3001')
   })

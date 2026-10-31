@@ -69,6 +69,17 @@ describe('buildSetupStatus', () => {
     expect(steps.agentos).toEqual({ state: 'error', message: 'Manifest HTTP 404' })
   })
 
+  it('does not let a Factory download failure block the wizard: it is reported on the Factory step only', () => {
+    const state = laptopState({
+      agentosStarted: true,
+      downloads: { agentos: { state: 'done' }, factory: { state: 'error', message: "No 'factory-service' entry" } },
+    })
+    const { steps } = buildSetupStatus(facts({ state, setup: { identity: { email: 'a@b.co' } } }))
+    expect(steps.download.state).toBe('done')
+    expect(steps.agentos.state).toBe('running')
+    expect(steps.factory).toEqual({ state: 'error', message: "No 'factory-service' entry" })
+  })
+
   it('goes pending -> running -> done for AgentOS and chains Factory behind it', () => {
     const started = laptopState({
       agentosStarted: true,

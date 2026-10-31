@@ -43,7 +43,8 @@ process.on('unhandledRejection', (reason, promise) => {
 
 runCommand(command)
   .then((code) => {
-    debugLog('EXIT', `${command ?? 'managed'} finished with code ${code}`)
+    // `workspace` is a machine-readable one-shot: keep its stdout clean.
+    if (command !== 'workspace') debugLog('EXIT', `${command ?? 'managed'} finished with code ${code}`)
     process.exit(code)
   })
   .catch((error) => {

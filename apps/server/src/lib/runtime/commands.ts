@@ -235,7 +235,7 @@ export async function runManaged(): Promise<number> {
   return 0
 }
 
-/** Write the Nx workspace and print its directory on stdout (the launcher reads that line). */
+/** Write the Nx workspace and print `CODAY_RUNTIME_WORKSPACE=<dir>` on stdout (the launcher reads that line). */
 export function runWorkspace(): number {
   const raw = hideBin(process.argv)
   const options = parseCodayOptions(raw)
@@ -245,7 +245,8 @@ export function runWorkspace(): number {
     serverJs: process.argv[1] ?? '',
     forwardArgs: buildForwardArgs(raw, options.configDir),
   })
-  process.stdout.write(`${dir}\n`)
+  // Marker line: the launcher picks it out of whatever else the process prints on stdout.
+  process.stdout.write(`CODAY_RUNTIME_WORKSPACE=${dir}\n`)
   return 0
 }
 

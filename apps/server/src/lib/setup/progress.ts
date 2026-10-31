@@ -139,9 +139,15 @@ function javaStep(java: JavaStatus | undefined): SetupStatus['steps']['java'] {
   return { state: 'blocked', hint: java.hint, ...(java.state === 'too-old' ? { version: java.version } : {}) }
 }
 
+/**
+ * The wizard only waits for AgentOS: a Factory that cannot be downloaded must not block the first run (its
+ * failure is reported on the `factory` step instead). So the Factory only contributes to the progress while it
+ * has not failed.
+ */
 function downloadStep(state: RuntimeState | undefined): SetupStatus['steps']['download'] {
   if (!state) return { state: 'pending' }
-  const overall = overallDownload(state.downloads)
+  const { agentos, factory } = state.downloads
+  const overall = overallDownload({ agentos, factory: factory?.state === 'error' ? undefined : factory })
   switch (overall.state) {
     case 'done':
       return { state: 'done', percent: 100 }
@@ -170,11 +176,14 @@ export function buildSetupStatus(facts: StatusFacts): SetupStatus {
   else if (state.agentosStarted) agentos = { state: 'running', message: 'Starting AgentOS' }
   else agentos = { state: 'running', message: download.state === 'done' ? 'Starting AgentOS' : 'Preparing AgentOS' }
 
+  const factoryDownload = state?.downloads.factory
   const factory: StepStatus = facts.factoryHealthy
     ? { state: 'done' }
-    : agentos.state === 'done'
-      ? { state: 'running' }
-      : { state: 'pending' }
+    : factoryDownload?.state === 'error'
+      ? { state: 'error', message: factoryDownload.message }
+      : agentos.state === 'done'
+        ? { state: 'running' }
+        : { state: 'pending' }
 
   // After a completed setup nothing is replayed: a restart must not show stale pending steps.
   const applyDone: StepStatus = { state: 'done' }

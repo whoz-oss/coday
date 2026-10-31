@@ -36,6 +36,20 @@ export function serverArgs(argv) {
   return argv.filter((a) => a !== '--managed');
 }
 
+/** Marker the server's `workspace` command prints before the directory it generated. */
+export const WORKSPACE_MARKER = 'CODAY_RUNTIME_WORKSPACE=';
+
+/** The generated workspace directory, found among any other stdout lines; undefined when absent. */
+export function parseWorkspaceDir(stdout) {
+  const line = String(stdout ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .reverse()
+    .find((l) => l.startsWith(WORKSPACE_MARKER));
+  const dir = line?.slice(WORKSPACE_MARKER.length).trim();
+  return dir || undefined;
+}
+
 /** Arguments of `nx run-many` for the three continuous tasks (each gets its own TUI pane). */
 export function nxArgs() {
   return ['run-many', '-t', 'server', 'agentos', 'factory', '-p', 'coday', '--parallel=5', '--outputStyle=tui'];

@@ -4,7 +4,7 @@ import { dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
-import { chooseMode, nxArgs, nxEnv, resolveConfigDir, serverArgs } from './launcher.js';
+import { chooseMode, nxArgs, nxEnv, parseWorkspaceDir, resolveConfigDir, serverArgs } from './launcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -126,8 +126,8 @@ function runNx() {
     stdio: ['ignore', 'pipe', 'inherit'],
     env: process.env,
   });
-  const workspaceDir = generated.stdout?.trim().split('\n').pop();
-  if (generated.status !== 0 || !workspaceDir) {
+  const workspaceDir = parseWorkspaceDir(generated.stdout);
+  if (generated.status !== 0 || !workspaceDir || !existsSync(workspaceDir)) {
     console.error('Could not generate the runtime workspace; falling back to the in-process mode.');
     return runManaged();
   }

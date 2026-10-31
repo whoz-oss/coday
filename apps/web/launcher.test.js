@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseMode, nxArgs, nxEnv, resolveConfigDir, serverArgs } from './launcher.js';
+import { chooseMode, nxArgs, nxEnv, parseWorkspaceDir, resolveConfigDir, serverArgs } from './launcher.js';
 
 test('interactive terminal runs through nx', () => {
   assert.equal(chooseMode({ argv: [], env: {}, isTTY: true }).mode, 'nx');
@@ -27,6 +27,17 @@ test('configDir: flag forms and default', () => {
 
 test('the launcher-only flag is not forwarded to the server', () => {
   assert.deepEqual(serverArgs(['--managed', '--auth', '--configDir', '/x']), ['--auth', '--configDir', '/x']);
+});
+
+test('the workspace directory is read from the marker line, whatever else the server prints', () => {
+  assert.equal(parseWorkspaceDir('CODAY_RUNTIME_WORKSPACE=/home/me/.coday/runtime\n'), '/home/me/.coday/runtime');
+  assert.equal(
+    parseWorkspaceDir('2026-10-31T09:29:25.306Z EXIT workspace finished with code 0\nCODAY_RUNTIME_WORKSPACE=/a b/runtime\nnoise\n'),
+    '/a b/runtime'
+  );
+  assert.equal(parseWorkspaceDir('/home/me/.coday/runtime\n2026-10-31T09:29:25.306Z EXIT'), undefined);
+  assert.equal(parseWorkspaceDir('CODAY_RUNTIME_WORKSPACE=\n'), undefined);
+  assert.equal(parseWorkspaceDir(undefined), undefined);
 });
 
 test('nx runs the three continuous tasks of the coday project', () => {

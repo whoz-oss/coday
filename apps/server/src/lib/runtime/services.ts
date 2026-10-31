@@ -59,7 +59,6 @@ export function buildAgentosSpec(input: AgentosSpecInput): ServiceSpec {
     // Dynamic Bolt port for the embedded Neo4j, SDN must connect to the same one.
     AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT: boltPortValue,
     SPRING_NEO4J_URI: baseEnv.SPRING_NEO4J_URI ?? `bolt://localhost:${boltPortValue}`,
-    // Never let an inherited value leak a stale Java option in front of ours.
   }
   const args = ['-jar', agentosJarPath(configDir, input.version), `--server.port=${port}`]
 
@@ -95,11 +94,20 @@ export interface FactorySpecInput extends CommonInput {
 export function buildFactorySpec(input: FactorySpecInput): ServiceSpec {
   const { configDir, profile, baseEnv, port } = input
   const env: NodeJS.ProcessEnv = { ...baseEnv, AGENTOS_URL: input.agentosUrl }
+  const args = [
+    '--enable-native-access=ALL-UNNAMED',
+    '-jar',
+    factoryJarPath(configDir, input.version),
+    `--server.port=${port}`,
+  ]
 
   if (profile === 'laptop') {
     // Factory reads FACTORY_SECURITY_MODE, NOT AGENTOS_SECURITY_MODE.
     env.FACTORY_SECURITY_MODE = 'auth'
     env.FACTORY_BIND_HOST = LOOPBACK
+    // FACTORY_BIND_HOST only feeds Factory's own safety banner: Tomcat still listens on every interface
+    // (observed on *:8141) unless Spring is told. Auth mode trusts identity headers: loopback only.
+    args.push(`--server.address=${LOOPBACK}`)
     env.FACTORY_PERSISTENCE_DATA_DIR = factoryDataDir(configDir)
     if (input.secrets) {
       env.FACTORY_FAKE_IDP_SECRET = input.secrets.factoryFakeIdpSecret
@@ -111,12 +119,7 @@ export function buildFactorySpec(input: FactorySpecInput): ServiceSpec {
   return {
     name: 'factory',
     bin: javaBinary(baseEnv),
-    args: [
-      '--enable-native-access=ALL-UNNAMED',
-      '-jar',
-      factoryJarPath(configDir, input.version),
-      `--server.port=${port}`,
-    ],
+    args,
     env,
     cwd: path.join(configDir, 'factory'),
     port,
