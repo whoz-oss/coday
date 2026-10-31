@@ -1,5 +1,6 @@
 package io.whozoss.agentos.security.declarative
 
+import io.whozoss.agentos.user.PersonalNamespaceProvisioner
 import io.whozoss.agentos.user.UserService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -29,6 +30,11 @@ import org.springframework.web.filter.OncePerRequestFilter
  * pooled thread does not leak the previous request's authentication to the next request, even
  * when the chain throws.
  *
+ * **Self-healing personal namespace** : once the user is resolved, [PersonalNamespaceProvisioner.ensureOnce]
+ * re-checks that their personal namespace exists. It is a set lookup for a user already provisioned by
+ * this process and never throws, so it costs nothing on a healthy instance and repairs a failed
+ * provisioning on the user's next request.
+ *
  * **Error dispatches** : [shouldNotFilterErrorDispatch] returns `true` so the filter does not
  * re-run on the ERROR dispatch produced by an exception (the SecurityContext from the original
  * dispatch is irrelevant by then).
@@ -36,6 +42,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 class AgentOsAuthenticationFilter(
     private val userService: UserService,
+    private val personalNamespaceProvisioner: PersonalNamespaceProvisioner? = null,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -47,6 +54,7 @@ class AgentOsAuthenticationFilter(
             runCatching { userService.getCurrentUser() }
                 .onSuccess { user ->
                     SecurityContextHolder.getContext().authentication = AgentOsAuthentication(user)
+                    personalNamespaceProvisioner?.ensureOnce(user)
                 }
                 .onFailure { ex ->
                     // `Companion.` prefix avoids Kotlin/Java field clash with OncePerRequestFilter.logger

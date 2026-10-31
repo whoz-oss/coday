@@ -218,6 +218,13 @@ agentos:
     # agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     enabled-by-default: ${AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT:true}
+  personal-namespace:
+    # Give every user a private namespace (externalId 'user:<externalId of the user>') that they administer,
+    # with the platform agent 'Coday' deployed on it and set as its default agent. Created when the user is,
+    # and re-checked on their next request if that failed. Idempotent, and it only ever adds: a namespace
+    # the user renamed, or whose default agent they changed, is left as it is.
+    # Override with env var: AGENTOS_PERSONAL_NAMESPACE_ENABLED
+    enabled: ${AGENTOS_PERSONAL_NAMESPACE_ENABLED:true}
   user-group:
     # Declare that a platform-scoped 'USER_GROUP' integration configuration should exist.
     # When true (shipped default), UserGroupIntegrationConfigSeeder creates it at startup
@@ -275,6 +282,17 @@ agentos:
     # Seconds a delegation waits without activity from its sub-case before stopping it.
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
     delegation-timeout-seconds: ${AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS:600}
+    coday-agent:
+      # Declare that a platform agent named 'Coday' should exist. When true (shipped default),
+      # CodayAgentSeeder creates it at startup if absent: the friendly default assistant, on the model
+      # alias BIG, with the built-in AGENTOS_CONFIG (read and propose configuration changes) and
+      # CASE_FILE_EXCHANGE integrations. Personal namespaces deploy it and make it their default agent.
+      #
+      # This declares EXISTENCE, not content: once the agent exists it belongs to the administrator and
+      # startup never rewrites it. It is also create-only: setting this back to false later does NOT delete
+      # an already-seeded agent (a warning is logged instead); disable or delete it through the API.
+      # Override with env var: AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED
+      enabled: ${AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED:true}
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
   # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
