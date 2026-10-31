@@ -1,0 +1,71 @@
+<section class="step">
+  @if (state.ready()) {
+    <div class="ready" data-testid="ready">
+      <div class="ready__badge" aria-hidden="true">✓</div>
+      <h2 class="step__title">You are all set</h2>
+      <p class="step__lead">Your workspace is ready and the Coday agent is waiting for you.</p>
+      <button class="btn btn--primary btn--big" type="button" data-testid="start-with-coday" (click)="start()">
+        Start with Coday
+      </button>
+    </div>
+  } @else {
+    <h2 class="step__title">Setting things up</h2>
+    <p class="step__lead">This only happens once. You can keep this page open.</p>
+
+    <ul class="checklist" role="list" data-testid="checklist">
+      @for (item of state.checklist(); track item.key) {
+        <li
+          class="item"
+          [class]="'item item--' + item.state"
+          [attr.data-testid]="'step-' + item.key"
+          [attr.data-state]="item.state"
+        >
+          <span class="item__icon" aria-hidden="true">
+            @if (item.state === 'running') {
+              <span class="spinner"></span>
+            } @else {
+              {{ icon(item.state) }}
+            }
+          </span>
+          <span class="item__body">
+            <span class="item__label">{{ item.label }}</span>
+            @if (item.key === 'download' && item.state === 'running') {
+              <span
+                class="bar"
+                role="progressbar"
+                [attr.aria-valuenow]="item.percent ?? 0"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span class="bar__fill" [style.width.%]="item.percent ?? 0"></span>
+              </span>
+              <span class="item__note">{{ item.percent ?? 0 }}%</span>
+            } @else if (item.message) {
+              <span class="item__note">{{ item.message }}</span>
+            }
+          </span>
+        </li>
+      }
+    </ul>
+
+    @if (state.javaBlocked()) {
+      <div class="callout" role="alert" data-testid="java-hint">
+        <strong>Java 25 is required.</strong>
+        <span>{{ javaHint() }}</span>
+        <span>Install it, then come back: this page continues by itself.</span>
+      </div>
+    }
+
+    @if (state.failed()) {
+      <div class="callout callout--error" role="alert" data-testid="apply-error">
+        <strong>Something went wrong.</strong>
+        <span>{{ applyError() }}</span>
+        <button class="btn" type="button" (click)="retry()" [disabled]="state.busy()">Try again</button>
+      </div>
+    }
+
+    @if (state.statusError()) {
+      <p class="step__error" role="status">{{ state.statusError() }}</p>
+    }
+  }
+</section>

@@ -1,0 +1,126 @@
+// Shared look of the wizard steps (imported by each step component).
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  &__title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 620;
+  }
+  &__lead {
+    margin: -8px 0 0;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+  &__error {
+    margin: 0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  }
+  &__actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &__label {
+    font-size: 13px;
+    font-weight: 560;
+  }
+  &__hint {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+  }
+  &__input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-input-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    outline: none;
+    transition:
+      border-color 150ms,
+      box-shadow 150ms;
+
+    &:focus-visible {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+    }
+    &[aria-invalid='true'] {
+      border-color: var(--color-error);
+    }
+  }
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 20px;
+  font: inherit;
+  font-weight: 580;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    background 150ms,
+    transform 100ms,
+    box-shadow 150ms,
+    opacity 150ms;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+  }
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &--primary {
+    color: var(--color-text-inverse);
+    background: var(--color-primary);
+    border-color: transparent;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 35%, transparent);
+
+    &:hover:not(:disabled) {
+      background: var(--color-primary-hover);
+    }
+  }
+  &--big {
+    padding: 16px 32px;
+    font-size: 17px;
+    border-radius: 14px;
+  }
+  &--ghost {
+    border-color: transparent;
+    color: var(--color-text-secondary);
+  }
+}

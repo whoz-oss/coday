@@ -1,0 +1,107 @@
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-muted);
+  transition:
+    border-color 180ms,
+    background 180ms,
+    box-shadow 180ms,
+    transform 180ms;
+
+  &--on {
+    border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  }
+  &[draggable='true'] {
+    cursor: grab;
+  }
+  &--dragging {
+    opacity: 0.5;
+    transform: scale(0.99);
+  }
+  &--over {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  &__toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    cursor: pointer;
+
+    input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--color-primary);
+    }
+  }
+  &__name {
+    font-weight: 620;
+    font-size: 16px;
+  }
+  &__rank {
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 650;
+    border-radius: 999px;
+    color: var(--color-text-inverse);
+    background: var(--color-primary);
+  }
+  &__move {
+    display: inline-flex;
+    gap: 4px;
+  }
+  &__arrow {
+    width: 28px;
+    height: 28px;
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-bg-hover);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+    }
+  }
+  &__desc {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+}
+
+a {
+  color: var(--color-link);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}
