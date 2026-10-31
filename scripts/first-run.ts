@@ -119,6 +119,7 @@ async function main(): Promise<void> {
   log(`temp directory : ${root}`)
   log(`install dir    : ${install}   (the installed packages, like npx)`)
   log(`configDir      : ${configDir}   (throwaway; your ~/.coday is NOT touched)`)
+  log(`files folder   : ${path.join(root, 'files', 'Coday')}   (proposed by the wizard instead of ~/Coday)`)
   log(`logs           : ${path.join(configDir, 'logs')}/{server,agentos,factory}.log`)
 
   const tarballs = pack(packs)
@@ -135,6 +136,8 @@ async function main(): Promise<void> {
     ...process.env,
     CODAY_AGENTOS_VERSION: 'dev',
     CODAY_FACTORY_VERSION: 'dev',
+    // The wizard proposes this folder instead of ~/Coday: the sandbox never writes in the real home.
+    CODAY_DEFAULT_FILES_DIR: path.join(root, 'files', 'Coday'),
     ...(value('--port') ? { PORT: port } : {}),
   }
 

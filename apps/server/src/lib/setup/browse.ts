@@ -50,7 +50,14 @@ export interface BrowseOptions {
   showHidden?: boolean
 }
 
-export const defaultCodayFolder = (home: string = os.homedir()): string => path.join(home, 'Coday')
+/**
+ * Folder proposed by the wizard: `~/Coday`, or `CODAY_DEFAULT_FILES_DIR` when set (the `web:first-run`
+ * sandbox points it into its temp directory so a test run never creates anything in the real home).
+ */
+export const defaultCodayFolder = (home: string = os.homedir(), env: NodeJS.ProcessEnv = process.env): string =>
+  env['CODAY_DEFAULT_FILES_DIR'] && path.isAbsolute(env['CODAY_DEFAULT_FILES_DIR'])
+    ? path.normalize(env['CODAY_DEFAULT_FILES_DIR'])
+    : path.join(home, 'Coday')
 
 export function normalizeBrowsePath(requested: string | undefined, home: string): string {
   const raw = requested === undefined || requested === '' ? home : requested

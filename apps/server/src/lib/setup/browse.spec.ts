@@ -83,7 +83,14 @@ describe('browse', () => {
   })
 
   it('proposes ~/Coday by default', () => {
-    expect(defaultCodayFolder('/home/me')).toBe(path.join('/home/me', 'Coday'))
+    expect(defaultCodayFolder('/home/me', {})).toBe(path.join('/home/me', 'Coday'))
+  })
+
+  it('lets CODAY_DEFAULT_FILES_DIR override it (sandbox), but only with an absolute path', () => {
+    expect(defaultCodayFolder('/home/me', { CODAY_DEFAULT_FILES_DIR: '/tmp/sandbox/Coday' })).toBe(
+      path.normalize('/tmp/sandbox/Coday')
+    )
+    expect(defaultCodayFolder('/home/me', { CODAY_DEFAULT_FILES_DIR: 'relative' })).toBe(path.join('/home/me', 'Coday'))
   })
 })
 

@@ -72,6 +72,29 @@ build: #XXXX short description     # For build system changes
 6. Commit and push
 7. Create PR with conventional commit format as title (e.g., "feat: #XXXX short description")
 
+## Testing the first-run experience
+
+The `web` package starts AgentOS and the Factory for the user and walks them through a first-run wizard (`/welcome`).
+Test it end to end before shipping, without publishing and without touching your own `~/.coday`:
+
+```bash
+# Builds client, factory-cockpit, server, web + the AgentOS/Factory boot JARs, packs the 4 npm packages,
+# installs them in a fresh temp dir and runs the installed `coday-web` with a throwaway --configDir
+pnpm nx run web:first-run
+pnpm nx run web:first-run -- --managed     # one process, plain console (what the desktop apps get)
+
+# Automated: Playwright drives the wizard against a real AgentOS with dummy keys (no LLM call).
+# Skips itself, with a reason, when Java 25 or the built JARs are missing.
+pnpm nx run client-e2e:first-run-e2e
+```
+
+The script prints every path it uses (temp dir, install dir, configDir, logs). Logs of a run are in
+`<configDir>/logs/{server,agentos,factory}.log`. Java 25 is required for the JVM services; to see the "Java missing" step
+of the wizard, run with a `JAVA_HOME` that points to an older JDK. Details: `apps/web/README.md`.
+
+For day-to-day development use `pnpm web:serve:dev` (continuous Nx tasks: client, factory-cockpit, server, AgentOS and
+Factory, one pane each; the wizard is not shown there because the services are external).
+
 ## Worktree Workflow
 
 Worktrees allow parallel work on multiple branches without switching the main project directory. Each worktree is registered as a Coday sub-project, enabling agents to work in isolation per issue.
