@@ -83,12 +83,21 @@
         }
       ]
     },
+    "local": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build", "build-first-run-jars"],
+      "options": {
+        "command": "tsx scripts/web-local.ts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "first-run": {
       "executor": "nx:run-commands",
       "cache": false,
       "dependsOn": ["^build", "build-first-run-jars"],
       "options": {
-        "command": "tsx scripts/first-run.ts",
+        "command": "tsx scripts/web-local.ts --fresh",
         "cwd": "{workspaceRoot}"
       }
     },

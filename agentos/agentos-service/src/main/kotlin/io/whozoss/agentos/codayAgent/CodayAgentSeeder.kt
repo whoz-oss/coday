@@ -22,7 +22,15 @@ import java.util.UUID
  *
  * The agent runs on the model alias `BIG`, can read the configuration and propose changes through the
  * built-in `AGENTOS_CONFIG` integration (never applying them itself), and works on files through
- * `CASE_FILE_EXCHANGE`. Its instructions ship as the classpath resource [INSTRUCTIONS_RESOURCE].
+ * `CASE_FILE_EXCHANGE` (the files of the conversation) and `NAMESPACE_FILE_EXCHANGE` (the shared folder
+ * of the namespace, which for a personal namespace is the files folder the user picked in the first-run
+ * wizard). The namespace exchange is granted on the agent itself, not through
+ * `agentos.exchange.tools.namespace-enabled-by-default`, which would reach every agent. It still
+ * requires the invoking user to hold Namespace READ, and write follows Namespace WRITE. Its instructions
+ * ship as the classpath resource [INSTRUCTIONS_RESOURCE].
+ *
+ * An already-seeded `Coday` keeps the integrations it was created with (see "existence, not content"
+ * below): an administrator has to add `NAMESPACE_FILE_EXCHANGE` to it through the UI or the API.
  *
  * Same semantics as [io.whozoss.agentos.queryUser.QueryUserConfigSeeder]:
  * - **existence, not content**: it only acts when no platform agent is named `Coday`; once the row
@@ -89,7 +97,12 @@ class CodayAgentSeeder(
             modelName = MODEL_NAME,
             enabled = true,
             // A null value enables the integration with all its tools.
-            integrations = mapOf(ConfigAgentIntegration.TYPE to null, ExchangeIntegrationTypes.CASE to null),
+            integrations =
+                mapOf(
+                    ConfigAgentIntegration.TYPE to null,
+                    ExchangeIntegrationTypes.CASE to null,
+                    ExchangeIntegrationTypes.NAMESPACE to null,
+                ),
         )
 
     private fun warnDisabledButPresent() {

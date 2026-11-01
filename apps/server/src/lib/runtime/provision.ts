@@ -62,6 +62,6 @@ export async function provision(input: ProvisionInput): Promise<ProvisionResult>
   const cleaned = updateState(input.configDir, {
     downloads: { agentos: { state: 'idle' }, factory: { state: 'idle' } },
   })
-  log(`Ports: express ${ports.express}, agentos ${ports.agentos}, factory ${ports.factory}`)
+  log(`Ports: express ${ports.express}, agentos ${ports.agentos} (bolt ${ports.agentosBolt}), factory ${ports.factory}`)
   return { decision, state: { ...state, downloads: cleaned.downloads, updatedAt: cleaned.updatedAt } }
 }

@@ -29,6 +29,3 @@ internal fun deleteTreeWithoutFollowingLinks(path: Path) {
         Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
     }
 }
-
-/** The namespace's directory, parent of its shared Exchange root. */
-private fun ExchangeStorageService.namespaceDirectory(namespaceId: UUID): Path = namespaceRoot(namespaceId).parent

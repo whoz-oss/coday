@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * Playwright config of the first-run wizard e2e: no dev server (the spec starts the `web:first-run` sandbox itself),
+ * Playwright config of the first-run wizard e2e: no dev server (the spec starts the `web:local` stack itself, on a throwaway root),
  * one browser, generous timeouts (JVM boot).
  */
 export default defineConfig({

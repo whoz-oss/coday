@@ -286,7 +286,9 @@ agentos:
       # Declare that a platform agent named 'Coday' should exist. When true (shipped default),
       # CodayAgentSeeder creates it at startup if absent: the friendly default assistant, on the model
       # alias BIG, with the built-in AGENTOS_CONFIG (read and propose configuration changes) and
-      # CASE_FILE_EXCHANGE integrations. Personal namespaces deploy it and make it their default agent.
+      # CASE_FILE_EXCHANGE (files of the conversation) and NAMESPACE_FILE_EXCHANGE (the shared folder of
+      # the namespace, e.g. the files folder of the first-run wizard) integrations. Personal namespaces
+      # deploy it and make it their default agent.
       #
       # This declares EXISTENCE, not content: once the agent exists it belongs to the administrator and
       # startup never rewrites it. It is also create-only: setting this back to false later does NOT delete

@@ -138,15 +138,43 @@ describe('java', () => {
 })
 
 describe('pickPorts', () => {
-  it('places AgentOS after Express, Bolt after AgentOS, and Factory on 8141', async () => {
-    const find = async (start: number) => start
-    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 3001, agentosBolt: 3002, factory: 8141 })
+  const identityFind = async (start: number) => start
+
+  it('prefers the conventional ports: AgentOS 8124, Bolt 7688, Factory 8141', async () => {
+    expect(await pickPorts(3000, identityFind)).toEqual({
+      express: 3000,
+      agentos: 8124,
+      agentosBolt: 7688,
+      factory: 8141,
+    })
   })
 
-  it('never gives two services the same port', async () => {
-    const find = async (start: number) => start
-    expect(await pickPorts(8140, find)).toMatchObject({ agentos: 8141, agentosBolt: 8142 })
-    const ports = await pickPorts(8140, find)
+  it('falls back to the next free port when the preferred one is taken', async () => {
+    const busy = new Set([8124, 7688])
+    const find = async (start: number) => {
+      let port = start
+      while (busy.has(port)) port++
+      return port
+    }
+    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8125, agentosBolt: 7689, factory: 8141 })
+  })
+
+  it('never gives two services the same port (Express on the AgentOS default)', async () => {
+    const ports = await pickPorts(8124, identityFind)
+    expect(ports).toEqual({ express: 8124, agentos: 8125, agentosBolt: 7688, factory: 8141 })
+    expect(new Set(Object.values(ports)).size).toBe(4)
+  })
+
+  it('never gives two services the same port (Express on the Factory default)', async () => {
+    const ports = await pickPorts(8141, identityFind)
+    expect(ports).toEqual({ express: 8141, agentos: 8124, agentosBolt: 7688, factory: 8142 })
+    expect(new Set(Object.values(ports)).size).toBe(4)
+  })
+
+  it('bumps past a port already assigned to another service', async () => {
+    // Express on 7688: Bolt cannot take it; AgentOS on 8124 and Factory on 8141 are unaffected.
+    const ports = await pickPorts(7688, identityFind)
+    expect(ports).toEqual({ express: 7688, agentos: 8124, agentosBolt: 7689, factory: 8141 })
     expect(new Set(Object.values(ports)).size).toBe(4)
   })
 })

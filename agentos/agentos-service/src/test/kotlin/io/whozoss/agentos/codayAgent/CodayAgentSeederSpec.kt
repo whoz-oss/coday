@@ -34,7 +34,7 @@ class CodayAgentSeederSpec : StringSpec({
         val seeder = CodayAgentSeeder(CodayAgentProperties(enabled), agents, provisioner)
     }
 
-    "seeds an enabled platform agent on BIG with the config and case-exchange integrations when absent" {
+    "seeds an enabled platform agent on BIG with the config, case-exchange and namespace-exchange integrations when absent" {
         val f = Fixture()
         every { f.agents.findByName(null, "Coday") } returns null
         val created = slot<AgentConfig>()
@@ -48,13 +48,18 @@ class CodayAgentSeederSpec : StringSpec({
         created.captured.enabled shouldBe true
         // A null value is "enabled with all tools"; an empty list would be an opt-out.
         created.captured.integrations shouldBe
-            mapOf(ConfigAgentIntegration.TYPE to null, ExchangeIntegrationTypes.CASE to null)
+            mapOf(
+                ConfigAgentIntegration.TYPE to null,
+                ExchangeIntegrationTypes.CASE to null,
+                ExchangeIntegrationTypes.NAMESPACE to null,
+            )
     }
 
     "the contract names stay stable" {
         CodayAgentSeeder.AGENT_NAME shouldBe "Coday"
         ConfigAgentIntegration.TYPE shouldBe "AGENTOS_CONFIG"
         ExchangeIntegrationTypes.CASE shouldBe "CASE_FILE_EXCHANGE"
+        ExchangeIntegrationTypes.NAMESPACE shouldBe "NAMESPACE_FILE_EXCHANGE"
     }
 
     "ships instructions from the classpath that say the agent proposes and never applies" {
@@ -70,6 +75,7 @@ class CodayAgentSeederSpec : StringSpec({
         instructions shouldContain "never apply anything yourself"
         instructions shouldContain "AI_PROVIDER"
         instructions shouldContain "personal scope"
+        instructions shouldContain "namespace-exchange"
     }
 
     "deploys the new agent on the personal namespaces of the users who already exist" {

@@ -7,22 +7,26 @@ import * as path from 'path'
 /**
  * E2E of the first-run wizard against a REAL AgentOS (no LLM call: the API keys are dummies).
  *
- * The stack is the `web:first-run` sandbox in `--managed` mode (packed npm packages installed in a temp dir,
- * locally built JARs, throwaway configDir). Run it with:  pnpm nx run client-e2e:first-run-e2e
+ * The stack is the `web:local` script in `--managed --fresh` mode, on its own throwaway root (packed npm packages
+ * installed in a temp dir, locally built JARs, fresh configDir): it never touches `~/.coday-local`.
+ * Run it with:  pnpm nx run client-e2e:first-run-e2e
  *
  * SKIPPED (with a reason) when Java 25 or the locally built JARs are unavailable, so CI without a JVM stays green.
  *
  * It asserts, through the AgentOS REST API (via the Coday proxy, as the first-run user):
  *  - platform-scope providers and their 4 aliased models,
  *  - the personal namespace `user:<email>` with the ADMIN role,
- *  - the Coday agent deployed and default, with both integrations,
+ *  - the Coday agent deployed and default, with its three integrations (config, case files, namespace files),
  *  - `sharedExchangePath` set to the chosen folder.
  */
 
 const PORT = Number(process.env['FIRST_RUN_E2E_PORT'] ?? 3977)
 const BASE = `http://localhost:${PORT}`
 const EMAIL = 'e2e@coday.test'
-const ROOT = process.env['CODAY_FIRST_RUN_DIR'] ?? path.join(os.tmpdir(), `coday-first-run-e2e-${process.pid}`)
+// Own throwaway root. CODAY_LOCAL_DIR is deliberately NOT inherited: the e2e runs with --fresh, which would wipe
+// the everyday `web:local` setup of a developer who exports it. Override with FIRST_RUN_E2E_DIR only.
+const ROOT = process.env['FIRST_RUN_E2E_DIR'] ?? path.join(os.tmpdir(), `coday-first-run-e2e-${process.pid}`)
+const ROOT_IS_OURS = !process.env['FIRST_RUN_E2E_DIR']
 const FILES_FOLDER = path.join(ROOT, 'files', 'Coday')
 const WORKSPACE = path.resolve(__dirname, '../../..')
 
@@ -51,9 +55,10 @@ test.describe('first-run wizard', () => {
   test.beforeAll(async () => {
     test.setTimeout(10 * 60_000)
     fs.mkdirSync(ROOT, { recursive: true })
-    server = spawn('pnpm', ['exec', 'tsx', 'scripts/first-run.ts', '--managed', '--port', String(PORT)], {
+    // --fresh: the e2e always starts from a brand-new first run, whatever the root already holds.
+    server = spawn('pnpm', ['exec', 'tsx', 'scripts/web-local.ts', '--fresh', '--managed', '--port', String(PORT)], {
       cwd: WORKSPACE,
-      env: { ...process.env, CODAY_FIRST_RUN_DIR: ROOT },
+      env: { ...process.env, CODAY_LOCAL_DIR: ROOT },
       stdio: 'inherit',
     })
     await expect
@@ -66,7 +71,7 @@ test.describe('first-run wizard', () => {
 
   test.afterAll(() => {
     server?.kill('SIGTERM')
-    if (!process.env['CODAY_FIRST_RUN_DIR']) fs.rmSync(ROOT, { recursive: true, force: true })
+    if (ROOT_IS_OURS) fs.rmSync(ROOT, { recursive: true, force: true })
   })
 
   const agentos = async <T>(apiPath: string, init?: RequestInit): Promise<T> => {
@@ -100,6 +105,8 @@ test.describe('first-run wizard', () => {
     await expect(page.getByTestId('start-with-coday')).toBeVisible({ timeout: 8 * 60_000 })
     await page.getByTestId('start-with-coday').click()
     await expect(page).toHaveURL(/\/home\?ns=/)
+    // Landing must RENDER something (a blank page used to pass this test): the composer headline.
+    await expect(page.getByRole('heading', { name: 'What can I help you with?' })).toBeVisible({ timeout: 120_000 })
 
     // --- AgentOS state, through the proxy as the first-run user ---------------------------------------
     const providers =
@@ -135,7 +142,11 @@ test.describe('first-run wizard', () => {
     )
     const coday = agents.find((a) => a.name === 'Coday')
     expect(coday?.enabled).not.toBe(false)
-    expect(Object.keys(coday?.integrations ?? {}).sort()).toEqual(['AGENTOS_CONFIG', 'CASE_FILE_EXCHANGE'])
+    expect(Object.keys(coday?.integrations ?? {}).sort()).toEqual([
+      'AGENTOS_CONFIG',
+      'CASE_FILE_EXCHANGE',
+      'NAMESPACE_FILE_EXCHANGE',
+    ])
   })
 
   test('the wizard is gone once the setup is done, and the setup API refuses mutations', async ({ page }) => {

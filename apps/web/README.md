@@ -23,8 +23,12 @@ The first time, the browser opens on **`/welcome`** (`http://localhost:3000/welc
 install command for your system, then continues by itself.
 
 Once done, `<configDir>/web-setup.json` holds `{ identity, setupDone }` (never an API key: the keys go to AgentOS only).
-To run the wizard again, stop Coday and delete `web-setup.json` **and** `<configDir>/agentos/data` (AgentOS fixes its
-administrator at its first boot).
+To run the wizard again on a real install, stop Coday and delete `web-setup.json` **and** `<configDir>/agentos/data`
+(AgentOS fixes its administrator at its first boot). For the local stack of the monorepo, use `web:local -- --fresh`
+instead (see below).
+
+The command is always the same, `npx @whoz-oss/coday-web`: the wizard appears only while the setup is not done,
+otherwise the app opens directly.
 
 ## How it runs
 
@@ -89,30 +93,51 @@ existing installs without a wizard identity keep their previous behaviour: no wi
 | `CODAY_CLIENT_PATH`, `CODAY_FACTORY_COCKPIT_PATH` | Set by the launcher: where the static apps are |
 | `BUILD_ENV=development` | Dev mode (proxy to the Angular dev servers) |
 
-## Testing the first run before shipping: `web:first-run`
+## Running the local code like an npx user: `web:local`
+
+End users always run `npx @whoz-oss/coday-web`. In the monorepo the equivalent, one command whatever your setup state,
+is:
 
 ```bash
-pnpm nx run web:first-run                 # Nx TUI, as an npx user sees it
-pnpm nx run web:first-run -- --managed    # single process, plain console
-pnpm nx run web:first-run -- --port 3100  # pick the port
+pnpm nx run web:local                     # everyday: build local code, run it like an npx user, keeps your setup
+pnpm nx run web:local -- --fresh          # test the first-run wizard again (deletes the local config first)
+pnpm nx run web:local -- --managed        # single process, plain console (instead of the Nx TUI)
+pnpm nx run web:local -- --port 3100      # pick the port
 ```
 
-The target builds the client, factory cockpit, server and web packages plus the AgentOS and Factory boot JARs, then
-`scripts/first-run.ts`:
+The first time you get the wizard; afterwards the app opens directly on the instance you configured, so you can stop,
+rebuild and restart as often as you like. The target builds the client, factory cockpit, server and web packages plus
+the AgentOS and Factory boot JARs, then `scripts/web-local.ts` works in a **persistent root, `~/.coday-local`**:
 
-1. `pnpm pack`s the four npm packages (client, factory-cockpit, server, web),
-2. `npm install`s the tarballs into a **fresh temp directory** (what `npx` does, minus the registry),
-3. places the locally built JARs in a **fresh throwaway `--configDir`** using the `dev` version layout
-   (`<configDir>/agentos/agentos-service-dev.jar`, plugins in `plugins/`; same for `factory`),
-4. runs the installed `coday-web --configDir <tmp>` with `CODAY_AGENTOS_VERSION=dev CODAY_FACTORY_VERSION=dev`.
+```
+~/.coday-local/
+  packs/        pnpm pack tarballs                  (emptied on every run)
+  install/      the tarballs installed with npm     (recreated on every run, what npx does minus the registry)
+  config/       the --configDir                     (KEPT: web-setup.json, agentos/data, factory data, secrets)
+  files/Coday   folder proposed by the wizard instead of ~/Coday
+```
 
-It prints every path (temp dir, install dir, configDir, logs, files folder). Your `~/.coday` and `~/Coday` are never
-touched, and nothing is published. `--prepare-only` stops before starting the server and prints the paths as JSON;
-`--clean` deletes the temp directory when the server stops.
+Every run re-packs and re-installs (the code may have changed), overwrites the `dev`-layout JARs in
+`config/{agentos,factory}` (`agentos-service-dev.jar`, plugins in `plugins/`; the data directories are left alone) and
+runs the installed `coday-web --configDir ~/.coday-local/config` with `CODAY_AGENTOS_VERSION=dev
+CODAY_FACTORY_VERSION=dev`. It prints every path and whether this is a **first run** (no `setupDone` in
+`web-setup.json`) or a **resume**. Your `~/.coday` and `~/Coday` are never touched (the script refuses a root that is, or
+lies in, them, your home or the repository), and nothing is published.
+
+| Option / env | Effect |
+|---|---|
+| `--fresh` | Delete `config/` and `files/` (printed) before starting: a brand-new first run |
+| `--managed`, `--port <n>` | Single-process mode, Express port |
+| `--prepare-only` | Prepare everything, print the paths as JSON on the last line, no server |
+| `--clean` | Delete the **whole** root when the server stops (setup and data included) |
+| `CODAY_LOCAL_DIR=<dir>` | Use another root than `~/.coday-local` (`CODAY_FIRST_RUN_DIR` is a deprecated alias) |
+
+`web:first-run` is kept as an alias of `web:local -- --fresh`.
 
 Automated version: `pnpm nx run client-e2e:first-run-e2e` drives the wizard with Playwright against a real AgentOS
 (dummy keys, no LLM call) and checks the providers, models, personal namespace, Coday agent and shared folder through
-the AgentOS REST API. It skips itself, with a reason, when Java 25 or the built JARs are missing.
+the AgentOS REST API. It runs `web:local --fresh` on its own throwaway root (`FIRST_RUN_E2E_DIR` to choose it, it never
+reads `CODAY_LOCAL_DIR`) and skips itself, with a reason, when Java 25 or the built JARs are missing.
 
 ## Development (monorepo)
 
@@ -126,7 +151,7 @@ pnpm server             # Express with tsx watch only (4100)
 `web:serve:dev` is a set of continuous Nx tasks: `client:serve` (4200), `factory-cockpit:serve` (4300),
 `web:dev-server` (Express, 4100), `web:dev-agentos` (`agentos-service:bootRun`, 8124) and `web:dev-factory`
 (`factory-service:bootRun`, 8141). The dev server uses the external-service mode (`AGENTOS_URL`/`FACTORY_URL`), so the
-wizard is not shown: use `web:first-run` to test it.
+wizard is not shown: use `web:local -- --fresh` to test it.
 
 ### Building and testing
 

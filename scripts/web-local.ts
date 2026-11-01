@@ -1,22 +1,38 @@
 /**
- * `nx run web:first-run` — reproduce EXACTLY what an `npx @whoz-oss/coday-web` user gets on a first run,
- * without publishing anything and without touching `~/.coday`.
+ * `pnpm nx run web:local` — build the local code and run it EXACTLY like an `npx @whoz-oss/coday-web` user would,
+ * without publishing anything and without ever touching `~/.coday` or `~/Coday`.
  *
+ * End users always run the same command, `npx @whoz-oss/coday-web`: the first-run wizard (`/welcome`) shows up only
+ * while the setup is not done, otherwise the app opens directly. This command behaves the same way: ONE command
+ * whatever the setup state. The first time you get the wizard, afterwards you resume your configured instance.
+ *
+ * Everything lives in a PERSISTENT root (default `~/.coday-local`):
+ *
+ *   <root>/packs/        the `pnpm pack` tarballs (emptied on every run)
+ *   <root>/install/      the tarballs installed with npm, like npx does (recreated on every run)
+ *   <root>/config/       the --configDir: web-setup.json, AgentOS and Factory data, secrets (KEPT between runs)
+ *   <root>/files/Coday   the folder the wizard proposes instead of ~/Coday
+ *
+ * Every run:
  *   1. `pnpm pack` the four npm packages (client, factory-cockpit, server, web) from their build output
  *      (the Nx target builds them first, along with the AgentOS and Factory boot JARs),
- *   2. `npm install` the tarballs into a FRESH temp directory (what npx does, minus the registry),
- *   3. drop the locally built JARs into a FRESH, throwaway --configDir using the `dev` version sentinel layout
- *      (`<configDir>/agentos/agentos-service-dev.jar`, plugins in `plugins/`, same for factory),
- *   4. run the INSTALLED `coday-web --configDir <tmp>` with CODAY_AGENTOS_VERSION=dev / CODAY_FACTORY_VERSION=dev
- *      so nothing is downloaded.
+ *   2. `npm install` the tarballs in a clean `install/` (the code may have changed),
+ *   3. copy the locally built JARs into `config/{agentos,factory}` using the `dev` version sentinel layout
+ *      (`agentos-service-dev.jar`, plugins in `plugins/`), overwriting the previous ones; the data directories next
+ *      to them are never touched,
+ *   4. run the INSTALLED `coday-web --configDir <root>/config` with CODAY_AGENTOS_VERSION=dev /
+ *      CODAY_FACTORY_VERSION=dev so nothing is downloaded.
  *
  * Options (after `--`):
+ *   --fresh          delete `config/` and `files/` first: a brand-new first run (the wizard shows again)
  *   --managed        run everything in one process, without the Nx TUI (what the desktop apps get; used by e2e)
  *   --port <n>       Express port (default 3000, next free one otherwise)
  *   --prepare-only   prepare everything, print the paths as JSON on the last line and exit (no server)
- *   --clean          delete the temp directory when the server stops (default: kept, path printed)
+ *   --clean          delete the WHOLE root (config included) when the server stops
  *
- * Env: CODAY_FIRST_RUN_DIR=<dir> reuses a directory instead of creating a temp one.
+ * Env:
+ *   CODAY_LOCAL_DIR=<dir>      use another root than ~/.coday-local
+ *   CODAY_FIRST_RUN_DIR=<dir>  deprecated alias of CODAY_LOCAL_DIR
  */
 
 import { execFileSync, spawn } from 'child_process'
@@ -30,13 +46,17 @@ import {
   devJarTarget,
   FACTORY_PLUGINS,
   installManifest,
+  isSetupDone,
+  localLayout,
   NPM_PACKAGES,
+  resolveLocalRoot,
   tarballPrefix,
-} from './utils/first-run-helpers'
+  unsafeRootReason,
+} from './utils/web-local-helpers'
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const log = (message: string) => console.log(`[first-run] ${message}`)
+const log = (message: string) => console.log(`[web-local] ${message}`)
 
 function findBuiltJar(kind: 'agentos' | 'factory', artifactId: string): string {
   const { dir, startsWith } = builtJarGlob(kind, artifactId)
@@ -57,6 +77,10 @@ function findBuiltJar(kind: 'agentos' | 'factory', artifactId: string): string {
   return path.join(absolute, found)
 }
 
+/**
+ * Overwrite the JARs in `<configDir>/{agentos,factory}`. Only the `*-dev.jar` files are written (copyFileSync
+ * replaces them): nothing is deleted, so `agentos/data`, `factory/data` and the rest of a kept config survive.
+ */
 function placeJars(configDir: string): void {
   for (const [kind, service, plugins] of [
     ['agentos', 'agentos-service', AGENTOS_PLUGINS],
@@ -67,7 +91,7 @@ function placeJars(configDir: string): void {
       fs.mkdirSync(path.dirname(target), { recursive: true })
       fs.copyFileSync(findBuiltJar(kind, artifactId), target)
     }
-    log(`${kind}: ${1 + plugins.length} JAR(s) placed in ${path.join(configDir, kind)}`)
+    log(`${kind}: ${1 + plugins.length} JAR(s) placed (overwritten) in ${path.join(configDir, kind)}`)
   }
 }
 
@@ -102,6 +126,20 @@ function javaNote(): string | undefined {
   }
 }
 
+/** Empty a directory and recreate it (these directories only ever hold generated artefacts). */
+function resetDir(dir: string): void {
+  fs.rmSync(dir, { recursive: true, force: true })
+  fs.mkdirSync(dir, { recursive: true })
+}
+
+function readSetupDone(configDir: string): boolean {
+  try {
+    return isSetupDone(JSON.parse(fs.readFileSync(path.join(configDir, 'web-setup.json'), 'utf8')))
+  } catch {
+    return false
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const flag = (name: string) => args.includes(name)
@@ -110,21 +148,42 @@ async function main(): Promise<void> {
     return i >= 0 ? args[i + 1] : undefined
   }
 
-  const root = process.env['CODAY_FIRST_RUN_DIR'] ?? fs.mkdtempSync(path.join(os.tmpdir(), 'coday-first-run-'))
-  const packs = path.join(root, 'packs')
-  const install = path.join(root, 'install')
-  const configDir = path.join(root, 'config')
-  for (const dir of [packs, install, configDir]) fs.mkdirSync(dir, { recursive: true })
+  const { root, source } = resolveLocalRoot(process.env, os.homedir())
+  const unsafe = unsafeRootReason(root, os.homedir(), [workspaceRoot])
+  if (unsafe) throw new Error(`Refusing to use ${root} as the local root: ${unsafe}.`)
+  const { packs, install, config: configDir, files, filesFolder } = localLayout(root)
 
-  log(`temp directory : ${root}`)
-  log(`install dir    : ${install}   (the installed packages, like npx)`)
-  log(`configDir      : ${configDir}   (throwaway; your ~/.coday is NOT touched)`)
-  log(`files folder   : ${path.join(root, 'files', 'Coday')}   (proposed by the wizard instead of ~/Coday)`)
+  log(`root           : ${root}   (${source === 'default' ? 'default, persistent' : source})`)
+  if (source !== 'default' && source !== 'CODAY_LOCAL_DIR') log(`WARNING: ${source}`)
+
+  if (flag('--fresh')) {
+    log('--fresh: deleting')
+    for (const dir of [configDir, files]) {
+      log(`  - ${dir}${fs.existsSync(dir) ? '' : '   (did not exist)'}`)
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+    log('  (the wizard will show: this is a brand-new first run)')
+  }
+  for (const dir of [install, configDir]) fs.mkdirSync(dir, { recursive: true })
+
+  const firstRun = !readSetupDone(configDir)
+  log(`install dir    : ${install}   (the installed packages, like npx; recreated on every run)`)
+  log(`configDir      : ${configDir}   (kept between runs; your ~/.coday is NOT touched)`)
+  log(`files folder   : ${filesFolder}   (proposed by the wizard instead of ~/Coday)`)
   log(`logs           : ${path.join(configDir, 'logs')}/{server,agentos,factory}.log`)
+  log(
+    firstRun
+      ? 'state          : FIRST RUN (no setupDone in web-setup.json): the wizard will show at /welcome'
+      : 'state          : RESUME (setup already done): the app opens directly, your configuration is kept'
+  )
 
+  // Packs and install hold generated artefacts only: start from scratch so that stale tarballs are never picked
+  // and npm cannot trip on the integrity of a tarball rebuilt under the same file name.
+  resetDir(packs)
+  resetDir(install)
   const tarballs = pack(packs)
   fs.writeFileSync(path.join(install, 'package.json'), JSON.stringify(installManifest(tarballs), null, 2))
-  log('npm install of the tarballs (fresh directory)...')
+  log('npm install of the tarballs (clean directory)...')
   execFileSync('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], { cwd: install, stdio: 'inherit' })
 
   placeJars(configDir)
@@ -136,8 +195,8 @@ async function main(): Promise<void> {
     ...process.env,
     CODAY_AGENTOS_VERSION: 'dev',
     CODAY_FACTORY_VERSION: 'dev',
-    // The wizard proposes this folder instead of ~/Coday: the sandbox never writes in the real home.
-    CODAY_DEFAULT_FILES_DIR: path.join(root, 'files', 'Coday'),
+    // The wizard proposes this folder instead of ~/Coday: the local stack never writes in the real home.
+    CODAY_DEFAULT_FILES_DIR: filesFolder,
     ...(value('--port') ? { PORT: port } : {}),
   }
 
@@ -150,6 +209,7 @@ async function main(): Promise<void> {
         bin,
         args: launchArgs,
         port,
+        firstRun,
         env: { CODAY_AGENTOS_VERSION: 'dev', CODAY_FACTORY_VERSION: 'dev' },
       })
     )
@@ -158,18 +218,26 @@ async function main(): Promise<void> {
   const note = javaNote()
   if (note) log(`NOTE: ${note}`)
   log(`running: ${bin} ${launchArgs.join(' ')}`)
-  log(`Open http://localhost:${port} (or the URL printed below) and walk through the wizard.`)
+  log(
+    firstRun
+      ? `Open http://localhost:${port} (or the URL printed below) and walk through the wizard.`
+      : `Open http://localhost:${port} (or the URL printed below): you are back in your configured instance.`
+  )
 
   const child = spawn(bin, launchArgs, { cwd: install, env, stdio: 'inherit', shell: process.platform === 'win32' })
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => child.kill(signal))
   const code = await new Promise<number>((resolve) => child.on('exit', (c) => resolve(c ?? 0)))
 
-  if (flag('--clean')) fs.rmSync(root, { recursive: true, force: true })
-  else log(`done. Inspect or delete: ${root}`)
+  if (flag('--clean')) {
+    log(`--clean: deleting the whole root ${root} (setup and data included)`)
+    fs.rmSync(root, { recursive: true, force: true })
+  } else {
+    log(`done. Restart with the same command to resume; add --fresh to start over. Root: ${root}`)
+  }
   process.exit(code)
 }
 
 main().catch((error) => {
-  console.error('[first-run] failed:', error instanceof Error ? error.message : error)
+  console.error('[web-local] failed:', error instanceof Error ? error.message : error)
   process.exit(1)
 })
