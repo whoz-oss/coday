@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseMode, nxArgs, nxEnv, parseWorkspaceDir, resolveConfigDir, serverArgs } from './launcher.js';
+import {
+  chooseMode,
+  nxArgs,
+  nxEnv,
+  parseWorkspaceDir,
+  resolveConfigDir,
+  serverArgs,
+  shouldOpenBrowser,
+} from './launcher.js';
 
 test('interactive terminal runs through nx', () => {
   assert.equal(chooseMode({ argv: [], env: {}, isTTY: true }).mode, 'nx');
@@ -40,10 +48,36 @@ test('the workspace directory is read from the marker line, whatever else the se
   assert.equal(parseWorkspaceDir(undefined), undefined);
 });
 
-test('nx runs the three continuous tasks of the coday project', () => {
+test('the launcher-only flags are not forwarded to the server', () => {
+  assert.deepEqual(serverArgs(['--no-open', '--managed', '--auth']), ['--auth']);
+  assert.deepEqual(serverArgs(['--configDir', '/x', '--no-open']), ['--configDir', '/x']);
+});
+
+test('nx runs the four continuous tasks of the coday project, within the parallelism limit', () => {
   const args = nxArgs();
-  assert.deepEqual(args.slice(0, 5), ['run-many', '-t', 'server', 'agentos', 'factory']);
+  assert.deepEqual(args.slice(0, 6), ['run-many', '-t', 'server', 'agentos', 'factory', 'status']);
   assert.ok(args.includes('coday'));
+  // provision is a task too: 4 continuous tasks + provision must fit.
+  const parallel = Number(args.find((a) => a.startsWith('--parallel=')).split('=')[1]);
+  assert.ok(parallel >= 5);
+});
+
+test('the browser opens by default in nx mode', () => {
+  assert.equal(nxEnv({}, '/cfg', []).CODAY_OPEN_BROWSER, '1');
+  assert.equal(nxEnv({}, '/cfg').CODAY_OPEN_BROWSER, '1');
+  assert.equal(nxEnv({}, '/cfg', ['--auth']).CODAY_OPEN_BROWSER, '1');
+});
+
+test('--no-open and CODAY_NO_OPEN=1|true keep the browser closed', () => {
+  assert.equal(nxEnv({}, '/cfg', ['--no-open']).CODAY_OPEN_BROWSER, undefined);
+  assert.equal(nxEnv({ CODAY_NO_OPEN: '1' }, '/cfg', []).CODAY_OPEN_BROWSER, undefined);
+  assert.equal(nxEnv({ CODAY_NO_OPEN: 'true' }, '/cfg', []).CODAY_OPEN_BROWSER, undefined);
+  assert.equal(nxEnv({ CODAY_NO_OPEN: '0' }, '/cfg', []).CODAY_OPEN_BROWSER, '1');
+  assert.equal(shouldOpenBrowser([], { CODAY_NO_OPEN: 'false' }), true);
+});
+
+test('a CODAY_OPEN_BROWSER inherited from the caller is not trusted: only the launcher decides', () => {
+  assert.equal(nxEnv({ CODAY_OPEN_BROWSER: '1' }, '/cfg', ['--no-open']).CODAY_OPEN_BROWSER, undefined);
 });
 
 test('nx env: no daemon, no cloud, no cache, state kept under configDir', () => {

@@ -5,6 +5,7 @@
  *   coday-server agentos     download, wait for first-run identity, run AgentOS in the foreground     [Nx task]
  *   coday-server factory     wait for AgentOS, download, run the Factory in the foreground            [Nx task]
  *   coday-server server      Express only; ports come from state.json                                [Nx task]
+ *   coday-server status      read-only live summary of state.json + health probes, to pin in the TUI [Nx task]
  *   workspace                write the generated Nx workspace under <configDir>/runtime/ (launcher only)
  *   (no command) | managed   Express + AgentOS + Factory in ONE process (desktop apps, no TTY)
  *
@@ -26,7 +27,10 @@ import {
   waitForAgentos,
 } from './orchestrator'
 import { logFilePath } from './paths'
-import { createLogSink } from './process'
+import { openBrowser } from './open-browser'
+import { createLogSink, isHealthy } from './process'
+import { LOOPBACK } from './services'
+import { renderStatus, StatusHealth } from './status-view'
 import { buildForwardArgs, writeWorkspace } from './workspace'
 import { Command } from './command-names'
 import { hideBin } from 'yargs/helpers'
@@ -175,8 +179,60 @@ export async function runServerTask(): Promise<number> {
   const decision = decideProfile(profileInput(options))
   const app = createWebApp({ codayOptions: options, setupEnabled: decision.setupEnabled && state.profile === 'laptop' })
   const server = await listen(app, options, port)
+  // Opt-in comes from the launcher (interactive Nx mode only), never from here: managed mode does not set it.
+  if (process.env.CODAY_OPEN_BROWSER === '1') {
+    // Root, not /welcome: Express already redirects to the wizard on a first run.
+    openBrowser(`http://localhost:${port}/`, { onError: (message) => console.log(message) })
+  }
   const { stopped } = foreground(async () => void (await new Promise<void>((r) => server.close(() => r()))))
   await stopped
+  return 0
+}
+
+const STATUS_POLL_MS = 1_000
+
+/**
+ * A pure READER of state.json (plus health probes): prints the summary block again only when its text changed,
+ * so both the Nx TUI pane and a plain stream get a readable history. No cursor tricks, no state.json write,
+ * no log file.
+ */
+export async function runStatusTask(): Promise<number> {
+  const options = parseCodayOptions()
+  const { signal, stopped } = foreground(async () => undefined)
+  const external = { agentosUrl: process.env.AGENTOS_URL, factoryUrl: process.env.FACTORY_URL }
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, ms)
+      signal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer)
+          resolve()
+        },
+        { once: true }
+      )
+    })
+
+  let last: string | undefined
+  const loop = (async () => {
+    while (!signal.aborted) {
+      const state = readState(options.configDir)
+      const { agentos, factory } = state?.ports ?? {}
+      const [agentosHealthy, factoryHealthy]: boolean[] = await Promise.all([
+        agentos && !external.agentosUrl ? isHealthy(`http://${LOOPBACK}:${agentos}/management/health`) : false,
+        factory && !external.factoryUrl ? isHealthy(`http://${LOOPBACK}:${factory}/actuator/health`) : false,
+      ])
+      const health: StatusHealth = { agentos: agentosHealthy, factory: factoryHealthy }
+      const text = renderStatus(state, health, external)
+      if (text !== last && !signal.aborted) {
+        last = text
+        console.log(`\n[${new Date().toLocaleTimeString()}]\n${text}`)
+      }
+      await sleep(STATUS_POLL_MS)
+    }
+  })()
+  await stopped
+  await loop
   return 0
 }
 
@@ -262,6 +318,8 @@ export async function runCommand(command: Command | undefined): Promise<number> 
       return runFactoryTask()
     case 'server':
       return runServerTask()
+    case 'status':
+      return runStatusTask()
     default:
       return runManaged()
   }

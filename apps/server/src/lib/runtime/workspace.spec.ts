@@ -1,7 +1,15 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { buildForwardArgs, generateWorkspace, NX_PROJECT, shellQuote, taskCommand, writeWorkspace } from './workspace'
+import {
+  buildForwardArgs,
+  generateWorkspace,
+  NX_PROJECT,
+  NX_TASKS,
+  shellQuote,
+  taskCommand,
+  writeWorkspace,
+} from './workspace'
 
 const input = {
   configDir: '/home/me/.coday',
@@ -27,15 +35,16 @@ describe('generateWorkspace', () => {
     expect(nx.targetDefaults['*'].cache).toBe(false)
   })
 
-  it('declares one project named coday with provision, server, agentos and factory', () => {
+  it('declares one project named coday with provision, server, agentos, factory and status', () => {
     expect(project.name).toBe(NX_PROJECT)
-    expect(Object.keys(project.targets).sort()).toEqual(['agentos', 'factory', 'provision', 'server'])
+    expect(Object.keys(project.targets).sort()).toEqual(['agentos', 'factory', 'provision', 'server', 'status'])
+    expect([...NX_TASKS].sort()).toEqual(['agentos', 'factory', 'server', 'status'])
   })
 
-  it('makes provision a normal task and the three services continuous tasks depending on it', () => {
+  it('makes provision a normal task and the four others continuous tasks depending on it', () => {
     expect(project.targets.provision.continuous).toBeUndefined()
     expect(project.targets.provision.dependsOn).toBeUndefined()
-    for (const name of ['server', 'agentos', 'factory']) {
+    for (const name of NX_TASKS) {
       expect(project.targets[name].continuous).toBe(true)
       expect(project.targets[name].dependsOn).toEqual(['provision'])
     }
@@ -46,6 +55,9 @@ describe('generateWorkspace', () => {
       '"/usr/bin/node" "/opt/coday/server.js" "agentos" "--configDir" "/home/me/.coday"'
     )
     expect(project.targets.provision.options.command).toContain('"provision"')
+    expect(project.targets.status.options.command).toBe(
+      '"/usr/bin/node" "/opt/coday/server.js" "status" "--configDir" "/home/me/.coday"'
+    )
   })
 
   it('is deterministic (no timestamp), so an unchanged workspace is never rewritten', () => {
@@ -94,6 +106,14 @@ describe('writeWorkspace', () => {
 describe('buildForwardArgs', () => {
   it('drops the command word and pins --configDir when it was not given', () => {
     expect(buildForwardArgs(['workspace', '--auth'], '/c')).toEqual(['--auth', '--configDir', '/c'])
+  })
+
+  it('never forwards the launcher-only flags (--no-open, --managed) to the tasks', () => {
+    expect(buildForwardArgs(['workspace', '--no-open', '--auth', '--managed'], '/c')).toEqual([
+      '--auth',
+      '--configDir',
+      '/c',
+    ])
   })
 
   it('keeps an explicit --configDir untouched', () => {

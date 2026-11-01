@@ -31,9 +31,18 @@ export function resolveConfigDir(argv, home = homedir()) {
   return join(home, '.coday');
 }
 
-/** The arguments the server must see: the launcher's own (`--managed`) are removed. */
+/** Flags only the launcher understands. */
+const LAUNCHER_ONLY_FLAGS = ['--managed', '--no-open'];
+
+/** The arguments the server must see: the launcher's own (`--managed`, `--no-open`) are removed. */
 export function serverArgs(argv) {
-  return argv.filter((a) => a !== '--managed');
+  return argv.filter((a) => !LAUNCHER_ONLY_FLAGS.includes(a));
+}
+
+/** The browser opens on start unless `--no-open` or `CODAY_NO_OPEN=1|true` says otherwise. */
+export function shouldOpenBrowser(argv, env) {
+  if (argv.includes('--no-open')) return false;
+  return env.CODAY_NO_OPEN !== '1' && env.CODAY_NO_OPEN !== 'true';
 }
 
 /** Marker the server's `workspace` command prints before the directory it generated. */
@@ -50,15 +59,22 @@ export function parseWorkspaceDir(stdout) {
   return dir || undefined;
 }
 
-/** Arguments of `nx run-many` for the three continuous tasks (each gets its own TUI pane). */
+/** Arguments of `nx run-many` for the four continuous tasks (each gets its own TUI pane). */
 export function nxArgs() {
-  return ['run-many', '-t', 'server', 'agentos', 'factory', '-p', 'coday', '--parallel=5', '--outputStyle=tui'];
+  return ['run-many', '-t', 'server', 'agentos', 'factory', 'status', '-p', 'coday', '--parallel=5', '--outputStyle=tui'];
 }
 
-/** Environment of the Nx process: no daemon, no cloud, no cache. */
-export function nxEnv(env, configDir) {
+/**
+ * Environment of the Nx process: no daemon, no cloud, no cache. Only used in the interactive Nx mode, which is
+ * why the browser opt-in (`CODAY_OPEN_BROWSER=1`, read by the server task) is set here and nowhere else.
+ */
+export function nxEnv(env, configDir, argv = []) {
+  const base = { ...env };
+  // The opt-in is decided here only: a value inherited from the caller's environment does not count.
+  delete base.CODAY_OPEN_BROWSER;
   return {
-    ...env,
+    ...base,
+    ...(shouldOpenBrowser(argv, env) ? { CODAY_OPEN_BROWSER: '1' } : {}),
     NX_DAEMON: 'false',
     NX_NO_CLOUD: 'true',
     NX_SKIP_NX_CACHE: 'true',

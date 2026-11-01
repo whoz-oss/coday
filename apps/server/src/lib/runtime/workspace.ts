@@ -8,10 +8,11 @@
  *                    agentos    continuous, dependsOn provision, waits for the wizard's identity
  *                    factory    continuous, dependsOn provision, waits for AgentOS health
  *                    server     continuous, dependsOn provision, the Express server
+ *                    status     continuous, dependsOn provision, read-only live summary to pin next to any pane
  *
  * Every command runs `node <server.js> <command> <forwarded args>`: the bundled server is the single
  * implementation, the workspace is only a manifest. The launcher runs
- * `nx run-many -t server agentos factory -p coday`: each continuous task gets its own pane in the TUI.
+ * `nx run-many -t server agentos factory status -p coday`: each continuous task gets its own pane in the TUI.
  */
 
 import * as fs from 'fs'
@@ -19,8 +20,13 @@ import * as path from 'path'
 import { isCommand } from './command-names'
 import { runtimeDir } from './paths'
 
+/** Flags only the web launcher understands: they must never reach yargs nor the generated commands. */
+const LAUNCHER_ONLY_FLAGS = ['--managed', '--no-open']
+
 export const NX_PROJECT = 'coday'
-export const NX_TASKS = ['server', 'agentos', 'factory'] as const
+export const NX_TASKS = ['server', 'agentos', 'factory', 'status'] as const
+
+type TaskName = 'provision' | (typeof NX_TASKS)[number]
 
 export interface WorkspaceInput {
   configDir: string
@@ -41,13 +47,13 @@ export function shellQuote(arg: string, platform: NodeJS.Platform = process.plat
   return `"${arg.replace(/(["\\$`])/g, '\\$1')}"`
 }
 
-export function taskCommand(input: WorkspaceInput, command: 'provision' | 'agentos' | 'factory' | 'server'): string {
+export function taskCommand(input: WorkspaceInput, command: TaskName): string {
   const platform = input.platform ?? process.platform
   return [input.nodePath, input.serverJs, command, ...input.forwardArgs].map((a) => shellQuote(a, platform)).join(' ')
 }
 
 export function generateWorkspace(input: WorkspaceInput): WorkspaceFiles {
-  const target = (command: 'provision' | 'agentos' | 'factory' | 'server', continuous: boolean) => ({
+  const target = (command: TaskName, continuous: boolean) => ({
     executor: 'nx:run-commands',
     cache: false,
     ...(continuous ? { continuous: true, dependsOn: ['provision'] } : {}),
@@ -73,6 +79,7 @@ export function generateWorkspace(input: WorkspaceInput): WorkspaceFiles {
       server: target('server', true),
       agentos: target('agentos', true),
       factory: target('factory', true),
+      status: target('status', true),
     },
   }
   return {
@@ -99,9 +106,12 @@ export function writeWorkspace(input: WorkspaceInput): string {
   return dir
 }
 
-/** Arguments to forward to the tasks: the raw ones minus the command word, with `--configDir` pinned. */
+/**
+ * Arguments to forward to the tasks: the raw ones minus the command word, with `--configDir` pinned.
+ * Launcher-only flags are removed here too (the launcher already strips them, this is the second line of defence).
+ */
 export function buildForwardArgs(rawArgs: string[], configDir: string): string[] {
-  const args = [...rawArgs]
+  const args = rawArgs.filter((a) => !LAUNCHER_ONLY_FLAGS.includes(a))
   // Only a known command word is dropped: the first non-dash token may well be the VALUE of an option
   // (`--configDir /x`).
   const commandIndex = args.findIndex((a) => isCommand(a))

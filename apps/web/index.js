@@ -137,7 +137,7 @@ function runNx() {
   // 2. Run the continuous tasks. Nx draws one pane per process, in the terminal.
   const nx = spawn(process.execPath, [nxBin, ...nxArgs()], {
     cwd: workspaceDir,
-    env: nxEnv(process.env, configDir),
+    env: nxEnv(process.env, configDir, rawArgs),
     stdio: 'inherit',
   });
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {

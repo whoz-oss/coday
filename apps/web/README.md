@@ -37,22 +37,27 @@ otherwise the app opens directly.
   ────────────────────                          ───────────────────────────────────
   coday-web (index.js)                          coday-web (index.js)
     └─ writes <configDir>/runtime/{nx,project}.json
-    └─ nx run-many -t server agentos factory    └─ one process: Express + AgentOS + Factory
-         provision ─┬─ server    (pane 1)           (what the desktop apps use; prints
-                    ├─ agentos   (pane 2)            `Server is running on http://localhost:PORT`)
-                    └─ factory   (pane 3)
+    └─ nx run-many -t server agentos factory status
+         provision ─┬─ server    (pane 1)       └─ one process: Express + AgentOS + Factory
+                    ├─ agentos   (pane 2)          (what the desktop apps use; prints
+                    ├─ factory   (pane 3)           `Server is running on http://localhost:PORT`,
+                    └─ status    (pane 4)           never opens a browser)
 ```
 
 - **Nx mode** (default in a terminal). The launcher generates a tiny Nx workspace under `<configDir>/runtime/`
   (no daemon, no cloud, no cache) and runs the bundled `nx`. `provision` is a quick task (profile, secrets, Java check,
-  ports → `runtime/state.json`); `server`, `agentos` and `factory` are continuous tasks, each with its own pane. `agentos`
-  prints *Waiting for first-run setup → http://localhost:3000/welcome* until you gave your email; `factory` waits for
-  AgentOS to be healthy.
+  ports → `runtime/state.json`); `server`, `agentos`, `factory` and `status` are continuous tasks, each with its own
+  pane. `agentos` prints *Waiting for first-run setup → http://localhost:3000/welcome* until you gave your email;
+  `factory` waits for AgentOS to be healthy. `status` is a read-only summary (URL, Java, download %, per-service phase,
+  health probes) that only re-prints when something changed: **pin it** (Nx TUI: select the pane and press `1` or `2`; `?` shows the
+  shortcuts) next to any other pane to follow the start-up. Once the Express server listens, the browser opens on
+  `http://localhost:<port>/` (Express redirects to the wizard on a first run); `--no-open` or `CODAY_NO_OPEN=1` disables
+  it.
 - **Managed mode** (no TTY, `--managed`, or `CODAY_NO_NX=1`). Same code, one process, no Nx. The desktop apps spawn
   `coday-web` without a terminal and keep working unchanged.
 
 All the logic lives in the server package (`apps/server/src/lib/runtime`, `lib/setup`); the Nx workspace is only a
-manifest calling `coday-server provision|agentos|factory|server`.
+manifest calling `coday-server provision|agentos|factory|server|status`.
 
 ### Logs
 
@@ -85,6 +90,7 @@ existing installs without a wizard identity keep their previous behaviour: no wi
 | `--configDir <dir>` | Config directory (default `~/.coday`) |
 | `--host <addr>` / `CODAY_HOST` | Interface Express listens on (default `127.0.0.1`; `0.0.0.0` with `--auth`) |
 | `--managed` / `CODAY_NO_NX=1` | Force the single-process mode (no Nx) |
+| `--no-open` / `CODAY_NO_OPEN=1` | Do not open the browser on start (Nx mode only: managed mode never opens it) |
 | `PORT` | Express port (strict when set; default 3000, 4100 in dev) |
 | `AGENTOS_URL`, `FACTORY_URL` | Use an external AgentOS / Factory instead of managed ones |
 | `AGENTOS_EXTERNAL_USERID` | Impose the identity forwarded to AgentOS (disables the wizard) |
@@ -180,5 +186,9 @@ than the former thin launcher. Versions of the `platform:npm` packages move in l
   `pnpm nx run client:build`, or use `pnpm web:serve:dev`.
 - **The Nx panes do not show / garbled output**: use `--managed` (or `CODAY_NO_NX=1`) for plain console output.
 - **"Waiting for first-run setup" never ends**: open the URL printed in the pane and answer the wizard.
+- **Where is the progress?** Pin the fourth pane, `status`, next to the pane you are watching: it summarises the URL, Java,
+  download %, and the phase of AgentOS and Factory (a failed download is shown there in capitals).
+- **The browser did not open**: open the URL printed by the `server` pane; there may be no desktop opener (`xdg-open`)
+  or `--no-open` / `CODAY_NO_OPEN` may be set.
 - **Java missing or too old**: install Java 25 (the wizard shows the command), the page continues by itself.
 - **Port already in use**: `PORT=3100 npx @whoz-oss/coday-web`.
