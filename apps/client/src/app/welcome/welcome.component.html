@@ -1,0 +1,48 @@
+<main class="welcome">
+  <div class="welcome__aurora" aria-hidden="true"></div>
+
+  <section class="welcome__card" aria-live="polite">
+    <header class="welcome__header">
+      <div class="welcome__logo" aria-hidden="true">C</div>
+      <div>
+        <h1 class="welcome__title">Welcome to Coday</h1>
+        <p class="welcome__subtitle">A few questions, then you are working with your first agent.</p>
+      </div>
+    </header>
+
+    <ol class="stepper" aria-label="Setup progress">
+      @for (s of steps; track s.id; let i = $index) {
+        <li
+          class="stepper__item"
+          [class.stepper__item--active]="state.step() === s.id"
+          [class.stepper__item--done]="i < state.stepIndex()"
+          [attr.aria-current]="state.step() === s.id ? 'step' : null"
+        >
+          <span class="stepper__dot">{{ i < state.stepIndex() ? '✓' : i + 1 }}</span>
+          <span class="stepper__label">{{ s.label }}</span>
+        </li>
+      }
+    </ol>
+
+    @if (state.statusError() && !state.status()) {
+      <p class="welcome__banner welcome__banner--error" role="alert">{{ state.statusError() }}</p>
+    }
+
+    <div class="welcome__step">
+      @switch (state.step()) {
+        @case ('email') {
+          <app-email-step />
+        }
+        @case ('providers') {
+          <app-providers-step />
+        }
+        @case ('folder') {
+          <app-folder-step />
+        }
+        @case ('progress') {
+          <app-progress-step />
+        }
+      }
+    </div>
+  </section>
+</main>

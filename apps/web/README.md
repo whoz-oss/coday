@@ -1,157 +1,184 @@
 # Coday Web Package
 
-This package provides the web interface launcher for Coday, bundling both the client (Angular app) and server components into a single executable package.
+`@whoz-oss/coday-web` is the launcher of the Coday web interface: it serves the Angular client, the Factory cockpit and
+the Express server, and runs AgentOS and the Factory next to them.
 
-## Architecture
-
-The web package acts as a thin orchestration layer:
-
-```
-┌─────────────────────────────────────────┐
-│         coday-web (index.js)            │
-│  ┌───────────────────────────────────┐  │
-│  │ 1. Resolve client package path   │  │
-│  │ 2. Set CODAY_CLIENT_PATH env var │  │
-│  │ 3. Import and run server         │  │
-│  └───────────────────────────────────┘  │
-└─────────────────────────────────────────┘
-                    │
-        ┌───────────┴───────────┐
-        ▼                       ▼
-┌──────────────┐        ┌──────────────┐
-│ coday-server │        │ coday-client │
-│  (Express)   │───────▶│  (Angular)   │
-└──────────────┘        └──────────────┘
-```
-
-## Usage Modes
-
-### Production Mode (Published Package)
-
-Use the published npm package via npx:
+## First run
 
 ```bash
-# Using the published package
-pnpm web
-
-# Or directly with npx
-npx @whoz-oss/coday-web --no_auth
+npx @whoz-oss/coday-web
 ```
 
-In production mode:
-- The web launcher resolves the client package from node_modules
-- Server serves pre-built static files from the client package
-- Single process handles both server and client
+The first time, the browser opens on **`/welcome`** (`http://localhost:3000/welcome`), a four-step wizard:
 
-### Development Mode (Local Sources)
+1. **Your email.** It becomes your user ID and the AgentOS administrator. AgentOS and Factory JARs start downloading in
+   the background as soon as the page is open.
+2. **Providers.** Anthropic, OpenAI and/or Requesty, each with an API key. With several, drag the cards (or use the
+   arrows) to rank them: rank 1 is preferred. At least one is required.
+3. **Files folder.** Pick the folder your agent reads and writes (default `~/Coday`, created when missing).
+4. **Checklist.** Download %, Java, AgentOS, providers, models, your personal namespace, the Coday agent, then
+   **Start with Coday**.
 
-For development with live reload and local sources:
+**Java 25 or newer is required** (AgentOS and Factory run on the JVM). When it is missing the wizard says so and shows the
+install command for your system, then continues by itself.
+
+Once done, `<configDir>/web-setup.json` holds `{ identity, setupDone }` (never an API key: the keys go to AgentOS only).
+To run the wizard again on a real install, stop Coday and delete `web-setup.json` **and** `<configDir>/agentos/data`
+(AgentOS fixes its administrator at its first boot). For the local stack of the monorepo, use `web:local -- --fresh`
+instead (see below).
+
+The command is always the same, `npx @whoz-oss/coday-web`: the wizard appears only while the setup is not done,
+otherwise the app opens directly.
+
+## How it runs
+
+```
+  interactive terminal                          no TTY / --managed / CODAY_NO_NX=1
+  ────────────────────                          ───────────────────────────────────
+  coday-web (index.js)                          coday-web (index.js)
+    └─ writes <configDir>/runtime/{nx,project}.json
+    └─ nx run-many -t server agentos factory    └─ one process: Express + AgentOS + Factory
+         provision ─┬─ server    (pane 1)           (what the desktop apps use; prints
+                    ├─ agentos   (pane 2)            `Server is running on http://localhost:PORT`)
+                    └─ factory   (pane 3)
+```
+
+- **Nx mode** (default in a terminal). The launcher generates a tiny Nx workspace under `<configDir>/runtime/`
+  (no daemon, no cloud, no cache) and runs the bundled `nx`. `provision` is a quick task (profile, secrets, Java check,
+  ports → `runtime/state.json`); `server`, `agentos` and `factory` are continuous tasks, each with its own pane. `agentos`
+  prints *Waiting for first-run setup → http://localhost:3000/welcome* until you gave your email; `factory` waits for
+  AgentOS to be healthy.
+- **Managed mode** (no TTY, `--managed`, or `CODAY_NO_NX=1`). Same code, one process, no Nx. The desktop apps spawn
+  `coday-web` without a terminal and keep working unchanged.
+
+All the logic lives in the server package (`apps/server/src/lib/runtime`, `lib/setup`); the Nx workspace is only a
+manifest calling `coday-server provision|agentos|factory|server`.
+
+### Logs
+
+Each process writes to its own file, in addition to its pane / the console:
+
+```
+<configDir>/logs/server.log
+<configDir>/logs/agentos.log
+<configDir>/logs/factory.log
+```
+
+`configDir` defaults to `~/.coday` (`--configDir <dir>` to change it).
+
+### Security in laptop mode
+
+Auth mode trusts identity headers, so every listener is bound to loopback: Express `127.0.0.1`, AgentOS
+`--server.address=127.0.0.1`, Factory `FACTORY_BIND_HOST=127.0.0.1`. AgentOS and Factory run with
+`*_SECURITY_MODE=auth`. Secrets (`FACTORY_FAKE_IDP_SECRET`, AgentOS and Factory encryption key/salt) are generated once into
+`<configDir>/runtime/secrets.json` (mode `0600`). An install that already holds unencrypted data keeps `NONE` for that
+service and logs a warning (encrypting existing data is a manual migration).
+
+The first-run setup API (`/api/setup/*`: folder browser, apply) only answers loopback callers and is disabled once the
+setup is done. Deployments (`--auth`), an external AgentOS (`AGENTOS_URL`), an imposed `AGENTOS_EXTERNAL_USERID` and
+existing installs without a wizard identity keep their previous behaviour: no wizard, no redirect.
+
+## Environment variables and options
+
+| Name | Effect |
+|---|---|
+| `--configDir <dir>` | Config directory (default `~/.coday`) |
+| `--host <addr>` / `CODAY_HOST` | Interface Express listens on (default `127.0.0.1`; `0.0.0.0` with `--auth`) |
+| `--managed` / `CODAY_NO_NX=1` | Force the single-process mode (no Nx) |
+| `PORT` | Express port (strict when set; default 3000, 4100 in dev) |
+| `AGENTOS_URL`, `FACTORY_URL` | Use an external AgentOS / Factory instead of managed ones |
+| `AGENTOS_EXTERNAL_USERID` | Impose the identity forwarded to AgentOS (disables the wizard) |
+| `CODAY_AGENTOS_VERSION`, `CODAY_FACTORY_VERSION` | JAR version to run (`dev` = JARs placed by hand in `<configDir>/{agentos,factory}`) |
+| `CODAY_DEFAULT_FILES_DIR` | Folder proposed by the wizard instead of `~/Coday` |
+| `CODAY_CLIENT_PATH`, `CODAY_FACTORY_COCKPIT_PATH` | Set by the launcher: where the static apps are |
+| `BUILD_ENV=development` | Dev mode (proxy to the Angular dev servers) |
+
+## Running the local code like an npx user: `web:local`
+
+End users always run `npx @whoz-oss/coday-web`. In the monorepo the equivalent, one command whatever your setup state,
+is:
 
 ```bash
-# Start both client and server in development mode
-pnpm web:dev
+pnpm nx run web:local                     # everyday: build local code, run it like an npx user, keeps your setup
+pnpm nx run web:local -- --fresh          # test the first-run wizard again (deletes the local config first)
+pnpm nx run web:local -- --managed        # single process, plain console (instead of the Nx TUI)
+pnpm nx run web:local -- --port 3100      # pick the port
 ```
 
-This command:
-- Starts the Angular dev server on port 4200 (with HMR)
-- Starts the Express server on port 4100 (with tsx watch)
-- Server proxies non-API requests to Angular dev server
-- Changes to client or server code trigger automatic reloads
+The first time you get the wizard; afterwards the app opens directly on the instance you configured, so you can stop,
+rebuild and restart as often as you like. The target builds the client, factory cockpit, server and web packages plus
+the AgentOS and Factory boot JARs, then `scripts/web-local.ts` works in a **persistent root, `~/.coday-local`**:
 
-**How it works in dev mode:**
-1. Client runs with Angular CLI dev server (localhost:4200)
-2. Server runs with tsx watch (localhost:4100)
-3. Server detects `BUILD_ENV=development` and proxies to Angular
-4. API routes (e.g., `/api/*`) are handled by the server
-5. All other routes are proxied to Angular for client-side routing
+```
+~/.coday-local/
+  packs/        pnpm pack tarballs                  (emptied on every run)
+  install/      the tarballs installed with npm     (recreated on every run, what npx does minus the registry)
+  config/       the --configDir                     (KEPT: web-setup.json, agentos/data, factory data, secrets)
+  files/Coday   folder proposed by the wizard instead of ~/Coday
+```
 
-## Development Workflow
+Every run re-packs and re-installs (the code may have changed), overwrites the `dev`-layout JARs in
+`config/{agentos,factory}` (`agentos-service-dev.jar`, plugins in `plugins/`; the data directories are left alone) and
+runs the installed `coday-web --configDir ~/.coday-local/config` with `CODAY_AGENTOS_VERSION=dev
+CODAY_FACTORY_VERSION=dev`. It prints every path and whether this is a **first run** (no `setupDone` in
+`web-setup.json`) or a **resume**. Your `~/.coday` and `~/Coday` are never touched (the script refuses a root that is, or
+lies in, them, your home or the repository), and nothing is published.
 
-### Running Individual Services
+| Option / env | Effect |
+|---|---|
+| `--fresh` | Delete `config/` and `files/` (printed) before starting: a brand-new first run |
+| `--managed`, `--port <n>` | Single-process mode, Express port |
+| `--prepare-only` | Prepare everything, print the paths as JSON on the last line, no server |
+| `--clean` | Delete the **whole** root when the server stops (setup and data included) |
+| `CODAY_LOCAL_DIR=<dir>` | Use another root than `~/.coday-local` (`CODAY_FIRST_RUN_DIR` is a deprecated alias) |
 
-You can also run services separately for debugging:
+`web:first-run` is kept as an alias of `web:local -- --fresh`.
+
+Automated version: `pnpm nx run client-e2e:first-run-e2e` drives the wizard with Playwright against a real AgentOS
+(dummy keys, no LLM call) and checks the providers, models, personal namespace, Coday agent and shared folder through
+the AgentOS REST API. It runs `web:local --fresh` on its own throwaway root (`FIRST_RUN_E2E_DIR` to choose it, it never
+reads `CODAY_LOCAL_DIR`) and skips itself, with a reason, when Java 25 or the built JARs are missing.
+
+## Development (monorepo)
 
 ```bash
-# Run only the client (Angular dev server)
-pnpm client
-
-# Run only the server (Express with tsx watch)
-pnpm server
+pnpm web:serve:dev      # nx run web:serve:dev: client, factory-cockpit, server, AgentOS and Factory, one pane each
+pnpm web:dev            # lighter: client + server only (no AgentOS/Factory; set AGENTOS_URL to use your own)
+pnpm client             # Angular dev server only (4200)
+pnpm server             # Express with tsx watch only (4100)
 ```
 
-### Building for Production
+`web:serve:dev` is a set of continuous Nx tasks: `client:serve` (4200), `factory-cockpit:serve` (4300),
+`web:dev-server` (Express, 4100), `web:dev-agentos` (`agentos-service:bootRun`, 8124) and `web:dev-factory`
+(`factory-service:bootRun`, 8141). The dev server uses the external-service mode (`AGENTOS_URL`/`FACTORY_URL`), so the
+wizard is not shown: use `web:local -- --fresh` to test it.
 
-The web package depends on built client and server packages:
+### Building and testing
 
 ```bash
-# Build all packages
-pnpm nx run-many --target=build --projects=client,server,web
-
-# Or build everything
-pnpm nx run-many --target=build --all
+pnpm nx run-many -t build -p client,factory-cockpit,server,web
+pnpm nx run-many -t lint test -p server,web,client,agentos-ui,scripts
 ```
 
-### Testing Changes
-
-When making changes to the web launcher:
-
-1. Modify `apps/web/index.js`
-2. Test with local server: `node apps/web/index.js --no_auth`
-3. Verify client resolution works correctly
-4. Check that server starts and serves the client
-
-## Environment Variables
-
-- `CODAY_CLIENT_PATH`: Set by the web launcher to tell server where client files are
-- `BUILD_ENV`: Set to `development` by server's serve target for dev mode
-- `PORT`: Override default server port (default: 3000 production, 4100 dev)
-
-## Package Dependencies
+## Package dependencies
 
 ```json
 {
   "@whoz-oss/coday-client": "workspace:*",
-  "@whoz-oss/coday-server": "workspace:*"
+  "@whoz-oss/coday-factory-cockpit": "workspace:*",
+  "@whoz-oss/coday-server": "workspace:*",
+  "nx": "catalog:dev"
 }
 ```
 
-These use workspace protocol in development and resolve to specific versions when published.
+`nx` is a runtime dependency here (it is the process manager of the interactive mode), which makes the package larger
+than the former thin launcher. Versions of the `platform:npm` packages move in lockstep: never edit them by hand.
 
 ## Troubleshooting
 
-### "Could not resolve @whoz-oss/coday-client package"
-
-This means the client package isn't built or installed:
-
-```bash
-# In development
-pnpm install
-pnpm nx run client:build
-
-# Or use the web:dev command which doesn't require builds
-pnpm web:dev
-```
-
-### "Failed to start server"
-
-Check that all dependencies are installed:
-
-```bash
-pnpm install
-```
-
-### Development mode not proxying correctly
-
-Ensure both services are running:
-1. Angular dev server should be on port 4200
-2. Express server should be on port 4100
-3. Access the app via http://localhost:4100
-
-## Quick Reference
-
-| Command | Mode | Ports | Use Case |
-|---------|------|-------|----------|
-| `pnpm web` | Production | 3000 | Testing published package |
-| `pnpm web:dev` | Development | 4100→4200 | Active development |
-| `pnpm client` | Development | 4200 | Client-only work |
-| `pnpm server` | Development | 4100 | Server-only work |
+- **"Could not resolve @whoz-oss/coday-client package"**: the client is not built or installed. `pnpm install` and
+  `pnpm nx run client:build`, or use `pnpm web:serve:dev`.
+- **The Nx panes do not show / garbled output**: use `--managed` (or `CODAY_NO_NX=1`) for plain console output.
+- **"Waiting for first-run setup" never ends**: open the URL printed in the pane and answer the wizard.
+- **Java missing or too old**: install Java 25 (the wizard shows the command), the page continues by itself.
+- **Port already in use**: `PORT=3100 npx @whoz-oss/coday-web`.

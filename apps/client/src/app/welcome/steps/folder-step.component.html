@@ -1,0 +1,98 @@
+<section class="step">
+  <h2 class="step__title">Where should Coday keep your files?</h2>
+  <p class="step__lead">
+    The agent reads and writes the files of your personal workspace in this folder. The default is fine for most people;
+    it is created if it does not exist.
+  </p>
+
+  <div class="selected" data-testid="selected-folder">
+    <span class="selected__label">Selected folder</span>
+    <code class="selected__path">{{ state.folder() }}</code>
+  </div>
+
+  <div class="browser">
+    <div class="browser__bar">
+      <button
+        type="button"
+        class="browser__icon"
+        aria-label="Parent folder"
+        [disabled]="!listing()?.parent"
+        (click)="open(listing()?.parent ?? undefined)"
+      >
+        ↑
+      </button>
+      <button type="button" class="browser__icon" aria-label="Home folder" (click)="open(listing()?.home)">⌂</button>
+      <code class="browser__path" [title]="listing()?.path ?? ''">{{ listing()?.path }}</code>
+      <button type="button" class="btn browser__use" data-testid="use-folder" (click)="chooseCurrent()">
+        Use this folder
+      </button>
+    </div>
+
+    <ul class="browser__list" role="list" [attr.aria-busy]="loading()">
+      @for (entry of listing()?.entries ?? []; track entry.path) {
+        <li>
+          <button type="button" class="entry" (click)="open(entry.path)">
+            <span aria-hidden="true">📁</span>
+            <span class="entry__name">{{ entry.name }}</span>
+            @if (entry.symlink) {
+              <span class="entry__tag">link</span>
+            }
+          </button>
+        </li>
+      } @empty {
+        @if (!loading()) {
+          <li class="browser__empty">No sub-folders here.</li>
+        }
+      }
+    </ul>
+
+    <div class="browser__footer">
+      @if (creating()) {
+        <form class="browser__new" (submit)="create($event)">
+          <input
+            class="field__input"
+            type="text"
+            placeholder="New folder name"
+            aria-label="New folder name"
+            data-testid="new-folder-name"
+            [value]="newName()"
+            (input)="onName($event)"
+          />
+          <button type="submit" class="btn" [disabled]="!newName().trim()">Create</button>
+          <button type="button" class="btn btn--ghost" (click)="creating.set(false)">Cancel</button>
+        </form>
+      } @else {
+        <button type="button" class="btn btn--ghost" data-testid="new-folder" (click)="startCreate()">
+          + New folder
+        </button>
+        <label class="browser__hidden">
+          <input type="checkbox" [checked]="showHidden()" (change)="toggleHidden()" />
+          Show hidden
+          @if (listing()?.hiddenCount) {
+            <span>({{ listing()?.hiddenCount }})</span>
+          }
+        </label>
+      }
+    </div>
+  </div>
+
+  @if (browseError()) {
+    <p class="step__error" role="alert">{{ browseError() }}</p>
+  }
+  @if (state.error()) {
+    <p class="step__error" role="alert">{{ state.error() }}</p>
+  }
+
+  <div class="step__actions">
+    <button class="btn btn--ghost" type="button" (click)="state.back()">Back</button>
+    <button
+      class="btn btn--primary"
+      type="button"
+      data-testid="folder-next"
+      [disabled]="!state.folderValid() || state.busy()"
+      (click)="submit()"
+    >
+      Set everything up
+    </button>
+  </div>
+</section>

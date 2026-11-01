@@ -95,24 +95,30 @@ export function getCodayVersion(): string {
  *
  * Every release builds the npm packages and the JARs in lockstep under one version, so this
  * is the version of the package itself (see resolveRuntimeVersion), unless overridden with
- * the FACTORY_VERSION env var for local dev or testing.
+ * the CODAY_FACTORY_VERSION (or FACTORY_VERSION) env var for local dev or testing.
  *
  * 'dev' sentinel (package.json unresolvable) = no release to download from: managed mode is
  * inert unless the JARs were placed by hand in <configDir>/factory/.
  */
 export function getFactoryVersion(): string {
-  const { version, source } = resolveRuntimeVersion(process.env.FACTORY_VERSION, getCodayVersion())
+  const { version, source } = resolveRuntimeVersion(
+    process.env.CODAY_FACTORY_VERSION ?? process.env.FACTORY_VERSION,
+    getCodayVersion()
+  )
   debugLog('VERSION', `Factory version from ${source}: ${version}`)
   return version
 }
 
 /**
  * Version of the AgentOS JARs to provision in managed mode. Same rule as the Factory:
- * the package's own version, unless overridden with the AGENTOS_VERSION env var
- * (e.g. `AGENTOS_VERSION=0.244.1 pnpm web`).
+ * the package's own version, unless overridden with the CODAY_AGENTOS_VERSION (or AGENTOS_VERSION)
+ * env var (e.g. `AGENTOS_VERSION=0.244.1 pnpm web`; `CODAY_AGENTOS_VERSION=dev` for hand-placed JARs).
  */
 export function getAgentosVersion(): string {
-  const { version, source } = resolveRuntimeVersion(process.env.AGENTOS_VERSION, getCodayVersion())
+  const { version, source } = resolveRuntimeVersion(
+    process.env.CODAY_AGENTOS_VERSION ?? process.env.AGENTOS_VERSION,
+    getCodayVersion()
+  )
   debugLog('VERSION', `AgentOS version from ${source}: ${version}`)
   return version
 }

@@ -5,8 +5,6 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZoneChangeDetection,
 } from '@angular/core'
-import { firstValueFrom, of } from 'rxjs'
-import { catchError } from 'rxjs/operators'
 import { provideRouter } from '@angular/router'
 import { provideHttpClient } from '@angular/common/http'
 import { provideAnimations } from '@angular/platform-browser/animations'
@@ -14,6 +12,7 @@ import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog'
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar'
 import { provideApi } from '@whoz-oss/agentos-api-client'
 import { appRoutes } from './app.routes'
+import { loadCurrentUser } from './load-current-user'
 
 /**
  * Load the current user once at app startup so that UserStateService.currentUser() is
@@ -26,20 +25,14 @@ import { appRoutes } from './app.routes'
  * resolves the service at runtime regardless, because it is providedIn: 'root'.
  *
  * Errors are caught and logged — an unauthenticated or anonymous session should not block
- * the app from rendering; components that need the user will degrade gracefully.
+ * the app from rendering; components that need the user will degrade gracefully. The wait is also
+ * bounded (see loadCurrentUser): this runs before AgentOS may be up, and a hanging request would
+ * block the whole bootstrap.
  */
 function initializeCurrentUser(injector: Injector) {
   return async () => {
     const { UserStateService } = await import('@whoz-oss/agentos-ui')
-    const userState = injector.get(UserStateService)
-    await firstValueFrom(
-      userState.loadMe().pipe(
-        catchError((err) => {
-          console.warn('Failed to load current user', err)
-          return of(null)
-        })
-      )
-    )
+    await loadCurrentUser(injector.get(UserStateService))
   }
 }
 

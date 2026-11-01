@@ -72,6 +72,35 @@ build: #XXXX short description     # For build system changes
 6. Commit and push
 7. Create PR with conventional commit format as title (e.g., "feat: #XXXX short description")
 
+## Running the packaged stack locally (and testing the first-run experience)
+
+End users always run `npx @whoz-oss/coday-web`: the first-run wizard (`/welcome`) shows only while the setup is not
+done, otherwise the app opens directly. `web:local` is the same single command for the monorepo: it builds your local
+code and runs it like an npx user would, without publishing and without touching your own `~/.coday` or `~/Coday`:
+
+```bash
+# Everyday: builds client, factory-cockpit, server, web + the AgentOS/Factory boot JARs, packs the 4 npm packages,
+# re-installs them and runs the installed `coday-web` on the persistent root ~/.coday-local (override: CODAY_LOCAL_DIR).
+# First time: the wizard. Afterwards: straight into the app, your setup and data are kept.
+pnpm nx run web:local
+pnpm nx run web:local -- --managed         # one process, plain console (what the desktop apps get)
+
+# Test the first-run wizard again: deletes ~/.coday-local/config and files first (printed), then starts
+pnpm nx run web:local -- --fresh           # `pnpm nx run web:first-run` is an alias of this
+
+# Automated: Playwright drives the wizard against a real AgentOS with dummy keys (no LLM call).
+# Skips itself, with a reason, when Java 25 or the built JARs are missing.
+pnpm nx run client-e2e:first-run-e2e
+```
+
+The script prints every path it uses (root, install dir, configDir, logs) and whether the run is a first run or a resume.
+Logs of a run are in
+`<configDir>/logs/{server,agentos,factory}.log`. Java 25 is required for the JVM services; to see the "Java missing" step
+of the wizard, run with `--fresh` and a `JAVA_HOME` that points to an older JDK. Details: `apps/web/README.md`.
+
+For day-to-day development use `pnpm web:serve:dev` (continuous Nx tasks: client, factory-cockpit, server, AgentOS and
+Factory, one pane each; the wizard is not shown there because the services are external).
+
 ## Worktree Workflow
 
 Worktrees allow parallel work on multiple branches without switching the main project directory. Each worktree is registered as a Coday sub-project, enabling agents to work in isolation per issue.

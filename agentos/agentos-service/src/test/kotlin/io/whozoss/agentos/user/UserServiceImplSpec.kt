@@ -7,6 +7,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
+import org.springframework.context.ApplicationEventPublisher
 import java.util.UUID
 
 /**
@@ -25,6 +26,34 @@ class UserServiceImplSpec : StringSpec({
         isAdmin = false,
     )
 
+    val publisher = mockk<ApplicationEventPublisher>(relaxed = true)
+
+    // -------------------------------------------------------------------------
+    // UserCreatedEvent
+    // -------------------------------------------------------------------------
+
+    "create publishes a UserCreatedEvent carrying the saved user's ids" {
+        val saved = makeUser("event@example.com")
+        val userRepository = mockk<UserRepository>()
+        every { userRepository.save(any()) } returns saved
+        val events = mockk<ApplicationEventPublisher>(relaxed = true)
+
+        UserServiceImpl(userRepository, mockk(), events).create(saved)
+
+        verify(exactly = 1) { events.publishEvent(UserCreatedEvent(saved.id, "event@example.com")) }
+    }
+
+    "update does not publish a UserCreatedEvent" {
+        val saved = makeUser("quiet@example.com")
+        val userRepository = mockk<UserRepository>()
+        every { userRepository.save(any()) } returns saved
+        val events = mockk<ApplicationEventPublisher>(relaxed = true)
+
+        UserServiceImpl(userRepository, mockk(), events).update(saved)
+
+        verify(exactly = 0) { events.publishEvent(any<Any>()) }
+    }
+
     // -------------------------------------------------------------------------
     // getCurrentUser
     // -------------------------------------------------------------------------
@@ -37,7 +66,7 @@ class UserServiceImplSpec : StringSpec({
         every { securityService.resolveCurrentIdentity() } returns identity
         every { userRepository.findByExternalId(identity) } returns user
 
-        val service = UserServiceImpl(userRepository, securityService)
+        val service = UserServiceImpl(userRepository, securityService, publisher)
         val result = service.getCurrentUser()
 
         result shouldBe user
@@ -55,7 +84,7 @@ class UserServiceImplSpec : StringSpec({
         every { userRepository.count() } returns 1L // Not the first user
         every { userRepository.save(any()) } returns createdUser
 
-        val service = UserServiceImpl(userRepository, securityService)
+        val service = UserServiceImpl(userRepository, securityService, publisher)
         val result = service.getCurrentUser()
 
         result shouldBe createdUser
@@ -72,7 +101,7 @@ class UserServiceImplSpec : StringSpec({
         every { userRepository.save(match { it.externalId == "dave@example.com" }) } returns makeUser("dave@example.com")
         every { userRepository.save(match { it.externalId == "eve@example.com" }) } returns makeUser("eve@example.com")
 
-        val service = UserServiceImpl(userRepository, mockk())
+        val service = UserServiceImpl(userRepository, mockk(), publisher)
         val result = service.createByExternalIds(ids)
 
         result.map { it.externalId }.toSet() shouldBe ids
@@ -89,7 +118,7 @@ class UserServiceImplSpec : StringSpec({
         val userRepository = mockk<UserRepository>()
         every { userRepository.findByExternalId(externalId) } returns user
 
-        val service = UserServiceImpl(userRepository, mockk())
+        val service = UserServiceImpl(userRepository, mockk(), publisher)
         val result = service.resolveOrCreateByExternalId(externalId)
 
         result shouldBe user
@@ -104,7 +133,7 @@ class UserServiceImplSpec : StringSpec({
         every { userRepository.count() } returns 1L // Not the first user
         every { userRepository.save(any()) } returns createdUser
 
-        val service = UserServiceImpl(userRepository, mockk())
+        val service = UserServiceImpl(userRepository, mockk(), publisher)
         val result = service.resolveOrCreateByExternalId(externalId)
 
         result shouldBe createdUser
