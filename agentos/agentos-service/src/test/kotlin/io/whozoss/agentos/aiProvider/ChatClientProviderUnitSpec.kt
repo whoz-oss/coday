@@ -8,8 +8,8 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.ChatModelFactory
-import io.kotest.assertions.throwables.shouldThrow
 import io.whozoss.agentos.chat.UsageAccumulator
+import io.whozoss.agentos.chat.UsageTrackingChatModel
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
@@ -145,7 +145,8 @@ class ChatClientProviderUnitSpec :
         }
 
         // The tool-round cap: the namespace's value when given, else the platform's. A model that answers
-        // with a tool call forever lets the number of executed tools show which cap applied.
+        // with a tool call forever lets the number of executed tools show which cap applied. Reaching the cap
+        // does not fail the run: the model is asked to summarize, and the response carries the cap it reached.
         fun toolExecutionsUntilCapped(
             limits: LimitsConfigProperties,
             namespaceMaxToolRounds: Int?,
@@ -188,7 +189,9 @@ class ChatClientProviderUnitSpec :
                         maxToolRounds = namespaceMaxToolRounds,
                     )
 
-            shouldThrow<IllegalStateException> { client.prompt("Hello").toolCallbacks(callback).call().content() }
+            val response = client.prompt("Hello").toolCallbacks(callback).call().chatResponse()
+            response?.metadata?.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe
+                (namespaceMaxToolRounds ?: limits.agentMaxIterations)
             return executed.get()
         }
 
