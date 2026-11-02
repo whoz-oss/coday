@@ -387,8 +387,8 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
+        "204":
+          description: No Content
       tags:
       - ai-model-controller
     get:
@@ -5758,6 +5758,11 @@ components:
             \ Applies to all cases in this namespace that do not declare their own\
             \ threshold."
           minimum: 0
+        sharedExchangePath:
+          type: string
+          description: Optional absolute path of a directory on the server host that
+            replaces the default directory of the namespace-shared file exchange.
+            Only super-admins may set or change it. Created on first use.
       required:
       - name
     NamespaceAgentDeployRequest:

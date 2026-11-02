@@ -108,14 +108,14 @@ agentos:
   usage:
     # Opt in to LLM usage accounting, analytical records and the run-cost guard.
     # Disabled by default in every profile, including Whoz.
-    enabled: ${AGENTOS_USAGE_ENABLED:true}
+    enabled: ${AGENTOS_USAGE_ENABLED:false}
   git:
     worker:
-      enabled: ${AGENTOS_GIT_WORKER_ENABLED:true}
+      enabled: ${AGENTOS_GIT_WORKER_ENABLED:false}
     workspaces:
       # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
       # runs exactly as without Git, whatever the namespace's Git association.
-      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:true}
+      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
   encryption:
     key: ${AGENTOS_ENCRYPTION_KEY:NONE}
     salt: ${AGENTOS_ENCRYPTION_SALT:NONE}
