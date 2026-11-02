@@ -25,6 +25,10 @@ import java.util.UUID
  * @property sharedExchangePath Optional absolute path on the server host that replaces the default
  *   directory of the namespace-shared file exchange (`<mountRoot>/<namespaceId>/shared`). Only a
  *   super-admin may set or change it; for anyone else an omitted value on update means "keep".
+ * @property maxToolRounds Namespace-level override of the maximum number of tool rounds of one
+ *   agent run. Null means "inherit from the platform default", never "no limit". On update, a
+ *   null value clears an existing override, so clients editing another property must send the
+ *   current value back.
  */
 @Schema(name = "Namespace")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -59,4 +63,11 @@ data class NamespaceDto(
                 "namespace-shared file exchange. Only super-admins may set or change it. Created on first use.",
     )
     val sharedExchangePath: String? = null,
+    @field:Schema(
+        description =
+            "Maximum number of tool rounds of one agent run in this namespace. Null means inherit from the " +
+                "platform default (agentos.limits.agent-max-iterations). On PUT, null clears an existing override.",
+    )
+    @field:Min(value = 1, message = "maxToolRounds must be at least 1")
+    val maxToolRounds: Int? = null,
 )

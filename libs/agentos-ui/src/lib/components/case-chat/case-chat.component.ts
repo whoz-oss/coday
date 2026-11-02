@@ -594,6 +594,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const qe = e as QuestionEvent
         // A question is answered when a legitimate AnswerEvent exists in the stream (same rule as the backend).
         items.push({ kind: 'question', event: qe, answer: findLegitimateAnswer(qe, allEvents) })
+      } else if (e.type === 'AgentFinishedEvent' && (e as AgentFinishedEvent).maxIterationsReached != null) {
+        // Not a diagnostic: the run stopped before finishing, and only the user can let it continue.
+        items.push({ kind: 'notice', notice: this.toIterationLimitNotice(e as AgentFinishedEvent), eventId: e.id })
+        lastMessageRole = null
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
         // Execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
@@ -616,6 +620,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
 
     return items
+  })
+
+  /** Id of the latest run stopped at its iteration limit, while no user message has followed it. */
+  protected readonly continuableStopId = computed<string | null>(() => {
+    const events = this.events()
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]
+      if (e?.type === 'MessageEvent' && (e as CaseMessageEvent).actor.role === 'USER') return null
+      if (e?.type === 'AgentFinishedEvent') return (e as AgentFinishedEvent).maxIterationsReached != null ? e.id : null
+    }
+    return null
   })
 
   /** Questions answered through a configuration card: see {@link configChangeQuestionIds}. */
@@ -1185,6 +1200,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     void this.postMessage(content)
   }
 
+  /** The agent resumes from the history: its tool calls and its summary of the work so far. */
+  protected continueAfterLimit(): void {
+    // An attachment send in flight is not running yet: posting now would send two messages.
+    if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.isTerminal()) return
+    this.sendMessage('Continue')
+  }
+
   private postMessage(content: string): Promise<boolean> {
     this.isRunning.set(true)
     this.streamingText.set('')
@@ -1411,6 +1433,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return true
       default:
         return false
+    }
+  }
+
+  private toIterationLimitNotice(event: AgentFinishedEvent): ExecutionNotice {
+    return {
+      severity: 'warning',
+      title: 'Iteration limit reached',
+      detail:
+        `${event.agentName} stopped after ${event.maxIterationsReached} iterations, before finishing. ` +
+        'Its last message sums up the progress.',
     }
   }
 

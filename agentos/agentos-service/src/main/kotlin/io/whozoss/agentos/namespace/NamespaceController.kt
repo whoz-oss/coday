@@ -68,6 +68,7 @@ class NamespaceController(
                     runCostThreshold = resource.runCostThreshold,
                     // Creation is super-admin only (see create), which is the rule for this field too.
                     sharedExchangePath = requireAbsolutePath(resource.sharedExchangePath),
+                    maxToolRounds = resource.maxToolRounds,
                 )
             },
         )
@@ -145,6 +146,7 @@ class NamespaceController(
                     externalId = existing.externalId, // immutable post-create
                     runCostThreshold = resource.runCostThreshold,
                     sharedExchangePath = resolveSharedExchangePath(existing, resource),
+                    maxToolRounds = resource.maxToolRounds,
                 ),
             ).toDto()
     }
@@ -265,6 +267,7 @@ fun Namespace.toDto() =
         defaultAgentName = defaultAgentName,
         runCostThreshold = runCostThreshold,
         sharedExchangePath = sharedExchangePath,
+        maxToolRounds = maxToolRounds,
     )
 
 // runCostThreshold is intentionally absent from NamespaceListItem — it is an admin-configuration

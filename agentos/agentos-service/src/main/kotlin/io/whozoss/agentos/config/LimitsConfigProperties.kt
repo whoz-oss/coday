@@ -34,7 +34,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *
  * Override with environment variables (Spring Boot relaxed binding):
  * - `AGENTOS_LIMITS_CASE_MAX_ITERATIONS`  (default: 100)
- * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 20)
+ * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 1000)
  * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: unset)
  *
  * Example (`application.yml`):
@@ -42,7 +42,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * agentos:
  *   limits:
  *     case-max-iterations: 100
- *     agent-max-iterations: 20
+ *     agent-max-iterations: 1000
  *     agent-loop-max-items: 50
  *     run-cost-threshold: 10.0
  * ```
@@ -72,12 +72,20 @@ data class LimitsConfigProperties(
      * a [io.whozoss.agentos.sdk.caseEvent.WarnEvent] and breaks out of the loop,
      * then produces its final response based on what it has gathered so far.
      *
-     * Also bounds automatic tool rounds for AgentSimple. At that bound the simple
-     * agent emits a warning and finishes; no further provider request is made.
+     * Also bounds automatic tool rounds for AgentSimple when usage tracking is enabled
+     * ([io.whozoss.agentos.chat.UsageTrackingChatModel] runs that loop). At that bound the
+     * next request asks the model to answer without tools, summarizing its progress; its
+     * tool calls are not executed, and the agent emits the same warning before finishing.
      *
-     * Defaults to 20.
+     * In both modes the [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent] carries
+     * `maxIterationsReached`, so the user (or a delegating agent) can let the run continue.
+     *
+     * This is the platform default of the "maximum tool rounds" setting: a namespace overrides it with
+     * [io.whozoss.agentos.namespace.Namespace.maxToolRounds], and `null` there inherits this value.
+     *
+     * Defaults to 1000.
      */
-    val agentMaxIterations: Int = 20,
+    val agentMaxIterations: Int = 1000,
     /**
      * Maximum number of entities processed by a single [io.whozoss.agentos.agent.AgentLoop] run.
      *

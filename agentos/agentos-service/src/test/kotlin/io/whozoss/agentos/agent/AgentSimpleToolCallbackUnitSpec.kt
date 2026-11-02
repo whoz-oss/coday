@@ -139,7 +139,7 @@ class AgentSimpleToolCallbackUnitSpec :
             every {
                 mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(capturedCallbacks)).stream()
             } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("done")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("done")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
             agent.run(listOf(userMessage(namespaceId, caseId, "test"))).toList()
@@ -202,7 +202,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 cb.call("{\"timezone\":\"America/New_York\"}")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("It is 11:02 AM EST")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("It is 11:02 AM EST")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "what time is it in New York?"))).toList()
@@ -237,7 +237,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("follow-up response")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("follow-up response")
 
             val agent = makeAgent(agentId, mockChatClient, emptyList())
 
@@ -307,7 +307,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 cb.call("{\"agentName\":\"TargetAgent\"}")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.empty()
+            every { mockStreamSpec.chatResponse() } returns Flux.empty()
 
             val agent = makeAgent(agentId, mockChatClient, listOf(redirectTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "do the thing"))).toList()
@@ -376,7 +376,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("response")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("response")
 
             val agent = makeAgent(agentId, mockChatClient, emptyList())
 
@@ -444,7 +444,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 callbackReturn = cb.call("{}")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("done")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("done")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "read my cv"))).toList()
@@ -473,7 +473,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(capture(promptSlot)).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("response")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("response")
 
             val agent = makeAgent(agentId, mockChatClient, emptyList())
 
@@ -537,7 +537,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(any<List<ToolCallback>>()).stream() } returns mockStreamSpec
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } throws NonTransientAiException("400 - invalid_request_error")
+            every { mockStreamSpec.chatResponse() } throws NonTransientAiException("400 - invalid_request_error")
 
             val agent = makeAgent(agentId, mockChatClient, emptyList())
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "hello"))).toList()
@@ -556,7 +556,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("response")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("response")
 
             val agent = makeAgent(agentId, mockChatClient, emptyList())
 
@@ -630,7 +630,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 returnedToLlm = cb.call("""{"path":"agentos","fileName":"Repo","fileTypes":"kt"}""")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("Let me fix the call")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Let me fix the call")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(arrayTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "find the repo"))).toList()
@@ -684,7 +684,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 returnedToLlm = cb.call("""{"file_types":"kt"}""")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("Let me retry")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Let me retry")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(arrayTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "find the repo"))).toList()
@@ -732,7 +732,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 returnedToLlm = cb.call("{}")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("That failed")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("That failed")
 
             val meterRegistry = SimpleMeterRegistry()
             val agent =
@@ -798,7 +798,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 thrown = runCatching { cb.call("{}") }.exceptionOrNull()
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.empty()
+            every { mockStreamSpec.chatResponse() } returns Flux.empty()
 
             val agent = makeAgent(agentId, mockChatClient, listOf(cancellingTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
@@ -836,7 +836,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 returnedToLlm = cb.call("{}")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("That failed")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("That failed")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(messagelessTool))
             agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()

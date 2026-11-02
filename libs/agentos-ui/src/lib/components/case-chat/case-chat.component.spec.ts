@@ -4,10 +4,12 @@ import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
   ActorRoleEnum,
+  AgentFinishedEvent,
   AnswerEvent,
   Case,
   Configuration,
   ExchangeFileEntryScopeEnum,
+  MessageEvent as CaseMessageEvent,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
   ReasoningEffort,
@@ -723,6 +725,83 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
 
       expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['question'])
+    })
+  })
+
+  describe('iteration limit', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const finished = (id: string, maxIterationsReached?: number): AgentFinishedEvent => ({
+      id,
+      type: 'AgentFinishedEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata,
+      agentId: 'agent-1',
+      agentName: 'dev',
+      maxIterationsReached,
+    })
+    const userMessage = (id: string): CaseMessageEvent => ({
+      id,
+      type: 'MessageEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:01Z',
+      metadata,
+      actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'You' },
+      content: [],
+    })
+
+    it('shows a run stopped at its limit outside technical mode, unlike a run that completed', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([finished('f-1', 20), finished('f-2')])
+
+      const notices = ref.instance['timeline']().filter((item) => item.kind === 'notice')
+      expect(notices).toHaveLength(1)
+      expect(notices[0]).toEqual(
+        expect.objectContaining({
+          eventId: 'f-1',
+          notice: expect.objectContaining({ title: 'Iteration limit reached' }),
+        })
+      )
+      expect(notices[0]?.kind === 'notice' && notices[0].notice.detail).toContain('dev stopped after 20 iterations')
+    })
+
+    it('offers to continue the latest stop until the user writes again', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([finished('f-1', 20)])
+      expect(ref.instance['continuableStopId']()).toBe('f-1')
+
+      ref.instance['events'].set([finished('f-1', 20), userMessage('m-1')])
+      expect(ref.instance['continuableStopId']()).toBeNull()
+
+      ref.instance['events'].set([finished('f-1', 20), userMessage('m-1'), finished('f-2')])
+      expect(ref.instance['continuableStopId']()).toBeNull()
+    })
+
+    it('treats a limit of 0 as reached', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([finished('f-0', 0)])
+
+      expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['notice'])
+      expect(ref.instance['continuableStopId']()).toBe('f-0')
+    })
+
+    it('does not continue while a message with attachments is being sent', () => {
+      const ref = makeComponent()
+      ref.instance['submitting'] = true
+      ref.instance['continueAfterLimit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('continues by sending a message, once, and not while the agent runs', () => {
+      const ref = makeComponent()
+      ref.instance['continueAfterLimit']()
+      ref.instance['continueAfterLimit']()
+
+      expect(http.post).toHaveBeenCalledTimes(1)
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'Continue', userId: 'default-user' })
     })
   })
 })
