@@ -26,9 +26,6 @@ export class ShellUserMenuComponent {
   /** Active theme variant ('industry' | 'terminal') */
   readonly themeVariant = input.required<string>()
 
-  /** Whether technical logs are currently shown — drives the active state of the menu item */
-  readonly showTechnical = input.required<boolean>()
-
   /** Whether tool calls are currently shown — drives the active state of the menu item. */
   readonly showToolCalls = input.required<boolean>()
 
@@ -52,9 +49,6 @@ export class ShellUserMenuComponent {
   /** Emits when the user switches theme variant */
   readonly themeVariantChanged = output<string>()
 
-  /** Emits when the user toggles technical logs */
-  readonly logsToggled = output<void>()
-
   /** Emits when the user toggles tool calls. */
   readonly toolCallsToggled = output<void>()
 
@@ -71,10 +65,6 @@ export class ShellUserMenuComponent {
 
   protected onThemeVariantChange(variant: string): void {
     this.themeVariantChanged.emit(variant)
-  }
-
-  protected onLogsToggle(): void {
-    this.logsToggled.emit()
   }
 
   protected onToolCallsToggle(): void {

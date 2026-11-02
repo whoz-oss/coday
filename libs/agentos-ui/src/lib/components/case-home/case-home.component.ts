@@ -64,7 +64,7 @@ const GIT_INTEGRATION_TYPE = 'GIT'
  * 5. Only then does the app navigate to the case chat
  *
  * When this instance has Git workspaces and the GIT plugin, and the namespace creates a worktree
- * for every top-level case, the composer offers it checked: unchecking it creates the case without Git.
+ * for every top-level case, the composer offers it unchecked: checking it creates the case with a worktree.
  *
  * The first message is never stored in router state to avoid re-sending on refresh.
  * The created case id is remembered in [pendingCaseId] so a failed upload/send retries
@@ -124,8 +124,8 @@ export class CaseHomeComponent implements OnInit {
 
   /** Offered with Git workspaces and the GIT plugin, where the namespace gives every top-level case a worktree. */
   protected readonly worktreeOffered = signal(false)
-  /** False once the creator declines the worktree the namespace gives the new case. */
-  protected readonly worktree = signal(true)
+  /** True once the creator opts in to the worktree the namespace can give the new case. Unchecked by default. */
+  protected readonly worktree = signal(false)
   private readonly worktreeNamespace = new Subject<string>()
   /**
    * Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows.
@@ -200,7 +200,7 @@ export class CaseHomeComponent implements OnInit {
       .subscribe((association) => {
         // Only an associated namespace creates worktrees; an unusable association reports false.
         this.worktreeOffered.set(association?.autoWorktreeForRootCases === true)
-        this.worktree.set(true)
+        this.worktree.set(false)
       })
 
     // Track both the value and the view query. This covers programmatic writes
@@ -295,8 +295,9 @@ export class CaseHomeComponent implements OnInit {
           this.caseApi.createCase({
             namespaceId,
             ...(parentCaseId ? { parentCaseId } : {}),
-            // Only a declined worktree is sent: left checked, the namespace's setting applies as before.
-            ...(this.worktreeOffered() && !parentCaseId && !this.worktree() ? { worktree: false } : {}),
+            // When the box is offered for a top-level case, the creator's explicit choice is sent (true or false).
+            // Nothing is sent otherwise: the backend rejects a worktree choice on a sub-case.
+            ...(this.worktreeOffered() && !parentCaseId ? { worktree: this.worktree() } : {}),
             status: CaseStatusEnum.PENDING,
             favorite: false,
             removed: false,

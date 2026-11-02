@@ -76,6 +76,31 @@
       </div>
     </div>
 
+    <!-- Case chat display is a front-only user preference, independent of read/edit mode. -->
+    <div class="user-profile__section">
+      <h2 class="user-profile__section-title">Case chat</h2>
+
+      <div class="user-profile__field">
+        <span class="user-profile__label">Technical logs</span>
+        <div class="user-profile__field-control">
+          <div class="user-profile__segmented" role="group" aria-label="Technical logs">
+            @for (option of showTechnicalOptions; track option.label) {
+              <button
+                type="button"
+                class="user-profile__segmented-option"
+                [class.user-profile__segmented-option--active]="showTechnical() === option.value"
+                [attr.aria-pressed]="showTechnical() === option.value"
+                (click)="setShowTechnical(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            }
+          </div>
+          <p class="user-profile__hint">Show system log lines (agent status, tool selection...) in the case chat.</p>
+        </div>
+      </div>
+    </div>
+
     @if (isEditing()) {
       <!-- Edit mode -->
       <form class="user-profile__form" [formGroup]="form" (ngSubmit)="save()">
