@@ -71,12 +71,16 @@ class McpTool(
                                 errorType = "MCP_TOOL_ERROR",
                                 errorMessage = e.message,
                             )
-                        else ->
+                        else -> {
+                            // A transport failure carries the server's own words (URL, headers, tokens):
+                            // the detail stays in the logs, the model gets a fixed text.
+                            logger.error(e) { "[MCP] Tool call '${mcpTool.name()}' failed: ${e.message}" }
                             ToolExecutionResult.error(
-                                output = e.message ?: "Tool call failed",
+                                output = TRANSPORT_FAILURE_OUTPUT,
                                 errorType = e::class.simpleName ?: "Error",
-                                errorMessage = e.message ?: "",
+                                errorMessage = TRANSPORT_FAILURE_OUTPUT,
                             )
+                        }
                     }
                 },
             )
@@ -95,6 +99,10 @@ class McpTool(
 
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
+
+        /** What the model sees when the call itself failed (transport, protocol), as opposed to the tool answering with an error. */
+        internal const val TRANSPORT_FAILURE_OUTPUT =
+            "The tool call failed because the integration could not be reached. The cause is in the server logs."
 
         /**
          * Build the [StandardTool.inputSchema] from the MCP tool's declared input schema.

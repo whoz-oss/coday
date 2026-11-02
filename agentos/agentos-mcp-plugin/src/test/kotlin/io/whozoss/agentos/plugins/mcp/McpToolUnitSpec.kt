@@ -1,14 +1,17 @@
 package io.whozoss.agentos.plugins.mcp
 
+import ch.qos.logback.classic.Level
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.runBlocking
 import java.util.UUID
 
 class McpToolUnitSpec : StringSpec({
@@ -118,5 +121,35 @@ class McpToolUnitSpec : StringSpec({
 
         result.success shouldBe false
         result.errorType shouldBe "McpConnectionException"
+    }
+
+    "transport failure gives the model a fixed text, never the exception message, and logs the detail" {
+        val connection = mockk<McpConnectionPort>()
+        every { connection.callTool(any(), any()) } throws
+            McpConnectionException("Tool call 'search_repos' failed: 401 for https://mcp.example.com/?token=secret=XYZ")
+
+        val tool = makeTool(connection = connection)
+        var result: ToolExecutionResult? = null
+        val logs = LogCapture.capturing { result = runBlocking { tool.execute(McpTool.Input(args = "{}"), ctx) } }
+
+        result!!.success shouldBe false
+        result!!.output shouldBe McpTool.TRANSPORT_FAILURE_OUTPUT
+        result!!.output shouldNotContain "XYZ"
+        (result!!.errorMessage ?: "") shouldNotContain "XYZ"
+        result!!.errorType shouldBe "McpConnectionException"
+        logs.messagesAt(Level.ERROR).single() shouldContain "secret=XYZ"
+    }
+
+    "an MCP tool error keeps the tool's own content, which is its answer and not a transport detail" {
+        val connection = mockk<McpConnectionPort>()
+        every { connection.callTool(any(), any()) } throws
+            McpToolErrorException("search_repos", "rate limit exceeded, retry in 30s (ref secret=XYZ)")
+
+        val tool = makeTool(connection = connection)
+        val result = tool.execute(McpTool.Input(args = "{}"), ctx)
+
+        result.success shouldBe false
+        result.output shouldBe "rate limit exceeded, retry in 30s (ref secret=XYZ)"
+        result.errorType shouldBe "MCP_TOOL_ERROR"
     }
 })
