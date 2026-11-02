@@ -1,0 +1,14 @@
+# Model tier shared by every checkout. Requires an AI provider named `requesty` in the
+# namespace (or at platform level) holding your own Requesty key; without it this model is
+# ignored. Prices are Requesty's, in USD per million tokens.
+alias: OPENAI-SMALL
+apiModelName: openai/gpt-6-luna
+provider: requesty
+description: Fast OpenAI tier via Requesty
+priority: 10
+contextWindow: 1050000
+pricing:
+  inputMTokens: 0.1
+  outputMTokens: 0.5
+  cacheRead: 0.01
+  cacheWrite: 0.125

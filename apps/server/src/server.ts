@@ -1,38 +1,11 @@
 import express from 'express'
 import path from 'path'
 import fs from 'fs'
-import { ThreadCodayManager } from './lib/thread-coday-manager'
+import { createProxyMiddleware } from 'http-proxy-middleware'
 
 import { debugLog } from './lib/log'
-import { CodayLoggerUtils } from '@coday/utils'
-import {
-  ThreadCleanupService,
-  PromptService,
-  SchedulerService,
-  PromptExecutionService,
-  ConfigServiceRegistry,
-  ProjectService,
-  ThreadFileService,
-  ThreadService,
-} from '@coday/service'
-import { findAvailablePort } from './lib/find-available-port'
-import { ServerInteractor } from '@coday/model'
-import { registerConfigRoutes } from './lib/config.routes'
-import { registerProjectRoutes } from './lib/project.routes'
-import { registerThreadRoutes } from './lib/thread.routes'
-import { registerMessageRoutes } from './lib/message.routes'
-import { registerUserRoutes } from './lib/user.routes'
-import { registerAgentRoutes } from './lib/agent.routes'
-import { AgentCrudService } from '@coday/service'
-import { registerPromptRoutes } from './lib/prompt.routes'
-import { registerSchedulerRoutes } from './lib/scheduler.routes'
-import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
-import { registerTokenUsageRoutes } from './lib/token-usage.routes'
-import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
-import { registerTranscribeRoutes } from './lib/transcribe.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
-import { ProjectFileRepository } from '@coday/repository'
-import { McpInstancePool } from '@coday/mcp'
+import { findAvailablePort } from './lib/find-available-port'
 import { resolveUsername } from './lib/resolve-username'
 import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
 import { getAgentosVersion, getFactoryVersion } from './lib/version'
@@ -43,7 +16,6 @@ import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
 import { createAgentOsProxy } from './lib/agentos-proxy'
 import { createFactoryProxy } from './lib/factory-proxy'
-import { createProxyMiddleware } from 'http-proxy-middleware'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -61,24 +33,6 @@ const PORT_PROMISE = findAvailablePort(DEFAULT_PORT, isPortForced ? 0 : 10, isPo
 const codayOptions = parseCodayOptions()
 debugLog('INIT', 'Coday options:', codayOptions)
 
-// Create single usage logger instance for all clients
-// Logging is enabled when --log flag is used and not in no-auth mode
-const loggingEnabled = !codayOptions.noLog
-const logger = new CodayLoggerUtils(loggingEnabled, codayOptions.logFolder)
-debugLog(
-  'INIT',
-  `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${
-    codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''
-  }`
-)
-
-// Create webhook service instance (delegates to prompt execution)
-debugLog('INIT', 'Webhook service initialized (will be initialized with prompt execution service)')
-
-// Create prompt service instance and execution service
-// Note: projectPath will be set after projectService is initialized
-let promptService: PromptService
-let promptExecutionService: PromptExecutionService
 // ---------------------------------------------------------------------------
 // AgentOS proxy — two mutually exclusive modes, discriminated by AGENTOS_URL
 //
@@ -170,7 +124,7 @@ debugLog(
   `Factory proxy configured: /api/factory → ${currentFactoryUrl}/api/factory (${FACTORY_URL_ENV ? 'external mode' : 'managed mode'})`
 )
 
-// Middleware to parse JSON bodies with increased limit for image uploads
+// Middleware to parse JSON bodies with increased limit
 app.use(express.json({ limit: '20mb' }))
 
 // Development mode: proxy to the Angular dev servers, mirroring the production
@@ -268,84 +222,6 @@ if (process.env.BUILD_ENV === 'development') {
   // Serve static files from the main Angular build output.
   app.use(express.static(clientPath))
 }
-// Initialize project service for REST API endpoints
-const projectRepository = new ProjectFileRepository(codayOptions.configDir)
-
-// Resolve the actual project ID (with hash) if we're in default mode
-let resolvedProjectName = codayOptions.project
-if (resolvedProjectName && !codayOptions.forcedProject) {
-  // In default mode, check for existing project first
-  const cwd = process.cwd()
-  const basename = path.basename(cwd)
-
-  // First, check if a non-volatile project exists with the simple name and matches the path
-  if (projectRepository.exists(basename)) {
-    const config = projectRepository.getConfig(basename)
-    if (config && config.path === cwd && !config.volatile) {
-      debugLog('INIT', `Default mode: found existing non-volatile project '${basename}' for current directory`)
-      resolvedProjectName = basename
-    } else {
-      // Project exists but path doesn't match or is volatile, use volatile ID
-      const volatileProjectId = ProjectService.generateProjectId(cwd)
-      debugLog(
-        'INIT',
-        `Default mode: existing project '${basename}' doesn't match path, using volatile ID ${volatileProjectId}`
-      )
-      resolvedProjectName = volatileProjectId
-    }
-  } else {
-    // No project with simple name, use volatile ID
-    const volatileProjectId = ProjectService.generateProjectId(cwd)
-    debugLog('INIT', `Default mode: no existing project found, using volatile ID ${volatileProjectId}`)
-    resolvedProjectName = volatileProjectId
-  }
-}
-
-const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
-
-promptService = new PromptService(codayOptions.configDir, projectService)
-
-// Register native command handler stubs so they appear in the autocomplete
-// (the actual execution is handled by DelegateCommandHandler in the looper)
-promptService.registerNativeHandler({
-  id: 'handler-delegate',
-  name: 'delegate',
-  description: 'Delegate a task to a specific agent in an isolated sub-thread',
-  source: 'builtin',
-  webhookEnabled: false,
-  createdBy: 'system',
-  createdAt: new Date('2024-01-01').toISOString(),
-  parameterFormat: '@AgentName <task>',
-})
-debugLog('INIT', 'Prompt service initialized')
-
-// Create prompt execution service
-promptExecutionService = new PromptExecutionService(promptService)
-debugLog('INIT', 'Prompt execution service initialized (will be initialized with dependencies after thread manager)')
-
-// Initialize thread file service for REST API endpoints
-const projectsDir = path.join(codayOptions.configDir, 'projects')
-const threadFileService = new ThreadFileService(projectsDir)
-
-// Initialize thread service for REST API endpoints
-const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
-
-// Initialize MCP instance pool for shared MCP instances
-const mcpPool = new McpInstancePool()
-debugLog('INIT', 'MCP instance pool initialized')
-
-// Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, promptService, mcpPool)
-
-// Initialize prompt execution dependencies now that thread manager is ready
-promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
-debugLog('INIT', 'Prompt execution service initialized')
-
-debugLog('INIT', 'Webhook service initialized with prompt execution delegation')
-
-// Initialize config service registry for REST API endpoints
-const configInteractor = new ServerInteractor('config-api')
-const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configInteractor)
 
 /**
  * System and service account usernames that are forbidden for security reasons.
@@ -383,7 +259,7 @@ const FORBIDDEN_USERNAMES = [
  * When `--auth` is NOT enabled, uses the local OS username (development mode).
  *
  * @param req - Express request object containing headers
- * @returns Username string for logging and thread ownership
+ * @returns Username string used for proxy identity
  * @throws Error if username is a system/service account (security protection)
  * @throws Error if `--auth` is enabled but no valid identity header is found
  */
@@ -402,75 +278,6 @@ function getUsername(req: express.Request): string {
 
   return username
 }
-
-// Register user information routes
-registerUserRoutes(app, getUsername, codayOptions.configDir, !!codayOptions.auth)
-
-// Register configuration management routes
-registerConfigRoutes(app, configRegistry, getUsername)
-
-// Register audio transcription routes (project-level, no thread required)
-registerTranscribeRoutes(app, configRegistry, getUsername)
-
-// Note: Legacy webhook routes removed - use prompt routes instead
-// Webhook execution is now handled by prompt-execution.routes.ts
-
-// Register prompt management routes
-registerPromptRoutes(app, promptService, getUsername)
-
-// Register prompt execution routes (webhook execution)
-registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
-
-// Register project management routes
-registerProjectRoutes(
-  app,
-  projectService,
-  threadCodayManager.projectEventManager,
-  threadService,
-  getUsername,
-  threadCodayManager,
-  codayOptions
-)
-
-// Register project preview routes
-registerProjectPreviewRoutes(app, projectService)
-
-// Register thread management routes
-registerThreadRoutes(
-  app,
-  threadService,
-  threadFileService,
-  threadCodayManager,
-  getUsername,
-  codayOptions,
-  configRegistry
-)
-
-// Register message management routes
-registerMessageRoutes(app, threadCodayManager, getUsername, threadService)
-
-// Register agent management routes
-const agentCrudService = new AgentCrudService(codayOptions.configDir, projectService)
-registerAgentRoutes(
-  app,
-  projectService,
-  getUsername,
-  codayOptions.configDir,
-  logger,
-  promptService,
-  threadService,
-  agentCrudService,
-  codayOptions
-)
-
-// Initialize scheduler service early so routes can be registered before catch-all
-const schedulerService = new SchedulerService(logger, promptService, codayOptions.configDir)
-
-// Register scheduler routes (service will be initialized after server starts)
-registerSchedulerRoutes(app, schedulerService, getUsername)
-
-// Register token usage reporting routes
-registerTokenUsageRoutes(app, logger, getUsername, codayOptions.auth)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
@@ -513,9 +320,6 @@ if (process.env.BUILD_ENV !== 'development') {
     })
   })
 }
-
-// Initialize thread cleanup service (server-only)
-let cleanupService: ThreadCleanupService | null = null
 
 // ---------------------------------------------------------------------------
 // AgentOS provisioning entry point (managed mode only)
@@ -650,62 +454,8 @@ app.use((err: any, req: express.Request, res: express.Response, _: express.NextF
   }
 })
 
-/**
- * Auto-close threads that have been paused (not closedByUser) for more than 7 days.
- * Runs once at server startup, best-effort: errors are logged but never block startup.
- */
-async function autoCloseStaleThreads(): Promise<void> {
-  const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-  const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS).toISOString()
-
-  try {
-    // At startup there is no HTTP request, so we resolve the username directly.
-    // In --auth mode we cannot determine the user here, so we skip auto-close.
-    if (codayOptions.auth) {
-      debugLog('CLEANUP', 'autoCloseStaleThreads: skipped in --auth mode (no server-side user identity at startup)')
-      return
-    }
-    const osUsername = resolveUsername({}, false)
-
-    const projects = projectService.listProjects()
-    let totalClosed = 0
-
-    for (const project of projects) {
-      try {
-        const threads = await threadService.listThreads(project.name, osUsername)
-        const stale = threads.filter((t) => !t.closedByUser && t.modifiedDate < cutoff)
-
-        for (const t of stale) {
-          try {
-            await threadService.updateThread(project.name, t.id, { closedByUser: true })
-            totalClosed++
-          } catch (err) {
-            console.error(`autoClose: failed to close thread ${t.id} in project ${project.name}:`, err)
-          }
-        }
-      } catch (err) {
-        console.error(`autoClose: failed to process project ${project.name}:`, err)
-      }
-    }
-
-    if (totalClosed > 0) {
-      console.log(`✅ Auto-close: ${totalClosed} thread(s) paused depuis plus d'1 semaine marqués comme done`)
-    }
-  } catch (err) {
-    console.error('autoCloseStaleThreads: unexpected error (non-fatal):', err)
-  }
-}
-
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
-  // Set baseUrl if not already configured
-  if (!codayOptions.baseUrl) {
-    codayOptions.baseUrl = `http://localhost:${PORT}`
-    debugLog('INIT', `Base URL set to: ${codayOptions.baseUrl}`)
-  } else {
-    debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
-  }
-
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
@@ -718,37 +468,6 @@ PORT_PROMISE.then(async (PORT) => {
     .catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
     .then(() => provisionFactory())
     .catch((err) => debugLog('FACTORY', '[PROVISION] Unhandled error:', err))
-
-  // Auto-close stale threads — fire-and-forget, non-blocking
-  autoCloseStaleThreads().catch((err) => console.error('autoCloseStaleThreads: unhandled error:', err))
-
-  // Start thread cleanup service after server is running
-  try {
-    debugLog('CLEANUP', 'Starting thread cleanup service...')
-
-    const projectsConfigPath = path.join(codayOptions.configDir, 'projects')
-
-    cleanupService = new ThreadCleanupService(projectsConfigPath, logger)
-    await cleanupService.start()
-    debugLog('CLEANUP', 'Thread cleanup service started successfully')
-  } catch (error) {
-    console.error('Failed to start thread cleanup service:', error)
-  }
-
-  // Initialize and start scheduler service after server is running
-  // Routes are already registered, just need to initialize the service
-  try {
-    debugLog('SCHEDULER', 'Initializing scheduler service...')
-
-    await schedulerService.initialize()
-
-    // Initialize execution dependencies
-    schedulerService.initializeExecution(promptExecutionService)
-
-    debugLog('SCHEDULER', 'Scheduler service initialized successfully')
-  } catch (error) {
-    console.error('Failed to initialize scheduler service:', error)
-  }
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
@@ -762,9 +481,9 @@ PORT_PROMISE.catch((error) => {
 })
 
 // Graceful shutdown with proper cleanup
-// Counter-based guard: 1st signal starts shutdown, 2nd is tolerated (MCP child cascading),
+// Counter-based guard: 1st signal starts shutdown, 2nd is tolerated (child process cascade),
 // 3rd force-exits. This prevents data loss from SIGINT propagating to child processes
-// in the same process group (e.g. MCP FETCH via uvx) which cascades back as a second signal.
+// in the same process group (managed JVMs) which cascades back as a second signal.
 let shutdownSignalCount = 0
 
 async function gracefulShutdown(signal: string) {
@@ -797,20 +516,6 @@ async function gracefulShutdown(signal: string) {
       await agentosProcess.shutdown()
     }
 
-    // Stop scheduler service
-    console.log('Stopping scheduler service...')
-    schedulerService.stop()
-
-    // Stop thread cleanup service
-    if (cleanupService) {
-      console.log('Stopping thread cleanup service...')
-      await cleanupService.stop()
-    }
-
-    // Cleanup thread-based Coday instances
-    console.log('Cleaning up thread Coday instances...')
-    await threadCodayManager.shutdown()
-
     console.log('Graceful shutdown completed')
     process.exit(0)
   } catch (error) {
@@ -822,19 +527,12 @@ async function gracefulShutdown(signal: string) {
 // Handle various termination signals
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
 process.on('SIGINT', () => gracefulShutdown('SIGINT'))
-process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // nodemon restart
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // watcher restart
 process.on('SIGHUP', () => gracefulShutdown('SIGHUP')) // terminal closed
 
 // Handle uncaught exceptions to prevent hanging
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error)
-
-  // Special handling for RxJS EmptyError during system sleep
-  if (error.message === 'no elements in sequence' || error.constructor.name === 'EmptyErrorImpl') {
-    console.log('Detected RxJS EmptyError during system sleep - this is expected behavior')
-    console.log('Process will continue normally after system wake')
-    return // Don't shutdown for this specific error
-  }
 
   if (shutdownSignalCount === 0) {
     gracefulShutdown('uncaughtException')
@@ -844,18 +542,12 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled rejection at:', promise, 'reason:', reason)
 
-  // Special handling for RxJS errors during system sleep
+  // Handle timeout and abort errors gracefully - these are expected during high load
   if (reason && typeof reason === 'object') {
-    const error = reason as any // Type assertion for error object
-    if (error.message === 'no elements in sequence' || error.constructor?.name === 'EmptyErrorImpl') {
-      console.log('Detected RxJS EmptyError rejection during system sleep - this is expected behavior')
-      return // Don't shutdown for this specific error
-    }
-
-    // Handle timeout errors gracefully - these are expected during high load
+    const error = reason as { name?: string; message?: string }
     if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
       console.log('Detected timeout error - handling gracefully without shutdown')
-      return // Don't shutdown for timeout errors
+      return
     }
 
     // Handle AbortError from timeouts

@@ -16,6 +16,8 @@ import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.logging.LogContext
+import io.whozoss.agentos.logging.withLogContext
 import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
@@ -413,14 +415,17 @@ class CaseServiceImpl(
                         ).isNotEmpty()
             },
             runAgent = { agentName, events, eventsProvider, userId, shouldContinue ->
-                runAgent(
-                    agentName,
-                    case.id,
-                    events,
-                    eventsProvider,
-                    userId,
-                    shouldContinue,
-                )
+                // caseId/namespaceId are already set by CaseRuntime.run for the whole turn.
+                withLogContext(LogContext.AGENT_NAME to agentName, LogContext.USER_ID to userId) {
+                    runAgent(
+                        agentName,
+                        case.id,
+                        events,
+                        eventsProvider,
+                        userId,
+                        shouldContinue,
+                    )
+                }
             },
             inputEvents = inputEvents,
             initialStatus = case.status,
@@ -1283,7 +1288,7 @@ class CaseServiceImpl(
                 (titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1)
 
         if (shouldTrigger) {
-            scope.launch {
+            scope.launch(LogContext.mdcContext(LogContext.CASE_ID to case.id, LogContext.NAMESPACE_ID to case.namespaceId)) {
                 runCatching { caseNamingService.nameCase(case, events, emitEvent) }
                     .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }
             }

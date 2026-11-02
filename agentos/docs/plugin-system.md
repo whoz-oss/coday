@@ -82,6 +82,30 @@ and will simply fail at runtime, which is accepted power-user behaviour.
 Typical consumers: the **BASH** plugin (`workingDirectory`, tool `command`), **MCP_STDIO**
 (`cwd`, and paths embedded in `args`), and **FILE_ACCESS** (`rootPath`).
 
+## Filesystem AiModel (`<configPath>/ai-models/`)
+
+AI models can be committed next to agents and integrations, as YAML files under the namespace's
+`<configPath>/ai-models/`. They are loaded read-only, cached for 5 minutes, and take part in alias
+resolution like persisted models (namespace scope, then `priority`).
+
+```yaml
+alias: BIG
+apiModelName: anthropic/claude-sonnet-5-5
+provider: requesty          # provider *name*, resolved in this namespace, then at platform level
+priority: 10
+contextWindow: 1000000
+pricing:                    # per million tokens
+  inputMTokens: 2
+  outputMTokens: 10
+  cacheRead: 0.2
+  cacheWrite: 2.5
+```
+
+A file names its provider instead of referencing an id: the provider, which holds the API key, stays
+in each installation's database. A model whose provider does not exist there is skipped. A persisted
+namespace model with the same provider and alias (or `apiModelName`) wins over the file. To change a
+filesystem model, edit its file; the API cannot update or delete it.
+
 ## Credentials Delivered to Plugins
 
 An `IntegrationConfig.authSettingName` is resolved into a `ToolContext.credentialProvider` once per
@@ -93,7 +117,10 @@ and the credential comes from one of two sources:
 
 - **OAuth types** (`OAUTH_DISCOVERABLE`, `OAUTH_REGISTERED`, `OAUTH_CUSTOM`, `OAUTH_MCP_DISCOVERABLE`)
   are handled by `OAuthFlowService`: existing token -> refresh -> interactive authorization. These are
-  the only credentials ever persisted (one `Credential` row per user and auth setting).
+  the only credentials ever persisted (one `Credential` row per user and auth setting). The
+  authorization request asks for offline access (`access_type=offline`, unless the authorization
+  endpoint already sets `access_type`) so that Google issues a refresh token, and a refresh response
+  without a new refresh token keeps the current one.
 - **Static types** (`API_KEY`, `BEARER_TOKEN`, `BASIC_AUTH`): a per-user `Credential` row wins if one
   exists; otherwise `StaticCredentialFactory` synthesises the credential in memory from the resolved
   `AuthSetting`. Nothing is persisted on that path, and a blank secret yields no credential.

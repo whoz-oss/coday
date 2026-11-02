@@ -262,6 +262,27 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Member free-text add row
+  // ---------------------------------------------------------------------------
+
+  &__member-add {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+
+    .user-group-form__input {
+      flex: 1;
+      // Override the default width: 100% so it shares the row with the button
+      width: auto;
+    }
+  }
+
+  &__btn--secondary {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  // ---------------------------------------------------------------------------
   // Feedback + actions
   // ---------------------------------------------------------------------------
 

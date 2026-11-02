@@ -1,0 +1,14 @@
+# Model tier shared by every checkout. Requires an AI provider named `requesty` in the
+# namespace (or at platform level) holding your own Requesty key; without it this model is
+# ignored. Prices are Requesty's, in USD per million tokens.
+alias: SMALL
+apiModelName: anthropic/claude-haiku-4-5
+provider: requesty
+description: Fast Anthropic tier via Requesty
+priority: 10
+contextWindow: 200000
+pricing:
+  inputMTokens: 1
+  outputMTokens: 5
+  cacheRead: 0.1
+  cacheWrite: 1.25

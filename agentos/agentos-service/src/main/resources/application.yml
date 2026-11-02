@@ -129,7 +129,7 @@ agentos:
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT
-    mount-root: ${AGENTOS_EXCHANGE_MOUNT_ROOT:${user.home}/coday/agentos/data/exchange}
+    mount-root: ${AGENTOS_EXCHANGE_MOUNT_ROOT:${user.home}/.coday/agentos/data/exchange}
     # Comma-separated file extensions allowed for user uploads (lowercase, no dot). The default
     # covers text/doc/data/image/code; empty allows any. Expected to differ per AgentOS instance.
     # Override with env var: AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS
@@ -332,7 +332,7 @@ agentos:
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
-    data-dir: ${AGENTOS_PERSISTENCE_DATA_DIR:${user.home}/coday/agentos/data/database}
+    data-dir: ${AGENTOS_PERSISTENCE_DATA_DIR:${user.home}/.coday/agentos/data/database}
     # Persistence mode:
     #   embedded-neo4j (default) - embedded Neo4j engine, no Docker required;
     #                              database stored under data-dir/neo4j/
@@ -370,7 +370,9 @@ springdoc:
 logging:
   level:
     root: INFO
-    io.whozoss.agentos.service: DEBUG
+    # INFO: some DEBUG lines of the tree carry prompts and tool payloads. For a debugging session, activate
+    # the 'debug' profile (application-debug.yml), which raises it to DEBUG.
+    io.whozoss.agentos: INFO
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
     # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning,
@@ -384,5 +386,7 @@ logging:
     org.neo4j.driver: ERROR
     org.springframework.data.neo4j.cypher: ERROR
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    # MDC keys (see io.whozoss.agentos.logging.LogContext) are empty outside a case run: %replace then
+    # removes the whole bracket block, so Spring startup, pf4j or Neo4j lines carry no empty "[case= ...]".
+    # No file pattern: logback-spring.xml configures no file appender (console only).
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36}%replace( [case=%X{caseId:-} ns=%X{namespaceId:-} agent=%X{agentName:-} user=%X{userId:-}]){' ?.case= ns= agent= user=.', ''} - %msg%n"

@@ -2,7 +2,6 @@
 @use './app/styles/typography.scss';
 @use './app/styles/colors.scss';
 @use './app/styles/glass-effects.scss';
-@use './app/styles/print.scss';
 @use './app/styles/animated-gradient-border.scss' as animated-gradient-border;
 
 @use '@angular/material' as mat;
@@ -74,170 +73,6 @@ body {
   padding: 0 !important;
 }
 
-/* Global Markdown Styles */
-/* These styles apply to all markdown content rendered in the application */
-.markdown-content {
-  p {
-    margin: 0 0 0.75rem 0;
-    line-height: 1.6;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-
-  code {
-    background: var(--color-code-bg);
-    padding: 0.125rem 0.375rem;
-    border-radius: 6px;
-    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Cascadia Code', 'Consolas', monospace;
-    font-size: 0.9em;
-    color: var(--color-code-text);
-    border: 1px solid var(--color-border);
-  }
-
-  pre {
-    background: var(--color-code-bg);
-    padding: 1rem;
-    border-radius: 12px;
-    overflow-x: auto;
-    margin: 0.75rem 0;
-    border: 1px solid var(--color-border);
-    backdrop-filter: var(--glass-backdrop-blur);
-    -webkit-backdrop-filter: var(--glass-backdrop-blur);
-    box-shadow: var(--glass-shadow);
-
-    code {
-      background: none;
-      padding: 0;
-      color: inherit;
-      font-size: 0.85rem;
-      border: none;
-    }
-  }
-
-  strong,
-  b {
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  em,
-  i {
-    font-style: italic;
-  }
-
-  ul,
-  ol {
-    margin: 0.75rem 0;
-    padding-left: 1.5rem;
-
-    li {
-      margin: 0.25rem 0;
-      line-height: 1.5;
-    }
-
-    // Nested lists
-    ul,
-    ol {
-      margin: 0.25rem 0;
-    }
-  }
-
-  blockquote {
-    border-left: 4px solid var(--color-primary);
-    margin: 0.75rem 0;
-    padding: 0.5rem 0 0.5rem 1rem;
-    font-style: italic;
-    color: var(--color-text-secondary);
-    background: var(--color-bg-secondary);
-    border-radius: 0 4px 4px 0;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    margin: 1rem 0 0.5rem 0;
-    font-weight: 600;
-    line-height: 1.3;
-    color: var(--color-text);
-
-    &:first-child {
-      margin-top: 0;
-    }
-  }
-
-  h1 {
-    font-size: 1.5rem;
-  }
-  h2 {
-    font-size: 1.3rem;
-  }
-  h3 {
-    font-size: 1.1rem;
-  }
-  h4 {
-    font-size: 1rem;
-  }
-  h5 {
-    font-size: 0.9rem;
-  }
-  h6 {
-    font-size: 0.85rem;
-  }
-
-  a {
-    color: var(--color-link);
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-
-  /* External link icon styling */
-  .external-link-icon {
-    display: inline-block;
-    margin-left: 0.25rem;
-    font-size: 0.85em;
-    opacity: 0.7;
-    transition: opacity 0.2s ease;
-    vertical-align: super;
-    line-height: 0;
-  }
-
-  a:hover .external-link-icon {
-    opacity: 1;
-  }
-
-  hr {
-    border: none;
-    border-top: 1px solid var(--color-border);
-    margin: 1rem 0;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.75rem 0;
-
-    th,
-    td {
-      padding: 0.5rem;
-      text-align: left;
-      border-bottom: 1px solid var(--color-border);
-    }
-
-    th {
-      font-weight: 600;
-      background: var(--color-bg-secondary);
-    }
-  }
-}
-
 /* ─── agentos-ui — animations (global keyframes, cannot be scoped in standard CSS) ──
  * These keyframes are used exclusively by agentos-ui components.
  * Keyframes cannot be scoped under a selector in standard CSS,
@@ -286,8 +121,7 @@ body {
 
 /* ─── agentos-ui — scoped utilities and components ─────────────────────────────
  * These rules apply only inside agentos-shell
- * (the root component of libs/agentos-ui, mounted at /agentos).
- * They do not affect the legacy apps/client app.
+ * (the root component of libs/agentos-ui, mounted at /).
  */
 agentos-shell {
   /* Blueprint corner decorations — used by the dsBlueprint directive */
@@ -410,31 +244,6 @@ agentos-shell {
   }
 }
 
-/* Global Sidenav Styles */
-/* Force Angular components not to interfere */
-app-sidenav {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-/* Thread embedded in a preview panel — override 100vh/100dvh to fill container */
-.thread-preview-host app-thread .drag-drop-wrapper,
-.thread-preview-host app-thread .file-drawer-container {
-  height: 100% !important;
-}
-
-/* Ensure main-app has no interfering z-index */
-app-main {
-  position: relative;
-  z-index: 1;
-}
-
-.app {
-  position: relative;
-  z-index: 1;
-}
-
 .cdk-overlay-container {
   z-index: 10000;
 }
@@ -491,7 +300,7 @@ app-main {
   }
 }
 
-/* Dark mode snackbar styles — legacy app (data-theme='dark') + agentos-ui dark variants */
+/* Dark mode snackbar styles — agentos-ui dark variants */
 [data-theme='dark'],
 [data-theme^='industry-dark'],
 [data-theme^='terminal-dark'] {
@@ -516,15 +325,8 @@ app-main {
   }
 }
 
-/* Global Material Slide Toggle - Compact Size */
-mat-slide-toggle {
-  transform: scale(0.75);
-  transform-origin: right center;
-}
-
 /* ─── Terminal theme — structural rules (scoped under agentos-shell) ───────────
  * These rules apply to both terminal-light and terminal-dark modes.
- * Scoped to avoid affecting the legacy apps/client app.
  */
 agentos-shell {
   /* Terminal: hide blueprint corner decorations */

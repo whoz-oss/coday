@@ -26,6 +26,7 @@ services:
 
       # Logging
       - LOGGING_LEVEL_ROOT=INFO
+      - LOGGING_LEVEL_IO_WHOZOSS_AGENTOS=INFO
       - LOGGING_LEVEL_IO_WHOZOSS_FACTORY=DEBUG
 
     volumes:

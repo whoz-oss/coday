@@ -26,9 +26,6 @@
 #   3. NEVER publish to the 'latest' npm dist-tag. npm publishes use
 #      --tag workstream-<slug>. Publishing to 'latest' would reach every consumer.
 #
-# Desktop apps (desktop/desktop-twin) are NOT built here -- they have no-op
-# nx-release-publish targets and are excluded from workstream builds.
-#
 name: Workstream Build
 
 on:

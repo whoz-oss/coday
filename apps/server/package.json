@@ -8,10 +8,7 @@
     "coday-server": "./bin.js"
   },
   "dependencies": {
-    "@vscode/ripgrep": "catalog:",
     "express": "catalog:",
-    "rxjs": "catalog:",
-    "sharp": "catalog:",
     "yargs": "catalog:"
   },
   "devDependencies": {

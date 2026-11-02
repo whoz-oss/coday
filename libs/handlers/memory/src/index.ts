@@ -1,5 +1,0 @@
-export * from './lib/curate.handler'
-export * from './lib/delete.handler'
-export * from './lib/edit.handler'
-export * from './lib/list.handler'
-export * from './lib/memory.handler'

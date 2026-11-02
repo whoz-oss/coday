@@ -162,7 +162,40 @@ class OAuthFlowServiceUnitSpec :
                 }
             result.shouldNotBeNull()
             result.data["accessToken"] shouldBe "new-token"
+            result.data["refreshToken"] shouldBe "refresh-token"
             verify(exactly = 1) { httpClient.newCall(any()) }
+        }
+
+        "a refresh that returns a new refresh token replaces the stored one" {
+            val tokenJson = """{"access_token":"new-token","refresh_token":"rotated","expires_in":3600}"""
+            every { credentialService.resolve(userId, authSettingId) } returns expiredCredential(withRefreshToken = true)
+            every { httpClient.newCall(any()) } returns mockCall(tokenJson)
+            val slot = slot<Credential>()
+            every { credentialService.store(capture(slot)) } answers { slot.captured }
+            val result =
+                runBlocking {
+                    service().resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent", emitEvent)
+                }
+            result.shouldNotBeNull()
+            result.data["refreshToken"] shouldBe "rotated"
+        }
+
+        "an access_type already set on the authorization endpoint is not sent twice" {
+            val setting = registeredSetting().copy(authorizationUrl = "https://provider.example.com/auth?access_type=online")
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
+            every { httpClient.newCall(any()) } returns mockCall("""{"access_token":"new-token","expires_in":3600}""")
+            every { credentialService.store(any()) } answers { firstArg() }
+            val emitted = mutableListOf<CaseEvent>()
+            runBlocking {
+                service().resolveOAuthCredential(userId, setting, namespaceId, caseId, agentId, "agent") {
+                    emitted += it
+                    it
+                }
+            }
+            val url = (emitted.single() as QuestionEvent).question
+            Regex("[?&]access_type=").findAll(url).count() shouldBe 1
+            url shouldContain "access_type=online"
         }
 
         "triggers interactive flow when no credential exists" {
@@ -188,6 +221,7 @@ class OAuthFlowServiceUnitSpec :
             q.questionType shouldBe QuestionType.OAUTH_AUTHORIZE
             q.question shouldContain "https://provider.example.com/auth"
             q.question shouldContain "code_challenge_method=S256"
+            q.question shouldContain "access_type=offline"
         }
 
         "returns null on flow cancellation" {

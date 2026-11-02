@@ -31,7 +31,7 @@ export class UserGroupMemberAutocompleteDataSource implements AutocompleteDataSo
   private matches(user: MemberItem, normalizedQuery: string): boolean {
     return (
       user.externalId.toLowerCase().includes(normalizedQuery) ||
-      user.email.toLowerCase().includes(normalizedQuery) ||
+      (user.email?.toLowerCase().includes(normalizedQuery) ?? false) ||
       memberLabel(user).toLowerCase().includes(normalizedQuery)
     )
   }

@@ -1,18 +1,14 @@
 # Angular Client Architecture
 
-## Two Frontends, One App
+## Overview
 
-The client hosts two distinct frontend experiences that coexist under the same Angular app:
+`apps/client` is a thin Angular host for the **AgentOS frontend**, served at `/`. The UI itself lives in `libs/agentos-ui`, lazy-loaded through `AGENTOS_ROUTES`, and talks exclusively to the AgentOS Kotlin backend via the generated `agentos-api-client`.
 
-**Coday frontend** — the original interface, rooted at `/project/:projectName`. Mature, thread-centric, tightly coupled to the Express backend via REST + SSE. Components live in `apps/client/src/app/components/`, services in `apps/client/src/app/core/services/`.
+The host app only provides the shell: bootstrap, router, global styles / token layer (Angular Material + design system), and `provideApi`.
 
-**AgentOS frontend** — a nascent v2 interface, lazy-loaded at `/agentos`. Built in `libs/agentos-ui`, it talks exclusively to the AgentOS Kotlin backend via the generated `agentos-api-client`. It grows independently from the Coday frontend and will eventually become the primary interface.
-
-The two frontends share the app shell, the Angular Material + design-system token layer, and the router. They do **not** share state services or API services.
+> The former Coday (thread-centric) frontend that used to be served at `/` has been removed. A temporary route in `app.routes.ts` redirects old `/agentos/...` URLs to `/...`; it can be dropped once `libs/agentos-ui` no longer navigates to absolute `/agentos/...` paths.
 
 ## Two-Layer Service Pattern
-
-Both frontends follow the same mandatory separation:
 
 | Layer | Suffix | Responsibility |
 |---|---|---|
@@ -23,27 +19,23 @@ Components inject only state services. Never API services directly.
 
 ## Real-Time Layer — SSE
 
-Both frontends use SSE but through separate services:
-
-- **Coday**: `EventStreamService` wraps `EventSource` for `GET /api/projects/:project/threads/:id/event-stream`, emits `CodayEvent` instances.
-- **AgentOS**: `CaseEventSseService` (in `agentos-api-client`) wraps `EventSource` for `GET /api/cases/:id/events`, emits `CaseEvent` instances.
-
-Both run `EventSource` callbacks outside `NgZone` and re-enter on emit.
+`CaseEventSseService` (in `agentos-api-client`) wraps `EventSource` for `GET /api/cases/:id/events`, emits `CaseEvent` instances. `EventSource` callbacks run outside `NgZone` and re-enter on emit.
 
 ## App Shell
 
-`appConfig` (`app.config.ts`) bootstraps both frontends:
-- `provideRouter(appRoutes)` with the Coday routes and the `loadChildren` lazy import for AgentOS
-- `APP_INITIALIZER` for `ProjectStateService` (Coday) and `OAuthService`
+`appConfig` (`app.config.ts`):
+- `provideRouter(appRoutes)` — root route lazy-loads `AGENTOS_ROUTES`
+- `APP_INITIALIZER` loading the current user (`UserStateService.loadMe()`)
 - `provideApi({ basePath: '/api/agentos' })` registers the AgentOS API client base path
 
 ## Guards
 
-Functional guards synchronise URL parameters into state services before component activation — the deep-link mechanism.
+Functional guards synchronise URL parameters into state services before component activation — the deep-link mechanism. AgentOS: `agentosReadyGuard`.
 
-- Coday: `projectStateGuard`, `threadStateGuard`
-- AgentOS: `agentosReadyGuard`
+## Theme
+
+Theming is owned by `AgentosThemeService` (`libs/agentos-ui`), exposed through `THEME_PORT`.
 
 ## Proxy
 
-The Angular dev server proxies `/api/agentos/*` to the AgentOS backend (port 8123). All other `/api/*` calls reach the Express server. Config: `apps/client/proxy.conf.json`.
+The Angular dev server proxies `/api/agentos/*` to the AgentOS backend (port 8123). Config: `apps/client/proxy.conf.json`.

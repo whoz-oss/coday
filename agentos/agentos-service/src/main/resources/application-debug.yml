@@ -10,5 +10,6 @@ spring:
         include-content: true
 logging:
   level:
+    io.whozoss.agentos: DEBUG
     org.apache.hc: TRACE
     org.springframework.ai.chat.metadata.ChatResponseMetadata: WARN

@@ -13,7 +13,7 @@ Starts **both** the Angular dev server and the Express backend in parallel watch
 
 ## AgentOS Backend (when needed)
 
-Required only for the `/agentos` route or features backed by the AgentOS Kotlin service:
+Required for the client (served at `/`), which is backed by the AgentOS Kotlin service:
 
 ```bash
 cd agentos && ./gradlew bootRun
