@@ -149,9 +149,13 @@ test.describe('first-run wizard', () => {
     ])
   })
 
-  test('the wizard is gone once the setup is done, and the setup API refuses mutations', async ({ page }) => {
+  test('once the setup is done, /welcome is a plain loading page that leaves for the app, and the setup API refuses mutations', async ({
+    page,
+  }) => {
     await page.goto(`${BASE}/welcome`)
-    await expect(page).toHaveURL(/\/home/)
+    // Nothing of the wizard: no stepper, no setup steps. AgentOS is already up here, so it hands over at once.
+    await expect(page.getByLabel('Setup progress')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/home/, { timeout: 60_000 })
     const browse = await fetch(`${BASE}/api/setup/browse?path=${encodeURIComponent(os.homedir())}`)
     expect(browse.status).toBe(403)
   })

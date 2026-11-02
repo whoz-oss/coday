@@ -30,7 +30,7 @@ import { logFilePath } from './paths'
 import { createLogSink, isHealthy } from './process'
 import { LOOPBACK } from './services'
 import { buildForwardArgs, writeWorkspace } from './workspace'
-import { agentosHealthUrl, openBrowser, openWhenReady, planBrowserOpen, waitForAgentosHealthy } from './open-browser'
+import { agentosHealthUrl, openBrowser, planBrowserOpen } from './open-browser'
 import { createStatusReporter } from './status'
 import { readWebSetup } from './web-setup'
 import { Command } from './command-names'
@@ -200,7 +200,7 @@ export async function runServerTask(): Promise<number> {
   const options = parseCodayOptions()
   teeConsoleToFile(logFilePath(options.configDir, 'server'))
   let server: Server | undefined
-  const { signal, stopped } = foreground(async () => {
+  const { stopped } = foreground(async () => {
     const listening = server
     if (listening) await new Promise<void>((r) => listening.close(() => r()))
   })
@@ -237,24 +237,11 @@ export async function runServerTask(): Promise<number> {
     auth: options.auth,
     host: options.host,
     state,
-    setup: readWebSetup(options.configDir),
   })
   const log = (m: string) => console.log(`[server] ${m}`)
-  if ('url' in plan) {
-    // Fire and forget: waiting for AgentOS must never hold the server or its shutdown (`await stopped` below).
-    void openWhenReady(plan, {
-      open: (url) => openBrowser(url, { log }),
-      waitForBackend: () =>
-        waitForAgentosHealthy({
-          healthUrl: () => agentosHealthUrl(process.env.AGENTOS_URL, readState(options.configDir)),
-          signal,
-        }),
-      log,
-      signal,
-    }).catch((error) => log(`Could not open the browser: ${error instanceof Error ? error.message : error}`))
-  } else {
-    log(`Not opening the browser: ${plan.skip}`)
-  }
+  // /welcome only needs Express, which is listening: open at once, whatever the profile.
+  if ('url' in plan) openBrowser(plan.url, { log })
+  else log(`Not opening the browser: ${plan.skip}`)
   await stopped
   return 0
 }

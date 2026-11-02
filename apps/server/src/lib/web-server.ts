@@ -111,7 +111,15 @@ export function createWebApp({ codayOptions, setupEnabled }: WebAppOptions): exp
   }
 
   // 1. Wizard API (own JSON parser inside).
-  app.use('/api/setup', createSetupRouter({ configDir, setupEnabled }))
+  app.use(
+    '/api/setup',
+    createSetupRouter({
+      configDir,
+      setupEnabled,
+      externalAgentosUrl: AGENTOS_URL_ENV,
+      externalFactoryUrl: FACTORY_URL_ENV,
+    })
+  )
 
   // 2. Proxies (before express.json()).
   app.use(

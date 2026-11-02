@@ -75,14 +75,14 @@ build: #XXXX short description     # For build system changes
 
 ## Running the packaged stack locally (and testing the first-run experience)
 
-End users always run `npx @whoz-oss/coday-web`: the first-run wizard (`/welcome`) shows only while the setup is not
-done, otherwise the app opens directly. `web:local` is the same single command for the monorepo: it builds your local
+End users always run `npx @whoz-oss/coday-web`, and the browser always opens on `/welcome`: the first-run wizard while
+the setup is not done, otherwise a plain loading page that leads into the app once AgentOS is up. `web:local` is the same single command for the monorepo: it builds your local
 code and runs it like an npx user would, without publishing and without touching your own `~/.coday` or `~/Coday`:
 
 ```bash
 # Everyday: builds client, factory-cockpit, server, web + the AgentOS/Factory boot JARs, packs the 4 npm packages,
 # re-installs them and runs the installed `coday-web` on the persistent root ~/.coday-local (override: CODAY_LOCAL_DIR).
-# First time: the wizard. Afterwards: straight into the app, your setup and data are kept.
+# First time: the wizard. Afterwards: the loading page, then the app; your setup and data are kept.
 pnpm nx run web:local
 pnpm nx run web:local -- --managed         # one process, plain console (what the desktop apps get)
 pnpm nx run web:local -- --no-open         # do not open the browser (it opens on each start in the Nx TUI)

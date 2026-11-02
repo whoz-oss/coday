@@ -33,12 +33,14 @@ export const setupGuard: CanActivateFn = async () => {
   return wizardRequired(status) ? router.parseUrl('/welcome') : true
 }
 
-/** `/welcome` itself: once the setup is done (or not applicable) there is nothing to welcome. */
+/**
+ * `/welcome` itself, reachable in every mode: the wizard on a first run, otherwise a loading page (download, Java,
+ * AgentOS, Factory) that hands over to the app by itself. The browser opens on it as soon as Express listens, so it must
+ * also work for the modes without a wizard (`--auth`, external AgentOS, existing install). It only records that the
+ * setup is known to be done; a failed read keeps the page reachable and shows the error instead of a blank page.
+ */
 export const welcomeGuard: CanActivateFn = async () => {
-  const state = inject(SetupStateService)
-  const router = inject(Router)
-  const status = await state.refreshStatus()
+  const status = await inject(SetupStateService).refreshStatus()
   if (status?.setupDone) setupKnownDone = true
-  // A failed read keeps the wizard reachable: it shows the error instead of a blank page.
-  return status && !wizardRequired(status) ? router.parseUrl('/home') : true
+  return true
 }

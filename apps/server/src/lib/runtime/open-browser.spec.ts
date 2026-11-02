@@ -1,59 +1,23 @@
-import { appUrl, isFirstRun, openTiming } from './app-url'
+import { appUrl } from './app-url'
 import {
   agentosHealthUrl,
   BrowserOpenInput,
   openBrowser,
   openCommand,
   OpenSpawn,
-  openWhenReady,
   planBrowserOpen,
-  waitForAgentosHealthy,
 } from './open-browser'
 
 const ports = { express: 3100 }
 
 describe('appUrl', () => {
-  it('is /welcome while a laptop first run is pending', () => {
-    expect(appUrl({ profile: 'laptop', ports }, {})).toBe('http://localhost:3100/welcome')
-    expect(appUrl({ profile: 'laptop', ports }, { identity: { email: 'a@b.co' } })).toBe(
-      'http://localhost:3100/welcome'
-    )
-  })
-
-  it('is the root once the setup is done', () => {
-    expect(appUrl({ profile: 'laptop', ports }, { setupDone: true })).toBe('http://localhost:3100/')
-  })
-
-  it('is the root in the managed profile, whatever the setup', () => {
-    expect(appUrl({ profile: 'managed', ports }, {})).toBe('http://localhost:3100/')
+  it('is always /welcome: the wizard, or the loading page, whatever the profile', () => {
+    expect(appUrl({ ports })).toBe('http://localhost:3100/welcome')
   })
 
   it('is undefined until the Express port is known', () => {
-    expect(appUrl(undefined, {})).toBeUndefined()
-    expect(appUrl({ profile: 'laptop', ports: {} }, {})).toBeUndefined()
-  })
-})
-
-describe('isFirstRun / openTiming', () => {
-  it('opens at once only while the laptop wizard is pending (it needs no AgentOS)', () => {
-    expect(isFirstRun({ profile: 'laptop' }, {})).toBe(true)
-    expect(openTiming({ profile: 'laptop' }, {})).toBe('now')
-    expect(openTiming({ profile: 'laptop' }, { identity: { email: 'a@b.co' } })).toBe('now')
-  })
-
-  it('waits for the backend on a resume and in the managed profile (the app calls AgentOS straight away)', () => {
-    expect(openTiming({ profile: 'laptop' }, { setupDone: true })).toBe('when-backend-ready')
-    expect(openTiming({ profile: 'managed' }, {})).toBe('when-backend-ready')
-    expect(openTiming(undefined, {})).toBe('when-backend-ready')
-  })
-
-  it('agrees with the URL: /welcome exactly when the timing is now', () => {
-    for (const profile of ['laptop', 'managed'] as const) {
-      for (const setup of [{}, { setupDone: true }]) {
-        const welcome = appUrl({ profile, ports }, setup)?.endsWith('/welcome')
-        expect(welcome).toBe(openTiming({ profile }, setup) === 'now')
-      }
-    }
+    expect(appUrl(undefined)).toBeUndefined()
+    expect(appUrl({ ports: {} })).toBeUndefined()
   })
 })
 
@@ -63,17 +27,12 @@ describe('planBrowserOpen', () => {
     env: {},
     auth: false,
     host: '127.0.0.1',
-    state: { profile: 'laptop', ports },
-    setup: {},
+    state: { ports },
     ...patch,
   })
 
-  it('opens /welcome at once on a first run, and the root once the backend is ready afterwards', () => {
-    expect(planBrowserOpen(input())).toEqual({ url: 'http://localhost:3100/welcome', timing: 'now' })
-    expect(planBrowserOpen(input({ setup: { setupDone: true } }))).toEqual({
-      url: 'http://localhost:3100/',
-      timing: 'when-backend-ready',
-    })
+  it('opens /welcome, with nothing to wait for', () => {
+    expect(planBrowserOpen(input())).toEqual({ url: 'http://localhost:3100/welcome' })
   })
 
   it.each([
@@ -98,7 +57,7 @@ describe('planBrowserOpen', () => {
   })
 
   it('skips when the port is unknown', () => {
-    expect(planBrowserOpen(input({ state: { profile: 'laptop', ports: {} } }))).toHaveProperty('skip')
+    expect(planBrowserOpen(input({ state: { ports: {} } }))).toHaveProperty('skip')
   })
 })
 
@@ -119,141 +78,6 @@ describe('agentosHealthUrl', () => {
   })
 })
 
-describe('waitForAgentosHealthy', () => {
-  const noSleep = async () => undefined
-
-  it('resolves true once the probe turns true, re-reading the URL at each poll', async () => {
-    const urls: Array<string | undefined> = [undefined, 'http://127.0.0.1:1/h', 'http://127.0.0.1:1/h']
-    const probed: string[] = []
-    let polls = 0
-    const ready = await waitForAgentosHealthy({
-      healthUrl: () => urls[polls++],
-      probe: async (url) => (probed.push(url), probed.length >= 2),
-      sleep: noSleep,
-    })
-    expect(ready).toBe(true)
-    expect(probed).toHaveLength(2) // nothing probed while the port was unknown
-  })
-
-  it('resolves false at the deadline', async () => {
-    let clock = 0
-    const ready = await waitForAgentosHealthy({
-      healthUrl: () => 'http://127.0.0.1:1/h',
-      probe: async () => false,
-      timeoutMs: 1_000,
-      now: () => clock,
-      sleep: async (ms) => void (clock += ms),
-      intervalMs: 400,
-    })
-    expect(ready).toBe(false)
-  })
-
-  it('resolves false when the signal aborts, without waiting for the deadline', async () => {
-    const controller = new AbortController()
-    const probe = jest.fn(async () => false)
-    const ready = await waitForAgentosHealthy({
-      healthUrl: () => 'http://127.0.0.1:1/h',
-      probe,
-      signal: controller.signal,
-      sleep: async () => controller.abort(),
-    })
-    expect(ready).toBe(false)
-    expect(probe).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('openWhenReady', () => {
-  const url = 'http://localhost:3100/'
-  const deps = (patch: Partial<Parameters<typeof openWhenReady>[1]> = {}) => ({
-    open: jest.fn(),
-    waitForBackend: jest.fn(async () => true),
-    log: jest.fn(),
-    ...patch,
-  })
-
-  it('opens a first run immediately, without probing or waiting', async () => {
-    const d = deps()
-    expect(await openWhenReady({ url: 'http://localhost:3100/welcome', timing: 'now' }, d)).toBe(true)
-    expect(d.open).toHaveBeenCalledWith('http://localhost:3100/welcome')
-    expect(d.waitForBackend).not.toHaveBeenCalled()
-    expect(d.log).not.toHaveBeenCalled()
-  })
-
-  it('on a resume, says it waits, and opens only AFTER the backend answered', async () => {
-    const order: string[] = []
-    let release: (ready: boolean) => void = () => undefined
-    const d = deps({
-      waitForBackend: () => new Promise<boolean>((resolve) => (release = resolve)),
-      open: jest.fn(() => void order.push('open')),
-      log: jest.fn(() => void order.push('log')),
-    })
-    const done = openWhenReady({ url, timing: 'when-backend-ready' }, d)
-    await Promise.resolve()
-    expect(d.open).not.toHaveBeenCalled()
-    expect(d.log).toHaveBeenCalledWith(`Waiting for AgentOS before opening the browser (${url})...`)
-
-    release(true)
-    expect(await done).toBe(true)
-    expect(order).toEqual(['log', 'open'])
-    expect(d.open).toHaveBeenCalledWith(url)
-  })
-
-  it('on timeout, does not open and prints the URL to open by hand', async () => {
-    const d = deps({ waitForBackend: jest.fn(async () => false) })
-    expect(await openWhenReady({ url, timing: 'when-backend-ready' }, d)).toBe(false)
-    expect(d.open).not.toHaveBeenCalled()
-    expect(d.log).toHaveBeenLastCalledWith(`AgentOS is not healthy yet: open ${url} yourself when it is.`)
-  })
-
-  it('does not open when the signal aborted while waiting, and says nothing more', async () => {
-    const controller = new AbortController()
-    const d = deps({
-      signal: controller.signal,
-      waitForBackend: jest.fn(async () => {
-        controller.abort()
-        return true
-      }),
-    })
-    expect(await openWhenReady({ url, timing: 'when-backend-ready' }, d)).toBe(false)
-    expect(d.open).not.toHaveBeenCalled()
-    expect(d.log).toHaveBeenCalledTimes(1) // only the 'Waiting for AgentOS' line
-  })
-
-  it('does not even start waiting when already aborted', async () => {
-    const controller = new AbortController()
-    controller.abort()
-    const d = deps({ signal: controller.signal })
-    expect(await openWhenReady({ url, timing: 'when-backend-ready' }, d)).toBe(false)
-    expect(d.waitForBackend).not.toHaveBeenCalled()
-    expect(d.log).not.toHaveBeenCalled()
-  })
-})
-
-describe('skip conditions short-circuit before any waiting', () => {
-  it.each([
-    ['--no-open', { noOpenFlag: true }],
-    ['CODAY_NO_OPEN', { env: { CODAY_NO_OPEN: '1' } }],
-    ['CI', { env: { CI: 'true' } }],
-    ['--auth', { auth: true }],
-    ['a non-loopback host', { host: '0.0.0.0' }],
-  ] as Array<[string, Partial<BrowserOpenInput>]>)(
-    '%s: a plan without url nor timing, nothing to wait for',
-    (_l, patch) => {
-      const plan = planBrowserOpen({
-        noOpenFlag: false,
-        env: {},
-        auth: false,
-        host: '127.0.0.1',
-        state: { profile: 'laptop', ports },
-        setup: { setupDone: true }, // a resume: would wait if it were not skipped
-        ...patch,
-      })
-      expect(plan).toHaveProperty('skip')
-      expect(plan).not.toHaveProperty('timing')
-    }
-  )
-})
-
 describe('openCommand', () => {
   const url = 'http://localhost:3100/welcome'
   it('picks the launcher of each platform', () => {
@@ -265,7 +89,7 @@ describe('openCommand', () => {
 })
 
 describe('openBrowser', () => {
-  const url = 'http://localhost:3100/'
+  const url = 'http://localhost:3100/welcome'
 
   const fakeSpawn = () => {
     const calls: Array<{ command: string; args: string[]; options: object }> = []

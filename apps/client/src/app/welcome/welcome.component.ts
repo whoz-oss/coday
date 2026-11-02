@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core'
+import { ChangeDetectionStrategy, Component, inject, Injector, OnInit } from '@angular/core'
 import { SetupStateService, WIZARD_STEPS, WizardStep } from './setup-state.service'
 import { EmailStepComponent } from './steps/email-step.component'
 import { FolderStepComponent } from './steps/folder-step.component'
@@ -13,8 +13,8 @@ const STEP_LABELS: Record<WizardStep, string> = {
 }
 
 /**
- * `/welcome`: the first-run wizard. A thin shell (header, stepper, step outlet): every step is its own
- * component and all the logic lives in SetupStateService.
+ * `/welcome`: the first-run wizard, or, once the setup is done, a plain loading page (see WelcomeMode). A thin shell
+ * (header, stepper, step outlet): every step is its own component and all the logic lives in SetupStateService.
  */
 @Component({
   selector: 'app-welcome',
@@ -26,8 +26,25 @@ const STEP_LABELS: Record<WizardStep, string> = {
 export class WelcomeComponent implements OnInit {
   protected readonly state = inject(SetupStateService)
   protected readonly steps = WIZARD_STEPS.map((id) => ({ id, label: STEP_LABELS[id] }))
+  private readonly injector = inject(Injector)
 
   ngOnInit(): void {
+    void this.applyTheme()
     void this.state.init()
+  }
+
+  /**
+   * Light or dark like the app. `data-theme` on <html> is owned by the theme service of agentos-ui, which nothing
+   * instantiates before the app shell, so without this the page would always be light. Resolving the THEME_PORT
+   * builds it, which reads the stored choice (or the OS preference) and applies it, and keeps following the OS while
+   * the mode is `system`. The lib is already loaded by the app initializer, so this costs no extra download.
+   */
+  private async applyTheme(): Promise<void> {
+    try {
+      const { THEME_PORT } = await import('@whoz-oss/agentos-ui')
+      this.injector.get(THEME_PORT)
+    } catch {
+      // The page stays light: never worth breaking the wizard for.
+    }
   }
 }

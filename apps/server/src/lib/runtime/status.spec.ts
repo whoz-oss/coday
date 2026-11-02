@@ -133,46 +133,32 @@ describe('status reporter', () => {
     )
   })
 
-  it('sends the user to /welcome only while the first-run setup is pending, then to the root', () => {
-    const report = createStatusReporter()
-    expect(report(facts())).toContain('Open -> http://localhost:3000/welcome')
+  it('sends the user to /welcome in every setup state: the wizard first, then the loading page', () => {
+    const first = createStatusReporter()
+    expect(first(facts())).toContain('Open -> http://localhost:3000/welcome')
+    const resumed = createStatusReporter()
     const done = facts({ setup: { identity: { email: 'a@b.co' }, setupDone: true } })
-    expect(report(done)).toEqual(['Open -> http://localhost:3000/  (once agentos is healthy)'])
+    expect(resumed(done)).toContain('Open -> http://localhost:3000/welcome')
+    expect(resumed(done).join('\n')).not.toContain('once agentos is healthy')
   })
 
-  it('never shows /welcome outside the laptop profile', () => {
+  it('keeps the same line when the setup completes while the pane is running', () => {
     const report = createStatusReporter()
-    const lines = report(facts({ state: state({ profile: 'managed' }) }))
-    expect(lines.join('\n')).not.toContain('/welcome')
-    expect(lines).toContain('Open -> http://localhost:3000/  (once agentos is healthy)')
+    report(facts())
+    expect(report(facts({ setup: { identity: { email: 'a@b.co' }, setupDone: true } }))).toEqual([])
   })
 
-  it('shows the first-run wizard URL at once: it needs no AgentOS', () => {
+  it('shows /welcome in the managed profile and with an external AgentOS too, never waiting for AgentOS', () => {
+    // Same rule as the browser: the page needs only Express and shows the progress itself.
+    const managed = { state: state({ profile: 'managed' }) }
     const report = createStatusReporter()
-    expect(report(facts())).toContain('Open -> http://localhost:3000/welcome')
-    expect(report(facts())).toEqual([])
-  })
+    expect(report(facts(managed))).toContain('Open -> http://localhost:3000/welcome')
+    expect(report(facts(managed))).toEqual([])
+    expect(report(facts({ ...managed, healthy: { agentos: true, factory: false } }))).toEqual(['agentos healthy :8224'])
 
-  it('says the app URL is for later until AgentOS is healthy, then repeats it plainly (same rule as the browser)', () => {
-    const report = createStatusReporter()
-    const resume = { setup: { identity: { email: 'a@b.co' }, setupDone: true } }
-    expect(report(facts(resume))).toContain('Open -> http://localhost:3000/  (once agentos is healthy)')
-    expect(report(facts(resume))).toEqual([])
-    expect(report(facts({ ...resume, healthy: { agentos: true, factory: false } }))).toEqual([
-      'agentos healthy :8224',
-      'Open -> http://localhost:3000/',
-    ])
-  })
-
-  it('makes the app URL wait for an external AgentOS too, probed at its own URL like the browser does', () => {
-    const report = createStatusReporter()
-    const external = { agentos: 'http://agentos.acme.com:8124' }
-    const managed = state({ profile: 'managed' })
-    expect(report(facts({ state: managed, external }))).toContain(
-      'Open -> http://localhost:3000/  (once agentos is healthy)'
-    )
-    const up = report(facts({ state: managed, external, healthy: { agentos: true, factory: false } }))
-    expect(up).toContain('Open -> http://localhost:3000/')
-    expect(up).not.toContain('agentos healthy :8224') // external: no managed port to quote
+    const withExternal = createStatusReporter()
+    const lines = withExternal(facts({ ...managed, external: { agentos: 'http://agentos.acme.com:8124' } }))
+    expect(lines).toContain('Open -> http://localhost:3000/welcome')
+    expect(lines.join('\n')).not.toContain('once agentos is healthy')
   })
 })

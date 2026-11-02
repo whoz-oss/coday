@@ -2,9 +2,10 @@
  * `pnpm nx run web:local` — build the local code and run it EXACTLY like an `npx @whoz-oss/coday-web` user would,
  * without publishing anything and without ever touching `~/.coday` or `~/Coday`.
  *
- * End users always run the same command, `npx @whoz-oss/coday-web`: the first-run wizard (`/welcome`) shows up only
- * while the setup is not done, otherwise the app opens directly. This command behaves the same way: ONE command
- * whatever the setup state. The first time you get the wizard, afterwards you resume your configured instance.
+ * End users always run the same command, `npx @whoz-oss/coday-web`, and the browser always opens on `/welcome`: the
+ * first-run wizard while the setup is not done, otherwise a loading page that leads into the app. This command behaves
+ * the same way: ONE command whatever the setup state. The first time you get the wizard, afterwards you resume your
+ * configured instance.
  *
  * Everything lives in a PERSISTENT root (default `~/.coday-local`):
  *
@@ -175,7 +176,7 @@ async function main(): Promise<void> {
   log(
     firstRun
       ? 'state          : FIRST RUN (no setupDone in web-setup.json): the wizard will show at /welcome'
-      : 'state          : RESUME (setup already done): the app opens directly, your configuration is kept'
+      : 'state          : RESUME (setup already done): /welcome is a loading page that leads into the app, your configuration is kept'
   )
 
   // Packs and install hold generated artefacts only: start from scratch so that stale tarballs are never picked

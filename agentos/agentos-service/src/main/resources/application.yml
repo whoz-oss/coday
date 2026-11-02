@@ -283,8 +283,12 @@ agentos:
     # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
     # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
     # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
+    # Shipped default: 2. It only takes effect while usage tracking is on (agentos.usage.enabled), and it is
+    # written on a case when the case is created: existing cases and namespaces that set their own value
+    # keep it. An empty value (AGENTOS_LIMITS_RUN_COST_THRESHOLD=) means no platform limit; 0 asks for a
+    # confirmation on the first request, it does not disable the check.
     # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
-    # run-cost-threshold: 10.0
+    run-cost-threshold: ${AGENTOS_LIMITS_RUN_COST_THRESHOLD:2}
   defaults:
     # Seconds a delegation waits without activity from its sub-case before stopping it.
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
