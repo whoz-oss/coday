@@ -42,6 +42,17 @@ describe('UsageConfigurationService', () => {
     expect(api.getUsageConfiguration).toHaveBeenCalledTimes(1)
   })
 
+  it('exposes the platform default run cost threshold, and null when the platform sets none', () => {
+    api.getUsageConfiguration.mockReturnValue(of({ enabled: true, runCostThreshold: 2 }))
+    expect(TestBed.inject(UsageConfigurationService).runCostThreshold()).toBe(2)
+    TestBed.resetTestingModule()
+    TestBed.configureTestingModule({
+      providers: [{ provide: UsageConfigurationControllerService, useValue: api }],
+    })
+    api.getUsageConfiguration.mockReturnValue(of({ enabled: true }))
+    expect(TestBed.inject(UsageConfigurationService).runCostThreshold()).toBeNull()
+  })
+
   it.each([null, {}, { enabled: 'false' }])('treats malformed configuration %p as a retriable error', (response) => {
     api.getUsageConfiguration.mockReturnValue(of(response))
     const configuration = TestBed.inject(UsageConfigurationService)
