@@ -38,4 +38,12 @@ data class Namespace(
      * **`null` means "inherit from the platform default", never "no limit" or "zero".**
      */
     val runCostThreshold: Double? = null,
+    /**
+     * Namespace-level override of the maximum number of tool rounds of one agent run
+     * (`agentos.limits.agent-max-iterations` at platform level).
+     *
+     * **`null` means "inherit from the platform default"**, never "no limit". Read when an agent
+     * is built, so a change applies from the next run on, never during one.
+     */
+    val maxToolRounds: Int? = null,
 ) : Entity

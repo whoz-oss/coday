@@ -456,6 +456,7 @@ class AgentServiceImpl(
             userId = context.userId,
             redirectGuideline = redirectGuideline,
             loopConfig = agentConfig.loopConfig,
+            maxToolRounds = namespace?.maxToolRounds,
         )
     }
 
@@ -526,6 +527,7 @@ class AgentServiceImpl(
             resolvedUser = resolvedUser,
             redirectGuideline = definition.redirectGuideline,
             loopConfig = definition.loopConfig,
+            maxToolRounds = definition.maxToolRounds,
         )
     }
 
@@ -602,6 +604,7 @@ class AgentServiceImpl(
         resolvedUser: User?,
         redirectGuideline: String? = null,
         loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
+        maxToolRounds: Int? = null,
     ): Agent {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
@@ -629,6 +632,7 @@ class AgentServiceImpl(
                         providerConfig,
                         context.caseId?.toString(),
                         context.usageAccumulator,
+                        maxToolRounds,
                     )
                 val advancedContext =
                     AgentAdvancedContext(
@@ -651,7 +655,7 @@ class AgentServiceImpl(
                     userId = resolvedUser?.metadata?.id,
                     userExternalId = resolvedUser?.externalId,
                     caseEventsProvider = context.caseEventsProvider,
-                    maxIterations = limitsConfig.agentMaxIterations,
+                    maxIterations = maxToolRounds ?: limitsConfig.agentMaxIterations,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
                     reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
@@ -667,6 +671,7 @@ class AgentServiceImpl(
                         providerConfig,
                         context.caseId?.toString(),
                         context.usageAccumulator,
+                        maxToolRounds,
                     )
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
