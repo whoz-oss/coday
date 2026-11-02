@@ -1042,6 +1042,109 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agent.requestedReasoningEffort shouldBe ReasoningEffort.XHIGH
         }
 
+        // -------------------------------------------------------------------------
+        // Maximum tool rounds: the namespace override wins, the platform value is the fallback
+        // -------------------------------------------------------------------------
+
+        "findAgentByName gives a simple agent's chat client the namespace tool rounds" {
+            every { namespaceService.findById(namespaceId) } returns namespace.copy(maxToolRounds = 250)
+            every { agentConfigService.findByName(namespaceId, "rounds-simple") } returns
+                agentConfig(name = "rounds-simple", modelName = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            try {
+                agentService.findAgentByName("rounds-simple", context)
+
+                verify(exactly = 1) { chatClientProvider.getChatClient(any(), any(), any(), any(), 250) }
+            } finally {
+                every { namespaceService.findById(namespaceId) } returns namespace
+            }
+        }
+
+        "findAgentByName caps an advanced agent at the namespace tool rounds" {
+            every { namespaceService.findById(namespaceId) } returns namespace.copy(maxToolRounds = 250)
+            every { agentConfigService.findByName(namespaceId, "rounds-advanced") } returns
+                agentConfig(name = "rounds-advanced", modelName = "sonnet").copy(advancedExecution = true)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            try {
+                val agent = agentService.findAgentByName("rounds-advanced", context) as AgentAdvanced
+
+                val field = AgentAdvanced::class.java.getDeclaredField("maxIterations").apply { isAccessible = true }
+                field.get(agent) shouldBe 250
+                verify(exactly = 1) { chatClientProvider.getChatClient(any(), any(), any(), any(), 250) }
+            } finally {
+                every { namespaceService.findById(namespaceId) } returns namespace
+            }
+        }
+
+        "findAgentByName falls back to the platform tool rounds when the namespace sets none" {
+            val localService =
+                AgentServiceImpl(
+                    chatClientProvider = chatClientProvider,
+                    toolResolverService = toolResolverService,
+                    aiModelService = aiModelService,
+                    aiProviderService = aiProviderService,
+                    namespaceService = namespaceService,
+                    integrationConfigService = integrationConfigService,
+                    userService = userService,
+                    agentConfigService = agentConfigService,
+                    intentionGenerator = intentionGenerator,
+                    confirmationManager = confirmationManager,
+                    objectMapper = testObjectMapper,
+                    toolRegistryService = toolRegistryService,
+                    toolMetricsService = toolMetricsService,
+                    caseEventService = caseEventService,
+                    authServiceFactory = authServiceFactory,
+                    oAuthFlowService = oAuthFlowService,
+                    staticCredentialFactory = staticCredentialFactory,
+                    exchangeStorageService = exchangeStorageService,
+                    exchangeCapabilityService = exchangeCapabilityService,
+                    exchangeToolGrantService = exchangeToolGrantService,
+                    agentDocumentResolver = agentDocumentResolver,
+                    skillService = skillService,
+                    skillToolGrantService = skillToolGrantService,
+                    configToolGrantService = configToolGrantService,
+                    idCompressorService = IdCompressorService(),
+                    agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(agentMaxIterations = 7),
+                    exchangeRootResolver = exchangeRootResolver,
+                    loopWorkflowRunnerService = mockk(relaxed = true),
+                )
+            every { agentConfigService.findByName(namespaceId, "rounds-fallback") } returns
+                agentConfig(name = "rounds-fallback", modelName = "sonnet").copy(advancedExecution = true)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val agent = localService.findAgentByName("rounds-fallback", context) as AgentAdvanced
+
+            val field = AgentAdvanced::class.java.getDeclaredField("maxIterations").apply { isAccessible = true }
+            field.get(agent) shouldBe 7
+            // The provider receives no override: it applies the platform value itself.
+            verify(exactly = 1) { chatClientProvider.getChatClient(any(), any(), any(), any(), null) }
+        }
+
+        "resolveDefinition exposes the namespace tool rounds override, null when none" {
+            val config = agentConfig(name = "rounds-definition", modelName = "sonnet")
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null).maxToolRounds shouldBe null
+
+            every { namespaceService.findById(namespaceId) } returns namespace.copy(maxToolRounds = 250)
+            try {
+                agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null).maxToolRounds shouldBe 250
+            } finally {
+                every { namespaceService.findById(namespaceId) } returns namespace
+            }
+        }
+
         "findAgentByName falls back to namespace default model when AgentConfig has no modelName" {
             val config = agentConfig(name = "my-agent", modelName = null)
             val defaultModel = modelConfig(alias = "default")

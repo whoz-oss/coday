@@ -52,6 +52,10 @@ import java.util.UUID
  * @param loopConfig Default [io.whozoss.agentos.workflow.AgentLoopPayload] for LOOP-mode agents,
  *   carried from [io.whozoss.agentos.agentConfig.AgentConfig.loopConfig]. Null for SIMPLE/ADVANCED
  *   agents or when no default was configured.
+ * @param maxToolRounds The namespace's own override of the maximum tool rounds of a run
+ *   ([io.whozoss.agentos.namespace.Namespace.maxToolRounds]), or null when the namespace sets none
+ *   and the platform default (`agentos.limits.agent-max-iterations`) applies. Kept as the override,
+ *   not the effective value, so the platform fallback stays decided in one place per consumer.
  */
 data class ResolvedAgentDefinition(
     val agentConfigId: UUID,
@@ -71,4 +75,5 @@ data class ResolvedAgentDefinition(
     val userId: UUID?,
     val redirectGuideline: String? = null,
     val loopConfig: JsonNode? = null,
+    val maxToolRounds: Int? = null,
 )

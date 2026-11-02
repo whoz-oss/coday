@@ -4,6 +4,10 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ActivatedRoute, Router } from '@angular/router'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 
+/** The backend stores the maximum tool rounds as an int32 and refuses anything below 1. */
+const MAX_TOOL_ROUNDS_MIN = 1
+const MAX_TOOL_ROUNDS_MAX = 2_147_483_647
+
 /**
  * NamespaceFormComponent — full-page create / edit form for a namespace.
  *
@@ -37,6 +41,14 @@ export class NamespaceFormComponent implements OnInit {
     externalId: new FormControl<string>('', { nonNullable: true }),
     defaultAgentName: new FormControl<string>('', { nonNullable: true }),
     runCostThreshold: new FormControl<number | null>(null),
+    // Empty inherits the server default. Validators only fire on a value, so empty stays valid.
+    maxToolRounds: new FormControl<number | null>(null, {
+      validators: [
+        Validators.min(MAX_TOOL_ROUNDS_MIN),
+        Validators.max(MAX_TOOL_ROUNDS_MAX),
+        Validators.pattern(/^\d+$/),
+      ],
+    }),
   })
 
   protected get nameControl() {
@@ -61,6 +73,10 @@ export class NamespaceFormComponent implements OnInit {
 
   protected get runCostThresholdControl() {
     return this.form.controls.runCostThreshold
+  }
+
+  protected get maxToolRoundsControl() {
+    return this.form.controls.maxToolRounds
   }
 
   protected readonly isEditMode = signal(false)
@@ -93,6 +109,7 @@ export class NamespaceFormComponent implements OnInit {
           this.externalIdControl.setValue(ns.externalId ?? '')
           this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
           this.runCostThresholdControl.setValue(ns.runCostThreshold ?? null)
+          this.maxToolRoundsControl.setValue(ns.maxToolRounds ?? null)
           this.isLoading.set(false)
         },
         error: () => {
@@ -103,7 +120,7 @@ export class NamespaceFormComponent implements OnInit {
   }
 
   protected submit(): void {
-    if (this.nameControl.invalid || this.isSubmitting()) return
+    if (this.form.invalid || this.isSubmitting()) return
 
     this.isSubmitting.set(true)
 
@@ -115,6 +132,10 @@ export class NamespaceFormComponent implements OnInit {
       externalId: this.externalIdControl.value.trim() || undefined,
       defaultAgentName: this.defaultAgentNameControl.value.trim() || undefined,
       runCostThreshold: this.runCostThresholdControl.value ?? undefined,
+      // Always set, even when undefined: it overrides the value spread from the loaded namespace, so an
+      // emptied field is sent as absent, which is how the backend clears the override on PUT. An
+      // untouched field still carries the loaded value, so an unrelated edit never wipes it.
+      maxToolRounds: this.maxToolRoundsControl.value ?? undefined,
     }
 
     const call$ = this.isEditMode()
