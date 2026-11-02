@@ -53,6 +53,8 @@ Stop interrupts the case and its active descendants and releases their cost wait
 
 These are estimates checked **between requests**, not a hard billing cap: a request already running, concurrent delegated calls or unknown prices can exceed the displayed threshold. The threshold is snapshotted for an active run; an edit is otherwise picked up by the next run. Monetary confirmation does not alter the separate iteration guards.
 
+The same tracked chat client also bounds AgentSimple's automatic tool rounds with `agentos.limits.agent-max-iterations`. At that bound the model is asked once more, without running any tool, to summarize what it has done and what remains; its answer becomes the agent's message. The finished event carries `maxIterationsReached`: the conversation shows the stop with a Continue action, and a delegating agent receives the flag with the summary so it can resume the sub-case.
+
 When usage tracking is enabled and no threshold applies to a run or its ancestors, a failed historical cost query does not prevent execution. Live usage is still collected and persisted, but the affected run-cost endpoint returns an unavailable error rather than an incomplete total. It can recover after the active session ends and historical queries succeed again. If any applicable threshold is configured, including zero, unavailable history still prevents execution so that the limit cannot be bypassed.
 
 ## Monitoring and persistence

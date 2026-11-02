@@ -11,6 +11,7 @@ import io.mockk.verify
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
@@ -177,6 +178,29 @@ class DelegationToolUnitSpec :
             result.success shouldBe true
             val tree = jacksonObjectMapper().readTree(result.output)
             tree[0].get("result").asText() shouldBe "Sub-agent completed the task but produced no text output."
+        }
+
+        "reports the iteration limit the sub-agent reached with its summary as a partial result" {
+            val launcher = mockk<SubCaseManager>()
+            every { launcher.isCostPaused(any()) } returns false
+            fun finished(limit: Int?) =
+                AgentFinishedEvent(namespaceId = namespaceId, caseId = subCaseId, agentId = UUID.randomUUID(),
+                    agentName = "sub-agent", maxIterationsReached = limit)
+            // An earlier turn stopped at the limit too: only the latest run counts.
+            val events = listOf(agentMessage("old summary"), finished(20), agentMessage("summary so far"), finished(20))
+            val tool = makeTool(launcher, events)
+            every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns idleRuntime()
+
+            val tree = jacksonObjectMapper().readTree(tool.execute(singleDelegation(), toolContext).output)
+
+            tree[0].get("success").asBoolean() shouldBe true
+            tree[0].get("result").asText() shouldBe "summary so far"
+            tree[0].get("maxIterationsReached").asInt() shouldBe 20
+            tree[0].get("subCaseId").asText() shouldBe subCaseId.toString()
+            tool.description shouldContain "maxIterationsReached"
+
+            val completed = makeTool(launcher, listOf(agentMessage("old summary"), finished(20), agentMessage("done"), finished(null)))
+            jacksonObjectMapper().readTree(completed.execute(singleDelegation(), toolContext).output)[0].has("maxIterationsReached") shouldBe false
         }
 
         // -------------------------------------------------------------------------

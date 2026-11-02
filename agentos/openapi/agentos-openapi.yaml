@@ -387,8 +387,8 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
+        "204":
+          description: No Content
       tags:
       - ai-model-controller
     get:
@@ -4286,6 +4286,9 @@ components:
             type: string
           llmUsage:
             $ref: "#/components/schemas/LlmUsage"
+          maxIterationsReached:
+            type: integer
+            format: int32
       required:
       - agentId
       - agentName
@@ -5737,6 +5740,13 @@ components:
         id:
           type: string
           format: uuid
+        maxToolRounds:
+          type: integer
+          format: int32
+          description: "Maximum number of tool rounds of one agent run in this namespace.\
+            \ Null means inherit from the platform default (agentos.limits.agent-max-iterations).\
+            \ On PUT, null clears an existing override."
+          minimum: 1
         name:
           type: string
           minLength: 1
@@ -5748,6 +5758,11 @@ components:
             \ Applies to all cases in this namespace that do not declare their own\
             \ threshold."
           minimum: 0
+        sharedExchangePath:
+          type: string
+          description: Optional absolute path of a directory on the server host that
+            replaces the default directory of the namespace-shared file exchange.
+            Only super-admins may set or change it. Created on first use.
       required:
       - name
     NamespaceAgentDeployRequest:
