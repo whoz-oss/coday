@@ -111,11 +111,11 @@ agentos:
     enabled: ${AGENTOS_USAGE_ENABLED:true}
   git:
     worker:
-      enabled: ${AGENTOS_GIT_WORKER_ENABLED:false}
+      enabled: ${AGENTOS_GIT_WORKER_ENABLED:true}
     workspaces:
       # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
       # runs exactly as without Git, whatever the namespace's Git association.
-      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
+      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:true}
   encryption:
     key: ${AGENTOS_ENCRYPTION_KEY:NONE}
     salt: ${AGENTOS_ENCRYPTION_SALT:NONE}
@@ -220,9 +220,12 @@ agentos:
     enabled-by-default: ${AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT:true}
   personal-namespace:
     # Give every user a private namespace (externalId 'user:<externalId of the user>') that they administer,
-    # with the platform agent 'Coday' deployed on it and set as its default agent. Created when the user is,
-    # and re-checked on their next request if that failed. Idempotent, and it only ever adds: a namespace
-    # the user renamed, or whose default agent they changed, is left as it is.
+    # with its own agent 'Coday' (a namespace-scoped agent, created in that namespace) deployed on it and set
+    # as its default agent. Created when the user is, and re-checked on their next request if that failed.
+    # Idempotent, and it only adds: a namespace the user renamed, or whose default agent they changed, is
+    # left as it is, and a 'Coday' the namespace already owns is never rewritten. The one exception is an
+    # upgrade: the legacy platform agent 'Coday' of earlier versions is undeployed from the personal namespace
+    # (the platform agent itself is neither modified nor deleted).
     # Override with env var: AGENTOS_PERSONAL_NAMESPACE_ENABLED
     enabled: ${AGENTOS_PERSONAL_NAMESPACE_ENABLED:true}
   user-group:
@@ -283,16 +286,18 @@ agentos:
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
     delegation-timeout-seconds: ${AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS:600}
     coday-agent:
-      # Declare that a platform agent named 'Coday' should exist. When true (shipped default),
-      # CodayAgentSeeder creates it at startup if absent: the friendly default assistant, on the model
-      # alias BIG, with the built-in AGENTOS_CONFIG (read and propose configuration changes) and
-      # CASE_FILE_EXCHANGE (files of the conversation) and NAMESPACE_FILE_EXCHANGE (the shared folder of
-      # the namespace, e.g. the files folder of the first-run wizard) integrations. Personal namespaces
-      # deploy it and make it their default agent.
+      # Declare that every personal namespace should own an agent named 'Coday'. When true (shipped
+      # default), CodayAgentSeeder creates it in the namespace, as a namespace-scoped agent, when the
+      # namespace is provisioned and owns none (nothing is created at startup): the friendly default
+      # agent, on the model alias BIG, with the built-in AGENTOS_CONFIG (read and propose configuration
+      # changes) and CASE_FILE_EXCHANGE (files of the conversation) and NAMESPACE_FILE_EXCHANGE (the
+      # shared folder of the namespace, e.g. the files folder of the first-run wizard) integrations.
+      # The personal namespace deploys it and makes it its default agent. It is namespace-scoped, not a
+      # platform agent, so that it can never clash with an agent of the same name in another namespace.
       #
-      # This declares EXISTENCE, not content: once the agent exists it belongs to the administrator and
-      # startup never rewrites it. It is also create-only: setting this back to false later does NOT delete
-      # an already-seeded agent (a warning is logged instead); disable or delete it through the API.
+      # This declares EXISTENCE, not content: once a namespace owns an agent named 'Coday' it belongs to
+      # the administrators of that namespace and is never rewritten. It is also create-only: setting this
+      # back to false later does NOT delete an already-created agent; disable or delete it through the API.
       # Override with env var: AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED
       enabled: ${AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED:true}
   # Environment-level fallback agent name. Consulted when a namespace has no

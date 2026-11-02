@@ -9,7 +9,7 @@
  * Model names were verified against the official documentation at implementation time:
  *   - Anthropic  docs.anthropic.com/en/docs/about-claude/models/overview (dateless IDs, 4.6+ format)
  *   - OpenAI     platform.openai.com/docs/models (gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna)
- *   - Requesty   router.requesty.ai/v1/models (provider-prefixed names, `anthropic/claude-fable-5.1`
+ *   - Requesty   router.eu.requesty.ai/v1/models (provider-prefixed names, `anthropic/claude-fable-5.1`
  *                keeps a dot where the Anthropic ID has a dash)
  * Model availability changes: update this file, nothing else.
  */
@@ -121,7 +121,7 @@ export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
     label: 'Requesty',
     description: 'One key for Claude, GPT and 600+ other models through the Requesty router.',
     apiType: 'OpenAI',
-    baseUrl: 'https://router.requesty.ai/v1',
+    baseUrl: 'https://router.eu.requesty.ai',
     keyUrl: 'https://app.requesty.ai/api-keys',
     // Requesty prefixes the lab and spells Fable 5.1 with a dot. It serves both labs, but one alias
     // maps to ONE model per provider: the Claude family is used (the Coday agent is tuned on it).

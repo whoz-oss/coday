@@ -56,7 +56,8 @@ export function buildAgentosSpec(input: AgentosSpecInput): ServiceSpec {
     // The callback must point at the actual Express port; an explicit env value wins (reverse proxy).
     AGENTOS_OAUTH_REDIRECT_URI:
       baseEnv.AGENTOS_OAUTH_REDIRECT_URI ?? `http://localhost:${expressPort}/agentos/oauth/callback`,
-    // Bolt port of the embedded Neo4j (7688 by default, next free one otherwise), SDN must connect to the same one.
+    // Bolt port of the embedded Neo4j (7788 by default, next free one otherwise; 7688 is the dev default),
+    // SDN must connect to the same one.
     AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT: boltPortValue,
     SPRING_NEO4J_URI: baseEnv.SPRING_NEO4J_URI ?? `bolt://localhost:${boltPortValue}`,
   }
@@ -106,7 +107,7 @@ export function buildFactorySpec(input: FactorySpecInput): ServiceSpec {
     env.FACTORY_SECURITY_MODE = 'auth'
     env.FACTORY_BIND_HOST = LOOPBACK
     // FACTORY_BIND_HOST only feeds Factory's own safety banner: Tomcat still listens on every interface
-    // (observed on *:8141) unless Spring is told. Auth mode trusts identity headers: loopback only.
+    // (observed on *:<port>) unless Spring is told. Auth mode trusts identity headers: loopback only.
     args.push(`--server.address=${LOOPBACK}`)
     env.FACTORY_PERSISTENCE_DATA_DIR = factoryDataDir(configDir)
     if (input.secrets) {

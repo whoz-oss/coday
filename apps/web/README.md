@@ -63,7 +63,7 @@ otherwise the app opens directly.
   (`AGENTOS_URL`) it probes that URL's `/management/health`, which is what the proxy targets.
 - **The `status` pane.** The Nx TUI has no status bar, so a small dedicated task reads `runtime/state.json` and probes
   the health URLs every second. It prints one line per meaningful change only: `agentos download 42%` (one line per
-  10%), `java ok` or the install hint, `agentos healthy :8124`, `factory healthy :8141`, `agentos external <origin>`
+  10%), `java ok` or the install hint, `agentos healthy :8224`, `factory healthy :8241`, `agentos external <origin>`
   for an `AGENTOS_URL`/`FACTORY_URL`, and `Open -> http://localhost:3000/welcome` on a first run (`/` once the setup is
   done; then the line says `(once agentos is healthy)` and is repeated without that note when it is: same rule as
   the browser). In the
@@ -80,6 +80,13 @@ otherwise the app opens directly.
 
 All the logic lives in the server package (`apps/server/src/lib/runtime`, `lib/setup`); the Nx workspace is only a
 manifest calling `coday-server provision|agentos|factory|server|status`.
+
+### Ports
+
+The packaged stack prefers its own ports: **AgentOS 8224, Factory 8241, AgentOS embedded Neo4j Bolt 7788** (each falls
+back to the next free port, the choice is written to `runtime/state.json`). The dev ports **8124 (AgentOS), 8141
+(Factory) and 7688 (Bolt) are reserved for dev mode** (`pnpm web:serve:dev`, `bootRun`), so a packaged instance and a
+dev stack run side by side without colliding or picking up each other's services.
 
 ### Logs
 
@@ -180,8 +187,8 @@ pnpm server             # Express with tsx watch only (4100)
 
 `web:serve:dev` is a set of continuous Nx tasks: `client:serve` (4200), `factory-cockpit:serve` (4300),
 `web:dev-server` (Express, 4100), `web:dev-agentos` (`agentos-service:bootRun`, 8124) and `web:dev-factory`
-(`factory-service:bootRun`, 8141). The dev server uses the external-service mode (`AGENTOS_URL`/`FACTORY_URL`), so the
-wizard is not shown: use `web:local -- --fresh` to test it.
+(`factory-service:bootRun`, 8141). These are the dev-only ports; the packaged stack uses 8224 / 8241 (see *Ports*). The dev server uses the
+external-service mode (`AGENTOS_URL`/`FACTORY_URL`), so the wizard is not shown: use `web:local -- --fresh` to test it.
 
 ### Building and testing
 

@@ -140,41 +140,58 @@ describe('java', () => {
 describe('pickPorts', () => {
   const identityFind = async (start: number) => start
 
-  it('prefers the conventional ports: AgentOS 8124, Bolt 7688, Factory 8141', async () => {
+  it('prefers the packaged-mode ports: AgentOS 8224, Bolt 7788, Factory 8241', async () => {
     expect(await pickPorts(3000, identityFind)).toEqual({
       express: 3000,
-      agentos: 8124,
-      agentosBolt: 7688,
-      factory: 8141,
+      agentos: 8224,
+      agentosBolt: 7788,
+      factory: 8241,
     })
   })
 
-  it('falls back to the next free port when the preferred one is taken', async () => {
-    const busy = new Set([8124, 7688])
+  it('never prefers the dev ports (AgentOS 8124, Factory 8141, Bolt 7688), reserved for dev mode', async () => {
+    const ports = await pickPorts(3000, identityFind)
+    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(8124)
+    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(8141)
+    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(7688)
+  })
+
+  it('leaves the dev ports alone: a dev stack on 8124/8141/7688 changes nothing', async () => {
+    const busy = new Set([8124, 8141, 7688])
     const find = async (start: number) => {
       let port = start
       while (busy.has(port)) port++
       return port
     }
-    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8125, agentosBolt: 7689, factory: 8141 })
+    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8224, agentosBolt: 7788, factory: 8241 })
+  })
+
+  it('falls back to the next free port when the preferred one is taken', async () => {
+    const busy = new Set([8224, 7788])
+    const find = async (start: number) => {
+      let port = start
+      while (busy.has(port)) port++
+      return port
+    }
+    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8225, agentosBolt: 7789, factory: 8241 })
   })
 
   it('never gives two services the same port (Express on the AgentOS default)', async () => {
-    const ports = await pickPorts(8124, identityFind)
-    expect(ports).toEqual({ express: 8124, agentos: 8125, agentosBolt: 7688, factory: 8141 })
+    const ports = await pickPorts(8224, identityFind)
+    expect(ports).toEqual({ express: 8224, agentos: 8225, agentosBolt: 7788, factory: 8241 })
     expect(new Set(Object.values(ports)).size).toBe(4)
   })
 
   it('never gives two services the same port (Express on the Factory default)', async () => {
-    const ports = await pickPorts(8141, identityFind)
-    expect(ports).toEqual({ express: 8141, agentos: 8124, agentosBolt: 7688, factory: 8142 })
+    const ports = await pickPorts(8241, identityFind)
+    expect(ports).toEqual({ express: 8241, agentos: 8224, agentosBolt: 7788, factory: 8242 })
     expect(new Set(Object.values(ports)).size).toBe(4)
   })
 
   it('bumps past a port already assigned to another service', async () => {
-    // Express on 7688: Bolt cannot take it; AgentOS on 8124 and Factory on 8141 are unaffected.
-    const ports = await pickPorts(7688, identityFind)
-    expect(ports).toEqual({ express: 7688, agentos: 8124, agentosBolt: 7689, factory: 8141 })
+    // Express on 7788: Bolt cannot take it; AgentOS on 8224 and Factory on 8241 are unaffected.
+    const ports = await pickPorts(7788, identityFind)
+    expect(ports).toEqual({ express: 7788, agentos: 8224, agentosBolt: 7789, factory: 8241 })
     expect(new Set(Object.values(ports)).size).toBe(4)
   })
 })

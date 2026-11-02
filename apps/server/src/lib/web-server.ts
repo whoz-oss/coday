@@ -22,6 +22,7 @@ import { debugLog } from './log'
 import { applyProxyIdentity, decideProxyIdentity } from './proxy-identity'
 import { resolveUsername } from './resolve-username'
 import { createIdentityProvider } from './runtime/identity'
+import { AGENTOS_DEFAULT_PORT, FACTORY_DEFAULT_PORT } from './runtime/ports'
 import { readState } from './runtime/state'
 import { createSetupRouter } from './setup/routes'
 import { validateAgentOsUrl } from './validate-agentos-url'
@@ -49,9 +50,6 @@ const FORBIDDEN_USERNAMES = [
   'ansible', // Ansible user
 ] as const
 
-const AGENTOS_FALLBACK_PORT = 8124
-const FACTORY_FALLBACK_PORT = 8141
-
 export interface WebAppOptions {
   codayOptions: CodayOptions
   /** Laptop profile without `--auth`: the first-run wizard API accepts mutations. */
@@ -76,8 +74,9 @@ export function createWebApp({ codayOptions, setupEnabled }: WebAppOptions): exp
 
   const managedUrl = (key: 'agentos' | 'factory', fallbackPort: number): string =>
     `http://127.0.0.1:${readState(configDir)?.ports[key] ?? fallbackPort}`
-  const agentosTarget = (): string => AGENTOS_URL_ENV ?? managedUrl('agentos', AGENTOS_FALLBACK_PORT)
-  const factoryTarget = (): string => FACTORY_URL_ENV ?? managedUrl('factory', FACTORY_FALLBACK_PORT)
+  // Before provisioning wrote state.json, aim at the packaged-mode ports (never the dev ones, 8124/8141).
+  const agentosTarget = (): string => AGENTOS_URL_ENV ?? managedUrl('agentos', AGENTOS_DEFAULT_PORT)
+  const factoryTarget = (): string => FACTORY_URL_ENV ?? managedUrl('factory', FACTORY_DEFAULT_PORT)
 
   // Identity of proxied requests when `--auth` is off: env var, else the first-run identity (read per request).
   const currentIdentity = createIdentityProvider(configDir)

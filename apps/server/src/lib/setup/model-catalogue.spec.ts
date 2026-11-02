@@ -32,7 +32,7 @@ describe('model catalogue shape', () => {
     expect(MODEL_CATALOGUE.anthropic.apiType).toBe('Anthropic')
     expect(MODEL_CATALOGUE.openai.apiType).toBe('OpenAI')
     expect(MODEL_CATALOGUE.requesty.apiType).toBe('OpenAI')
-    expect(MODEL_CATALOGUE.requesty.baseUrl).toBe('https://router.requesty.ai/v1')
+    expect(MODEL_CATALOGUE.requesty.baseUrl).toBe('https://router.eu.requesty.ai')
   })
 
   it('prefixes every Requesty model with its lab, and only those', () => {
