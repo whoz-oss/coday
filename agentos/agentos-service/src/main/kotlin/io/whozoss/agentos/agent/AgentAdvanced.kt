@@ -162,6 +162,8 @@ class AgentAdvanced(
                             forceStopIntention,
                         )
                         lastIntention = forceStopIntention
+                        // A repetition stop is not the iteration limit, even at the last iteration.
+                        continueLoop = false
                         break
                     }
 
@@ -206,14 +208,10 @@ class AgentAdvanced(
                 }
 
                 if (!hasUnresolvedConfirmation) {
-                    if (iteration >= maxIterations) {
-                        emit(
-                            WarnEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                message = "Agent reached maximum iterations ($maxIterations) without completing",
-                            ),
-                        )
+                    // An answer chosen at the last iteration ends the loop too: that run completed.
+                    val maxIterationsReached = maxIterations.takeIf { continueLoop && iteration >= maxIterations }
+                    if (maxIterationsReached != null) {
+                        emitMaxIterationsWarning(namespaceId, caseId, maxIterationsReached)
                     }
                     if (shouldContinue()) {
                         generateFinalResponse(
@@ -233,6 +231,7 @@ class AgentAdvanced(
                             agentName = name,
                             llmProvider = llmProvider,
                             llmModel = llmModel,
+                            maxIterationsReached = maxIterationsReached,
                         ),
                     )
                 }

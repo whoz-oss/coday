@@ -21,7 +21,6 @@ import org.slf4j.MDC
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
-import reactor.core.publisher.Flux
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
@@ -80,7 +79,7 @@ class AgentSimpleLogContextUnitSpec :
                 worker.join()
                 streamSpec
             }
-            every { streamSpec.content() } returns Flux.just("done")
+            every { streamSpec.chatResponse() } returns chatResponseFlux("done")
 
             val agent =
                 AgentSimple(
