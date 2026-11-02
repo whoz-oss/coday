@@ -103,6 +103,19 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
             found.configPath shouldBe "/opt/coday"
         }
 
+        "maxToolRounds is persisted, retrieved and cleared" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "rounds", maxToolRounds = 250))
+            repo.findByIds(listOf(ns.id)).first().maxToolRounds shouldBe 250
+
+            repo.save(ns.copy(maxToolRounds = null))
+            repo.findByIds(listOf(ns.id)).first().maxToolRounds shouldBe null
+        }
+
+        "a namespace saved without maxToolRounds reads back null" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "no-rounds"))
+            repo.findByIds(listOf(ns.id)).first().maxToolRounds shouldBe null
+        }
+
         "save throws on duplicate externalId" {
             repo.save(Namespace(metadata = EntityMetadata(), name = "ns-a", externalId = "ext-1"))
 

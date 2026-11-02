@@ -99,6 +99,11 @@
     color: var(--color-text-secondary);
   }
 
+  &__error {
+    font-size: 0.8rem;
+    color: var(--color-error, #dc2626);
+  }
+
   &__actions {
     display: flex;
     gap: 0.75rem;

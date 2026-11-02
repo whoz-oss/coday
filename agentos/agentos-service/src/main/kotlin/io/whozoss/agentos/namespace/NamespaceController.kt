@@ -63,6 +63,7 @@ class NamespaceController(
                     externalId = resource.externalId?.takeIf { it.isNotBlank() },
                     defaultAgentName = resource.defaultAgentName?.takeIf { it.isNotBlank() },
                     runCostThreshold = resource.runCostThreshold,
+                    maxToolRounds = resource.maxToolRounds,
                 )
             },
         )
@@ -139,6 +140,7 @@ class NamespaceController(
                     defaultAgentName = resource.defaultAgentName?.takeIf { it.isNotBlank() },
                     externalId = existing.externalId, // immutable post-create
                     runCostThreshold = resource.runCostThreshold,
+                    maxToolRounds = resource.maxToolRounds,
                 ),
             ).toDto()
     }
@@ -226,6 +228,7 @@ fun Namespace.toDto() =
         externalId = externalId,
         defaultAgentName = defaultAgentName,
         runCostThreshold = runCostThreshold,
+        maxToolRounds = maxToolRounds,
     )
 
 // runCostThreshold is intentionally absent from NamespaceListItem — it is an admin-configuration
