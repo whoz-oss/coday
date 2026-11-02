@@ -40,10 +40,21 @@ test('the workspace directory is read from the marker line, whatever else the se
   assert.equal(parseWorkspaceDir(undefined), undefined);
 });
 
-test('nx runs the three continuous tasks of the coday project', () => {
+test('nx runs ONE target, coday:status, whose dependencies are the services (single-target run pins status + server)', () => {
   const args = nxArgs();
-  assert.deepEqual(args.slice(0, 5), ['run-many', '-t', 'server', 'agentos', 'factory']);
-  assert.ok(args.includes('coday'));
+  assert.deepEqual(args.slice(0, 2), ['run', 'coday:status']);
+  assert.ok(!args.includes('run-many'), 'run-many pins no pane in the Nx TUI');
+  assert.ok(args.includes('--outputStyle=tui'));
+});
+
+test('--parallel is accepted by `nx run` and cannot starve provision (the only discrete task)', () => {
+  const parallel = Number(nxArgs().find((a) => a.startsWith('--parallel=')).split('=')[1]);
+  // Continuous tasks have their own threads (task-orchestrator getThreadPoolSize): --parallel only caps discrete ones.
+  assert.ok(parallel >= 1);
+});
+
+test('--no-open is not a launcher-only flag: it reaches the server and the Nx tasks', () => {
+  assert.deepEqual(serverArgs(['--managed', '--no-open']), ['--no-open']);
 });
 
 test('nx env: no daemon, no cloud, no cache, state kept under configDir', () => {

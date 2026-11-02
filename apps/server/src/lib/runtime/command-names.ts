@@ -3,7 +3,7 @@
  * `import.meta`) so specs, compiled as CommonJS, can import it.
  */
 
-export const COMMANDS = ['workspace', 'provision', 'agentos', 'factory', 'server', 'managed'] as const
+export const COMMANDS = ['workspace', 'provision', 'agentos', 'factory', 'server', 'status', 'managed'] as const
 export type Command = (typeof COMMANDS)[number]
 
 export const isCommand = (value: string | undefined): value is Command => COMMANDS.some((c) => c === value)

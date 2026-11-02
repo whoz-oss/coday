@@ -7,7 +7,7 @@ import { decideProfile } from './profile'
 import { pickPorts } from './ports'
 import { initialState, mergeState, overallDownload, readState, updateState } from './state'
 import { isValidEmail, markSetupDone, normalizeEmail, readIdentityEmail, readWebSetup, saveIdentity } from './web-setup'
-import { parseCommand } from './command-names'
+import { COMMANDS, parseCommand } from './command-names'
 
 let configDir: string
 beforeEach(() => {
@@ -182,6 +182,8 @@ describe('pickPorts', () => {
 describe('parseCommand', () => {
   it('recognises the commands and ignores options and unknown words', () => {
     expect(parseCommand(['agentos', '--configDir', '/x'])).toBe('agentos')
+    expect(parseCommand(['status', '--no-open'])).toBe('status')
+    expect(COMMANDS.every((c) => parseCommand([c]) === c)).toBe(true)
     expect(parseCommand(['--auth'])).toBeUndefined()
     expect(parseCommand(['whatever'])).toBeUndefined()
     expect(parseCommand([])).toBeUndefined()

@@ -50,9 +50,15 @@ export function parseWorkspaceDir(stdout) {
   return dir || undefined;
 }
 
-/** Arguments of `nx run-many` for the three continuous tasks (each gets its own TUI pane). */
+/**
+ * Arguments of `nx run`: ONE target, `coday:status`, whose continuous dependencies are the server, AgentOS and the
+ * Factory (each gets its own TUI pane). A single-target run makes the Nx TUI pin the initiating task (`status`) and
+ * its first continuous dependency (`server`) at startup; `run-many` pins nothing. The target names are those of
+ * NX_ENTRY_TASK / NX_SERVICES in apps/server/src/lib/runtime/workspace.ts (a server spec checks they match).
+ * `--parallel` only caps discrete tasks (`provision`): continuous tasks have their own threads.
+ */
 export function nxArgs() {
-  return ['run-many', '-t', 'server', 'agentos', 'factory', '-p', 'coday', '--parallel=5', '--outputStyle=tui'];
+  return ['run', 'coday:status', '--parallel=5', '--outputStyle=tui'];
 }
 
 /** Environment of the Nx process: no daemon, no cloud, no cache. */
