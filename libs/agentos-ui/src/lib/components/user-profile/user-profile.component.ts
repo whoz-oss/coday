@@ -87,6 +87,13 @@ export class UserProfileComponent implements OnInit {
     { value: 'newline', label: 'New line' },
   ]
 
+  /** Technical logs visibility in the case chat, reflected in the Case chat section. */
+  protected readonly showTechnical = this.preferencesPort.showTechnical
+  protected readonly showTechnicalOptions: ReadonlyArray<{ value: boolean; label: string }> = [
+    { value: true, label: 'Shown' },
+    { value: false, label: 'Hidden' },
+  ]
+
   /**
    * Supported language options offered in the dropdown.
    * Extend this list to add more locales — the backend accepts any valid BCP 47 tag.
@@ -202,6 +209,10 @@ export class UserProfileComponent implements OnInit {
 
   protected setEnterKeyBehavior(behavior: EnterKeyBehavior): void {
     this.preferencesPort.setEnterKeyBehavior(behavior)
+  }
+
+  protected setShowTechnical(value: boolean): void {
+    this.preferencesPort.setShowTechnical(value)
   }
 
   protected save(): void {

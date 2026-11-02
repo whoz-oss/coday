@@ -316,15 +316,20 @@ describe('CaseHomeComponent — first message with attachments', () => {
     ref.destroy()
   })
 
-  it('offers the namespace worktree checked and sends only a declined one', async () => {
+  it('offers the namespace worktree unchecked by default', () => {
     gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
     const ref = makeComponent()
     ref.instance.ngOnInit()
     expect(gitApi.getAssociationNamespaceGit).toHaveBeenCalledWith('ns-1')
     expect(ref.instance['worktreeOffered']()).toBe(true)
-    expect(ref.instance['worktree']()).toBe(true)
+    expect(ref.instance['worktree']()).toBe(false)
+    ref.destroy()
+  })
 
-    ref.instance['onWorktreeChange']({ target: { checked: false } } as unknown as Event)
+  it('sends worktree false when the offered box is left unchecked', async () => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
     ref.instance['inputValue'].set('what does this module do?')
     await ref.instance['submit']()
 
@@ -332,15 +337,27 @@ describe('CaseHomeComponent — first message with attachments', () => {
     ref.destroy()
   })
 
-  it('sends no worktree field when the box is left checked, so the namespace setting applies as before', async () => {
+  it('sends worktree true when the offered box is checked', async () => {
     gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
     const ref = makeComponent()
     ref.instance.ngOnInit()
+    ref.instance['onWorktreeChange']({ target: { checked: true } } as unknown as Event)
+    expect(ref.instance['worktree']()).toBe(true)
     ref.instance['inputValue'].set('fix the export')
     await ref.instance['submit']()
 
-    expect(ref.instance['worktreeOffered']()).toBe(true)
-    expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('worktree')
+    expect(api.createCase).toHaveBeenCalledWith(expect.objectContaining({ namespaceId: 'ns-1', worktree: true }))
+    ref.destroy()
+  })
+
+  it('unchecks the box again when the composer switches namespace', () => {
+    gitApi.getAssociationNamespaceGit.mockReturnValue(of({ associated: true, autoWorktreeForRootCases: true }))
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    ref.instance['onWorktreeChange']({ target: { checked: true } } as unknown as Event)
+    queryParams$.next({ ns: 'ns-2' })
+
+    expect(ref.instance['worktree']()).toBe(false)
     ref.destroy()
   })
 
