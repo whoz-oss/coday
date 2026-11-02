@@ -7,11 +7,22 @@
  *                    provision  normal task, fast, local only (profile, secrets, Java, ports)
  *                    agentos    continuous, dependsOn provision, waits for the wizard's identity
  *                    factory    continuous, dependsOn provision, waits for AgentOS health
- *                    server     continuous, dependsOn provision, the Express server
+ *                    server     continuous, dependsOn provision, the Express server (opens the browser)
+ *                    status     continuous, dependsOn provision + server, agentos, factory: the ENTRY task, a small
+ *                               pane: download %, Java, health, URL
  *
  * Every command runs `node <server.js> <command> <forwarded args>`: the bundled server is the single
- * implementation, the workspace is only a manifest. The launcher runs
- * `nx run-many -t server agentos factory -p coday`: each continuous task gets its own pane in the TUI.
+ * implementation, the workspace is only a manifest. The launcher runs ONE target, `nx run coday:status`, and Nx
+ * starts the three services as its continuous dependencies, each in its own pane of the TUI.
+ *
+ * Why a single entry target and not `run-many -t status server agentos factory`: the Nx TUI pins (shows at startup)
+ * the initiating task and its FIRST continuous dependency, but only for a single-target run (`run-many` pins
+ * nothing). So `status` is pinned next to `server`, which is why `server` comes first in NX_SERVICES. Derived from
+ * reading nx 23 (tasks-runner/run-command.js), the native TUI rendering must be confirmed visually.
+ *
+ * The services therefore must never exit while `status` runs: Nx reports an exited continuous dependency that
+ * something unfinished depends on as `crashed`. See the `stayUp...` handling in commands.ts.
+ * `--no-open` needs no special handling: buildForwardArgs forwards every option, the `server` task reads it.
  */
 
 import * as fs from 'fs'
@@ -20,7 +31,12 @@ import { isCommand } from './command-names'
 import { runtimeDir } from './paths'
 
 export const NX_PROJECT = 'coday'
-export const NX_TASKS = ['server', 'agentos', 'factory'] as const
+/** The entry task the launcher runs (`nx run coday:status`). */
+export const NX_ENTRY_TASK = 'status'
+/** The continuous services `status` depends on. ORDER MATTERS: the first one is pinned next to `status` in the TUI. */
+export const NX_SERVICES = ['server', 'agentos', 'factory'] as const
+export const NX_TASKS = [NX_ENTRY_TASK, ...NX_SERVICES] as const
+type TaskName = 'provision' | (typeof NX_TASKS)[number]
 
 export interface WorkspaceInput {
   configDir: string
@@ -41,16 +57,16 @@ export function shellQuote(arg: string, platform: NodeJS.Platform = process.plat
   return `"${arg.replace(/(["\\$`])/g, '\\$1')}"`
 }
 
-export function taskCommand(input: WorkspaceInput, command: 'provision' | 'agentos' | 'factory' | 'server'): string {
+export function taskCommand(input: WorkspaceInput, command: TaskName): string {
   const platform = input.platform ?? process.platform
   return [input.nodePath, input.serverJs, command, ...input.forwardArgs].map((a) => shellQuote(a, platform)).join(' ')
 }
 
 export function generateWorkspace(input: WorkspaceInput): WorkspaceFiles {
-  const target = (command: 'provision' | 'agentos' | 'factory' | 'server', continuous: boolean) => ({
+  const target = (command: TaskName, continuous: boolean, dependsOn: string[] = ['provision']) => ({
     executor: 'nx:run-commands',
     cache: false,
-    ...(continuous ? { continuous: true, dependsOn: ['provision'] } : {}),
+    ...(continuous ? { continuous: true, dependsOn } : {}),
     options: { command: taskCommand(input, command) },
   })
 
@@ -73,6 +89,8 @@ export function generateWorkspace(input: WorkspaceInput): WorkspaceFiles {
       server: target('server', true),
       agentos: target('agentos', true),
       factory: target('factory', true),
+      // The entry task: waits for provision and starts the services (in this order, see NX_SERVICES).
+      status: target('status', true, ['provision', ...NX_SERVICES]),
     },
   }
   return {

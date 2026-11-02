@@ -9,6 +9,8 @@ export interface Argv {
   configDir?: string
   coday_config_dir?: string
   host?: string
+  /** yargs boolean negation: `--no-open` gives `open: false`. */
+  open?: boolean
   _: (string | number)[]
   $0: string
 }
@@ -31,6 +33,8 @@ export interface CodayOptions {
    * interfaces as they always did.
    */
   host: string
+  /** False with `--no-open` (the Nx `server` task then does not open the browser). Env: CODAY_NO_OPEN. */
+  noOpen: boolean
 }
 
 /**
@@ -59,6 +63,10 @@ export function parseCodayOptions(
       type: 'string',
       description: 'Interface to listen on (default 127.0.0.1; 0.0.0.0 with --auth). Env: CODAY_HOST',
     })
+    .option('open', {
+      type: 'boolean',
+      description: 'Open the browser when the server is up (Nx mode); --no-open disables it. Env: CODAY_NO_OPEN',
+    })
     .help().argv as Argv
 
   // Set configDir with default value
@@ -72,5 +80,6 @@ export function parseCodayOptions(
     configDir,
     auth,
     host,
+    noOpen: argv.open === false,
   }
 }

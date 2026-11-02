@@ -13,6 +13,7 @@ refactor/username/issue-XXXX-description     # For code refactoring
 docs/username/issue-XXXX-description         # For documentation updates
 chore/username/issue-XXXX-description        # For maintenance tasks
 build/username/issue-XXXX-description        # For build system changes
+work/workstream/XXX-description              # For work branch that will eventually target a workstream branch (workstream is always the second part of the branch name prefixed by "work/". To determine the workstream branch, we should just replace work/ by workstream/ and look for any branch that starts like that.
 ```
 
 ## Commit Messages
@@ -31,7 +32,7 @@ build: #XXXX short description     # For build system changes
 
 ## Bug Fix Workflow
 
-1. Create branch using the naming convention, from the remote `master` branch
+1. Create branch using the naming convention, from the remote `workstream` or `master` branch
 2. Implement the fix
 3. Test the fix:
 
@@ -52,7 +53,7 @@ build: #XXXX short description     # For build system changes
 
 ## Feature Development Workflow
 
-1. Create branch using the naming convention, from the remote `master` branch
+1. Create branch using the naming convention, from the remote `workstream` or `master` branch
 2. Consider architectural impact before implementation
 3. Follow SOLID principles and existing patterns. KISS: Keep It Stupid Simple
 4. Implement the feature
@@ -84,6 +85,7 @@ code and runs it like an npx user would, without publishing and without touching
 # First time: the wizard. Afterwards: straight into the app, your setup and data are kept.
 pnpm nx run web:local
 pnpm nx run web:local -- --managed         # one process, plain console (what the desktop apps get)
+pnpm nx run web:local -- --no-open         # do not open the browser (it opens on each start in the Nx TUI)
 
 # Test the first-run wizard again: deletes ~/.coday-local/config and files first (printed), then starts
 pnpm nx run web:local -- --fresh           # `pnpm nx run web:first-run` is an alias of this

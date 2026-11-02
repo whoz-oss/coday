@@ -26,6 +26,7 @@
  * Options (after `--`):
  *   --fresh          delete `config/` and `files/` first: a brand-new first run (the wizard shows again)
  *   --managed        run everything in one process, without the Nx TUI (what the desktop apps get; used by e2e)
+ *   --no-open        do not open the browser when the server is up (Nx mode opens it; also CODAY_NO_OPEN=1)
  *   --port <n>       Express port (default 3000, next free one otherwise)
  *   --prepare-only   prepare everything, print the paths as JSON on the last line and exit (no server)
  *   --clean          delete the WHOLE root (config included) when the server stops
@@ -189,7 +190,12 @@ async function main(): Promise<void> {
   placeJars(configDir)
 
   const bin = path.join(install, 'node_modules', '.bin', process.platform === 'win32' ? 'coday-web.cmd' : 'coday-web')
-  const launchArgs = ['--configDir', configDir, ...(flag('--managed') ? ['--managed'] : [])]
+  const launchArgs = [
+    '--configDir',
+    configDir,
+    ...(flag('--managed') ? ['--managed'] : []),
+    ...(flag('--no-open') ? ['--no-open'] : []),
+  ]
   const port = value('--port') ?? '3000'
   const env = {
     ...process.env,

@@ -1,7 +1,17 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { buildForwardArgs, generateWorkspace, NX_PROJECT, shellQuote, taskCommand, writeWorkspace } from './workspace'
+import {
+  buildForwardArgs,
+  generateWorkspace,
+  NX_ENTRY_TASK,
+  NX_PROJECT,
+  NX_SERVICES,
+  NX_TASKS,
+  shellQuote,
+  taskCommand,
+  writeWorkspace,
+} from './workspace'
 
 const input = {
   configDir: '/home/me/.coday',
@@ -27,18 +37,27 @@ describe('generateWorkspace', () => {
     expect(nx.targetDefaults['*'].cache).toBe(false)
   })
 
-  it('declares one project named coday with provision, server, agentos and factory', () => {
+  it('declares one project named coday with provision, server, agentos, factory and status', () => {
     expect(project.name).toBe(NX_PROJECT)
-    expect(Object.keys(project.targets).sort()).toEqual(['agentos', 'factory', 'provision', 'server'])
+    expect(Object.keys(project.targets).sort()).toEqual(['agentos', 'factory', 'provision', 'server', 'status'])
   })
 
-  it('makes provision a normal task and the three services continuous tasks depending on it', () => {
+  it('makes provision a normal task and every other task a continuous one', () => {
     expect(project.targets.provision.continuous).toBeUndefined()
     expect(project.targets.provision.dependsOn).toBeUndefined()
-    for (const name of ['server', 'agentos', 'factory']) {
-      expect(project.targets[name].continuous).toBe(true)
-      expect(project.targets[name].dependsOn).toEqual(['provision'])
-    }
+    expect([...NX_TASKS].sort()).toEqual(['agentos', 'factory', 'server', 'status'])
+    for (const name of NX_TASKS) expect(project.targets[name].continuous).toBe(true)
+  })
+
+  it('makes every service depend on provision only', () => {
+    for (const name of NX_SERVICES) expect(project.targets[name].dependsOn).toEqual(['provision'])
+  })
+
+  it('makes status the entry task: it depends on provision and on every service, server FIRST', () => {
+    // The Nx TUI pins the initiating task and its first continuous dependency: server must come first.
+    expect(NX_ENTRY_TASK).toBe('status')
+    expect(NX_SERVICES[0]).toBe('server')
+    expect(project.targets[NX_ENTRY_TASK].dependsOn).toEqual(['provision', ...NX_SERVICES])
   })
 
   it('runs the bundled server with the command and the forwarded arguments', () => {
@@ -46,6 +65,13 @@ describe('generateWorkspace', () => {
       '"/usr/bin/node" "/opt/coday/server.js" "agentos" "--configDir" "/home/me/.coday"'
     )
     expect(project.targets.provision.options.command).toContain('"provision"')
+    expect(project.targets.status.options.command).toContain('"status"')
+  })
+
+  it('is run by the launcher as the single target coday:status (launcher.js is plain JS, it cannot import this)', () => {
+    const launcher = fs.readFileSync(path.join(__dirname, '../../../../web/launcher.js'), 'utf8')
+    expect(launcher).toContain(`['run', '${NX_PROJECT}:${NX_ENTRY_TASK}',`)
+    expect(launcher).not.toContain("'run-many'")
   })
 
   it('is deterministic (no timestamp), so an unchanged workspace is never rewritten', () => {
@@ -94,6 +120,10 @@ describe('writeWorkspace', () => {
 describe('buildForwardArgs', () => {
   it('drops the command word and pins --configDir when it was not given', () => {
     expect(buildForwardArgs(['workspace', '--auth'], '/c')).toEqual(['--auth', '--configDir', '/c'])
+  })
+
+  it('forwards --no-open to every task (the server task reads it)', () => {
+    expect(buildForwardArgs(['--no-open'], '/c')).toEqual(['--no-open', '--configDir', '/c'])
   })
 
   it('keeps an explicit --configDir untouched', () => {

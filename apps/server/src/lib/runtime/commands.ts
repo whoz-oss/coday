@@ -4,7 +4,8 @@
  *   coday-server provision   fast local provisioning (profile, secrets, Java, ports) -> state.json   [Nx task]
  *   coday-server agentos     download, wait for first-run identity, run AgentOS in the foreground     [Nx task]
  *   coday-server factory     wait for AgentOS, download, run the Factory in the foreground            [Nx task]
- *   coday-server server      Express only; ports come from state.json                                [Nx task]
+ *   coday-server server      Express only; ports come from state.json, opens the browser             [Nx task]
+ *   coday-server status      small pane: download %, Java, health, the URL to open                   [Nx task]
  *   workspace                write the generated Nx workspace under <configDir>/runtime/ (launcher only)
  *   (no command) | managed   Express + AgentOS + Factory in ONE process (desktop apps, no TTY)
  *
@@ -26,8 +27,12 @@ import {
   waitForAgentos,
 } from './orchestrator'
 import { logFilePath } from './paths'
-import { createLogSink } from './process'
+import { createLogSink, isHealthy } from './process'
+import { LOOPBACK } from './services'
 import { buildForwardArgs, writeWorkspace } from './workspace'
+import { agentosHealthUrl, openBrowser, openWhenReady, planBrowserOpen, waitForAgentosHealthy } from './open-browser'
+import { createStatusReporter } from './status'
+import { readWebSetup } from './web-setup'
 import { Command } from './command-names'
 import { hideBin } from 'yargs/helpers'
 import { decideProfile } from './profile'
@@ -66,6 +71,7 @@ function listen(app: ReturnType<typeof createWebApp>, options: CodayOptions, por
   })
 }
 
+/** Where the wizard is, for the "waiting for first-run setup" message (always /welcome, whatever the setup state). */
 const welcomeUrlOf = (state: { ports: { express?: number } }): string =>
   `http://localhost:${state.ports.express ?? 3000}/welcome`
 
@@ -93,6 +99,23 @@ export async function runProvision(): Promise<number> {
     log: (m) => console.log(`[provision] ${m}`),
   })
   console.log('[provision] done')
+  return 0
+}
+
+/**
+ * A service task that cannot do its job says so and STAYS in the foreground until the termination signal, instead of
+ * exiting. The launcher runs `nx run coday:status`: Nx marks a continuous dependency that exits while `status` is
+ * unfinished as crashed, and a dependency that fails before `status` has started would SKIP `status` (no pane at
+ * all). The reason is already in the pane and in the log; exit code 0 on signal.
+ */
+async function stayUpAfterFailure(
+  name: string,
+  reason: string,
+  say: (line: string) => void,
+  stopped: Promise<void>
+): Promise<number> {
+  say(`[${name}] ${reason} This pane stays open until you stop Coday (Ctrl+C); the other panes keep running.`)
+  await stopped
   return 0
 }
 
@@ -131,10 +154,15 @@ export async function runAgentosTask(): Promise<number> {
   const ctx = taskContext(options, 'agentos', signal)
   if (process.env.AGENTOS_URL) {
     ctx.sink.write('[agentos] External AgentOS configured (AGENTOS_URL): nothing to run.')
+    await stopped // stay up: an exit would read as a crash of a dependency of `status`
     return 0
   }
   service = await startAgentosService(ctx)
-  if (!service) return signal.aborted ? 0 : 1
+  if (!service) {
+    if (signal.aborted) return 0
+    const say = (line: string) => ctx.sink.write(line)
+    return stayUpAfterFailure('agentos', 'AgentOS could not be started (see above).', say, stopped)
+  }
   if (service.running) {
     const exit = await Promise.race([service.running.exited, stopped.then(() => null)])
     return exit && exit.code ? exit.code : 0
@@ -150,15 +178,20 @@ export async function runFactoryTask(): Promise<number> {
   const ctx = taskContext(options, 'factory', signal)
   if (process.env.FACTORY_URL) {
     ctx.sink.write('[factory] External Factory configured (FACTORY_URL): nothing to run.')
+    await stopped // stay up: an exit would read as a crash of a dependency of `status`
     return 0
   }
   // Download while AgentOS is still coming up: the wizard shows the progress.
   const download = provisionJars(ctx, 'factory')
   ctx.sink.write('[factory] Waiting for AgentOS to be healthy...')
   const agentosUrl = process.env.AGENTOS_URL ?? (await waitForAgentos(options.configDir, signal))
-  if (!agentosUrl) return 0
+  if (!agentosUrl) return 0 // only when the signal aborted the wait
   service = await startFactoryService(ctx, agentosUrl, download)
-  if (!service?.running) return signal.aborted ? 0 : 1
+  if (!service?.running) {
+    if (signal.aborted) return 0
+    const say = (line: string) => ctx.sink.write(line)
+    return stayUpAfterFailure('factory', 'The Factory could not be started (see above).', say, stopped)
+  }
   const exit = await Promise.race([service.running.exited, stopped.then(() => null)])
   return exit && exit.code ? exit.code : 0
 }
@@ -166,17 +199,96 @@ export async function runFactoryTask(): Promise<number> {
 export async function runServerTask(): Promise<number> {
   const options = parseCodayOptions()
   teeConsoleToFile(logFilePath(options.configDir, 'server'))
+  let server: Server | undefined
+  const { signal, stopped } = foreground(async () => {
+    const listening = server
+    if (listening) await new Promise<void>((r) => listening.close(() => r()))
+  })
+  const say = (line: string) => console.error(line)
   const state = readState(options.configDir)
   const port = state?.ports.express
   if (!state?.provisioned || !port) {
-    console.error('Runtime is not provisioned: run the provision task first (coday-server provision).')
-    return 1
+    return stayUpAfterFailure(
+      'server',
+      'Runtime is not provisioned: run the provision task first (coday-server provision).',
+      say,
+      stopped
+    )
   }
   const decision = decideProfile(profileInput(options))
-  const app = createWebApp({ codayOptions: options, setupEnabled: decision.setupEnabled && state.profile === 'laptop' })
-  const server = await listen(app, options, port)
-  const { stopped } = foreground(async () => void (await new Promise<void>((r) => server.close(() => r()))))
+  try {
+    const app = createWebApp({
+      codayOptions: options,
+      setupEnabled: decision.setupEnabled && state.profile === 'laptop',
+    })
+    server = await listen(app, options, port)
+  } catch (error) {
+    return stayUpAfterFailure(
+      'server',
+      `The server could not listen on port ${port}: ${error instanceof Error ? error.message : String(error)}.`,
+      say,
+      stopped
+    )
+  }
+  // Nx mode only (this task never runs elsewhere): never in listen() / runManaged().
+  const plan = planBrowserOpen({
+    noOpenFlag: options.noOpen,
+    env: process.env,
+    auth: options.auth,
+    host: options.host,
+    state,
+    setup: readWebSetup(options.configDir),
+  })
+  const log = (m: string) => console.log(`[server] ${m}`)
+  if ('url' in plan) {
+    // Fire and forget: waiting for AgentOS must never hold the server or its shutdown (`await stopped` below).
+    void openWhenReady(plan, {
+      open: (url) => openBrowser(url, { log }),
+      waitForBackend: () =>
+        waitForAgentosHealthy({
+          healthUrl: () => agentosHealthUrl(process.env.AGENTOS_URL, readState(options.configDir)),
+          signal,
+        }),
+      log,
+      signal,
+    }).catch((error) => log(`Could not open the browser: ${error instanceof Error ? error.message : error}`))
+  } else {
+    log(`Not opening the browser: ${plan.skip}`)
+  }
   await stopped
+  return 0
+}
+
+const STATUS_POLL_MS = 1_000
+
+/** A small pane: prints a line when something meaningful changes, nothing otherwise (see status.ts). */
+export async function runStatusTask(): Promise<number> {
+  const options = parseCodayOptions()
+  const { signal, stopped } = foreground(async () => undefined)
+  const report = createStatusReporter()
+  const external = {
+    ...(process.env.AGENTOS_URL ? { agentos: process.env.AGENTOS_URL } : {}),
+    ...(process.env.FACTORY_URL ? { factory: process.env.FACTORY_URL } : {}),
+  }
+  const probe = async (port: number | undefined, path: string): Promise<boolean> =>
+    port ? isHealthy(`http://${LOOPBACK}:${port}${path}`) : false
+
+  while (!signal.aborted) {
+    const state = readState(options.configDir)
+    const agentosUrl = agentosHealthUrl(external.agentos, state)
+    const [agentos, factory] = await Promise.all([
+      agentosUrl ? isHealthy(agentosUrl) : false, // external: its own URL (what the proxy uses), else the managed port
+      external.factory ? false : probe(state?.ports.factory, '/actuator/health'),
+    ])
+    const lines = report({
+      state,
+      setup: readWebSetup(options.configDir),
+      healthy: { agentos, factory },
+      external,
+    })
+    for (const line of lines) console.log(line)
+    await Promise.race([new Promise((r) => setTimeout(r, STATUS_POLL_MS)), stopped])
+  }
   return 0
 }
 
@@ -262,6 +374,8 @@ export async function runCommand(command: Command | undefined): Promise<number> 
       return runFactoryTask()
     case 'server':
       return runServerTask()
+    case 'status':
+      return runStatusTask()
     default:
       return runManaged()
   }
