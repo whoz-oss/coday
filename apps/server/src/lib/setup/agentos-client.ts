@@ -15,6 +15,20 @@ export interface AgentosProvider {
   userId?: string | null
 }
 
+/** USD per million tokens; AgentOS answers an unset rate as null or omits it. */
+export interface AgentosModelPricing {
+  inputMTokens?: number | null
+  outputMTokens?: number | null
+  cacheRead?: number | null
+  cacheWrite?: number | null
+}
+
+export interface AgentosUser {
+  id?: string
+  externalId?: string
+  isAdmin?: boolean
+}
+
 export interface AgentosModel {
   id?: string
   aiProviderId: string
@@ -24,6 +38,7 @@ export interface AgentosModel {
   description?: string
   contextWindow?: number
   maxCompletionTokens?: number
+  pricing?: AgentosModelPricing | null
 }
 
 export interface AgentosNamespace {
@@ -104,6 +119,11 @@ export class AgentosClient {
 
   updateModel(id: string, model: AgentosModel): Promise<AgentosModel> {
     return this.request('PUT', `/api/ai-models/${id}`, model)
+  }
+
+  /** The calling user. AgentOS creates it (and its personal namespace) on the first request it sees. */
+  getMe(): Promise<AgentosUser> {
+    return this.request('GET', '/api/users/me')
   }
 
   findNamespacesByExternalIds(externalIds: string[]): Promise<AgentosNamespace[]> {

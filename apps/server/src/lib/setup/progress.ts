@@ -131,6 +131,8 @@ export interface StatusFacts {
   agentosHealthy: boolean
   factoryHealthy: boolean
   apply: ApplySnapshot
+  /** `AGENTOS_URL` / `FACTORY_URL`: the service is not run by Coday, so nothing to download nor to check Java for. */
+  external?: { agentos?: boolean; factory?: boolean }
 }
 
 function javaStep(java: JavaStatus | undefined): SetupStatus['steps']['java'] {
@@ -144,10 +146,17 @@ function javaStep(java: JavaStatus | undefined): SetupStatus['steps']['java'] {
  * failure is reported on the `factory` step instead). So the Factory only contributes to the progress while it
  * has not failed.
  */
-function downloadStep(state: RuntimeState | undefined): SetupStatus['steps']['download'] {
+function downloadStep(
+  state: RuntimeState | undefined,
+  external: StatusFacts['external'] = {}
+): SetupStatus['steps']['download'] {
   if (!state) return { state: 'pending' }
+  if (external.agentos && external.factory) return { state: 'done', percent: 100 }
   const { agentos, factory } = state.downloads
-  const overall = overallDownload({ agentos, factory: factory?.state === 'error' ? undefined : factory })
+  const overall = overallDownload({
+    agentos: external.agentos ? undefined : agentos,
+    factory: external.factory || factory?.state === 'error' ? undefined : factory,
+  })
   switch (overall.state) {
     case 'done':
       return { state: 'done', percent: 100 }
@@ -162,12 +171,18 @@ function downloadStep(state: RuntimeState | undefined): SetupStatus['steps']['do
 
 export function buildSetupStatus(facts: StatusFacts): SetupStatus {
   const { setup, state, apply } = facts
+  const external = facts.external ?? {}
   const setupDone = !!setup.setupDone
-  const java = javaStep(state?.java)
-  const download = downloadStep(state)
+  // Java only matters for what Coday runs itself.
+  const java: SetupStatus['steps']['java'] =
+    external.agentos && external.factory ? { state: 'done' } : javaStep(state?.java)
+  const download = downloadStep(state, external)
 
   let agentos: StepStatus
   if (facts.agentosHealthy) agentos = { state: 'done' }
+  // An external AgentOS is not ours to download or start: we only wait for it to answer.
+  else if (external.agentos)
+    agentos = state ? { state: 'running', message: 'Waiting for AgentOS' } : { state: 'pending' }
   else if (download.state === 'error') agentos = { state: 'error', message: download.message }
   else if (java.state === 'blocked') agentos = { state: 'blocked', message: 'Waiting for Java' }
   else if (!setup.identity && state?.profile === 'laptop')

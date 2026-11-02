@@ -12,6 +12,7 @@ import {
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
 import { createRowFilter } from '../../utils/filter-rows'
+import { IntegrationConfigSource, sourceOf } from '../../utils/integration-config-source'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface IntegrationRow {
@@ -19,7 +20,7 @@ interface IntegrationRow {
   readonly config: IntegrationConfig
   readonly scope: IntegrationScope
   readonly scopeLabel: 'Platform' | 'Namespace' | 'Personal'
-  readonly source: 'NEO4J' | 'FILESYSTEM'
+  readonly source: IntegrationConfigSource
   readonly canEdit: boolean
   readonly canDelete: boolean
 }
@@ -125,7 +126,7 @@ export class IntegrationsAllScopesComponent implements OnInit {
     readOnly: boolean
   ): IntegrationRow[] {
     return configs.map((config, index) => {
-      const source = this.sourceOf(config)
+      const source = sourceOf(config)
       const mutable = source === 'NEO4J' && !readOnly
       return {
         key: `${scope}:${config.id ?? index}`,
@@ -137,10 +138,5 @@ export class IntegrationsAllScopesComponent implements OnInit {
         canDelete: mutable,
       }
     })
-  }
-
-  /** Temporary compatibility boundary until agentos-api-client is regenerated from OpenAPI. */
-  private sourceOf(config: IntegrationConfig): IntegrationRow['source'] {
-    return (config as IntegrationConfig & { source?: IntegrationRow['source'] }).source ?? 'NEO4J'
   }
 }

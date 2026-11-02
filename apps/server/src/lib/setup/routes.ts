@@ -28,6 +28,9 @@ export interface SetupRouterOptions {
   /** Laptop profile and no `--auth`: the wizard and its mutations apply. */
   setupEnabled: boolean
   fetchFn?: typeof fetch
+  /** `AGENTOS_URL` / `FACTORY_URL`: services Coday does not run. The status probes them instead of the managed ports. */
+  externalAgentosUrl?: string
+  externalFactoryUrl?: string
   /** Overridable for tests. */
   homeDir?: string
   tracker?: ApplyTracker
@@ -35,6 +38,8 @@ export interface SetupRouterOptions {
 }
 
 const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
+
+const trimSlash = (url: string): string => url.replace(/\/+$/, '')
 
 export const isLoopbackAddress = (address: string | undefined): boolean => !!address && LOOPBACK_ADDRESSES.has(address)
 
@@ -74,9 +79,15 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
     const state = readState(configDir)
     const base = agentosBase(configDir)
     const factoryPort = state?.ports.factory
+    const agentosHealthUrl = options.externalAgentosUrl
+      ? `${trimSlash(options.externalAgentosUrl)}/management/health`
+      : base && `${base}/management/health`
+    const factoryHealthUrl = options.externalFactoryUrl
+      ? `${trimSlash(options.externalFactoryUrl)}/actuator/health`
+      : factoryPort && `http://${LOOPBACK}:${factoryPort}/actuator/health`
     const [agentosHealthy, factoryHealthy] = await Promise.all([
-      base ? isHealthy(`${base}/management/health`, fetchFn) : false,
-      factoryPort ? isHealthy(`http://${LOOPBACK}:${factoryPort}/actuator/health`, fetchFn) : false,
+      agentosHealthUrl ? isHealthy(agentosHealthUrl, fetchFn) : false,
+      factoryHealthUrl ? isHealthy(factoryHealthUrl, fetchFn) : false,
     ])
     res.setHeader('Cache-Control', 'no-store')
     res.json({
@@ -87,6 +98,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         agentosHealthy,
         factoryHealthy,
         apply: tracker.get(),
+        external: { agentos: !!options.externalAgentosUrl, factory: !!options.externalFactoryUrl },
       }),
       defaults: { sharedExchangePath: defaultCodayFolder(options.homeDir) },
       providers: Object.values(MODEL_CATALOGUE).map((p) => ({

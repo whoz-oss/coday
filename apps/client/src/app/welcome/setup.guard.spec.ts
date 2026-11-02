@@ -66,16 +66,16 @@ describe('setup guards', () => {
     expect(refreshStatus).toHaveBeenCalledTimes(1)
   })
 
-  it('sends /welcome back to the app once the setup is done or not applicable', async () => {
-    refreshStatus.mockResolvedValue(status({ setupDone: true }))
-    expect(TestBed.inject(Router).serializeUrl((await run(welcomeGuard)) as UrlTree)).toBe('/home')
-    refreshStatus.mockResolvedValue(status({ mode: 'managed', setupEnabled: false }))
-    expect(TestBed.inject(Router).serializeUrl((await run(welcomeGuard)) as UrlTree)).toBe('/home')
-  })
-
-  it('keeps /welcome reachable on a first run and when the status cannot be read', async () => {
+  it('keeps /welcome reachable in every mode: wizard, loading page after setup, loading page without a wizard', async () => {
     refreshStatus.mockResolvedValue(status())
     expect(await run(welcomeGuard)).toBe(true)
+    refreshStatus.mockResolvedValue(status({ setupDone: true }))
+    expect(await run(welcomeGuard)).toBe(true)
+    refreshStatus.mockResolvedValue(status({ mode: 'managed', setupEnabled: false }))
+    expect(await run(welcomeGuard)).toBe(true)
+  })
+
+  it('keeps /welcome reachable when the status cannot be read', async () => {
     refreshStatus.mockResolvedValue(null)
     expect(await run(welcomeGuard)).toBe(true)
   })

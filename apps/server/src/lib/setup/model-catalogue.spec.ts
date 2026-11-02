@@ -49,6 +49,31 @@ describe('model catalogue shape', () => {
   })
 })
 
+describe('model pricing', () => {
+  it.each(CATALOGUE_PROVIDER_IDS)('%s prices every model, with a cache read cheaper than a fresh input', (id) => {
+    for (const alias of MODEL_ALIASES) {
+      const { pricing } = MODEL_CATALOGUE[id].models[alias]
+      expect(pricing.inputMTokens).toBeGreaterThan(0)
+      expect(pricing.outputMTokens).toBeGreaterThan(pricing.inputMTokens)
+      expect(pricing.cacheRead).toBeGreaterThan(0)
+      expect(pricing.cacheRead).toBeLessThan(pricing.inputMTokens)
+    }
+  })
+
+  it.each(CATALOGUE_PROVIDER_IDS)('%s goes from the priciest alias (FRONTIER) down to the cheapest (SMALL)', (id) => {
+    const inputs = MODEL_ALIASES.map((alias) => MODEL_CATALOGUE[id].models[alias].pricing.inputMTokens)
+    expect(inputs).toEqual([...inputs].sort((a, b) => b - a))
+  })
+
+  it('only gives a cache write rate where AgentOS can use it (the Anthropic API type)', () => {
+    for (const id of CATALOGUE_PROVIDER_IDS) {
+      for (const model of Object.values(MODEL_CATALOGUE[id].models)) {
+        expect(model.pricing.cacheWrite !== undefined).toBe(MODEL_CATALOGUE[id].apiType === 'Anthropic')
+      }
+    }
+  })
+})
+
 describe('priorityForRank', () => {
   it('gives rank 1 the highest priority', () => {
     expect(priorityForRank(1, 3)).toBeGreaterThan(priorityForRank(2, 3))

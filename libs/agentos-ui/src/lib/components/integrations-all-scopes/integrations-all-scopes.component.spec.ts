@@ -1,7 +1,11 @@
 import { ChangeDetectorRef } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router'
-import { IntegrationConfig, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  IntegrationConfig,
+  IntegrationConfigSourceEnum,
+  NamespaceControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of } from 'rxjs'
 import {
   IntegrationConfigStateService,
@@ -18,7 +22,7 @@ describe('IntegrationsAllScopesComponent', () => {
     namespaceId: NS_ID,
     name: 'YAML config',
     integrationType: 'git',
-    source: 'FILESYSTEM',
+    source: IntegrationConfigSourceEnum.FILESYSTEM,
   } as IntegrationConfig
   const nsConfig: IntegrationConfig = { id: 'ns-1', namespaceId: NS_ID, name: 'Slack NS', integrationType: 'slack' }
   const userOnNsConfig: IntegrationConfig = {

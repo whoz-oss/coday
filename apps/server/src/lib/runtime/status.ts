@@ -6,7 +6,7 @@
  * and the URL to open. An unchanged situation prints nothing, however often it is polled.
  */
 
-import { appUrl, openTiming } from './app-url'
+import { appUrl } from './app-url'
 import { JavaStatus } from './java'
 import { RuntimeState, ServiceKind } from './state'
 import { WebSetup } from './web-setup'
@@ -105,11 +105,10 @@ export function createStatusReporter(): (facts: StatusFacts) => string[] {
       }
     }
 
-    // Same rule as the browser open (open-browser.ts): the app (not the wizard) is blank until AgentOS answers.
-    const url = appUrl(state, setup)
+    // Same URL as the browser open (open-browser.ts): the welcome page needs no AgentOS.
+    const url = appUrl(state)
     if (url) {
-      const waiting = openTiming(state, setup) === 'when-backend-ready' && !wasHealthy.agentos
-      const line = waiting ? `Open -> ${url}  (once agentos is healthy)` : `Open -> ${url}`
+      const line = `Open -> ${url}`
       emit('open', line, line)
     }
     return lines

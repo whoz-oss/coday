@@ -23,9 +23,32 @@ export interface ProviderDraft {
   apiKey: string
 }
 
+/**
+ * What `/welcome` shows: the first-run `wizard`, or, once the setup is done, a plain `loading` page that only waits for
+ * the services (no steps, nothing that reads as a setup) and then hands over to the app.
+ */
+export type WelcomeMode = 'wizard' | 'loading'
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const POLL_INTERVAL_MS = 1_500
 const MIN_KEY_LENGTH = 8
+/**
+ * The app only needs AgentOS. The Factory gets this long, once AgentOS is up, to report healthy before the loading
+ * page leaves without it (a Factory that cannot start must not hold the user back).
+ */
+const FACTORY_GRACE_MS = 20_000
+
+const checklistLine = (
+  key: string,
+  label: string,
+  step: { state: StepState; percent?: number; message?: string; version?: string }
+): ChecklistItem => ({
+  key,
+  label,
+  state: step.state,
+  percent: step.percent,
+  message: step.message ?? (key === 'java' ? step.version : undefined),
+})
 
 export const errorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof HttpErrorResponse) {
@@ -62,6 +85,11 @@ export class SetupStateService {
   ])
   readonly folder = signal('')
 
+  /** Decided once, on entering /welcome: `setupDone` flipping at the end of a first run must not change the page. */
+  readonly mode = signal<WelcomeMode>('wizard')
+  private readonly factoryGraceElapsed = signal(false)
+  private factoryGraceTimer: ReturnType<typeof setTimeout> | null = null
+
   readonly busy = signal(false)
   readonly error = signal<string | null>(null)
 
@@ -79,26 +107,34 @@ export class SetupStateService {
   readonly checklist = computed<ChecklistItem[]>(() => {
     const s = this.status()?.steps
     if (!s) return []
-    const line = (
-      key: string,
-      label: string,
-      step: { state: StepState; percent?: number; message?: string; version?: string }
-    ): ChecklistItem => ({
-      key,
-      label,
-      state: step.state,
-      percent: step.percent,
-      message: step.message ?? (key === 'java' ? step.version : undefined),
-    })
     return [
-      line('download', 'Downloading AgentOS and the Factory', s.download),
-      line('java', 'Checking Java 25', s.java),
-      line('agentos', 'Starting AgentOS', s.agentos),
-      line('providers', 'Configuring your AI providers', s.providers),
-      line('models', 'Registering the models', s.models),
-      line('namespace', 'Creating your personal workspace', s.namespace),
-      line('agent', 'Deploying the Coday agent', s.agent),
+      checklistLine('download', 'Downloading AgentOS and the Factory', s.download),
+      checklistLine('java', 'Checking Java 25', s.java),
+      checklistLine('agentos', 'Starting AgentOS', s.agentos),
+      checklistLine('providers', 'Configuring your AI providers', s.providers),
+      checklistLine('models', 'Registering the models', s.models),
+      checklistLine('namespace', 'Creating your personal workspace', s.namespace),
+      checklistLine('agent', 'Deploying the Coday agent', s.agent),
     ]
+  })
+
+  /** The loading page: only the services, none of the setup steps (providers, models, namespace, agent). */
+  readonly loadingChecklist = computed<ChecklistItem[]>(() => {
+    const s = this.status()?.steps
+    if (!s) return []
+    return [
+      checklistLine('download', 'Downloading AgentOS and the Factory', s.download),
+      checklistLine('java', 'Checking Java 25', s.java),
+      checklistLine('agentos', 'Starting AgentOS', s.agentos),
+      checklistLine('factory', 'Starting the Factory', s.factory),
+    ]
+  })
+
+  /** The loading page can hand over to the app: AgentOS is up and the Factory is up, failed, or out of grace. */
+  readonly loadingReady = computed(() => {
+    const s = this.status()?.steps
+    if (!s || s.agentos.state !== 'done') return false
+    return s.factory.state === 'done' || s.factory.state === 'error' || this.factoryGraceElapsed()
   })
   readonly javaBlocked = computed(() => this.status()?.steps.java.state === 'blocked')
   readonly ready = computed(() => {
@@ -114,13 +150,20 @@ export class SetupStateService {
     this.destroyRef.onDestroy(() => this.stopPolling())
   }
 
+  private setStatus(status: SetupStatus): void {
+    this.status.set(status)
+    this.statusError.set(null)
+    if (this.mode() === 'loading' && status.steps.agentos.state === 'done' && !this.factoryGraceTimer) {
+      this.factoryGraceTimer = setTimeout(() => this.factoryGraceElapsed.set(true), FACTORY_GRACE_MS)
+    }
+  }
+
   // --- status -------------------------------------------------------------------------------------
 
   async refreshStatus(): Promise<SetupStatus | null> {
     try {
       const status = await firstValueFrom(this.api.getStatus())
-      this.status.set(status)
-      this.statusError.set(null)
+      this.setStatus(status)
       return status
     } catch (err) {
       this.statusError.set(errorMessage(err, 'Cannot read the setup status.'))
@@ -134,8 +177,7 @@ export class SetupStateService {
       .pipe(exhaustMap(() => this.api.getStatus().pipe(catchError(() => of(null)))))
       .subscribe((status) => {
         if (status) {
-          this.status.set(status)
-          this.statusError.set(null)
+          this.setStatus(status)
         } else {
           this.statusError.set('Lost contact with the Coday server, retrying...')
         }
@@ -145,6 +187,8 @@ export class SetupStateService {
   stopPolling(): void {
     this.poller?.unsubscribe()
     this.poller = null
+    if (this.factoryGraceTimer) clearTimeout(this.factoryGraceTimer)
+    this.factoryGraceTimer = null
   }
 
   /** Called once on entering /welcome: resume where the previous session stopped. */
@@ -155,6 +199,13 @@ export class SetupStateService {
     if (status.identity && !this.email()) this.email.set(status.identity.email)
     // Download and AgentOS startup are already running in the background: show them from the start.
     this.startPolling()
+    if (!(status.mode === 'laptop' && status.setupEnabled && !status.setupDone)) {
+      // No wizard to show (setup done, or a mode without one: --auth, external AgentOS, existing install): only the
+      // loading page, which hands over to the app once AgentOS is up.
+      this.mode.set('loading')
+      this.step.set('progress')
+      return
+    }
     if (status.apply.status === 'running' || status.apply.status === 'error' || status.apply.status === 'done') {
       this.step.set('progress')
     }
@@ -283,6 +334,15 @@ export class SetupStateService {
 
   private applyProviders(): ApplyProviderRequest[] {
     return this.enabledProviders().map((p, index) => ({ id: p.id, apiKey: p.apiKey.trim(), rank: index + 1 }))
+  }
+
+  /**
+   * Where the loading page hands over. The personal namespace id is only known to a server that ran the apply since it
+   * started; without it the app picks the user's first namespace by itself.
+   */
+  loadingTarget(): { path: string; queryParams: Record<string, string> } {
+    const ns = this.namespaceId()
+    return { path: '/home', queryParams: ns ? { ns } : {} }
   }
 
   /** The URL of the personal namespace, on a new case of the default (Coday) agent. */

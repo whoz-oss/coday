@@ -1,6 +1,12 @@
 import { AgentosClient } from './agentos-client'
 import { ApplyValidationError, DEFAULT_AGENT_NAME, runApply, validateApplyInput } from './apply'
-import { MODEL_ALIASES, MODEL_CATALOGUE, priorityForRank } from './model-catalogue'
+import {
+  CatalogueProvider,
+  getCatalogueProvider,
+  MODEL_ALIASES,
+  MODEL_CATALOGUE,
+  priorityForRank,
+} from './model-catalogue'
 import { ApplyTracker } from './progress'
 
 /** In-memory AgentOS behind a mocked fetch: just enough REST to run the apply flow. */
@@ -9,6 +15,8 @@ class FakeAgentos {
   models: Array<Record<string, any>> = []
   namespaces: Array<Record<string, any>> = []
   agents: Array<Record<string, any>> = [{ name: 'Coday', enabled: true }]
+  /** The calling user. A non-admin gets a 403 on platform providers, like the real AgentOS. */
+  me: Record<string, any> = { id: 'user-1', externalId: 'me@acme.com', isAdmin: true }
   calls: Array<{ method: string; path: string; body?: any; headers: Record<string, string> }> = []
   /** Number of GET namespace lookups answered with [] before the namespace shows up. */
   namespaceDelay = 0
@@ -29,6 +37,7 @@ class FakeAgentos {
     const p = url.pathname
     if (method === 'GET' && p === '/api/ai-providers') return json(this.providers)
     if (method === 'POST' && p === '/api/ai-providers') {
+      if (!this.me['isAdmin']) return new Response('Platform-level AiProvider requires Super Admin', { status: 403 })
       const created = { ...body, id: `prov-${++this.seq}` }
       this.providers.push(created)
       return json(created, 201)
@@ -65,6 +74,7 @@ class FakeAgentos {
       this.namespaces[i] = { ...body, id: m[1] }
       return json(this.namespaces[i])
     }
+    if (method === 'GET' && p === '/api/users/me') return json(this.me)
     if (method === 'POST' && p === '/api/agent-configs/search') return json(this.agents)
     return new Response('not found', { status: 404 })
   }) as typeof fetch
@@ -306,6 +316,70 @@ describe('runApply', () => {
     expect(tracker.get().error).toBeDefined()
     expect(tracker.get().error).not.toContain('sk-secret-anthropic-key')
     expect(JSON.stringify(tracker.get())).not.toContain('sk-secret')
+  })
+})
+
+describe('runApply pricing', () => {
+  it('sends the catalogue pricing with every created model', async () => {
+    const { fake, deps } = setup()
+    await runApply(
+      input([
+        { id: 'anthropic', rank: 1 },
+        { id: 'requesty', rank: 2 },
+      ]),
+      deps
+    )
+    for (const provider of fake.providers) {
+      const catalogue = getCatalogueProvider(provider['name'] as string) as CatalogueProvider
+      for (const alias of MODEL_ALIASES) {
+        const model = fake.models.find((m) => m['aiProviderId'] === provider['id'] && m['alias'] === alias)
+        expect(model?.['pricing']).toEqual(catalogue.models[alias].pricing)
+      }
+    }
+  })
+
+  it('adds the pricing to models created before it existed, once, then leaves them alone', async () => {
+    const { fake, deps } = setup()
+    const run = () => runApply(input([{ id: 'anthropic', rank: 1 }]), deps)
+    await run()
+    for (const model of fake.models) delete model['pricing']
+
+    expect(await run()).toBe(true)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(4)
+    expect(fake.models.every((m) => m['pricing'])).toBe(true)
+
+    expect(await run()).toBe(true)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(4)
+  })
+
+  it('reads the nulls AgentOS answers for unset rates as no rate: right prices are not rewritten', async () => {
+    const { fake, deps } = setup()
+    const run = () => runApply(input([{ id: 'requesty', rank: 1 }]), deps)
+    await run()
+    for (const model of fake.models) model['pricing'] = { ...model['pricing'], cacheWrite: null }
+
+    expect(await run()).toBe(true)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
+  })
+})
+
+describe('runApply as the first-run user', () => {
+  it('starts with a call as that user, so AgentOS creates the user and its personal namespace first', async () => {
+    const { fake, deps } = setup()
+    await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)
+    expect(fake.calls[0]).toMatchObject({ method: 'GET', path: '/api/users/me' })
+  })
+
+  it('says why when the user is not an administrator of an AgentOS that already had users', async () => {
+    const { fake, tracker, deps } = setup()
+    fake.me['isAdmin'] = false
+
+    expect(await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)).toBe(false)
+
+    expect(tracker.get().error).toMatch(/not an administrator/)
+    expect(tracker.get().error).toContain(EMAIL)
+    expect(tracker.get().steps.providers.state).toBe('error')
+    expect(fake.providers).toHaveLength(0)
   })
 })
 

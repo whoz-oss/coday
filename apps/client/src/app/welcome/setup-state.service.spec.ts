@@ -211,6 +211,81 @@ describe('SetupStateService', () => {
     })
   })
 
+  describe('loading page (setup already done)', () => {
+    const done = (steps: Partial<SetupStatus['steps']> = {}, patch: Partial<SetupStatus> = {}) =>
+      baseStatus({
+        setupDone: true,
+        apply: { status: 'done' },
+        steps: { ...baseStatus().steps, agentos: { state: 'running' }, ...steps },
+        ...patch,
+      })
+
+    afterEach(() => jest.useRealTimers())
+
+    it('enters the loading mode instead of the wizard, on the progress view', async () => {
+      api.getStatus.mockReturnValue(of(done()))
+      await state.init()
+      expect(state.mode()).toBe('loading')
+      expect(state.step()).toBe('progress')
+    })
+
+    it('stays in the wizard mode on a first run', async () => {
+      await state.init()
+      expect(state.mode()).toBe('wizard')
+    })
+
+    it('enters the loading mode where there is no wizard (existing install, --auth, external AgentOS)', async () => {
+      api.getStatus.mockReturnValue(of(baseStatus({ mode: 'managed', setupEnabled: false })))
+      await state.init()
+      expect(state.mode()).toBe('loading')
+      expect(state.step()).toBe('progress')
+    })
+
+    it('lists the services only, none of the setup steps', async () => {
+      api.getStatus.mockReturnValue(of(done()))
+      await state.init()
+      expect(state.loadingChecklist().map((c) => c.key)).toEqual(['download', 'java', 'agentos', 'factory'])
+    })
+
+    it('is not ready until AgentOS is up', async () => {
+      api.getStatus.mockReturnValue(of(done()))
+      await state.init()
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('is ready once AgentOS and the Factory are up', async () => {
+      api.getStatus.mockReturnValue(of(done({ agentos: { state: 'done' }, factory: { state: 'done' } })))
+      await state.init()
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('does not hold the user back for a Factory that failed', async () => {
+      api.getStatus.mockReturnValue(
+        of(done({ agentos: { state: 'done' }, factory: { state: 'error', message: 'download failed' } }))
+      )
+      await state.init()
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('gives a slow Factory a grace period once AgentOS is up, then leaves without it', async () => {
+      jest.useFakeTimers()
+      api.getStatus.mockReturnValue(of(done({ agentos: { state: 'done' }, factory: { state: 'running' } })))
+      await state.init()
+      expect(state.loadingReady()).toBe(false)
+      jest.advanceTimersByTime(20_000)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('hands over to the app, on the personal namespace when it is known and by itself otherwise', async () => {
+      api.getStatus.mockReturnValue(of(done()))
+      await state.init()
+      expect(state.loadingTarget()).toEqual({ path: '/home', queryParams: {} })
+      api.getStatus.mockReturnValue(of(done({}, { namespaceId: 'ns-1' })))
+      await state.refreshStatus()
+      expect(state.loadingTarget()).toEqual({ path: '/home', queryParams: { ns: 'ns-1' } })
+    })
+  })
+
   describe('init (resume)', () => {
     it('prefills the default folder and the known identity', async () => {
       api.getStatus.mockReturnValue(of(baseStatus({ identity: { email: 'me@acme.com' } })))

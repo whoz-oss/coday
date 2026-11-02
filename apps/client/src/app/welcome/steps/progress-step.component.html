@@ -1,5 +1,5 @@
 <section class="step">
-  @if (state.ready()) {
+  @if (!loading() && state.ready()) {
     <div class="ready" data-testid="ready">
       <div class="ready__badge" aria-hidden="true">✓</div>
       <h2 class="step__title">You are all set</h2>
@@ -9,11 +9,16 @@
       </button>
     </div>
   } @else {
-    <h2 class="step__title">Setting things up</h2>
-    <p class="step__lead">This only happens once. You can keep this page open.</p>
+    @if (loading()) {
+      <h2 class="step__title" data-testid="loading-title">Starting Coday</h2>
+      <p class="step__lead">Just a moment, you will land in the app by yourself.</p>
+    } @else {
+      <h2 class="step__title">Setting things up</h2>
+      <p class="step__lead">This only happens once. You can keep this page open.</p>
+    }
 
     <ul class="checklist" role="list" data-testid="checklist">
-      @for (item of state.checklist(); track item.key) {
+      @for (item of items(); track item.key) {
         <li
           class="item"
           [class]="'item item--' + item.state"
@@ -56,7 +61,7 @@
       </div>
     }
 
-    @if (state.failed()) {
+    @if (!loading() && state.failed()) {
       <div class="callout callout--error" role="alert" data-testid="apply-error">
         <strong>Something went wrong.</strong>
         <span>{{ applyError() }}</span>

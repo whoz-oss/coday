@@ -9,13 +9,16 @@ the Express server, and runs AgentOS and the Factory next to them.
 npx @whoz-oss/coday-web
 ```
 
-In a terminal (Nx mode, see below) the browser opens by itself. On a **first run** it opens the wizard immediately,
-on **`/welcome`** (`http://localhost:3000/welcome`): the wizard only talks to Coday's own server, so it does not wait
-for AgentOS. Otherwise (setup done) it opens `/` **once AgentOS is healthy**, because the app calls AgentOS straight
-away and would show a blank page until then; if AgentOS never becomes healthy (about 3 minutes: Java missing,
-download failed...) nothing is opened and the `server` pane prints the URL to open yourself. Pass `--no-open` or set
-`CODAY_NO_OPEN=1` to keep it closed. Without a terminal (`--managed`, desktop apps) nothing is opened: open the URL
-printed as `Server is running on http://localhost:PORT` yourself. The wizard is a four-step flow:
+In a terminal (Nx mode, see below) the browser opens by itself, always on **`/welcome`**
+(`http://localhost:3000/welcome`), as soon as the Express server listens and whatever the install: that page only talks
+to Coday's own server, so it does not wait for AgentOS. On a **first run** it is the wizard. Otherwise (setup done, or an
+install without a wizard: `--auth`, an external AgentOS, an existing install without a wizard identity) it is a plain
+loading page (download, Java, AgentOS, Factory: nothing that reads as a setup) that follows the startup and leads into
+the app by itself as soon as AgentOS is up. With an external `AGENTOS_URL` / `FACTORY_URL` the page has nothing to
+download or start for that service and only waits for it to answer. Pass `--no-open` or set `CODAY_NO_OPEN=1` to keep
+the browser closed (it is also never opened with `--auth`, a non-loopback host or `CI`). Without a terminal
+(`--managed`, desktop apps) nothing is opened: open the URL printed as `Server is running on http://localhost:PORT`
+yourself. The wizard is a four-step flow:
 
 1. **Your email.** It becomes your user ID and the AgentOS administrator. AgentOS and Factory JARs start downloading in
    the background as soon as the page is open.
@@ -33,8 +36,24 @@ To run the wizard again on a real install, stop Coday and delete `web-setup.json
 (AgentOS fixes its administrator at its first boot). For the local stack of the monorepo, use `web:local -- --fresh`
 instead (see below).
 
-The command is always the same, `npx @whoz-oss/coday-web`: the wizard appears only while the setup is not done,
-otherwise the app opens directly.
+The command is always the same, `npx @whoz-oss/coday-web`, and it always opens `/welcome`: the wizard while the setup is
+not done, the loading page and then the app afterwards. The page appears once the launcher has generated the Nx
+workspace, run `provision` and started the `server` task, which takes a few seconds (the Nx startup is most of it); it
+does not wait for the downloads, Java or the JVMs.
+
+### AgentOS that already has data
+
+The wizard's email is made the AgentOS administrator only when AgentOS boots on an **empty** database. Pointed at a
+database that already holds users, that email is a plain user: it still gets its personal namespace (AgentOS creates it on
+its first request), but only an administrator can create the platform providers and set the files folder, so the apply stops
+on AgentOS's refusal with a message saying so. Use the administrator's email, or an empty `<configDir>/agentos/data`.
+
+### Model prices
+
+The four models of each provider are created with their price (USD per million tokens: input, output, cache read, and
+cache write for Anthropic), so AgentOS can estimate costs. Re-running the setup adds the prices to models created
+before. They come from the providers' price lists and live in `apps/server/src/lib/setup/model-catalogue.ts`; Claude
+Haiku 5.5 is priced at its base tier (prompts up to 100k tokens).
 
 ## How it runs
 
@@ -57,16 +76,15 @@ otherwise the app opens directly.
   ports → `runtime/state.json`); `status`, `server`, `agentos` and `factory` are continuous tasks, each with its own
   pane. The launcher runs ONE target, `nx run coday:status`, and `status` depends on the three services, so Nx starts
   them for it. `agentos` prints *Waiting for first-run setup → http://localhost:3000/welcome* until you gave your email;
-  `factory` waits for AgentOS to be healthy. Once Express listens, the `server` task opens the browser (see
-  *First run* for when); it never does when `--auth`, a non-loopback `--host`, `CI`, `--no-open` or `CODAY_NO_OPEN` say
-  so. The wait for AgentOS runs beside the server and never delays it or its shutdown. For an external AgentOS
-  (`AGENTOS_URL`) it probes that URL's `/management/health`, which is what the proxy targets.
+  `factory` waits for AgentOS to be healthy. As soon as Express listens, the `server` task opens the browser on
+  `/welcome` (see *First run*); it never does when `--auth`, a non-loopback `--host`, `CI`, `--no-open` or
+  `CODAY_NO_OPEN` say so. Nothing waits for AgentOS before opening: the page shows the progress itself. For an external
+  AgentOS (`AGENTOS_URL`) / Factory (`FACTORY_URL`) the setup API probes those URLs, which is what the proxy targets.
 - **The `status` pane.** The Nx TUI has no status bar, so a small dedicated task reads `runtime/state.json` and probes
   the health URLs every second. It prints one line per meaningful change only: `agentos download 42%` (one line per
   10%), `java ok` or the install hint, `agentos healthy :8224`, `factory healthy :8241`, `agentos external <origin>`
-  for an `AGENTOS_URL`/`FACTORY_URL`, and `Open -> http://localhost:3000/welcome` on a first run (`/` once the setup is
-  done; then the line says `(once agentos is healthy)` and is repeated without that note when it is: same rule as
-  the browser). In the
+  for an `AGENTOS_URL`/`FACTORY_URL`, and `Open -> http://localhost:3000/welcome` (the same line whatever the profile and
+  the setup state, same URL as the browser). In the
   TUI, select a pane and pin it next to another one to keep the download and the URL on screen while you read the
   logs of the others; press `?` for the key help of the Nx TUI. At startup `status` is pinned next to `server`: Nx
   pins the initiating task and its first continuous dependency, but only for a single-target run (`nx run`), which is
@@ -141,7 +159,7 @@ pnpm nx run web:local -- --no-open        # do not open the browser (every resta
 pnpm nx run web:local -- --port 3100      # pick the port
 ```
 
-The first time you get the wizard; afterwards the app opens directly on the instance you configured, so you can stop,
+The first time you get the wizard; afterwards the loading page and then the app, on the instance you configured, so you can stop,
 rebuild and restart as often as you like. The target builds the client, factory cockpit, server and web packages plus
 the AgentOS and Factory boot JARs, then `scripts/web-local.ts` works in a **persistent root, `~/.coday-local`**:
 
@@ -218,9 +236,11 @@ than the former thin launcher. Versions of the `platform:npm` packages move in l
 - **The Nx panes do not show / garbled output**: use `--managed` (or `CODAY_NO_NX=1`) for plain console output.
 - **"Waiting for first-run setup" never ends**: open the URL printed in the pane (or the `Open ->` line of the `status`
   pane) and answer the wizard.
-- **The browser did not open**: headless Linux or no `xdg-open`, or AgentOS is not healthy yet (the app is only opened
-  once it is); the `server` pane logs one line and the `status` pane shows the URL.
-- **A blank page on `/`**: AgentOS is not up yet (the app waits up to 90 s for it). Look at the `agentos` pane / log,
-  Java 25 is the usual cause.
+- **The browser did not open**: headless Linux or no `xdg-open`, `--no-open`, `CI`, `--auth` or a non-loopback host; the
+  `server` pane logs one line (`Not opening the browser: <why>`) and the `status` pane shows the URL.
+- **"AgentOS refused: ... is not an administrator"** at the end of the wizard: see *AgentOS that already has data*.
+- **The loading page does not leave**: AgentOS is not up yet. Look at the `agentos` pane / log, Java 25 is the usual
+  cause. With an external `AGENTOS_URL`, check that URL answers on `/management/health`. (Opening `/` yourself
+  meanwhile shows a blank page for up to 90 s, the app waits for AgentOS.)
 - **Java missing or too old**: install Java 25 (the wizard shows the command), the page continues by itself.
 - **Port already in use**: `PORT=3100 npx @whoz-oss/coday-web`.

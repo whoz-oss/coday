@@ -96,6 +96,31 @@ describe('buildSetupStatus', () => {
     ).toBe('done')
   })
 
+  it('has nothing to download, check or start for an external AgentOS and Factory, only to wait for them', () => {
+    const state = laptopState({ profile: 'managed', java: { state: 'missing', hint: 'install java' } })
+    const waiting = buildSetupStatus(facts({ state, setupEnabled: false, external: { agentos: true, factory: true } }))
+    expect(waiting.steps.download).toEqual({ state: 'done', percent: 100 })
+    expect(waiting.steps.java).toEqual({ state: 'done' })
+    expect(waiting.steps.agentos).toEqual({ state: 'running', message: 'Waiting for AgentOS' })
+    expect(waiting.steps.factory.state).toBe('pending')
+
+    const up = buildSetupStatus(
+      facts({ state, setupEnabled: false, external: { agentos: true, factory: true }, agentosHealthy: true })
+    )
+    expect(up.steps.agentos.state).toBe('done')
+    expect(up.steps.factory.state).toBe('running')
+  })
+
+  it('still reports a managed Factory download while only AgentOS is external', () => {
+    const state = laptopState({
+      profile: 'managed',
+      downloads: { factory: { state: 'running', percent: 30 } },
+    })
+    const { steps } = buildSetupStatus(facts({ state, setupEnabled: false, external: { agentos: true } }))
+    expect(steps.download).toEqual({ state: 'running', percent: 30 })
+    expect(steps.java.state).toBe('done')
+  })
+
   it('relays the per-step apply results', () => {
     const tracker = new ApplyTracker()
     tracker.start()

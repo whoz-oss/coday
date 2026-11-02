@@ -12,6 +12,9 @@ export class UsageConfigurationService {
   private readonly configurationState = signal<UsageConfigurationState>('loading')
   readonly state = this.configurationState.asReadonly()
   readonly enabled = computed(() => this.state() === 'enabled')
+  private readonly platformRunCostThreshold = signal<number | null>(null)
+  /** Platform default of the run cost threshold; null while unknown or when the platform sets no limit. */
+  readonly runCostThreshold = this.platformRunCostThreshold.asReadonly()
 
   constructor() {
     this.load()
@@ -31,6 +34,8 @@ export class UsageConfigurationService {
       .subscribe({
         next: (configuration) => {
           const enabled = configuration?.enabled
+          const threshold = configuration?.runCostThreshold
+          this.platformRunCostThreshold.set(typeof threshold === 'number' ? threshold : null)
           this.configurationState.set(typeof enabled === 'boolean' ? (enabled ? 'enabled' : 'disabled') : 'error')
         },
         error: () => this.configurationState.set('error'),

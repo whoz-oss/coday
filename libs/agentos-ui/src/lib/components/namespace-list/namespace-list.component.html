@@ -16,6 +16,7 @@
     <agentos-namespace-item
       [namespace]="ns"
       (selected)="navigateToHome($event.id ?? '')"
+      (configureRequested)="openConfigure($event)"
       (deleteRequested)="deleteNamespace($event)"
       (integrationsRequested)="openIntegrations($event)"
       (aiProvidersRequested)="openAiProviders($event)"

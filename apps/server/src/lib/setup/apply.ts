@@ -2,6 +2,8 @@
  * The "apply" step of the first-run wizard, run by the Express server against AgentOS as the
  * first-run user:
  *
+ *   0. identify   a first call as the first-run user: AgentOS creates the user and its personal namespace on the
+ *                 first request it sees, whatever else its database already holds
  *   1. providers  platform-scope AI providers, one per chosen catalogue entry
  *   2. models     the 4 aliased models of each provider, priority derived from the rank
  *   3. namespace  the personal namespace `user:<email>` (created asynchronously by AgentOS),
@@ -15,7 +17,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { AgentosClient, AgentosHttpError, AgentosNamespace } from './agentos-client'
+import { AgentosClient, AgentosHttpError, AgentosModelPricing, AgentosNamespace } from './agentos-client'
 import { CatalogueProvider, getCatalogueProvider, MODEL_ALIASES, priorityForRank } from './model-catalogue'
 import { ApplyTracker } from './progress'
 
@@ -82,6 +84,21 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 
 const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
+/**
+ * What to tell the user. A 403 from a user known not to be an administrator is not a glitch to retry: the providers and
+ * the files folder are platform settings, and AgentOS only makes the wizard's email its administrator when its database
+ * is empty.
+ */
+function describeFailure(err: unknown, email: string, isAdmin: boolean | undefined): string {
+  if (err instanceof AgentosHttpError && err.status === 403 && isAdmin === false) {
+    return (
+      `AgentOS refused: ${email} is not an administrator of this AgentOS, and only an administrator can configure ` +
+      'the providers and the files folder. Use the email of its administrator, or start again with an empty AgentOS data folder.'
+    )
+  }
+  return describe(err)
+}
+
 /** Never leak an API key into an error message that ends up in the UI or the logs. */
 const redact = (message: string, secrets: string[]): string =>
   secrets.reduce((acc, secret) => (secret ? acc.split(secret).join('***') : acc), message)
@@ -110,6 +127,12 @@ async function ensureProvider(
   return created.id
 }
 
+const PRICING_KEYS = ['inputMTokens', 'outputMTokens', 'cacheRead', 'cacheWrite'] as const
+
+/** AgentOS answers an unset rate as null or leaves it out: both mean "no rate". */
+const samePricing = (a: AgentosModelPricing | null | undefined, b: AgentosModelPricing | undefined): boolean =>
+  PRICING_KEYS.every((key) => (a?.[key] ?? null) === (b?.[key] ?? null))
+
 async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, providerId: string, priority: number) {
   const existing = await deps.client.listModelsOfProvider(providerId)
   for (const alias of MODEL_ALIASES) {
@@ -120,13 +143,19 @@ async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, provi
       alias,
       priority,
       description: wanted.description,
+      pricing: wanted.pricing,
       ...(wanted.contextWindow ? { contextWindow: wanted.contextWindow } : {}),
       ...(wanted.maxCompletionTokens ? { maxCompletionTokens: wanted.maxCompletionTokens } : {}),
     }
     const match = existing.find((m) => m.alias?.toLowerCase() === alias.toLowerCase())
     if (!match) {
       await deps.client.createModel(body)
-    } else if (match.id && (match.apiModelName !== body.apiModelName || match.priority !== priority)) {
+    } else if (
+      match.id &&
+      (match.apiModelName !== body.apiModelName ||
+        match.priority !== priority ||
+        !samePricing(match.pricing, body.pricing))
+    ) {
       await deps.client.updateModel(match.id, body)
     }
   }
@@ -175,9 +204,15 @@ export async function runApply(
   const secrets = input.providers.map((p) => p.apiKey)
   const mkdir = deps.mkdir ?? ((dir: string) => void fs.mkdirSync(dir, { recursive: true }))
   tracker.start()
+  let isAdmin: boolean | undefined
   try {
     tracker.step('providers', 'running', 'Waiting for AgentOS')
     if (!(await deps.waitForAgentos())) throw new Error('AgentOS did not start. Check the agentos log.')
+
+    // First authenticated call, as the wizard user: AgentOS creates the user and its personal namespace on the first
+    // request it sees, whatever else the database holds.
+    tracker.step('providers', 'running', 'Identifying you')
+    isAdmin = (await deps.client.getMe()).isAdmin
 
     // 1. providers + 2. models, in rank order
     const ordered = [...input.providers].sort((a, b) => a.rank - b.rank)
@@ -223,7 +258,7 @@ export async function runApply(
     onDone()
     return true
   } catch (err) {
-    tracker.fail(redact(describe(err), secrets))
+    tracker.fail(redact(describeFailure(err, deps.userEmail, isAdmin), secrets))
     return false
   }
 }

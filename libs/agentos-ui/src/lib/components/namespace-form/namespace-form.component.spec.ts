@@ -1,10 +1,19 @@
+import { signal } from '@angular/core'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  Namespace,
+  NamespaceControllerService,
+  UsageConfigurationControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { of } from 'rxjs'
+import { UserStateService } from '../../services/user-state.service'
 import { NamespaceFormComponent } from './namespace-form.component'
 
 /**
+ * Also covers the inherited run cost threshold: the platform default is only displayed (placeholder and
+ * hint), never written to the namespace, so an empty field is still sent as absent.
+ *
  * Focused on `maxToolRounds`: empty inherits the server default, a whole number >= 1 overrides it, and,
  * because a PUT that omits the field clears an existing override, an edit of another property must send
  * the loaded value back.
@@ -15,7 +24,9 @@ import { NamespaceFormComponent } from './namespace-form.component'
 describe('NamespaceFormComponent (maximum tool rounds)', () => {
   let controller: { getByIdNamespace: jest.Mock; createNamespace: jest.Mock; updateNamespace: jest.Mock }
   let router: { navigate: jest.Mock }
+  let usageConfiguration: { getUsageConfiguration: jest.Mock }
   let routeNamespaceId: string | null
+  let currentUser: ReturnType<typeof signal<{ isAdmin?: boolean } | null>>
   let fixture: ComponentFixture<NamespaceFormComponent>
   let component: NamespaceFormComponent
 
@@ -47,12 +58,17 @@ describe('NamespaceFormComponent (maximum tool rounds)', () => {
 
   beforeEach(() => {
     routeNamespaceId = null
+    // A plain member by default: the shared files folder is only editable by a super-admin.
+    currentUser = signal<{ isAdmin?: boolean } | null>({ isAdmin: false })
     controller = {
       getByIdNamespace: jest.fn(),
       createNamespace: jest.fn().mockReturnValue(of({})),
       updateNamespace: jest.fn().mockReturnValue(of({})),
     }
     router = { navigate: jest.fn() }
+    usageConfiguration = {
+      getUsageConfiguration: jest.fn().mockReturnValue(of({ enabled: true, runCostThreshold: 2 })),
+    }
 
     TestBed.configureTestingModule({
       imports: [NamespaceFormComponent],
@@ -66,6 +82,8 @@ describe('NamespaceFormComponent (maximum tool rounds)', () => {
         },
         { provide: Router, useValue: router },
         { provide: NamespaceControllerService, useValue: controller },
+        { provide: UsageConfigurationControllerService, useValue: usageConfiguration },
+        { provide: UserStateService, useValue: { currentUser, loadMe: jest.fn().mockReturnValue(of({})) } },
       ],
     })
 
@@ -204,6 +222,248 @@ describe('NamespaceFormComponent (maximum tool rounds)', () => {
 
       expect(internals().maxToolRoundsControl.invalid).toBe(false)
       expect(internals().form.invalid).toBe(false)
+    })
+  })
+
+  describe('run cost threshold default', () => {
+    const thresholdInput = (): HTMLInputElement =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('#ns-run-cost-threshold')!
+    const thresholdHint = (): string =>
+      (fixture.nativeElement as HTMLElement).querySelector('#ns-run-cost-threshold-hint')?.textContent?.trim() ?? ''
+
+    function renderWith(configuration: { enabled: boolean; runCostThreshold?: number }): void {
+      usageConfiguration.getUsageConfiguration.mockReturnValue(of(configuration))
+      // The shared service reads the setting once, at injection: build a fresh one for this configuration.
+      TestBed.resetTestingModule()
+      TestBed.configureTestingModule({
+        imports: [NamespaceFormComponent],
+        providers: [
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              snapshot: { paramMap: { get: (key: string) => (key === 'namespaceId' ? routeNamespaceId : null) } },
+              parent: null,
+            },
+          },
+          { provide: Router, useValue: router },
+          { provide: NamespaceControllerService, useValue: controller },
+          { provide: UsageConfigurationControllerService, useValue: usageConfiguration },
+          { provide: UserStateService, useValue: { currentUser, loadMe: jest.fn().mockReturnValue(of({})) } },
+        ],
+      })
+      fixture = TestBed.createComponent(NamespaceFormComponent)
+      component = fixture.componentInstance
+      fixture.detectChanges()
+    }
+
+    it('shows the platform default in the placeholder and the hint while usage tracking is enabled', () => {
+      renderWith({ enabled: true, runCostThreshold: 2 })
+
+      expect(thresholdInput().placeholder).toBe('Platform default: 2')
+      expect(thresholdHint()).toContain('inherit the platform default (2)')
+      expect(thresholdInput().getAttribute('aria-describedby')).toBe('ns-run-cost-threshold-hint')
+    })
+
+    it('says there is no platform limit when the platform defines none', () => {
+      renderWith({ enabled: true })
+
+      expect(thresholdInput().placeholder).toBe('No platform limit')
+      expect(thresholdHint()).toContain('no limit')
+    })
+
+    it('explains that cost limits are inactive while usage tracking is disabled', () => {
+      renderWith({ enabled: false, runCostThreshold: 2 })
+
+      expect(thresholdInput().placeholder).not.toContain('Platform default')
+      expect(thresholdHint()).toContain('inactive')
+      expect(thresholdHint()).toContain('usage tracking is disabled')
+    })
+
+    it('never writes the platform default into a namespace that inherits it', () => {
+      routeNamespaceId = 'ns-1'
+      controller.getByIdNamespace.mockReturnValue(of(existingNamespace()))
+      renderWith({ enabled: true, runCostThreshold: 2 })
+
+      internals().submit()
+
+      const payload = controller.updateNamespace.mock.calls[0][1]
+      expect(payload.runCostThreshold).toBeUndefined()
+      expect(JSON.parse(JSON.stringify(payload))).not.toHaveProperty('runCostThreshold')
+    })
+
+    it('keeps a threshold the namespace sets itself, whatever the platform default is', () => {
+      routeNamespaceId = 'ns-1'
+      controller.getByIdNamespace.mockReturnValue(of(existingNamespace({ runCostThreshold: 5 })))
+      renderWith({ enabled: true, runCostThreshold: 2 })
+
+      internals().submit()
+
+      expect(thresholdInput().value).toBe('5')
+      expect(controller.updateNamespace).toHaveBeenCalledWith('ns-1', expect.objectContaining({ runCostThreshold: 5 }))
+    })
+  })
+
+  describe('shared files folder', () => {
+    const pathControl = () =>
+      (
+        component as unknown as {
+          sharedExchangePathControl: { value: string; invalid: boolean; setValue: (v: string) => void }
+        }
+      ).sharedExchangePathControl
+    const pathInput = (): HTMLInputElement =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('#ns-shared-exchange-path')!
+    const pathHint = (): string =>
+      (fixture.nativeElement as HTMLElement).querySelector('#ns-shared-exchange-path-hint')?.textContent?.trim() ?? ''
+    const sentPayload = () => controller.updateNamespace.mock.calls[0][1]
+
+    describe('as a super-admin', () => {
+      beforeEach(() => currentUser.set({ isAdmin: true }))
+
+      it('shows the stored folder in the field', () => {
+        editing({ sharedExchangePath: '/home/me/Coday' })
+
+        expect(pathControl().value).toBe('/home/me/Coday')
+      })
+
+      it('sends the new folder, trimmed', () => {
+        editing({ sharedExchangePath: '/home/me/Coday' })
+        pathControl().setValue('  /data/shared  ')
+
+        internals().submit()
+
+        expect(controller.updateNamespace).toHaveBeenCalledWith(
+          'ns-1',
+          expect.objectContaining({ sharedExchangePath: '/data/shared' })
+        )
+      })
+
+      it('sends the stored folder back when another field is edited', () => {
+        editing({ sharedExchangePath: '/home/me/Coday' })
+        internals().nameControl.setValue('renamed')
+
+        internals().submit()
+
+        expect(sentPayload().sharedExchangePath).toBe('/home/me/Coday')
+      })
+
+      it('clears a stored folder with a blank value, since an omitted one would keep it', () => {
+        editing({ sharedExchangePath: '/home/me/Coday' })
+        pathControl().setValue('   ')
+
+        internals().submit()
+
+        expect(sentPayload().sharedExchangePath).toBe('')
+      })
+
+      it('sends nothing when there is no folder and none is typed', () => {
+        editing()
+
+        internals().submit()
+
+        expect(sentPayload().sharedExchangePath).toBeUndefined()
+      })
+
+      it('sends the folder typed on create', () => {
+        component.ngOnInit()
+        internals().nameControl.setValue('new-namespace')
+        pathControl().setValue('/data/shared')
+
+        internals().submit()
+
+        expect(controller.createNamespace.mock.calls[0][0].sharedExchangePath).toBe('/data/shared')
+      })
+
+      it.each(['Coday', 'relative/folder', '../escape', '~/Coday'])('rejects the relative path %s', (value) => {
+        component.ngOnInit()
+        internals().nameControl.setValue('new-namespace')
+        pathControl().setValue(value)
+
+        internals().submit()
+
+        expect(pathControl().invalid).toBe(true)
+        expect(controller.createNamespace).not.toHaveBeenCalled()
+      })
+
+      it.each(['/home/me/Coday', '/', 'C:\\Users\\me\\Coday', 'C:/Users/me/Coday', '\\\\server\\share\\Coday'])(
+        'accepts the absolute path %s',
+        (value) => {
+          component.ngOnInit()
+          internals().nameControl.setValue('new-namespace')
+          pathControl().setValue(value)
+
+          internals().submit()
+
+          expect(pathControl().invalid).toBe(false)
+          expect(controller.createNamespace).toHaveBeenCalled()
+        }
+      )
+
+      it('renders an editable field and explains an invalid value', () => {
+        fixture.detectChanges()
+        pathInput().value = 'Coday'
+        pathInput().dispatchEvent(new Event('input'))
+        pathInput().dispatchEvent(new Event('blur'))
+        fixture.detectChanges()
+
+        expect(pathInput().readOnly).toBe(false)
+        expect(pathInput().getAttribute('aria-invalid')).toBe('true')
+        expect(
+          (fixture.nativeElement as HTMLElement).querySelector('#ns-shared-exchange-path-error')?.textContent
+        ).toContain('absolute path')
+        expect(
+          ((fixture.nativeElement as HTMLElement).querySelector('button[type="submit"]') as HTMLButtonElement).disabled
+        ).toBe(true)
+      })
+    })
+
+    describe('as anyone else', () => {
+      it('shows the stored folder, read-only, with the reason', () => {
+        routeNamespaceId = 'ns-1'
+        controller.getByIdNamespace.mockReturnValue(of(existingNamespace({ sharedExchangePath: '/home/me/Coday' })))
+        fixture.detectChanges()
+
+        expect(pathInput().value).toBe('/home/me/Coday')
+        expect(pathInput().readOnly).toBe(true)
+        expect(pathHint()).toContain('Only a super-admin can change this folder.')
+      })
+
+      it('sends the stored folder back untouched, so the server never answers 403', () => {
+        editing({ sharedExchangePath: '/home/me/Coday' })
+        // Even a value forced into the control (the input is read-only) never reaches the payload.
+        pathControl().setValue('/somewhere/else')
+        internals().nameControl.setValue('renamed')
+
+        internals().submit()
+
+        expect(sentPayload().name).toBe('renamed')
+        expect(sentPayload().sharedExchangePath).toBe('/home/me/Coday')
+      })
+
+      it('sends no folder when the namespace has none', () => {
+        editing()
+
+        internals().submit()
+
+        expect(sentPayload().sharedExchangePath).toBeUndefined()
+      })
+
+      it('does not block the save over a stored value it cannot edit', () => {
+        editing({ sharedExchangePath: 'legacy/relative' })
+
+        internals().submit()
+
+        expect(controller.updateNamespace).toHaveBeenCalledWith(
+          'ns-1',
+          expect.objectContaining({ sharedExchangePath: 'legacy/relative' })
+        )
+      })
+
+      it('treats a user not loaded yet as a non-admin', () => {
+        currentUser.set(null)
+        fixture.detectChanges()
+
+        expect(pathInput().readOnly).toBe(true)
+      })
     })
   })
 
