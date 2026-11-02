@@ -129,11 +129,11 @@ user, so no user means no access. One visible consequence: the definition-previe
 (`getDefinition` with `withUserOverlay=false`) resolves no user and therefore does not report the
 namespace exchange tools.
 
-The seeded platform agent `Coday` declares both built-in types in its own `integrations` map, so it
-reaches the shared folder of a personal namespace (the files folder picked in the first-run wizard,
-stored as `sharedExchangePath`) without `namespace-enabled-by-default` being switched on for every
-agent. An already-seeded `Coday` is never rewritten: add `NAMESPACE_FILE_EXCHANGE` to it through the UI
-or the API.
+The default agent `Coday`, created in each personal namespace (a namespace-scoped agent), declares both
+built-in types in its own `integrations` map, so it reaches the shared folder of a personal namespace (the
+files folder picked in the first-run wizard, stored as `sharedExchangePath`) without
+`namespace-enabled-by-default` being switched on for every agent. An existing `Coday` is never rewritten:
+add `NAMESPACE_FILE_EXCHANGE` to it through the UI or the API.
 
 The three states are what the agent form in `agentos-ui` renders, per built-in type: *Platform
 default*, *Enabled*, *Disabled*. "Platform default" is a state the user can see and keep, not a

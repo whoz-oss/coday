@@ -4,11 +4,17 @@
 
 import { findAvailablePort } from '../find-available-port'
 
-/** Conventional ports of the services (application.yml, docs, AGENTOS_URL examples). */
-export const AGENTOS_DEFAULT_PORT = 8124
-/** Default Bolt port of the embedded Neo4j of AgentOS (application-embedded-neo4j.yml). */
-export const AGENTOS_BOLT_DEFAULT_PORT = 7688
-export const FACTORY_DEFAULT_PORT = 8141
+/**
+ * Preferred ports of the PACKAGED stack (npx coday-web, web:local, desktop apps).
+ *
+ * They deliberately differ from the dev ports (AgentOS 8124, Factory 8141, embedded Bolt 7688: the defaults of
+ * application.yml and of `pnpm web:serve:dev`), which are reserved for dev mode. A packaged instance and a dev
+ * stack can therefore run side by side without colliding, and never pick up each other's services.
+ */
+export const AGENTOS_DEFAULT_PORT = 8224
+/** Bolt port of the embedded Neo4j of AgentOS (the dev default, 7688, is left to the dev stack). */
+export const AGENTOS_BOLT_DEFAULT_PORT = 7788
+export const FACTORY_DEFAULT_PORT = 8241
 
 export interface PickedPorts {
   express: number
@@ -18,7 +24,7 @@ export interface PickedPorts {
 }
 
 /**
- * Every service prefers its conventional port (AgentOS 8124, its embedded Neo4j Bolt 7688, Factory 8141)
+ * Every service prefers its packaged-mode port (AgentOS 8224, its embedded Neo4j Bolt 7788, Factory 8241)
  * and falls back to the next free one. Express keeps the port it was given and no service ever shares a
  * port with Express or with another service.
  */

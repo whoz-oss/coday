@@ -6,7 +6,7 @@
  *   2. models     the 4 aliased models of each provider, priority derived from the rank
  *   3. namespace  the personal namespace `user:<email>` (created asynchronously by AgentOS),
  *                 its `sharedExchangePath` set to the chosen folder
- *   4. agent      the Coday agent is deployed and is the namespace default
+ *   4. agent      the default agent is deployed and is the namespace default
  *
  * IDEMPOTENT: every step looks before it writes (providers matched by name at platform scope,
  * models by alias within the provider), so re-running after a partial failure converges.
@@ -19,7 +19,11 @@ import { AgentosClient, AgentosHttpError, AgentosNamespace } from './agentos-cli
 import { CatalogueProvider, getCatalogueProvider, MODEL_ALIASES, priorityForRank } from './model-catalogue'
 import { ApplyTracker } from './progress'
 
-export const CODAY_AGENT_NAME = 'Coday'
+/**
+ * Name of the agent AgentOS creates in each personal namespace (CodayAgentSeeder.AGENT_NAME), deployed there
+ * as a namespace-scoped agent, and which the wizard makes the namespace default.
+ */
+export const DEFAULT_AGENT_NAME = 'Coday'
 
 export interface ApplyProviderInput {
   id: string
@@ -146,16 +150,16 @@ async function findPersonalNamespace(deps: ApplyDeps): Promise<AgentosNamespace>
   throw new Error(`Your personal namespace (${externalId}) was not created by AgentOS in time. Retry in a moment.`)
 }
 
-async function verifyCodayAgent(deps: ApplyDeps, namespaceId: string): Promise<void> {
+async function verifyDefaultAgent(deps: ApplyDeps, namespaceId: string): Promise<void> {
   const attempts = deps.namespaceAttempts ?? 30
   const interval = deps.namespaceIntervalMs ?? 2_000
   const sleep = deps.sleep ?? defaultSleep
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const agents = await deps.client.searchAgents(namespaceId)
-    if (agents.some((a) => a.name.toLowerCase() === CODAY_AGENT_NAME.toLowerCase() && a.enabled !== false)) return
+    if (agents.some((a) => a.name.toLowerCase() === DEFAULT_AGENT_NAME.toLowerCase() && a.enabled !== false)) return
     await sleep(interval)
   }
-  throw new Error(`The ${CODAY_AGENT_NAME} agent is not deployed in your namespace.`)
+  throw new Error(`The ${DEFAULT_AGENT_NAME} agent is not deployed in your namespace.`)
 }
 
 /**
@@ -200,19 +204,19 @@ export async function runApply(
     tracker.setNamespaceId(namespace.id as string)
     mkdir(input.sharedExchangePath)
     const needsUpdate =
-      namespace.sharedExchangePath !== input.sharedExchangePath || namespace.defaultAgentName !== CODAY_AGENT_NAME
+      namespace.sharedExchangePath !== input.sharedExchangePath || namespace.defaultAgentName !== DEFAULT_AGENT_NAME
     if (needsUpdate) {
       await deps.client.updateNamespace(namespace.id as string, {
         ...namespace,
         sharedExchangePath: input.sharedExchangePath,
-        defaultAgentName: CODAY_AGENT_NAME,
+        defaultAgentName: DEFAULT_AGENT_NAME,
       })
     }
     tracker.step('namespace', 'done', input.sharedExchangePath)
 
-    // 4. Coday agent
-    tracker.step('agent', 'running', `Checking the ${CODAY_AGENT_NAME} agent`)
-    await verifyCodayAgent(deps, namespace.id as string)
+    // 4. default agent
+    tracker.step('agent', 'running', `Checking the ${DEFAULT_AGENT_NAME} agent`)
+    await verifyDefaultAgent(deps, namespace.id as string)
     tracker.step('agent', 'done')
 
     tracker.finish()

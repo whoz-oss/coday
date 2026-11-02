@@ -1,5 +1,5 @@
 import { AgentosClient } from './agentos-client'
-import { ApplyValidationError, CODAY_AGENT_NAME, runApply, validateApplyInput } from './apply'
+import { ApplyValidationError, DEFAULT_AGENT_NAME, runApply, validateApplyInput } from './apply'
 import { MODEL_ALIASES, MODEL_CATALOGUE, priorityForRank } from './model-catalogue'
 import { ApplyTracker } from './progress'
 
@@ -128,7 +128,7 @@ describe('runApply', () => {
     expect(mkdir).toHaveBeenCalledWith('/home/me/Coday')
     expect(fake.namespaces[0]).toMatchObject({
       sharedExchangePath: '/home/me/Coday',
-      defaultAgentName: CODAY_AGENT_NAME,
+      defaultAgentName: DEFAULT_AGENT_NAME,
     })
   })
 
@@ -160,7 +160,7 @@ describe('runApply', () => {
   it('uses the catalogue model names, limits and Requesty base URL', async () => {
     const { fake, deps } = setup()
     await runApply(input([{ id: 'requesty', rank: 1 }]), deps)
-    expect(fake.providers[0]).toMatchObject({ apiType: 'OpenAI', baseUrl: 'https://router.requesty.ai/v1' })
+    expect(fake.providers[0]).toMatchObject({ apiType: 'OpenAI', baseUrl: 'https://router.eu.requesty.ai' })
     const big = fake.models.find((m) => m['alias'] === 'BIG')
     expect(big).toMatchObject({
       apiModelName: MODEL_CATALOGUE.requesty.models.BIG.apiModelName,
@@ -259,7 +259,14 @@ describe('runApply', () => {
     expect(fake.count('PUT', /^\/api\/namespaces\//)).toBe(0)
   })
 
-  it('fails when the Coday agent is not deployed', async () => {
+  it('does not take a disabled Coday for the default one', async () => {
+    const { fake, tracker, deps } = setup()
+    fake.agents = [{ name: 'Coday', enabled: false }]
+    expect(await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)).toBe(false)
+    expect(tracker.get().steps.agent.state).toBe('error')
+  })
+
+  it('fails when the default agent is not deployed', async () => {
     const { fake, tracker, deps } = setup()
     fake.agents = []
     expect(await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)).toBe(false)

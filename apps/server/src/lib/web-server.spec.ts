@@ -13,7 +13,12 @@ import { createWebApp } from './web-server'
  */
 describe('createWebApp without AgentOS', () => {
   const html = '<!doctype html><title>fake client</title><app-root></app-root>'
-  const saved = { client: process.env['CODAY_CLIENT_PATH'], cockpit: process.env['CODAY_FACTORY_COCKPIT_PATH'] }
+  const saved = {
+    client: process.env['CODAY_CLIENT_PATH'],
+    cockpit: process.env['CODAY_FACTORY_COCKPIT_PATH'],
+    agentosUrl: process.env['AGENTOS_URL'],
+    factoryUrl: process.env['FACTORY_URL'],
+  }
   let dir: string
   let server: http.Server
   let port: number
@@ -28,6 +33,10 @@ describe('createWebApp without AgentOS', () => {
     }
     process.env['CODAY_CLIENT_PATH'] = client
     process.env['CODAY_FACTORY_COCKPIT_PATH'] = cockpit
+    // Hermetic: an AGENTOS_URL / FACTORY_URL of the developer's shell (e.g. a running dev stack) would make the
+    // proxies reach a real service instead of the dead ports provisioned below.
+    delete process.env['AGENTOS_URL']
+    delete process.env['FACTORY_URL']
     // Provisioned, but nothing listens on the AgentOS / Factory ports (1 is refused at once).
     updateState(
       dir,
@@ -45,6 +54,8 @@ describe('createWebApp without AgentOS', () => {
     for (const [key, value] of [
       ['CODAY_CLIENT_PATH', saved.client],
       ['CODAY_FACTORY_COCKPIT_PATH', saved.cockpit],
+      ['AGENTOS_URL', saved.agentosUrl],
+      ['FACTORY_URL', saved.factoryUrl],
     ] as const) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value

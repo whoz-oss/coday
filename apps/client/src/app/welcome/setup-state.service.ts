@@ -285,7 +285,7 @@ export class SetupStateService {
     return this.enabledProviders().map((p, index) => ({ id: p.id, apiKey: p.apiKey.trim(), rank: index + 1 }))
   }
 
-  /** The URL of the personal namespace, on a new case of the Coday agent. */
+  /** The URL of the personal namespace, on a new case of the default (Coday) agent. */
   landingCommands(): { path: string; queryParams: Record<string, string> } | null {
     const ns = this.namespaceId()
     return ns ? { path: '/home', queryParams: { ns } } : null

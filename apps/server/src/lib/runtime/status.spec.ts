@@ -4,7 +4,7 @@ import { createStatusReporter, StatusFacts } from './status'
 const state = (patch: Partial<RuntimeState> = {}): RuntimeState => ({
   ...initialState('nx', 'laptop'),
   provisioned: true,
-  ports: { express: 3000, agentos: 8124, agentosBolt: 7688, factory: 8141 },
+  ports: { express: 3000, agentos: 8224, agentosBolt: 7788, factory: 8241 },
   java: { state: 'ok', version: 'openjdk 25', major: 25 },
   ...patch,
 })
@@ -92,9 +92,9 @@ describe('status reporter', () => {
     const report = createStatusReporter()
     report(facts())
     const up = facts({ healthy: { agentos: true, factory: false } })
-    expect(report(up)).toEqual(['agentos healthy :8124'])
+    expect(report(up)).toEqual(['agentos healthy :8224'])
     expect(report(up)).toEqual([])
-    expect(report(facts({ healthy: { agentos: true, factory: true } }))).toEqual(['factory healthy :8141'])
+    expect(report(facts({ healthy: { agentos: true, factory: true } }))).toEqual(['factory healthy :8241'])
   })
 
   it('tolerates one or two failed probes of a healthy service, reports it down on the third, and back up', () => {
@@ -106,7 +106,7 @@ describe('status reporter', () => {
     expect(report(flaky)).toEqual([])
     expect(report(flaky)).toEqual(['agentos not responding'])
     expect(report(flaky)).toEqual([])
-    expect(report(up)).toEqual(['agentos healthy :8124'])
+    expect(report(up)).toEqual(['agentos healthy :8224'])
   })
 
   it('does not report a blip as a transition', () => {
@@ -129,7 +129,7 @@ describe('status reporter', () => {
     expect(lines).toContain('factory external http://localhost:8141')
     expect(lines.join('\n')).not.toContain('secret')
     expect(report(facts({ external: { agentos: 'http://agentos.acme.com:8124/x' } }))).not.toContain(
-      'agentos healthy :8124'
+      'agentos healthy :8224'
     )
   })
 
@@ -159,7 +159,7 @@ describe('status reporter', () => {
     expect(report(facts(resume))).toContain('Open -> http://localhost:3000/  (once agentos is healthy)')
     expect(report(facts(resume))).toEqual([])
     expect(report(facts({ ...resume, healthy: { agentos: true, factory: false } }))).toEqual([
-      'agentos healthy :8124',
+      'agentos healthy :8224',
       'Open -> http://localhost:3000/',
     ])
   })
@@ -173,6 +173,6 @@ describe('status reporter', () => {
     )
     const up = report(facts({ state: managed, external, healthy: { agentos: true, factory: false } }))
     expect(up).toContain('Open -> http://localhost:3000/')
-    expect(up).not.toContain('agentos healthy :8124') // external: no managed port to quote
+    expect(up).not.toContain('agentos healthy :8224') // external: no managed port to quote
   })
 })
