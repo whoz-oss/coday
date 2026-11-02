@@ -1,6 +1,7 @@
 package io.whozoss.agentos.chat
 
 import io.whozoss.agentos.agent.AgentInterrupt
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.usage.LlmUsage
@@ -44,7 +45,7 @@ class UsageTrackingChatModel(
     private val apiType: AiApiType,
     private val model: AiModel,
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
-    private val maxToolRounds: Int = 20,
+    private val maxToolRounds: Int = LimitsConfigProperties().agentMaxIterations,
 ) : ChatModel by delegate {
     override fun call(prompt: Prompt): ChatResponse =
         try {

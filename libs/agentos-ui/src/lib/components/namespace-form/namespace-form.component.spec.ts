@@ -30,6 +30,8 @@ describe('NamespaceFormComponent (maximum tool rounds)', () => {
       }
       form: { invalid: boolean }
       submit: () => void
+      onMaxToolRoundsInput: (event: Event) => void
+      maxToolRoundsUnparsable: () => boolean
     }
 
   function existingNamespace(overrides: Partial<Namespace> = {}): Namespace {
@@ -159,6 +161,29 @@ describe('NamespaceFormComponent (maximum tool rounds)', () => {
 
       expect(internals().maxToolRoundsControl.invalid).toBe(true)
       expect(controller.createNamespace).not.toHaveBeenCalled()
+    })
+
+    it('refuses an entry the number input cannot parse instead of clearing the override', () => {
+      // type="number" hands Angular an empty value for "1O0" or "--50", and the control stores null,
+      // which this form reads as "inherit": without the badInput check the override would be wiped.
+      editing({ maxToolRounds: 250 })
+      internals().maxToolRoundsControl.setValue(null)
+      internals().onMaxToolRoundsInput({ target: { validity: { badInput: true } } } as unknown as Event)
+
+      internals().submit()
+
+      expect(internals().maxToolRoundsUnparsable()).toBe(true)
+      expect(controller.updateNamespace).not.toHaveBeenCalled()
+    })
+
+    it('still treats a deliberately emptied field as inherit', () => {
+      editing({ maxToolRounds: 250 })
+      internals().maxToolRoundsControl.setValue(null)
+      internals().onMaxToolRoundsInput({ target: { validity: { badInput: false } } } as unknown as Event)
+
+      internals().submit()
+
+      expect(controller.updateNamespace.mock.calls[0][1].maxToolRounds).toBeUndefined()
     })
 
     it.each([1, 20, 1000, 2147483647])('accepts %s', (value) => {

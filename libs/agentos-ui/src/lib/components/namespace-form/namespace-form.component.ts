@@ -79,6 +79,18 @@ export class NamespaceFormComponent implements OnInit {
     return this.form.controls.maxToolRounds
   }
 
+  /**
+   * `type="number"` reports an empty value for anything it cannot parse ("1O0", "--50", "1e"), and the
+   * number accessor then stores null, which this control reads as "inherit the server default". Without
+   * this flag a mistyped cap would silently clear an existing override, so `validity.badInput` is what
+   * tells an unparseable entry from a deliberately emptied field.
+   */
+  protected readonly maxToolRoundsUnparsable = signal(false)
+
+  protected onMaxToolRoundsInput(event: Event): void {
+    this.maxToolRoundsUnparsable.set((event.target as HTMLInputElement).validity.badInput)
+  }
+
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
@@ -120,7 +132,7 @@ export class NamespaceFormComponent implements OnInit {
   }
 
   protected submit(): void {
-    if (this.form.invalid || this.isSubmitting()) return
+    if (this.form.invalid || this.maxToolRoundsUnparsable() || this.isSubmitting()) return
 
     this.isSubmitting.set(true)
 

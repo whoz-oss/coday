@@ -15,10 +15,24 @@ import org.springframework.core.env.SystemEnvironmentPropertySource
  * guard the value operators actually get, and the environment variable that overrides it.
  */
 class LimitsConfigPropertiesSpec : StringSpec({
+    // The `agentos.limits.*` placeholders read the system environment first, so a developer machine or a
+    // runner that exports AGENTOS_LIMITS_* would otherwise decide what these specs see. Replacing that
+    // property source keeps them about the shipped file; the override spec installs its own the same way.
+    fun ApplicationContextRunner.withSystemEnvironment(variables: Map<String, Any> = emptyMap()) =
+        withInitializer { context ->
+            context.environment.propertySources.addFirst(
+                SystemEnvironmentPropertySource(
+                    StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+                    variables,
+                ),
+            )
+        }
+
     val shipped =
         ApplicationContextRunner()
             .withInitializer(ConfigDataApplicationContextInitializer())
             .withUserConfiguration(LimitsPropertiesTestConfiguration::class.java)
+            .withSystemEnvironment()
 
     "the code default of the platform tool rounds is 1000" {
         LimitsConfigProperties().agentMaxIterations shouldBe 1000
@@ -43,14 +57,8 @@ class LimitsConfigPropertiesSpec : StringSpec({
 
     "AGENTOS_LIMITS_AGENT_MAX_ITERATIONS overrides the shipped platform tool rounds" {
         shipped
-            .withInitializer { context ->
-                context.environment.propertySources.addFirst(
-                    SystemEnvironmentPropertySource(
-                        StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
-                        mapOf<String, Any>("AGENTOS_LIMITS_AGENT_MAX_ITERATIONS" to "250"),
-                    ),
-                )
-            }.run { context ->
+            .withSystemEnvironment(mapOf("AGENTOS_LIMITS_AGENT_MAX_ITERATIONS" to "250"))
+            .run { context ->
                 context.getBean(LimitsConfigProperties::class.java).agentMaxIterations shouldBe 250
             }
     }

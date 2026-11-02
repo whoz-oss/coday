@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
 import io.whozoss.agentos.caseFlow.preferredLanguage
 import io.whozoss.agentos.caseFlow.userDisplayName
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -56,7 +57,7 @@ class AgentAdvanced(
     private val userId: UUID? = null,
     private val userExternalId: String? = null,
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
-    private val maxIterations: Int = 20,
+    private val maxIterations: Int = LimitsConfigProperties().agentMaxIterations,
     override val llmProvider: String,
     override val llmModel: String,
     /** Reasoning effort the provider receives, carried on the agent's messages. */
