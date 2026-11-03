@@ -1,0 +1,16 @@
+# Confluence Cloud CQL search (REST API v1: the v2 API has no search), read-only.
+# Auth: ATLASSIAN_API_TOKEN auth setting (BASIC_AUTH: account email + Atlassian API token).
+name: ATLASSIAN_CONFLUENCE_SEARCH
+integrationType: HTTP_API
+authSettingName: ATLASSIAN_API_TOKEN
+description: "Confluence Cloud CQL search on whoz.atlassian.net"
+parameters:
+  spec:
+    url: https://dac-static.atlassian.com/cloud/confluence/swagger.v3.json
+    refreshMinutes: 1440
+  baseUrl: https://whoz.atlassian.net
+  allowMutations: false
+  includePathPrefixes:
+    - /wiki/rest/api/search
+  maxTools: 8
+  responseFormat: yaml
