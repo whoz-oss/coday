@@ -23,8 +23,9 @@ import org.pf4j.Extension
  * - Otherwise, if the deprecated [McpServerConfig.authToken] is set, it is sent as a Bearer token.
  * - If neither is available, the connection is attempted without authentication.
  *
- * A connection failure is logged in full and rethrown: an empty list means "the server advertises no tools",
- * never "the server could not be reached".
+ * A connection failure is rethrown, not logged here: the caller ([provideTools] is resolved by the service's
+ * ToolResolverService) logs it once, in full, with the integration name and type. An empty list means
+ * "the server advertises no tools", never "the server could not be reached".
  */
 @Extension
 class McpHttpToolProvider : ToolPlugin {
@@ -73,10 +74,11 @@ class McpHttpToolProvider : ToolPlugin {
             // invoking McpConnectionPort.close() when the agent run completes.
             connection.tools.map { McpTool(it, connection, configName) }
         } catch (e: Exception) {
-            // Full detail stays in the server logs. The failure is rethrown, not turned into an empty tool list,
-            // so the caller can tell "failed to load" from "no tools" and report the integration by name.
-            logger.error(e) { "MCP_HTTP integration '$configName': could not connect — ${e.message}" }
-            connection.close()
+            // Rethrown, not turned into an empty tool list, so the caller can tell "failed to load" from "no tools"
+            // and report the integration by name. Not logged here: the caller logs it in full, and logging it
+            // twice would show two stack traces for one failure. A failure to close is attached to it, so the
+            // connection error is the one that reaches the logs.
+            runCatching { connection.close() }.onFailure { e.addSuppressed(it) }
             throw e
         }
     }
