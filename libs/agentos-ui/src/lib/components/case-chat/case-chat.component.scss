@@ -146,6 +146,7 @@
   letter-spacing: 0.02em;
   padding: 2px 7px;
   border: 1px solid var(--color-divider);
+  border-radius: var(--radius-pill, 0);
   white-space: nowrap;
 
   @media (max-width: 600px) {
@@ -932,6 +933,7 @@
     flex-shrink: 0;
     padding: 2px 6px;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-pill, 0);
     color: var(--color-neutral-700);
     font-family: var(--font-body);
     font-size: 11px;
