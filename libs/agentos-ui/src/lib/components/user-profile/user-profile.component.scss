@@ -115,6 +115,7 @@
     display: inline-flex;
     justify-self: start;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     overflow: hidden;
   }
 
@@ -267,6 +268,7 @@
     gap: 3px;
     padding: 10px 16px;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     background: transparent;
     cursor: pointer;
     min-width: 120px;
