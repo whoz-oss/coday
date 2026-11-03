@@ -1,37 +1,41 @@
 <ds-section-header
   title="AI models"
   description="AI models configured for this namespace, including models inherited from the platform."
-  ><button class="ai-models__new" type="button" (click)="openCreateForm()">New AI model</button></ds-section-header
->
-@if (isLoading()) {
-  <p class="ai-models__status" role="status">Loading AI models…</p>
-} @else if (rows().length === 0) {
-  <p class="ai-models__status">No AI models configured.</p>
-} @else {
-  <agentos-table-filter
+  ><agentos-table-filter
     label="Filter AI models"
     placeholder="Filter AI models…"
     [query]="rowFilter.query()"
     (queryChange)="rowFilter.query.set($event)"
   />
+  <button class="ai-models__new" type="button" (click)="openCreateForm()">New AI model</button></ds-section-header
+>
+@if (isLoading()) {
+  <p class="ai-models__status" role="status">Loading AI models…</p>
+} @else if (rows().length === 0) {
+  <p class="ai-models__status">No AI models configured.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="ai-models__status" role="status">No AI models match the current filter.</p>
+} @else {
   <div class="ai-models__table-wrap">
-    <table dsTable>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Provider</th>
-          <th>API model name</th>
-          <th>Scope</th>
-          <th><span class="sr-only">Actions</span></th>
+    <table dsTable role="table" aria-label="AI models">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Provider</th>
+          <th role="columnheader">API model name</th>
+          <th role="columnheader">Scope</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
-          <tr>
-            <td class="ai-models__name">{{ row.model.alias ?? row.model.apiModelName }}</td>
-            <td>{{ row.providerName }}</td>
-            <td class="ai-models__secondary">{{ row.model.apiModelName }}</td>
-            <td>
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="ai-models__name">
+              {{ row.model.alias ?? row.model.apiModelName }}
+            </td>
+            <td role="cell" data-label="Provider">{{ row.providerName }}</td>
+            <td role="cell" data-label="API model name" class="ai-models__secondary">{{ row.model.apiModelName }}</td>
+            <td role="cell" data-label="Scope">
               <div class="ai-models__tags">
                 <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
                   row.scope === 'platform' ? 'Platform' : 'Namespace'
@@ -41,7 +45,7 @@
                 }
               </div>
             </td>
-            <td class="ai-models__actions">
+            <td role="cell" data-label="Actions" data-actions class="ai-models__actions">
               @if (row.scope === 'namespace') {
                 <button type="button" (click)="edit(row)">Edit</button
                 ><button class="ai-models__delete" type="button" (click)="delete(row)">Delete</button>

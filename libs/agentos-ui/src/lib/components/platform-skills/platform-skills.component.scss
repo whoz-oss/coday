@@ -1,9 +1,3 @@
-.platform-skills {
-  display: block;
-}
+@use '../../styles/settings-table' as table;
 
-.platform-skills__error {
-  margin: 0 0 0.75rem;
-  font-size: 0.875rem;
-  color: var(--color-error, var(--red, #dc2626));
-}
+@include table.settings-table;
