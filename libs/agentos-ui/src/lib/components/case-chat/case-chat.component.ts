@@ -550,6 +550,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     const emittedDelegationIds = new Set<string>()
+    // One integration failure is warned once per agent run of a message — delegates included — and again by a
+    // resume, and the events are persisted, so the copies also come back on every reload. The first warning of
+    // a turn carries everything the user needs; the identical ones until their next message are dropped.
+    const warningsThisTurn = new Set<string>()
     // Track the last role to detect group boundaries (consecutive same-role messages).
     // Any non-message item (tool call, technical event) resets the group.
     let lastMessageRole: string | null = null
@@ -559,6 +563,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const role = msg.actor.role
         const isFirstInGroup = role !== lastMessageRole
         lastMessageRole = role
+        // A new user message opens a turn: a failure that persists is worth warning about again.
+        if (role === 'USER') warningsThisTurn.clear()
         items.push({
           kind: 'message',
           event: msg,
@@ -603,8 +609,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       } else if (e.type === 'WarnEvent') {
         // Not a diagnostic either: a warning tells the user something they must know about their run
         // (an integration that failed to load, an agent not found), whatever the technical logs preference.
-        items.push({ kind: 'notice', notice: this.toWarningNotice(e as WarnEvent), eventId: e.id })
-        lastMessageRole = null
+        const warning = e as WarnEvent
+        if (!warningsThisTurn.has(warning.message)) {
+          warningsThisTurn.add(warning.message)
+          items.push({ kind: 'notice', notice: this.toWarningNotice(warning), eventId: e.id })
+          lastMessageRole = null
+        }
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
         // The other execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.

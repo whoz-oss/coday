@@ -797,6 +797,59 @@ describe('CaseChatComponent — submit with attachments', () => {
       ])
     })
 
+    const warnEvent = (id: string, message: string): WarnEvent => ({
+      id,
+      type: 'WarnEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T10:20:31Z',
+      metadata,
+      message,
+    })
+    const userMessage = (id: string): CaseMessageEvent => ({
+      id,
+      type: 'MessageEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T10:20:32Z',
+      metadata,
+      actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'You' },
+      content: [],
+    })
+    const notices = (ref: ComponentRef<CaseChatComponent>): string[] =>
+      ref.instance['timeline']()
+        .filter((item) => item.kind === 'notice')
+        .map((item) => (item.kind === 'notice' ? (item.notice.detail ?? '') : ''))
+
+    it('shows one warning per turn, however many agent runs repeat it', () => {
+      // Every agent run of a message warns, delegates included, and a resume warns again.
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        warnEvent('w-1', 'Integration JIRA failed'),
+        warnEvent('w-2', 'Integration JIRA failed'),
+      ])
+
+      expect(notices(ref)).toEqual(['Integration JIRA failed'])
+    })
+
+    it('warns again once the user has sent another message', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        warnEvent('w-1', 'Integration JIRA failed'),
+        userMessage('m-1'),
+        warnEvent('w-2', 'Integration JIRA failed'),
+      ])
+
+      expect(notices(ref)).toEqual(['Integration JIRA failed', 'Integration JIRA failed'])
+    })
+
+    it('keeps a second warning of the same turn when it says something else', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([warnEvent('w-1', 'Integration JIRA failed'), warnEvent('w-2', 'Agent dev not found')])
+
+      expect(notices(ref)).toEqual(['Integration JIRA failed', 'Agent dev not found'])
+    })
+
     it('carries the event timestamp on the technical item', () => {
       const ref = makeComponent()
       ref.instance['events'].set([running('r-1', '2026-01-01T10:20:30Z')])
