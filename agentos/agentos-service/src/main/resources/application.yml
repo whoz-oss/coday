@@ -116,8 +116,9 @@ agentos:
     worker:
       enabled: ${AGENTOS_GIT_WORKER_ENABLED:true}
     workspaces:
-      # Case-family Git worktrees. On (default): every case keeps its own Exchange directory and
-      # runs exactly as without Git, whatever the namespace's Git association.
+      # Case-family Git worktrees. On (default): a new root case gets a worktree when its namespace
+      # asks for one. Set AGENTOS_GIT_WORKSPACES_ENABLED=false and every case keeps its own Exchange
+      # directory and runs exactly as without Git, whatever the namespace's Git association.
       enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:true}
   encryption:
     key: ${AGENTOS_ENCRYPTION_KEY:NONE}

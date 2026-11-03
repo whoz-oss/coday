@@ -18,6 +18,7 @@ import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -25,11 +26,12 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
-/** Default configuration: `agentos.git.workspaces.enabled` is not set. */
+/** `agentos.git.workspaces.enabled` explicitly off: the shipped application.yml turns it on by default. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
+@TestPropertySource(properties = ["agentos.git.workspaces.enabled=false"])
 class GitWorkspacesDisabledSpec : SuperAdminCallerSpec() {
 
     @Autowired
