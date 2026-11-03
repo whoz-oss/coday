@@ -24,7 +24,7 @@ button {
   color: inherit;
   background: transparent;
   border: 1px solid currentColor;
-  border-radius: 0.4rem;
+  border-radius: var(--radius-pill, 0.4rem);
   padding: 0.5rem 0.75rem;
   margin: 0.3rem 0.5rem 0 0;
   cursor: pointer;

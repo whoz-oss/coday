@@ -444,6 +444,7 @@
     overflow-wrap: anywhere;
     background: var(--color-neutral-100);
     border-left: 2px solid var(--color-accent-300);
+    border-radius: var(--radius-md, 0);
     color: var(--color-text);
 
     @media (max-width: 600px) {
@@ -477,6 +478,7 @@
     align-self: flex-start;
     max-width: 90%;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     background: transparent;
     font-size: 12px;
     overflow: hidden;
@@ -601,6 +603,7 @@
   &__enrichment-phase {
     margin-top: 0.35rem;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     background: var(--color-surface);
     overflow: hidden;
 
@@ -678,6 +681,7 @@
     max-width: 90%;
     padding: 0.55rem 0.75rem;
     border-left: 3px solid var(--color-warning);
+    border-radius: var(--radius-md, 0);
     background: color-mix(in srgb, var(--color-warning) 8%, transparent);
     color: var(--color-text);
     font-size: 0.8rem;
@@ -705,7 +709,7 @@
     color: inherit;
     background: transparent;
     border: 1px solid currentColor;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-pill, 0.4rem);
     cursor: pointer;
   }
 
@@ -748,6 +752,7 @@
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
+    border-radius: var(--radius-md, 0);
     background: var(--color-neutral-200);
     color: var(--color-text);
   }
@@ -848,6 +853,7 @@
     background: var(--color-bg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-lg, 0);
     display: flex;
     flex-direction: column;
 
@@ -883,6 +889,7 @@
     justify-content: center;
     gap: 0.5rem;
     border: 2px dashed var(--color-accent);
+    border-radius: var(--radius-lg, 0);
     background: color-mix(in srgb, var(--color-accent) 8%, transparent);
     color: var(--color-accent);
     font-weight: 600;
@@ -950,6 +957,10 @@
     gap: 12px;
     padding: 10px 16px;
     border-top: 1px solid var(--color-divider);
+    // The bar sits at the bottom edge of the composer, which cannot clip it (the autocomplete list pops out of the
+    // composer): it follows the composer's bottom corners. `inherit` is 0 when the theme has no radius (no change).
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
     background: color-mix(in srgb, var(--color-warning) 6%, transparent);
   }
 
@@ -991,6 +1002,7 @@
     z-index: 10;
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-sm);
     animation: scroll-anchor-in 0.15s ease;
   }
