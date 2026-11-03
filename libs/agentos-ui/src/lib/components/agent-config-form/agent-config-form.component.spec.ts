@@ -28,6 +28,7 @@ import { AgentConfigFormComponent } from './agent-config-form.component'
 describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   let controller: {
     getByIdAgentConfig: jest.Mock
+    listByParentAgentConfig: jest.Mock
     createAgentConfig: jest.Mock
     updateAgentConfig: jest.Mock
   }
@@ -88,6 +89,19 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       allSkillsSelected: { (): boolean; set: (v: boolean) => void }
       skillCatalogueUnavailable: () => boolean
       namedSkillSelectionDropped: () => boolean
+      subAgentRows: () => Array<{
+        selector: string
+        name: string
+        unresolved: boolean
+        pattern: boolean
+        selected: { (): boolean; set: (v: boolean) => void }
+      }>
+      allSubAgentsSelected: { (): boolean; set: (v: boolean) => void }
+      subAgentCandidatesUnavailable: () => boolean
+      namedSubAgentSelectionDropped: () => boolean
+      newSubAgentControl: { setValue: (v: string) => void; value: string }
+      addSubAgent: () => void
+      submitError: () => string | null
       submit: () => void
     }
 
@@ -120,6 +134,9 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       getByIdAgentConfig: jest.fn(),
       createAgentConfig: jest.fn().mockReturnValue(of({})),
       updateAgentConfig: jest.fn().mockReturnValue(of({})),
+      // The delegation candidates: the agents this one could be allowed to delegate to.
+      listByParentAgentConfig: jest.fn().mockReturnValue(of([])),
+      listPlatformAgentsAgentConfig: jest.fn().mockReturnValue(of([])),
     }
     integrationState = {
       loadNamespaceConfigs: jest.fn().mockReturnValue(of([])),
@@ -513,6 +530,250 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
     })
   })
 
+  /**
+   * The allowlist is matched against agent names, so the section offers the names it can reach and
+   * keeps every selector it cannot resolve — a renamed agent, a glob, or an id written before the
+   * server refused it.
+   */
+  describe('sub-agent selectors', () => {
+    const named = (...names: string[]) => names.map((name) => ({ name }) as AgentConfig)
+
+    it('offers the agents of the namespace and selects what the agent declares', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer', 'BugFixer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['BugFixer'] })))
+
+      component.ngOnInit()
+
+      // Disabled agents included: an allowlist entry outlives an agent being unpublished.
+      expect(controller.listByParentAgentConfig).toHaveBeenCalledWith('ns-1', true)
+      const rows = internals().subAgentRows()
+      expect(rows.map((r) => r.name)).toEqual(['Reviewer', 'BugFixer'])
+      expect(rows.find((r) => r.name === 'BugFixer')?.selected()).toBe(true)
+      expect(rows.find((r) => r.name === 'Reviewer')?.selected()).toBe(false)
+    })
+
+    it('matches a selector written in another case, like the server glob does', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['reviewer'] })))
+
+      component.ngOnInit()
+
+      const rows = internals().subAgentRows()
+      expect(rows.length).toBe(1)
+      expect(rows[0].selected()).toBe(true)
+      expect(rows[0].unresolved).toBe(false)
+    })
+
+    it('keeps a selector nothing matches, flagged, so an unrelated save preserves it', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['Retired'] })))
+
+      component.ngOnInit()
+
+      const ghost = internals()
+        .subAgentRows()
+        .find((r) => r.name === 'Retired')!
+      expect(ghost.unresolved).toBe(true)
+      expect(ghost.pattern).toBe(false)
+      expect(ghost.selected()).toBe(true)
+    })
+
+    it('keeps an id as a flagged row, which is where the broken delegation becomes visible', () => {
+      routeAgentConfigId = 'a-1'
+      const id = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: [id] })))
+
+      component.ngOnInit()
+
+      const row = internals()
+        .subAgentRows()
+        .find((r) => r.selector === id)!
+      expect(row.unresolved).toBe(true)
+      expect(row.selected()).toBe(true)
+    })
+
+    it('labels a glob as a pattern rather than as an agent nobody can find', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['*Fixer'] })))
+
+      component.ngOnInit()
+
+      const row = internals()
+        .subAgentRows()
+        .find((r) => r.selector === '*Fixer')!
+      expect(row.pattern).toBe(true)
+      expect(row.selected()).toBe(true)
+    })
+
+    it('hydrates the star selector without listing it as a row', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['*'] })))
+
+      component.ngOnInit()
+
+      expect(internals().allSubAgentsSelected()).toBe(true)
+      expect(internals().subAgentRows().length).toBe(1)
+      expect(internals().subAgentRows()[0].unresolved).toBe(false)
+    })
+
+    it('never offers the edited agent itself, so the form cannot propose a delegation loop', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('agent', 'Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ name: 'agent' })))
+
+      component.ngOnInit()
+
+      expect(
+        internals()
+          .subAgentRows()
+          .map((r) => r.name)
+      ).toEqual(['Reviewer'])
+    })
+
+    it('writes the star alone, and warns while the trade is still reversible', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['Reviewer'] })))
+
+      component.ngOnInit()
+      internals().allSubAgentsSelected.set(true)
+      expect(internals().namedSubAgentSelectionDropped()).toBe(true)
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].subAgents).toEqual(['*'])
+    })
+
+    it('clears the field when the user deselects everything', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['Reviewer'] })))
+
+      component.ngOnInit()
+      internals().subAgentRows()[0].selected.set(false)
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].subAgents).toBeUndefined()
+    })
+
+    it('writes the selected names on create', () => {
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer', 'BugFixer')))
+
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+      internals()
+        .subAgentRows()
+        .find((r) => r.name === 'BugFixer')!
+        .selected.set(true)
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].subAgents).toEqual(['BugFixer'])
+    })
+
+    it('adds a typed glob as a selected row', () => {
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+
+      component.ngOnInit()
+      internals().newSubAgentControl.setValue('*Fixer')
+      internals().addSubAgent()
+
+      const row = internals()
+        .subAgentRows()
+        .find((r) => r.selector === '*Fixer')!
+      expect(row.pattern).toBe(true)
+      expect(row.selected()).toBe(true)
+      expect(internals().newSubAgentControl.value).toBe('')
+    })
+
+    it('ticks the existing row when a name is typed instead of listing it twice', () => {
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+
+      component.ngOnInit()
+      internals().newSubAgentControl.setValue('reviewer')
+      internals().addSubAgent()
+
+      expect(internals().subAgentRows().length).toBe(1)
+      expect(internals().subAgentRows()[0].selected()).toBe(true)
+    })
+
+    it('reads a typed star as the all-agents grant, not as a row', () => {
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
+
+      component.ngOnInit()
+      internals().newSubAgentControl.setValue('*')
+      internals().addSubAgent()
+
+      expect(internals().allSubAgentsSelected()).toBe(true)
+      expect(internals().subAgentRows().length).toBe(1)
+    })
+
+    it('stays fail-safe when the agent list errors, and preserves the declared selectors', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(throwError(() => new Error('boom')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['Reviewer'] })))
+
+      component.ngOnInit()
+
+      expect(internals().subAgentCandidatesUnavailable()).toBe(true)
+      expect(
+        internals()
+          .subAgentRows()
+          .map((r) => r.selector)
+      ).toEqual(['Reviewer'])
+      expect(internals().subAgentRows()[0].selected()).toBe(true)
+    })
+  })
+
+  /**
+   * A refused save used to clear the submitting flag and say nothing, which made a validation
+   * refusal indistinguishable from a dead button.
+   */
+  describe('server refusals', () => {
+    it('shows the reason the server gave', () => {
+      controller.createAgentConfig.mockReturnValue(
+        throwError(() => ({ status: 400, error: { message: 'subAgents holds 1 entity id(s)' } }))
+      )
+
+      component.ngOnInit()
+      internals().nameControl.setValue('fresh')
+      internals().submit()
+
+      expect(internals().submitError()).toBe('subAgents holds 1 entity id(s)')
+    })
+
+    it('falls back to a generic line when the error carries no message', () => {
+      controller.createAgentConfig.mockReturnValue(throwError(() => ({ status: 0 })))
+
+      component.ngOnInit()
+      internals().nameControl.setValue('fresh')
+      internals().submit()
+
+      expect(internals().submitError()).toContain('gave no reason')
+    })
+
+    it('clears a previous refusal when the next save starts', () => {
+      controller.createAgentConfig.mockReturnValueOnce(throwError(() => ({ error: { message: 'nope' } })))
+
+      component.ngOnInit()
+      internals().nameControl.setValue('fresh')
+      internals().submit()
+      expect(internals().submitError()).toBe('nope')
+
+      controller.createAgentConfig.mockReturnValue(of({}))
+      internals().submit()
+
+      expect(internals().submitError()).toBeNull()
+    })
+  })
+
   describe('tri-state select (template)', () => {
     const selectFor = (type: string): HTMLSelectElement => {
       const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(`#built-in-${type}`)
@@ -648,7 +909,7 @@ describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
           useValue: { snapshot: { params: { namespaceId: 'ns-1' }, paramMap: { get: () => null } } },
         },
         { provide: Router, useValue: { navigate: jest.fn() } },
-        { provide: AgentConfigControllerService, useValue: {} },
+        { provide: AgentConfigControllerService, useValue: { listByParentAgentConfig: () => of([]) } },
         { provide: AgentConfigExportService, useValue: {} },
         {
           provide: IntegrationConfigStateService,
@@ -696,6 +957,8 @@ describe('AgentConfigFormComponent (platform-scope skills)', () => {
       getByIdAgentConfig: jest.fn().mockReturnValue(of({ id: 'a-1', name: 'agent', ...config })),
       createAgentConfig: jest.fn().mockReturnValue(of({})),
       updateAgentConfig: jest.fn().mockReturnValue(of({})),
+      listByParentAgentConfig: jest.fn().mockReturnValue(of([])),
+      listPlatformAgentsAgentConfig: jest.fn().mockReturnValue(of([])),
     }
     const skillState = {
       listEffective: jest.fn().mockReturnValue(of([])),

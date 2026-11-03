@@ -73,11 +73,13 @@ data class AgentConfigDto(
                 minLength = 1,
                 implementation = String::class,
                 description =
-                    "Glob patterns controlling which agents this agent may delegate to. " +
+                    "Glob patterns controlling which agents this agent may delegate to, matched against " +
+                        "each agent's name — never its id. An id matches no agent and silently leaves this " +
+                        "agent with no way to delegate, so ids are refused on write. " +
                         "When null or empty, no delegation capability is provided. " +
                         "'*' matches any sequence of characters (anchored, case-insensitive). " +
-                        "Examples: ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, " +
-                        "['Fixer*'] matches FixerHelper/FixerV2.",
+                        "Examples: ['*'] allows all agents, ['Reviewer', 'Fixer'] names two of them, " +
+                        "['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*'] matches FixerHelper/FixerV2.",
             ),
     )
     val subAgents: List<String>? = null,
