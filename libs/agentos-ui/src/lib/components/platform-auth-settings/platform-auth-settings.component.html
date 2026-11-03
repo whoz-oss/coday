@@ -1,17 +1,26 @@
+<ds-section-header title="Platform Auth Settings">
+  <agentos-table-filter
+    label="Filter auth settings"
+    placeholder="Filter auth settings…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button class="settings-table__new" type="button" (click)="openCreateForm()">New auth setting</button>
+</ds-section-header>
+
 <ds-entity-list
+  class="platform-auth-settings__content"
   title="Platform Auth Settings"
-  [items]="(settingItems$ | async) ?? []"
+  [hideTitle]="true"
+  [hideToolbar]="true"
+  [items]="settingItems()"
   [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No platform auth settings defined yet. Add one above."
+  [showCreate]="false"
+  emptyMessage="No platform auth settings defined yet."
   cardMinWidth="400px"
   [itemTemplate]="authSettingItemTpl"
-  (createRequested)="openCreateForm()"
->
-  <button toolbar-start class="platform-auth-settings__back" type="button" (click)="goBack()">&#8592; Admin</button>
-</ds-entity-list>
+/>
 
-<!-- Item template: renders AuthSettingItemComponent for each entity-list card slot -->
 <ng-template #authSettingItemTpl let-item>
   @if (resolveSetting(item.id); as setting) {
     <agentos-auth-setting-item

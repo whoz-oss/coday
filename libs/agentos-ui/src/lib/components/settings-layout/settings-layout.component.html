@@ -1,0 +1,42 @@
+<header class="settings-header">
+  <div class="settings-header__breadcrumb">
+    <ng-content select="[settingsBreadcrumb]" />
+  </div>
+  <div class="settings-header__main">
+    <span class="settings-header__avatar" aria-hidden="true">{{ mark() }}</span>
+    <h1>{{ title() }}</h1>
+    <div class="settings-header__action">
+      <ng-content select="[settingsHeaderAction]" />
+    </div>
+  </div>
+</header>
+
+<div class="settings-layout">
+  <nav class="settings-nav" [attr.aria-label]="navigationLabel()">
+    @for (group of groups(); track group.label) {
+      <section class="settings-nav__group">
+        <h2>{{ group.label }}</h2>
+        @for (item of group.items; track item.label) {
+          @if (!item.hidden) {
+            <a
+              class="settings-nav__item"
+              [routerLink]="item.commands"
+              [queryParams]="item.queryParams ?? null"
+              routerLinkActive="settings-nav__item--active"
+              [routerLinkActiveOptions]="{ exact: item.exact ?? false }"
+              ariaCurrentWhenActive="page"
+              (isActiveChange)="onActiveChange($event, link)"
+              #link
+            >
+              {{ item.label }}
+            </a>
+          }
+        }
+      </section>
+    }
+  </nav>
+
+  <main class="settings-content">
+    <ng-content />
+  </main>
+</div>

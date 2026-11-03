@@ -2,6 +2,12 @@
   title="User groups"
   description="User groups configured for this namespace and the agents and members assigned to each group."
 >
+  <agentos-table-filter
+    label="Filter user groups"
+    placeholder="Filter user groups…"
+    [query]="groupFilter.query()"
+    (queryChange)="groupFilter.query.set($event)"
+  />
   <button class="user-groups__new" type="button" (click)="openCreateForm()">New user group</button>
 </ds-section-header>
 
@@ -10,29 +16,23 @@
 } @else if (groups().length === 0) {
   <p class="user-groups__status">No user groups configured.</p>
 } @else {
-  <agentos-table-filter
-    label="Filter user groups"
-    placeholder="Filter user groups…"
-    [query]="groupFilter.query()"
-    (queryChange)="groupFilter.query.set($event)"
-  />
   <div class="user-groups__table-wrap">
-    <table dsTable>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Agents</th>
-          <th>Members</th>
-          <th><span class="sr-only">Actions</span></th>
+    <table dsTable role="table" aria-label="User groups">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Agents</th>
+          <th role="columnheader">Members</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         @for (group of groupFilter.filteredRows(); track group.userGroupId) {
-          <tr>
-            <td class="user-groups__name">{{ group.name }}</td>
-            <td>{{ group.agentIds.length }}</td>
-            <td>{{ group.userCount }}</td>
-            <td class="user-groups__actions">
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="user-groups__name">{{ group.name }}</td>
+            <td role="cell" data-label="Agents">{{ group.agentIds.length }}</td>
+            <td role="cell" data-label="Members">{{ group.userCount }}</td>
+            <td role="cell" data-label="Actions" data-actions class="user-groups__actions">
               @if (pendingDeleteId() === group.userGroupId) {
                 <span class="user-groups__confirm-label">Delete?</span>
                 <button class="user-groups__delete" type="button" (click)="confirmDelete(group)">Confirm</button>

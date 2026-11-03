@@ -1,0 +1,317 @@
+// Shared table styling for settings pages (header + filter + dsTable + row actions).
+// Mirrors the look of the namespace settings tables; include it once per component:
+//
+//   @use '../../styles/settings-table' as table;
+//   @include table.settings-table;
+// Below 600px a settings table is shown as a stack of cards, with a single DOM and the same
+// @for loop: each <tr> becomes a card, each <td> a "label / value" line.
+//
+// It is driven by attributes only, so it works for tables whose cells carry historical class
+// names (namespace lists) as well as for `settings-table__*` ones. The template provides:
+//   td[data-label="…"]  the column name, rendered on mobile only
+//   td[data-title]        the cell that heads the card (the name; its label is not shown)
+//   td[data-actions]      the footer of the card (row actions / delete confirmation)
+// and ARIA table roles (table/rowgroup/row/columnheader/cell), because changing `display` on table
+// elements makes some browser/screen reader pairs drop the table semantics.
+//
+//   @use '../../styles/settings-table' as table;
+//   @include table.settings-table-cards;
+@mixin settings-table-cards {
+  @media (max-width: 760px) {
+    table.ds-table {
+      position: relative;
+      display: block;
+      width: 100%;
+
+      // Visually hidden, still exposed to assistive technologies (column headers).
+      thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding-top: 12px;
+      }
+
+      tbody tr,
+      tbody tr:hover {
+        display: flex;
+        flex-direction: column;
+        padding: 12px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-divider);
+      }
+
+      td {
+        display: grid;
+        grid-template-columns: minmax(88px, 30%) minmax(0, 1fr);
+        align-items: baseline;
+        gap: 4px 12px;
+        padding: 5px 0;
+        border-bottom: 0;
+        overflow-wrap: anywhere;
+        white-space: normal;
+      }
+
+      td[data-label]::before {
+        // The label is a visual aid only: screen readers already get the column header from the
+        // (visually hidden) <thead>. The second declaration marks the text as decorative where the
+        // alt syntax is supported; other browsers keep the first one.
+        content: attr(data-label);
+        // Interpolated so Sass emits the CSS alt-text syntax verbatim instead of trying to divide.
+        content: #{"attr(data-label) / ''"};
+        color: var(--color-neutral-600);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      td[data-title] {
+        display: block;
+        margin-bottom: 4px;
+        padding: 0 0 6px;
+        border-bottom: 0;
+        font-size: 15px;
+
+        &::before {
+          display: none;
+        }
+      }
+
+      td[data-actions] {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 6px;
+        padding: 10px 0 0;
+        border-top: 1px solid var(--color-divider);
+        text-align: right;
+
+        &::before {
+          display: none;
+        }
+
+        // Both the shared wrapper and the buttons placed directly in the cell by namespace lists.
+        .settings-table__actions {
+          flex-wrap: wrap;
+          width: 100%;
+          white-space: normal;
+        }
+
+        button {
+          min-width: 44px;
+          min-height: 44px;
+          padding: 0 12px;
+        }
+      }
+    }
+  }
+}
+
+@mixin settings-table {
+  .settings-table__new {
+    padding: 7px 12px;
+    border: 1px solid var(--color-accent);
+    border-radius: 0;
+    background: var(--color-accent);
+    color: var(--color-bg);
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+  }
+
+  .settings-table__toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 0 0 1rem;
+
+    // Same compact width as the filter field of ds-entity-list (240px, shrinks on small screens).
+    agentos-table-filter {
+      margin: 0;
+      flex: 0 1 240px;
+      min-width: 80px;
+    }
+
+    .settings-table__new {
+      margin-left: auto;
+    }
+  }
+
+  .settings-table__toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+
+    agentos-table-filter {
+      flex: 0 1 240px;
+      min-width: 80px;
+    }
+
+    .settings-table__new {
+      margin-left: 0;
+      white-space: nowrap;
+    }
+  }
+
+  .settings-table__status {
+    margin: 20px 8px;
+    color: var(--color-text-secondary);
+  }
+
+  .settings-table__error {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-error);
+  }
+
+  .settings-table__wrap {
+    overflow-x: auto;
+  }
+
+  table.ds-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+
+    th {
+      padding: 7px;
+      border-bottom: 1px solid var(--color-divider);
+      color: var(--color-neutral-600);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-align: left;
+      text-transform: uppercase;
+    }
+
+    td {
+      padding: 7px;
+      border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+    }
+
+    tbody tr:hover {
+      background: var(--color-bg-hover);
+    }
+  }
+
+  .settings-table__name {
+    font-weight: 500;
+  }
+
+  .settings-table__secondary {
+    color: var(--color-text-secondary);
+  }
+
+  .settings-table__stacked {
+    display: block;
+  }
+
+  .settings-table__tags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .settings-table__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+
+    button {
+      padding: 4px 7px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--color-accent);
+      cursor: pointer;
+      font: inherit;
+
+      &:hover:not(:disabled) {
+        background: var(--color-accent-100);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 1px;
+      }
+
+      &:disabled {
+        color: var(--color-neutral-600);
+        cursor: default;
+      }
+    }
+
+    .settings-table__delete {
+      color: var(--color-error);
+    }
+  }
+
+  // Mobile toolbar (Users / Groups): namespace picker on its own line, then the filter and the
+  // create button stacked, both full width with a touch-sized target.
+  @media (max-width: 760px) {
+    .settings-table__toolbar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+
+    .settings-table__toolbar-actions {
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      margin-left: 0;
+
+      agentos-table-filter {
+        flex: none;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .settings-table__new {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
+  }
+
+  @include settings-table-cards;
+
+  .settings-table__confirm-label {
+    color: var(--color-text-secondary);
+    font-size: 13px;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}

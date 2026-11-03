@@ -1,23 +1,77 @@
+<ds-section-header title="Platform skills" description="Skills shared across every namespace.">
+  <agentos-table-filter
+    label="Filter skills"
+    placeholder="Filter skills…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button class="settings-table__new" type="button" (click)="openCreateForm()">New skill</button>
+</ds-section-header>
 @if (errorMessage()) {
-  <p class="platform-skills__error" role="alert">{{ errorMessage() }}</p>
+  <p class="settings-table__error" role="alert">{{ errorMessage() }}</p>
 }
-
-<ds-entity-list
-  title="Platform Skills"
-  [items]="(skillItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No platform skills defined yet. Add one above."
-  cardMinWidth="400px"
-  [itemTemplate]="skillItemTpl"
-  (createRequested)="openCreateForm()"
->
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<!-- Item template: renders SkillItemComponent for each entity-list card slot -->
-<ng-template #skillItemTpl let-item>
-  @if (resolveSkill(item.id); as skill) {
-    <agentos-skill-item [skill]="skill" [platformMode]="true" (deleteRequested)="deleteSkill($event)" />
-  }
-</ng-template>
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading skills…</p>
+} @else if (skills().length === 0) {
+  <p class="settings-table__status">No platform skills defined yet.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Platform skills">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Description</th>
+          <th role="columnheader">Resources</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (skill of rowFilter.filteredRows(); track skill.id ?? skill.name) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title>
+              <div class="settings-table__tags">
+                <span class="settings-table__name">{{ skill.name }}</span>
+                @if (skill.readOnly) {
+                  <ds-tag variant="neutral">SKILL.md</ds-tag>
+                }
+              </div>
+            </td>
+            <td role="cell" data-label="Description" class="settings-table__secondary">
+              {{ skill.description || '—' }}
+            </td>
+            <td role="cell" data-label="Resources">{{ resourceCount(skill) }}</td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (pendingDeleteId() === skill.id) {
+                  <span class="settings-table__confirm-label">Delete?</span>
+                  <button
+                    class="settings-table__delete"
+                    type="button"
+                    [attr.aria-label]="'Confirm deletion of ' + skill.name"
+                    (click)="confirmDelete(skill)"
+                  >
+                    Confirm
+                  </button>
+                  <button type="button" (click)="cancelDelete()">Cancel</button>
+                } @else {
+                  <button type="button" [attr.aria-label]="'View ' + skill.name" (click)="inspect(skill)">View</button>
+                  @if (!skill.readOnly) {
+                    <button type="button" [attr.aria-label]="'Edit ' + skill.name" (click)="edit(skill)">Edit</button>
+                    <button
+                      class="settings-table__delete"
+                      type="button"
+                      [attr.aria-label]="'Delete ' + skill.name"
+                      (click)="requestDelete(skill)"
+                    >
+                      Delete
+                    </button>
+                  }
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

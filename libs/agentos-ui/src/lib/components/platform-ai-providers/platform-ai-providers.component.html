@@ -1,25 +1,64 @@
-<ds-entity-list
-  title="Platform AI Providers"
-  [items]="(providerItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No platform AI providers defined yet. Add one above."
-  cardMinWidth="400px"
-  [itemTemplate]="aiProviderItemTpl"
-  (createRequested)="openCreateForm()"
->
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<!-- Item template: renders AiProviderItemComponent for each entity-list card slot -->
-<ng-template #aiProviderItemTpl let-item>
-  @if (resolveProvider(item.id); as provider) {
-    <agentos-ai-provider-item
-      [config]="provider"
-      scope="namespace"
-      [showBadge]="false"
-      (editRequested)="onEdit($event)"
-      (deleteRequested)="onDelete($event)"
-    />
-  }
-</ng-template>
+<ds-section-header title="Platform AI providers" description="AI providers shared across every namespace.">
+  <agentos-table-filter
+    label="Filter AI providers"
+    placeholder="Filter AI providers…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button class="settings-table__new" type="button" (click)="openCreateForm()">New AI provider</button>
+</ds-section-header>
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading AI providers…</p>
+} @else if (providers().length === 0) {
+  <p class="settings-table__status">No platform AI providers defined yet.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Platform AI providers">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">API type</th>
+          <th role="columnheader">Base URL</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (provider of rowFilter.filteredRows(); track provider.id ?? provider.name) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ provider.name }}</td>
+            <td role="cell" data-label="API type">{{ provider.apiType }}</td>
+            <td role="cell" data-label="Base URL" class="settings-table__secondary">{{ provider.baseUrl || '—' }}</td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (pendingDeleteId() === provider.id) {
+                  <span class="settings-table__confirm-label">Delete?</span>
+                  <button
+                    class="settings-table__delete"
+                    type="button"
+                    [attr.aria-label]="'Confirm deletion of ' + provider.name"
+                    (click)="confirmDelete(provider)"
+                  >
+                    Confirm
+                  </button>
+                  <button type="button" (click)="cancelDelete()">Cancel</button>
+                } @else {
+                  <button type="button" [attr.aria-label]="'Edit ' + provider.name" (click)="edit(provider)">
+                    Edit
+                  </button>
+                  <button
+                    class="settings-table__delete"
+                    type="button"
+                    [attr.aria-label]="'Delete ' + provider.name"
+                    (click)="requestDelete(provider)"
+                  >
+                    Delete
+                  </button>
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

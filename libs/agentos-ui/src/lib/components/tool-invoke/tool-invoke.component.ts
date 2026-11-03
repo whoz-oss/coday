@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
-import { ActivatedRoute, Router } from '@angular/router'
+import { ActivatedRoute } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { ToolInvokeStateService } from '../../services/tool-invoke-state.service'
 import { UserStateService } from '../../services/user-state.service'
@@ -34,7 +34,6 @@ type NamespaceOption = Pick<NamespaceListItem, 'id' | 'name'>
 export class ToolInvokeComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly route = inject(ActivatedRoute)
-  private readonly router = inject(Router)
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly userState = inject(UserStateService)
   protected readonly state = inject(ToolInvokeStateService)
@@ -135,9 +134,5 @@ export class ToolInvokeComponent implements OnInit {
   protected formatStructuredOutput(value: unknown): string | null {
     if (value === undefined) return null
     return JSON.stringify(value, null, 2)
-  }
-
-  protected back(): void {
-    this.router.navigate(['/agentos', 'admin'])
   }
 }

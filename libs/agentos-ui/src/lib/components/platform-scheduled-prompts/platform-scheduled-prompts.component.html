@@ -1,24 +1,72 @@
-<ds-entity-list
-  title="Platform Scheduled Prompts"
-  [items]="promptItems()"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No platform scheduled prompts defined yet. Add one above."
-  cardMinWidth="420px"
-  [itemTemplate]="scheduledPromptItemTpl"
-  (createRequested)="openCreateForm()"
->
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<ng-template #scheduledPromptItemTpl let-item>
-  @if (resolvePrompt(item.id); as definition) {
-    <agentos-scheduled-prompt-item
-      [definition]="definition"
-      [platformMode]="true"
-      (enableRequested)="enablePrompt($event)"
-      (disableRequested)="disablePrompt($event)"
-      (deleteRequested)="deletePrompt($event)"
-    />
-  }
-</ng-template>
+<ds-section-header title="Platform scheduled prompts" description="Scheduled prompts shared across every namespace.">
+  <agentos-table-filter
+    label="Filter scheduled prompts"
+    placeholder="Filter scheduled prompts…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button class="settings-table__new" type="button" (click)="openCreateForm()">New scheduled prompt</button>
+</ds-section-header>
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading scheduled prompts…</p>
+} @else if (prompts().length === 0) {
+  <p class="settings-table__status">No platform scheduled prompts defined yet.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Platform scheduled prompts">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Schedule</th>
+          <th role="columnheader">Status</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (prompt of rowFilter.filteredRows(); track prompt.id ?? prompt.name) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title>
+              <span class="settings-table__name settings-table__stacked">{{ prompt.name }}</span>
+              @if (prompt.description) {
+                <span class="settings-table__secondary settings-table__stacked">{{ prompt.description }}</span>
+              }
+            </td>
+            <td role="cell" data-label="Schedule">{{ scheduleLabel(prompt) }}</td>
+            <td role="cell" data-label="Status">
+              <ds-tag [variant]="prompt.enabled ? 'accent' : 'outline'">{{
+                prompt.enabled ? 'Enabled' : 'Disabled'
+              }}</ds-tag>
+            </td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (pendingDeleteId() === prompt.id) {
+                  <span class="settings-table__confirm-label">Delete?</span>
+                  <button
+                    class="settings-table__delete"
+                    type="button"
+                    [attr.aria-label]="'Confirm deletion of ' + prompt.name"
+                    (click)="confirmDelete(prompt)"
+                  >
+                    Confirm
+                  </button>
+                  <button type="button" (click)="cancelDelete()">Cancel</button>
+                } @else {
+                  <button type="button" (click)="toggle(prompt)">{{ prompt.enabled ? 'Disable' : 'Enable' }}</button>
+                  <button type="button" [attr.aria-label]="'Edit ' + prompt.name" (click)="edit(prompt)">Edit</button>
+                  <button
+                    class="settings-table__delete"
+                    type="button"
+                    [attr.aria-label]="'Delete ' + prompt.name"
+                    (click)="requestDelete(prompt)"
+                  >
+                    Delete
+                  </button>
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
