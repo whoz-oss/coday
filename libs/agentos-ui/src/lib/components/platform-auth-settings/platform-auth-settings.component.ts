@@ -1,12 +1,14 @@
-import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AuthSettingDto } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { EntityListComponent, EntityListItem, SectionHeaderComponent } from '@whoz-oss/design-system'
+import { BehaviorSubject, switchMap } from 'rxjs'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
+import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item.component'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
  * PlatformAuthSettingsComponent — list view for platform-level auth settings.
@@ -19,8 +21,9 @@ import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item
  */
 @Component({
   selector: 'agentos-platform-auth-settings',
-  imports: [AsyncPipe, EntityListComponent, AuthSettingItemComponent],
+  imports: [EntityListComponent, SectionHeaderComponent, TableFilterComponent, AuthSettingItemComponent],
   templateUrl: './platform-auth-settings.component.html',
+  styleUrl: './platform-auth-settings.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformAuthSettingsComponent {
@@ -31,6 +34,7 @@ export class PlatformAuthSettingsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
+  protected readonly deletion = createRowDeletionState()
 
   /** Raw platform auth settings, kept for delete lookups. */
   private readonly settings$ = this.refresh$.pipe(
@@ -40,17 +44,16 @@ export class PlatformAuthSettingsComponent {
     })
   )
 
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly settingItems$ = this.settings$.pipe(
-    map((settings) =>
-      settings.map(
-        (s: AuthSettingDto): EntityListItem => ({
-          id: s.id ?? '',
-          name: s.name,
-          description: s.authType,
-        })
-      )
-    )
+  protected readonly settings = signal<AuthSettingDto[]>([])
+  protected readonly rowFilter = createRowFilter(this.settings, (setting) =>
+    [setting.name, setting.authType].filter(Boolean).join(' ')
+  )
+  protected readonly settingItems = computed<EntityListItem[]>(() =>
+    this.rowFilter.filteredRows().map((setting) => ({
+      id: setting.id ?? '',
+      name: setting.name,
+      description: setting.authType,
+    }))
   )
 
   /** Full auth setting objects indexed by id — used to resolve itemTemplate events. */
@@ -59,15 +62,12 @@ export class PlatformAuthSettingsComponent {
   constructor() {
     this.settings$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (settings) => {
+        this.settings.set(settings)
         this.settingsById = new Map(settings.map((s: AuthSettingDto) => [s.id ?? '', s]))
         this.isLoading.set(false)
       },
       error: () => this.isLoading.set(false),
     })
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
   }
 
   protected openCreateForm(): void {
@@ -81,10 +81,11 @@ export class PlatformAuthSettingsComponent {
 
   protected onDelete(setting: AuthSettingDto): void {
     if (!setting.id) return
-    this.state
-      .delete(setting.id, 'platform')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+    this.deletion.execute(setting.id, {
+      request$: this.state.delete(setting.id, 'platform').pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${setting.name}" failed. Try again.`,
+    })
   }
 
   protected resolveSetting(id: string): AuthSettingDto | null {

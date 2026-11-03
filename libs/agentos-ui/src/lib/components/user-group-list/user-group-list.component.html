@@ -1,34 +1,67 @@
-<ds-entity-list
-  title="User Groups"
-  [hideTitle]="hideTitle()"
-  [items]="groupItems()"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No user groups yet. Create one above."
-  cardMinWidth="400px"
-  [itemTemplate]="groupItemTpl"
-  (createRequested)="openCreateForm()"
->
-  @if (backLabel(); as label) {
-    <button toolbar-start class="user-group-list__back" type="button" (click)="onBack()">&#8592; {{ label }}</button>
-  } @else if (namespaces(); as namespaceOptions) {
+<div class="settings-table__toolbar">
+  @if (namespaces(); as namespaceOptions) {
     <agentos-namespace-select
-      toolbar-start
       [namespaces]="namespaceOptions"
       [value]="namespaceId()"
       (valueChange)="onNamespaceChange($event)"
     />
   }
-</ds-entity-list>
-
-<!-- Item template: renders UserGroupItemComponent for each entity-list card slot -->
-<ng-template #groupItemTpl let-item>
-  @if (resolveGroup(item.id); as group) {
-    <agentos-user-group-item
-      [userGroup]="group"
-      [namespaceId]="namespaceId()"
-      [returnTo]="returnTo()"
-      (deleteRequested)="deleteGroup($event)"
+  <div class="settings-table__toolbar-actions">
+    <agentos-table-filter
+      label="Filter user groups"
+      placeholder="Filter user groups…"
+      [query]="groupFilter.query()"
+      (queryChange)="groupFilter.query.set($event)"
     />
-  }
-</ng-template>
+    <button class="settings-table__new" type="button" (click)="openCreateForm()">New user group</button>
+  </div>
+</div>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading user groups…</p>
+} @else if (groups().length === 0) {
+  <p class="settings-table__status">No user groups yet.</p>
+} @else if (groupFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No user groups match the current filter.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="User groups">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Agents</th>
+          <th role="columnheader">Members</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (group of groupFilter.filteredRows(); track group.userGroupId) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ group.name }}</td>
+            <td role="cell" data-label="Agents">{{ group.agentIds.length }}</td>
+            <td role="cell" data-label="Members">{{ group.userCount }}</td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (deletion.confirmingId() !== group.userGroupId) {
+                  <button type="button" [attr.aria-label]="'Edit ' + group.name" (click)="edit(group)">Edit</button>
+                }
+                <agentos-row-delete-action
+                  [rowKey]="group.userGroupId"
+                  [rowLabel]="group.name"
+                  [state]="deletion"
+                  deleteClass="settings-table__delete"
+                  confirmLabelClass="settings-table__confirm-label"
+                  (deleteRequested)="deletion.request(group.userGroupId)"
+                  (deleteConfirmed)="confirmDelete(group)"
+                  (deleteCancelled)="deletion.cancel()"
+                />
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

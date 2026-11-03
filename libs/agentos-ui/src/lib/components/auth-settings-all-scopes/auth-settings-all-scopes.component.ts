@@ -12,6 +12,8 @@ import {
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface AuthSettingRow {
@@ -24,7 +26,7 @@ interface AuthSettingRow {
 
 @Component({
   selector: 'agentos-auth-settings-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './auth-settings-all-scopes.component.html',
   styleUrl: './auth-settings-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,6 +42,7 @@ export class AuthSettingsAllScopesComponent implements OnInit {
   protected readonly isAdmin = signal(false)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<AuthSettingRow[]>([])
+  protected readonly deletion = createRowDeletionState()
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.config.name, row.config.authType, row.scopeLabel].join(' ')
   )
@@ -79,9 +82,12 @@ export class AuthSettingsAllScopesComponent implements OnInit {
     })
   }
 
-  protected delete(row: AuthSettingRow): void {
-    if (!row.canMutate || !row.config.id || !confirm(`Delete auth setting “${row.config.name}”?`)) return
-    this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+  protected confirmDelete(row: AuthSettingRow): void {
+    if (!row.canMutate || !row.config.id) return
+    this.deletion.execute(row.key, {
+      request$: this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)),
+      errorMessage: `Deleting "${row.config.name}" failed. Try again.`,
+    })
   }
 
   protected duplicate(row: AuthSettingRow): void {

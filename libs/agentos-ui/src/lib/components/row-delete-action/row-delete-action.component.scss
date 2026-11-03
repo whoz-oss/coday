@@ -1,0 +1,42 @@
+:host {
+  display: contents;
+}
+
+.row-delete-action__trigger,
+.row-delete-action__confirm,
+.row-delete-action__cancel {
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+}
+
+.row-delete-action__trigger,
+.row-delete-action__confirm {
+  color: var(--color-error, #dc2626);
+}
+
+.row-delete-action__trigger:hover:not(:disabled),
+.row-delete-action__confirm:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-error, #dc2626) 10%, transparent);
+}
+
+.row-delete-action__cancel:hover:not(:disabled) {
+  background: var(--color-accent-100);
+}
+
+.row-delete-action__trigger:focus-visible,
+.row-delete-action__confirm:focus-visible,
+.row-delete-action__cancel:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.row-delete-action__trigger:disabled,
+.row-delete-action__confirm:disabled,
+.row-delete-action__cancel:disabled {
+  color: var(--color-neutral-600);
+  cursor: default;
+}
