@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { resolve } from 'path';
 import { chooseMode, nxArgs, nxEnv, parseWorkspaceDir, resolveConfigDir, serverArgs } from './launcher.js';
 
 test('interactive terminal runs through nx', () => {
@@ -23,6 +24,11 @@ test('configDir: flag forms and default', () => {
   assert.equal(resolveConfigDir(['--auth', '--configDir=/b'], '/h'), '/b');
   assert.equal(resolveConfigDir(['--coday_config_dir', '/c'], '/h'), '/c');
   assert.equal(resolveConfigDir([], '/h'), '/h/.coday');
+});
+
+test('configDir: a relative directory is made absolute, Nx runs from <configDir>/runtime', () => {
+  assert.equal(resolveConfigDir(['--configDir', './my-coday'], '/h'), resolve('my-coday'));
+  assert.equal(resolveConfigDir(['--configDir=my-coday'], '/h'), resolve('my-coday'));
 });
 
 test('the launcher-only flag is not forwarded to the server', () => {

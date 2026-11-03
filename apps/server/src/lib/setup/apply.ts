@@ -40,8 +40,18 @@ export interface ApplyInput {
 
 export class ApplyValidationError extends Error {}
 
-/** Validate the request body; throws ApplyValidationError with a message safe to show the user. */
-export function validateApplyInput(body: unknown): ApplyInput {
+const isSameOrInside = (child: string, parent: string): boolean => {
+  const relative = path.relative(parent, child)
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
+/**
+ * Validate the request body; throws ApplyValidationError with a message safe to show the user.
+ *
+ * `configDir` holds the AgentOS database and exchange, the install secrets and the logs: the files folder, which the
+ * agents read and write, may neither contain it (the home folder, typically) nor be inside it.
+ */
+export function validateApplyInput(body: unknown, configDir?: string): ApplyInput {
   const input = body as Partial<ApplyInput> | undefined
   if (!input || !Array.isArray(input.providers) || input.providers.length === 0) {
     throw new ApplyValidationError('Choose at least one provider and give its API key.')
@@ -61,9 +71,18 @@ export function validateApplyInput(body: unknown): ApplyInput {
   if (typeof input.sharedExchangePath !== 'string' || !path.isAbsolute(input.sharedExchangePath)) {
     throw new ApplyValidationError('The files folder must be an absolute path.')
   }
+  const sharedExchangePath = path.normalize(input.sharedExchangePath)
+  if (configDir) {
+    const own = path.resolve(configDir)
+    if (isSameOrInside(sharedExchangePath, own) || isSameOrInside(own, sharedExchangePath)) {
+      throw new ApplyValidationError(
+        `The files folder cannot contain or be inside ${own}, where Coday keeps its data and keys. Choose another folder.`
+      )
+    }
+  }
   return {
     providers: input.providers.map((p) => ({ id: p.id, apiKey: p.apiKey.trim(), rank: p.rank })),
-    sharedExchangePath: path.normalize(input.sharedExchangePath),
+    sharedExchangePath,
   }
 }
 

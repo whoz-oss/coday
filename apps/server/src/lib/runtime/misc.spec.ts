@@ -6,7 +6,15 @@ import { agentosDataDir } from './paths'
 import { decideProfile } from './profile'
 import { pickPorts } from './ports'
 import { initialState, mergeState, overallDownload, readState, updateState } from './state'
-import { isValidEmail, markSetupDone, normalizeEmail, readIdentityEmail, readWebSetup, saveIdentity } from './web-setup'
+import {
+  agentosDatabaseExists,
+  isValidEmail,
+  markSetupDone,
+  normalizeEmail,
+  readIdentityEmail,
+  readWebSetup,
+  saveIdentity,
+} from './web-setup'
 import { COMMANDS, parseCommand } from './command-names'
 
 let configDir: string
@@ -99,6 +107,14 @@ describe('web-setup', () => {
       setupDoneAt: '2030-01-01T00:00:00.000Z',
     })
     expect(readWebSetup(configDir).setupDone).toBe(true)
+  })
+
+  it('sees the AgentOS database once AgentOS created it, not before', () => {
+    expect(agentosDatabaseExists(configDir)).toBe(false)
+    fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
+    expect(agentosDatabaseExists(configDir)).toBe(false)
+    fs.writeFileSync(path.join(agentosDataDir(configDir), 'neostore'), '')
+    expect(agentosDatabaseExists(configDir)).toBe(true)
   })
 })
 

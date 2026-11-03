@@ -126,12 +126,23 @@ describe('buildForwardArgs', () => {
     expect(buildForwardArgs(['--no-open'], '/c')).toEqual(['--no-open', '--configDir', '/c'])
   })
 
-  it('keeps an explicit --configDir untouched', () => {
+  it('forwards an explicit --configDir once, after the other arguments', () => {
     expect(buildForwardArgs(['--configDir', '/x', '--host', '0.0.0.0'], '/x')).toEqual([
-      '--configDir',
-      '/x',
       '--host',
       '0.0.0.0',
+      '--configDir',
+      '/x',
     ])
+  })
+
+  it('makes a relative --configDir absolute: the tasks run from <configDir>/runtime, not from here', () => {
+    const absolute = path.resolve('my-coday')
+    expect(buildForwardArgs(['--configDir', './my-coday'], './my-coday')).toEqual(['--configDir', absolute])
+    expect(buildForwardArgs(['--configDir=./my-coday', '--auth'], './my-coday')).toEqual([
+      '--auth',
+      '--configDir',
+      absolute,
+    ])
+    expect(buildForwardArgs(['--coday_config_dir', './my-coday'], './my-coday')).toEqual(['--configDir', absolute])
   })
 })

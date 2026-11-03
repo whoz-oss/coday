@@ -57,8 +57,17 @@ export async function waitForAgentos(
  * AgentOS call would fail. The guard waits on the server's `/api/setup/status` (AgentOS health, probed
  * server-side) for up to 90 s, then lets the navigation through anyway so the page can show its own error.
  * It never blocks when the setup API is missing (external AgentOS, older server).
+ *
+ * Only the first guarded navigation waits, every later one shares that wait: once it is over (AgentOS up, or given
+ * up after the timeout) navigating never asks again. AgentOS going down afterwards shows as errors on the pages.
  */
-export const agentosReadyGuard: CanActivateFn = async () => {
-  await waitForAgentos()
-  return true
+export function createAgentosReadyGuard(wait: () => Promise<boolean> = waitForAgentos): CanActivateFn {
+  let firstWait: Promise<boolean> | null = null
+  return async () => {
+    firstWait ??= wait()
+    await firstWait
+    return true
+  }
 }
+
+export const agentosReadyGuard: CanActivateFn = createAgentosReadyGuard()

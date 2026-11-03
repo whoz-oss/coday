@@ -103,18 +103,21 @@ export type IdentityDecision = { ok: true } | { ok: false; status: 403 | 409; me
 /**
  * May the identity be (re)written? It becomes the AgentOS bootstrap admin at ITS first boot, so
  * once AgentOS was spawned with an email, another email would silently not be the admin.
+ * `agentosStarted` only covers the current run (each launch resets it): `agentosHasDatabase` says
+ * an earlier run already booted AgentOS, which keeps its admin in that database.
  */
 export function decideIdentityChange(
   setupEnabled: boolean,
   setup: WebSetup,
   state: RuntimeState | undefined,
-  email: string
+  email: string,
+  agentosHasDatabase = false
 ): IdentityDecision {
   if (!setupEnabled) return { ok: false, status: 403, message: 'First-run setup is not available here.' }
   if (setup.setupDone) return { ok: false, status: 403, message: 'Setup is already done.' }
   const current = setup.identity?.email
   if (current && current === email) return { ok: true }
-  if (current && state?.agentosStarted) {
+  if (current && (state?.agentosStarted || agentosHasDatabase)) {
     return {
       ok: false,
       status: 409,

@@ -9,14 +9,22 @@
  *   POST /api/setup/apply     { providers: [{ id, apiKey, rank }], sharedExchangePath }
  *
  * Every mutating route and the folder browser only answer when `setupEnabled` (laptop profile, no
- * `--auth`) AND the caller is on loopback: this API can read the filesystem and receives API keys.
+ * `--auth`) AND the caller is a page of this machine on loopback: this API can read the filesystem and
+ * receives API keys.
  */
 
 import express, { Router } from 'express'
 import { isHealthy } from '../runtime/process'
 import { LOOPBACK } from '../runtime/services'
 import { readState } from '../runtime/state'
-import { isValidEmail, markSetupDone, normalizeEmail, readWebSetup, saveIdentity } from '../runtime/web-setup'
+import {
+  agentosDatabaseExists,
+  isValidEmail,
+  markSetupDone,
+  normalizeEmail,
+  readWebSetup,
+  saveIdentity,
+} from '../runtime/web-setup'
 import { AgentosClient } from './agentos-client'
 import { ApplyValidationError, runApply, validateApplyInput } from './apply'
 import { browse, BrowseError, defaultCodayFolder, mkdir } from './browse'
@@ -43,6 +51,23 @@ const trimSlash = (url: string): string => url.replace(/\/+$/, '')
 
 export const isLoopbackAddress = (address: string | undefined): boolean => !!address && LOOPBACK_ADDRESSES.has(address)
 
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+const hasLoopbackHostname = (url: string): boolean => {
+  try {
+    return LOOPBACK_HOSTNAMES.has(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The page calling is served from this machine. A loopback socket is not enough: a page of another site whose name was
+ * rebound to 127.0.0.1 (DNS rebinding) reaches the server from loopback, but with its own name in Host and Origin.
+ */
+export const isLoopbackPage = (host: string | undefined, origin: string | undefined): boolean =>
+  !!host && hasLoopbackHostname(`http://${host}`) && (origin === undefined || hasLoopbackHostname(origin))
+
 function agentosBase(configDir: string): string | undefined {
   const port = readState(configDir)?.ports.agentos
   return port ? `http://${LOOPBACK}:${port}` : undefined
@@ -61,7 +86,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
       res.status(403).json({ error: 'First-run setup is not available here.' })
       return
     }
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    if (!isLoopbackAddress(req.socket.remoteAddress) || !isLoopbackPage(req.headers.host, req.headers.origin)) {
       res.status(403).json({ error: 'First-run setup is only available from this machine.' })
       return
     }
@@ -117,7 +142,13 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
       return
     }
     const normalized = normalizeEmail(email)
-    const decision = decideIdentityChange(setupEnabled, readWebSetup(configDir), readState(configDir), normalized)
+    const decision = decideIdentityChange(
+      setupEnabled,
+      readWebSetup(configDir),
+      readState(configDir),
+      normalized,
+      agentosDatabaseExists(configDir)
+    )
     if (!decision.ok) {
       res.status(decision.status).json({ error: decision.message })
       return
@@ -159,7 +190,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
     }
     let input
     try {
-      input = validateApplyInput(req.body)
+      input = validateApplyInput(req.body, configDir)
     } catch (err) {
       res.status(400).json({ error: err instanceof ApplyValidationError ? err.message : 'Invalid request.' })
       return

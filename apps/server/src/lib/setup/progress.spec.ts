@@ -204,6 +204,14 @@ describe('decideIdentityChange', () => {
     })
   })
 
+  it('still refuses after a restart when an earlier run created the AgentOS database', () => {
+    const restarted = laptopState({ agentosStarted: false })
+    expect(decideIdentityChange(true, { identity: { email: 'old@b.co' } }, restarted, email, true)).toMatchObject({
+      ok: false,
+      status: 409,
+    })
+  })
+
   it('accepts re-sending the same identity after AgentOS started (page reload)', () => {
     const started = laptopState({ agentosStarted: true })
     expect(decideIdentityChange(true, { identity: { email } }, started, email)).toEqual({ ok: true })
