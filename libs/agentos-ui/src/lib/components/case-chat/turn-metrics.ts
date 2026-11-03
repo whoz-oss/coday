@@ -1,4 +1,6 @@
 import { AgentFinishedEvent, CaseEvent, LlmUsage } from '@whoz-oss/agentos-api-client'
+// The same compact form the usage panel uses: one rule for token counts, not two.
+export { formatTokenCount } from '../../pipes/token-count.pipe'
 
 /**
  * What one agent turn cost, shown under the answer it produced.
@@ -112,13 +114,4 @@ export function formatTurnDuration(durationMs: number): string {
   const minutes = Math.floor(durationMs / 60_000)
   const seconds = Math.round((durationMs % 60_000) / 1000)
   return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`
-}
-
-/** Tokens in the compact form the status bars of comparable agents use: `845`, `12.3k`, `1.2m`. */
-export function formatTokenCount(tokens: number): string {
-  const safe = Math.max(0, tokens)
-  if (safe >= 1_000_000) return `${(safe / 1_000_000).toFixed(1)}m`
-  if (safe >= 10_000) return `${Math.round(safe / 1000)}k`
-  if (safe >= 1000) return `${(safe / 1000).toFixed(1)}k`
-  return String(Math.round(safe))
 }

@@ -12,21 +12,46 @@
     >
       <summary>
         @if (state.paused || state.pausedCases.length > 0) {
-          <strong>Paused · cost threshold reached</strong>
+          <span class="usage__title usage__title--paused">Paused · cost threshold reached</span>
         } @else {
-          <strong>Usage</strong>
+          <span class="usage__title">Usage</span>
         }
-        <span>{{ state.unknownCostCount > 0 ? 'At least ' : '' }}{{ state.cost | agentosCost }} this run</span>
-        @if (state.runCostThreshold !== null && state.runCostThreshold !== undefined) {
-          <span> / {{ state.runCostThreshold | agentosCost }} threshold</span>
-        }
+        <!-- A readout, not a sentence: four figures, each under the word that says what it is. -->
+        <dl class="usage__figures">
+          <div class="usage__figure">
+            <dt class="usage__figure-label">this run</dt>
+            <dd class="usage__figure-value usage__figure-value--strong">
+              {{ state.cost | agentosCost: state.unknownCostCount }}
+            </dd>
+          </div>
+          @if (state.runCostThreshold !== null && state.runCostThreshold !== undefined) {
+            <div class="usage__figure">
+              <dt class="usage__figure-label">threshold</dt>
+              <dd class="usage__figure-value">{{ state.runCostThreshold | agentosCost }}</dd>
+            </div>
+          }
+          <!-- The conversation figures belong in the summary: they are what the panel is opened for. -->
+          @if (total(); as all) {
+            <div class="usage__figure">
+              <dt class="usage__figure-label">conversation</dt>
+              <dd class="usage__figure-value">{{ all.cost | agentosCost: all.unknownCostCount }}</dd>
+            </div>
+            <div class="usage__figure">
+              <dt class="usage__figure-label">tokens</dt>
+              <dd class="usage__figure-value" [title]="all.totalTokens.toLocaleString() + ' recorded tokens'">
+                {{ all.totalTokens | agentosTokens }}
+              </dd>
+            </div>
+          }
+        </dl>
       </summary>
       <div class="usage__body">
         <p>Includes delegated work. Costs are estimates in the platform currency.</p>
         @if (total(); as all) {
           <p>
-            Conversation: {{ all.unknownCostCount > 0 ? 'at least ' : '' }}{{ all.cost | agentosCost }} recorded ·
-            {{ all.totalTokens | number }} recorded tokens
+            Conversation: {{ all.cost | agentosCost: all.unknownCostCount }} recorded ·
+            {{ all.totalTokens | number }} recorded tokens, of which {{ all.inputTokens | number }} input,
+            {{ all.outputTokens | number }} output and {{ all.cacheReadTokens | number }} read from cache
           </p>
         }
         @if (state.liveTokens > 0) {

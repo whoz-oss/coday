@@ -193,18 +193,34 @@
                   </div>
                   <!-- What this answer cost, from the usage the service attached to the turn. -->
                   @if (item.metrics; as metrics) {
-                    <p class="case-chat__turn-metrics">
-                      <span class="case-chat__turn-metric">{{ turnTokens(metrics) }} tokens</span>
-                      <span class="case-chat__turn-metric">{{ metrics.cost | agentosCost }}</span>
+                    <dl
+                      class="case-chat__turn-metrics"
+                      [title]="turnMetricsTitle(metrics)"
+                      aria-label="Cost of this answer"
+                    >
+                      <div class="case-chat__metric">
+                        <dt class="case-chat__metric-label">tokens</dt>
+                        <dd class="case-chat__metric-value">{{ metrics.totalTokens | agentosTokens }}</dd>
+                      </div>
+                      <div class="case-chat__metric">
+                        <dt class="case-chat__metric-label">cost</dt>
+                        <dd class="case-chat__metric-value case-chat__metric-value--strong">
+                          {{ metrics.cost | agentosCost }}
+                        </dd>
+                      </div>
                       @if (metrics.cumulativeCost !== undefined) {
-                        <span class="case-chat__turn-metric case-chat__turn-metric--muted"
-                          >{{ metrics.cumulativeCost | agentosCost }} total</span
-                        >
+                        <div class="case-chat__metric case-chat__metric--secondary">
+                          <dt class="case-chat__metric-label">total</dt>
+                          <dd class="case-chat__metric-value">{{ metrics.cumulativeCost | agentosCost }}</dd>
+                        </div>
                       }
                       @if (turnDuration(metrics); as duration) {
-                        <span class="case-chat__turn-metric case-chat__turn-metric--muted">{{ duration }}</span>
+                        <div class="case-chat__metric case-chat__metric--secondary">
+                          <dt class="case-chat__metric-label">took</dt>
+                          <dd class="case-chat__metric-value">{{ duration }}</dd>
+                        </div>
                       }
-                    </p>
+                    </dl>
                   }
                 </div>
               } @else if (item.kind === 'streaming') {

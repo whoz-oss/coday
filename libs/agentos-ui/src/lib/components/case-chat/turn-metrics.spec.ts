@@ -1,5 +1,5 @@
 import { CaseEvent, LlmUsage } from '@whoz-oss/agentos-api-client'
-import { buildTurnMetrics, formatTokenCount, formatTurnDuration, MAX_TURN_DURATION_MS } from './turn-metrics'
+import { buildTurnMetrics, formatTurnDuration, MAX_TURN_DURATION_MS } from './turn-metrics'
 
 function usage(overrides: Partial<LlmUsage> = {}): LlmUsage {
   return {
@@ -134,17 +134,5 @@ describe('formatTurnDuration', () => {
     [3_600_000, '60m'],
   ])('reads %sms as %s', (ms, expected) => {
     expect(formatTurnDuration(ms)).toBe(expected)
-  })
-})
-
-describe('formatTokenCount', () => {
-  it.each([
-    [0, '0'],
-    [845, '845'],
-    [1234, '1.2k'],
-    [12_345, '12k'],
-    [1_234_567, '1.2m'],
-  ])('reads %s as %s', (tokens, expected) => {
-    expect(formatTokenCount(tokens)).toBe(expected)
   })
 })

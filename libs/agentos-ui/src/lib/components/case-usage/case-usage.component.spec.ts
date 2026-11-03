@@ -1,5 +1,5 @@
 import { signal } from '@angular/core'
-import { fakeAsync, TestBed, tick } from '@angular/core/testing'
+import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing'
 import {
   Case,
   MessageEvent,
@@ -170,8 +170,32 @@ describe('CaseUsageComponent', () => {
   it('never shows an unknown amount as a complete estimate', fakeAsync(() => {
     costs.getRunCost.mockReturnValue(of({ ...state(), unknownCostCount: 1 }))
     const fixture = render()
-    expect(fixture.nativeElement.textContent).toContain('At least')
+    // A partial total is marked as a lower bound by the sign, not by a prose prefix.
+    expect(fixture.nativeElement.textContent).toContain('\u2265')
     expect(fixture.nativeElement.textContent).toContain('lower bound')
+    fixture.destroy()
+  }))
+
+  it('reports no amount at all when nothing in the run was priced', fakeAsync(() => {
+    // A namespace whose models carry no pricing produces this on every run: the sum of known
+    // costs is 0 and the count of unknowns is not. "At least 0.00" read as a free run.
+    costs.getRunCost.mockReturnValue(of({ ...state(), cost: 0, unknownCostCount: 2 }))
+    const fixture = render()
+    const text = fixture.nativeElement.textContent as string
+    expect(text).toContain('\u2014')
+    expect(text).not.toContain('0.00 this run')
+    expect(text).toContain('lower bound')
+    fixture.destroy()
+  }))
+
+  it('puts the conversation cost and token total in the summary', fakeAsync(() => {
+    const fixture = render()
+    // The two figures the panel is opened for must be readable without opening it, each under the
+    // word that says what it is.
+    const summary = fixture.nativeElement.querySelector('summary')
+    const labels = Array.from(summary.querySelectorAll('dt')).map((dt) => (dt as HTMLElement).textContent?.trim())
+    expect(labels).toEqual(['this run', 'threshold', 'conversation', 'tokens'])
+    expect(summary.textContent).toContain('150')
     fixture.destroy()
   }))
 
@@ -184,6 +208,14 @@ describe('CaseUsageComponent', () => {
     fixture.destroy()
   }))
 
+  /** The value of the summary figure carrying [label], so an assertion names what it reads. */
+  function figure(fixture: ComponentFixture<CaseUsageComponent>, label: string): string | undefined {
+    const pair = Array.from(fixture.nativeElement.querySelectorAll('.usage__figure')).find(
+      (row) => (row as HTMLElement).querySelector('dt')?.textContent?.trim() === label
+    )
+    return (pair as HTMLElement | undefined)?.querySelector('dd')?.textContent?.trim()
+  }
+
   it('identifies a parent pause and uses the parent threshold while showing the child run', fakeAsync(() => {
     costs.getRunCost.mockReturnValue(of(parentPause()))
     const fixture = render()
@@ -191,7 +223,7 @@ describe('CaseUsageComponent', () => {
 
     expect(text).toContain('Paused · cost threshold reached')
     expect(fixture.nativeElement.querySelector('details').open).toBe(true)
-    expect(text).toContain('100.00 threshold')
+    expect(figure(fixture, 'threshold')).toBe('100.00')
     expect(text).toContain('Parent conversation: 12.00 consumed.')
     expect(text).toContain('Continue · double threshold to 20.00')
     expect(text).not.toContain('double threshold to 200.00')
