@@ -63,6 +63,43 @@ class LimitsConfigPropertiesSpec : StringSpec({
             }
     }
 
+    // The code default stays null: a LimitsConfigProperties built by hand has no limit. The 2 is the shipped file's.
+    "the code default of the platform run cost threshold is not defined" {
+        LimitsConfigProperties().runCostThreshold shouldBe null
+    }
+
+    "the shipped application.yml sets the platform run cost threshold to 2" {
+        shipped.run { context ->
+            context.environment.getProperty("agentos.limits.run-cost-threshold") shouldBe "2"
+            context.getBean(LimitsConfigProperties::class.java).runCostThreshold shouldBe 2.0
+        }
+    }
+
+    "AGENTOS_LIMITS_RUN_COST_THRESHOLD overrides the shipped run cost threshold" {
+        shipped
+            .withSystemEnvironment(mapOf("AGENTOS_LIMITS_RUN_COST_THRESHOLD" to "7.5"))
+            .run { context ->
+                context.getBean(LimitsConfigProperties::class.java).runCostThreshold shouldBe 7.5
+            }
+    }
+
+    "an empty AGENTOS_LIMITS_RUN_COST_THRESHOLD means no platform limit" {
+        shipped
+            .withSystemEnvironment(mapOf("AGENTOS_LIMITS_RUN_COST_THRESHOLD" to ""))
+            .run { context ->
+                context.getBean(LimitsConfigProperties::class.java).runCostThreshold shouldBe null
+            }
+    }
+
+    // 0 is a threshold, not the absence of one: it asks for a confirmation on the first request.
+    "AGENTOS_LIMITS_RUN_COST_THRESHOLD=0 stays a zero threshold" {
+        shipped
+            .withSystemEnvironment(mapOf("AGENTOS_LIMITS_RUN_COST_THRESHOLD" to "0"))
+            .run { context ->
+                context.getBean(LimitsConfigProperties::class.java).runCostThreshold shouldBe 0.0
+            }
+    }
+
     "the property can also be set directly" {
         shipped.withPropertyValues("agentos.limits.agent-max-iterations=7").run { context ->
             context.getBean(LimitsConfigProperties::class.java).agentMaxIterations shouldBe 7

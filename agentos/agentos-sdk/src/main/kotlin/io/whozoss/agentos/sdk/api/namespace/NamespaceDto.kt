@@ -22,6 +22,9 @@ import java.util.UUID
  * @property runCostThreshold Namespace-level default for the run cost threshold. Null means
  *   "inherit from the platform default", never "no limit" or "zero". When set, applies to
  *   all cases in this namespace that do not declare their own threshold.
+ * @property sharedExchangePath Optional absolute path on the server host that replaces the default
+ *   directory of the namespace-shared file exchange (`<mountRoot>/<namespaceId>/shared`). Only a
+ *   super-admin may set or change it; for anyone else an omitted value on update means "keep".
  * @property maxToolRounds Namespace-level override of the maximum number of tool rounds of one
  *   agent run. Null means "inherit from the platform default", never "no limit". On update, a
  *   null value clears an existing override, so clients editing another property must send the
@@ -54,6 +57,12 @@ data class NamespaceDto(
     )
     @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,
+    @field:Schema(
+        description =
+            "Optional absolute path of a directory on the server host that replaces the default directory of the " +
+                "namespace-shared file exchange. Only super-admins may set or change it. Created on first use.",
+    )
+    val sharedExchangePath: String? = null,
     @field:Schema(
         description =
             "Maximum number of tool rounds of one agent run in this namespace. Null means inherit from the " +

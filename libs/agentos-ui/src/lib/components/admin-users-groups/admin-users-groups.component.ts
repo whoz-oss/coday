@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { ActivatedRoute, Router } from '@angular/router'
+import { ActivatedRoute } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem, NamespaceListItemRoleEnum } from '@whoz-oss/agentos-api-client'
 import { UserGroupListComponent } from '../user-group-list/user-group-list.component'
 import { UserListComponent } from '../user-list/user-list.component'
@@ -25,7 +25,6 @@ type AdminTab = 'users' | 'groups'
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminUsersGroupsComponent {
-  private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly destroyRef = inject(DestroyRef)
   private readonly namespaceController = inject(NamespaceControllerService)
@@ -75,9 +74,5 @@ export class AdminUsersGroupsComponent {
 
   protected onGroupsNamespaceChange(namespaceId: string): void {
     this.groupsNamespaceId.set(namespaceId)
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
   }
 }

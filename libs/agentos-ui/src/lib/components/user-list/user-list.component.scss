@@ -1,1 +1,3 @@
-// No additional styles needed — ds-entity-list handles the layout.
+@use '../../styles/settings-table' as table;
+
+@include table.settings-table;

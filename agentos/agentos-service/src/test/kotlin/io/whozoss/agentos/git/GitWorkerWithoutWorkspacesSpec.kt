@@ -25,7 +25,13 @@ import kotlin.time.Duration.Companion.seconds
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-@TestPropertySource(properties = ["agentos.git.worker.enabled=true", "agentos.git.worker.initial-delay-ms=3600000"])
+@TestPropertySource(
+    properties = [
+        "agentos.git.workspaces.enabled=false",
+        "agentos.git.worker.enabled=true",
+        "agentos.git.worker.initial-delay-ms=3600000",
+    ],
+)
 class GitWorkerWithoutWorkspacesSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 

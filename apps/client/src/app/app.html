@@ -1,1 +1,12 @@
+@switch (phase()) { @case ('pending') {
+<div class="app-loader" role="status" aria-live="polite">
+  <div class="spinner"></div>
+  <p>Loading Coday…</p>
+</div>
+} @case ('failed') {
+<div class="app-loader app-loader--error" role="alert">
+  <p>Coday could not load this page.</p>
+  <button type="button" (click)="reload()">Reload</button>
+</div>
+} }
 <router-outlet></router-outlet>

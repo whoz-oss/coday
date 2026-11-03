@@ -1,31 +1,72 @@
-<ds-entity-list
-  title="Users"
-  [hideTitle]="hideTitle()"
-  [items]="userItems()"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No users found."
-  cardMinWidth="320px"
-  [pageSize]="100"
-  [itemTemplate]="userItemTpl"
-  (createRequested)="navigateToCreate()"
->
+<div class="settings-table__toolbar">
   @if (namespaces(); as namespaceOptions) {
     <agentos-namespace-select
-      toolbar-start
       [namespaces]="namespaceOptions"
       [value]="selectedNamespaceId()"
       [includeAllOption]="true"
       (valueChange)="onNamespaceChange($event)"
     />
-  } @else if (showBackButton()) {
-    <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
   }
-</ds-entity-list>
-
-<!-- Item template: renders UserItemComponent for each entity-list card slot -->
-<ng-template #userItemTpl let-item>
-  @if (resolveUser(item.id); as user) {
-    <agentos-user-item [user]="user" (editRequested)="navigateToEdit($event)" (deleteRequested)="deleteUser($event)" />
-  }
-</ng-template>
+  <div class="settings-table__toolbar-actions">
+    <agentos-table-filter
+      label="Filter users"
+      placeholder="Filter users…"
+      [query]="rowFilter.query()"
+      (queryChange)="rowFilter.query.set($event)"
+    />
+    <button class="settings-table__new" type="button" (click)="navigateToCreate()">New user</button>
+  </div>
+</div>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading users…</p>
+} @else if (users().length === 0) {
+  <p class="settings-table__status">No users found.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No users match the current filter.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Users">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Email</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (user of rowFilter.filteredRows(); track user.id ?? user.email) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ displayName(user) }}</td>
+            <td role="cell" data-label="Email" class="settings-table__secondary">
+              {{ user.email ?? user.externalId ?? '—' }}
+            </td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (deletion.confirmingId() !== user.id) {
+                  <button type="button" [attr.aria-label]="'Edit ' + displayName(user)" (click)="navigateToEdit(user)">
+                    Edit
+                  </button>
+                }
+                @if (user.id) {
+                  <agentos-row-delete-action
+                    [rowKey]="user.id"
+                    [rowLabel]="displayName(user)"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (deleteRequested)="deletion.request(user.id)"
+                    (deleteConfirmed)="confirmDelete(user)"
+                    (deleteCancelled)="deletion.cancel()"
+                  />
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

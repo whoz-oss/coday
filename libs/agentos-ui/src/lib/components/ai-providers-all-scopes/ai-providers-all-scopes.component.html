@@ -1,37 +1,40 @@
 <ds-section-header
   title="AI providers"
   description="AI providers available in this namespace, including inherited platform and personal entries."
-  ><button class="ai-providers__new" type="button" (click)="openCreateForm()">
-    New AI provider
-  </button></ds-section-header
->
-@if (isLoading()) {
-  <p class="ai-providers__status" role="status">Loading AI providers…</p>
-} @else if (rows().length === 0) {
-  <p class="ai-providers__status">No AI providers available.</p>
-} @else {
-  <agentos-table-filter
+  ><agentos-table-filter
     label="Filter AI providers"
     placeholder="Filter AI providers…"
     [query]="rowFilter.query()"
     (queryChange)="rowFilter.query.set($event)"
   />
+  <button class="ai-providers__new" type="button" (click)="openCreateForm()">New AI provider</button></ds-section-header
+>
+@if (deletion.error()) {
+  <p class="ai-providers__error" role="alert">{{ deletion.error() }}</p>
+}
+@if (isLoading()) {
+  <p class="ai-providers__status" role="status">Loading AI providers…</p>
+} @else if (rows().length === 0) {
+  <p class="ai-providers__status">No AI providers available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="ai-providers__status" role="status">No AI providers match the current filter.</p>
+} @else {
   <div class="ai-providers__table-wrap">
-    <table dsTable>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>API type</th>
-          <th>Scope</th>
-          <th><span class="sr-only">Actions</span></th>
+    <table dsTable role="table" aria-label="AI providers">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">API type</th>
+          <th role="columnheader">Scope</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
-          <tr>
-            <td class="ai-providers__name">{{ row.config.name }}</td>
-            <td class="ai-providers__type">{{ row.config.apiType }}</td>
-            <td>
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="ai-providers__name">{{ row.config.name }}</td>
+            <td role="cell" data-label="API type" class="ai-providers__type">{{ row.config.apiType }}</td>
+            <td role="cell" data-label="Scope">
               <div class="ai-providers__tags">
                 <ds-tag
                   [variant]="
@@ -44,11 +47,21 @@
                 }
               </div>
             </td>
-            <td class="ai-providers__actions">
+            <td role="cell" data-label="Actions" data-actions class="ai-providers__actions">
               <button type="button" (click)="duplicate(row)">Duplicate</button>
               @if (row.canMutate) {
-                <button type="button" (click)="edit(row)">Edit</button
-                ><button class="ai-providers__delete" type="button" (click)="delete(row)">Delete</button>
+                @if (deletion.confirmingId() !== row.key) {
+                  <button type="button" (click)="edit(row)">Edit</button>
+                }
+                <agentos-row-delete-action
+                  [rowKey]="row.key"
+                  [rowLabel]="row.config.name"
+                  [state]="deletion"
+                  deleteClass="ai-providers__delete"
+                  (deleteRequested)="deletion.request(row.key)"
+                  (deleteConfirmed)="confirmDelete(row)"
+                  (deleteCancelled)="deletion.cancel()"
+                />
               } @else {
                 <button type="button" disabled>Inherited</button>
               }

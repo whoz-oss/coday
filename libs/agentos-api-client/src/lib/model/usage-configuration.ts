@@ -10,4 +10,8 @@
 
 export interface UsageConfiguration {
   enabled: boolean
+  /**
+   * Platform default of the run cost threshold, in the platform currency unit (agentos.limits.run-cost-threshold). Inherited by a namespace or case that sets none. Null when the platform sets no limit.
+   */
+  runCostThreshold?: number
 }

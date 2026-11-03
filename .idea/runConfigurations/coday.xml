@@ -6,7 +6,11 @@
       <script value="coday" />
     </scripts>
     <node-interpreter value="project" />
-    <envs />
+    <envs>
+      <env name="PORT" value="3010" />
+      <env name="AGENTOS_URL" value="http://localhost:8124" />
+      <env name="FACTORY_URL" value="http://localhost:8141" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>
