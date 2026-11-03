@@ -124,6 +124,7 @@ class AiModelController(
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AiModel', 'DELETE')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
     ) = crud.delete(id)

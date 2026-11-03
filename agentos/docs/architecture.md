@@ -71,8 +71,9 @@ how many base classes or interfaces a controller inherits from.
 | `api.aiProvider` | `AiProviderDto`, `AiModelDto` — HTTP DTOs for `/api/ai-providers` and `/api/ai-models` |
 | `api.case` | `CaseDto`, `AddMessageRequest`, `ListByUserInNamespaceRequest` — HTTP DTOs for `/api/cases` |
 | `api.common` | `GetByIdsRequest` — shared request body for all `POST /by-ids` endpoints |
+| `api.configChange` | `ConfigChangeApi`, `ConfigChangeViewDto`, `ConfigChangeReportDto`, `ConfigChangeApplyRequest`, `ConfigChangeRejectRequest`, the operation/result DTOs (`ConfigOperationViewDto`, `ConfigFieldChangeDto`, `ConfigSecretInputDto`, `ConfigOperationResultDto`) and their enums — HTTP contract for `/api/cases/{caseId}/config-changes` |
 | `api.feedback` | `FeedbackDto`, `FeedbackInput` — HTTP DTOs for `/api/feedbacks` |
 | `api.integrationConfig` | `IntegrationConfigDto`, `IntegrationTypeDescriptor` — HTTP DTOs for `/api/integration-configs` and `/api/integration-types` |
-| `api.namespace` | `NamespaceDto`, `NamespaceListItem`, `NamespaceUserListItem`, `NamespaceRoleEntry`, `SyncUserRolesRequest` — HTTP DTOs for `/api/namespaces` |
+| `api.namespace` | `NamespaceDto`, `NamespaceListItem`, `NamespaceUserListItem`, `NamespaceRoleEntry`, `SyncUserRolesRequest`, `NamespaceAgentDeployRequest` — HTTP DTOs for `/api/namespaces` |
 | `api.user` | `UserDto`, `GroupsByExternalIdsRequest` — HTTP DTOs for `/api/users` |
 | `api.userGroup` | `UserGroupSummary`, `UserGroupSearchResult`, `UserGroupCreateRequest`, `UserGroupUpdateRequest` — HTTP DTOs for `/api/user-groups` |

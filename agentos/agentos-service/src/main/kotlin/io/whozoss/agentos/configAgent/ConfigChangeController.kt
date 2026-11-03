@@ -1,6 +1,11 @@
 package io.whozoss.agentos.configAgent
 
 import io.swagger.v3.oas.annotations.Operation
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeApi
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeApplyRequest
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeRejectRequest
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeReportDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeViewDto
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
@@ -26,18 +31,21 @@ import java.util.UUID
  *
  * Only the user the plan was proposed to may apply or reject it (403 otherwise); anyone who can read
  * the case may view it, with the current values shown according to their own rights.
+ *
+ * Implements [ConfigChangeApi], the SDK contract, so external consumers can declare a Feign client
+ * against it. All Spring annotations live here, none on the interface.
  */
 @RestController
 @RequestMapping("/api/cases/{caseId}/config-changes", produces = [MediaType.APPLICATION_JSON_VALUE])
 class ConfigChangeController(
     private val configChangeService: ConfigChangeService,
     private val userService: UserService,
-) {
+) : ConfigChangeApi {
     @Operation(summary = "View a configuration plan proposed by an agent, with the live status of each operation")
     @GetMapping("/{questionId}")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     @HideOnAccessDenied
-    fun viewConfigChange(
+    override fun viewConfigChange(
         @PathVariable caseId: UUID,
         @PathVariable questionId: UUID,
     ): ConfigChangeViewDto = configChangeService.view(caseId, questionId, userService.getCurrentUser())
@@ -45,7 +53,7 @@ class ConfigChangeController(
     @Operation(summary = "Apply a configuration plan with the rights of the calling user, then answer the agent")
     @PostMapping("/{questionId}/apply", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
-    fun applyConfigChange(
+    override fun applyConfigChange(
         @PathVariable caseId: UUID,
         @PathVariable questionId: UUID,
         @RequestBody request: ConfigChangeApplyRequest,
@@ -55,7 +63,7 @@ class ConfigChangeController(
     @PostMapping("/{questionId}/reject")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun rejectConfigChange(
+    override fun rejectConfigChange(
         @PathVariable caseId: UUID,
         @PathVariable questionId: UUID,
         @RequestBody(required = false) request: ConfigChangeRejectRequest?,

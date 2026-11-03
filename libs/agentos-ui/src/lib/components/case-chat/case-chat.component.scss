@@ -282,8 +282,15 @@
 
   // ── Messages scroll area ──────────────────────────────────────────────
 
-  &__messages {
+  &__messages-region {
+    position: relative;
     flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  &__messages {
+    height: 100%;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
@@ -730,6 +737,13 @@
     }
   }
 
+  &__log-time {
+    flex-shrink: 0;
+    font-weight: 400;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+
   &__log-body {
     display: block;
     max-height: 260px;
@@ -891,7 +905,8 @@
     line-height: 1.55;
     outline: none;
     min-height: 52px;
-    overflow-y: hidden;
+    max-height: min(50vh, 480px);
+    overflow-y: auto;
 
     &::placeholder {
       color: var(--color-neutral-700);
@@ -973,7 +988,7 @@
 
   &__scroll-anchor {
     position: absolute;
-    bottom: calc(1.5rem + 80px + 0.5rem);
+    bottom: 0.125rem;
     left: 50%;
     transform: translateX(-50%);
     z-index: 10;

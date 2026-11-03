@@ -1,0 +1,39 @@
+<form class="step" (submit)="submit($event)" novalidate>
+  <h2 class="step__title">What is your email?</h2>
+  <p class="step__lead">
+    It identifies you in Coday and makes you the administrator of this installation. Nothing is sent anywhere: it stays
+    on this machine.
+  </p>
+
+  <label class="field">
+    <span class="field__label">Email</span>
+    <input
+      class="field__input"
+      type="email"
+      name="email"
+      autocomplete="email"
+      placeholder="you@company.com"
+      data-testid="email-input"
+      [value]="state.email()"
+      [attr.aria-invalid]="state.email() && !state.emailValid() ? 'true' : null"
+      (input)="onInput($event)"
+    />
+    <span class="field__hint">We are already downloading AgentOS in the background while you answer.</span>
+  </label>
+
+  @if (state.error()) {
+    <p class="step__error" role="alert">{{ state.error() }}</p>
+  }
+
+  <div class="step__actions">
+    <span></span>
+    <button
+      class="btn btn--primary"
+      type="submit"
+      data-testid="email-next"
+      [disabled]="!state.emailValid() || state.busy()"
+    >
+      Continue
+    </button>
+  </div>
+</form>

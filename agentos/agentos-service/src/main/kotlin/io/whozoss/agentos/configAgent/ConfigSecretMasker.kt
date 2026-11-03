@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.databind.node.TextNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 
 /**
  * Masks the secrets of a configuration entity before it leaves the server through the config

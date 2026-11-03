@@ -151,7 +151,6 @@ export class ShellSidebarComponent {
   readonly isAdmin = input.required<boolean>()
   readonly isDark = input.required<boolean>()
   readonly themeVariant = input.required<string>()
-  readonly showTechnical = input.required<boolean>()
   readonly showToolCalls = input.required<boolean>()
 
   // Outputs
@@ -171,6 +170,5 @@ export class ShellSidebarComponent {
   readonly navigateTo = output<string>()
   readonly themeToggled = output<void>()
   readonly themeVariantChanged = output<string>()
-  readonly logsToggled = output<void>()
   readonly toolCallsToggled = output<void>()
 }

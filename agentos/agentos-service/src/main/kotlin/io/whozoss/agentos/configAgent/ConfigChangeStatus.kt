@@ -1,6 +1,10 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigAction
+import io.whozoss.agentos.sdk.api.configChange.ConfigDeployTarget
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
+import io.whozoss.agentos.sdk.api.configChange.ConfigOperationStatus
 import org.springframework.stereotype.Component
 import java.util.UUID
 

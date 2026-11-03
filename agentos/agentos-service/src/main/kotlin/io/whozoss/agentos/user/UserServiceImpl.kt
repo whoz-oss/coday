@@ -3,6 +3,7 @@ package io.whozoss.agentos.user
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -15,14 +16,21 @@ import kotlin.concurrent.withLock
  * Delegates all persistence operations to [UserRepository].
  * Holds a reference to [SecurityService] solely for [getCurrentUser] — the one
  * request-scoped operation that needs to know the caller's identity.
+ *
+ * [create] publishes a [UserCreatedEvent] once the user is saved. Every creation path goes through it
+ * (first access, bulk import, the bootstrap admin), which is what lets
+ * [PersonalNamespaceProvisioner] react to all of them from one place. Listeners bound to the
+ * transaction run after it commits.
  */
 @Service
 class UserServiceImpl(
     private val userRepository: UserRepository,
     private val securityService: SecurityService,
+    private val eventPublisher: ApplicationEventPublisher,
 ) : UserService {
     @Transactional
-    override fun create(entity: User): User = userRepository.save(entity)
+    override fun create(entity: User): User =
+        userRepository.save(entity).also { eventPublisher.publishEvent(UserCreatedEvent(it.id, it.externalId)) }
 
     @Transactional
     override fun update(entity: User): User = userRepository.save(entity)

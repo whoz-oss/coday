@@ -1,5 +1,7 @@
 package io.whozoss.agentos.configAgent
 
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
+
 /**
  * What `AGENTOS_CONFIG__read` can read. [wireName] is the value the LLM sends; [configKind] is set
  * for the kinds that are configuration entities, listed or read by id.

@@ -40,6 +40,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -378,7 +379,7 @@ class AgentServiceImpl(
                 case = resolveCaseScope(agentConfig.integrations, context),
                 namespace = resolveNamespaceScope(agentConfig.integrations, context),
             )
-        val instructions =
+        val baseInstructions =
             buildInstructions(
                 baseInstructions = agentConfig.instructions,
                 agentIntegrations = agentConfig.integrations,
@@ -392,13 +393,25 @@ class AgentServiceImpl(
                         namespace = exchangeScopes.namespace?.access,
                     ),
             )
-        val baseTools =
+        val toolResolution =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
                 credentialProviderFactory = credentialProviderFactory,
             )
+        val baseTools = toolResolution.tools
+        // Only names circulate from here on, never the plugin's exception, so a secret in its message cannot
+        // reach the model (instructions) or the case (WarnEvent) by construction. The full error is in the logs.
+        val instructions =
+            IntegrationLoadFailureNotice.appendTo(
+                instructions = baseInstructions,
+                failedIntegrationNames = toolResolution.failedIntegrations,
+            )
+        warnCaseOfFailedIntegrations(
+            failedIntegrationNames = toolResolution.failedIntegrations,
+            context = context,
+        )
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
         // collision (e.g. a user FILE_ACCESS integration named "case-exchange") crashing downstream.
@@ -481,6 +494,36 @@ class AgentServiceImpl(
                 "or switch the agent to SIMPLE."
         logger.warn { message }
         throw AdvancedExecutionNotSupportedException(message)
+    }
+
+    /**
+     * Persists and emits one [WarnEvent] per failed integration into the live case, with a fixed text that
+     * carries the integration name only.
+     *
+     * Does nothing outside a live case (no [AgentExecutionContext.caseId] or [AgentExecutionContext.emitEvent]),
+     * e.g. a definition preview. A failure to emit never fails the run: the notice is best effort.
+     */
+    private fun warnCaseOfFailedIntegrations(
+        failedIntegrationNames: List<String>,
+        context: AgentExecutionContext,
+    ) {
+        val caseId = context.caseId
+        val emitEvent = context.emitEvent
+        if (caseId != null && emitEvent != null) {
+            failedIntegrationNames.sorted().forEach { integrationName ->
+                runCatching {
+                    emitEvent(
+                        WarnEvent(
+                            namespaceId = context.namespaceId,
+                            caseId = caseId,
+                            message = IntegrationLoadFailureNotice.warnMessage(integrationName = integrationName),
+                        ),
+                    )
+                }.onFailure { error ->
+                    logger.warn(error) { "Could not emit the load failure notice of integration '$integrationName' for case $caseId" }
+                }
+            }
+        }
     }
 
     /**

@@ -56,7 +56,9 @@ class RepositoryCheckoutProvisioner(
         val checkout = existing ?: checkoutService.create(newCheckout(settings))
         var failureReason = "Cannot access the namespace repository files."
         return try {
-            val sharedRoot = exchangeStorageService.namespaceRoot(settings.namespaceId)
+            // The default location, deliberately: a configured sharedExchangePath is a folder the
+            // user owns, and a repository of their own in it must not be mistaken for a legacy checkout.
+            val sharedRoot = exchangeStorageService.defaultNamespaceRoot(settings.namespaceId)
             failureReason = "A legacy namespace checkout exists. Move it to internal storage before provisioning."
             check(!Files.exists(sharedRoot.resolve(".git")) && !Files.exists(sharedRoot.resolve("repo/.git"))) {
                 "A legacy namespace checkout exists. Move it to internal storage before provisioning."

@@ -17,7 +17,7 @@ import {
   NamespaceControllerService,
   NamespaceListItem,
 } from '@whoz-oss/agentos-api-client'
-import { debounceTime, map, skip } from 'rxjs'
+import { catchError, debounceTime, map, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode, ThemeVariant } from '../../services/theme.service'
@@ -34,7 +34,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
  * Responsibilities (after refactor):
  * - Owns data: case list, namespace list, query params
  * - Owns routing: namespace switching, case selection, navigation
- * - Owns UI state: sidebar width, menus open/closed, theme, technical logs
+ * - Owns UI state: sidebar width, menus open/closed, theme, tool calls
  * - Delegates rendering to ShellSidebarComponent, ShellTopbarMobileComponent,
  *   ShellCaseSwitcherMobileComponent
  *
@@ -124,11 +124,7 @@ export class CaseShellComponent {
   /** Whether the mobile case drawer is open */
   protected readonly mobileDrawerOpen = signal(false)
 
-  private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
   private static readonly SHOW_TOOL_CALLS_KEY = 'agentos.case-chat.showToolCalls'
-
-  /** Global toggle for technical log events — persisted in localStorage. */
-  protected readonly showTechnical = signal(localStorage.getItem(CaseShellComponent.SHOW_TECHNICAL_KEY) === 'true')
 
   /** Global toggle for tool calls — visible by default and persisted in localStorage. */
   protected readonly showToolCalls = signal(localStorage.getItem(CaseShellComponent.SHOW_TOOL_CALLS_KEY) !== 'false')
@@ -155,9 +151,20 @@ export class CaseShellComponent {
   /** Cases from the state service (loaded via /mine — direct ADMIN/MEMBER edge only). */
   protected readonly cases = this.caseState.cases
 
-  protected readonly namespaces = toSignal(this.namespaceController.listAllNamespace(), {
-    initialValue: [] as NamespaceListItem[],
-  })
+  /**
+   * A toSignal over a source that errors makes the signal THROW on read, and the template reads it: one failed
+   * request (AgentOS booting, a 401/502 through the proxy) would abort the whole shell render, i.e. a blank page.
+   * Degrade to an empty list instead (the home composer still renders).
+   */
+  protected readonly namespaces = toSignal(
+    this.namespaceController.listAllNamespace().pipe(
+      catchError((err) => {
+        console.error('[CaseShell] Failed to load namespaces', err)
+        return of([] as NamespaceListItem[])
+      })
+    ),
+    { initialValue: [] as NamespaceListItem[] }
+  )
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
@@ -376,15 +383,6 @@ export class CaseShellComponent {
     this.menuOpen.set(false)
     const current = this.themePort.theme()
     this.themePort.setTheme({ variant: variant as ThemeVariant, mode: current.mode })
-  }
-
-  protected onMenuToggleLogs(): void {
-    this.menuOpen.set(false)
-    this.showTechnical.update((v) => {
-      const next = !v
-      localStorage.setItem(CaseShellComponent.SHOW_TECHNICAL_KEY, String(next))
-      return next
-    })
   }
 
   protected onMenuToggleToolCalls(): void {
