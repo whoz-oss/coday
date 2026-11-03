@@ -120,9 +120,16 @@ execution mode. It is a capability, not a default: it never changes the mode of 
 Persisted models saved before this property existed are migrated once at startup (the missing property
 is the marker, so a restart never overrides a value set afterwards): a model used by at least one
 non-removed persisted agent running `ADVANCED` (explicit, or legacy `advancedExecution: true`) gets
-`true`, every other one `false`. This keeps the existing `ADVANCED` agents running. A persisted
-`ADVANCED` agent whose model cannot be found is logged at warn level. Filesystem models are not
-migrated: set the flag in their file.
+`true`, every other one `false`. Until the migration has completed, such models read as `false`.
+
+Filesystem models are not migrated. A persisted `ADVANCED` agent running on a filesystem model fails
+after an upgrade until `supportsAdvancedExecution: true` is added to the model file; the migration logs
+a warning naming each `ADVANCED` agent that matches no persisted model, which is how to find them. A
+persisted model that no `ADVANCED` agent uses is set to `false`, so an agent switched to `ADVANCED`
+later needs the flag enabled on its model.
+
+Through the API (`PUT /api/ai-models/{id}`), omitting `supportsAdvancedExecution` keeps the current
+value; an explicit `false` clears it. On creation, omitting it means `false`.
 
 ## Credentials Delivered to Plugins
 

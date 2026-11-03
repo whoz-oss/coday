@@ -4389,7 +4389,6 @@ components:
       - aiProviderId
       - apiModelName
       - priority
-      - supportsAdvancedExecution
     AiProvider:
       type: object
       properties:

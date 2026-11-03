@@ -64,6 +64,8 @@ data class AiModelDto(
     /**
      * Whether this model can run agents in ADVANCED execution mode. It never changes an agent's mode:
      * an agent configured ADVANCED that runs on a model without this flag fails with an error.
+     *
+     * Null on update keeps the current value; null on create means false; always set on output.
      */
-    val supportsAdvancedExecution: Boolean = false,
+    val supportsAdvancedExecution: Boolean? = null,
 )

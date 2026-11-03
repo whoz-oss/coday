@@ -149,14 +149,39 @@ class AiModelControllerSpec : StringSpec({
         verify(exactly = 1) { service.update(any()) }
     }
 
-    "update clears the supportsAdvancedExecution flag when the payload omits it" {
+    "update keeps the supportsAdvancedExecution flag when the payload omits it" {
         val existing = model().copy(supportsAdvancedExecution = true)
         every { service.findById(existing.metadata.id) } returns existing
         every { service.update(any()) } answers { firstArg() }
 
         val result = controller.update(existing.metadata.id, resource(id = existing.metadata.id))
 
+        result.supportsAdvancedExecution shouldBe true
+        verify(exactly = 1) { service.update(match { it.supportsAdvancedExecution }) }
+    }
+
+    "update sets the supportsAdvancedExecution flag to false when the payload sends false explicitly" {
+        val existing = model().copy(supportsAdvancedExecution = true)
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers { firstArg() }
+
+        val result =
+            controller.update(
+                existing.metadata.id,
+                resource(id = existing.metadata.id).copy(supportsAdvancedExecution = false),
+            )
+
         result.supportsAdvancedExecution shouldBe false
+        verify(exactly = 1) { service.update(match { !it.supportsAdvancedExecution }) }
+    }
+
+    "create without the supportsAdvancedExecution field gives false" {
+        every { service.create(any()) } answers { firstArg() }
+
+        val result = controller.create(resource(id = null))
+
+        result.supportsAdvancedExecution shouldBe false
+        verify(exactly = 1) { service.create(match { !it.supportsAdvancedExecution }) }
     }
 
     "update throws 404 when the AiModel does not exist" {
