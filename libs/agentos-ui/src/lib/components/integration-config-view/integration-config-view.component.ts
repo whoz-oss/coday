@@ -4,8 +4,8 @@ import { ActivatedRoute } from '@angular/router'
 import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
 import { TagComponent } from '@whoz-oss/design-system'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
+import { IntegrationConfigSource, sourceOf } from '../../utils/integration-config-source'
 
-type IntegrationConfigSource = 'NEO4J' | 'FILESYSTEM'
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 const REDACTED_VALUE = '••••••'
@@ -38,7 +38,7 @@ export class IntegrationConfigViewComponent implements OnInit {
       .subscribe({
         next: (config) => {
           this.config.set(config)
-          this.source.set(this.sourceOf(config))
+          this.source.set(sourceOf(config))
           this.parameters.set(JSON.stringify(this.redact(config.parameters), null, 2))
           this.isLoading.set(false)
         },
@@ -63,10 +63,6 @@ export class IntegrationConfigViewComponent implements OnInit {
       userOnNs: 'Personal on namespace',
       userGlobal: 'Personal global',
     }[scope]
-  }
-
-  private sourceOf(config: IntegrationConfig): IntegrationConfigSource {
-    return (config as IntegrationConfig & { source?: IntegrationConfigSource }).source ?? 'NEO4J'
   }
 
   private redact(value: unknown, key = ''): JsonValue {

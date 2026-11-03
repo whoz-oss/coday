@@ -46,6 +46,16 @@ export interface IntegrationConfigDraft {
   autoGrant?: boolean
 }
 
+/**
+ * Request body of a create or an update. `source` is the origin of a configuration, owned by the server: it is
+ * read-only in the API (every response carries it, no request needs it), but the generated client types it as
+ * required, so it is left out of what is built here and `asRequestBody` hands the payload over to the client.
+ */
+type IntegrationConfigRequest = Omit<IntegrationConfig, 'source'>
+
+/** The one place that bridges the generated client's required, server-managed `source`. Never invent a value for it. */
+const asRequestBody = (payload: IntegrationConfigRequest): IntegrationConfig => payload as IntegrationConfig
+
 /** Backend sentinel: `?namespaceId=none` means `namespaceId IS NULL` (platform or user-global rows). */
 const NAMESPACE_NONE_SENTINEL = 'none'
 /** Backend sentinel: `?userId=me` means "the authenticated user". */
@@ -174,7 +184,7 @@ export class IntegrationConfigStateService {
 
     if (scope === 'platform') {
       // Platform scope: no namespaceId, no userId — super-admin only, backend enforces it.
-      const payload: IntegrationConfig = {
+      const payload: IntegrationConfigRequest = {
         name: draft.name,
         integrationType: draft.integrationType,
         description: draft.description as string | undefined,
@@ -182,12 +192,12 @@ export class IntegrationConfigStateService {
         authSettingName: draft.authSettingName ?? undefined,
         autoGrant: draft.autoGrant ?? false,
       }
-      return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
+      return this.nsController.createIntegrationConfig(asRequestBody(payload)).pipe(tap(() => this.refresh()))
     }
 
     if (scope === 'namespace') {
       if (!namespaceId) throw new Error('Cannot create namespace-scoped config without a namespaceId')
-      const payload: IntegrationConfig = {
+      const payload: IntegrationConfigRequest = {
         name: draft.name,
         integrationType: draft.integrationType,
         description: draft.description as string | undefined,
@@ -196,7 +206,7 @@ export class IntegrationConfigStateService {
         authSettingName: draft.authSettingName ?? undefined,
         autoGrant: draft.autoGrant ?? false,
       }
-      return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
+      return this.nsController.createIntegrationConfig(asRequestBody(payload)).pipe(tap(() => this.refresh()))
     }
 
     if (scope === 'userOnNs' && !namespaceId) {
@@ -205,7 +215,7 @@ export class IntegrationConfigStateService {
 
     // Decision 15 (Phase 2): scope inferred server-side from the (namespaceId, userId) pair.
     // userId MUST equal the authenticated principal — sending another user is a 400.
-    const payload: IntegrationConfig = {
+    const payload: IntegrationConfigRequest = {
       name: draft.name,
       integrationType: draft.integrationType,
       description: draft.description as string | undefined,
@@ -215,7 +225,7 @@ export class IntegrationConfigStateService {
       authSettingName: draft.authSettingName ?? undefined,
       autoGrant: draft.autoGrant ?? false,
     }
-    return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
+    return this.nsController.createIntegrationConfig(asRequestBody(payload)).pipe(tap(() => this.refresh()))
   }
 
   update(
@@ -227,7 +237,7 @@ export class IntegrationConfigStateService {
     // Build payloads explicitly — never spread `existing`. Server-side immutable fields
     // (namespaceId, userId, integrationType) are preserved by the backend regardless of
     // what the body sends, but echoing the persisted scope keeps the wire payload clean.
-    const payload: IntegrationConfig = {
+    const payload: IntegrationConfigRequest = {
       name: draft.name,
       integrationType: draft.integrationType,
       description: draft.description as string | undefined,
@@ -238,7 +248,7 @@ export class IntegrationConfigStateService {
       autoGrant: draft.autoGrant ?? false,
     }
     void scope
-    return this.nsController.updateIntegrationConfig(id, payload).pipe(tap(() => this.refresh()))
+    return this.nsController.updateIntegrationConfig(id, asRequestBody(payload)).pipe(tap(() => this.refresh()))
   }
 
   delete(id: string, scope: IntegrationScope): Observable<unknown> {
