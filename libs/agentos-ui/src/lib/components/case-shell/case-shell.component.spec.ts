@@ -186,9 +186,9 @@ describe('CaseShellComponent', () => {
       expect(component['canToggleMode']()).toBe(true)
     })
 
-    it('is dark for a dark astra theme and offers the light/dark switch', () => {
+    it('is dark for a dark whoz-oss theme and offers the light/dark switch', () => {
       const component = makeComponent({ ns: NS_ID })
-      themeMock.theme.mockReturnValue({ variant: 'astra', mode: 'dark' })
+      themeMock.theme.mockReturnValue({ variant: 'whoz-oss', mode: 'dark' })
 
       expect(component['isDark']()).toBe(true)
       expect(component['canToggleMode']()).toBe(true)
@@ -203,21 +203,21 @@ describe('CaseShellComponent', () => {
       expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'industry', mode: 'dark' })
     })
 
-    it('switches the mode from the menu under astra, which now has both', () => {
+    it('switches the mode from the menu under whoz-oss, which now has both', () => {
       const component = makeComponent({ ns: NS_ID })
-      themeMock.theme.mockReturnValue({ variant: 'astra', mode: 'light' })
+      themeMock.theme.mockReturnValue({ variant: 'whoz-oss', mode: 'light' })
 
       component['onMenuToggleTheme']()
 
-      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'astra', mode: 'dark' })
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'whoz-oss', mode: 'dark' })
     })
 
     it('keeps the stored mode when changing variant, and ignores an unknown variant id', () => {
       const component = makeComponent({ ns: NS_ID })
       themeMock.theme.mockReturnValue({ variant: 'industry', mode: 'dark' })
 
-      component['onMenuThemeVariantChanged']('astra')
-      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'astra', mode: 'dark' })
+      component['onMenuThemeVariantChanged']('whoz-oss')
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'whoz-oss', mode: 'dark' })
 
       themeMock.setTheme.mockClear()
       component['onMenuThemeVariantChanged']('rainbow')

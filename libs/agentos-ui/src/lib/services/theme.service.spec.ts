@@ -132,42 +132,42 @@ describe('AgentosThemeService', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('terminal-light')
   })
 
-  describe('astra (light and dark)', () => {
-    it('lists astra among the variants derived from the table', () => {
-      expect(THEME_VARIANTS).toEqual(['industry', 'terminal', 'astra'])
+  describe('whoz-oss (light and dark)', () => {
+    it('lists whoz-oss among the variants derived from the table', () => {
+      expect(THEME_VARIANTS).toEqual(['industry', 'terminal', 'whoz-oss'])
     })
 
-    it('applies astra-light for astra + light, and never leaves the attribute out', () => {
+    it('applies whoz-oss-light for whoz-oss + light, and never leaves the attribute out', () => {
       const service = new AgentosThemeService()
-      service.setTheme({ variant: 'astra', mode: 'light' })
-      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-light')
+      service.setTheme({ variant: 'whoz-oss', mode: 'light' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-light')
     })
 
-    it('applies astra-dark for astra + dark', () => {
+    it('applies whoz-oss-dark for whoz-oss + dark', () => {
       const service = new AgentosThemeService()
-      service.setTheme({ variant: 'astra', mode: 'dark' })
-      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-dark')
+      service.setTheme({ variant: 'whoz-oss', mode: 'dark' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
     })
 
-    it('follows the OS for astra + system: astra-dark when the OS prefers dark', () => {
+    it('follows the OS for whoz-oss + system: whoz-oss-dark when the OS prefers dark', () => {
       mockMatchMedia(true)
       const service = new AgentosThemeService()
-      service.setTheme({ variant: 'astra', mode: 'system' })
-      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-dark')
+      service.setTheme({ variant: 'whoz-oss', mode: 'system' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
     })
 
-    it('follows the OS for astra + system: astra-light when the OS prefers light', () => {
+    it('follows the OS for whoz-oss + system: whoz-oss-light when the OS prefers light', () => {
       mockMatchMedia(false)
       const service = new AgentosThemeService()
-      service.setTheme({ variant: 'astra', mode: 'system' })
-      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-light')
+      service.setTheme({ variant: 'whoz-oss', mode: 'system' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-light')
     })
 
-    it('applies astra-dark on init from a stored astra variant with a dark mode', () => {
-      localStorage.setItem(STORAGE_KEY_VARIANT, 'astra')
+    it('applies whoz-oss-dark on init from a stored whoz-oss variant with a dark mode', () => {
+      localStorage.setItem(STORAGE_KEY_VARIANT, 'whoz-oss')
       localStorage.setItem(STORAGE_KEY_MODE, 'dark')
       const service = new AgentosThemeService()
-      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-dark')
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
       expect(service.theme().mode).toBe('dark')
     })
 
@@ -176,8 +176,8 @@ describe('AgentosThemeService', () => {
       service.setTheme({ variant: 'industry', mode: 'dark' })
       expect(document.documentElement.getAttribute('data-theme')).toBe('industry-dark')
 
-      service.setTheme({ variant: 'astra', mode: service.theme().mode })
-      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-dark')
+      service.setTheme({ variant: 'whoz-oss', mode: service.theme().mode })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
       expect(localStorage.getItem(STORAGE_KEY_MODE)).toBe('dark')
 
       service.setTheme({ variant: 'industry', mode: service.theme().mode })
@@ -194,10 +194,10 @@ describe('AgentosThemeService', () => {
       { variant: 'industry', mode: 'system', systemPrefersDark: false, expected: 'light' },
       { variant: 'terminal', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
       { variant: 'terminal', mode: 'system', systemPrefersDark: true, expected: 'dark' },
-      { variant: 'astra', mode: 'light', systemPrefersDark: true, expected: 'light' },
-      { variant: 'astra', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
-      { variant: 'astra', mode: 'system', systemPrefersDark: true, expected: 'dark' },
-      { variant: 'astra', mode: 'system', systemPrefersDark: false, expected: 'light' },
+      { variant: 'whoz-oss', mode: 'light', systemPrefersDark: true, expected: 'light' },
+      { variant: 'whoz-oss', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+      { variant: 'whoz-oss', mode: 'system', systemPrefersDark: true, expected: 'dark' },
+      { variant: 'whoz-oss', mode: 'system', systemPrefersDark: false, expected: 'light' },
       { variant: 'rainbow', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
     ])('%j', ({ variant, mode, systemPrefersDark, expected }) => {
       expect(resolveEffectiveMode(variant, mode, systemPrefersDark)).toBe(expected)
@@ -220,8 +220,8 @@ describe('AgentosThemeService', () => {
   })
 
   describe('isModeSupported / supportsModeSwitch', () => {
-    it('accepts every mode for industry, terminal and astra', () => {
-      for (const variant of ['industry', 'terminal', 'astra']) {
+    it('accepts every mode for industry, terminal and whoz-oss', () => {
+      for (const variant of ['industry', 'terminal', 'whoz-oss']) {
         expect(supportsModeSwitch(variant)).toBe(true)
         for (const mode of ['light', 'dark', 'system'] as const) {
           expect(isModeSupported(variant, mode)).toBe(true)

@@ -24,7 +24,7 @@ export interface ThemeVariantDefinition {
 export const THEME_VARIANT_DEFINITIONS = [
   { id: 'industry', label: 'Industry', description: 'Bleu acier, Barlow', modes: ['light', 'dark'] },
   { id: 'terminal', label: 'Terminal', description: 'Ambre CRT, JetBrains Mono', modes: ['light', 'dark'] },
-  { id: 'astra', label: 'Astra', description: 'Bleu franc, Roboto, formes arrondies', modes: ['light', 'dark'] },
+  { id: 'whoz-oss', label: 'Whoz OSS', description: 'Bleu franc, Roboto, formes arrondies', modes: ['light', 'dark'] },
 ] as const satisfies readonly ThemeVariantDefinition[]
 
 export type ThemeVariant = (typeof THEME_VARIANT_DEFINITIONS)[number]['id']
@@ -35,7 +35,7 @@ export const THEME_VARIANTS: readonly ThemeVariant[] = THEME_VARIANT_DEFINITIONS
 /**
  * Full theme state: variant (skin) × mode (light/dark/system) — what the user chose.
  * Maps to a `data-theme` attribute value through `resolveEffectiveMode`: no attribute for industry light (default),
- * `"industry-dark"`, `"terminal-light"`, `"terminal-dark"`, `"astra-light"`, `"astra-dark"`.
+ * `"industry-dark"`, `"terminal-light"`, `"terminal-dark"`, `"whoz-oss-light"`, `"whoz-oss-dark"`.
  */
 export interface ThemeState {
   variant: ThemeVariant

@@ -323,15 +323,15 @@ agentos-shell {
   }
 }
 
-/* ─── Terminal and Astra — blueprint corner decorations ───────────────────────
+/* ─── Terminal and Whoz OSS — blueprint corner decorations ────────────────────
  * Both skins hide the `dsBlueprint` corner marks (square-corner language): Terminal because it is a text UI,
- * Astra because they clash with its rounded corners. Industry keeps them. Scoped under agentos-shell.
+ * Whoz OSS because they clash with its rounded corners. Industry keeps them. Scoped under agentos-shell.
  */
 agentos-shell {
   &[data-theme^='terminal'],
   :is([data-theme^='terminal']) &,
-  &[data-theme^='astra'],
-  :is([data-theme^='astra']) & {
+  &[data-theme^='whoz-oss'],
+  :is([data-theme^='whoz-oss']) & {
     .blueprint-corner {
       display: none;
     }
@@ -383,10 +383,10 @@ agentos-shell {
 /* ds-kebab-menu — panel styles for CDK overlay (mat-menu rendered outside component scope).
  * CDK overlay panels are rendered inside .cdk-overlay-container, a child of body, OUTSIDE agentos-shell. Custom
  * properties only flow down to descendants, so tokens defined on `agentos-shell` (radii, shadows, fonts, --red,
- * and the whole Industry/Terminal/Astra palettes) do NOT reach these panels: they fall back to the Industry values
+ * and the whole Industry/Terminal/Whoz OSS palettes) do NOT reach these panels: they fall back to the Industry values
  * written below, and to the legacy :root palette for the color tokens that exist there.
  * A theme that must restyle these panels therefore re-applies its tokens on `[data-theme=…] .ds-kebab-panel`
- * (see the Astra block in colors.scss). The class is exclusive to agentos-ui.
+ * (see the Whoz OSS block in colors.scss). The class is exclusive to agentos-ui.
  */
 .ds-kebab-panel {
   --mat-menu-container-color: var(--color-surface, #dcdcde);

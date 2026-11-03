@@ -6,7 +6,7 @@
  *   - agentos-shell               : Industry palette (Barlow / steel blue) — agentos-ui
  *
  * Industry tokens are scoped under agentos-shell to avoid polluting the legacy app.
- * Terminal and Astra themes are also scoped under agentos-shell (never on :root / html[data-theme]:
+ * Terminal and Whoz OSS themes are also scoped under agentos-shell (never on :root / html[data-theme]:
  * `data-theme` is shared with the legacy glass app, which would be restyled).
  *
  * Shared tokens (--glass-*, --color-overlay, etc.) remain in :root because
@@ -137,13 +137,14 @@
   --color-divider: rgba(255, 255, 255, 0.15);
 }
 
-/* ─── Dark theme aliases — terminal and astra variants for legacy components ──────────
- * When agentos-ui switches to a terminal or astra dark theme, data-theme='terminal-dark' / 'astra-dark' is set on <html>.
+/* ─── Dark theme aliases — terminal and whoz-oss variants for legacy components ───────
+ * When agentos-ui switches to a terminal or whoz-oss dark theme, data-theme='terminal-dark' / 'whoz-oss-dark' is set
+ * on <html>.
  * Legacy components, dialogs and snackbars don't understand those themes — they take the dark glass palette below.
  * A new `<variant>-dark` must be listed here, or its dialogs/snackbars stay on the light :root palette.
  */
 [data-theme='terminal-dark'],
-[data-theme='astra-dark'] {
+[data-theme='whoz-oss-dark'] {
   /* Reuse the same dark glass morphism tokens as [data-theme='dark'] */
   --color-bg: #1c1c1e;
   --color-bg-solid: #1c1c1e;
@@ -196,7 +197,7 @@ agentos-shell {
   --font-body: 'Barlow', system-ui, sans-serif;
   --font-heading: 'IBM Plex Mono', 'Fira Code', monospace;
 
-  /* ── Shape / Radius — 0 = square corners. Industry and Terminal inherit it; Astra redefines all four. ── */
+  /* ── Shape / Radius — 0 = square corners. Industry and Terminal inherit it; Whoz OSS redefines all four. ── */
   --radius-sm: 0;
   --radius-md: 0;
   --radius-lg: 0;
@@ -584,17 +585,17 @@ agentos-shell[data-theme='terminal-dark'],
   --glass-backdrop-blur: blur(20px);
 }
 
-/* ─── Astra Light ───────────────────────────────────────────────────────────── */
+/* ─── Whoz OSS Light ───────────────────────────────────────────────────────────── */
 /* Light and dark (see THEME_VARIANT_DEFINITIONS). Colors are eyeballed from mockups, not Figma-exact.
  * The whole token set is written ONCE, in a mixin, because it is applied to two scopes:
  *   1. agentos-shell      — the app itself
  *   2. .ds-kebab-panel    — the CDK overlay panels, which live under body, OUTSIDE agentos-shell, and so
  *                           cannot inherit tokens defined on it (see styles.scss).
- * Legacy: astra-light needs no alias (it matches none of the legacy dark selectors, so the light :root palette
- * applies to the legacy app); astra-dark is listed in the legacy dark alias block above. */
+ * Legacy: whoz-oss-light needs no alias (it matches none of the legacy dark selectors, so the light :root palette
+ * applies to the legacy app); whoz-oss-dark is listed in the legacy dark alias block above. */
 
-/* Shared by astra-light and astra-dark: font and shape do not change with the mode. */
-@mixin astra-base {
+/* Shared by whoz-oss-light and whoz-oss-dark: font and shape do not change with the mode. */
+@mixin whoz-oss-base {
   /* ── Typography ── */
   --font-body: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-heading: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -606,8 +607,8 @@ agentos-shell[data-theme='terminal-dark'],
   --radius-pill: 999px;
 }
 
-@mixin astra-light {
-  @include astra-base;
+@mixin whoz-oss-light {
+  @include whoz-oss-base;
 
   /* ── Accent blue ── */
   --color-accent: #2f5bd3;
@@ -707,21 +708,21 @@ agentos-shell[data-theme='terminal-dark'],
   --glass-backdrop-blur: blur(20px);
 }
 
-agentos-shell[data-theme='astra-light'],
-:is([data-theme='astra-light']) agentos-shell {
-  @include astra-light;
+agentos-shell[data-theme='whoz-oss-light'],
+:is([data-theme='whoz-oss-light']) agentos-shell {
+  @include whoz-oss-light;
 }
 
 /* CDK overlay panels of agentos-ui (kebab menus): rendered under body, so they get the tokens directly. The class
  * is exclusive to agentos-ui, which keeps the legacy app untouched. Industry and Terminal panels are unchanged. */
-[data-theme='astra-light'] .ds-kebab-panel {
-  @include astra-light;
+[data-theme='whoz-oss-light'] .ds-kebab-panel {
+  @include whoz-oss-light;
 }
 
-/* ─── Astra Dark ────────────────────────────────────────────────────────────── */
-/* Same token names, font and radii as astra-light; blue a little lighter, deeper surfaces, stronger shadows. */
-@mixin astra-dark {
-  @include astra-base;
+/* ─── Whoz OSS Dark ────────────────────────────────────────────────────────────── */
+/* Same token names, font and radii as whoz-oss-light; blue a little lighter, deeper surfaces, stronger shadows. */
+@mixin whoz-oss-dark {
+  @include whoz-oss-base;
 
   /* ── Accent blue (lighter) ── */
   --color-accent: #6b8ef2;
@@ -821,12 +822,12 @@ agentos-shell[data-theme='astra-light'],
   --glass-backdrop-blur: blur(20px);
 }
 
-agentos-shell[data-theme='astra-dark'],
-:is([data-theme='astra-dark']) agentos-shell {
-  @include astra-dark;
+agentos-shell[data-theme='whoz-oss-dark'],
+:is([data-theme='whoz-oss-dark']) agentos-shell {
+  @include whoz-oss-dark;
 }
 
-/* Same overlay-scope reason as astra-light (kebab menu panels live under body, outside agentos-shell). */
-[data-theme='astra-dark'] .ds-kebab-panel {
-  @include astra-dark;
+/* Same overlay-scope reason as whoz-oss-light (kebab menu panels live under body, outside agentos-shell). */
+[data-theme='whoz-oss-dark'] .ds-kebab-panel {
+  @include whoz-oss-dark;
 }
