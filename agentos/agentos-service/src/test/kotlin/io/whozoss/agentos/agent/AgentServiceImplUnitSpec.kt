@@ -2672,7 +2672,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         /** Resolves the definition of [config] on a model whose supportsAdvancedExecution is [modelFlag]. */
-        suspend fun resolvedExecutionMode(
+        suspend fun executionModeOn(
             config: AgentConfig,
             modelFlag: Boolean,
         ): io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode {
@@ -2686,14 +2686,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
         "an agent without explicit execution mode runs ADVANCED when its model supports advanced execution" {
             val config = agentConfig(name = "model-default-advanced")
 
-            resolvedExecutionMode(config, modelFlag = true) shouldBe
+            executionModeOn(config, modelFlag = true) shouldBe
                 io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.ADVANCED
         }
 
         "an agent without explicit execution mode runs SIMPLE when its model does not support advanced execution" {
             val config = agentConfig(name = "model-default-simple")
 
-            resolvedExecutionMode(config, modelFlag = false) shouldBe
+            executionModeOn(config, modelFlag = false) shouldBe
                 io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.SIMPLE
         }
 
@@ -2702,14 +2702,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 agentConfig(name = "explicit-simple")
                     .copy(executionMode = io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.SIMPLE)
 
-            resolvedExecutionMode(config, modelFlag = true) shouldBe
+            executionModeOn(config, modelFlag = true) shouldBe
                 io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.SIMPLE
         }
 
         "the legacy advancedExecution=true flag runs ADVANCED even when the model does not support it" {
             val config = agentConfig(name = "legacy-advanced").copy(advancedExecution = true)
 
-            resolvedExecutionMode(config, modelFlag = false) shouldBe
+            executionModeOn(config, modelFlag = false) shouldBe
                 io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.ADVANCED
         }
 
@@ -2718,9 +2718,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 agentConfig(name = "explicit-loop")
                     .copy(executionMode = io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP)
 
-            resolvedExecutionMode(config, modelFlag = true) shouldBe
+            executionModeOn(config, modelFlag = true) shouldBe
                 io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP
-            resolvedExecutionMode(config, modelFlag = false) shouldBe
+            executionModeOn(config, modelFlag = false) shouldBe
                 io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP
         }
 

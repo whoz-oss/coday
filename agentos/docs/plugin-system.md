@@ -99,12 +99,21 @@ pricing:                    # per million tokens
   outputMTokens: 10
   cacheRead: 0.2
   cacheWrite: 2.5
+supportsAdvancedExecution: true   # optional, default false
 ```
 
 A file names its provider instead of referencing an id: the provider, which holds the API key, stays
 in each installation's database. A model whose provider does not exist there is skipped. A persisted
 namespace model with the same provider and alias (or `apiModelName`) wins over the file. To change a
 filesystem model, edit its file; the API cannot update or delete it.
+
+`supportsAdvancedExecution` (default `false`) lets the model decide the default execution mode of the
+agents using it. The execution mode of an agent is resolved in this order:
+
+1. the agent's explicit `executionMode`
+2. the legacy `advancedExecution: true`
+3. the model's `supportsAdvancedExecution` (`ADVANCED` when true)
+4. `SIMPLE`
 
 ## Credentials Delivered to Plugins
 
