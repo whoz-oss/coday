@@ -30,11 +30,39 @@ internal object SubAgentSelectorValidation {
     /**
      * Throws 400 when any entry of [subAgents] is an entity id, naming the offending entries.
      *
-     * Blank entries are not this object's business: [io.whozoss.agentos.sdk.util.StringUtils
-     * .nullOrNotBlankItems] already drops them on both write paths.
+     * For a create, where there is no stored list to compare against and so nothing an id can be
+     * inherited from. Blank entries are not this object's business:
+     * [io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems] already drops them.
      */
-    fun requireNameSelectors(subAgents: List<String>?) {
-        val ids = subAgents?.filter { ENTITY_ID.matches(it.trim()) }.orEmpty()
+    fun requireNameSelectors(subAgents: List<String>?) = refuse(entityIds(subAgents))
+
+    /**
+     * Throws 400 when [subAgents] introduces an entity id that [stored] did not already hold.
+     *
+     * An update replaces the whole resource, so every caller sends the selectors back as they were
+     * read: the UI from its own rows, and the config agent because
+     * [io.whozoss.agentos.configChange.ApiBeanConfigWriter] reads the DTO, applies the one field
+     * its plan targets and PUTs the result. Refusing the whole list would therefore make an agent
+     * whose stored selectors already hold an id — the very state this guard exists to stop
+     * producing — impossible to edit at all, including for a change that never touches delegation,
+     * and would abort the rest of a configuration plan with it.
+     *
+     * So the guard refuses what this write *adds*, and leaves what it merely carries over. A stored
+     * id stays visible instead: the form keeps it as a flagged row the user can delete, and the run
+     * warns about it by name.
+     */
+    fun requireNoNewIdSelectors(
+        subAgents: List<String>?,
+        stored: List<String>?,
+    ) {
+        val carriedOver = stored.orEmpty().map { it.trim().lowercase() }.toSet()
+        refuse(entityIds(subAgents).filterNot { it.trim().lowercase() in carriedOver })
+    }
+
+    private fun entityIds(subAgents: List<String>?): List<String> =
+        subAgents?.filter { ENTITY_ID.matches(it.trim()) }.orEmpty()
+
+    private fun refuse(ids: List<String>) {
         if (ids.isEmpty()) return
         throw ResponseStatusException(
             HttpStatus.BAD_REQUEST,

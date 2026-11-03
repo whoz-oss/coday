@@ -51,3 +51,29 @@ export function namedSubAgentKeys(selectors: AgentConfig['subAgents']): Set<stri
 export function isSubAgentPattern(selector: string): boolean {
   return selector.includes(ALL_SUB_AGENTS_SELECTOR)
 }
+
+/**
+ * The server's own glob, as `globToRegex` builds it: every regex metacharacter escaped, `*` left
+ * as the only wildcard, anchored at both ends and case-insensitive.
+ *
+ * Kept in step with that function for the same reason [namedSubAgentKeys] lower-cases: a selector
+ * the run will honour has to read as honoured here, or the section misreports what the agent can
+ * actually do.
+ */
+function subAgentPatternToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[\\^$.|?+()[\]{}]/g, '\\$&').replace(/\*/g, '.*')
+  return new RegExp(`^${escaped}$`, 'i')
+}
+
+/**
+ * True when one of [selectors] reaches [name] through a glob rather than by naming it.
+ *
+ * `*` is excluded: it reaches everything, and the form shows that as its own toggle rather than
+ * marking every row at once.
+ */
+export function isGrantedByPattern(name: string, selectors: AgentConfig['subAgents']): boolean {
+  return (selectors ?? [])
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s !== ALL_SUB_AGENTS_SELECTOR && isSubAgentPattern(s))
+    .some((s) => subAgentPatternToRegex(s).test(name))
+}

@@ -4,6 +4,9 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -565,6 +568,66 @@ class AgentConfigControllerUnitSpec :
             val result = controller.update(c.id, updatedResource)
 
             result shouldBe toDto(updatedDomain)
+            verify(exactly = 1) { service.update(any()) }
+        }
+
+        // ── subAgents guard, on the two write paths that reach it ──────────────────────
+
+        "create refuses an entity id in subAgents" {
+            val id = UUID.randomUUID().toString()
+            every { userService.getCurrentUser() } returns superAdmin
+
+            val thrown =
+                shouldThrow<ResponseStatusException> {
+                    controller.create(resource().copy(subAgents = listOf(id)))
+                }
+
+            thrown.statusCode shouldBe HttpStatus.BAD_REQUEST
+            thrown.reason!! shouldContain id
+            verify(exactly = 0) { service.create(any()) }
+        }
+
+        "create accepts names and globs in subAgents" {
+            val payload = resource(id = null).copy(subAgents = listOf("Reviewer", "*Fixer"))
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.create(any()) } returns toDomain(payload)
+
+            controller.create(payload)
+
+            verify(exactly = 1) { service.create(any()) }
+        }
+
+        "update refuses an entity id subAgents did not already hold" {
+            val c = config().copy(subAgents = listOf("Reviewer"))
+            val id = UUID.randomUUID().toString()
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+
+            val thrown =
+                shouldThrow<ResponseStatusException> {
+                    controller.update(c.id, resource(id = c.id).copy(subAgents = listOf("Reviewer", id)))
+                }
+
+            thrown.statusCode shouldBe HttpStatus.BAD_REQUEST
+            verify(exactly = 0) { service.update(any()) }
+        }
+
+        "update carries a stored entity id through, so an unrelated edit is not blocked by it" {
+            // A PUT replaces the whole resource, so every caller echoes the stored selectors back.
+            // Refusing them would make an agent that already holds an id impossible to edit at all.
+            val id = UUID.randomUUID().toString()
+            val c = config().copy(subAgents = listOf(id))
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.instructions shouldBe "Rewritten."
+                saved.subAgents shouldBe listOf(id)
+                saved
+            }
+
+            controller.update(c.id, resource(id = c.id).copy(subAgents = listOf(id), instructions = "Rewritten."))
+
             verify(exactly = 1) { service.update(any()) }
         }
 

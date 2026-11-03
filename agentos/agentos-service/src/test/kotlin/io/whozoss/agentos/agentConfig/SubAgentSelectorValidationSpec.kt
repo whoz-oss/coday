@@ -66,6 +66,49 @@ class SubAgentSelectorValidationSpec : StringSpec({
         thrown.reason!! shouldContain "12 entity id(s)"
     }
 
+    "an id already stored is carried over, not refused" {
+        // A PUT echoes the whole resource back, so refusing what the caller merely re-sends would
+        // make an agent that already holds an id impossible to edit at all.
+        val id = UUID.randomUUID().toString()
+
+        shouldNotThrowAny {
+            SubAgentSelectorValidation.requireNoNewIdSelectors(listOf(id, "Reviewer"), listOf(id))
+        }
+    }
+
+    "an id this write introduces is refused even when others were stored" {
+        val stored = UUID.randomUUID().toString()
+        val fresh = UUID.randomUUID().toString()
+
+        val thrown =
+            shouldThrow<ResponseStatusException> {
+                SubAgentSelectorValidation.requireNoNewIdSelectors(listOf(stored, fresh), listOf(stored))
+            }
+
+        thrown.reason!! shouldContain fresh
+        // Only the new one is named: the stored one is not this write's fault.
+        thrown.reason!!.contains(stored) shouldBe false
+    }
+
+    "carrying over ignores case and padding, like the stored value's own spelling" {
+        val id = UUID.randomUUID().toString()
+
+        shouldNotThrowAny {
+            SubAgentSelectorValidation.requireNoNewIdSelectors(listOf("  ${'$'}{id.uppercase()}  "), listOf(id))
+        }
+    }
+
+    "with nothing stored, every id is one this write introduces" {
+        val id = UUID.randomUUID().toString()
+
+        shouldThrow<ResponseStatusException> {
+            SubAgentSelectorValidation.requireNoNewIdSelectors(listOf(id), null)
+        }
+        shouldThrow<ResponseStatusException> {
+            SubAgentSelectorValidation.requireNoNewIdSelectors(listOf(id), emptyList())
+        }
+    }
+
     "plain names pass" {
         shouldNotThrowAny {
             SubAgentSelectorValidation.requireNameSelectors(listOf("Reviewer", "BugFixer"))

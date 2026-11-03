@@ -310,6 +310,9 @@
                 <span class="agent-config-form__skill-name">{{ row.name }}</span>
                 @if (row.pattern) {
                   <span class="agent-config-form__skill-badge">pattern</span>
+                } @else if (row.grantedByPattern) {
+                  <!-- Reached by a glob below: the box is not ticked, yet the run grants it. -->
+                  <span class="agent-config-form__skill-badge">via pattern</span>
                 } @else if (row.unresolved) {
                   <span class="agent-config-form__skill-badge agent-config-form__skill-badge--unresolved">
                     {{ subAgentCandidatesUnavailable() ? 'not verified' : 'no matching agent' }}

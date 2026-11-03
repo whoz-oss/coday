@@ -40,6 +40,7 @@ import {
 import {
   ALL_SUB_AGENTS_SELECTOR,
   grantsAllSubAgents,
+  isGrantedByPattern,
   isSubAgentPattern,
   namedSubAgentKeys,
 } from '../../services/sub-agent-selector.utils'
@@ -68,6 +69,8 @@ interface SubAgentRow {
   unresolved: boolean
   /** The selector is a glob, so it resolves against names this form cannot enumerate. */
   pattern: boolean
+  /** A glob among the selectors reaches this agent, whether or not its own box is ticked. */
+  grantedByPattern: boolean
   selected: WritableSignal<boolean>
 }
 
@@ -613,23 +616,33 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * The agents this config may delegate to: the namespace's agents, or the platform agents when
-   * editing a platform-level config — the same population the server resolves the allowlist
-   * against.
+   * The agents this config may delegate to, as the server resolves them.
    *
-   * Disabled agents are included. An allowlist entry is a durable choice, and leaving out an agent
-   * that is merely unpublished today would show its selector as matching nothing and invite the
-   * user to drop it.
+   * `findDeployedByNamespaceIdAndUserId` keeps `a.namespaceId IS NULL OR a.namespaceId = $ns` and
+   * `$withDisabled OR a.enabled` with the flag defaulted to false, so the reachable set is the
+   * platform agents **plus** the namespace's own, **enabled only**. Offering the namespace alone
+   * flagged a working platform selector as matching nothing, and offering disabled agents let the
+   * form produce the configuration this whole change exists to prevent: a selector that resolves
+   * to nobody and silently leaves the agent with no delegation tool.
+   *
+   * Still an approximation in one direction: the query also requires the agent to be deployed to
+   * the namespace or to a group the user belongs to, which no endpoint exposes. An agent that
+   * exists but is not deployed is therefore offered here and will not resolve at run time.
    *
    * Fail-safe like [loadSkillCatalogue]: an error yields an empty list and flags
    * [subAgentCandidatesUnavailable] rather than blocking the whole form.
    */
   private loadDelegationCandidates(): Observable<string[]> {
+    const platform$ = this.agentConfigController.listPlatformAgentsAgentConfig(false)
     const agents$ = this.namespaceId
-      ? this.agentConfigController.listByParentAgentConfig(this.namespaceId, true)
-      : this.agentConfigController.listPlatformAgentsAgentConfig(true)
+      ? forkJoin({
+          namespace: this.agentConfigController.listByParentAgentConfig(this.namespaceId, false),
+          platform: platform$,
+        }).pipe(map(({ namespace, platform }) => [...platform, ...namespace]))
+      : platform$
     return agents$.pipe(
       map((agents) => agents.map((a) => a.name).filter((name): name is string => name.length > 0)),
+      map((names) => [...new Set(names)]),
       catchError((err) => {
         console.error('[agent-config-form] failed to load the delegation candidates', err)
         this.subAgentCandidatesUnavailable.set(true)
@@ -672,6 +685,9 @@ export class AgentConfigFormComponent implements OnInit {
       name,
       unresolved: false,
       pattern: false,
+      // Named or not, a glob below may already reach it: saying nothing would report this agent
+      // as outside a grant the run will honour.
+      grantedByPattern: isGrantedByPattern(name, selectors),
       selected: signal(declaredKeys.has(name.toLowerCase())),
     }))
 
@@ -686,6 +702,7 @@ export class AgentConfigFormComponent implements OnInit {
         name: selector,
         unresolved: true,
         pattern: isSubAgentPattern(selector),
+        grantedByPattern: false,
         selected: signal(true),
       })
     }
@@ -791,12 +808,17 @@ export class AgentConfigFormComponent implements OnInit {
       this.allSubAgentsSelected.set(true)
     } else {
       this.subAgentRows.update((rows) => [
-        ...rows,
+        ...rows.map((row) =>
+          row.unresolved || row.grantedByPattern || !isGrantedByPattern(row.name, [pattern])
+            ? row
+            : { ...row, grantedByPattern: true }
+        ),
         {
           selector: pattern,
           name: pattern,
           unresolved: true,
           pattern: isSubAgentPattern(pattern),
+          grantedByPattern: false,
           selected: signal(true),
         },
       ])

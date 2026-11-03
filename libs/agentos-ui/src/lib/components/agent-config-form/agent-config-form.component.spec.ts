@@ -538,19 +538,48 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   describe('sub-agent selectors', () => {
     const named = (...names: string[]) => names.map((name) => ({ name }) as AgentConfig)
 
-    it('offers the agents of the namespace and selects what the agent declares', () => {
+    it('offers the agents the server resolves: platform plus namespace, enabled only', () => {
       routeAgentConfigId = 'a-1'
       controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer', 'BugFixer')))
+      controller.listPlatformAgentsAgentConfig.mockReturnValue(of(named('PlatformHelper')))
       controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['BugFixer'] })))
 
       component.ngOnInit()
 
-      // Disabled agents included: an allowlist entry outlives an agent being unpublished.
-      expect(controller.listByParentAgentConfig).toHaveBeenCalledWith('ns-1', true)
+      // findDeployedByNamespaceIdAndUserId keeps `a.namespaceId IS NULL OR = $ns` and
+      // `$withDisabled OR a.enabled`, the flag defaulting to false.
+      expect(controller.listByParentAgentConfig).toHaveBeenCalledWith('ns-1', false)
+      expect(controller.listPlatformAgentsAgentConfig).toHaveBeenCalledWith(false)
       const rows = internals().subAgentRows()
-      expect(rows.map((r) => r.name)).toEqual(['Reviewer', 'BugFixer'])
+      expect(rows.map((r) => r.name)).toEqual(['PlatformHelper', 'Reviewer', 'BugFixer'])
       expect(rows.find((r) => r.name === 'BugFixer')?.selected()).toBe(true)
       expect(rows.find((r) => r.name === 'Reviewer')?.selected()).toBe(false)
+    })
+
+    it('says when a glob already reaches an agent whose own box is not ticked', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer', 'Reviewer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['*Fixer'] })))
+
+      component.ngOnInit()
+
+      const rows = internals().subAgentRows()
+      // The run grants BugFixer through the glob; reporting it as outside the grant is a misreport.
+      expect(rows.find((r) => r.name === 'BugFixer')?.grantedByPattern).toBe(true)
+      expect(rows.find((r) => r.name === 'BugFixer')?.selected()).toBe(false)
+      expect(rows.find((r) => r.name === 'Reviewer')?.grantedByPattern).toBe(false)
+    })
+
+    it('marks the rows a newly typed glob reaches', () => {
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer', 'Reviewer')))
+
+      component.ngOnInit()
+      internals().newSubAgentControl.setValue('*Fixer')
+      internals().addSubAgent()
+
+      const rows = internals().subAgentRows()
+      expect(rows.find((r) => r.name === 'BugFixer')?.grantedByPattern).toBe(true)
+      expect(rows.find((r) => r.name === 'Reviewer')?.grantedByPattern).toBe(false)
     })
 
     it('matches a selector written in another case, like the server glob does', () => {
@@ -964,7 +993,10 @@ describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
           useValue: { snapshot: { params: { namespaceId: 'ns-1' }, paramMap: { get: () => null } } },
         },
         { provide: Router, useValue: { navigate: jest.fn() } },
-        { provide: AgentConfigControllerService, useValue: { listByParentAgentConfig: () => of([]) } },
+        {
+          provide: AgentConfigControllerService,
+          useValue: { listByParentAgentConfig: () => of([]), listPlatformAgentsAgentConfig: () => of([]) },
+        },
         { provide: AgentConfigExportService, useValue: {} },
         {
           provide: IntegrationConfigStateService,
@@ -1044,6 +1076,16 @@ describe('AgentConfigFormComponent (platform-scope skills)', () => {
     const fixture = TestBed.createComponent(AgentConfigFormComponent)
     return { fixture, controller, skillState }
   }
+
+  it('asks only for the platform agents, and only the enabled ones', () => {
+    // The platform branch of loadDelegationCandidates had no assertion, unlike its namespace twin.
+    const { fixture, controller } = setUp({})
+
+    fixture.componentInstance.ngOnInit()
+
+    expect(controller.listPlatformAgentsAgentConfig).toHaveBeenCalledWith(false)
+    expect(controller.listByParentAgentConfig).not.toHaveBeenCalled()
+  })
 
   it('offers the platform skills instead of an effective catalogue', () => {
     const { fixture, skillState } = setUp({ skillSelectors: ['shared'] })
