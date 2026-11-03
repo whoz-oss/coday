@@ -938,7 +938,10 @@ describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
           useValue: { snapshot: { params: { namespaceId: 'ns-1' }, paramMap: { get: () => null } } },
         },
         { provide: Router, useValue: { navigate: jest.fn() } },
-        { provide: AgentConfigControllerService, useValue: { listByParentAgentConfig: () => of([]) } },
+        {
+          provide: AgentConfigControllerService,
+          useValue: { listByParentAgentConfig: () => of([]), listPlatformAgentsAgentConfig: () => of([]) },
+        },
         { provide: AgentConfigExportService, useValue: {} },
         {
           provide: IntegrationConfigStateService,
