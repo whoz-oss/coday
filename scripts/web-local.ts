@@ -43,14 +43,13 @@ import * as os from 'os'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
 import {
-  AGENTOS_PLUGINS,
   builtJarGlob,
   devJarTarget,
-  FACTORY_PLUGINS,
   installManifest,
   isSetupDone,
   localLayout,
   NPM_PACKAGES,
+  pluginArtifactIds,
   resolveLocalRoot,
   tarballPrefix,
   unsafeRootReason,
@@ -79,15 +78,28 @@ function findBuiltJar(kind: 'agentos' | 'factory', artifactId: string): string {
   return path.join(absolute, found)
 }
 
+/** Plugins present in the repository right now: the `<kind>-*-plugin` directories of `<workspace>/<kind>/`. */
+function discoverPlugins(kind: 'agentos' | 'factory'): string[] {
+  const dir = path.join(workspaceRoot, kind)
+  const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory())
+  return pluginArtifactIds(
+    kind,
+    entries.map((e) => e.name)
+  )
+}
+
 /**
  * Overwrite the JARs in `<configDir>/{agentos,factory}`. Only the `*-dev.jar` files are written (copyFileSync
  * replaces them): nothing is deleted, so `agentos/data`, `factory/data` and the rest of a kept config survive.
+ * The plugins are the ones the repository holds (see `discoverPlugins`), not a fixed list.
  */
 function placeJars(configDir: string): void {
-  for (const [kind, service, plugins] of [
-    ['agentos', 'agentos-service', AGENTOS_PLUGINS],
-    ['factory', 'factory-service', FACTORY_PLUGINS],
+  for (const [kind, service] of [
+    ['agentos', 'agentos-service'],
+    ['factory', 'factory-service'],
   ] as const) {
+    const plugins = discoverPlugins(kind)
+    log(`${kind}: plugins found in the repository: ${plugins.join(', ') || '(none)'}`)
     for (const artifactId of [service, ...plugins]) {
       const target = devJarTarget(configDir, kind, artifactId)
       fs.mkdirSync(path.dirname(target), { recursive: true })

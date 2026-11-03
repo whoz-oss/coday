@@ -69,18 +69,7 @@
       "cache": false,
       "dependsOn": [
         { "target": "bootJar", "projects": ["agentos-service", "factory-service"] },
-        {
-          "target": "assemble",
-          "projects": [
-            "agentos-bash-plugin",
-            "agentos-file-plugin",
-            "agentos-mcp-plugin",
-            "agentos-http-plugin",
-            "agentos-tmux-plugin",
-            "agentos-git-plugin",
-            "factory-forge-plugin"
-          ]
-        }
+        { "target": "assemble", "projects": "tag:scope:plugin" }
       ]
     },
     "local": {
