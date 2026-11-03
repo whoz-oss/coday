@@ -32,4 +32,8 @@ export interface Namespace {
    * Namespace-level default for the run cost threshold, in the platform currency unit. Null means inherit from the platform default. Applies to all cases in this namespace that do not declare their own threshold.
    */
   runCostThreshold?: number
+  /**
+   * Optional absolute path of a directory on the server host that replaces the default directory of the namespace-shared file exchange. Only super-admins may set or change it. Created on first use.
+   */
+  sharedExchangePath?: string
 }

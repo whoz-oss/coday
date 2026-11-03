@@ -8,12 +8,14 @@
   },
   "files": [
     "index.js",
+    "launcher.js",
     "README.md"
   ],
   "dependencies": {
     "@whoz-oss/coday-client": "workspace:*",
     "@whoz-oss/coday-factory-cockpit": "workspace:*",
-    "@whoz-oss/coday-server": "workspace:*"
+    "@whoz-oss/coday-server": "workspace:*",
+    "nx": "catalog:dev"
   },
   "publishConfig": {
     "access": "public"

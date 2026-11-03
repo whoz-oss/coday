@@ -31,6 +31,152 @@ export class SseService extends BaseService {
   }
 
   /**
+   * Stream namespace case-list invalidations via SSE
+   * Each \&#39;namespace-case-invalidation\&#39; event carries the neutral JSON payload \&#39;{}\&#39;, with no business data. Reload GET /api/cases/by-parentId/{namespaceId}/mine when it arrives or when the stream reconnects.
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public streamCaseInvalidationsNamespaceCaseInvalidationSse(
+    namespaceId: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public streamCaseInvalidationsNamespaceCaseInvalidationSse(
+    namespaceId: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public streamCaseInvalidationsNamespaceCaseInvalidationSse(
+    namespaceId: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public streamCaseInvalidationsNamespaceCaseInvalidationSse(
+    namespaceId: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error(
+        'Required parameter namespaceId was null or undefined when calling streamCaseInvalidationsNamespaceCaseInvalidationSse.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['text/event-stream'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/case-invalidation`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Stream namespace case-list updates via SSE
+   * Each \&#39;namespace-case-list-updated\&#39; event carries the neutral JSON payload \&#39;{}\&#39;. Reload GET /api/cases/by-parentId/{namespaceId}/mine when it arrives or when the stream reconnects.
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public streamCaseListUpdatesNamespaceCaseListUpdateSse(
+    namespaceId: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public streamCaseListUpdatesNamespaceCaseListUpdateSse(
+    namespaceId: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public streamCaseListUpdatesNamespaceCaseListUpdateSse(
+    namespaceId: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public streamCaseListUpdatesNamespaceCaseListUpdateSse(
+    namespaceId: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error(
+        'Required parameter namespaceId was null or undefined when calling streamCaseListUpdatesNamespaceCaseListUpdateSse.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['text/event-stream'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/case-list-updates`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
    * Stream case events via SSE
    * Every SSE frame uses the stable event name \&#39;case-event\&#39;. Its JSON CaseEvent payload carries the subtype in its \&#39;type\&#39; discriminant. includePreviousEvents defaults to true.
    * @param caseId

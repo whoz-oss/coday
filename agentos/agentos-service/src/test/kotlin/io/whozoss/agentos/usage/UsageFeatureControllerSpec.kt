@@ -9,6 +9,7 @@ import io.mockk.verify
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
 import org.springframework.http.MediaType
@@ -30,6 +31,24 @@ class UsageFeatureControllerSpec :
                     .perform(get("/api/usage-configuration"))
                     .andExpect(status().isOk)
                     .andExpect(jsonPath("$.enabled").value(config.enabled))
+            }
+        }
+
+        "configuration exposes the platform default run cost threshold, or null when there is none" {
+            for (threshold in listOf(2.0, 0.0, null)) {
+                val mvc =
+                    MockMvcBuilders
+                        .standaloneSetup(
+                            UsageConfigurationController(
+                                UsageConfigProperties(),
+                                LimitsConfigProperties(runCostThreshold = threshold),
+                            ),
+                        ).build()
+                val result = mvc.perform(get("/api/usage-configuration")).andExpect(status().isOk)
+                when (threshold) {
+                    null -> result.andExpect(jsonPath("$.runCostThreshold").doesNotExist())
+                    else -> result.andExpect(jsonPath("$.runCostThreshold").value(threshold))
+                }
             }
         }
 
