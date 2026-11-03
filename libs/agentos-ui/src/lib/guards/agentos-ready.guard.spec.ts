@@ -1,4 +1,4 @@
-import { isAgentosReady, waitForAgentos } from './agentos-ready.guard'
+import { createAgentosReadyGuard, isAgentosReady, waitForAgentos } from './agentos-ready.guard'
 
 /** Plain object responses: the jsdom test environment has no `Response` global. */
 const answer = (body: unknown, status = 200): typeof fetch =>
@@ -42,5 +42,42 @@ describe('waitForAgentos', () => {
   it('gives up after the timeout so the page can show its own error', async () => {
     const fetchFn = answer({ steps: { agentos: { state: 'running' } } })
     expect(await waitForAgentos({ fetchFn, timeoutMs: 20, intervalMs: 5 })).toBe(false)
+  })
+})
+
+describe('agentosReadyGuard', () => {
+  const navigateWith = (guard: ReturnType<typeof createAgentosReadyGuard>) => () =>
+    guard(null as never, null as never) as Promise<boolean>
+
+  it('waits on the first navigation only: later ones go through without asking again', async () => {
+    const wait = jest.fn().mockResolvedValue(true)
+    const navigate = navigateWith(createAgentosReadyGuard(wait))
+
+    expect(await navigate()).toBe(true)
+    expect(await navigate()).toBe(true)
+
+    expect(wait).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not wait again once it gave up', async () => {
+    const wait = jest.fn().mockResolvedValue(false)
+    const navigate = navigateWith(createAgentosReadyGuard(wait))
+
+    expect(await navigate()).toBe(true)
+    expect(await navigate()).toBe(true)
+
+    expect(wait).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares the pending wait between concurrent navigations', async () => {
+    let release!: (ready: boolean) => void
+    const wait = jest.fn(() => new Promise<boolean>((resolve) => (release = resolve)))
+    const navigate = navigateWith(createAgentosReadyGuard(wait))
+
+    const both = Promise.all([navigate(), navigate()])
+    release(true)
+
+    expect(await both).toEqual([true, true])
+    expect(wait).toHaveBeenCalledTimes(1)
   })
 })
