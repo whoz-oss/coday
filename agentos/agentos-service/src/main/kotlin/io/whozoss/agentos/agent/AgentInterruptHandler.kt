@@ -8,6 +8,8 @@ import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.util.ContextWindowExceededException
+import io.whozoss.agentos.util.asContextWindowExceeded
 import io.whozoss.agentos.util.unwrapToProviderAiException
 import kotlinx.coroutines.flow.FlowCollector
 import mu.KLogger
@@ -19,6 +21,10 @@ import java.util.UUID
  * Emits an [ErrorEvent] and [AgentFinishedEvent] when the LLM provider rejects a request
  * with a non-transient error (4xx). Retrying with the same payload would produce the
  * same result, so the run is terminated immediately rather than looping.
+ *
+ * A context-window overflow (see [asContextWindowExceeded]) gets an explicit message naming the model,
+ * and its [AgentFinishedEvent] carries `contextWindowExceeded = true` so a delegating parent can tell
+ * it from any other failure. Every other error is reported as before.
  */
 suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
     agent: Agent,
@@ -27,6 +33,11 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
     caseId: UUID,
     logger: KLogger,
 ) {
+    val overflow = e.asContextWindowExceeded()
+    if (overflow != null) {
+        emitContextWindowExceededEvents(agent, overflow, namespaceId, caseId, logger)
+        return
+    }
     logger.error(e) { "LLM provider rejected request for case $caseId" }
     emit(
         ErrorEvent(
@@ -43,6 +54,46 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
             agentName = agent.name,
             llmProvider = agent.llmProvider,
             llmModel = agent.llmModel,
+        ),
+    )
+}
+
+/**
+ * Reports a context-window overflow: an explicit [ErrorEvent], then the [AgentFinishedEvent] flagged
+ * `contextWindowExceeded`. Logged at WARN with the classification (and not with the stack trace of the
+ * original provider exception, which may carry the response body in its message).
+ */
+private suspend fun FlowCollector<CaseEvent>.emitContextWindowExceededEvents(
+    agent: Agent,
+    e: ContextWindowExceededException,
+    namespaceId: UUID,
+    caseId: UUID,
+    logger: KLogger,
+) {
+    logger.warn {
+        "Context window exceeded for case $caseId, agent ${agent.name}, model ${agent.llmProvider}/${agent.llmModel} " +
+            "(promptTokens=${e.promptTokens}, maxTokens=${e.maxTokens}): ${e.message}"
+    }
+    val counts =
+        if (e.promptTokens != null && e.maxTokens != null) " (${e.promptTokens} > ${e.maxTokens} tokens)" else ""
+    emit(
+        ErrorEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            message =
+                "The conversation exceeds the context window of model ${agent.llmModel}$counts " +
+                    "and the agent cannot continue. Start a new case or ask for a shorter task.",
+        ),
+    )
+    emit(
+        AgentFinishedEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            agentId = agent.id,
+            agentName = agent.name,
+            llmProvider = agent.llmProvider,
+            llmModel = agent.llmModel,
+            contextWindowExceeded = true,
         ),
     )
 }
@@ -101,6 +152,11 @@ suspend fun FlowCollector<CaseEvent>.handleGenericAgentException(
                 llmModel = agent.llmModel,
             ),
         )
+        return
+    }
+    // A context overflow may reach here wrapped (Reactor, or any envelope around a blocking call's exception).
+    e.asContextWindowExceeded()?.let { overflow ->
+        emitContextWindowExceededEvents(agent, overflow, namespaceId, caseId, logger)
         return
     }
     when (val providerException = e.unwrapToProviderAiException()) {

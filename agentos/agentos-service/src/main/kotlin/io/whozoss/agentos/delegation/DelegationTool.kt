@@ -48,6 +48,8 @@ import java.util.UUID
  * - `error` — error description when success is false
  * - `maxIterationsReached` — the iteration limit the sub-agent reached before finishing; `result` is
  *   then its summary of the work so far, and resuming the sub-case lets it continue
+ * - `contextWindowExceeded` — present (true) when the sub-agent's conversation outgrew its model's context window;
+ *   resuming that sub-case fails again
  *
  * **Timeout** is an inactivity budget, applied independently to each sub-case: any activity of the
  * sub-case, or of a delegation it waits on, restarts it, and human cost confirmation does not count.
@@ -112,6 +114,7 @@ class DelegationTool(
                 All delegations run in parallel — pass multiple entries to fan out work concurrently. 
                 Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. 
                 A result with maxIterationsReached is partial: the sub-agent hit its iteration limit and summarized its progress; resume via subCaseId to let it continue. 
+                A result with contextWindowExceeded means the sub-agent's conversation outgrew its model's context window; resuming it will fail again, so start a new delegation with a narrower, self-contained task. 
                 Available agents: ${allowedAgents.joinToString(", ")}.
                 """.trimIndent()
             }
@@ -297,7 +300,8 @@ class DelegationTool(
                 finishErrorType = null
                 val lastRun = events.filterIsInstance<AgentFinishedEvent>().lastOrNull()
                 DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true,
-                    result = extractLastAgentMessage(events), maxIterationsReached = lastRun?.maxIterationsReached)
+                    result = extractLastAgentMessage(events), maxIterationsReached = lastRun?.maxIterationsReached,
+                    contextWindowExceeded = lastRun?.contextWindowExceeded)
             }
         } catch (error: Exception) {
             outcome = SubCaseOutcome.ERROR
@@ -375,6 +379,7 @@ class DelegationTool(
         val error: String? = null,
         val errorType: String? = null,
         val maxIterationsReached: Int? = null,
+        val contextWindowExceeded: Boolean? = null,
     ) {
         fun toMap(): Map<String, Any?> =
             buildMap {
@@ -389,6 +394,7 @@ class DelegationTool(
                 error?.let { put("error", it) }
                 errorType?.let { put("errorType", it) }
                 maxIterationsReached?.let { put("maxIterationsReached", it) }
+                if (contextWindowExceeded == true) put("contextWindowExceeded", true)
             }
     }
 

@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed — answers the design questions of issue #1285. Implementation is split into the
-phases listed under [Decision](#decision); each phase is a separate PR.
+Proposed — Phase 0 implemented.
+
+Answers the design questions of issue #1285. Implementation is split into the phases listed
+under [Decision](#decision); each phase is a separate PR.
 
 ## Context
 

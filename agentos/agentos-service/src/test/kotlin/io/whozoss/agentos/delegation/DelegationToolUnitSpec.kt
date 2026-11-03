@@ -203,6 +203,33 @@ class DelegationToolUnitSpec :
             jacksonObjectMapper().readTree(completed.execute(singleDelegation(), toolContext).output)[0].has("maxIterationsReached") shouldBe false
         }
 
+        "reports a sub-agent whose conversation outgrew its context window, so the parent starts a narrower delegation" {
+            val launcher = mockk<SubCaseManager>()
+            every { launcher.isCostPaused(any()) } returns false
+            fun finished(exceeded: Boolean?) =
+                AgentFinishedEvent(namespaceId = namespaceId, caseId = subCaseId, agentId = UUID.randomUUID(),
+                    agentName = "sub-agent", contextWindowExceeded = exceeded)
+            // An earlier turn overflowed too: only the latest run counts.
+            val events = listOf(agentMessage("early work"), finished(true), agentMessage("early work"), finished(true))
+            val tool = makeTool(launcher, events)
+            every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns idleRuntime()
+
+            val tree = jacksonObjectMapper().readTree(tool.execute(singleDelegation(), toolContext).output)
+
+            tree[0].get("contextWindowExceeded").asBoolean() shouldBe true
+            tree[0].get("subCaseId").asText() shouldBe subCaseId.toString()
+            tool.description shouldContain "contextWindowExceeded"
+            tool.description shouldContain "start a new delegation with a narrower, self-contained task"
+
+            // Not flagged when the latest run did not overflow, or when the flag is absent.
+            val recovered = makeTool(launcher, listOf(agentMessage("x"), finished(true), agentMessage("done"), finished(null)))
+            jacksonObjectMapper().readTree(recovered.execute(singleDelegation(), toolContext).output)[0]
+                .has("contextWindowExceeded") shouldBe false
+            val explicitFalse = makeTool(launcher, listOf(agentMessage("done"), finished(false)))
+            jacksonObjectMapper().readTree(explicitFalse.execute(singleDelegation(), toolContext).output)[0]
+                .has("contextWindowExceeded") shouldBe false
+        }
+
         // -------------------------------------------------------------------------
         // Parallel delegations
         // -------------------------------------------------------------------------

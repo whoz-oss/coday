@@ -4280,6 +4280,8 @@ components:
             format: uuid
           agentName:
             type: string
+          contextWindowExceeded:
+            type: boolean
           llmModel:
             type: string
           llmProvider:
