@@ -191,6 +191,35 @@
                       >
                     }
                   </div>
+                  <!-- What this answer cost, from the usage the service attached to the turn. -->
+                  @if (item.metrics; as metrics) {
+                    <dl class="case-chat__turn-metrics" role="group" aria-label="Usage for this answer">
+                      <div class="case-chat__metric">
+                        <dt class="case-chat__metric-label">tokens</dt>
+                        <dd class="case-chat__metric-value" [title]="turnTokensTitle(metrics)">
+                          {{ metrics.totalTokens | agentosTokens }}
+                        </dd>
+                      </div>
+                      <div class="case-chat__metric">
+                        <dt class="case-chat__metric-label">cost</dt>
+                        <dd class="case-chat__metric-value case-chat__metric-value--strong">
+                          {{ metrics.cost | agentosCost: metrics.costUnknownCount }}
+                        </dd>
+                      </div>
+                      <div class="case-chat__metric case-chat__metric--secondary">
+                        <dt class="case-chat__metric-label">total</dt>
+                        <dd class="case-chat__metric-value">
+                          {{ metrics.cumulativeCost | agentosCost: metrics.cumulativeUnknownCount }}
+                        </dd>
+                      </div>
+                      @if (turnDuration(metrics); as duration) {
+                        <div class="case-chat__metric case-chat__metric--secondary">
+                          <dt class="case-chat__metric-label">took</dt>
+                          <dd class="case-chat__metric-value">{{ duration }}</dd>
+                        </div>
+                      }
+                    </dl>
+                  }
                 </div>
               } @else if (item.kind === 'streaming') {
                 <div class="case-chat__turn case-chat__turn--agent case-chat__turn--streaming">

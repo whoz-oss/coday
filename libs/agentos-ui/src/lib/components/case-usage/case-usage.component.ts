@@ -1,4 +1,6 @@
 import { DecimalPipe } from '@angular/common'
+import { CostPipe } from '../../pipes/cost.pipe'
+import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core'
 import {
   RunCostControllerService,
@@ -27,7 +29,7 @@ import {
 
 @Component({
   selector: 'agentos-case-usage',
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, CostPipe, TokenCountPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './case-usage.component.html',
   styleUrl: './case-usage.component.scss',

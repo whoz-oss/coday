@@ -948,4 +948,133 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'Continue', userId: 'default-user' })
     })
   })
+  /**
+   * The turn figures are attached to the answer the turn produced, which is where a reader looks
+   * for them. The arithmetic itself lives in turn-metrics.spec; this covers the wiring.
+   */
+  describe('turn metrics on the timeline', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+
+    const agentMessage = (id: string, timestamp: string) =>
+      ({
+        id,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp,
+        metadata,
+        actor: { role: 'AGENT', id: 'agent-1', name: 'Agent' },
+        content: [{ type: 'TEXT', content: 'done' }],
+      }) as never
+
+    const runningEvent = (timestamp: string) =>
+      ({
+        id: `r-${timestamp}`,
+        type: 'AgentRunningEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp,
+        metadata,
+      }) as never
+
+    const finishedEvent = (id: string, timestamp: string, cost?: number) =>
+      ({
+        id,
+        type: 'AgentFinishedEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp,
+        metadata,
+        agentId: 'agent-1',
+        agentName: 'Agent',
+        llmUsage: {
+          inputTokens: 900,
+          outputTokens: 350,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 1250,
+          estimatedCostUsd: cost,
+        },
+      }) as never
+
+    it('carries the figures on the agent message the turn closed', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        runningEvent('2026-01-01T00:00:00.000Z'),
+        agentMessage('m-1', '2026-01-01T00:00:02.000Z'),
+        finishedEvent('f-1', '2026-01-01T00:00:03.000Z', 0.42),
+      ])
+
+      const message = ref.instance['timeline']().find((item) => item.kind === 'message')!
+      expect(message.kind).toBe('message')
+      const metrics = (message as { metrics?: { totalTokens: number; cost?: number; durationMs?: number } }).metrics!
+      expect(metrics.totalTokens).toBe(1250)
+      expect(metrics.cost).toBe(0.42)
+      expect(metrics.durationMs).toBe(3000)
+    })
+
+    it('leaves a user message untouched', () => {
+      const ref = makeComponent()
+      const userMessage = {
+        id: 'm-0',
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        metadata,
+        actor: { role: 'USER', id: 'u-1', name: 'User' },
+        content: [{ type: 'TEXT', content: 'go' }],
+      } as never
+      ref.instance['events'].set([
+        userMessage,
+        runningEvent('2026-01-01T00:00:01.000Z'),
+        finishedEvent('f-1', '2026-01-01T00:00:02.000Z', 0.1),
+      ])
+
+      const messages = ref.instance['timeline']().filter((item) => item.kind === 'message')
+      expect(messages).toHaveLength(1)
+      // The turn produced no answer, so its figures have no bubble to sit under.
+      expect((messages[0] as { metrics?: unknown }).metrics).toBeUndefined()
+    })
+
+    it('adds nothing when the turn reported no usage', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        runningEvent('2026-01-01T00:00:00.000Z'),
+        agentMessage('m-1', '2026-01-01T00:00:02.000Z'),
+        {
+          id: 'f-1',
+          type: 'AgentFinishedEvent',
+          caseId: 'c-1',
+          namespaceId: 'ns-1',
+          timestamp: '2026-01-01T00:00:03.000Z',
+          metadata,
+          agentId: 'agent-1',
+          agentName: 'Agent',
+        } as never,
+      ])
+
+      const message = ref.instance['timeline']().find((item) => item.kind === 'message')!
+      expect((message as { metrics?: unknown }).metrics).toBeUndefined()
+    })
+
+    it('gives each turn its own figures instead of restating the last one', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        runningEvent('2026-01-01T00:00:00.000Z'),
+        agentMessage('m-1', '2026-01-01T00:00:01.000Z'),
+        finishedEvent('f-1', '2026-01-01T00:00:02.000Z', 0.1),
+        runningEvent('2026-01-01T00:01:00.000Z'),
+        agentMessage('m-2', '2026-01-01T00:01:01.000Z'),
+        finishedEvent('f-2', '2026-01-01T00:01:02.000Z', 0.25),
+      ])
+
+      const messages = ref.instance['timeline']().filter((item) => item.kind === 'message') as Array<{
+        event: { id: string }
+        metrics?: { cost?: number; cumulativeCost?: number }
+      }>
+      expect(messages.map((m) => m.metrics?.cost)).toEqual([0.1, 0.25])
+      expect(messages.map((m) => m.metrics?.cumulativeCost)).toEqual([0.1, 0.35])
+    })
+  })
 })
