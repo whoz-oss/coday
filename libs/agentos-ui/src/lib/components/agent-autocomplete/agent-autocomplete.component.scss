@@ -37,6 +37,7 @@
     cursor: pointer;
     transition: background 120ms ease;
     border-left: 3px solid transparent;
+    border-radius: var(--radius-sm, 0);
     padding: 8px 0;
 
     &:hover,

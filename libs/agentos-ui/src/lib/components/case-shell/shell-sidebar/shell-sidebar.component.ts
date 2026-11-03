@@ -150,6 +150,8 @@ export class ShellSidebarComponent {
   readonly menuOpen = input.required<boolean>()
   readonly isAdmin = input.required<boolean>()
   readonly isDark = input.required<boolean>()
+  /** False for a light-only variant: the user menu then hides its light/dark entry. */
+  readonly canToggleMode = input(true)
   readonly themeVariant = input.required<string>()
   readonly showToolCalls = input.required<boolean>()
 

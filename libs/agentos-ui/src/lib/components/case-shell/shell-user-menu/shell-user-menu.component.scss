@@ -15,6 +15,7 @@
     z-index: 200;
     background: var(--color-bg);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-lg);
 
     &--topbar {
@@ -47,6 +48,7 @@
     gap: 10px;
     width: 100%;
     padding: 8px 12px;
+    border-radius: var(--radius-sm, 0);
     font-size: 13.5px;
     color: var(--color-text);
     text-align: left;
@@ -81,6 +83,19 @@
       border: 1px solid var(--color-accent-300);
       padding: 1px 5px;
     }
+  }
+
+  // The first and last rows touch the panel edges: they take its corner radius so that their hover/active
+  // background does not poke out of a rounded panel. No `overflow: hidden` on the panel, which would also clip the
+  // keyboard focus ring of these rows. `inherit` copies the panel radius, i.e. 0 when the theme has none.
+  &__overlay > &__item:first-child {
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+  }
+
+  &__overlay > &__item:last-child {
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
   }
 
   &__separator {
