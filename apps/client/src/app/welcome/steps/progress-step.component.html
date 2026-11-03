@@ -65,7 +65,30 @@
       <div class="callout callout--error" role="alert" data-testid="apply-error">
         <strong>Something went wrong.</strong>
         <span>{{ applyError() }}</span>
-        <button class="btn" type="button" (click)="retry()" [disabled]="state.busy()">Try again</button>
+        <span>Fix your answers and run the setup again, or retry as is.</span>
+        <div class="callout__actions">
+          <button
+            class="btn"
+            type="button"
+            data-testid="edit-providers"
+            (click)="state.editAfterFailure('providers')"
+            [disabled]="state.busy()"
+          >
+            Change the API keys
+          </button>
+          <button
+            class="btn"
+            type="button"
+            data-testid="edit-folder"
+            (click)="state.editAfterFailure('folder')"
+            [disabled]="state.busy()"
+          >
+            Change the folder
+          </button>
+          <button class="btn btn--ghost" type="button" data-testid="retry" (click)="retry()" [disabled]="state.busy()">
+            Try again
+          </button>
+        </div>
       </div>
     }
 

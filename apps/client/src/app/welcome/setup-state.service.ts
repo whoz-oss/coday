@@ -142,6 +142,8 @@ export class SetupStateService {
     return !!status && status.apply.status === 'done' && !!status.namespaceId
   })
   readonly failed = computed(() => this.status()?.apply.status === 'error')
+  /** A setup was attempted: the email is AgentOS's administrator now, the wizard no longer goes back to it. */
+  readonly emailLocked = computed(() => (this.status()?.apply.status ?? 'idle') !== 'idle')
   readonly namespaceId = computed(() => this.status()?.namespaceId ?? null)
 
   private poller: Subscription | null = null
@@ -215,8 +217,25 @@ export class SetupStateService {
 
   back(): void {
     const i = this.stepIndex()
-    if (i > 0 && this.step() !== 'progress') this.step.set(WIZARD_STEPS[i - 1] as WizardStep)
+    // Once a setup was attempted, AgentOS has made the email its administrator: the email step is behind us for good.
+    const locked = this.step() === 'providers' && this.emailLocked()
+    if (i > 0 && this.step() !== 'progress' && !locked) this.step.set(WIZARD_STEPS[i - 1] as WizardStep)
     this.error.set(null)
+  }
+
+  /**
+   * After a failed apply, go back to the providers or the folder step to fix an answer (a wrong API key, typically),
+   * then run the setup again from there. Not while an apply runs or once it succeeded. The email is not offered: AgentOS
+   * made it its administrator when it started, it cannot change any more.
+   */
+  editAfterFailure(step: 'providers' | 'folder'): void {
+    if (!this.failed() || this.step() !== 'progress') return
+    this.error.set(
+      step === 'providers' && !this.providersValid()
+        ? 'Enter your API keys again: they are not kept when the page is reloaded.'
+        : null
+    )
+    this.step.set(step)
   }
 
   /** Step 1: store the identity. It unblocks the AgentOS task (bootstrap admin). */
