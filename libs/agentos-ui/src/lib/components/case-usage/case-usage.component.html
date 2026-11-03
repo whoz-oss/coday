@@ -16,16 +16,16 @@
         } @else {
           <strong>Usage</strong>
         }
-        <span>{{ state.unknownCostCount > 0 ? 'At least ' : '' }}{{ state.cost | number: '1.2-6' }} this run</span>
+        <span>{{ state.unknownCostCount > 0 ? 'At least ' : '' }}{{ state.cost | agentosCost }} this run</span>
         @if (state.runCostThreshold !== null && state.runCostThreshold !== undefined) {
-          <span> / {{ state.runCostThreshold | number: '1.2-6' }} threshold</span>
+          <span> / {{ state.runCostThreshold | agentosCost }} threshold</span>
         }
       </summary>
       <div class="usage__body">
         <p>Includes delegated work. Costs are estimates in the platform currency.</p>
         @if (total(); as all) {
           <p>
-            Conversation: {{ all.unknownCostCount > 0 ? 'at least ' : '' }}{{ all.cost | number: '1.2-6' }} recorded ·
+            Conversation: {{ all.unknownCostCount > 0 ? 'at least ' : '' }}{{ all.cost | agentosCost }} recorded ·
             {{ all.totalTokens | number }} recorded tokens
           </p>
         }
@@ -47,12 +47,12 @@
             <p>
               {{
                 limit.ancestor ? 'Parent conversation' : limit.caseId === caseId() ? 'Conversation' : 'Delegated run'
-              }}: {{ limit.cost | number: '1.2-6' }} consumed.
+              }}: {{ limit.cost | agentosCost }} consumed.
             </p>
             @if (limit.canContinue) {
               @if (limit.threshold > 0) {
                 <button type="button" (click)="continue(limit)" [disabled]="saving() || !!error()">
-                  Continue · double threshold to {{ limit.threshold * 2 | number: '1.2-6' }}
+                  Continue · double threshold to {{ limit.threshold * 2 | agentosCost }}
                 </button>
               } @else {
                 <p>

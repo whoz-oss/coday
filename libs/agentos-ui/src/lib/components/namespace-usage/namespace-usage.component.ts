@@ -1,4 +1,5 @@
 import { DecimalPipe } from '@angular/common'
+import { CostPipe } from '../../pipes/cost.pipe'
 import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import { FormsModule } from '@angular/forms'
@@ -8,7 +9,7 @@ import { UsageConfigurationService } from '../../services/usage-configuration.se
 
 @Component({
   selector: 'agentos-namespace-usage',
-  imports: [DecimalPipe, FormsModule],
+  imports: [DecimalPipe, FormsModule, CostPipe],
   templateUrl: './namespace-usage.component.html',
   styleUrl: './namespace-usage.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
