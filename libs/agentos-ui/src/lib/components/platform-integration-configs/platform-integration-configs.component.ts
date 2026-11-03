@@ -6,6 +6,8 @@ import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -20,7 +22,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-integration-configs',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-integration-configs.component.html',
   styleUrl: './platform-integration-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,7 +36,7 @@ export class PlatformIntegrationConfigsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
   protected readonly configs = signal<IntegrationConfig[]>([])
   protected readonly rowFilter = createRowFilter(this.configs, (config) =>
     [config.name, config.integrationType].filter(Boolean).join(' ')
@@ -66,19 +68,14 @@ export class PlatformIntegrationConfigsComponent {
     void this.router.navigate(['/agentos', 'admin', 'integration-configs', config.id ?? '', 'edit'])
   }
 
-  protected requestDelete(config: IntegrationConfig): void {
-    this.pendingDeleteId.set(config.id ?? null)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(config: IntegrationConfig): void {
-    this.pendingDeleteId.set(null)
-    this.integrationConfigController
-      .deleteIntegrationConfig(config.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+    if (!config.id) return
+    this.deletion.execute(config.id, {
+      request$: this.integrationConfigController
+        .deleteIntegrationConfig(config.id)
+        .pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${config.name}" failed. Try again.`,
+    })
   }
 }

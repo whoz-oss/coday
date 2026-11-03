@@ -10,6 +10,8 @@ import {
 import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, combineLatest, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface AiModelRow {
@@ -30,7 +32,7 @@ interface AiModelRow {
  */
 @Component({
   selector: 'agentos-platform-ai-models',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-ai-models.component.html',
   styleUrl: './platform-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,7 +46,7 @@ export class PlatformAiModelsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
   protected readonly rows = signal<AiModelRow[]>([])
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.title, row.model.apiModelName, row.providerName].filter(Boolean).join(' ')
@@ -90,19 +92,12 @@ export class PlatformAiModelsComponent {
     void this.router.navigate(['/agentos', 'admin', 'ai-models', row.model.id, 'edit'])
   }
 
-  protected requestDelete(row: AiModelRow): void {
-    this.pendingDeleteId.set(row.key)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(row: AiModelRow): void {
-    this.pendingDeleteId.set(null)
-    this.aiModelController
-      .deleteAiModel(row.model.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+    if (!row.model.id) return
+    this.deletion.execute(row.key, {
+      request$: this.aiModelController.deleteAiModel(row.model.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${row.title}" failed. Try again.`,
+    })
   }
 }

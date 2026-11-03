@@ -11,10 +11,15 @@
   <button class="integrations__new" type="button" (click)="openCreateForm()">New integration</button>
 </ds-section-header>
 
+@if (deletion.error()) {
+  <p class="integrations__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
   <p class="integrations__status" role="status">Loading integrations…</p>
 } @else if (rows().length === 0) {
   <p class="integrations__status">No integrations available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="integrations__status" role="status">No integrations match the current filter.</p>
 } @else {
   <div class="integrations__table-wrap">
     <table dsTable role="table" aria-label="Integrations">
@@ -55,7 +60,15 @@
                   <button type="button" (click)="edit(row)">Edit</button>
                 }
                 @if (row.canDelete) {
-                  <button class="integrations__delete" type="button" (click)="delete(row)">Delete</button>
+                  <agentos-row-delete-action
+                    [rowKey]="row.key"
+                    [rowLabel]="row.config.name"
+                    [state]="deletion"
+                    deleteClass="integrations__delete"
+                    (request)="deletion.request(row.key)"
+                    (confirm)="confirmDelete(row)"
+                    (cancel)="deletion.cancel()"
+                  />
                 }
                 @if (!row.canEdit && !row.canDelete) {
                   <button type="button" disabled>Inherited</button>

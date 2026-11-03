@@ -17,6 +17,10 @@
   margin: 20px 8px;
   color: var(--color-text-secondary);
 }
+.integrations__error {
+  margin: 0 0 0.75rem;
+  color: var(--color-error);
+}
 .integrations__table-wrap {
   overflow-x: auto;
 }

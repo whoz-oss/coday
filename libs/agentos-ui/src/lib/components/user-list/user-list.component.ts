@@ -1,14 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  DestroyRef,
-  computed,
-  inject,
-  input,
-  OnInit,
-  output,
-  signal,
-} from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, OnInit, output } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { MemberItem, Namespace, NamespaceMembershipControllerService, User } from '@whoz-oss/agentos-api-client'
@@ -16,7 +6,9 @@ import { TableDirective } from '@whoz-oss/design-system'
 import { catchError, map, of, switchMap } from 'rxjs'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { NamespaceSelectComponent } from '../namespace-select/namespace-select.component'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -35,7 +27,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-user-list',
-  imports: [TableDirective, TableFilterComponent, NamespaceSelectComponent],
+  imports: [TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
   templateUrl: './user-list.component.html',
   styleUrl: './user-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,7 +46,7 @@ export class UserListComponent implements OnInit {
   readonly namespaceFilterChange = output<string | null>()
 
   protected readonly isLoading = this.userAdminState.isLoading
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
 
   /** Ids of the users belonging to the selected namespace, or null when unfiltered. */
   private readonly namespaceUserIds = toSignal(
@@ -107,19 +99,11 @@ export class UserListComponent implements OnInit {
     void this.router.navigate(['/agentos/admin/users', user.id ?? '', 'edit'])
   }
 
-  protected requestDelete(user: User): void {
-    this.pendingDeleteId.set(user.id ?? null)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(user: User): void {
-    this.pendingDeleteId.set(null)
-    this.userAdminState
-      .deleteUser(user.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe()
+    if (!user.id) return
+    this.deletion.execute(user.id, {
+      request$: this.userAdminState.deleteUser(user.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      errorMessage: `Deleting "${this.displayName(user)}" failed. Try again.`,
+    })
   }
 }

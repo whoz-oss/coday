@@ -16,10 +16,16 @@
   </div>
 
   <div class="auth-setting-item__actions">
-    @if (pendingDelete()) {
+    @if (isConfirmingDelete()) {
       <span class="auth-setting-item__confirm-label">Delete?</span>
-      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
-      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+      <ds-icon-button
+        icon="check"
+        variant="danger"
+        [title]="isDeleting() ? 'Deleting…' : 'Confirm deletion'"
+        [disabled]="isDeleting()"
+        (action)="onDeleteConfirmed()"
+      />
+      <ds-icon-button icon="close" title="Cancel deletion" [disabled]="isDeleting()" (action)="onDeleteCancelled()" />
     } @else {
       <ds-icon-button icon="content_copy" title="Duplicate this auth setting" (action)="onDuplicate()" />
       @if (!readOnly()) {

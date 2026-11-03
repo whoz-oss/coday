@@ -9,10 +9,15 @@
   />
   <button class="ai-providers__new" type="button" (click)="openCreateForm()">New AI provider</button></ds-section-header
 >
+@if (deletion.error()) {
+  <p class="ai-providers__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
   <p class="ai-providers__status" role="status">Loading AI providers…</p>
 } @else if (rows().length === 0) {
   <p class="ai-providers__status">No AI providers available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="ai-providers__status" role="status">No AI providers match the current filter.</p>
 } @else {
   <div class="ai-providers__table-wrap">
     <table dsTable role="table" aria-label="AI providers">
@@ -45,8 +50,18 @@
             <td role="cell" data-label="Actions" data-actions class="ai-providers__actions">
               <button type="button" (click)="duplicate(row)">Duplicate</button>
               @if (row.canMutate) {
-                <button type="button" (click)="edit(row)">Edit</button
-                ><button class="ai-providers__delete" type="button" (click)="delete(row)">Delete</button>
+                @if (deletion.confirmingId() !== row.key) {
+                  <button type="button" (click)="edit(row)">Edit</button>
+                }
+                <agentos-row-delete-action
+                  [rowKey]="row.key"
+                  [rowLabel]="row.config.name"
+                  [state]="deletion"
+                  deleteClass="ai-providers__delete"
+                  (request)="deletion.request(row.key)"
+                  (confirm)="confirmDelete(row)"
+                  (cancel)="deletion.cancel()"
+                />
               } @else {
                 <button type="button" disabled>Inherited</button>
               }

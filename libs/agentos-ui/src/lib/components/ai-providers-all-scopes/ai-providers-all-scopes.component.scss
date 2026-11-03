@@ -16,6 +16,10 @@
   margin: 20px 8px;
   color: var(--color-text-secondary);
 }
+.ai-providers__error {
+  margin: 0 0 0.75rem;
+  color: var(--color-error);
+}
 .ai-providers__table-wrap {
   overflow-x: auto;
 }

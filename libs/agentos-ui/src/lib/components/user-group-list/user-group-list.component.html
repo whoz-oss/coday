@@ -16,10 +16,15 @@
     <button class="settings-table__new" type="button" (click)="openCreateForm()">New user group</button>
   </div>
 </div>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
   <p class="settings-table__status" role="status">Loading user groups…</p>
 } @else if (groups().length === 0) {
   <p class="settings-table__status">No user groups yet.</p>
+} @else if (groupFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No user groups match the current filter.</p>
 } @else {
   <div class="settings-table__wrap">
     <table dsTable role="table" aria-label="User groups">
@@ -39,28 +44,19 @@
             <td role="cell" data-label="Members">{{ group.userCount }}</td>
             <td role="cell" data-label="Actions" data-actions>
               <div class="settings-table__actions">
-                @if (pendingDeleteId() === group.userGroupId) {
-                  <span class="settings-table__confirm-label">Delete?</span>
-                  <button
-                    class="settings-table__delete"
-                    type="button"
-                    [attr.aria-label]="'Confirm deletion of ' + group.name"
-                    (click)="confirmDelete(group)"
-                  >
-                    Confirm
-                  </button>
-                  <button type="button" (click)="cancelDelete()">Cancel</button>
-                } @else {
+                @if (deletion.confirmingId() !== group.userGroupId) {
                   <button type="button" [attr.aria-label]="'Edit ' + group.name" (click)="edit(group)">Edit</button>
-                  <button
-                    class="settings-table__delete"
-                    type="button"
-                    [attr.aria-label]="'Delete ' + group.name"
-                    (click)="requestDelete(group)"
-                  >
-                    Delete
-                  </button>
                 }
+                <agentos-row-delete-action
+                  [rowKey]="group.userGroupId"
+                  [rowLabel]="group.name"
+                  [state]="deletion"
+                  deleteClass="settings-table__delete"
+                  confirmLabelClass="settings-table__confirm-label"
+                  (request)="deletion.request(group.userGroupId)"
+                  (confirm)="confirmDelete(group)"
+                  (cancel)="deletion.cancel()"
+                />
               </div>
             </td>
           </tr>

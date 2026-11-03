@@ -5,6 +5,8 @@ import { AgentConfig, AgentConfigControllerService, AgentConfigExecutionModeEnum
 import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -18,7 +20,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-agent-configs',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-agent-configs.component.html',
   styleUrl: './platform-agent-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,7 +33,7 @@ export class PlatformAgentConfigsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
   protected readonly configs = signal<AgentConfig[]>([])
   protected readonly rowFilter = createRowFilter(this.configs, (config) =>
     [config.name, config.description, config.modelName, this.mode(config)].filter(Boolean).join(' ')
@@ -76,19 +78,12 @@ export class PlatformAgentConfigsComponent {
     void this.router.navigate(['/agentos', 'admin', 'agent-configs', config.id, 'edit'])
   }
 
-  protected requestDelete(config: AgentConfig): void {
-    this.pendingDeleteId.set(config.id ?? null)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(config: AgentConfig): void {
-    this.pendingDeleteId.set(null)
-    this.agentConfigController
-      .deleteAgentConfig(config.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+    if (!config.id) return
+    this.deletion.execute(config.id, {
+      request$: this.agentConfigController.deleteAgentConfig(config.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${config.name}" failed. Try again.`,
+    })
   }
 }
