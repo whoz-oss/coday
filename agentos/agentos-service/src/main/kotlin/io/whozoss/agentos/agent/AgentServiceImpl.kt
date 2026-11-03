@@ -417,6 +417,7 @@ class AgentServiceImpl(
                     skillTools,
             )
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
+        val executionMode = resolveExecutionMode(agentConfig, modelConfig)
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
@@ -430,12 +431,36 @@ class AgentServiceImpl(
             resolvedModel = modelConfig,
             resolvedProvider = providerConfig,
             tools = tools,
-            executionMode = agentConfig.resolvedExecutionMode,
+            executionMode = executionMode,
             namespaceId = context.namespaceId,
             userId = context.userId,
             redirectGuideline = redirectGuideline,
             loopConfig = agentConfig.loopConfig,
         )
+    }
+
+    /**
+     * Decides the effective [ExecutionMode] of [agentConfig] running on [modelConfig].
+     *
+     * Precedence: the agent's explicit choice ([AgentConfig.explicitExecutionMode]: execution mode,
+     * then legacy `advancedExecution: true`) > the model's [AiModel.supportsAdvancedExecution] > SIMPLE.
+     * This is the only place that knows both the agent and its resolved model.
+     */
+    private fun resolveExecutionMode(
+        agentConfig: AgentConfig,
+        modelConfig: AiModel,
+    ): ExecutionMode {
+        val explicit = agentConfig.explicitExecutionMode
+        val (mode, source) =
+            when {
+                explicit != null -> explicit to "agent"
+                modelConfig.supportsAdvancedExecution -> ExecutionMode.ADVANCED to "model default"
+                else -> ExecutionMode.SIMPLE to "model default"
+            }
+        logger.info {
+            "Execution mode for agent '${agentConfig.name}': $mode (source=$source, model='${modelConfig.apiModelName}')"
+        }
+        return mode
     }
 
     /**

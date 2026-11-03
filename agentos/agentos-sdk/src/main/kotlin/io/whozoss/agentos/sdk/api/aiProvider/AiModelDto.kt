@@ -56,4 +56,9 @@ data class AiModelDto(
      * for field semantics.
      */
     val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
+    /**
+     * When true, agents using this model that do not set an execution mode themselves run in
+     * ADVANCED instead of SIMPLE. An agent's explicit choice always wins.
+     */
+    val supportsAdvancedExecution: Boolean = false,
 )

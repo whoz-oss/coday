@@ -66,6 +66,7 @@ class AiModelController(
                     maxCompletionTokens = resource.maxCompletionTokens,
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution,
                 )
             },
         )
@@ -114,6 +115,7 @@ class AiModelController(
                     maxCompletionTokens = resource.maxCompletionTokens,
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution,
                 ),
             ).let(::toDto)
     }
@@ -157,4 +159,5 @@ private fun toDto(entity: AiModel) =
         maxCompletionTokens = entity.maxCompletionTokens,
         contextWindow = entity.contextWindow,
         pricing = entity.pricing,
+        supportsAdvancedExecution = entity.supportsAdvancedExecution,
     )

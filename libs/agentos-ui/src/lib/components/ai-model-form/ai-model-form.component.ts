@@ -83,6 +83,7 @@ export class AiModelFormComponent implements OnInit {
     temperature: new FormControl<number | null>(null),
     contextWindow: new FormControl<number | null>(null),
     maxCompletionTokens: new FormControl<number | null>(null),
+    supportsAdvancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),
@@ -121,6 +122,10 @@ export class AiModelFormComponent implements OnInit {
 
   protected get maxCompletionTokensControl() {
     return this.form.controls.maxCompletionTokens
+  }
+
+  protected get supportsAdvancedExecutionControl() {
+    return this.form.controls.supportsAdvancedExecution
   }
 
   protected get pricingGroup() {
@@ -171,6 +176,7 @@ export class AiModelFormComponent implements OnInit {
           this.temperatureControl.setValue(model.temperature ?? null)
           this.contextWindowControl.setValue(model.contextWindow ?? null)
           this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
+          this.supportsAdvancedExecutionControl.setValue(model.supportsAdvancedExecution ?? false)
           this.pricingGroup.setValue({
             inputMTokens: model.pricing?.inputMTokens ?? null,
             outputMTokens: model.pricing?.outputMTokens ?? null,
@@ -224,6 +230,7 @@ export class AiModelFormComponent implements OnInit {
       temperature: raw.temperature ?? undefined,
       contextWindow: raw.contextWindow ?? undefined,
       maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
+      supportsAdvancedExecution: raw.supportsAdvancedExecution,
       pricing,
     }
 

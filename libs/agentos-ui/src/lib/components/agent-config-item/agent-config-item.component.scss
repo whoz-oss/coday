@@ -59,6 +59,13 @@
       border-color: var(--color-accent-300, rgba(37, 99, 235, 0.3));
     }
 
+    // Model default — neutral tone (the model decides, nothing explicit on the agent)
+    &--model-default {
+      color: var(--color-text-secondary);
+      background: transparent;
+      border-color: var(--color-divider);
+    }
+
     // LOOP — warning / amber tone
     &--loop {
       color: var(--color-warning, #f59e0b);

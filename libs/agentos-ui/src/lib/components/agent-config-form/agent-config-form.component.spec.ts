@@ -408,6 +408,70 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(restriction?.textContent).toContain('readFile, ls')
     })
   })
+  describe('execution mode', () => {
+    const modeControl = () =>
+      (component as unknown as { executionModeControl: { value: string; setValue: (v: string) => void } })
+        .executionModeControl
+
+    it('defaults a new agent to "Model default" and sends executionMode null', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-agent')
+
+      internals().submit()
+
+      expect(modeControl().value).toBe('')
+      expect(controller.createAgentConfig.mock.calls[0][0].executionMode).toBeNull()
+    })
+
+    it('sends the explicit mode when one is selected', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-agent')
+      modeControl().setValue('SIMPLE')
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].executionMode).toBe('SIMPLE')
+    })
+
+    it('hydrates a config without executionMode as "Model default"', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({})))
+
+      component.ngOnInit()
+
+      expect(modeControl().value).toBe('')
+    })
+
+    it('hydrates the legacy advancedExecution flag as ADVANCED', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ advancedExecution: true })))
+
+      component.ngOnInit()
+
+      expect(modeControl().value).toBe('ADVANCED')
+    })
+
+    it('clears a previously explicit mode when switched back to "Model default"', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ executionMode: 'ADVANCED' as never })))
+      component.ngOnInit()
+      modeControl().setValue('')
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].executionMode).toBeNull()
+    })
+
+    it('offers a "Model default" option first in the selector', () => {
+      fixture.detectChanges()
+      const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+        '#agent-config-execution-mode'
+      )!
+
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['', 'SIMPLE', 'ADVANCED', 'LOOP'])
+    })
+  })
+
   it('keeps a new agent inheriting the actual server default', () => {
     component.ngOnInit()
     expect(internals().defaultDelegationTimeoutSeconds()).toBe(1800)

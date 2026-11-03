@@ -45,19 +45,23 @@ data class AgentConfigDto(
     /**
      * Execution mode for this agent. Replaces the legacy [advancedExecution] boolean.
      * On input: when both are present, [executionMode] takes precedence; when null,
-     * [advancedExecution] is used as a fallback for backward compatibility.
-     * On output: always the resolved mode.
+     * [advancedExecution] is used as a fallback for backward compatibility; when neither is set,
+     * the agent leaves the choice to its model's default (`AiModel.supportsAdvancedExecution`).
+     * On output: the agent's explicit mode, or null when it uses the model's default. The effective
+     * mode is exposed by the `/definition` endpoint.
      */
     @field:Schema(
         description =
             "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental and may change or be removed " +
-                "without notice). Takes precedence over advancedExecution on input; always resolved on output.",
+                "without notice). Takes precedence over advancedExecution on input. Null means the agent " +
+                "has no explicit choice and uses the model's default (SIMPLE, or ADVANCED when the model " +
+                "supports advanced execution); the effective mode is given by the definition endpoint.",
     )
     val executionMode: ExecutionMode? = null,
     /**
      * @deprecated Use [executionMode] instead. Kept for backward compatibility with existing configs.
-     * On input, when [executionMode] is null: `true` → ADVANCED, `false`/null → SIMPLE.
-     * On output, derived from the resolved [executionMode]: `true` when ADVANCED, omitted otherwise.
+     * On input, when [executionMode] is null: `true` → ADVANCED, `false`/null → no explicit choice (model default).
+     * On output, `true` when the explicit mode is ADVANCED, omitted otherwise.
      */
     @Deprecated("Use executionMode instead")
     val advancedExecution: Boolean? = null,

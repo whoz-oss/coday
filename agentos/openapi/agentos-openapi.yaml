@@ -3915,7 +3915,9 @@ components:
           type: string
           description: "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental\
             \ and may change or be removed without notice). Takes precedence over\
-            \ advancedExecution on input; always resolved on output."
+            \ advancedExecution on input. Null means the agent has no explicit choice\
+            \ and uses the model's default (SIMPLE, or ADVANCED when the model supports\
+            \ advanced execution); the effective mode is given by the definition endpoint."
           enum:
           - SIMPLE
           - ADVANCED
@@ -4172,6 +4174,8 @@ components:
         priority:
           type: integer
           format: int32
+        supportsAdvancedExecution:
+          type: boolean
         temperature:
           type: number
           format: double
@@ -4182,6 +4186,7 @@ components:
       - aiProviderId
       - apiModelName
       - priority
+      - supportsAdvancedExecution
     AiProvider:
       type: object
       properties:

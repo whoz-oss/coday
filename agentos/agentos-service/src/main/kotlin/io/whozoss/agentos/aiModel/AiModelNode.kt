@@ -47,6 +47,8 @@ data class AiModelNode(
     val pricingOutputMTokens: Double? = null,
     val pricingCacheRead: Double? = null,
     val pricingCacheWrite: Double? = null,
+    // Nullable on purpose: nodes persisted before this property existed have none, and read as false.
+    val supportsAdvancedExecution: Boolean? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -91,6 +93,7 @@ data class AiModelNode(
             maxCompletionTokens = maxCompletionTokens,
             contextWindow = contextWindow,
             pricing = pricing,
+            supportsAdvancedExecution = supportsAdvancedExecution ?: false,
         )
     }
 
@@ -112,6 +115,7 @@ data class AiModelNode(
                 pricingOutputMTokens = model.pricing?.outputMTokens,
                 pricingCacheRead = model.pricing?.cacheRead,
                 pricingCacheWrite = model.pricing?.cacheWrite,
+                supportsAdvancedExecution = model.supportsAdvancedExecution,
                 created = model.metadata.created,
                 createdBy = model.metadata.createdBy,
                 modified = model.metadata.modified,

@@ -183,6 +183,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         priority: Int = 0,
         temperature: Double? = null,
         maxCompletionTokens: Int? = null,
+        supportsAdvancedExecution: Boolean = false,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -192,6 +193,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         priority = priority,
         temperature = temperature,
         maxCompletionTokens = maxCompletionTokens,
+        supportsAdvancedExecution = supportsAdvancedExecution,
     )
 
     private fun agentConfig(
@@ -2355,6 +2357,77 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // redirectGuideline wiring seam — findAgentByName → AgentAdvancedContext
         // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // Execution mode resolution: agent's explicit choice > model default > SIMPLE
+        // -------------------------------------------------------------------------
+
+        /** Resolves the definition of [config] on a model whose supportsAdvancedExecution is [modelFlag]. */
+        suspend fun resolvedExecutionMode(
+            config: AgentConfig,
+            modelFlag: Boolean,
+        ): io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode {
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = modelFlag)
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            return agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null).executionMode
+        }
+
+        "an agent without explicit execution mode runs ADVANCED when its model supports advanced execution" {
+            val config = agentConfig(name = "model-default-advanced")
+
+            resolvedExecutionMode(config, modelFlag = true) shouldBe
+                io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.ADVANCED
+        }
+
+        "an agent without explicit execution mode runs SIMPLE when its model does not support advanced execution" {
+            val config = agentConfig(name = "model-default-simple")
+
+            resolvedExecutionMode(config, modelFlag = false) shouldBe
+                io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.SIMPLE
+        }
+
+        "an explicit SIMPLE agent stays SIMPLE even when its model supports advanced execution" {
+            val config =
+                agentConfig(name = "explicit-simple")
+                    .copy(executionMode = io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.SIMPLE)
+
+            resolvedExecutionMode(config, modelFlag = true) shouldBe
+                io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.SIMPLE
+        }
+
+        "the legacy advancedExecution=true flag runs ADVANCED even when the model does not support it" {
+            val config = agentConfig(name = "legacy-advanced").copy(advancedExecution = true)
+
+            resolvedExecutionMode(config, modelFlag = false) shouldBe
+                io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.ADVANCED
+        }
+
+        "an explicit LOOP agent is not affected by the model default" {
+            val config =
+                agentConfig(name = "explicit-loop")
+                    .copy(executionMode = io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP)
+
+            resolvedExecutionMode(config, modelFlag = true) shouldBe
+                io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP
+            resolvedExecutionMode(config, modelFlag = false) shouldBe
+                io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP
+        }
+
+        "findAgentByName builds an AgentAdvanced for an agent inheriting ADVANCED from its model" {
+            val config = agentConfig(name = "inherits-advanced", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
+            val provider = providerConfig()
+            every { agentConfigService.findByName(namespaceId, "inherits-advanced") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val agent = agentService.findAgentByName("inherits-advanced", context)
+
+            (agent is AgentAdvanced) shouldBe true
+        }
 
         // -------------------------------------------------------------------------
         // ExecutionMode.LOOP wiring — AgentLoop instantiation
