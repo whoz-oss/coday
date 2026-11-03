@@ -6,6 +6,8 @@ import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { SkillStateService } from '../../services/skill-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -21,7 +23,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-skills',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-skills.component.html',
   styleUrl: './platform-skills.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,8 +38,7 @@ export class PlatformSkillsComponent {
   protected readonly isLoading = signal(true)
 
   /** Set when a deletion is refused, so the failure is not swallowed. */
-  protected readonly errorMessage = signal<string | null>(null)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
   protected readonly skills = signal<Skill[]>([])
   protected readonly rowFilter = createRowFilter(this.skills, (skill) =>
     [skill.name, skill.description].filter(Boolean).join(' ')
@@ -79,28 +80,15 @@ export class PlatformSkillsComponent {
     void this.router.navigate(['/agentos', 'admin', 'skills', skill.id, 'edit'])
   }
 
-  protected requestDelete(skill: Skill): void {
-    this.pendingDeleteId.set(skill.id ?? null)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(skill: Skill): void {
-    this.pendingDeleteId.set(null)
-    this.errorMessage.set(null)
-    this.skillState
-      .delete(skill.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.refresh$.next(),
-        error: (err: { status?: number }) =>
-          this.errorMessage.set(
-            err.status === 403
-              ? `Deleting "${skill.name}" requires platform administrator rights.`
-              : `Deleting "${skill.name}" failed.`
-          ),
-      })
+    if (!skill.id) return
+    this.deletion.execute(skill.id, {
+      request$: this.skillState.delete(skill.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: (error) =>
+        (error as { status?: number }).status === 403
+          ? `Deleting "${skill.name}" requires platform administrator rights.`
+          : `Deleting "${skill.name}" failed. Try again.`,
+    })
   }
 }

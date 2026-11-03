@@ -10,10 +10,15 @@
   />
   <button class="auth-settings__new" type="button" (click)="openCreateForm()">New auth setting</button>
 </ds-section-header>
+@if (deletion.error()) {
+  <p class="auth-settings__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
   <p class="auth-settings__status" role="status">Loading auth settings…</p>
 } @else if (rows().length === 0) {
   <p class="auth-settings__status">No auth settings available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="auth-settings__status" role="status">No auth settings match the current filter.</p>
 } @else {
   <div class="auth-settings__table-wrap">
     <table dsTable role="table" aria-label="Auth settings">
@@ -46,8 +51,18 @@
             <td role="cell" data-label="Actions" data-actions class="auth-settings__actions">
               <button type="button" (click)="duplicate(row)">Duplicate</button>
               @if (row.canMutate) {
-                <button type="button" (click)="edit(row)">Edit</button
-                ><button class="auth-settings__delete" type="button" (click)="delete(row)">Delete</button>
+                @if (deletion.confirmingId() !== row.key) {
+                  <button type="button" (click)="edit(row)">Edit</button>
+                }
+                <agentos-row-delete-action
+                  [rowKey]="row.key"
+                  [rowLabel]="row.config.name"
+                  [state]="deletion"
+                  deleteClass="auth-settings__delete"
+                  (request)="deletion.request(row.key)"
+                  (confirm)="confirmDelete(row)"
+                  (cancel)="deletion.cancel()"
+                />
               } @else {
                 <button type="button" disabled>Inherited</button>
               }

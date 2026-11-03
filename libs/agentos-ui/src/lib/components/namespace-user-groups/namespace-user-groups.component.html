@@ -11,10 +11,15 @@
   <button class="user-groups__new" type="button" (click)="openCreateForm()">New user group</button>
 </ds-section-header>
 
+@if (deletion.error()) {
+  <p class="user-groups__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
   <p class="user-groups__status" role="status">Loading user groups…</p>
 } @else if (groups().length === 0) {
   <p class="user-groups__status">No user groups configured.</p>
+} @else if (groupFilter.filteredRows().length === 0) {
+  <p class="user-groups__status" role="status">No user groups match the current filter.</p>
 } @else {
   <div class="user-groups__table-wrap">
     <table dsTable role="table" aria-label="User groups">
@@ -33,14 +38,19 @@
             <td role="cell" data-label="Agents">{{ group.agentIds.length }}</td>
             <td role="cell" data-label="Members">{{ group.userCount }}</td>
             <td role="cell" data-label="Actions" data-actions class="user-groups__actions">
-              @if (pendingDeleteId() === group.userGroupId) {
-                <span class="user-groups__confirm-label">Delete?</span>
-                <button class="user-groups__delete" type="button" (click)="confirmDelete(group)">Confirm</button>
-                <button type="button" (click)="cancelDelete()">Cancel</button>
-              } @else {
+              @if (deletion.confirmingId() !== group.userGroupId) {
                 <button type="button" (click)="edit(group)">Edit</button>
-                <button class="user-groups__delete" type="button" (click)="requestDelete(group)">Delete</button>
               }
+              <agentos-row-delete-action
+                [rowKey]="group.userGroupId"
+                [rowLabel]="group.name"
+                [state]="deletion"
+                deleteClass="user-groups__delete"
+                confirmLabelClass="user-groups__confirm-label"
+                (request)="deletion.request(group.userGroupId)"
+                (confirm)="confirmDelete(group)"
+                (cancel)="deletion.cancel()"
+              />
             </td>
           </tr>
         }

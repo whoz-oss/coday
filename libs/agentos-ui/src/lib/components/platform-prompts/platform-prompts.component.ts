@@ -6,6 +6,8 @@ import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -19,7 +21,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-prompts',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-prompts.component.html',
   styleUrl: './platform-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,7 +34,7 @@ export class PlatformPromptsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
   protected readonly prompts = signal<Prompt[]>([])
   protected readonly rowFilter = createRowFilter(this.prompts, (prompt) =>
     [prompt.name, prompt.description].filter(Boolean).join(' ')
@@ -65,19 +67,12 @@ export class PlatformPromptsComponent {
     void this.router.navigate(['/agentos', 'admin', 'prompts', prompt.id, 'edit'])
   }
 
-  protected requestDelete(prompt: Prompt): void {
-    this.pendingDeleteId.set(prompt.id ?? null)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(prompt: Prompt): void {
-    this.pendingDeleteId.set(null)
-    this.promptState
-      .delete(prompt.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+    if (!prompt.id) return
+    this.deletion.execute(prompt.id, {
+      request$: this.promptState.delete(prompt.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${prompt.name}" failed. Try again.`,
+    })
   }
 }

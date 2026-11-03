@@ -6,7 +6,9 @@ import { TableDirective } from '@whoz-oss/design-system'
 import { catchError, combineLatest, of, switchMap, tap } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { NamespaceSelectComponent } from '../namespace-select/namespace-select.component'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -21,7 +23,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-user-group-list',
-  imports: [TableDirective, TableFilterComponent, NamespaceSelectComponent],
+  imports: [TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
   templateUrl: './user-group-list.component.html',
   styleUrl: './user-group-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,7 +46,7 @@ export class UserGroupListComponent {
   private readonly refresh = signal(0)
 
   protected readonly isLoading = signal(true)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
 
   protected readonly groups = toSignal(
     combineLatest([toObservable(this.namespaceId), toObservable(this.refresh)]).pipe(
@@ -84,20 +86,12 @@ export class UserGroupListComponent {
     })
   }
 
-  protected requestDelete(group: UserGroupSearchResult): void {
-    this.pendingDeleteId.set(group.userGroupId)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(group: UserGroupSearchResult): void {
-    this.pendingDeleteId.set(null)
-    this.userGroupState
-      .delete(group.userGroupId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh.update((n) => n + 1))
+    this.deletion.execute(group.userGroupId, {
+      request$: this.userGroupState.delete(group.userGroupId).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh.update((n) => n + 1),
+      errorMessage: `Deleting "${group.name}" failed. Try again.`,
+    })
   }
 
   protected onNamespaceChange(namespaceId: string | null): void {

@@ -5,6 +5,8 @@ import { AiProvider, AiProviderControllerService } from '@whoz-oss/agentos-api-c
 import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -18,7 +20,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-ai-providers',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-ai-providers.component.html',
   styleUrl: './platform-ai-providers.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,7 +33,7 @@ export class PlatformAiProvidersComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
   protected readonly providers = signal<AiProvider[]>([])
   protected readonly rowFilter = createRowFilter(this.providers, (provider) =>
     [provider.name, provider.apiType, provider.baseUrl].filter(Boolean).join(' ')
@@ -64,20 +66,12 @@ export class PlatformAiProvidersComponent {
     void this.router.navigate(['/agentos', 'admin', 'ai-providers', provider.id, 'edit'])
   }
 
-  protected requestDelete(provider: AiProvider): void {
-    this.pendingDeleteId.set(provider.id ?? null)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(provider: AiProvider): void {
-    this.pendingDeleteId.set(null)
     if (!provider.id) return
-    this.aiProviderController
-      .deleteAiProvider(provider.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+    this.deletion.execute(provider.id, {
+      request$: this.aiProviderController.deleteAiProvider(provider.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${provider.name}" failed. Try again.`,
+    })
   }
 }

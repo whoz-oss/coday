@@ -18,6 +18,11 @@
   color: var(--color-text-secondary);
 }
 
+.user-groups__error {
+  margin: 0 0 0.75rem;
+  color: var(--color-error);
+}
+
 .user-groups__table-wrap {
   overflow-x: auto;
 }

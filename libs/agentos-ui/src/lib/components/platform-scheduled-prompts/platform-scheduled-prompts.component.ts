@@ -5,6 +5,8 @@ import { DAY_OF_WEEK_FULL_LABELS, ScheduledPrompt, SchedulerUnit } from '@whoz-o
 import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
@@ -22,7 +24,7 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-scheduled-prompts',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-scheduled-prompts.component.html',
   styleUrl: './platform-scheduled-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,7 +37,7 @@ export class PlatformScheduledPromptsComponent {
   /** Single source of truth for platform scheduled prompts, loaded once in the constructor. */
   protected readonly prompts = signal<ScheduledPrompt[]>([])
   protected readonly isLoading = signal(true)
-  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly deletion = createRowDeletionState()
   protected readonly rowFilter = createRowFilter(this.prompts, (prompt) =>
     [prompt.name, prompt.description, this.scheduleLabel(prompt), prompt.enabled ? 'Enabled' : 'Disabled']
       .filter(Boolean)
@@ -81,21 +83,14 @@ export class PlatformScheduledPromptsComponent {
     request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((updated) => this.patchPrompt(updated))
   }
 
-  protected requestDelete(prompt: ScheduledPrompt): void {
-    this.pendingDeleteId.set(prompt.id ?? null)
-  }
-
-  protected cancelDelete(): void {
-    this.pendingDeleteId.set(null)
-  }
-
   protected confirmDelete(prompt: ScheduledPrompt): void {
-    this.pendingDeleteId.set(null)
-    const id = prompt.id ?? ''
-    this.state
-      .delete(id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.prompts.update((list) => list.filter((p) => p.id !== id)))
+    if (!prompt.id) return
+    const id = prompt.id
+    this.deletion.execute(id, {
+      request$: this.state.delete(id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.prompts.update((list) => list.filter((p) => p.id !== id)),
+      errorMessage: `Deleting "${prompt.name}" failed. Try again.`,
+    })
   }
 
   private patchPrompt(updated: ScheduledPrompt): void {

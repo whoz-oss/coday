@@ -12,6 +12,8 @@ import {
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface IntegrationRow {
@@ -26,7 +28,7 @@ interface IntegrationRow {
 
 @Component({
   selector: 'agentos-integrations-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './integrations-all-scopes.component.html',
   styleUrl: './integrations-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,6 +46,7 @@ export class IntegrationsAllScopesComponent implements OnInit {
   protected readonly isAdmin = signal(false)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<IntegrationRow[]>([])
+  protected readonly deletion = createRowDeletionState()
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.config.name, row.config.integrationType, row.scopeLabel, row.source].join(' ')
   )
@@ -104,9 +107,12 @@ export class IntegrationsAllScopesComponent implements OnInit {
     })
   }
 
-  protected delete(row: IntegrationRow): void {
-    if (!row.canDelete || !row.config.id || !confirm(`Delete integration “${row.config.name}”?`)) return
-    this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+  protected confirmDelete(row: IntegrationRow): void {
+    if (!row.canDelete || !row.config.id) return
+    this.deletion.execute(row.key, {
+      request$: this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)),
+      errorMessage: `Deleting "${row.config.name}" failed. Try again.`,
+    })
   }
 
   private toRows(viewModel: IntegrationConfigViewModel): IntegrationRow[] {

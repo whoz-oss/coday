@@ -1,0 +1,32 @@
+@if (isConfirming()) {
+  <span [class]="confirmLabelClass()">Delete?</span>
+  <button
+    class="row-delete-action__confirm"
+    [class]="deleteClass()"
+    type="button"
+    [attr.aria-label]="'Confirm deletion of ' + rowLabel()"
+    [disabled]="isDeleting()"
+    (click)="confirmDelete()"
+  >
+    {{ isDeleting() ? 'Deleting…' : 'Confirm' }}
+  </button>
+  <button
+    class="row-delete-action__cancel"
+    type="button"
+    [attr.aria-label]="'Cancel deletion of ' + rowLabel()"
+    [disabled]="isDeleting()"
+    (click)="cancelDelete()"
+  >
+    Cancel
+  </button>
+} @else {
+  <button
+    class="row-delete-action__trigger"
+    [class]="deleteClass()"
+    type="button"
+    [attr.aria-label]="'Delete ' + rowLabel()"
+    (click)="requestDelete()"
+  >
+    Delete
+  </button>
+}

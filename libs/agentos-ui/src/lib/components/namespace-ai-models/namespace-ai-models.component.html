@@ -13,6 +13,8 @@
   <p class="ai-models__status" role="status">Loading AI models…</p>
 } @else if (rows().length === 0) {
   <p class="ai-models__status">No AI models configured.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="ai-models__status" role="status">No AI models match the current filter.</p>
 } @else {
   <div class="ai-models__table-wrap">
     <table dsTable role="table" aria-label="AI models">

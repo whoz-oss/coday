@@ -11,10 +11,15 @@
     New scheduled prompt
   </button></ds-section-header
 >
+@if (deletion.error()) {
+  <p class="scheduled-prompts__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
   <p class="scheduled-prompts__status" role="status">Loading scheduled prompts…</p>
 } @else if (rows().length === 0) {
   <p class="scheduled-prompts__status">No scheduled prompts available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="scheduled-prompts__status" role="status">No scheduled prompts match the current filter.</p>
 } @else {
   <div class="scheduled-prompts__table-wrap">
     <table dsTable role="table" aria-label="Scheduled prompts">
@@ -54,9 +59,19 @@
             </td>
             <td role="cell" data-label="Actions" data-actions class="scheduled-prompts__actions">
               @if (row.scope === 'namespace') {
-                <button type="button" (click)="toggle(row)">{{ row.prompt.enabled ? 'Disable' : 'Enable' }}</button
-                ><button type="button" (click)="edit(row)">Edit</button
-                ><button class="scheduled-prompts__delete" type="button" (click)="delete(row)">Delete</button>
+                @if (deletion.confirmingId() !== row.key) {
+                  <button type="button" (click)="toggle(row)">{{ row.prompt.enabled ? 'Disable' : 'Enable' }}</button>
+                  <button type="button" (click)="edit(row)">Edit</button>
+                }
+                <agentos-row-delete-action
+                  [rowKey]="row.key"
+                  [rowLabel]="row.prompt.name"
+                  [state]="deletion"
+                  deleteClass="scheduled-prompts__delete"
+                  (request)="deletion.request(row.key)"
+                  (confirm)="confirmDelete(row)"
+                  (cancel)="deletion.cancel()"
+                />
               } @else {
                 <button type="button" disabled>Inherited</button>
               }

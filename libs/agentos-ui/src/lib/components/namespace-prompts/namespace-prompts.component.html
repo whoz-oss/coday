@@ -13,6 +13,8 @@
   <p class="prompts__status" role="status">Loading prompts…</p>
 } @else if (rows().length === 0) {
   <p class="prompts__status">No prompts available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="prompts__status" role="status">No prompts match the current filter.</p>
 } @else {
   <div class="prompts__table-wrap">
     <table dsTable role="table" aria-label="Prompts">

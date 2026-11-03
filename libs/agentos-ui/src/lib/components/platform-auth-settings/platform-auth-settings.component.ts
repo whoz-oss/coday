@@ -6,6 +6,7 @@ import { EntityListComponent, EntityListItem, SectionHeaderComponent } from '@wh
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
@@ -33,6 +34,7 @@ export class PlatformAuthSettingsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
+  protected readonly deletion = createRowDeletionState()
 
   /** Raw platform auth settings, kept for delete lookups. */
   private readonly settings$ = this.refresh$.pipe(
@@ -79,10 +81,11 @@ export class PlatformAuthSettingsComponent {
 
   protected onDelete(setting: AuthSettingDto): void {
     if (!setting.id) return
-    this.state
-      .delete(setting.id, 'platform')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+    this.deletion.execute(setting.id, {
+      request$: this.state.delete(setting.id, 'platform').pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${setting.name}" failed. Try again.`,
+    })
   }
 
   protected resolveSetting(id: string): AuthSettingDto | null {

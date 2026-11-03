@@ -10,10 +10,15 @@
   />
   <button class="settings-table__new" type="button" (click)="openCreateForm()">New integration</button>
 </ds-section-header>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
   <p class="settings-table__status" role="status">Loading integrations…</p>
 } @else if (configs().length === 0) {
   <p class="settings-table__status">No platform integrations defined yet.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No integrations match the current filter.</p>
 } @else {
   <div class="settings-table__wrap">
     <table dsTable role="table" aria-label="Platform integrations">
@@ -31,27 +36,20 @@
             <td role="cell" data-label="Type" class="settings-table__secondary">{{ config.integrationType }}</td>
             <td role="cell" data-label="Actions" data-actions>
               <div class="settings-table__actions">
-                @if (pendingDeleteId() === config.id) {
-                  <span class="settings-table__confirm-label">Delete?</span>
-                  <button
-                    class="settings-table__delete"
-                    type="button"
-                    [attr.aria-label]="'Confirm deletion of ' + config.name"
-                    (click)="confirmDelete(config)"
-                  >
-                    Confirm
-                  </button>
-                  <button type="button" (click)="cancelDelete()">Cancel</button>
-                } @else {
+                @if (deletion.confirmingId() !== config.id) {
                   <button type="button" [attr.aria-label]="'Edit ' + config.name" (click)="edit(config)">Edit</button>
-                  <button
-                    class="settings-table__delete"
-                    type="button"
-                    [attr.aria-label]="'Delete ' + config.name"
-                    (click)="requestDelete(config)"
-                  >
-                    Delete
-                  </button>
+                }
+                @if (config.id) {
+                  <agentos-row-delete-action
+                    [rowKey]="config.id"
+                    [rowLabel]="config.name"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (request)="deletion.request(config.id)"
+                    (confirm)="confirmDelete(config)"
+                    (cancel)="deletion.cancel()"
+                  />
                 }
               </div>
             </td>

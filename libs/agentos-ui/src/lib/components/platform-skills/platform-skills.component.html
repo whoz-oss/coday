@@ -7,13 +7,15 @@
   />
   <button class="settings-table__new" type="button" (click)="openCreateForm()">New skill</button>
 </ds-section-header>
-@if (errorMessage()) {
-  <p class="settings-table__error" role="alert">{{ errorMessage() }}</p>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
 }
 @if (isLoading()) {
   <p class="settings-table__status" role="status">Loading skills…</p>
 } @else if (skills().length === 0) {
   <p class="settings-table__status">No platform skills defined yet.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No skills match the current filter.</p>
 } @else {
   <div class="settings-table__wrap">
     <table dsTable role="table" aria-label="Platform skills">
@@ -42,30 +44,23 @@
             <td role="cell" data-label="Resources">{{ resourceCount(skill) }}</td>
             <td role="cell" data-label="Actions" data-actions>
               <div class="settings-table__actions">
-                @if (pendingDeleteId() === skill.id) {
-                  <span class="settings-table__confirm-label">Delete?</span>
-                  <button
-                    class="settings-table__delete"
-                    type="button"
-                    [attr.aria-label]="'Confirm deletion of ' + skill.name"
-                    (click)="confirmDelete(skill)"
-                  >
-                    Confirm
-                  </button>
-                  <button type="button" (click)="cancelDelete()">Cancel</button>
-                } @else {
+                @if (deletion.confirmingId() !== skill.id) {
                   <button type="button" [attr.aria-label]="'View ' + skill.name" (click)="inspect(skill)">View</button>
                   @if (!skill.readOnly) {
                     <button type="button" [attr.aria-label]="'Edit ' + skill.name" (click)="edit(skill)">Edit</button>
-                    <button
-                      class="settings-table__delete"
-                      type="button"
-                      [attr.aria-label]="'Delete ' + skill.name"
-                      (click)="requestDelete(skill)"
-                    >
-                      Delete
-                    </button>
                   }
+                }
+                @if (!skill.readOnly && skill.id) {
+                  <agentos-row-delete-action
+                    [rowKey]="skill.id"
+                    [rowLabel]="skill.name"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (request)="deletion.request(skill.id)"
+                    (confirm)="confirmDelete(skill)"
+                    (cancel)="deletion.cancel()"
+                  />
                 }
               </div>
             </td>
