@@ -162,6 +162,61 @@ describe('SetupStateService', () => {
       expect(JSON.stringify(state.status())).not.toContain('sk-ant')
       expect(JSON.stringify(localStorage)).not.toContain('sk-ant')
     })
+
+    describe('after a failed apply', () => {
+      beforeEach(async () => {
+        api.getStatus.mockReturnValue(of(baseStatus({ apply: { status: 'error', error: 'invalid x-api-key' } })))
+        await state.submitFolderAndApply()
+        await state.refreshStatus()
+      })
+
+      it('goes back to the providers to fix a key, then runs the setup again with the new one', async () => {
+        state.editAfterFailure('providers')
+        expect(state.step()).toBe('providers')
+        expect(state.error()).toBeNull()
+
+        state.setApiKey('anthropic', 'sk-ant-the-right-key')
+        state.submitProviders()
+        expect(state.step()).toBe('folder')
+        await state.submitFolderAndApply()
+
+        expect(api.apply).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            providers: expect.arrayContaining([{ id: 'anthropic', apiKey: 'sk-ant-the-right-key', rank: 1 }]),
+          })
+        )
+        expect(state.step()).toBe('progress')
+      })
+
+      it('goes back to the folder step', () => {
+        state.editAfterFailure('folder')
+        expect(state.step()).toBe('folder')
+      })
+
+      it('no longer goes back to the email: AgentOS already made it its administrator', () => {
+        state.editAfterFailure('providers')
+        expect(state.emailLocked()).toBe(true)
+        state.back()
+        expect(state.step()).toBe('providers')
+      })
+
+      it('asks for the keys again when they were lost with a page reload', () => {
+        state.setApiKey('anthropic', '')
+        state.editAfterFailure('providers')
+        expect(state.step()).toBe('providers')
+        expect(state.error()).toMatch(/API keys/)
+      })
+    })
+
+    it('does not leave the progress while the setup runs or once it succeeded', async () => {
+      for (const apply of [{ status: 'running' as const }, { status: 'done' as const }]) {
+        api.getStatus.mockReturnValue(of(baseStatus({ apply })))
+        await state.submitFolderAndApply()
+        await state.refreshStatus()
+        state.editAfterFailure('providers')
+        expect(state.step()).toBe('progress')
+      }
+    })
   })
 
   describe('status and checklist', () => {
