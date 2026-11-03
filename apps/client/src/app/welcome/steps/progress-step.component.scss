@@ -131,6 +131,12 @@
   &--error {
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
   }
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
 }
 
 .ready {

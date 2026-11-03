@@ -90,7 +90,9 @@
   }
 
   <div class="step__actions">
-    <button class="btn btn--ghost" type="button" (click)="state.back()">Back</button>
+    @if (!state.emailLocked()) {
+      <button class="btn btn--ghost" type="button" (click)="state.back()">Back</button>
+    }
     <button
       class="btn btn--primary"
       type="button"
