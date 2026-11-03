@@ -286,24 +286,6 @@
                   Administration
                 </button>
               }
-              <button class="mobile-drawer__user-menu-item" type="button" (click)="onMenuLogsToggle()">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                  style="color: var(--color-neutral-600)"
-                >
-                  <polyline points="4 17 10 11 4 5" />
-                  <line x1="12" x2="20" y1="19" y2="19" />
-                </svg>
-                Technical logs
-              </button>
               <button class="mobile-drawer__user-menu-item" type="button" (click)="onMenuToolCallsToggle()">
                 <svg
                   width="16"
@@ -325,53 +307,55 @@
                 <span class="mobile-drawer__user-menu-hint">{{ showToolCalls() ? 'On' : 'Off' }}</span>
               </button>
             </div>
-            <div class="mobile-drawer__user-menu-sep"></div>
-            <div class="mobile-drawer__user-menu-section">
-              <button class="mobile-drawer__user-menu-item" type="button" (click)="onMenuThemeToggle()">
-                @if (!isDark()) {
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                    style="color: var(--color-neutral-600)"
-                  >
-                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-                  </svg>
-                } @else {
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                    style="color: var(--color-neutral-600)"
-                  >
-                    <circle cx="12" cy="12" r="4" />
-                    <path d="M12 2v2" />
-                    <path d="M12 20v2" />
-                    <path d="m4.93 4.93 1.41 1.41" />
-                    <path d="m17.66 17.66 1.41 1.41" />
-                    <path d="M2 12h2" />
-                    <path d="M20 12h2" />
-                    <path d="m6.34 17.66-1.41 1.41" />
-                    <path d="m19.07 4.93-1.41 1.41" />
-                  </svg>
-                }
-                Dark mode
-                <span style="flex: 1"></span>
-                <span class="mobile-drawer__user-menu-hint">{{ isDark() ? 'On' : 'Off' }}</span>
-              </button>
-            </div>
+            @if (canToggleMode()) {
+              <div class="mobile-drawer__user-menu-sep"></div>
+              <div class="mobile-drawer__user-menu-section">
+                <button class="mobile-drawer__user-menu-item" type="button" (click)="onMenuThemeToggle()">
+                  @if (!isDark()) {
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                      style="color: var(--color-neutral-600)"
+                    >
+                      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                    </svg>
+                  } @else {
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                      style="color: var(--color-neutral-600)"
+                    >
+                      <circle cx="12" cy="12" r="4" />
+                      <path d="M12 2v2" />
+                      <path d="M12 20v2" />
+                      <path d="m4.93 4.93 1.41 1.41" />
+                      <path d="m17.66 17.66 1.41 1.41" />
+                      <path d="M2 12h2" />
+                      <path d="M20 12h2" />
+                      <path d="m6.34 17.66-1.41 1.41" />
+                      <path d="m19.07 4.93-1.41 1.41" />
+                    </svg>
+                  }
+                  Dark mode
+                  <span style="flex: 1"></span>
+                  <span class="mobile-drawer__user-menu-hint">{{ isDark() ? 'On' : 'Off' }}</span>
+                </button>
+              </div>
+            }
           </div>
         }
         <button class="mobile-drawer__user-btn" type="button" (click)="userMenuOpen.set(!userMenuOpen())">

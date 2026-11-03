@@ -27,9 +27,17 @@ export interface UserPreferencesPort {
   shouldSend(event: KeyboardEvent): boolean
   /** Footer hint describing the active ENTER behavior, for the composer UI. */
   readonly composerHint: Signal<string>
+  /**
+   * Whether technical log lines (agent status, tool selection, raw events...) are shown in the case chat.
+   * Shown by default: only an explicit opt-out hides them.
+   */
+  readonly showTechnical: Signal<boolean>
+  setShowTechnical(value: boolean): void
 }
 
 const STORAGE_KEY = 'agentos.enter-key-behavior'
+/** Historical key of the technical logs toggle, kept so existing explicit choices survive. */
+const SHOW_TECHNICAL_STORAGE_KEY = 'agentos.case-chat.showTechnical'
 const DEFAULT_BEHAVIOR: EnterKeyBehavior = 'send'
 
 /**
@@ -40,6 +48,9 @@ const DEFAULT_BEHAVIOR: EnterKeyBehavior = 'send'
 export class AgentosUserPreferencesService implements UserPreferencesPort {
   private readonly _enterKeyBehavior = signal<EnterKeyBehavior>(this.readStoredBehavior())
   readonly enterKeyBehavior = this._enterKeyBehavior.asReadonly()
+
+  private readonly _showTechnical = signal<boolean>(this.readStoredShowTechnical())
+  readonly showTechnical: Signal<boolean> = this._showTechnical.asReadonly()
 
   readonly composerHint = computed(() =>
     this._enterKeyBehavior() === 'newline'
@@ -56,6 +67,15 @@ export class AgentosUserPreferencesService implements UserPreferencesPort {
     }
   }
 
+  setShowTechnical(value: boolean): void {
+    this._showTechnical.set(value)
+    try {
+      localStorage.setItem(SHOW_TECHNICAL_STORAGE_KEY, String(value))
+    } catch {
+      // localStorage may be unavailable (e.g. private mode); the setting still applies for the session.
+    }
+  }
+
   shouldSend(event: KeyboardEvent): boolean {
     // Only a real ENTER press sends (ignore IME composition). In send mode any non-Shift ENTER sends
     // (Shift+ENTER inserts a newline); in newline mode only a Ctrl/Cmd modifier sends.
@@ -63,6 +83,16 @@ export class AgentosUserPreferencesService implements UserPreferencesPort {
     const modifierPressed = event.ctrlKey || event.metaKey
     const sendForBehavior = this._enterKeyBehavior() === 'newline' ? modifierPressed : !event.shiftKey
     return isEnter && sendForBehavior
+  }
+
+  /** Absent key = shown; only a stored 'false' hides the technical logs. */
+  private readStoredShowTechnical(): boolean {
+    try {
+      return localStorage.getItem(SHOW_TECHNICAL_STORAGE_KEY) !== 'false'
+    } catch {
+      // localStorage may be unavailable; fall back to the default (shown).
+      return true
+    }
   }
 
   private readStoredBehavior(): EnterKeyBehavior {

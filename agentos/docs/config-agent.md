@@ -49,6 +49,9 @@ server   applies the plan in this request through the *Api beans, then posts the
 agent    resumes with the per-operation report
 ```
 
+The card's HTTP contract is `ConfigChangeApi` and its DTOs, in the SDK package
+`io.whozoss.agentos.sdk.api.configChange`; `ConfigChangeController` implements it.
+
 ## Rights
 
 The user is responsible for what they apply. There is no ceiling on rights: each write is accepted
@@ -60,7 +63,7 @@ created without an explicit `enabled`.
 
 - **Writes** run inside the HTTP request of the Apply click, through the public `*Api` interfaces
   (`AgentConfigApi`, `SkillApi`, `PromptApi`, `IntegrationConfigApi`, `AuthSettingApi`,
-  `NamespaceApi`, and `NamespaceController` for deployment). Their only implementation is the controller's
+  `NamespaceApi`, including its `deployAgents` / `undeployAgents`). Their only implementation is the controller's
   method-security proxy, so `@PreAuthorize` and the inline guards apply exactly as for the browser.
   `ApiBeanBridgeAuthorizationSpec` proves it. This goes through the `ConfigWriter` port; phase 2
   swaps it, entity by entity, for the service-level permission methods (`*ForCaller`, #1492).

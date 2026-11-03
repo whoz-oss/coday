@@ -1,4 +1,4 @@
-package io.whozoss.agentos.configAgent
+package io.whozoss.agentos.sdk.api.configChange
 
 /** Outcome of one operation in an apply report. [isSuccess] lets the apply go on to the next one. */
 enum class ConfigResultStatus(

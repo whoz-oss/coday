@@ -153,6 +153,7 @@
   text-transform: uppercase;
   color: var(--color-neutral-500);
   border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 0);
   padding: 1px 5px;
 
   &--running {
@@ -215,7 +216,7 @@
     border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     transition:
       background 100ms,
       border-color 100ms,
@@ -311,7 +312,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s;
-    // Positioned to overlap the status label slot
+    // Idle: out of flow, over the status slot, so an idle row is laid out by the statuses alone
     position: absolute;
     right: 9px;
   }
@@ -323,6 +324,28 @@
     pointer-events: auto;
   }
 
+  // Actions visible: swap the two. The actions enter the flow, so the title (flex: 1, min-width: 0)
+  // shrinks and ellipsizes before them instead of running under them, whatever the number of
+  // buttons or the width of the delete confirmation. The statuses, invisible at that point, leave
+  // the flow so they stop reserving room. Not applied while renaming: the editor keeps the layout
+  // it has today, with the statuses in flow and the actions out of it.
+  &__row:not(.case-tree-node__row--editing):hover &__statuses,
+  &__row:not(.case-tree-node__row--editing):focus-within &__statuses,
+  &__row--active:not(.case-tree-node__row--editing) &__statuses {
+    position: absolute;
+    right: 9px;
+  }
+
+  &__row:not(.case-tree-node__row--editing):hover &__actions,
+  &__row:not(.case-tree-node__row--editing):focus-within &__actions,
+  &__row--active:not(.case-tree-node__row--editing) &__actions {
+    position: static;
+    // The 28px buttons are taller than the row content: a -14px block margin brings their outer
+    // height to 0 in the flex line, so the row does not grow when the actions appear (they stay
+    // centred, as when they were out of flow).
+    margin-block: -14px;
+  }
+
   // Action buttons (star, rename, delete)
   &__action-btn {
     @include ds.action-btn(28px);
@@ -330,8 +353,8 @@
 
   // ── Inline rename editor ──────────────────────────────────────────────
   //
-  // The actions and the status label are absolutely positioned over the right end of the row,
-  // so they must be hidden while the editor is open or they would sit on top of the input.
+  // While the editor is open the actions stay out of flow, over the right end of the row (see the
+  // swap rule above), so they must be hidden or they would sit on top of the input.
   // The reveal rules above carry a :hover / :focus-within pseudo-class, so these selectors need
   // one of their own to win on specificity: source order alone would not be enough, and the
   // focused input trips :focus-within for the whole duration of the edit.

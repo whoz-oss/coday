@@ -31,6 +31,8 @@ export class ShellCaseSwitcherMobileComponent {
   readonly userName = input.required<string>()
   readonly isAdmin = input.required<boolean>()
   readonly isDark = input.required<boolean>()
+  /** False for a light-only variant: the light/dark entry is then hidden. */
+  readonly canToggleMode = input(true)
   readonly showToolCalls = input.required<boolean>()
 
   // ── Internal state ────────────────────────────────────────
@@ -69,7 +71,6 @@ export class ShellCaseSwitcherMobileComponent {
   readonly deleteRequested = output<string>()
   readonly navigateTo = output<string>()
   readonly themeToggled = output<void>()
-  readonly logsToggled = output<void>()
   readonly toolCallsToggled = output<void>()
 
   // ── Handlers ────────────────────────────────────────────
@@ -109,11 +110,6 @@ export class ShellCaseSwitcherMobileComponent {
   protected onMenuThemeToggle(): void {
     this.userMenuOpen.set(false)
     this.themeToggled.emit()
-  }
-
-  protected onMenuLogsToggle(): void {
-    this.userMenuOpen.set(false)
-    this.logsToggled.emit()
   }
 
   protected onMenuToolCallsToggle(): void {

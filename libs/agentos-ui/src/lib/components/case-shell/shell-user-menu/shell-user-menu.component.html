@@ -79,32 +79,6 @@
 
     <button
       class="shell-user-menu__item"
-      [class.shell-user-menu__item--active]="showTechnical()"
-      type="button"
-      (click)="onLogsToggle()"
-    >
-      <svg
-        width="15"
-        height="15"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <polyline points="4 17 10 11 4 5" />
-        <line x1="12" x2="20" y1="19" y2="19" />
-      </svg>
-      Technical logs
-      @if (showTechnical()) {
-        <span class="shell-user-menu__item-badge">On</span>
-      }
-    </button>
-
-    <button
-      class="shell-user-menu__item"
       [class.shell-user-menu__item--active]="showToolCalls()"
       type="button"
       (click)="onToolCallsToggle()"
@@ -129,44 +103,46 @@
       }
     </button>
 
-    <div class="shell-user-menu__separator"></div>
+    <!-- Light / Dark toggle: hidden for a variant that supports a single mode, where there is nothing to switch to -->
+    @if (canToggleMode()) {
+      <div class="shell-user-menu__separator"></div>
 
-    <!-- Light / Dark toggle -->
-    <button class="shell-user-menu__item" type="button" (click)="onThemeToggle()">
-      @if (isDark()) {
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="4" />
-          <path
-            d="M12 2v2M12 20v2m-7.07-14.07 1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2m-4.93-7.07-1.41 1.41M6.34 17.66l-1.41 1.41"
-          />
-        </svg>
-        Light mode
-      } @else {
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-        </svg>
-        Dark mode
-      }
-    </button>
+      <button class="shell-user-menu__item" type="button" (click)="onThemeToggle()">
+        @if (isDark()) {
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2m-7.07-14.07 1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2m-4.93-7.07-1.41 1.41M6.34 17.66l-1.41 1.41"
+            />
+          </svg>
+          Light mode
+        } @else {
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+          Dark mode
+        }
+      </button>
+    }
   </div>
 }

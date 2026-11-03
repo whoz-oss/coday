@@ -1,4 +1,13 @@
-import { AgentosThemeService } from './theme.service'
+import {
+  AgentosThemeService,
+  isModeSupported,
+  resolveEffectiveMode,
+  resolveSupportedMode,
+  ResolvedThemeMode,
+  supportsModeSwitch,
+  THEME_VARIANTS,
+  ThemeMode,
+} from './theme.service'
 
 describe('AgentosThemeService', () => {
   const STORAGE_KEY_VARIANT = 'agentos.theme.variant'
@@ -91,6 +100,15 @@ describe('AgentosThemeService', () => {
     expect(state.mode).toBe('system')
   })
 
+  it('falls back to industry for an unknown stored variant id, keeping a valid stored mode', () => {
+    localStorage.setItem(STORAGE_KEY_VARIANT, 'rainbow')
+    localStorage.setItem(STORAGE_KEY_MODE, 'dark')
+    const service = new AgentosThemeService()
+    expect(service.theme().variant).toBe('industry')
+    expect(service.theme().mode).toBe('dark')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('industry-dark')
+  })
+
   it('migrates legacy single-key storage to variant+mode keys', () => {
     localStorage.setItem(STORAGE_KEY_LEGACY, 'dark')
     const service = new AgentosThemeService()
@@ -112,6 +130,104 @@ describe('AgentosThemeService', () => {
     const service = new AgentosThemeService()
     service.setTheme({ variant: 'terminal', mode: 'light' })
     expect(document.documentElement.getAttribute('data-theme')).toBe('terminal-light')
+  })
+
+  describe('whoz-oss (light and dark)', () => {
+    it('lists whoz-oss among the variants derived from the table', () => {
+      expect(THEME_VARIANTS).toEqual(['industry', 'terminal', 'whoz-oss'])
+    })
+
+    it('applies whoz-oss-light for whoz-oss + light, and never leaves the attribute out', () => {
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'whoz-oss', mode: 'light' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-light')
+    })
+
+    it('applies whoz-oss-dark for whoz-oss + dark', () => {
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'whoz-oss', mode: 'dark' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
+    })
+
+    it('follows the OS for whoz-oss + system: whoz-oss-dark when the OS prefers dark', () => {
+      mockMatchMedia(true)
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'whoz-oss', mode: 'system' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
+    })
+
+    it('follows the OS for whoz-oss + system: whoz-oss-light when the OS prefers light', () => {
+      mockMatchMedia(false)
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'whoz-oss', mode: 'system' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-light')
+    })
+
+    it('applies whoz-oss-dark on init from a stored whoz-oss variant with a dark mode', () => {
+      localStorage.setItem(STORAGE_KEY_VARIANT, 'whoz-oss')
+      localStorage.setItem(STORAGE_KEY_MODE, 'dark')
+      const service = new AgentosThemeService()
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
+      expect(service.theme().mode).toBe('dark')
+    })
+
+    it('keeps the stored mode untouched across variant changes', () => {
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'industry', mode: 'dark' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('industry-dark')
+
+      service.setTheme({ variant: 'whoz-oss', mode: service.theme().mode })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('whoz-oss-dark')
+      expect(localStorage.getItem(STORAGE_KEY_MODE)).toBe('dark')
+
+      service.setTheme({ variant: 'industry', mode: service.theme().mode })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('industry-dark')
+      expect(localStorage.getItem(STORAGE_KEY_MODE)).toBe('dark')
+    })
+  })
+
+  describe('resolveEffectiveMode', () => {
+    it.each<{ variant: string; mode: ThemeMode; systemPrefersDark: boolean; expected: string }>([
+      { variant: 'industry', mode: 'light', systemPrefersDark: true, expected: 'light' },
+      { variant: 'industry', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+      { variant: 'industry', mode: 'system', systemPrefersDark: true, expected: 'dark' },
+      { variant: 'industry', mode: 'system', systemPrefersDark: false, expected: 'light' },
+      { variant: 'terminal', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+      { variant: 'terminal', mode: 'system', systemPrefersDark: true, expected: 'dark' },
+      { variant: 'whoz-oss', mode: 'light', systemPrefersDark: true, expected: 'light' },
+      { variant: 'whoz-oss', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+      { variant: 'whoz-oss', mode: 'system', systemPrefersDark: true, expected: 'dark' },
+      { variant: 'whoz-oss', mode: 'system', systemPrefersDark: false, expected: 'light' },
+      { variant: 'rainbow', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+    ])('%j', ({ variant, mode, systemPrefersDark, expected }) => {
+      expect(resolveEffectiveMode(variant, mode, systemPrefersDark)).toBe(expected)
+    })
+  })
+
+  // The table has no light-only variant any more, so the guard is proven on explicit lists of supported modes.
+  describe('resolveSupportedMode (fallback guard for a variant that does not support every mode)', () => {
+    it.each<{ modes: ResolvedThemeMode[]; mode: ThemeMode; systemPrefersDark: boolean; expected: string }>([
+      { modes: ['light'], mode: 'light', systemPrefersDark: false, expected: 'light' },
+      { modes: ['light'], mode: 'dark', systemPrefersDark: false, expected: 'light' },
+      { modes: ['light'], mode: 'system', systemPrefersDark: true, expected: 'light' },
+      { modes: ['dark'], mode: 'light', systemPrefersDark: false, expected: 'dark' },
+      { modes: ['dark'], mode: 'system', systemPrefersDark: false, expected: 'dark' },
+      { modes: ['light', 'dark'], mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+      { modes: [], mode: 'dark', systemPrefersDark: true, expected: 'light' },
+    ])('%j', ({ modes, mode, systemPrefersDark, expected }) => {
+      expect(resolveSupportedMode(modes, mode, systemPrefersDark)).toBe(expected)
+    })
+  })
+
+  describe('isModeSupported / supportsModeSwitch', () => {
+    it('accepts every mode for industry, terminal and whoz-oss', () => {
+      for (const variant of ['industry', 'terminal', 'whoz-oss']) {
+        expect(supportsModeSwitch(variant)).toBe(true)
+        for (const mode of ['light', 'dark', 'system'] as const) {
+          expect(isModeSupported(variant, mode)).toBe(true)
+        }
+      }
+    })
   })
 
   it('removes its system-preference listener on destroy', () => {

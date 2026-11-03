@@ -8,9 +8,10 @@
   } @else {
     <div class="namespace-git__body">
       <p class="namespace-git__hint">
-        Associating a repository enables Git workspaces for this namespace. When worktree creation is enabled, every new
-        top-level case gets a repo/ directory shared by its sub-cases. Namespace files remain shared documents outside
-        Git. Agents create branches and pull requests in their workflows.
+        Associating a repository enables Git workspaces for this namespace. When worktree creation is enabled, the
+        new-case form offers a worktree, and a case created with one gets a repo/ directory shared by its sub-cases.
+        Namespace files remain shared documents outside Git. Agents create branches and pull requests in their
+        workflows.
       </p>
 
       @if (errorMessage()) {
@@ -100,11 +101,12 @@
             (ngModelChange)="autoWorktree.set($event)"
             name="autoWorktree"
           />
-          <span>Create a worktree for every new top-level case</span>
+          <span>Offer a worktree to every new top-level case</span>
         </label>
         <span class="namespace-git__field-hint">
-          Applies to cases created from now on. Turning this on later never equips existing cases, and turning it off
-          never removes a worktree already created.
+          The creator checks the box when creating the case; it is unchecked by default, and a case created without it
+          has no Git. Applies to cases created from now on: turning this on later never equips existing cases, and
+          turning it off never removes a worktree already created.
         </span>
 
         <label class="namespace-git__field">

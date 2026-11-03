@@ -4,7 +4,7 @@
   gap: 0.5rem;
   padding: 14px 16px;
   position: relative;
-  border-radius: 0;
+  border-radius: var(--radius-md, 0);
   border: 1px solid var(--color-divider);
   background: var(--color-bg);
   box-shadow: var(--shadow-sm);
@@ -47,7 +47,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
     padding: 0.1rem 0.4rem;
     line-height: 1.2;
     white-space: nowrap;

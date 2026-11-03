@@ -52,8 +52,7 @@
                       {{ row.aggregate.cacheReadTokens | number }} / {{ row.aggregate.cacheWriteTokens | number }}
                     </td>
                     <td>
-                      {{ row.aggregate.unknownCostCount > 0 ? 'At least ' : ''
-                      }}{{ row.aggregate.cost | number: '1.2-6' }}
+                      {{ row.aggregate.cost | agentosCost: row.aggregate.unknownCostCount }}
                       @if (row.aggregate.unknownCostCount > 0) {
                         <small>{{ row.aggregate.unknownCostCount }} record(s) with unknown cost</small>
                       }

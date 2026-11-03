@@ -35,6 +35,7 @@
     cursor: pointer;
     transition: background 0.2s;
     border-left: 3px solid transparent;
+    border-radius: var(--radius-sm, 0);
     padding: 0.5rem 0;
 
     &:hover,

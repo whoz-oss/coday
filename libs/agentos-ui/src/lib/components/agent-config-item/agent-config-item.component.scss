@@ -4,7 +4,7 @@
   gap: 0.5rem;
   padding: 14px 16px;
   position: relative;
-  border-radius: 0;
+  border-radius: var(--radius-md, 0);
   border: 1px solid var(--color-divider);
   background: var(--color-bg);
   box-shadow: var(--shadow-sm);
@@ -48,7 +48,7 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 0.15em 0.5em;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
     line-height: 1.6;
     border: 1px solid currentColor;
 

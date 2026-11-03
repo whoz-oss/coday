@@ -20,7 +20,14 @@ import {
 import { catchError, debounceTime, map, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
-import { THEME_PORT, ThemeMode, ThemeVariant } from '../../services/theme.service'
+import {
+  isThemeVariant,
+  prefersDarkScheme,
+  resolveEffectiveMode,
+  supportsModeSwitch,
+  THEME_PORT,
+  ThemeMode,
+} from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
@@ -34,7 +41,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
  * Responsibilities (after refactor):
  * - Owns data: case list, namespace list, query params
  * - Owns routing: namespace switching, case selection, navigation
- * - Owns UI state: sidebar width, menus open/closed, theme, technical logs
+ * - Owns UI state: sidebar width, menus open/closed, theme, tool calls
  * - Delegates rendering to ShellSidebarComponent, ShellTopbarMobileComponent,
  *   ShellCaseSwitcherMobileComponent
  *
@@ -94,16 +101,19 @@ export class CaseShellComponent {
   // Theme
   // ---------------------------------------------------------------------------
 
+  /**
+   * Whether the rendered theme is dark. Derived from the effective mode, not the chosen one: a variant that does
+   * not support the chosen mode (a light-only one) renders its own mode whatever the stored choice.
+   */
   protected readonly isDark = computed(() => {
-    const { mode } = this.themePort.theme()
-    if (mode === 'dark') return true
-    if (mode === 'light') return false
-    return (
-      typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')?.includes('dark') === true
-    )
+    const { variant, mode } = this.themePort.theme()
+    return resolveEffectiveMode(variant, mode, prefersDarkScheme()) === 'dark'
   })
 
   protected readonly themeVariant = computed(() => this.themePort.theme().variant)
+
+  /** Whether the active variant has both light and dark, i.e. whether a light/dark switch is meaningful. */
+  protected readonly canToggleMode = computed(() => supportsModeSwitch(this.themeVariant()))
 
   // ---------------------------------------------------------------------------
   // UI state
@@ -124,11 +134,7 @@ export class CaseShellComponent {
   /** Whether the mobile case drawer is open */
   protected readonly mobileDrawerOpen = signal(false)
 
-  private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
   private static readonly SHOW_TOOL_CALLS_KEY = 'agentos.case-chat.showToolCalls'
-
-  /** Global toggle for technical log events — persisted in localStorage. */
-  protected readonly showTechnical = signal(localStorage.getItem(CaseShellComponent.SHOW_TECHNICAL_KEY) === 'true')
 
   /** Global toggle for tool calls — visible by default and persisted in localStorage. */
   protected readonly showToolCalls = signal(localStorage.getItem(CaseShellComponent.SHOW_TOOL_CALLS_KEY) !== 'false')
@@ -379,23 +385,17 @@ export class CaseShellComponent {
 
   protected onMenuToggleTheme(): void {
     this.menuOpen.set(false)
+    // A light-only variant has nothing to switch to: leave the stored mode alone.
+    if (!this.canToggleMode()) return
     const next: ThemeMode = this.isDark() ? 'light' : 'dark'
     this.themePort.setTheme({ variant: this.themeVariant(), mode: next })
   }
 
   protected onMenuThemeVariantChanged(variant: string): void {
     this.menuOpen.set(false)
+    if (!isThemeVariant(variant)) return
     const current = this.themePort.theme()
-    this.themePort.setTheme({ variant: variant as ThemeVariant, mode: current.mode })
-  }
-
-  protected onMenuToggleLogs(): void {
-    this.menuOpen.set(false)
-    this.showTechnical.update((v) => {
-      const next = !v
-      localStorage.setItem(CaseShellComponent.SHOW_TECHNICAL_KEY, String(next))
-      return next
-    })
+    this.themePort.setTheme({ variant, mode: current.mode })
   }
 
   protected onMenuToggleToolCalls(): void {
