@@ -3,6 +3,11 @@ package io.whozoss.agentos.configAgent
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.configChange.ConfigAction
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeDecision
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeReportDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigOperationResultDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigResultStatus
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.user.User
 import mu.KLogging

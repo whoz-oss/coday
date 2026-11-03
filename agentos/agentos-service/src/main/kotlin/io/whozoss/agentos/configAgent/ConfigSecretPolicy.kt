@@ -1,6 +1,7 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 
 /**
  * Where the config agent's secrets may live, in one place for the planner (what a plan may declare

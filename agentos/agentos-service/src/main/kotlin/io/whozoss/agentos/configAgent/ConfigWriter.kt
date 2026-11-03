@@ -1,6 +1,7 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import java.util.UUID
 
 /**

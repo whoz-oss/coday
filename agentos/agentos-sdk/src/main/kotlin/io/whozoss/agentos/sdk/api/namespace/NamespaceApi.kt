@@ -15,6 +15,7 @@ import java.util.UUID
  * - [listAll]: any authenticated user — response is permission-filtered
  * - [create], [delete]: SUPER_ADMIN only
  * - [update]: namespace ADMIN
+ * - [deployAgents], [undeployAgents]: namespace ADMIN (WRITE)
  * - [getById], [getByIds]: namespace MEMBER (transitive)
  */
 interface NamespaceApi : EntityCrudApi<NamespaceDto> {
@@ -29,4 +30,16 @@ interface NamespaceApi : EntityCrudApi<NamespaceDto> {
      * Unknown external IDs are silently omitted.
      */
     fun listByExternalIds(externalIds: List<String>): List<NamespaceDto>
+
+    /** POST /api/namespaces/{namespaceId}/deploy-agents — deploy agents directly on the namespace. */
+    fun deployAgents(
+        namespaceId: UUID,
+        request: NamespaceAgentDeployRequest,
+    )
+
+    /** POST /api/namespaces/{namespaceId}/undeploy-agents — remove direct deployments of agents from the namespace. */
+    fun undeployAgents(
+        namespaceId: UUID,
+        request: NamespaceAgentDeployRequest,
+    )
 }
