@@ -323,17 +323,27 @@ agentos-shell {
   }
 }
 
+/* ─── Terminal and Astra — blueprint corner decorations ───────────────────────
+ * Both skins hide the `dsBlueprint` corner marks (square-corner language): Terminal because it is a text UI,
+ * Astra because they clash with its rounded corners. Industry keeps them. Scoped under agentos-shell.
+ */
+agentos-shell {
+  &[data-theme^='terminal'],
+  :is([data-theme^='terminal']) &,
+  &[data-theme^='astra'],
+  :is([data-theme^='astra']) & {
+    .blueprint-corner {
+      display: none;
+    }
+  }
+}
+
 /* ─── Terminal theme — structural rules (scoped under agentos-shell) ───────────
  * These rules apply to both terminal-light and terminal-dark modes.
  */
 agentos-shell {
-  /* Terminal: hide blueprint corner decorations */
   &[data-theme^='terminal'],
   :is([data-theme^='terminal']) & {
-    .blueprint-corner {
-      display: none;
-    }
-
     .tag {
       background: transparent;
       border: none;
