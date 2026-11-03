@@ -32,7 +32,6 @@
     (deleteRequested)="onDeleteRequested($event)"
     (navigateTo)="onMenuNavigate($event)"
     (themeToggled)="onMenuToggleTheme()"
-    (logsToggled)="onMenuToggleLogs()"
     (toolCallsToggled)="onMenuToggleToolCalls()"
   />
 
@@ -54,7 +53,6 @@
     [isDark]="isDark()"
     [canToggleMode]="canToggleMode()"
     [themeVariant]="themeVariant()"
-    [showTechnical]="showTechnical()"
     [showToolCalls]="showToolCalls()"
     (collapseRequested)="collapseSidebar()"
     (homeClicked)="navigateHome()"
@@ -72,7 +70,6 @@
     (navigateTo)="onMenuNavigate($event)"
     (themeToggled)="onMenuToggleTheme()"
     (themeVariantChanged)="onMenuThemeVariantChanged($event)"
-    (logsToggled)="onMenuToggleLogs()"
     (toolCallsToggled)="onMenuToggleToolCalls()"
   />
 
@@ -99,11 +96,9 @@
     @if (activeCaseId()) {
       <agentos-case-workspace [caseId]="activeCaseId()!" [canWrite]="canWriteActiveCase()" />
       <agentos-case-chat
-        [showTechnicalOverride]="showTechnical()"
         [showToolCallsOverride]="showToolCalls()"
         (starToggled)="onStarToggled($event)"
         (deleteRequested)="onDeleteRequested($event)"
-        (logsToggled)="onMenuToggleLogs()"
         (updateRequested)="onCaseUpdateRequested($event)"
       />
     } @else {

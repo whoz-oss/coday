@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.CostRunStopped
 import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.metadata.ChatResponseMetadata
@@ -47,6 +48,31 @@ class UsageTrackingChatModel(
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
     private val maxToolRounds: Int = LimitsConfigProperties().agentMaxIterations,
 ) : ChatModel by delegate {
+    /**
+     * Kotlin `by delegate` does not forward Java interface default methods: without this override,
+     * ChatClient would see generic DefaultChatOptions instead of the provider's options, and
+     * provider-specific settings such as Anthropic cacheOptions would be lost (issue #1538).
+     */
+    override fun getDefaultOptions(): ChatOptions = delegate.defaultOptions
+
+    /**
+     * Needed because of limitation of Kotlin `by delegate`
+     * Here default implementation provided by ChatModel is enough
+     * because it already delegates to `call(prompt)`
+     */
+    override fun call(message: String?): String? {
+        return super.call(message)
+    }
+
+    /**
+     * Needed because of limitation of Kotlin `by delegate`
+     * Here default implementation provided by ChatModel is enough
+     * because it already delegates to `call(prompt)`
+     */
+    override fun call(vararg messages: Message?): String? {
+        return super.call(*messages)
+    }
+
     override fun call(prompt: Prompt): ChatResponse =
         try {
             callRound(externalTools(prompt), 0)
@@ -104,6 +130,24 @@ class UsageTrackingChatModel(
             .generations(generations)
             .metadata(MAX_ITERATIONS_REACHED, maxToolRounds)
             .build()
+    }
+
+    /**
+     * Needed because of limitation of Kotlin `by delegate`
+     * Here default implementation provided by StreamingChatModel is enough
+     * because it already delegates to `stream(prompt)`
+     */
+    override fun stream(message: String?): Flux<String?>? {
+        return super.stream(message)
+    }
+
+    /**
+     * Needed because of limitation of Kotlin `by delegate`
+     * Here default implementation provided by StreamingChatModel is enough
+     * because it already delegates to `stream(prompt)`
+     */
+    override fun stream(vararg messages: Message?): Flux<String?>? {
+        return super.stream(*messages)
     }
 
     override fun stream(prompt: Prompt): Flux<ChatResponse> = streamRound(externalTools(prompt), 0).doOnError(::markFailure)

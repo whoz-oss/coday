@@ -71,7 +71,6 @@ export class ShellCaseSwitcherMobileComponent {
   readonly deleteRequested = output<string>()
   readonly navigateTo = output<string>()
   readonly themeToggled = output<void>()
-  readonly logsToggled = output<void>()
   readonly toolCallsToggled = output<void>()
 
   // ── Handlers ────────────────────────────────────────────
@@ -111,11 +110,6 @@ export class ShellCaseSwitcherMobileComponent {
   protected onMenuThemeToggle(): void {
     this.userMenuOpen.set(false)
     this.themeToggled.emit()
-  }
-
-  protected onMenuLogsToggle(): void {
-    this.userMenuOpen.set(false)
-    this.logsToggled.emit()
   }
 
   protected onMenuToolCallsToggle(): void {

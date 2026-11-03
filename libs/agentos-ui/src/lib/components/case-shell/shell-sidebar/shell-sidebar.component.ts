@@ -153,7 +153,6 @@ export class ShellSidebarComponent {
   /** False for a light-only variant: the user menu then hides its light/dark entry. */
   readonly canToggleMode = input(true)
   readonly themeVariant = input.required<string>()
-  readonly showTechnical = input.required<boolean>()
   readonly showToolCalls = input.required<boolean>()
 
   // Outputs
@@ -173,6 +172,5 @@ export class ShellSidebarComponent {
   readonly navigateTo = output<string>()
   readonly themeToggled = output<void>()
   readonly themeVariantChanged = output<string>()
-  readonly logsToggled = output<void>()
   readonly toolCallsToggled = output<void>()
 }

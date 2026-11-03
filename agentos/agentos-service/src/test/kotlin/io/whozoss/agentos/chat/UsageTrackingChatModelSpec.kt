@@ -5,16 +5,24 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeSameInstanceAs
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
 import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.CostRunStopped
+import org.springframework.ai.anthropic.AnthropicChatOptions
+import org.springframework.ai.anthropic.api.AnthropicCacheOptions
+import org.springframework.ai.anthropic.api.AnthropicCacheStrategy
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.metadata.ChatResponseMetadata
@@ -380,6 +388,123 @@ class UsageTrackingChatModelSpec :
             responses.single().result.output.text shouldBe "Done"
             responses.single().metadata.containsKey(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe false
         }
+
+        // -----------------------------------------------------------------------------------------
+        // Convenience methods (call/stream with String or vararg Message): Kotlin `by delegate` does not
+        // forward Java interface default methods, so they must reach the provider only through the
+        // tracked call(prompt)/stream(prompt), never through the raw delegate's same-named methods.
+        // -----------------------------------------------------------------------------------------
+
+        fun Flux<String?>?.text() = this!!.collectList().block(Duration.ofSeconds(2))!!.joinToString("") { it.orEmpty() }
+
+        val systemAndUser = listOf<Message>(SystemMessage("Be brief"), UserMessage("Hello"))
+        val convenienceCalls =
+            listOf(
+                ConvenienceCall("call(String)", streaming = false, messages = listOf(UserMessage("Hello")), invoke = { it.call("Hello")!! }) {
+                    verify(exactly = 0) { it.call(any<String>()) }
+                },
+                ConvenienceCall("call(vararg Message)", streaming = false, messages = systemAndUser, invoke = { it.call(*systemAndUser.toTypedArray())!! }) {
+                    verify(exactly = 0) { it.call(*anyVararg<Message>()) }
+                },
+                ConvenienceCall("stream(String)", streaming = true, messages = listOf(UserMessage("Hello")), invoke = { it.stream("Hello").text() }) {
+                    verify(exactly = 0) { it.stream(any<String>()) }
+                },
+                ConvenienceCall("stream(vararg Message)", streaming = true, messages = systemAndUser, invoke = { it.stream(*systemAndUser.toTypedArray()).text() }) {
+                    verify(exactly = 0) { it.stream(*anyVararg<Message>()) }
+                },
+            )
+
+        convenienceCalls.forEach { convenience ->
+            "${convenience.name} goes through the tracked prompt call: answer, usage, external tool execution, given messages" {
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                val received = slot<Prompt>()
+                every { raw.call(capture(received)) } returns response()
+                every { raw.stream(capture(received)) } returns Flux.just(response())
+                val accumulator = UsageAccumulator()
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model)
+
+                convenience.invoke(tracked) shouldBe "Done"
+
+                accumulator.total.totalTokens shouldBe 15L
+                accumulator.snapshot().calls shouldBe 1L
+                verify(exactly = if (convenience.streaming) 0 else 1) { raw.call(any<Prompt>()) }
+                verify(exactly = if (convenience.streaming) 1 else 0) { raw.stream(any<Prompt>()) }
+                (received.captured.options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe false
+                received.captured.instructions.map { it.messageType to it.text } shouldBe
+                    convenience.messages.map { it.messageType to it.text }
+                convenience.verifyNeverOnDelegate(raw)
+            }
+
+            "${convenience.name} honours the cost gate: CostRunStopped is thrown and the raw model is never called" {
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                every { raw.call(any<Prompt>()) } returns response()
+                every { raw.stream(any<Prompt>()) } returns Flux.just(response())
+                val accumulator = UsageAccumulator()
+                accumulator.beforeCall = { CompletableFuture.failedFuture(CompletionException(CostRunStopped())) }
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model)
+
+                shouldThrow<CostRunStopped> { convenience.invoke(tracked) }
+
+                verify(exactly = 0) { raw.call(any<Prompt>()) }
+                verify(exactly = 0) { raw.stream(any<Prompt>()) }
+                convenience.verifyNeverOnDelegate(raw)
+                accumulator.snapshot().calls shouldBe 0L
+                accumulator.failed shouldBe false
+            }
+        }
+
+        listOf(false, true).forEach { streaming ->
+            val method = if (streaming) "stream(String)" else "call(String)"
+            "$method with tools: the wrapper executes the tool itself, in two provider requests, accounting both" {
+                val toolsExecuted = AtomicInteger()
+                val requests = AtomicInteger()
+                val options =
+                    ToolCallingChatOptions
+                        .builder()
+                        .toolCallbacks(toolCallback { "ok".also { toolsExecuted.incrementAndGet() } })
+                        .build()
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns options
+                every { raw.call(any<Prompt>()) } answers { response(tool = requests.getAndIncrement() == 0) }
+                every { raw.stream(any<Prompt>()) } answers { Flux.just(response(tool = requests.getAndIncrement() == 0)) }
+                val accumulator = UsageAccumulator()
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model)
+
+                val answer = if (streaming) tracked.stream("Hello").text() else tracked.call("Hello")
+
+                answer shouldBe "Done"
+                toolsExecuted.get() shouldBe 1
+                requests.get() shouldBe 2
+                accumulator.total.totalTokens shouldBe 30L
+                accumulator.snapshot().calls shouldBe 2L
+            }
+        }
+
+        // Issue #1538: ChatClient reads the model's default options; the Java default method would return generic ones.
+        "getDefaultOptions returns the delegate's own options instance, and a ChatClient on the tracked model sends them" {
+            val providerOptions =
+                AnthropicChatOptions
+                    .builder()
+                    .model("claude-sonnet-4-5")
+                    .cacheOptions(AnthropicCacheOptions.builder().strategy(AnthropicCacheStrategy.CONVERSATION_HISTORY).build())
+                    .build()
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns providerOptions
+            val received = slot<Prompt>()
+            every { raw.call(capture(received)) } returns response()
+            val accumulator = UsageAccumulator()
+            val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.Anthropic, model)
+
+            tracked.defaultOptions shouldBeSameInstanceAs providerOptions
+
+            ChatClient.builder(tracked).build().prompt("Hello").call().content() shouldBe "Done"
+
+            val sent = received.captured.options as AnthropicChatOptions
+            sent.cacheOptions.strategy shouldBe AnthropicCacheStrategy.CONVERSATION_HISTORY
+            sent.internalToolExecutionEnabled shouldBe false
+        }
     })
 
 private data class LoopingRun(
@@ -387,4 +512,14 @@ private data class LoopingRun(
     val prompts: List<Prompt>,
     val toolsExecuted: Int,
     val accumulator: UsageAccumulator,
+)
+
+/** One convenience entry point of the model: how to call it, the messages it must hand to the provider, and its raw twin. */
+private class ConvenienceCall(
+    val name: String,
+    val streaming: Boolean,
+    val messages: List<Message>,
+    val invoke: (UsageTrackingChatModel) -> String,
+    /** Verifies that the raw delegate's same-named convenience method was never called. */
+    val verifyNeverOnDelegate: (ChatModel) -> Unit,
 )

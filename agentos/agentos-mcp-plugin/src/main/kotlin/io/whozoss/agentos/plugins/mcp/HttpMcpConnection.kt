@@ -52,7 +52,8 @@ class HttpMcpConnection(
      *   its [AuthorizationHeader.headerValue] is injected via a pre-configured [HttpRequest.Builder].
      *   Sending it over plain `http` exposes the credential in cleartext and is logged as a warning
      *   (this covers bound credentials; [McpConfigParser] already warns for a static `authToken`).
-     * @throws McpConnectionException if the HTTP connection or MCP handshake fails.
+     * @throws McpConnectionException if the HTTP connection, the MCP handshake or the tool listing fails.
+     *   A handshake that declares no tools capability is not a failure: the connection opens with no tools.
      */
     fun connect(authorization: AuthorizationHeader? = null) {
         require(config.transport == McpTransport.HTTP) {
@@ -93,19 +94,29 @@ class HttpMcpConnection(
             .requestTimeout(Duration.ofSeconds(clientTimeout))
             .build()
 
-        try {
-            val initResult = client.initialize()
-            logger.info { "[MCP-HTTP] Connected: ${initResult.serverInfo?.name} ${initResult.serverInfo?.version}" }
+        val initResult = try {
+            client.initialize()
         } catch (e: Exception) {
             runCatching { client.closeGracefully() }
             throw McpConnectionException("Failed to initialise MCP HTTP session for '$url': ${e.message}", e)
         }
+        logger.info { "[MCP-HTTP] Connected: ${initResult.serverInfo?.name} ${initResult.serverInfo?.version}" }
 
+        // A server that declared no tools capability makes the SDK answer tools/list with an error of its own.
+        // That is a server without tools, not a connection that failed: treating it as one would warn the user
+        // on every message for a server answering exactly as it is configured to.
+        if (initResult.capabilities?.tools == null) {
+            logger.warn { "[MCP-HTTP] Server '$url' does not advertise the tools capability" }
+            return
+        }
+
+        // A failed listing is a failed connection, not an empty tool list: an OAuth server reached without a token
+        // can accept the handshake and refuse tools/list, and "no tools" would hide that from the agent and the user.
         tools = try {
             client.listTools()?.tools ?: emptyList()
         } catch (e: Exception) {
-            logger.warn { "[MCP-HTTP] Could not list tools for '$url': ${e.message}" }
-            emptyList()
+            runCatching { client.closeGracefully() }
+            throw McpConnectionException("Failed to list the tools of MCP HTTP server '$url': ${e.message}", e)
         }
         logger.info { "[MCP-HTTP] Discovered ${tools.size} tool(s)" }
     }
