@@ -450,7 +450,6 @@ class AgentServiceImpl(
                     skillTools,
             )
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
-        val executionMode = agentConfig.resolvedExecutionMode
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
@@ -465,7 +464,7 @@ class AgentServiceImpl(
             resolvedProvider = providerConfig,
             tools = tools,
             skills = resolvedSkills,
-            executionMode = executionMode,
+            executionMode = agentConfig.resolvedExecutionMode,
             namespaceId = context.namespaceId,
             userId = context.userId,
             redirectGuideline = redirectGuideline,
@@ -482,18 +481,21 @@ class AgentServiceImpl(
      * [resolveAgentDefinition]: the definition inspection endpoint must keep working so that an admin
      * can see the misconfiguration.
      *
+     * The message is shown to case participants: it names the agent and the model label only, never the
+     * provider or the API model name. The failure is logged by the caller, which knows the case id.
+     *
      * @throws AdvancedExecutionNotSupportedException naming the agent, the model and the fix
      */
     private fun requireModelSupportsExecutionMode(definition: ResolvedAgentDefinition) {
         val model = definition.resolvedModel
-        if (definition.executionMode != ExecutionMode.ADVANCED || model.supportsAdvancedExecution) return
-        val message =
-            "Agent '${definition.name}' is configured in ADVANCED execution mode but its model " +
-                "'${model.alias ?: model.apiModelName}' (${definition.resolvedProvider.name}/${model.apiModelName}) " +
-                "does not support advanced execution. Set supportsAdvancedExecution on the model " +
-                "or switch the agent to SIMPLE."
-        logger.warn { message }
-        throw AdvancedExecutionNotSupportedException(message)
+        if (definition.executionMode == ExecutionMode.ADVANCED && !model.supportsAdvancedExecution) {
+            throw AdvancedExecutionNotSupportedException(
+                "Agent '${definition.name}' is configured in ADVANCED execution mode but its model " +
+                    "'${model.alias ?: model.apiModelName}' does not support advanced execution. " +
+                    "Ask an administrator to enable supportsAdvancedExecution on the model, " +
+                    "or to switch the agent to SIMPLE.",
+            )
+        }
     }
 
     /**

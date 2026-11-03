@@ -194,7 +194,6 @@ data class AgentConfig(
      * requires a model with [io.whozoss.agentos.sdk.aiProvider.AiModel.supportsAdvancedExecution],
      * which is checked when the agent is instantiated.
      */
-    @Suppress("DEPRECATION")
     val resolvedExecutionMode: ExecutionMode
         get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
 }

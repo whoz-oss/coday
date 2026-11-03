@@ -67,7 +67,7 @@ class AiModelController(
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                     reasoningEffort = resource.reasoningEffort,
-                    supportsAdvancedExecution = resource.supportsAdvancedExecution,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution ?: false,
                 )
             },
         )
@@ -117,7 +117,7 @@ class AiModelController(
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                     reasoningEffort = resource.reasoningEffort,
-                    supportsAdvancedExecution = resource.supportsAdvancedExecution,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution ?: existing.supportsAdvancedExecution,
                 ),
             ).let(::toDto)
     }

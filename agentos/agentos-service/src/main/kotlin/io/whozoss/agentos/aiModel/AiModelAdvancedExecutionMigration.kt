@@ -23,6 +23,12 @@ import org.springframework.data.neo4j.core.Neo4jClient
  * model cannot be determined: every matching model counts, at any scope.
  *
  * Filesystem models and agents are not persisted and are neither read nor written.
+ *
+ * Assumptions:
+ * - Concurrent instances are safe. The computation is deterministic from the same data, the final `SET` only
+ *   touches nodes that still lack the property, and a second run is a no-op.
+ * - Like the other startup migrations, models saved before this change read as `false` until the runner has
+ *   completed.
  */
 class AiModelAdvancedExecutionMigration(
     private val neo4jClient: Neo4jClient,
@@ -47,11 +53,14 @@ class AiModelAdvancedExecutionMigration(
 
     fun run() {
         val legacyCount = countLegacyModels()
-        if (legacyCount == 0L) {
+        if (legacyCount > 0L) {
+            migrate()
+        } else {
             logger.debug { "[Migration] No AiModel node lacks supportsAdvancedExecution — nothing to migrate" }
-            return
         }
+    }
 
+    private fun migrate() {
         val models = loadModels()
         val legacyIds = loadLegacyModelIds()
         val advancedAgents = loadAgents()
@@ -82,11 +91,13 @@ class AiModelAdvancedExecutionMigration(
                 "${toTrue.map { it.label }.sorted()}, to false on ${total - enabled}"
         }
 
-        // Such an agent cannot run: it fails at instantiation for lack of a model. Worth a line in the logs.
+        // Such an agent will fail at run time (AdvancedExecutionNotSupportedException): worth a clear line in the logs.
         links.filterValues { it.isEmpty() }.keys.forEach { agent ->
             logger.warn {
                 "[Migration] ADVANCED agent '${agent.name}' (id=${agent.id}) matches no persisted AiModel " +
-                    "(modelName=${agent.modelName}): no model was marked for it"
+                    "(modelName=${agent.modelName}): no model was marked for it, so the agent will fail at run time. " +
+                    "If its model is a filesystem model (ai-models/*.yaml), add 'supportsAdvancedExecution: true' " +
+                    "to that file; otherwise set the flag on the model."
             }
         }
     }

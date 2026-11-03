@@ -62,8 +62,9 @@ private class AdvancedFailureFixture {
     private val userId = UUID.randomUUID()
     private val agentName = "big-advanced"
     val failureMessage =
-        "Agent '$agentName' is configured in ADVANCED execution mode but its model 'BIG' (anthropic/claude-big) " +
-            "does not support advanced execution. Set supportsAdvancedExecution on the model or switch the agent to SIMPLE."
+        "Agent '$agentName' is configured in ADVANCED execution mode but its model 'BIG' " +
+            "does not support advanced execution. Ask an administrator to enable supportsAdvancedExecution " +
+            "on the model, or to switch the agent to SIMPLE."
     private val cases = InMemoryCaseRepository()
     val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
     private val namespaces =

@@ -2770,9 +2770,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
             error.message shouldContain "Agent 'big-advanced'"
             error.message shouldContain "ADVANCED"
             error.message shouldContain "'sonnet'"
-            error.message shouldContain "anthropic-prod/claude-sonnet-4-5"
-            error.message shouldContain "supportsAdvancedExecution"
-            error.message shouldContain "SIMPLE"
+            // The message is shown to case participants: no provider nor API model name.
+            error.message shouldNotContain "anthropic-prod"
+            error.message shouldNotContain "claude-sonnet-4-5"
+            error.message shouldContain "Ask an administrator to enable supportsAdvancedExecution on the model"
+            error.message shouldContain "switch the agent to SIMPLE"
             // No silent downgrade: no chat client is built for the agent.
             verify(exactly = 0) { chatClientProvider.getChatClient(any(), any(), any()) }
         }

@@ -160,7 +160,7 @@ class FilesystemAiModelRepository(
  *   outputMTokens: 10
  *   cacheRead: 0.2
  *   cacheWrite: 2.5
- * supportsAdvancedExecution: true   # optional, default false: agents without their own executionMode run ADVANCED
+ * supportsAdvancedExecution: true   # optional, default false: capability required by agents configured in ADVANCED mode; never changes an agent's mode
  * ```
  */
 @JsonIgnoreProperties(ignoreUnknown = true)

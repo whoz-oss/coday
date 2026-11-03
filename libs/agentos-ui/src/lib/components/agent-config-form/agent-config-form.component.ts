@@ -603,7 +603,7 @@ export class AgentConfigFormComponent implements OnInit {
         type: t.type,
         displayName: t.displayName,
         description: t.description,
-        enabledByDefault: t.enabledByDefault,
+        enabledByDefault: t.enabledByDefault === true,
         state: signal(state),
         restrictedTools: Array.isArray(entry) && entry.length > 0 ? entry : null,
       }
