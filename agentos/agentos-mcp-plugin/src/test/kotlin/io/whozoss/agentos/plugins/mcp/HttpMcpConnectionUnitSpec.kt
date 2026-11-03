@@ -82,6 +82,26 @@ class HttpMcpConnectionUnitSpec : StringSpec({
         }
     }
 
+    "connect reports no tools when the server does not advertise the tools capability" {
+        // A server that offers only resources or prompts: the SDK refuses tools/list on its own, and we never
+        // ask. Reporting the integration as failed would warn the user on every message for a working server.
+        val server = handshakeOnlyServer(advertisesTools = false)
+        try {
+            val config = McpServerConfig(
+                url = "http://127.0.0.1:${server.address.port}/mcp",
+                timeoutSeconds = 2,
+                toolCallTimeoutSeconds = 2,
+            )
+            val connection = HttpMcpConnection(config)
+            val logs = LogCapture.capturing { connection.connect(authorization = null) }
+
+            connection.tools.shouldBeEmpty()
+            logs.messagesAt(Level.WARN).single() shouldContain "does not advertise the tools capability"
+        } finally {
+            server.stop(0)
+        }
+    }
+
     // splitMcpUrl — the endpoint is always explicit; the SDK default "/mcp" never applies
 
     "splitMcpUrl: bare root URL (no path) returns origin and slash endpoint" {
@@ -118,8 +138,11 @@ class HttpMcpConnectionUnitSpec : StringSpec({
         /**
          * A Streamable HTTP MCP server on an ephemeral loopback port that completes the handshake, then answers 401
          * to every request (tools/list included). GET, the optional server-sent event stream, is not supported.
+         *
+         * @param advertisesTools whether the handshake declares the `tools` capability. Without it the SDK refuses
+         *   to list tools client-side, which is a server without tools rather than a failed connection.
          */
-        private fun handshakeOnlyServer(): HttpServer =
+        private fun handshakeOnlyServer(advertisesTools: Boolean = true): HttpServer =
             HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
                 createContext("/") { exchange ->
                     exchange.use {
@@ -127,7 +150,8 @@ class HttpMcpConnectionUnitSpec : StringSpec({
                         val request = if (bytes.isEmpty()) null else mapper.readTree(bytes)
                         val (status, body) = when {
                             it.requestMethod != "POST" -> 405 to ""
-                            request?.get("method")?.asText() == "initialize" -> 200 to initializeResult(request)
+                            request?.get("method")?.asText() == "initialize" ->
+                                200 to initializeResult(request, advertisesTools)
                             request?.get("id") == null -> 202 to ""
                             else -> 401 to ""
                         }
@@ -144,17 +168,19 @@ class HttpMcpConnectionUnitSpec : StringSpec({
                 start()
             }
 
-        private fun initializeResult(request: JsonNode): String =
-            mapper.writeValueAsString(
+        private fun initializeResult(request: JsonNode, advertisesTools: Boolean): String {
+            val capabilities = if (advertisesTools) mapOf("tools" to emptyMap<String, Any>()) else emptyMap()
+            return mapper.writeValueAsString(
                 mapOf(
                     "jsonrpc" to "2.0",
                     "id" to request["id"],
-                    "result" to mapOf(
+                    "result" to mapOf<String, Any>(
                         "protocolVersion" to request["params"]["protocolVersion"],
-                        "capabilities" to mapOf("tools" to emptyMap<String, Any>()),
+                        "capabilities" to capabilities,
                         "serverInfo" to mapOf("name" to "test", "version" to "1"),
                     ),
                 ),
             )
+        }
     }
 }
