@@ -190,7 +190,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
     }
     let input
     try {
-      input = validateApplyInput(req.body)
+      input = validateApplyInput(req.body, configDir)
     } catch (err) {
       res.status(400).json({ error: err instanceof ApplyValidationError ? err.message : 'Invalid request.' })
       return

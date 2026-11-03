@@ -441,4 +441,22 @@ describe('validateApplyInput', () => {
   ])('rejects %s', (_label, body) => {
     expect(() => validateApplyInput(body)).toThrow(ApplyValidationError)
   })
+
+  it.each([
+    ['the Coday folder itself', '/home/me/.coday'],
+    ['a folder inside it', '/home/me/.coday/agentos/data'],
+    ['a folder that contains it', '/home/me'],
+  ])('refuses %s as the files folder: the agents would reach the data and keys of Coday', (_label, folder) => {
+    expect(() => validateApplyInput({ ...valid, sharedExchangePath: folder }, '/home/me/.coday')).toThrow(
+      ApplyValidationError
+    )
+  })
+
+  it('accepts a folder next to the Coday folder', () => {
+    for (const folder of ['/home/me/Coday', '/home/me/.coday-files']) {
+      expect(validateApplyInput({ ...valid, sharedExchangePath: folder }, '/home/me/.coday').sharedExchangePath).toBe(
+        folder
+      )
+    }
+  })
 })
