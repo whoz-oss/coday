@@ -112,13 +112,19 @@
     flex-direction: column;
     gap: 8px;
 
+    // Side by side: the button keeps its natural width, the filter takes all the remaining space.
     &--wide {
       flex-direction: row;
 
-      .shell-sidebar__new-case-btn,
+      .shell-sidebar__new-case-btn {
+        flex: none;
+        width: auto;
+      }
+
       .shell-sidebar__search {
-        flex: 1;
+        flex: 1 1 0;
         min-width: 0;
+        width: auto;
       }
     }
   }
