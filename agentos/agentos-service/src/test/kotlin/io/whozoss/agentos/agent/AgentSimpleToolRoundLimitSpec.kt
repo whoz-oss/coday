@@ -30,6 +30,7 @@ import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.model.tool.ToolCallingChatOptions
 import reactor.core.publisher.Flux
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -71,6 +72,7 @@ class AgentSimpleToolRoundLimitSpec :
         suspend fun run(reply: (Prompt, Int) -> ChatResponse): List<CaseEvent> {
             val requests = AtomicInteger()
             val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } answers { Flux.just(reply(firstArg(), requests.getAndIncrement())) }
             val model = AiModel(aiProviderId = UUID.randomUUID(), apiModelName = "test")
             val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, maxToolRounds = 2)
