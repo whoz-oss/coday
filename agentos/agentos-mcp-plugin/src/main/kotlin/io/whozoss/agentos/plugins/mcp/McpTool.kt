@@ -2,11 +2,14 @@ package io.whozoss.agentos.plugins.mcp
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import io.modelcontextprotocol.spec.McpError
+import io.modelcontextprotocol.spec.McpSchema
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
+import java.util.concurrent.TimeoutException
 
 /**
  * A [StandardTool] that delegates execution to a live MCP connection.
@@ -72,13 +75,14 @@ class McpTool(
                                 errorMessage = e.message,
                             )
                         else -> {
-                            // A transport failure carries the server's own words (URL, headers, tokens):
-                            // the detail stays in the logs, the model gets a fixed text.
+                            // A failed call carries the server's own words (URL, headers, tokens): the detail
+                            // stays in the logs, the model gets a fixed text naming only the kind of failure.
                             logger.error(e) { "[MCP] Tool call '${mcpTool.name()}' failed: ${e.message}" }
+                            val output = callFailureOutput(e)
                             ToolExecutionResult.error(
-                                output = TRANSPORT_FAILURE_OUTPUT,
+                                output = output,
                                 errorType = e::class.simpleName ?: "Error",
-                                errorMessage = TRANSPORT_FAILURE_OUTPUT,
+                                errorMessage = output,
                             )
                         }
                     }
@@ -100,9 +104,50 @@ class McpTool(
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
 
-        /** What the model sees when the call itself failed (transport, protocol), as opposed to the tool answering with an error. */
+        /**
+         * What the model sees when the integration could not be reached, as opposed to the tool answering with an
+         * error.
+         */
         internal const val TRANSPORT_FAILURE_OUTPUT =
             "The tool call failed because the integration could not be reached. The cause is in the server logs."
+
+        /** What the model sees when the integration did not answer within the request timeout. */
+        internal const val TIMEOUT_OUTPUT =
+            "The tool call failed because the integration did not answer in time. The cause is in the server logs."
+
+        /** What the model sees when the integration refused the arguments (JSON-RPC invalid params). */
+        internal const val INVALID_PARAMS_OUTPUT =
+            "The integration rejected the arguments of the call (JSON-RPC error -32602, invalid params). " +
+                "Check them against the tool's input schema before retrying. The detail is in the server logs."
+
+        /** Bounds the walk up the cause chain, which a faulty exception could make cyclic. */
+        private const val MAX_CAUSE_DEPTH = 10
+
+        /**
+         * Picks the fixed text the model gets for a failed call, from the cause chain of [error].
+         *
+         * An answer of the server to the call itself ([McpError], a JSON-RPC error response) is told apart from a
+         * timeout and from a server that could not be reached, so the model knows whether fixing the call can help.
+         * Only the numeric JSON-RPC code leaves the server, never the server's message, which can echo a URL or a
+         * header.
+         */
+        internal fun callFailureOutput(error: Throwable): String {
+            val causes = generateSequence(error) { it.cause }.take(MAX_CAUSE_DEPTH).toList()
+            val rejection = causes.firstNotNullOfOrNull { it as? McpError }
+            return when {
+                rejection != null -> rejectedCallOutput(code = rejection.jsonRpcError?.code())
+                causes.any { it is TimeoutException } -> TIMEOUT_OUTPUT
+                else -> TRANSPORT_FAILURE_OUTPUT
+            }
+        }
+
+        private fun rejectedCallOutput(code: Int?): String =
+            if (code == McpSchema.ErrorCodes.INVALID_PARAMS) {
+                INVALID_PARAMS_OUTPUT
+            } else {
+                "The integration refused the call with JSON-RPC error ${code ?: "(no code)"}. " +
+                    "The detail is in the server logs."
+            }
 
         /**
          * Build the [StandardTool.inputSchema] from the MCP tool's declared input schema.

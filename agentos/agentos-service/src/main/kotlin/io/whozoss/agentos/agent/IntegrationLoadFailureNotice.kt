@@ -38,8 +38,10 @@ internal object IntegrationLoadFailureNotice {
             append(
                 "Integrations that failed to load in this run, their tools are missing: " +
                     "${failedIntegrationNames.joinToString(separator = ", ")}. " +
-                    "Tell the user which ones are unavailable and that the cause is in the server logs. " +
-                    "Do not guess a cause.",
+                    // Conditional on purpose: the block reaches every agent that receives the integration
+                    // (delegates, scheduled runs), most of which never need it.
+                    "Mention it only when the user's request needs one of them: then tell the user it is " +
+                    "unavailable and that the cause is in the server logs. Do not guess a cause.",
             )
         }
 }

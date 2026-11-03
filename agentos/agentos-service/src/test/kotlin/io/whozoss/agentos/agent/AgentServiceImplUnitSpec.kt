@@ -2815,6 +2815,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val instructions = agent.instructions ?: ""
             instructions shouldContain "Integrations that failed to load in this run, their tools are missing: ATLASSIAN."
+            // Only when the request needs it: the block also reaches agents that never use the integration.
+            instructions shouldContain "Mention it only when the user's request needs one of them"
             instructions shouldContain "Do not guess a cause."
             // The block comes last, so the cached prefix of the prompt is unchanged.
             instructions.indexOf("Base instructions") shouldBe 0
