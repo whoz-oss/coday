@@ -300,5 +300,17 @@ describe('SetupStateService', () => {
       await state.init()
       expect(state.step()).toBe('progress')
     })
+
+    it('asks for the keys again when the user retries a failed apply after a page reload', async () => {
+      api.getStatus.mockReturnValue(of(baseStatus({ apply: { status: 'error', error: 'boom' } })))
+      await state.init()
+      expect(state.step()).toBe('progress')
+
+      await state.retry()
+
+      expect(api.apply).not.toHaveBeenCalled()
+      expect(state.step()).toBe('providers')
+      expect(state.error()).toMatch(/API keys/)
+    })
   })
 })

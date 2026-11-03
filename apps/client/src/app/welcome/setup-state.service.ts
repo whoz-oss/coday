@@ -327,8 +327,16 @@ export class SetupStateService {
     }
   }
 
-  /** Retry after a failed apply (idempotent on the server side). */
+  /**
+   * Retry after a failed apply (idempotent on the server side). The keys live in memory only: after a page reload
+   * they are gone, so the user goes back to the providers step to enter them again.
+   */
   async retry(): Promise<void> {
+    if (!this.providersValid()) {
+      this.step.set('providers')
+      this.error.set('Enter your API keys again: they are not kept when the page is reloaded.')
+      return
+    }
     await this.submitFolderAndApply()
   }
 
