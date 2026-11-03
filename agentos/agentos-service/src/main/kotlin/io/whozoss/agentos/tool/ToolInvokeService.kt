@@ -69,11 +69,12 @@ class ToolInvokeService(
                 agentName = null,
             )
 
-        return toolResolverService.resolveToolsForRun(
-            agentIntegrations = allToolsFromIntegrationByName,
-            context = context,
-            allIntegrationConfigs = effectiveConfigs,
-        )
+        return toolResolverService
+            .resolveToolsForRun(
+                agentIntegrations = allToolsFromIntegrationByName,
+                context = context,
+                allIntegrationConfigs = effectiveConfigs,
+            ).tools
     }
 
     /**

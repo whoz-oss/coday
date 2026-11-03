@@ -22,6 +22,9 @@ import org.pf4j.Extension
  *   Basic for BASIC_AUTH).
  * - Otherwise, if the deprecated [McpServerConfig.authToken] is set, it is sent as a Bearer token.
  * - If neither is available, the connection is attempted without authentication.
+ *
+ * A connection failure is logged in full and rethrown: an empty list means "the server advertises no tools",
+ * never "the server could not be reached".
  */
 @Extension
 class McpHttpToolProvider : ToolPlugin {
@@ -70,9 +73,11 @@ class McpHttpToolProvider : ToolPlugin {
             // invoking McpConnectionPort.close() when the agent run completes.
             connection.tools.map { McpTool(it, connection, configName) }
         } catch (e: Exception) {
+            // Full detail stays in the server logs. The failure is rethrown, not turned into an empty tool list,
+            // so the caller can tell "failed to load" from "no tools" and report the integration by name.
             logger.error(e) { "MCP_HTTP integration '$configName': could not connect — ${e.message}" }
             connection.close()
-            emptyList()
+            throw e
         }
     }
 

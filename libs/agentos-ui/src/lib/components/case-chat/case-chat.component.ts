@@ -17,6 +17,7 @@ import {
   OnInit,
   output,
   signal,
+  Signal,
   viewChild,
   ChangeDetectionStrategy,
 } from '@angular/core'
@@ -99,10 +100,12 @@ export interface ToolCall {
   enrichmentPhases?: EnrichmentPhaseTrace[] | null
 }
 
-/** A technical event displayed only when showTechnical is enabled. */
+/** A technical event, displayed only when the technical logs preference is enabled. */
 export interface TechnicalItem {
   label: string
   detail?: string
+  /** ISO timestamp of the source event. */
+  timestamp?: string
 }
 
 export interface ExecutionNotice {
@@ -335,7 +338,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // Header action outputs — handled by CaseShellComponent
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()
-  readonly logsToggled = output<void>()
   readonly updateRequested = output<{ id: string; title?: string; runCostThreshold?: number | null }>()
 
   // ---------------------------------------------------------------------------
@@ -388,8 +390,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
-  readonly showTechnicalOverride = input(false)
-  protected readonly showTechnical = computed(() => this.showTechnicalOverride())
+  /** Technical logs visibility: a user preference (My profile), shown by default. */
+  protected readonly showTechnical: Signal<boolean> = this.preferences.showTechnical
 
   readonly showToolCallsOverride = input(true)
   protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
@@ -1367,6 +1369,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString()
   }
 
+  /** Local date and time for technical log lines, which can be days apart; the full timestamp stays in the title. */
+  protected formatMessageDateTime(timestamp: string): string {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date)
+  }
+
   protected toggleToolCall(requestId: string): void {
     this.collapsedTools.update((set) => {
       const next = new Set(set)
@@ -1382,10 +1399,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Collapsed by default: a tool call is expanded only when its id is in the set */
   protected isToolCallExpanded(requestId: string): boolean {
     return this.collapsedTools().has(requestId)
-  }
-
-  protected toggleShowTechnical(): void {
-    this.logsToggled.emit()
   }
 
   /** Extract plain text from a message item for clipboard copy. */
@@ -1475,6 +1488,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private toTechnicalItem(event: CaseEvent): TechnicalItem {
+    return { ...this.describeTechnicalEvent(event), timestamp: event.timestamp }
+  }
+
+  private describeTechnicalEvent(event: CaseEvent): Pick<TechnicalItem, 'label' | 'detail'> {
     switch (event.type) {
       case 'CaseStatusEvent':
         return { label: `Status: ${(event as CaseStatusEvent).status}` }

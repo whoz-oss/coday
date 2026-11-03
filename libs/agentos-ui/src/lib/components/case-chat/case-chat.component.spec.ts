@@ -5,6 +5,7 @@ import { ActivatedRoute } from '@angular/router'
 import {
   ActorRoleEnum,
   AgentFinishedEvent,
+  AgentRunningEvent,
   AnswerEvent,
   Case,
   Configuration,
@@ -45,6 +46,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     refreshNamespace: jest.Mock
   }
   let calls: string[]
+  let showTechnical: ReturnType<typeof signal<boolean>>
 
   function makeComponent(): ComponentRef<CaseChatComponent> {
     const environmentInjector = TestBed.inject(EnvironmentInjector)
@@ -57,6 +59,7 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   beforeEach(() => {
     calls = []
+    showTechnical = signal(true)
     http = {
       post: jest.fn().mockImplementation(() => {
         calls.push('post')
@@ -98,7 +101,7 @@ describe('CaseChatComponent — submit with attachments', () => {
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         {
           provide: USER_PREFERENCES_PORT,
-          useValue: { shouldSend: jest.fn().mockReturnValue(false), composerHint: () => 'hint' },
+          useValue: { shouldSend: jest.fn().mockReturnValue(false), composerHint: () => 'hint', showTechnical },
         },
       ],
     })
@@ -501,7 +504,7 @@ describe('CaseChatComponent — submit with attachments', () => {
           const source = Object.assign(new EventTarget(), { close: jest.fn() })
           globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
           ref.instance['connectSse']()
-          ref.setInput('showTechnicalOverride', true)
+          showTechnical.set(true)
 
           // Replay: KILLED superseded by IDLE
           ref.instance['events'].set([
@@ -721,10 +724,69 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     it('does not render the AnswerEvent as its own timeline item, even in technical mode', () => {
       const ref = makeComponent()
-      ref.setInput('showTechnicalOverride', true)
+      showTechnical.set(true)
       ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
 
       expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['question'])
+    })
+  })
+
+  describe('technical logs', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const running = (id: string, timestamp: string): AgentRunningEvent => ({
+      id,
+      type: 'AgentRunningEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp,
+      metadata,
+      agentId: 'agent-1',
+      agentName: 'dev',
+    })
+
+    it('shows the technical log lines with the preference as stored by default', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([running('r-1', '2026-01-01T10:20:30Z')])
+
+      expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['technical'])
+    })
+
+    it('hides the technical log lines when the preference is off', () => {
+      showTechnical.set(false)
+      const ref = makeComponent()
+      ref.instance['events'].set([running('r-1', '2026-01-01T10:20:30Z')])
+
+      expect(ref.instance['timeline']()).toEqual([])
+    })
+
+    it('reacts to the preference being toggled', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([running('r-1', '2026-01-01T10:20:30Z')])
+      showTechnical.set(false)
+      expect(ref.instance['timeline']()).toEqual([])
+
+      showTechnical.set(true)
+      expect(ref.instance['timeline']()).toHaveLength(1)
+    })
+
+    it('carries the event timestamp on the technical item', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([running('r-1', '2026-01-01T10:20:30Z')])
+
+      const item = ref.instance['timeline']()[0]
+      expect(item?.kind === 'technical' && item.item).toEqual({
+        label: 'Agent running: dev',
+        timestamp: '2026-01-01T10:20:30Z',
+      })
+    })
+
+    it('formats the timestamp as a date and a time, and falls back to nothing when unparsable', () => {
+      const ref = makeComponent()
+      const formatted: string = ref.instance['formatMessageDateTime']('2026-06-15T12:20:30Z')
+
+      expect(formatted).toMatch(/2026/)
+      expect(formatted).toMatch(/\d{2}:\d{2}:\d{2}/)
+      expect(ref.instance['formatMessageDateTime']('not a date')).toBe('')
     })
   })
 
@@ -753,6 +815,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     })
 
     it('shows a run stopped at its limit outside technical mode, unlike a run that completed', () => {
+      showTechnical.set(false)
       const ref = makeComponent()
       ref.instance['events'].set([finished('f-1', 20), finished('f-2')])
 

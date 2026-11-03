@@ -43,6 +43,41 @@ describe('AgentosUserPreferencesService', () => {
     expect(service.composerHint()).toContain('Ctrl/Cmd+Enter to send')
   })
 
+  describe('showTechnical', () => {
+    const SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
+
+    it('is shown when nothing is stored', () => {
+      expect(new AgentosUserPreferencesService().showTechnical()).toBe(true)
+    })
+
+    it('is hidden when "false" is stored', () => {
+      localStorage.setItem(SHOW_TECHNICAL_KEY, 'false')
+      expect(new AgentosUserPreferencesService().showTechnical()).toBe(false)
+    })
+
+    it('is shown when "true" is stored', () => {
+      localStorage.setItem(SHOW_TECHNICAL_KEY, 'true')
+      expect(new AgentosUserPreferencesService().showTechnical()).toBe(true)
+    })
+
+    it('persists and reflects the choice on the signal', () => {
+      const service = new AgentosUserPreferencesService()
+
+      service.setShowTechnical(false)
+      expect(service.showTechnical()).toBe(false)
+      expect(localStorage.getItem(SHOW_TECHNICAL_KEY)).toBe('false')
+
+      service.setShowTechnical(true)
+      expect(service.showTechnical()).toBe(true)
+      expect(localStorage.getItem(SHOW_TECHNICAL_KEY)).toBe('true')
+    })
+
+    it('is read back by a new instance after being hidden', () => {
+      new AgentosUserPreferencesService().setShowTechnical(false)
+      expect(new AgentosUserPreferencesService().showTechnical()).toBe(false)
+    })
+  })
+
   describe('shouldSend — only a real ENTER press', () => {
     it('never sends for a non-Enter key', () => {
       expect(new AgentosUserPreferencesService().shouldSend(keydown({ key: 'a' }))).toBe(false)
