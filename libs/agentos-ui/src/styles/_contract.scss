@@ -17,8 +17,9 @@
  *   --radius-md               Medium corners: inputs, cards, dropdowns, blueprint surfaces, menu panels
  *   --radius-lg               Large corners: reserved for large containers (dialogs, panels)
  *   --radius-pill             Fully rounded: chips, buttons, tags
- *   All four are 0 in Industry and Terminal (square corners). Consumers should write
- *   var(--radius-xxx, 0) so they stay square outside the host theme.
+ *   All four are 0 in Industry and Terminal (square corners); Astra sets 6px / 10px / 16px / 999px.
+ *   Consumers should write var(--radius-xxx, 0) so they stay square outside the host theme.
+ *   A theme must always give the four a unit (`6px`, not `6`).
  *
  * ── Text colors ──────────────────────────────────────────────────────────
  *   --color-text              Main text color
@@ -94,6 +95,18 @@
  *   --glass-border
  *   --glass-shadow
  *   --glass-backdrop-blur
+ *
+ * ── Theme variants ───────────────────────────────────────────────────────
+ *   The variants are listed in ONE table, THEME_VARIANT_DEFINITIONS in
+ *   libs/agentos-ui/src/lib/services/theme.service.ts (id, label, description, supported modes):
+ *     industry   light + dark   (default; the attribute-less light theme)
+ *     terminal   light + dark
+ *     astra      light only     (forced to astra-light whatever the stored mode)
+ *   Each variant defines the full token list above, scoped under agentos-shell:
+ *     - Industry: the base `agentos-shell` block and its dark block
+ *     - Terminal: one block per mode
+ *     - Astra:    the `astra-light` mixin, applied to agentos-shell AND to `.ds-kebab-panel`
+ *   CDK overlay panels are outside agentos-shell and do not inherit its tokens (see GUIDELINES.md).
  *
  * ── Example host setup (minimal) ─────────────────────────────────────────
  *

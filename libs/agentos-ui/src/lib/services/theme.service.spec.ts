@@ -1,4 +1,11 @@
-import { AgentosThemeService } from './theme.service'
+import {
+  AgentosThemeService,
+  isModeSupported,
+  resolveEffectiveMode,
+  supportsModeSwitch,
+  THEME_VARIANTS,
+  ThemeMode,
+} from './theme.service'
 
 describe('AgentosThemeService', () => {
   const STORAGE_KEY_VARIANT = 'agentos.theme.variant'
@@ -91,6 +98,15 @@ describe('AgentosThemeService', () => {
     expect(state.mode).toBe('system')
   })
 
+  it('falls back to industry for an unknown stored variant id, keeping a valid stored mode', () => {
+    localStorage.setItem(STORAGE_KEY_VARIANT, 'rainbow')
+    localStorage.setItem(STORAGE_KEY_MODE, 'dark')
+    const service = new AgentosThemeService()
+    expect(service.theme().variant).toBe('industry')
+    expect(service.theme().mode).toBe('dark')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('industry-dark')
+  })
+
   it('migrates legacy single-key storage to variant+mode keys', () => {
     localStorage.setItem(STORAGE_KEY_LEGACY, 'dark')
     const service = new AgentosThemeService()
@@ -112,6 +128,89 @@ describe('AgentosThemeService', () => {
     const service = new AgentosThemeService()
     service.setTheme({ variant: 'terminal', mode: 'light' })
     expect(document.documentElement.getAttribute('data-theme')).toBe('terminal-light')
+  })
+
+  describe('astra (light only)', () => {
+    it('lists astra among the variants derived from the table', () => {
+      expect(THEME_VARIANTS).toEqual(['industry', 'terminal', 'astra'])
+    })
+
+    it('applies astra-light for astra + light, and never leaves the attribute out', () => {
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'astra', mode: 'light' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-light')
+    })
+
+    it('forces astra-light when the mode is dark', () => {
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'astra', mode: 'dark' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-light')
+    })
+
+    it('forces astra-light when the mode is system and the OS prefers dark', () => {
+      mockMatchMedia(true)
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'astra', mode: 'system' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-light')
+    })
+
+    it('applies astra-light on init from a stored astra variant with a dark mode', () => {
+      localStorage.setItem(STORAGE_KEY_VARIANT, 'astra')
+      localStorage.setItem(STORAGE_KEY_MODE, 'dark')
+      const service = new AgentosThemeService()
+      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-light')
+      expect(service.theme().mode).toBe('dark')
+      expect(localStorage.getItem(STORAGE_KEY_MODE)).toBe('dark')
+    })
+
+    it('keeps the stored mode untouched and gives industry-dark back when leaving astra', () => {
+      const service = new AgentosThemeService()
+      service.setTheme({ variant: 'industry', mode: 'dark' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('industry-dark')
+
+      service.setTheme({ variant: 'astra', mode: 'dark' })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('astra-light')
+      expect(localStorage.getItem(STORAGE_KEY_MODE)).toBe('dark')
+      expect(service.theme().mode).toBe('dark')
+
+      service.setTheme({ variant: 'industry', mode: service.theme().mode })
+      expect(document.documentElement.getAttribute('data-theme')).toBe('industry-dark')
+    })
+  })
+
+  describe('resolveEffectiveMode', () => {
+    it.each<{ variant: string; mode: ThemeMode; systemPrefersDark: boolean; expected: string }>([
+      { variant: 'industry', mode: 'light', systemPrefersDark: true, expected: 'light' },
+      { variant: 'industry', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+      { variant: 'industry', mode: 'system', systemPrefersDark: true, expected: 'dark' },
+      { variant: 'industry', mode: 'system', systemPrefersDark: false, expected: 'light' },
+      { variant: 'terminal', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+      { variant: 'terminal', mode: 'system', systemPrefersDark: true, expected: 'dark' },
+      { variant: 'astra', mode: 'light', systemPrefersDark: false, expected: 'light' },
+      { variant: 'astra', mode: 'dark', systemPrefersDark: false, expected: 'light' },
+      { variant: 'astra', mode: 'system', systemPrefersDark: true, expected: 'light' },
+      { variant: 'rainbow', mode: 'dark', systemPrefersDark: false, expected: 'dark' },
+    ])('%j', ({ variant, mode, systemPrefersDark, expected }) => {
+      expect(resolveEffectiveMode(variant, mode, systemPrefersDark)).toBe(expected)
+    })
+  })
+
+  describe('isModeSupported / supportsModeSwitch', () => {
+    it('accepts every mode for industry and terminal', () => {
+      for (const variant of ['industry', 'terminal']) {
+        expect(supportsModeSwitch(variant)).toBe(true)
+        for (const mode of ['light', 'dark', 'system'] as const) {
+          expect(isModeSupported(variant, mode)).toBe(true)
+        }
+      }
+    })
+
+    it('only accepts light for astra, with no light/dark switch', () => {
+      expect(supportsModeSwitch('astra')).toBe(false)
+      expect(isModeSupported('astra', 'light')).toBe(true)
+      expect(isModeSupported('astra', 'dark')).toBe(false)
+      expect(isModeSupported('astra', 'system')).toBe(false)
+    })
   })
 
   it('removes its system-preference listener on destroy', () => {

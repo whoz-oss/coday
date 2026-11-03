@@ -176,6 +176,55 @@ describe('CaseShellComponent', () => {
     expect(component['canWriteActiveCase']()).toBe(true)
   })
 
+  describe('theme', () => {
+    // The mocked port is not a signal: the computed values below are read once, after the mock is set.
+    it('is dark for a dark industry theme', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'industry', mode: 'dark' })
+
+      expect(component['isDark']()).toBe(true)
+      expect(component['canToggleMode']()).toBe(true)
+    })
+
+    it('stays light under astra even when the stored mode is dark, and offers no light/dark switch', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'astra', mode: 'dark' })
+
+      expect(component['isDark']()).toBe(false)
+      expect(component['canToggleMode']()).toBe(false)
+    })
+
+    it('switches the mode from the menu under a variant that supports both', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'industry', mode: 'light' })
+
+      component['onMenuToggleTheme']()
+
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'industry', mode: 'dark' })
+    })
+
+    it('does not touch the stored mode from the menu under astra', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'astra', mode: 'dark' })
+
+      component['onMenuToggleTheme']()
+
+      expect(themeMock.setTheme).not.toHaveBeenCalled()
+    })
+
+    it('keeps the stored mode when changing variant, and ignores an unknown variant id', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'industry', mode: 'dark' })
+
+      component['onMenuThemeVariantChanged']('astra')
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'astra', mode: 'dark' })
+
+      themeMock.setTheme.mockClear()
+      component['onMenuThemeVariantChanged']('rainbow')
+      expect(themeMock.setTheme).not.toHaveBeenCalled()
+    })
+  })
+
   describe('soft-delete', () => {
     it('calls deleteCase on the state service', () => {
       const component = makeComponent({ ns: NS_ID })

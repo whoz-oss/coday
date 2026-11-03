@@ -23,7 +23,10 @@ export class ShellUserMenuComponent {
   /** Whether dark mode is active */
   readonly isDark = input.required<boolean>()
 
-  /** Active theme variant ('industry' | 'terminal') */
+  /** False for a light-only variant (astra): the light/dark entry is then hidden. */
+  readonly canToggleMode = input(true)
+
+  /** Active theme variant id (see THEME_VARIANT_DEFINITIONS) */
   readonly themeVariant = input.required<string>()
 
   /** Whether technical logs are currently shown — drives the active state of the menu item */

@@ -35,17 +35,25 @@
       <!-- Light / Dark / System -->
       <div class="user-profile__field">
         <span class="user-profile__label">Mode</span>
-        <div class="user-profile__segmented" role="group" aria-label="Color mode">
-          @for (option of themeOptions; track option.value) {
-            <button
-              type="button"
-              class="user-profile__segmented-option"
-              [class.user-profile__segmented-option--active]="themeMode() === option.value"
-              [attr.aria-pressed]="themeMode() === option.value"
-              (click)="setTheme(option.value)"
-            >
-              {{ option.label }}
-            </button>
+        <div class="user-profile__field-control">
+          <div class="user-profile__segmented" role="group" aria-label="Color mode">
+            @for (option of themeOptions; track option.value) {
+              <button
+                type="button"
+                class="user-profile__segmented-option"
+                [class.user-profile__segmented-option--active]="shownMode() === option.value"
+                [attr.aria-pressed]="shownMode() === option.value"
+                [disabled]="isModeDisabled(option.value)"
+                (click)="setTheme(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            }
+          </div>
+          @if (modeLocked()) {
+            <p class="user-profile__hint">
+              {{ activeVariantLabel() }} is light only; your choice is kept for other skins.
+            </p>
           }
         </div>
       </div>
