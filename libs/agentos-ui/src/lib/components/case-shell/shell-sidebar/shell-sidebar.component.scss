@@ -229,6 +229,7 @@
     z-index: 100;
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-lg);
     padding: 4px;
   }
@@ -243,6 +244,7 @@
     padding: 7px 8px;
     color: var(--color-text);
     font-size: 14px;
+    border-radius: var(--radius-sm, 0);
     transition: background 100ms;
 
     &:hover {
@@ -447,6 +449,7 @@
     overflow-y: auto;
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-lg);
     padding: 4px;
   }
@@ -482,6 +485,7 @@
     width: 220px;
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-lg);
     padding: 6px;
     transform: translateY(-50%);

@@ -117,6 +117,7 @@
   z-index: 31;
   background: var(--color-bg);
   border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md, 0);
   box-shadow: var(--shadow-lg);
   max-height: 300px;
   overflow-y: auto;
@@ -133,6 +134,7 @@
   font-size: 14px;
   color: var(--color-text);
   text-align: left;
+  border-radius: var(--radius-sm, 0);
   transition: background 100ms;
 
   &:hover {
