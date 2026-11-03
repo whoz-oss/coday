@@ -75,11 +75,11 @@ data class AgentConfig(
     val integrations: Map<String, List<String>?>? = null,
     /**
      * Execution mode for this agent. When non-null, takes precedence over [advancedExecution].
-     * - [ExecutionMode.SIMPLE]: single LLM call per turn (default).
+     * - [ExecutionMode.SIMPLE]: single LLM call per turn.
      * - [ExecutionMode.ADVANCED]: multi-step LLM orchestration loop.
      * - [ExecutionMode.LOOP]: zero LLM calls, programmatic tool sequence.
      *
-     * Null means: fall back to [advancedExecution] for backward compatibility.
+     * Null means: fall back to [advancedExecution] for backward compatibility (see [resolvedExecutionMode]).
      */
     val executionMode: ExecutionMode? = null,
     /**
@@ -189,7 +189,12 @@ data class AgentConfig(
      * Resolves the effective [ExecutionMode] for this agent, applying backward-compatibility
      * fallback: when [executionMode] is null, [advancedExecution] is used
      * (`true` → [ExecutionMode.ADVANCED], `false` → [ExecutionMode.SIMPLE]).
+     *
+     * The agent alone decides its mode; the model never changes it. An ADVANCED agent additionally
+     * requires a model with [io.whozoss.agentos.sdk.aiProvider.AiModel.supportsAdvancedExecution],
+     * which is checked when the agent is instantiated.
      */
+    @Suppress("DEPRECATION")
     val resolvedExecutionMode: ExecutionMode
         get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
 }

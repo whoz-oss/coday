@@ -67,6 +67,7 @@ class AiModelController(
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                     reasoningEffort = resource.reasoningEffort,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution,
                 )
             },
         )
@@ -116,6 +117,7 @@ class AiModelController(
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                     reasoningEffort = resource.reasoningEffort,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution,
                 ),
             ).let(::toDto)
     }
@@ -161,4 +163,5 @@ private fun toDto(entity: AiModel) =
         contextWindow = entity.contextWindow,
         pricing = entity.pricing,
         reasoningEffort = entity.reasoningEffort,
+        supportsAdvancedExecution = entity.supportsAdvancedExecution,
     )

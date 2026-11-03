@@ -18,6 +18,9 @@ package io.whozoss.agentos.sdk.api.agentConfig
  * Backward compatibility: when [executionMode] is null on an [AgentConfigDto] or [AgentConfig],
  * the legacy [AgentConfig.advancedExecution] field is used as a fallback
  * (`true` → [ADVANCED], `false` → [SIMPLE]).
+ *
+ * The agent alone decides its mode; the model never changes it. [ADVANCED] additionally requires
+ * the agent's model to have `AiModel.supportsAdvancedExecution`, otherwise the run fails.
  */
 enum class ExecutionMode {
     SIMPLE,

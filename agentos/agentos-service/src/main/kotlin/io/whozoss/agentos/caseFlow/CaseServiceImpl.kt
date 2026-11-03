@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.agent.AdvancedExecutionNotSupportedException
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
@@ -766,7 +767,23 @@ class CaseServiceImpl(
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
-        val agent = agentService.findAgentByName(agentName, context, this)
+        val agent =
+            try {
+                agentService.findAgentByName(agentName, context, this)
+            } catch (e: AdvancedExecutionNotSupportedException) {
+                // A configuration error the user can act on: show it in the case, not only in the logs.
+                // Rethrown so the turn fails exactly like any other resolution failure (case in ERROR,
+                // a delegation reports a failed sub-case rather than an empty success).
+                logger.warn { "Case $caseId: ${e.message}" }
+                storeEvent(
+                    WarnEvent(
+                        namespaceId = runtime.namespaceId,
+                        caseId = caseId,
+                        message = e.message ?: "Agent $agentName cannot run in ADVANCED execution mode on its model",
+                    ),
+                ).also { saved -> runtime.emitEvent(saved) }
+                throw e
+            }
         if (agentResolutionStartedAtNanos != 0L) {
             logger.debug {
                 "Case $caseId: agent $agentName resolved in " +

@@ -92,6 +92,7 @@ export class AiModelFormComponent implements OnInit {
     contextWindow: new FormControl<number | null>(null),
     maxCompletionTokens: new FormControl<number | null>(null),
     reasoningEffort: new FormControl<ReasoningEffort | null>(null),
+    supportsAdvancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),
@@ -134,6 +135,10 @@ export class AiModelFormComponent implements OnInit {
 
   protected get reasoningEffortControl() {
     return this.form.controls.reasoningEffort
+  }
+
+  protected get supportsAdvancedExecutionControl() {
+    return this.form.controls.supportsAdvancedExecution
   }
 
   protected get pricingGroup() {
@@ -226,6 +231,7 @@ export class AiModelFormComponent implements OnInit {
           this.contextWindowControl.setValue(model.contextWindow ?? null)
           this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
           this.reasoningEffortControl.setValue(model.reasoningEffort ?? null)
+          this.supportsAdvancedExecutionControl.setValue(model.supportsAdvancedExecution ?? false)
           this.pricingGroup.setValue({
             inputMTokens: model.pricing?.inputMTokens ?? null,
             outputMTokens: model.pricing?.outputMTokens ?? null,
@@ -280,6 +286,7 @@ export class AiModelFormComponent implements OnInit {
       contextWindow: raw.contextWindow ?? undefined,
       maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
       reasoningEffort: raw.reasoningEffort ?? undefined,
+      supportsAdvancedExecution: raw.supportsAdvancedExecution,
       pricing,
     }
 

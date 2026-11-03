@@ -148,6 +148,21 @@
         }
       </div>
 
+      <div class="ai-model-form__field">
+        <label class="ai-model-form__toggle-label">
+          <input
+            class="ai-model-form__toggle-checkbox"
+            type="checkbox"
+            [formControl]="supportsAdvancedExecutionControl"
+          />
+          <span class="ai-model-form__toggle-text">Supports advanced execution</span>
+        </label>
+        <p class="ai-model-form__toggle-hint">
+          Agents configured in ADVANCED execution mode fail to run on a model that does not support it. SIMPLE agents
+          are not concerned.
+        </p>
+      </div>
+
       <!-- Pricing section (all values per million tokens) -->
       <fieldset class="ai-model-form__section" [formGroup]="pricingGroup">
         <legend class="ai-model-form__section-title">

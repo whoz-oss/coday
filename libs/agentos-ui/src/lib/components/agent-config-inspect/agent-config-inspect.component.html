@@ -27,13 +27,13 @@
           <dt class="agent-config-inspect__dt">Provider</dt>
           <dd class="agent-config-inspect__dd">{{ def.resolvedProviderName }}</dd>
 
-          <dt class="agent-config-inspect__dt">Advanced execution</dt>
+          <dt class="agent-config-inspect__dt">Execution mode</dt>
           <dd class="agent-config-inspect__dd">
             <span
               class="agent-config-inspect__badge"
-              [class.agent-config-inspect__badge--active]="def.advancedExecution"
+              [class.agent-config-inspect__badge--active]="def.executionMode !== 'SIMPLE'"
             >
-              {{ def.advancedExecution ? 'Enabled' : 'Disabled' }}
+              {{ def.executionMode }}
             </span>
           </dd>
 
