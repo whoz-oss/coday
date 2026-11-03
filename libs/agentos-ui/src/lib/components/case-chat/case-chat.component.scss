@@ -863,6 +863,19 @@
   // ── Markdown content ───────────────────────────────────────────────
 
   &__message-text--markdown {
+    // Markdown arrives through innerHTML, so its elements carry no encapsulation attribute and
+    // the rules below never reach them — ::ng-deep is the only selector that does, as
+    // action-card already does for its injected chips.
+    //
+    // A fenced code block is the one element wide enough to push the layout: the renderer tags it
+    // but nothing styled it, so it kept the browser default and scrolled sideways. It wraps now,
+    // and `overflow-wrap` folds the tokens no space can break — a path, a URL, a hash — which is
+    // what made a single line overflow in the first place.
+    ::ng-deep pre {
+      text-wrap: wrap;
+      overflow-wrap: anywhere;
+    }
+
     p {
       margin: 0 0 0.5em;
       &:last-child {
