@@ -1,4 +1,4 @@
-package io.whozoss.agentos.configAgent
+package io.whozoss.agentos.sdk.api.configChange
 
 import io.swagger.v3.oas.annotations.media.Schema
 

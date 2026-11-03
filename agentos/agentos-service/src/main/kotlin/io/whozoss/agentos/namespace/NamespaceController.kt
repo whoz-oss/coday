@@ -7,6 +7,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.NamespaceAgentDeployRequest
 import io.whozoss.agentos.sdk.api.namespace.NamespaceApi
 import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
 import io.whozoss.agentos.sdk.api.namespace.NamespaceListItem
@@ -176,7 +177,7 @@ class NamespaceController(
     @PostMapping("/{namespaceId}/deploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
-    fun deployAgents(
+    override fun deployAgents(
         @PathVariable namespaceId: UUID,
         @RequestBody request: NamespaceAgentDeployRequest,
     ) {
@@ -186,7 +187,7 @@ class NamespaceController(
     @PostMapping("/{namespaceId}/undeploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
-    fun undeployAgents(
+    override fun undeployAgents(
         @PathVariable namespaceId: UUID,
         @RequestBody request: NamespaceAgentDeployRequest,
     ) {

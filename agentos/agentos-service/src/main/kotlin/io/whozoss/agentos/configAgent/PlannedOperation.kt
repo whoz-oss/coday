@@ -1,6 +1,10 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigAction
+import io.whozoss.agentos.sdk.api.configChange.ConfigAffects
+import io.whozoss.agentos.sdk.api.configChange.ConfigDeployTarget
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 
 /**
  * One frozen operation.
