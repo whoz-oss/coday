@@ -183,6 +183,13 @@ data class AgentFinishedEvent(
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val maxIterationsReached: Int? = null,
+    /**
+     * True when this run ended because the conversation outgrew the context window of its model:
+     * the provider rejected the prompt as too long. Resuming the case with the same history fails
+     * again. Null when the run ended for any other reason.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val contextWindowExceeded: Boolean? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }

@@ -183,6 +183,7 @@ class CaseEventNodeMapper(
                     node.usageTotalTokens,
                     node.usageEstimatedCostUsd,
                     node.maxIterationsReached,
+                    node.contextWindowExceeded,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -477,6 +478,7 @@ class CaseEventNodeMapper(
                     null
                 },
             maxIterationsReached = n.maxIterationsReached,
+            contextWindowExceeded = n.contextWindowExceeded,
         )
 
     private fun toDomain(n: AgentRunningEventNode) =
@@ -714,6 +716,7 @@ class CaseEventNodeMapper(
             usageTotalTokens = e.llmUsage?.totalTokens,
             usageEstimatedCostUsd = e.llmUsage?.estimatedCostUsd,
             maxIterationsReached = e.maxIterationsReached,
+            contextWindowExceeded = e.contextWindowExceeded,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

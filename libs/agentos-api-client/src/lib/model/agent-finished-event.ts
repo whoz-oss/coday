@@ -19,6 +19,7 @@ export interface AgentFinishedEvent {
   type: 'AgentFinishedEvent'
   agentId: string
   agentName: string
+  contextWindowExceeded?: boolean
   llmModel?: string
   llmProvider?: string
   llmUsage?: LlmUsage

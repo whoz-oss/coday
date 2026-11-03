@@ -778,6 +778,53 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.statusFlow.value shouldBe CaseStatus.ERROR
         }
 
+        "max iterations stores a WarnEvent naming caseMaxIterations, then ends the case in ERROR" {
+            val loopingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = UUID.randomUUID())
+                    every { name } returns "looping"
+                    every { run(any<List<CaseEvent>>(), any()) } returns flow { /* never finishes */ }
+                }
+            val (runtime, _, _, savedEvents) = buildRuntime(agentName = "looping", agent = loopingAgent)
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            val warn = savedEvents.filterIsInstance<WarnEvent>().single()
+            warn.message shouldBe
+                "The case stopped after reaching the maximum number of steps for one message " +
+                "(100, agentos.limits.case-max-iterations)."
+            // Stored through the same callback as every runtime event, after everything the turn produced.
+            savedEvents.indexOf(warn) shouldBe savedEvents.lastIndex
+            runtime.statusFlow.value shouldBe CaseStatus.ERROR
+        }
+
+        "a failure to store the max iterations WarnEvent does not change the final ERROR outcome" {
+            val runtimeId = UUID.randomUUID()
+            val statuses = CopyOnWriteArrayList<CaseStatus>()
+            val runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, status -> statuses += status },
+                    storeEvent = { event ->
+                        if (event is WarnEvent) throw IllegalStateException("store is down")
+                        event
+                    },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "looping")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, _ -> /* never finishes the turn */ },
+                    maxIterations = 3,
+                )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.ERROR
+            statuses.last() shouldBe CaseStatus.ERROR
+        }
+
         "statusFlow reflects KILLED after requestKill during run" {
             // requestKill() must be called while run() is executing — run() resets
             // the stop request at startup, so calling it before run() has no effect.
