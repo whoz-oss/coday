@@ -178,10 +178,16 @@ export class CaseShellComponent {
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
-  protected readonly canWriteActiveCase = computed(() => {
+  /** Admin of the platform or of the current namespace: allowed to open the namespace settings. */
+  protected readonly canConfigureNamespace = computed(() => {
+    if (this.isAdmin()) return true
     const namespaceRole = this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.role
+    return namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN'
+  })
+
+  protected readonly canWriteActiveCase = computed(() => {
     const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
-    return this.isAdmin() || namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN' || caseRole === 'ADMIN'
+    return this.canConfigureNamespace() || caseRole === 'ADMIN'
   })
 
   constructor() {
@@ -243,6 +249,13 @@ export class CaseShellComponent {
     this.selectedNamespace.set(ns)
     this.nsMenuOpen.set(false)
     this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
+  }
+
+  protected onConfigureNamespace(): void {
+    const nsId = this.selectedNamespace()?.id ?? this.namespaceId()
+    this.nsMenuOpen.set(false)
+    if (!nsId) return
+    void this.router.navigate(['/agentos', nsId, 'edit'])
   }
 
   protected toggleNsMenu(event?: Event): void {

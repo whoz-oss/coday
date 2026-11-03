@@ -6,11 +6,13 @@
     [selectedNamespace]="selectedNamespace()"
     [namespaces]="namespaces()"
     [nsMenuOpen]="nsMenuOpen()"
+    [canConfigureNamespace]="canConfigureNamespace()"
     (drawerToggled)="toggleMobileDrawer()"
     (createRequested)="onMobileCreateCase()"
     (namespaceSelected)="onNamespaceSelected($event)"
     (nsMenuToggled)="toggleNsMenu($event)"
     (nsMenuClosed)="closeNsMenu($event)"
+    (configureNamespaceRequested)="onConfigureNamespace()"
   />
 
   <!-- ═══ MOBILE CASE DRAWER (overlay slide-in) ═══ -->
@@ -43,6 +45,7 @@
     [namespaces]="namespaces()"
     [showNsPicker]="showNsPicker()"
     [nsMenuOpen]="nsMenuOpen()"
+    [canConfigureNamespace]="canConfigureNamespace()"
     [cases]="cases()"
     [workspaces]="workspaceService.byRoot()"
     [activeCaseId]="activeCaseId()"
@@ -59,6 +62,7 @@
     (namespaceSelected)="onNamespaceSelected($event)"
     (nsMenuToggled)="toggleNsMenu()"
     (nsMenuClosed)="closeNsMenu($event)"
+    (configureNamespaceRequested)="onConfigureNamespace()"
     (caseSelected)="onCaseSelected($event)"
     (createRequested)="onCreateRequested()"
     (subCaseCreateRequested)="onSubCaseCreateRequested($event)"

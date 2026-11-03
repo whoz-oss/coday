@@ -102,6 +102,11 @@ export class ShellSidebarComponent {
     this.namespaceSelected.emit(ns)
   }
 
+  protected onCompactConfigureNamespace(): void {
+    this.compactNsMenuOpen.set(false)
+    this.configureNamespaceRequested.emit()
+  }
+
   protected onCompactUserBtnClick(event: MouseEvent): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
     // Menu opens upward — anchor to the bottom of the avatar button
@@ -138,6 +143,8 @@ export class ShellSidebarComponent {
   readonly namespaces = input.required<NamespaceListItem[]>()
   readonly showNsPicker = input.required<boolean>()
   readonly nsMenuOpen = input.required<boolean>()
+  /** Whether the current user may open the settings of the selected namespace. */
+  readonly canConfigureNamespace = input(false)
 
   // Cases
   readonly workspaces = input<Record<string, WorkspaceView>>({})
@@ -161,6 +168,7 @@ export class ShellSidebarComponent {
   readonly namespaceSelected = output<NamespaceListItem>()
   readonly nsMenuToggled = output<void>()
   readonly nsMenuClosed = output<Event>()
+  readonly configureNamespaceRequested = output<void>()
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
   readonly subCaseCreateRequested = output<string>()

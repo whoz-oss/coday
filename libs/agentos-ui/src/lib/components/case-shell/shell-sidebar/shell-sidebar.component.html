@@ -64,10 +64,32 @@
                     }
                   </button>
                 }
+                @if (canConfigureNamespace() && selectedNamespace()) {
+                  <div class="shell-sidebar__ns-menu-separator" role="separator"></div>
+                  <button
+                    class="shell-sidebar__ns-item shell-sidebar__ns-item--config"
+                    type="button"
+                    (click)="configureNamespaceRequested.emit()"
+                  >
+                    <span class="material-icons shell-sidebar__ns-config-icon" aria-hidden="true">settings</span>
+                    <span class="shell-sidebar__ns-item-name">Configure {{ selectedNamespace()?.name }}</span>
+                  </button>
+                }
               </div>
             }
           </div>
         </div>
+        @if (canConfigureNamespace() && selectedNamespace()) {
+          <button
+            type="button"
+            class="shell-sidebar__ns-config-btn"
+            [title]="'Configure ' + selectedNamespace()?.name"
+            [attr.aria-label]="'Configure ' + selectedNamespace()?.name"
+            (click)="configureNamespaceRequested.emit()"
+          >
+            <span class="material-icons" aria-hidden="true">settings</span>
+          </button>
+        }
       </div>
 
       <!-- Row 2: New case + Search -->
@@ -222,6 +244,17 @@
                   />
                 </svg>
               }
+            </button>
+          }
+          @if (canConfigureNamespace() && selectedNamespace()) {
+            <div class="shell-sidebar__ns-menu-separator" role="separator"></div>
+            <button
+              class="shell-sidebar__ns-item shell-sidebar__ns-item--config"
+              type="button"
+              (click)="onCompactConfigureNamespace()"
+            >
+              <span class="material-icons shell-sidebar__ns-config-icon" aria-hidden="true">settings</span>
+              <span class="shell-sidebar__ns-item-name">Configure {{ selectedNamespace()?.name }}</span>
             </button>
           }
         </div>
