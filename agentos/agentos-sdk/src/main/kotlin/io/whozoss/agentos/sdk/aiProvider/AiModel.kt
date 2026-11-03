@@ -78,6 +78,9 @@ data class AiModel(
      * When true, agents using this model that do not set an execution mode themselves run in
      * ADVANCED instead of SIMPLE. An agent's explicit choice (execution mode, or the legacy
      * advancedExecution flag) always wins over this default.
+     *
+     * Models persisted before this property existed were migrated once at startup: true when an
+     * ADVANCED agent used them, false otherwise. The value is an ordinary setting afterwards.
      */
     val supportsAdvancedExecution: Boolean = false,
 ) : Entity

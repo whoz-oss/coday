@@ -115,6 +115,12 @@ agents using it. The execution mode of an agent is resolved in this order:
 3. the model's `supportsAdvancedExecution` (`ADVANCED` when true)
 4. `SIMPLE`
 
+Persisted models saved before this property existed are migrated once at startup (the missing property
+is the marker, so a restart never overrides a value set afterwards): a model used by at least one
+non-removed persisted agent running `ADVANCED` (explicit, or legacy `advancedExecution: true`) gets
+`true`, every other one `false`. An agent with no explicit mode whose model becomes `true` switches
+from `SIMPLE` to `ADVANCED`: the migration leaves the agent unchanged and logs a warning per such agent.
+
 ## Credentials Delivered to Plugins
 
 An `IntegrationConfig.authSettingName` is resolved into a `ToolContext.credentialProvider` once per
