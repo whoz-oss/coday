@@ -156,7 +156,7 @@
     height: 2rem;
     background: none;
     border: 1px solid transparent;
-    border-radius: 0;
+    border-radius: var(--radius-sm, 0);
     cursor: pointer;
     font-size: 1rem;
     color: var(--color-neutral-500);

@@ -87,7 +87,7 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border-radius: 0;
+  border-radius: var(--radius-md, 0);
   font-size: 0.8125rem;
   color: var(--color-error, #ff3b30);
   background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
@@ -227,7 +227,7 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     color: inherit;
 
     &:hover {

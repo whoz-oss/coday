@@ -215,7 +215,7 @@
     border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     transition:
       background 100ms,
       border-color 100ms,
