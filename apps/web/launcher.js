@@ -3,7 +3,7 @@
  * Tested with `node --test` (see launcher.test.js, run by the `web:test` Nx target).
  */
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 /**
  * Decide how to run: `nx` (generated workspace, one pane per process) or `managed` (everything in the
@@ -19,13 +19,16 @@ export function chooseMode({ argv, env, isTTY }) {
   return { mode: 'nx', reason: 'interactive terminal' };
 }
 
-/** `--configDir <dir>` / `--configDir=<dir>` / `--coday_config_dir ...`, default `~/.coday`. */
+/**
+ * `--configDir <dir>` / `--configDir=<dir>` / `--coday_config_dir ...`, default `~/.coday`. Always absolute: Nx and
+ * its tasks run from `<configDir>/runtime`, where a relative directory would point somewhere else.
+ */
 export function resolveConfigDir(argv, home = homedir()) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     for (const flag of ['--configDir', '--coday_config_dir']) {
-      if (arg === flag && argv[i + 1]) return argv[i + 1];
-      if (arg.startsWith(`${flag}=`)) return arg.slice(flag.length + 1);
+      if (arg === flag && argv[i + 1]) return resolve(argv[i + 1]);
+      if (arg.startsWith(`${flag}=`)) return resolve(arg.slice(flag.length + 1));
     }
   }
   return join(home, '.coday');

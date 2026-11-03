@@ -117,15 +117,24 @@ export function writeWorkspace(input: WorkspaceInput): string {
   return dir
 }
 
-/** Arguments to forward to the tasks: the raw ones minus the command word, with `--configDir` pinned. */
+const CONFIG_DIR_FLAGS = ['--configDir', '--coday_config_dir']
+
+/**
+ * Arguments to forward to the tasks: the raw ones minus the command word, with `--configDir` pinned to the absolute
+ * directory. The tasks run from `<configDir>/runtime`, where a relative directory would point somewhere else.
+ */
 export function buildForwardArgs(rawArgs: string[], configDir: string): string[] {
   const args = [...rawArgs]
   // Only a known command word is dropped: the first non-dash token may well be the VALUE of an option
   // (`--configDir /x`).
   const commandIndex = args.findIndex((a) => isCommand(a))
   if (commandIndex >= 0 && args.slice(0, commandIndex).every((a) => a.startsWith('-'))) args.splice(commandIndex, 1)
-  const hasConfigDir = args.some(
-    (a) => a === '--configDir' || a.startsWith('--configDir=') || a.startsWith('--coday_config_dir')
-  )
-  return hasConfigDir ? args : [...args, '--configDir', configDir]
+  const forwarded: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string
+    if (CONFIG_DIR_FLAGS.includes(arg))
+      i++ // skip its value too
+    else if (!CONFIG_DIR_FLAGS.some((flag) => arg.startsWith(`${flag}=`))) forwarded.push(arg)
+  }
+  return [...forwarded, '--configDir', path.resolve(configDir)]
 }
