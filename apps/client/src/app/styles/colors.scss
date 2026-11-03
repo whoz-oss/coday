@@ -137,12 +137,13 @@
   --color-divider: rgba(255, 255, 255, 0.15);
 }
 
-/* ─── Dark theme aliases — terminal variants for legacy components ────────────────────
- * When agentos-ui switches to a terminal theme, data-theme='terminal-*' is set on <html>.
- * Legacy components don't understand terminal themes — map them to the nearest
- * equivalent: terminal-light → light (:root), terminal-dark → dark.
+/* ─── Dark theme aliases — terminal and astra variants for legacy components ──────────
+ * When agentos-ui switches to a terminal or astra dark theme, data-theme='terminal-dark' / 'astra-dark' is set on <html>.
+ * Legacy components, dialogs and snackbars don't understand those themes — they take the dark glass palette below.
+ * A new `<variant>-dark` must be listed here, or its dialogs/snackbars stay on the light :root palette.
  */
-[data-theme='terminal-dark'] {
+[data-theme='terminal-dark'],
+[data-theme='astra-dark'] {
   /* Reuse the same dark glass morphism tokens as [data-theme='dark'] */
   --color-bg: #1c1c1e;
   --color-bg-solid: #1c1c1e;
@@ -584,14 +585,16 @@ agentos-shell[data-theme='terminal-dark'],
 }
 
 /* ─── Astra Light ───────────────────────────────────────────────────────────── */
-/* Light only (see THEME_VARIANT_DEFINITIONS). Colors are eyeballed from mockups, not Figma-exact.
+/* Light and dark (see THEME_VARIANT_DEFINITIONS). Colors are eyeballed from mockups, not Figma-exact.
  * The whole token set is written ONCE, in a mixin, because it is applied to two scopes:
  *   1. agentos-shell      — the app itself
  *   2. .ds-kebab-panel    — the CDK overlay panels, which live under body, OUTSIDE agentos-shell, and so
  *                           cannot inherit tokens defined on it (see styles.scss).
- * Legacy needs no alias: astra-light matches none of the legacy dark selectors above, so the light :root palette
- * (already the right one for a light theme) applies to the legacy app. */
-@mixin astra-light {
+ * Legacy: astra-light needs no alias (it matches none of the legacy dark selectors, so the light :root palette
+ * applies to the legacy app); astra-dark is listed in the legacy dark alias block above. */
+
+/* Shared by astra-light and astra-dark: font and shape do not change with the mode. */
+@mixin astra-base {
   /* ── Typography ── */
   --font-body: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-heading: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -601,6 +604,10 @@ agentos-shell[data-theme='terminal-dark'],
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-pill: 999px;
+}
+
+@mixin astra-light {
+  @include astra-base;
 
   /* ── Accent blue ── */
   --color-accent: #2f5bd3;
@@ -709,4 +716,117 @@ agentos-shell[data-theme='astra-light'],
  * is exclusive to agentos-ui, which keeps the legacy app untouched. Industry and Terminal panels are unchanged. */
 [data-theme='astra-light'] .ds-kebab-panel {
   @include astra-light;
+}
+
+/* ─── Astra Dark ────────────────────────────────────────────────────────────── */
+/* Same token names, font and radii as astra-light; blue a little lighter, deeper surfaces, stronger shadows. */
+@mixin astra-dark {
+  @include astra-base;
+
+  /* ── Accent blue (lighter) ── */
+  --color-accent: #6b8ef2;
+  --color-accent-100: #1a2547;
+  --color-accent-200: #233463;
+  --color-accent-300: #2f4690;
+  --color-accent-600: #8aa6f6;
+  --color-accent-700: #a9bdf9;
+  --color-accent-800: #cbd8fc;
+  --color-accent-900: #e8eefe;
+
+  /* ── Neutral scale ── */
+  --color-neutral-100: #222633;
+  --color-neutral-200: #1b1e27;
+  --color-neutral-500: #7c8394;
+  --color-neutral-600: #a6adbc;
+  --color-neutral-700: #c3c8d4;
+  --color-neutral-900: #eceef4;
+
+  /* ── Semantic red ── */
+  --red: #ff6b5b;
+  --red-deep: #ff9d92;
+  --red-bg: #4a1a15;
+
+  /* ── Surface / background ── */
+  --color-bg: #12141a;
+  --color-bg-solid: #12141a;
+  --color-surface: #1b1e27;
+  --color-surface-secondary: #222633;
+  --color-bg-secondary: rgba(27, 30, 39, 0.72);
+  --color-bg-secondary-rgb: 27 30 39;
+  --color-text: #eceef4;
+  --color-text-secondary: #a6adbc;
+  --color-text-tertiary: #7c8394;
+  --color-text-inverse: #12141a;
+  --color-text-on-accent: #0b1020;
+
+  /* ── Interactive ── */
+  --color-primary: var(--color-accent);
+  --color-primary-hover: var(--color-accent-600);
+  --color-link: var(--color-accent-700);
+  --color-bg-hover: rgba(236, 238, 244, 0.08);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(236, 238, 244, 0.05);
+  --color-input-bg: #1b1e27;
+
+  /* ── Borders / Dividers ── */
+  --color-divider: rgba(236, 238, 244, 0.14);
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(236, 238, 244, 0.07);
+
+  /* ── Shadows (stronger on dark) ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.3);
+  --color-shadow: rgba(0, 0, 0, 0.5);
+
+  /* ── Status ── */
+  --color-success: #32d583;
+  --color-success-bg: rgba(50, 213, 131, 0.15);
+  --color-error: #ff6b5b;
+  --color-warning: #fdb022;
+  --color-info: #53b1fd;
+
+  /* ── Case status (blue-grays) ── */
+  --status-pending-color: #fdb022;
+  --status-pending-text: #fec84b;
+  --status-pending-bg: rgba(253, 176, 34, 0.12);
+  --status-idle-color: #6b7385;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(107, 115, 133, 0.1);
+  --status-killed-color: #4b5262;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(75, 82, 98, 0.12);
+
+  /* ── Modal / Dialog ── */
+  --color-modal-bg: #1b1e27;
+  --color-modal-border: rgba(236, 238, 244, 0.14);
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.6), 0 2px 12px rgba(0, 0, 0, 0.4);
+  --color-overlay: rgba(0, 0, 0, 0.7);
+
+  /* ── Code ── */
+  --color-code-bg: rgba(236, 238, 244, 0.1);
+  --color-code-text: #ff9d92;
+
+  /* ── Chat bubbles ── */
+  --color-message-user: rgba(107, 142, 242, 0.15);
+  --color-message-ai: #1b1e27;
+  --color-bubble-agent-bg: #222633;
+  --color-bubble-user-bg: #233463;
+  --color-bubble-system-bg: #12141a;
+  --color-bubble-system-text: #eceef4;
+
+  /* ── Glass morphism — legacy ── */
+  --glass-bg: rgba(27, 30, 39, 0.9);
+  --glass-border: rgba(236, 238, 244, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --glass-backdrop-blur: blur(20px);
+}
+
+agentos-shell[data-theme='astra-dark'],
+:is([data-theme='astra-dark']) agentos-shell {
+  @include astra-dark;
+}
+
+/* Same overlay-scope reason as astra-light (kebab menu panels live under body, outside agentos-shell). */
+[data-theme='astra-dark'] .ds-kebab-panel {
+  @include astra-dark;
 }

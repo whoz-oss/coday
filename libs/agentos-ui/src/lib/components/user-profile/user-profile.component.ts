@@ -12,6 +12,7 @@ import {
   getThemeVariantDefinition,
   isModeSupported,
   isThemeVariant,
+  resolveEffectiveMode,
   THEME_PORT,
   THEME_VARIANT_DEFINITIONS,
   ThemeMode,
@@ -85,11 +86,17 @@ export class UserProfileComponent implements OnInit {
   /** Skin options, derived from the variant table of the theme service. */
   protected readonly themeVariantOptions: ReadonlyArray<{ value: string; label: string; description: string }> =
     THEME_VARIANT_DEFINITIONS.map(({ id, label, description }) => ({ value: id, label, description }))
-  /** Whether the active variant is light-only, i.e. forces the mode the user may have chosen otherwise. */
-  protected readonly modeLocked = computed(() => !isModeSupported(this.themeVariant(), 'dark'))
+  /**
+   * Whether the stored mode is one the active variant cannot render (a variant that supports a single mode). No
+   * variant of the table is in that case today, so the hint it drives stays hidden; it keeps the guard visible if one
+   * appears.
+   */
+  protected readonly modeOverridden = computed(() => !isModeSupported(this.themeVariant(), this.themeMode()))
   protected readonly activeVariantLabel = computed(() => getThemeVariantDefinition(this.themeVariant()).label)
-  /** Mode highlighted in the selector: the stored one, unless the variant forces light (the stored one is kept). */
-  protected readonly shownMode = computed<ThemeMode>(() => (this.modeLocked() ? 'light' : this.themeMode()))
+  /** Mode highlighted in the selector: the stored one, unless the variant cannot render it (the stored one is kept). */
+  protected readonly shownMode = computed<ThemeMode>(() =>
+    this.modeOverridden() ? resolveEffectiveMode(this.themeVariant(), this.themeMode(), false) : this.themeMode()
+  )
 
   /** Current ENTER-key behavior in the chat composer, reflected in the Composer section. */
   protected readonly enterKeyBehavior = this.preferencesPort.enterKeyBehavior

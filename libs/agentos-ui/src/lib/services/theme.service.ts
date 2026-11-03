@@ -24,7 +24,7 @@ export interface ThemeVariantDefinition {
 export const THEME_VARIANT_DEFINITIONS = [
   { id: 'industry', label: 'Industry', description: 'Bleu acier, Barlow', modes: ['light', 'dark'] },
   { id: 'terminal', label: 'Terminal', description: 'Ambre CRT, JetBrains Mono', modes: ['light', 'dark'] },
-  { id: 'astra', label: 'Astra', description: 'Bleu franc, Roboto, formes arrondies', modes: ['light'] },
+  { id: 'astra', label: 'Astra', description: 'Bleu franc, Roboto, formes arrondies', modes: ['light', 'dark'] },
 ] as const satisfies readonly ThemeVariantDefinition[]
 
 export type ThemeVariant = (typeof THEME_VARIANT_DEFINITIONS)[number]['id']
@@ -35,7 +35,7 @@ export const THEME_VARIANTS: readonly ThemeVariant[] = THEME_VARIANT_DEFINITIONS
 /**
  * Full theme state: variant (skin) × mode (light/dark/system) — what the user chose.
  * Maps to a `data-theme` attribute value through `resolveEffectiveMode`: no attribute for industry light (default),
- * `"industry-dark"`, `"terminal-light"`, `"terminal-dark"`, `"astra-light"`.
+ * `"industry-dark"`, `"terminal-light"`, `"terminal-dark"`, `"astra-light"`, `"astra-dark"`.
  */
 export interface ThemeState {
   variant: ThemeVariant
@@ -67,7 +67,19 @@ export function isModeSupported(variant: string, mode: ThemeMode): boolean {
  * it, otherwise the first mode the variant supports. Pure: it never changes what the user chose.
  */
 export function resolveEffectiveMode(variant: string, mode: ThemeMode, systemPrefersDark: boolean): ResolvedThemeMode {
-  const { modes } = getThemeVariantDefinition(variant)
+  return resolveSupportedMode(getThemeVariantDefinition(variant).modes, mode, systemPrefersDark)
+}
+
+/**
+ * The fallback rule behind `resolveEffectiveMode`, on an explicit list of supported modes, so that the guard stays
+ * testable (and reusable) without a light-only variant in the table: the wanted mode when supported, otherwise the
+ * first supported one.
+ */
+export function resolveSupportedMode(
+  modes: readonly ResolvedThemeMode[],
+  mode: ThemeMode,
+  systemPrefersDark: boolean
+): ResolvedThemeMode {
   const wanted: ResolvedThemeMode = mode === 'dark' || (mode === 'system' && systemPrefersDark) ? 'dark' : 'light'
   return modes.includes(wanted) ? wanted : (modes[0] ?? 'light')
 }
@@ -106,7 +118,7 @@ const STORAGE_KEY_LEGACY = 'agentos.theme'
  * resolved theme on `document.documentElement` via `data-theme`, and tracks the OS preference
  * while in `system` mode.
  *
- * The stored choice is never rewritten to fit a variant: a light-only variant (astra) renders light whatever the
+ * The stored choice is never rewritten to fit a variant: a light-only variant renders light whatever the
  * stored mode, and the user's mode comes back as soon as they switch to a variant that supports it.
  *
  * When agentos-ui is hosted inside the Coday client, the host overrides THEME_PORT with its own

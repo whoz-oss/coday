@@ -101,11 +101,14 @@
  *   libs/agentos-ui/src/lib/services/theme.service.ts (id, label, description, supported modes):
  *     industry   light + dark   (default; the attribute-less light theme)
  *     terminal   light + dark
- *     astra      light only     (forced to astra-light whatever the stored mode)
+ *     astra      light + dark
  *   Each variant defines the full token list above, scoped under agentos-shell:
  *     - Industry: the base `agentos-shell` block and its dark block
  *     - Terminal: one block per mode
- *     - Astra:    the `astra-light` mixin, applied to agentos-shell AND to `.ds-kebab-panel`
+ *     - Astra:    the `astra-light` and `astra-dark` mixins (sharing `astra-base`: font and radii), each applied to
+ *                 agentos-shell AND to `.ds-kebab-panel`
+ *   A `<variant>-dark` mode must also be listed in the legacy dark alias block of colors.scss, so that dialogs,
+ *   snackbars and legacy components take the dark palette.
  *   CDK overlay panels are outside agentos-shell and do not inherit its tokens (see GUIDELINES.md).
  *
  * ── Example host setup (minimal) ─────────────────────────────────────────

@@ -50,9 +50,9 @@
               </button>
             }
           </div>
-          @if (modeLocked()) {
+          @if (modeOverridden()) {
             <p class="user-profile__hint">
-              {{ activeVariantLabel() }} is light only; your choice is kept for other skins.
+              {{ activeVariantLabel() }} does not support this mode; your choice is kept for other skins.
             </p>
           }
         </div>

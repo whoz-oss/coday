@@ -186,12 +186,12 @@ describe('CaseShellComponent', () => {
       expect(component['canToggleMode']()).toBe(true)
     })
 
-    it('stays light under astra even when the stored mode is dark, and offers no light/dark switch', () => {
+    it('is dark for a dark astra theme and offers the light/dark switch', () => {
       const component = makeComponent({ ns: NS_ID })
       themeMock.theme.mockReturnValue({ variant: 'astra', mode: 'dark' })
 
-      expect(component['isDark']()).toBe(false)
-      expect(component['canToggleMode']()).toBe(false)
+      expect(component['isDark']()).toBe(true)
+      expect(component['canToggleMode']()).toBe(true)
     })
 
     it('switches the mode from the menu under a variant that supports both', () => {
@@ -203,13 +203,13 @@ describe('CaseShellComponent', () => {
       expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'industry', mode: 'dark' })
     })
 
-    it('does not touch the stored mode from the menu under astra', () => {
+    it('switches the mode from the menu under astra, which now has both', () => {
       const component = makeComponent({ ns: NS_ID })
-      themeMock.theme.mockReturnValue({ variant: 'astra', mode: 'dark' })
+      themeMock.theme.mockReturnValue({ variant: 'astra', mode: 'light' })
 
       component['onMenuToggleTheme']()
 
-      expect(themeMock.setTheme).not.toHaveBeenCalled()
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'astra', mode: 'dark' })
     })
 
     it('keeps the stored mode when changing variant, and ignores an unknown variant id', () => {

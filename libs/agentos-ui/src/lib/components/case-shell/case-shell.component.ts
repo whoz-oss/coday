@@ -102,8 +102,8 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
 
   /**
-   * Whether the rendered theme is dark. Derived from the effective mode, not the chosen one: a light-only variant
-   * (astra) renders light even when the stored mode is dark.
+   * Whether the rendered theme is dark. Derived from the effective mode, not the chosen one: a variant that does
+   * not support the chosen mode (a light-only one) renders its own mode whatever the stored choice.
    */
   protected readonly isDark = computed(() => {
     const { variant, mode } = this.themePort.theme()
