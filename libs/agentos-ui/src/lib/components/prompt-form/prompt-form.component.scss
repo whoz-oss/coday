@@ -78,7 +78,7 @@
   &__select {
     width: 100%;
     padding: 0.625rem 0.875rem;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     border: 1px solid var(--color-divider);
     background: var(--color-surface);
     color: var(--color-text);
@@ -104,7 +104,7 @@
   &__readonly-value {
     margin: 0;
     padding: 0.5rem 0.875rem;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     background: var(--color-bg-hover);
     border: 1px solid var(--color-divider);
     color: var(--color-text);
@@ -115,7 +115,7 @@
   &__textarea {
     width: 100%;
     padding: 0.625rem 0.875rem;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     border: 1px solid var(--color-divider);
     background: var(--color-surface);
     color: var(--color-text);
@@ -152,7 +152,7 @@
 
   &__section {
     border: 1px solid var(--color-divider);
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     padding: 1rem;
     margin: 0;
     display: flex;
@@ -211,7 +211,7 @@
     gap: 0.5rem;
     align-items: flex-end;
     padding: 0.75rem;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     background: var(--color-bg-hover);
   }
 
@@ -229,7 +229,7 @@
   &__add-btn {
     align-self: flex-start;
     padding: 0.4rem 0.875rem;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
     border: 1px solid var(--color-divider);
     background: transparent;
     color: var(--color-accent);
@@ -253,7 +253,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 0;
+    border-radius: var(--radius-sm, 0);
     border: 1px solid transparent;
     background: transparent;
     color: var(--color-neutral-500);
@@ -280,7 +280,7 @@
   &__error {
     margin: 0;
     padding: 0.625rem 0.875rem;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     background: color-mix(in srgb, var(--red) 10%, transparent);
     border: 1px solid var(--red);
     color: var(--red);
@@ -315,7 +315,7 @@
 
   &__btn {
     padding: 0.6rem 1.25rem;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
     border: 1px solid var(--color-divider);
     background: transparent;
     color: var(--color-text);

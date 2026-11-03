@@ -8,7 +8,15 @@ import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
-import { THEME_PORT, ThemeMode } from '../../services/theme.service'
+import {
+  getThemeVariantDefinition,
+  isModeSupported,
+  isThemeVariant,
+  resolveEffectiveMode,
+  THEME_PORT,
+  THEME_VARIANT_DEFINITIONS,
+  ThemeMode,
+} from '../../services/theme.service'
 import { EnterKeyBehavior, USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
 
@@ -75,10 +83,20 @@ export class UserProfileComponent implements OnInit {
 
   /** Expose variant for the skin selector. */
   protected readonly themeVariant = computed(() => this.themePort.theme().variant)
-  protected readonly themeVariantOptions: ReadonlyArray<{ value: string; label: string; description: string }> = [
-    { value: 'industry', label: 'Industry', description: 'Bleu acier, Barlow' },
-    { value: 'terminal', label: 'Terminal', description: 'Ambre CRT, JetBrains Mono' },
-  ]
+  /** Skin options, derived from the variant table of the theme service. */
+  protected readonly themeVariantOptions: ReadonlyArray<{ value: string; label: string; description: string }> =
+    THEME_VARIANT_DEFINITIONS.map(({ id, label, description }) => ({ value: id, label, description }))
+  /**
+   * Whether the stored mode is one the active variant cannot render (a variant that supports a single mode). No
+   * variant of the table is in that case today, so the hint it drives stays hidden; it keeps the guard visible if one
+   * appears.
+   */
+  protected readonly modeOverridden = computed(() => !isModeSupported(this.themeVariant(), this.themeMode()))
+  protected readonly activeVariantLabel = computed(() => getThemeVariantDefinition(this.themeVariant()).label)
+  /** Mode highlighted in the selector: the stored one, unless the variant cannot render it (the stored one is kept). */
+  protected readonly shownMode = computed<ThemeMode>(() =>
+    this.modeOverridden() ? resolveEffectiveMode(this.themeVariant(), this.themeMode(), false) : this.themeMode()
+  )
 
   /** Current ENTER-key behavior in the chat composer, reflected in the Composer section. */
   protected readonly enterKeyBehavior = this.preferencesPort.enterKeyBehavior
@@ -204,7 +222,13 @@ export class UserProfileComponent implements OnInit {
   }
 
   protected setThemeVariant(variant: string): void {
-    this.themePort.setTheme({ variant: variant as any, mode: this.themePort.theme().mode })
+    if (!isThemeVariant(variant)) return
+    this.themePort.setTheme({ variant, mode: this.themePort.theme().mode })
+  }
+
+  /** A mode is selectable when the active variant can render it. */
+  protected isModeDisabled(mode: ThemeMode): boolean {
+    return !isModeSupported(this.themeVariant(), mode)
   }
 
   protected setEnterKeyBehavior(behavior: EnterKeyBehavior): void {

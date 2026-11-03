@@ -31,6 +31,8 @@ export class ShellCaseSwitcherMobileComponent {
   readonly userName = input.required<string>()
   readonly isAdmin = input.required<boolean>()
   readonly isDark = input.required<boolean>()
+  /** False for a light-only variant: the light/dark entry is then hidden. */
+  readonly canToggleMode = input(true)
   readonly showToolCalls = input.required<boolean>()
 
   // ── Internal state ────────────────────────────────────────
