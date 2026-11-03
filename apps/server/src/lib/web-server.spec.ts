@@ -92,6 +92,38 @@ describe('createWebApp without AgentOS', () => {
     expect(status.steps.agentos.state).not.toBe('done')
   })
 
+  const postIdentity = (headers: Record<string, string>) =>
+    new Promise<number>((resolve, reject) => {
+      const body = JSON.stringify({ email: 'me@acme.com' })
+      http
+        .request(
+          {
+            host: '127.0.0.1',
+            port,
+            path: '/api/setup/identity',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...headers },
+          },
+          (res) => {
+            res.resume()
+            res.on('end', () => resolve(res.statusCode ?? 0))
+          }
+        )
+        .on('error', reject)
+        .end(body)
+    })
+
+  it('accepts the wizard calls of a page served from this machine', async () => {
+    expect(await postIdentity({ Host: `localhost:${port}`, Origin: `http://localhost:${port}` })).toBe(200)
+    expect(await postIdentity({ Host: `127.0.0.1:${port}` })).toBe(200)
+  })
+
+  it('refuses the wizard calls of a page of another site rebound to 127.0.0.1 (DNS rebinding)', async () => {
+    expect(await postIdentity({ Host: `evil.example:${port}`, Origin: `http://evil.example:${port}` })).toBe(403)
+    expect(await postIdentity({ Host: `localhost:${port}`, Origin: 'http://evil.example' })).toBe(403)
+    expect(fs.existsSync(path.join(dir, 'web-setup.json'))).toBe(false)
+  })
+
   it('answers the AgentOS API with an error, not a hang, while AgentOS is down', async () => {
     const res = await get('/api/agentos/api/namespaces')
     expect(res.status).toBeGreaterThanOrEqual(500)
