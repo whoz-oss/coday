@@ -25,8 +25,10 @@ export interface OrchestratorContext {
   baseEnv: NodeJS.ProcessEnv
   /** Output of the orchestrator itself (waiting messages...). Also teed to the service log. */
   sink: LogSink
-  /** Cancels every wait. */
+  /** Cancels every wait. Once aborted, no service is spawned any more. */
   signal?: AbortSignal
+  /** Called right after a JVM is spawned, before its health wait, so that a stop can reach it while it starts. */
+  onSpawn?: (running: RunningService) => void
   /** Public URL of the welcome page, for the waiting message. */
   welcomeUrl: (state: RuntimeState) => string
 }
@@ -181,7 +183,9 @@ export async function startAgentosService(ctx: OrchestratorContext): Promise<Sta
     secrets: state ? secretsFor(ctx, state) : undefined,
   })
   fs.mkdirSync(spec.cwd, { recursive: true })
+  if (ctx.signal?.aborted) return null
   const running = spawnService(spec, sink)
+  ctx.onSpawn?.(running)
   updateState(configDir, { agentosStarted: true })
 
   const healthy = await waitForHealthy(spec.healthUrl, {
@@ -233,7 +237,9 @@ export async function startFactoryService(
     secrets: state ? secretsFor(ctx, state) : undefined,
   })
   fs.mkdirSync(`${spec.cwd}/plugins`, { recursive: true })
+  if (ctx.signal?.aborted) return null
   const running = spawnService(spec, sink)
+  ctx.onSpawn?.(running)
   const healthy = await waitForHealthy(spec.healthUrl, {
     timeoutMs: FACTORY_HEALTH_TIMEOUT_MS,
     isDead: running.isDead,

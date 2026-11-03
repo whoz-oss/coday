@@ -18,16 +18,16 @@ import { findAvailablePort } from '../find-available-port'
 import { debugLog } from '../log'
 import { createWebApp } from '../web-server'
 import { teeConsoleToFile } from './console-tee'
+import { closeServer } from './http-server'
 import {
   OrchestratorContext,
   provisionJars,
   startAgentosService,
   startFactoryService,
-  StartedService,
   waitForAgentos,
 } from './orchestrator'
 import { logFilePath } from './paths'
-import { createLogSink, isHealthy } from './process'
+import { createLogSink, isHealthy, RunningService } from './process'
 import { LOOPBACK } from './services'
 import { buildForwardArgs, writeWorkspace } from './workspace'
 import { agentosHealthUrl, openBrowser, planBrowserOpen } from './open-browser'
@@ -137,27 +137,34 @@ function foreground(stop: () => Promise<void>): { signal: AbortSignal; stopped: 
   return { signal: controller.signal, stopped }
 }
 
-function taskContext(options: CodayOptions, name: string, signal?: AbortSignal): OrchestratorContext {
+function taskContext(
+  options: CodayOptions,
+  name: string,
+  signal: AbortSignal,
+  onSpawn: (running: RunningService) => void
+): OrchestratorContext {
   return {
     configDir: options.configDir,
     baseEnv: process.env,
     sink: createLogSink(options.configDir, name, (line) => console.log(line)),
     signal,
+    onSpawn,
     welcomeUrl: welcomeUrlOf,
   }
 }
 
 export async function runAgentosTask(): Promise<number> {
   const options = parseCodayOptions()
-  let service: StartedService | null = null
-  const { signal, stopped } = foreground(async () => void (await service?.shutdown()))
-  const ctx = taskContext(options, 'agentos', signal)
+  // Set at spawn, before the health wait: a stop during that wait must reach the JVM too.
+  let spawned: RunningService | undefined
+  const { signal, stopped } = foreground(async () => void (await spawned?.stop()))
+  const ctx = taskContext(options, 'agentos', signal, (running) => (spawned = running))
   if (process.env.AGENTOS_URL) {
     ctx.sink.write('[agentos] External AgentOS configured (AGENTOS_URL): nothing to run.')
     await stopped // stay up: an exit would read as a crash of a dependency of `status`
     return 0
   }
-  service = await startAgentosService(ctx)
+  const service = await startAgentosService(ctx)
   if (!service) {
     if (signal.aborted) return 0
     const say = (line: string) => ctx.sink.write(line)
@@ -173,9 +180,9 @@ export async function runAgentosTask(): Promise<number> {
 
 export async function runFactoryTask(): Promise<number> {
   const options = parseCodayOptions()
-  let service: StartedService | null = null
-  const { signal, stopped } = foreground(async () => void (await service?.shutdown()))
-  const ctx = taskContext(options, 'factory', signal)
+  let spawned: RunningService | undefined
+  const { signal, stopped } = foreground(async () => void (await spawned?.stop()))
+  const ctx = taskContext(options, 'factory', signal, (running) => (spawned = running))
   if (process.env.FACTORY_URL) {
     ctx.sink.write('[factory] External Factory configured (FACTORY_URL): nothing to run.')
     await stopped // stay up: an exit would read as a crash of a dependency of `status`
@@ -186,7 +193,7 @@ export async function runFactoryTask(): Promise<number> {
   ctx.sink.write('[factory] Waiting for AgentOS to be healthy...')
   const agentosUrl = process.env.AGENTOS_URL ?? (await waitForAgentos(options.configDir, signal))
   if (!agentosUrl) return 0 // only when the signal aborted the wait
-  service = await startFactoryService(ctx, agentosUrl, download)
+  const service = await startFactoryService(ctx, agentosUrl, download)
   if (!service?.running) {
     if (signal.aborted) return 0
     const say = (line: string) => ctx.sink.write(line)
@@ -201,8 +208,7 @@ export async function runServerTask(): Promise<number> {
   teeConsoleToFile(logFilePath(options.configDir, 'server'))
   let server: Server | undefined
   const { stopped } = foreground(async () => {
-    const listening = server
-    if (listening) await new Promise<void>((r) => listening.close(() => r()))
+    if (server) await closeServer(server)
   })
   const say = (line: string) => console.error(line)
   const state = readState(options.configDir)
@@ -298,11 +304,12 @@ export async function runManaged(): Promise<number> {
   const app = createWebApp({ codayOptions: options, setupEnabled: decision.setupEnabled })
   const server = await listen(app, options, expressPort)
 
-  const services: StartedService[] = []
+  // Every JVM this process spawned, healthy or still starting; adopted instances are never in it.
+  const spawned: RunningService[] = []
   const shutdown = async (): Promise<void> => {
-    await new Promise<void>((r) => server.close(() => r()))
-    // Factory first (it depends on AgentOS); only spawned processes are stopped, adopted ones are left alone.
-    for (const service of [...services].reverse()) if (service.spawned) await service.shutdown()
+    await closeServer(server)
+    // Factory first (it depends on AgentOS).
+    for (const running of [...spawned].reverse()) await running.stop()
   }
   const { signal, stopped } = foreground(shutdown)
 
@@ -313,7 +320,13 @@ export async function runManaged(): Promise<number> {
         // Straight to stdout: the console tee would duplicate it into server.log.
         process.stdout.write(`${new Date().toISOString()} ${name.toUpperCase()} ${line}\n`)
       )
-    const base = { configDir: options.configDir, baseEnv: process.env, signal, welcomeUrl: welcomeUrlOf }
+    const base = {
+      configDir: options.configDir,
+      baseEnv: process.env,
+      signal,
+      onSpawn: (running: RunningService) => void spawned.push(running),
+      welcomeUrl: welcomeUrlOf,
+    }
     const agentosCtx: OrchestratorContext = { ...base, sink: sinkFor('agentos') }
     const factoryCtx: OrchestratorContext = { ...base, sink: sinkFor('factory') }
 
@@ -322,12 +335,10 @@ export async function runManaged(): Promise<number> {
     if (!agentosUrl) {
       const agentos = await startAgentosService(agentosCtx)
       if (!agentos) return
-      services.push(agentos)
       agentosUrl = `http://127.0.0.1:${agentos.port}`
     }
     if (process.env.FACTORY_URL) return
-    const factory = await startFactoryService(factoryCtx, agentosUrl, factoryDownload)
-    if (factory) services.push(factory)
+    await startFactoryService(factoryCtx, agentosUrl, factoryDownload)
   })().catch((error) => debugLog('RUNTIME', 'Unexpected error while starting the services (non-fatal):', error))
 
   await stopped // lives until a termination signal
