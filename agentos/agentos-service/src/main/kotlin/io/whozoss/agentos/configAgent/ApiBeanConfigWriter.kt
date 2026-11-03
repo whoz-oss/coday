@@ -5,12 +5,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.authSetting.AuthSettingApi
 import io.whozoss.agentos.authSetting.AuthSettingDto
 import io.whozoss.agentos.exception.BadRequestException
-import io.whozoss.agentos.namespace.NamespaceAgentDeployRequest
-import io.whozoss.agentos.namespace.NamespaceController
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
+import io.whozoss.agentos.sdk.api.namespace.NamespaceAgentDeployRequest
 import io.whozoss.agentos.sdk.api.namespace.NamespaceApi
 import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
 import io.whozoss.agentos.sdk.api.prompt.PromptApi
@@ -34,8 +34,6 @@ import java.util.UUID
  * request first, so a future asynchronous caller fails with a clear message rather than with an
  * authentication error from the proxy.
  *
- * Deployment has no `*Api` method yet, so it goes through [NamespaceController], the same proxy,
- * until `NamespaceApi` declares it (#1519).
  * `@Valid` does not apply to in-process calls, so every DTO is validated here with the same Bean
  * Validation constraints before it reaches the controller, and refused as a 400 would be.
  */
@@ -47,7 +45,6 @@ class ApiBeanConfigWriter(
     private val integrationConfigApi: IntegrationConfigApi,
     private val authSettingApi: AuthSettingApi,
     private val namespaceApi: NamespaceApi,
-    private val namespaceController: NamespaceController,
     private val objectMapper: ObjectMapper,
     private val validator: Validator,
 ) : ConfigWriter {
@@ -114,7 +111,7 @@ class ApiBeanConfigWriter(
         deployed: Boolean,
     ): Unit = asRequestUser {
         val request = NamespaceAgentDeployRequest(listOf(agentId))
-        if (deployed) namespaceController.deployAgents(namespaceId, request) else namespaceController.undeployAgents(namespaceId, request)
+        if (deployed) namespaceApi.deployAgents(namespaceId, request) else namespaceApi.undeployAgents(namespaceId, request)
     }
 
     /** Runs [block] once sure to act as the user of the current HTTP request, whose identity the proxies read. */

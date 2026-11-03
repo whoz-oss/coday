@@ -1,4 +1,4 @@
-package io.whozoss.agentos.configAgent
+package io.whozoss.agentos.sdk.api.configChange
 
 /** Configuration entities the config agent can read and change. A [NAMESPACE] can only be created. */
 enum class ConfigKind {

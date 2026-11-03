@@ -6,6 +6,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.mockk
+import io.whozoss.agentos.sdk.api.configChange.ConfigAction
+import io.whozoss.agentos.sdk.api.configChange.ConfigAffects
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeDecision
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeReportDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
+import io.whozoss.agentos.sdk.api.configChange.ConfigOperationResultDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigResultStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import java.time.Instant
