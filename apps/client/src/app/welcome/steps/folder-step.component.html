@@ -2,7 +2,7 @@
   <h2 class="step__title">Where should Coday keep your files?</h2>
   <p class="step__lead">
     The agent reads and writes the files of your personal workspace in this folder. The default is fine for most people;
-    it is created if it does not exist.
+    it is created if it does not exist. To choose another one, open it below.
   </p>
 
   <div class="selected" data-testid="selected-folder">
@@ -17,21 +17,20 @@
         class="browser__icon"
         aria-label="Parent folder"
         [disabled]="!listing()?.parent"
-        (click)="open(listing()?.parent ?? undefined)"
+        (click)="navigate(listing()?.parent ?? undefined)"
       >
         ↑
       </button>
-      <button type="button" class="browser__icon" aria-label="Home folder" (click)="open(listing()?.home)">⌂</button>
-      <code class="browser__path" [title]="listing()?.path ?? ''">{{ listing()?.path }}</code>
-      <button type="button" class="btn browser__use" data-testid="use-folder" (click)="chooseCurrent()">
-        Use this folder
+      <button type="button" class="browser__icon" aria-label="Home folder" (click)="navigate(listing()?.home)">
+        ⌂
       </button>
+      <code class="browser__path" [title]="listing()?.path ?? ''">{{ listing()?.path }}</code>
     </div>
 
     <ul class="browser__list" role="list" [attr.aria-busy]="loading()">
       @for (entry of listing()?.entries ?? []; track entry.path) {
         <li>
-          <button type="button" class="entry" (click)="open(entry.path)">
+          <button type="button" class="entry" (click)="navigate(entry.path)">
             <span aria-hidden="true">📁</span>
             <span class="entry__name">{{ entry.name }}</span>
             @if (entry.symlink) {

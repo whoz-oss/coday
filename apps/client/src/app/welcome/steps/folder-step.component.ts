@@ -5,6 +5,7 @@ import { BrowseResult } from '../setup.models'
 /**
  * Step 3: where the Coday agent reads and writes your files. A server-backed folder browser (the browser
  * cannot see the local disk), with a "new folder" action. Defaults to ~/Coday, created when missing.
+ * Opening a folder selects it: there is no separate "use this folder" step.
  */
 @Component({
   selector: 'app-folder-step',
@@ -33,12 +34,27 @@ export class FolderStepComponent implements OnInit {
     return cut > 0 ? folder.slice(0, cut) : undefined
   }
 
-  protected async open(path?: string): Promise<void> {
+  /** Open a folder the user picked (entry, parent, home) and select it. */
+  protected navigate(path?: string): Promise<void> {
+    return this.open(path, true)
+  }
+
+  /**
+   * List a folder. `select` makes it the selected folder once listed, under its resolved path; the initial listing
+   * and the home fallback do not select, so the proposed default (which may not exist yet) is kept.
+   */
+  private async open(path?: string, select = false): Promise<void> {
     this.loading.set(true)
     this.browseError.set(null)
     try {
-      this.listing.set(await this.state.browse(path, this.showHidden()))
+      const listing = await this.state.browse(path, this.showHidden())
+      this.listing.set(listing)
+      if (select) this.state.selectFolder(listing.path)
     } catch (err) {
+      if (select) {
+        this.browseError.set(errorMessage(err, 'Cannot open this folder.'))
+        return
+      }
       // The default parent may not exist either: fall back to the home directory once.
       if (path) return this.open(undefined)
       this.browseError.set(errorMessage(err, 'Cannot list this folder.'))
@@ -50,11 +66,6 @@ export class FolderStepComponent implements OnInit {
   protected toggleHidden(): void {
     this.showHidden.update((v) => !v)
     void this.open(this.listing()?.path)
-  }
-
-  protected chooseCurrent(): void {
-    const current = this.listing()?.path
-    if (current) this.state.selectFolder(current)
   }
 
   protected startCreate(): void {
@@ -76,7 +87,7 @@ export class FolderStepComponent implements OnInit {
       const created = await this.state.mkdir(parent, name)
       this.creating.set(false)
       this.state.selectFolder(created.path)
-      await this.open(created.path)
+      await this.open(created.path, true)
     } catch (err) {
       this.browseError.set(errorMessage(err, 'Could not create this folder.'))
     }
