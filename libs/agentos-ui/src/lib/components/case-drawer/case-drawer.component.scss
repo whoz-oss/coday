@@ -153,6 +153,7 @@
   text-transform: uppercase;
   color: var(--color-neutral-500);
   border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 0);
   padding: 1px 5px;
 
   &--running {

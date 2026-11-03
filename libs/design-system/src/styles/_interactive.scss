@@ -175,6 +175,7 @@
   display: inline-flex;
   align-items: center;
   border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 0);
   font-size: 9.5px;
   font-family: var(--font-heading);
   font-weight: 600;
