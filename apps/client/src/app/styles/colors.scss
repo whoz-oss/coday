@@ -194,6 +194,12 @@ agentos-shell {
   --font-body: 'Barlow', system-ui, sans-serif;
   --font-heading: 'IBM Plex Mono', 'Fira Code', monospace;
 
+  /* ── Shape / Radius — 0 = square corners (Industry and Terminal inherit it, do not redefine) ── */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-pill: 0;
+
   /* ── Accent steel (Industry) — light ── */
   --color-accent: #5980a6;
   --color-accent-100: #eef6ff;

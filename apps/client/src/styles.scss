@@ -168,7 +168,7 @@ agentos-shell {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
   }
 
   /* Primary button — agentos-ui only */
@@ -212,7 +212,7 @@ agentos-shell {
     padding: 0 10px;
     min-height: 34px;
     outline: none;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     box-sizing: border-box;
 
     &:focus {
@@ -234,7 +234,7 @@ agentos-shell {
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
   }
 
   /* Tag neutral variant — muted border + secondary text */
@@ -381,7 +381,7 @@ agentos-shell {
  */
 .ds-kebab-panel {
   --mat-menu-container-color: var(--color-surface, #dcdcde);
-  --mat-menu-container-shape: 0px;
+  --mat-menu-container-shape: var(--radius-md, 0px);
   --mat-menu-item-label-text-color: var(--color-text, #1d1f20);
   --mat-menu-item-label-text-font: var(--font-body, 'Barlow', system-ui, sans-serif);
   --mat-menu-item-label-text-size: 15px;
@@ -400,7 +400,7 @@ agentos-shell {
   }
 
   .mat-mdc-menu-item {
-    border-radius: 0;
+    border-radius: var(--radius-sm, 0);
     min-height: 36px;
     padding: 0 10px;
     font-family: var(--font-body, 'Barlow', system-ui, sans-serif) !important;

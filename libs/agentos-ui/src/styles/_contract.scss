@@ -12,6 +12,14 @@
  *   --font-body       Body font stack (Inter, system fallbacks)
  *   --font-heading    Heading / mono font stack (Geist Mono, SF Mono fallbacks)
  *
+ * ── Shape / Radius ───────────────────────────────────────────────────────
+ *   --radius-sm               Small corners: icon buttons, menu items, marks, focus ring
+ *   --radius-md               Medium corners: inputs, cards, dropdowns, blueprint surfaces, menu panels
+ *   --radius-lg               Large corners: reserved for large containers (dialogs, panels)
+ *   --radius-pill             Fully rounded: chips, buttons, tags
+ *   All four are 0 in Industry and Terminal (square corners). Consumers should write
+ *   var(--radius-xxx, 0) so they stay square outside the host theme.
+ *
  * ── Text colors ──────────────────────────────────────────────────────────
  *   --color-text              Main text color
  *   --color-text-secondary    Muted / secondary text
