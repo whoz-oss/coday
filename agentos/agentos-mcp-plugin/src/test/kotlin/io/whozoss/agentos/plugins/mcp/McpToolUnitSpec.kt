@@ -8,11 +8,15 @@ import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.modelcontextprotocol.spec.McpError
+import io.modelcontextprotocol.spec.McpSchema
+import io.modelcontextprotocol.spec.McpSchema.JSONRPCResponse.JSONRPCError
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.runBlocking
 import java.util.UUID
+import java.util.concurrent.TimeoutException
 
 class McpToolUnitSpec : StringSpec({
 
@@ -138,6 +142,46 @@ class McpToolUnitSpec : StringSpec({
         (result!!.errorMessage ?: "") shouldNotContain "XYZ"
         result!!.errorType shouldBe "McpConnectionException"
         logs.messagesAt(Level.ERROR).single() shouldContain "secret=XYZ"
+    }
+
+    "a call the server refuses as invalid tells the model to fix its arguments, without the server's message" {
+        val connection = mockk<McpConnectionPort>()
+        val refusal =
+            McpError(JSONRPCError(McpSchema.ErrorCodes.INVALID_PARAMS, "query is required (secret=XYZ)", null))
+        every { connection.callTool(any(), any()) } throws
+            McpConnectionException("Tool call 'search_repos' failed: ${refusal.message}", refusal)
+
+        val tool = makeTool(connection = connection)
+        val result = tool.execute(McpTool.Input(args = "{}"), ctx)
+
+        result.success shouldBe false
+        result.output shouldBe McpTool.INVALID_PARAMS_OUTPUT
+        result.output shouldNotContain "XYZ"
+        (result.errorMessage ?: "") shouldNotContain "XYZ"
+    }
+
+    "a call the server refuses with another JSON-RPC error gives the model the code only" {
+        val connection = mockk<McpConnectionPort>()
+        val refusal =
+            McpError(JSONRPCError(McpSchema.ErrorCodes.INTERNAL_ERROR, "db down at 10.0.0.3 (secret=XYZ)", null))
+        every { connection.callTool(any(), any()) } throws McpConnectionException("Tool call failed", refusal)
+
+        val result = makeTool(connection = connection).execute(McpTool.Input(args = "{}"), ctx)
+
+        result.output shouldContain "JSON-RPC error -32603"
+        result.output shouldNotContain "XYZ"
+        result.output shouldNotContain "10.0.0.3"
+    }
+
+    "a call that times out says so instead of calling the integration unreachable" {
+        val connection = mockk<McpConnectionPort>()
+        every { connection.callTool(any(), any()) } throws
+            McpConnectionException("Tool call failed", RuntimeException(TimeoutException("Did not observe any item")))
+
+        val result = makeTool(connection = connection).execute(McpTool.Input(args = "{}"), ctx)
+
+        result.success shouldBe false
+        result.output shouldBe McpTool.TIMEOUT_OUTPUT
     }
 
     "an MCP tool error keeps the tool's own content, which is its answer and not a transport detail" {

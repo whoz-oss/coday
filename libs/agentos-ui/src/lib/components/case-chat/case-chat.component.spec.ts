@@ -16,6 +16,7 @@ import {
   ReasoningEffort,
   ToolRequestEvent,
   ToolResponseEvent,
+  WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
@@ -767,6 +768,33 @@ describe('CaseChatComponent — submit with attachments', () => {
 
       showTechnical.set(true)
       expect(ref.instance['timeline']()).toHaveLength(1)
+    })
+
+    it('still shows a warning when the preference is off: it is not a diagnostic', () => {
+      showTechnical.set(false)
+      const ref = makeComponent()
+      const warning: WarnEvent = {
+        id: 'w-1',
+        type: 'WarnEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T10:20:31Z',
+        metadata,
+        message: 'Integration JIRA could not be loaded for this message.',
+      }
+      ref.instance['events'].set([running('r-1', '2026-01-01T10:20:30Z'), warning])
+
+      expect(ref.instance['timeline']()).toEqual([
+        {
+          kind: 'notice',
+          eventId: 'w-1',
+          notice: {
+            severity: 'warning',
+            title: 'Warning',
+            detail: 'Integration JIRA could not be loaded for this message.',
+          },
+        },
+      ])
     })
 
     it('carries the event timestamp on the technical item', () => {

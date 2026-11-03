@@ -600,8 +600,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // Not a diagnostic: the run stopped before finishing, and only the user can let it continue.
         items.push({ kind: 'notice', notice: this.toIterationLimitNotice(e as AgentFinishedEvent), eventId: e.id })
         lastMessageRole = null
+      } else if (e.type === 'WarnEvent') {
+        // Not a diagnostic either: a warning tells the user something they must know about their run
+        // (an integration that failed to load, an agent not found), whatever the technical logs preference.
+        items.push({ kind: 'notice', notice: this.toWarningNotice(e as WarnEvent), eventId: e.id })
+        lastMessageRole = null
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
-        // Execution notices and the generic fallback are diagnostics: keep them entirely
+        // The other execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
         const notice = this.toExecutionNotice(e, lastCaseStatusEventId)
         if (notice) {
@@ -1459,10 +1464,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  private toWarningNotice(event: WarnEvent): ExecutionNotice {
+    return { severity: 'warning', title: 'Warning', detail: event.message }
+  }
+
   /**
-   * Map a CaseEvent to an ExecutionNotice for display in the timeline.
+   * Map a CaseEvent to an ExecutionNotice for display in the timeline. WarnEvent has its own
+   * notice, shown outside technical mode (see toWarningNotice).
    *
-   * WarnEvent and ErrorEvent are immutable historical facts and always produce a notice.
+   * ErrorEvent is an immutable historical fact and always produces a notice.
    * CaseStatusEvent notices are assertions about the PRESENT state: only the LATEST
    * CaseStatusEvent (identified by lastCaseStatusEventId) may emit a terminal banner.
    * A superseded KILLED/ERROR falls through to the generic technical log item instead,
@@ -1470,8 +1480,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   private toExecutionNotice(event: CaseEvent, lastCaseStatusEventId: string | null = null): ExecutionNotice | null {
     switch (event.type) {
-      case 'WarnEvent':
-        return { severity: 'warning', title: 'Warning', detail: (event as WarnEvent).message }
       case 'ErrorEvent':
         return { severity: 'error', title: 'Execution error', detail: (event as ErrorEvent).message }
       case 'CaseStatusEvent': {
