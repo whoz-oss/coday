@@ -17,6 +17,7 @@ import {
   OnInit,
   output,
   signal,
+  Signal,
   viewChild,
   ChangeDetectionStrategy,
 } from '@angular/core'
@@ -99,10 +100,12 @@ export interface ToolCall {
   enrichmentPhases?: EnrichmentPhaseTrace[] | null
 }
 
-/** A technical event displayed only when showTechnical is enabled. */
+/** A technical event, displayed only when the technical logs preference is enabled. */
 export interface TechnicalItem {
   label: string
   detail?: string
+  /** ISO timestamp of the source event. */
+  timestamp?: string
 }
 
 export interface ExecutionNotice {
@@ -335,7 +338,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // Header action outputs — handled by CaseShellComponent
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()
-  readonly logsToggled = output<void>()
   readonly updateRequested = output<{ id: string; title?: string; runCostThreshold?: number | null }>()
 
   // ---------------------------------------------------------------------------
@@ -388,8 +390,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
-  readonly showTechnicalOverride = input(false)
-  protected readonly showTechnical = computed(() => this.showTechnicalOverride())
+  /** Technical logs visibility: a user preference (My profile), shown by default. */
+  protected readonly showTechnical: Signal<boolean> = this.preferences.showTechnical
 
   readonly showToolCallsOverride = input(true)
   protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
@@ -548,6 +550,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     const emittedDelegationIds = new Set<string>()
+    // One integration failure is warned once per agent run of a message — delegates included — and again by a
+    // resume, and the events are persisted, so the copies also come back on every reload. The first warning of
+    // a turn carries everything the user needs; the identical ones until their next message are dropped.
+    const warningsThisTurn = new Set<string>()
     // Track the last role to detect group boundaries (consecutive same-role messages).
     // Any non-message item (tool call, technical event) resets the group.
     let lastMessageRole: string | null = null
@@ -557,6 +563,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const role = msg.actor.role
         const isFirstInGroup = role !== lastMessageRole
         lastMessageRole = role
+        // A new user message opens a turn: a failure that persists is worth warning about again.
+        if (role === 'USER') warningsThisTurn.clear()
         items.push({
           kind: 'message',
           event: msg,
@@ -598,8 +606,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // Not a diagnostic: the run stopped before finishing, and only the user can let it continue.
         items.push({ kind: 'notice', notice: this.toIterationLimitNotice(e as AgentFinishedEvent), eventId: e.id })
         lastMessageRole = null
+      } else if (e.type === 'WarnEvent') {
+        // Not a diagnostic either: a warning tells the user something they must know about their run
+        // (an integration that failed to load, an agent not found), whatever the technical logs preference.
+        const warning = e as WarnEvent
+        if (!warningsThisTurn.has(warning.message)) {
+          warningsThisTurn.add(warning.message)
+          items.push({ kind: 'notice', notice: this.toWarningNotice(warning), eventId: e.id })
+          lastMessageRole = null
+        }
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
-        // Execution notices and the generic fallback are diagnostics: keep them entirely
+        // The other execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
         const notice = this.toExecutionNotice(e, lastCaseStatusEventId)
         if (notice) {
@@ -1367,6 +1384,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString()
   }
 
+  /** Local date and time for technical log lines, which can be days apart; the full timestamp stays in the title. */
+  protected formatMessageDateTime(timestamp: string): string {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date)
+  }
+
   protected toggleToolCall(requestId: string): void {
     this.collapsedTools.update((set) => {
       const next = new Set(set)
@@ -1382,10 +1414,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Collapsed by default: a tool call is expanded only when its id is in the set */
   protected isToolCallExpanded(requestId: string): boolean {
     return this.collapsedTools().has(requestId)
-  }
-
-  protected toggleShowTechnical(): void {
-    this.logsToggled.emit()
   }
 
   /** Extract plain text from a message item for clipboard copy. */
@@ -1446,10 +1474,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  private toWarningNotice(event: WarnEvent): ExecutionNotice {
+    return { severity: 'warning', title: 'Warning', detail: event.message }
+  }
+
   /**
-   * Map a CaseEvent to an ExecutionNotice for display in the timeline.
+   * Map a CaseEvent to an ExecutionNotice for display in the timeline. WarnEvent has its own
+   * notice, shown outside technical mode (see toWarningNotice).
    *
-   * WarnEvent and ErrorEvent are immutable historical facts and always produce a notice.
+   * ErrorEvent is an immutable historical fact and always produces a notice.
    * CaseStatusEvent notices are assertions about the PRESENT state: only the LATEST
    * CaseStatusEvent (identified by lastCaseStatusEventId) may emit a terminal banner.
    * A superseded KILLED/ERROR falls through to the generic technical log item instead,
@@ -1457,8 +1490,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   private toExecutionNotice(event: CaseEvent, lastCaseStatusEventId: string | null = null): ExecutionNotice | null {
     switch (event.type) {
-      case 'WarnEvent':
-        return { severity: 'warning', title: 'Warning', detail: (event as WarnEvent).message }
       case 'ErrorEvent':
         return { severity: 'error', title: 'Execution error', detail: (event as ErrorEvent).message }
       case 'CaseStatusEvent': {
@@ -1475,6 +1506,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private toTechnicalItem(event: CaseEvent): TechnicalItem {
+    return { ...this.describeTechnicalEvent(event), timestamp: event.timestamp }
+  }
+
+  private describeTechnicalEvent(event: CaseEvent): Pick<TechnicalItem, 'label' | 'detail'> {
     switch (event.type) {
       case 'CaseStatusEvent':
         return { label: `Status: ${(event as CaseStatusEvent).status}` }

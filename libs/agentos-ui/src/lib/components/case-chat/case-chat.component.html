@@ -220,7 +220,17 @@
                 </div>
               } @else if (item.kind === 'technical') {
                 <details class="case-chat__log">
-                  <summary class="case-chat__log-summary">⚙ System log · {{ item.item.label }}</summary>
+                  <summary class="case-chat__log-summary">
+                    <span>⚙ System log · {{ item.item.label }}</span>
+                    @if (item.item.timestamp; as logTimestamp) {
+                      <time
+                        class="case-chat__log-time"
+                        [attr.datetime]="logTimestamp"
+                        [title]="formatMessageTimestampTitle(logTimestamp)"
+                        >{{ formatMessageDateTime(logTimestamp) }}</time
+                      >
+                    }
+                  </summary>
                   @if (item.item.detail) {
                     <pre class="case-chat__log-body">{{ item.item.detail }}</pre>
                   }

@@ -737,6 +737,13 @@
     }
   }
 
+  &__log-time {
+    flex-shrink: 0;
+    font-weight: 400;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+
   &__log-body {
     display: block;
     max-height: 260px;
