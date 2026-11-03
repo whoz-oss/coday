@@ -8,8 +8,9 @@
  * first boot), and the Express proxies read it at request time: no restart is ever needed.
  */
 
+import * as fs from 'fs'
 import { readJsonFile, writeJsonFile } from './json-file'
-import { webSetupPath } from './paths'
+import { agentosDataDir, webSetupPath } from './paths'
 
 export interface WebSetup {
   identity?: { email: string }
@@ -45,4 +46,13 @@ export function markSetupDone(configDir: string, now: () => Date = () => new Dat
   const next: WebSetup = { ...readWebSetup(configDir), setupDone: true, setupDoneAt: now().toISOString() }
   writeJsonFile(webSetupPath(configDir), next)
   return next
+}
+
+/** AgentOS creates its database at its first boot, with the identity as its bootstrap admin. */
+export function agentosDatabaseExists(configDir: string): boolean {
+  try {
+    return fs.readdirSync(agentosDataDir(configDir)).length > 0
+  } catch {
+    return false
+  }
 }

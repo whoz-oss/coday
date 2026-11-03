@@ -16,7 +16,14 @@ import express, { Router } from 'express'
 import { isHealthy } from '../runtime/process'
 import { LOOPBACK } from '../runtime/services'
 import { readState } from '../runtime/state'
-import { isValidEmail, markSetupDone, normalizeEmail, readWebSetup, saveIdentity } from '../runtime/web-setup'
+import {
+  agentosDatabaseExists,
+  isValidEmail,
+  markSetupDone,
+  normalizeEmail,
+  readWebSetup,
+  saveIdentity,
+} from '../runtime/web-setup'
 import { AgentosClient } from './agentos-client'
 import { ApplyValidationError, runApply, validateApplyInput } from './apply'
 import { browse, BrowseError, defaultCodayFolder, mkdir } from './browse'
@@ -117,7 +124,13 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
       return
     }
     const normalized = normalizeEmail(email)
-    const decision = decideIdentityChange(setupEnabled, readWebSetup(configDir), readState(configDir), normalized)
+    const decision = decideIdentityChange(
+      setupEnabled,
+      readWebSetup(configDir),
+      readState(configDir),
+      normalized,
+      agentosDatabaseExists(configDir)
+    )
     if (!decision.ok) {
       res.status(decision.status).json({ error: decision.message })
       return
