@@ -30,6 +30,7 @@ import {
 } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
@@ -75,6 +76,7 @@ export class CaseShellComponent {
   private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
   protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
+  private readonly shellContext = inject(ShellContextService)
   private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
@@ -238,6 +240,11 @@ export class CaseShellComponent {
       this.caseState.loadCases(nsId)
       const subscription = this.caseListUpdates.connect(nsId).subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
+    })
+
+    // Remember the open case so the settings pages can bring the user back to it.
+    effect(() => {
+      this.shellContext.rememberCase(this.namespaceId(), this.activeCaseId())
     })
   }
 

@@ -1,17 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core'
-import { Router, RouterLink, RouterLinkActive } from '@angular/router'
-import { UserStateService } from '../../services/user-state.service'
+import { RouterLink, RouterLinkActive } from '@angular/router'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
+import { ShellContextService } from '../../services/shell-context.service'
+import { UserStateService } from '../../services/user-state.service'
 
 /**
- * ShellTopbarComponent — barre de navigation supérieure réutilisable.
+ * ShellTopbarComponent — navigation shared by every settings page (namespace, administration, profile).
  *
- * Extrait du shell-sidebar__top pour être partagé entre :
- * - La sidebar du CaseShell (home)
- * - Le layout admin (/agentos/admin/**)
- * - Le layout user (/agentos/me)
+ * One bar to hop between all configuration scopes without going back through the cases view:
+ * - "Cases" (and the logo) return to the work in progress: active namespace AND open case
+ * - "Namespace settings" jumps straight to the active namespace configuration
+ * - "Namespaces", "User settings" and "Administration" reach the other scopes
  *
- * Contient : logo Coday + navigation directe vers les espaces de configuration.
+ * Links target the real root URLs (`/home`, `/user`, ...) rather than the legacy `/agentos/...` prefix: it spares
+ * the redirect and lets `routerLinkActive` match the URL actually displayed.
  */
 @Component({
   selector: 'agentos-shell-topbar',
@@ -21,14 +23,15 @@ import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
   imports: [RouterLink, RouterLinkActive],
 })
 export class ShellTopbarComponent {
-  private readonly router = inject(Router)
   private readonly userState = inject(UserStateService)
   private readonly namespaceState = inject(NamespaceStateService)
+  private readonly shellContext = inject(ShellContextService)
 
   protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)
 
-  protected navigateHome(): void {
-    const nsId = this.namespaceState.activeNamespaceId()
-    this.router.navigate(['/agentos/home'], nsId ? { queryParams: { ns: nsId } } : {})
-  }
+  /** Namespace the user is working in; null until a cases or namespace settings page has resolved one. */
+  protected readonly activeNamespaceId = this.namespaceState.activeNamespaceId
+
+  /** Query params restoring the active namespace and open case on the cases view. */
+  protected readonly workQueryParams = computed(() => this.shellContext.workQueryParams())
 }

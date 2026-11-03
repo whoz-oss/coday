@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router, RouterLink, RouterOutlet } from '@angular/router'
 import { IntegrationTypeControllerService, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
+import { ShellContextService } from '../../services/shell-context.service'
 import { SettingsLayoutComponent, SettingsNavigationGroup } from '../settings-layout/settings-layout.component'
 
 @Component({
@@ -16,6 +18,8 @@ export class NamespaceSettingsLayoutComponent {
   private readonly router = inject(Router)
   private readonly namespaceApi = inject(NamespaceControllerService)
   private readonly integrationTypeApi = inject(IntegrationTypeControllerService)
+  private readonly namespaceState = inject(NamespaceStateService)
+  private readonly shellContext = inject(ShellContextService)
   private readonly destroyRef = inject(DestroyRef)
 
   protected readonly namespaceId = this.route.snapshot.paramMap.get('namespaceId') ?? ''
@@ -66,7 +70,7 @@ export class NamespaceSettingsLayoutComponent {
   }
 
   protected openNamespace(): void {
-    void this.router.navigate(['/agentos/home'], { queryParams: { ns: this.namespaceId } })
+    void this.router.navigate(['/home'], { queryParams: this.shellContext.workQueryParams(this.namespaceId) })
   }
 
   constructor() {
@@ -76,6 +80,10 @@ export class NamespaceSettingsLayoutComponent {
       .subscribe({ next: (types) => this.gitAvailable.set(types.some((type) => type.type === 'GIT')) })
 
     if (!this.namespaceId) return
+
+    // Configuring a namespace makes it the active one: the topbar then points its "Namespace settings" and
+    // "Cases" links at it, wherever the user goes next.
+    this.namespaceState.selectNamespace(this.namespaceId)
 
     this.namespaceApi
       .getByIdNamespace(this.namespaceId)

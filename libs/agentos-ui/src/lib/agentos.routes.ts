@@ -314,6 +314,8 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceSettingsLayoutComponent
               ),
             children: [
+              // `/:namespaceId` alone is the target of the topbar "Namespace settings" link.
+              { path: '', redirectTo: 'edit', pathMatch: 'full' },
               // --- Namespace details (edit form) ---
               {
                 path: 'edit',
