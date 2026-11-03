@@ -1,5 +1,5 @@
 name: Searchay
-description: Code search specialist - finds relevant files and code patterns from natural language requests
+description: Local codebase search specialist - finds relevant files and code patterns from natural language requests. Reads local files only; has no access to Jira, Confluence, GitHub or the web.
 modelName: SMALL
 integrations:
   FILES:

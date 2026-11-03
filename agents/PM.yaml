@@ -4,19 +4,11 @@ aiProvider: anthropic
 modelName: BIG
 integrations:
   GITHUB:
-    - add_issue_comment
-    - issue_write
-    - get_code_scanning_alert
-    - issue_read
-    - get_me
-    - pull_request_read
-    - list_code_scanning_alerts
-    - list_commits
-    - list_issues
-    - list_pull_requests
-    - search_issues
+    - gh
   FILES:
-  JIRA:
+  ATLASSIAN_JIRA:
+  ATLASSIAN_CONFLUENCE:
+  ATLASSIAN_CONFLUENCE_SEARCH:
   DELEGATE:
     - Sway
     - Archay

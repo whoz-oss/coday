@@ -1,0 +1,31 @@
+# Jira Cloud (whoz.atlassian.net) through the REST API v3, replacing the former ATLASSIAN MCP server.
+# Auth: ATLASSIAN_API_TOKEN auth setting (BASIC_AUTH: account email + Atlassian API token).
+# Writes are enabled: a SIMPLE agent runs [WRITE] tools without confirmation, so restrict them
+# per agent with a tool allowlist when needed.
+name: ATLASSIAN_JIRA
+integrationType: HTTP_API
+authSettingName: ATLASSIAN_API_TOKEN
+description: "Jira Cloud REST API v3 on whoz.atlassian.net (JQL search, read/create/edit issues, comments, transitions, projects, users)"
+parameters:
+  spec:
+    url: https://dac-static.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
+    refreshMinutes: 1440
+  baseUrl: https://whoz.atlassian.net
+  allowMutations: true
+  includeOperations:
+    - searchAndReconsileIssuesUsingJql
+    - getIssue
+    - createIssue
+    - editIssue
+    - assignIssue
+    - addComment
+    - getComments
+    - getTransitions
+    - doTransition
+    - getRemoteIssueLinks
+    - getProjectsPaginated
+    - getCreateIssueMetaIssueTypes
+    - getCreateIssueMetaIssueTypeId
+    - findUsers
+  maxTools: 32
+  responseFormat: yaml
