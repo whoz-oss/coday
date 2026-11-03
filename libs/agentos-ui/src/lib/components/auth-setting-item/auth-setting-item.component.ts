@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 import { AuthSettingDto } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 import { AuthSettingScope } from '../../services/auth-setting-config-state.service'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
 
 interface ScopeBadge {
   label: string
@@ -55,12 +56,17 @@ export class AuthSettingItemComponent {
   /** Whether to display the scope badge. Set to false when the scope is already
    * conveyed by the surrounding section (e.g. platform-level admin page). */
   readonly showBadge = input<boolean>(true)
+  readonly deleteState = input<ReturnType<typeof createRowDeletionState> | null>(null)
 
   readonly editRequested = output<AuthSettingDto>()
   readonly deleteRequested = output<AuthSettingDto>()
   readonly duplicateRequested = output<AuthSettingDto>()
 
   protected readonly pendingDelete = signal(false)
+  protected readonly isConfirmingDelete = computed(() =>
+    this.deleteState() ? this.deleteState()!.confirmingId() === this.config().id : this.pendingDelete()
+  )
+  protected readonly isDeleting = computed(() => this.deleteState()?.deletingId() === this.config().id)
 
   protected readonly badge = computed<ScopeBadge>(() => SCOPE_BADGES[this.scope()])
 
@@ -74,9 +80,13 @@ export class AuthSettingItemComponent {
       case 'edit':
         this.editRequested.emit(this.config())
         break
-      case 'delete':
-        this.pendingDelete.set(true)
+      case 'delete': {
+        const deleteState = this.deleteState()
+        const configId = this.config().id
+        if (deleteState && configId) deleteState.request(configId)
+        else this.pendingDelete.set(true)
         break
+      }
     }
   }
 
@@ -85,11 +95,12 @@ export class AuthSettingItemComponent {
   }
 
   protected onDeleteConfirmed(): void {
-    this.pendingDelete.set(false)
+    if (!this.deleteState()) this.pendingDelete.set(false)
     this.deleteRequested.emit(this.config())
   }
 
   protected onDeleteCancelled(): void {
-    this.pendingDelete.set(false)
+    if (this.deleteState()) this.deleteState()!.cancel()
+    else this.pendingDelete.set(false)
   }
 }

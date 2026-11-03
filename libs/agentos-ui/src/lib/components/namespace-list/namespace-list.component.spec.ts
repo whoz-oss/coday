@@ -39,10 +39,10 @@ it('renders a namespace item whose kebab only exposes the delete action', async 
   expect(item['menuItems'].map((entry) => entry.label)).toEqual(['Delete namespace'])
 })
 
-it('navigates to the namespace integrations settings from the Configure action', async () => {
+it('navigates to the edit namespace page from the Configure action', async () => {
   const { item, router } = await render()
-  item['onIntegrations']()
-  expect(router.navigate).toHaveBeenCalledWith(['/agentos', 'ns-1', 'integrations'])
+  item['onConfigure']()
+  expect(router.navigate).toHaveBeenCalledWith(['/agentos', 'ns-1', 'edit'])
 })
 
 it('deletes the namespace once the item confirms the deletion', async () => {

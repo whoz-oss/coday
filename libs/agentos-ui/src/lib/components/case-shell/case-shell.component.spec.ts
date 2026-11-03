@@ -40,7 +40,7 @@ describe('CaseShellComponent', () => {
   function makeComponent(
     queryParams: Record<string, string> = {},
     cases: Case[] = [],
-    access: { isAdmin?: boolean; namespaceRole?: NamespaceListItemRoleEnum } = {}
+    access: { isAdmin?: boolean; namespaceRole?: NamespaceListItemRoleEnum; namespacesError?: boolean } = {}
   ): CaseShellComponent {
     queryParams$ = new Subject()
     routerMock = { navigate: jest.fn(), events: EMPTY }
@@ -63,7 +63,9 @@ describe('CaseShellComponent', () => {
       listAllNamespace: jest
         .fn()
         .mockReturnValue(
-          of(access.namespaceRole ? [{ id: NS_ID, name: 'Namespace', role: access.namespaceRole }] : [])
+          access.namespacesError
+            ? throwError(() => new Error('502'))
+            : of(access.namespaceRole ? [{ id: NS_ID, name: 'Namespace', role: access.namespaceRole }] : [])
         ),
     }
     themeMock = {
@@ -155,6 +157,13 @@ describe('CaseShellComponent', () => {
       namespaceRole,
     })
     expect(component['canWriteActiveCase']()).toBe(expected)
+  })
+
+  it('does not throw on read when the namespace list fails to load (would render a blank page)', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const component = makeComponent({ ns: NS_ID }, [], { namespacesError: true })
+    expect(component['namespaces']()).toEqual([])
+    expect(component['showNsPicker']()).toBe(false)
   })
 
   it('keeps workspace actions unavailable without a known permission', () => {

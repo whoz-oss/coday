@@ -73,6 +73,8 @@ export class EntityListComponent implements AfterViewInit, OnDestroy {
    */
   readonly disableInternalFilter = input<boolean>(false)
   readonly toolbarOnly = input<boolean>(false)
+  /** Hide the toolbar while preserving the list's content, empty and loading states. */
+  readonly hideToolbar = input<boolean>(false)
   /**
    * When true, the content area is replaced by skeleton card placeholders.
    * The toolbar remains visible. Use while data is being fetched.

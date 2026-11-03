@@ -1,7 +1,6 @@
 <div class="admin-users-groups">
   <header class="admin-users-groups__header">
-    <button class="admin-users-groups__back" type="button" (click)="goBack()">&#8592; Admin</button>
-    <h1 class="admin-users-groups__title">Users &amp; Groups</h1>
+    <h2 class="admin-users-groups__title">Users &amp; Groups</h2>
   </header>
 
   <div class="admin-users-groups__tabs" role="tablist" aria-label="Users and Groups">
@@ -40,8 +39,6 @@
   >
     @if (activeTab() === 'users') {
       <agentos-user-list
-        [showBackButton]="false"
-        [hideTitle]="true"
         [namespaces]="namespaces()"
         [selectedNamespaceId]="usersNamespaceFilter()"
         (namespaceFilterChange)="onUsersNamespaceChange($event)"
@@ -52,7 +49,6 @@
       } @else if (groupsNamespaceId(); as namespaceId) {
         <agentos-user-group-list
           [namespaceId]="namespaceId"
-          [hideTitle]="true"
           [namespaces]="namespaces()"
           [returnTo]="returnTo()"
           (namespaceChange)="onGroupsNamespaceChange($event)"

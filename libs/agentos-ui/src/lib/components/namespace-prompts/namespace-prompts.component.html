@@ -1,35 +1,39 @@
 <ds-section-header
   title="Prompts"
   description="Prompts available in this namespace, including prompts inherited from the platform."
-  ><button class="prompts__new" type="button" (click)="openCreateForm()">New prompt</button></ds-section-header
->
-@if (isLoading()) {
-  <p class="prompts__status" role="status">Loading prompts…</p>
-} @else if (rows().length === 0) {
-  <p class="prompts__status">No prompts available.</p>
-} @else {
-  <agentos-table-filter
+  ><agentos-table-filter
     label="Filter prompts"
     placeholder="Filter prompts…"
     [query]="rowFilter.query()"
     (queryChange)="rowFilter.query.set($event)"
   />
+  <button class="prompts__new" type="button" (click)="openCreateForm()">New prompt</button></ds-section-header
+>
+@if (isLoading()) {
+  <p class="prompts__status" role="status">Loading prompts…</p>
+} @else if (rows().length === 0) {
+  <p class="prompts__status">No prompts available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="prompts__status" role="status">No prompts match the current filter.</p>
+} @else {
   <div class="prompts__table-wrap">
-    <table dsTable>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Description</th>
-          <th>Scope</th>
-          <th><span class="sr-only">Actions</span></th>
+    <table dsTable role="table" aria-label="Prompts">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Description</th>
+          <th role="columnheader">Scope</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
-          <tr>
-            <td class="prompts__name">{{ row.prompt.name }}</td>
-            <td class="prompts__description">{{ row.prompt.description || '—' }}</td>
-            <td>
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="prompts__name">{{ row.prompt.name }}</td>
+            <td role="cell" data-label="Description" class="prompts__description">
+              {{ row.prompt.description || '—' }}
+            </td>
+            <td role="cell" data-label="Scope">
               <div class="prompts__tags">
                 <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
                   row.scope === 'platform' ? 'Platform' : 'Namespace'
@@ -39,7 +43,7 @@
                 }
               </div>
             </td>
-            <td class="prompts__actions">
+            <td role="cell" data-label="Actions" data-actions class="prompts__actions">
               @if (row.scope === 'namespace') {
                 <button type="button" (click)="edit(row)">Edit</button
                 ><button class="prompts__delete" type="button" (click)="delete(row)">Delete</button>

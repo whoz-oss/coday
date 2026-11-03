@@ -154,5 +154,10 @@ class BashTool(
             if (isEmpty()) {
                 append("(no output)")
             }
+            result.workingDirectory?.let {
+                append(if (endsWith("\n")) "\n" else "\n\n")
+                append("Working directory: ")
+                append(it)
+            }
         }
 }

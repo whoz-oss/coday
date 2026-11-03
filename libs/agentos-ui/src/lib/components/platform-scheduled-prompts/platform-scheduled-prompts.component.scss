@@ -1,2 +1,3 @@
-// PlatformScheduledPromptsComponent uses ds-entity-list which handles its own layout.
-// No additional styles required at this level.
+@use '../../styles/settings-table' as table;
+
+@include table.settings-table;

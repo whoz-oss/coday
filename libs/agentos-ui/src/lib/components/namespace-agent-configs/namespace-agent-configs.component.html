@@ -1,7 +1,13 @@
 <ds-section-header
   title="Agent configs"
   description="Agent configurations available in this namespace, including configurations inherited from the platform."
-  ><button class="agent-configs__new" type="button" (click)="openCreateForm()">
+  ><agentos-table-filter
+    label="Filter agent configs"
+    placeholder="Filter agent configs…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button class="agent-configs__new" type="button" (click)="openCreateForm()">
     New agent config
   </button></ds-section-header
 >
@@ -9,31 +15,29 @@
   <p class="agent-configs__status" role="status">Loading agent configs…</p>
 } @else if (rows().length === 0) {
   <p class="agent-configs__status">No agent configs available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="agent-configs__status" role="status">No agent configs match the current filter.</p>
 } @else {
-  <agentos-table-filter
-    label="Filter agent configs"
-    placeholder="Filter agent configs…"
-    [query]="rowFilter.query()"
-    (queryChange)="rowFilter.query.set($event)"
-  />
   <div class="agent-configs__table-wrap">
-    <table dsTable>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Description</th>
-          <th>Execution mode</th>
-          <th>Scope</th>
-          <th><span class="sr-only">Actions</span></th>
+    <table dsTable role="table" aria-label="Agent configs">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Description</th>
+          <th role="columnheader">Execution mode</th>
+          <th role="columnheader">Scope</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
-          <tr>
-            <td class="agent-configs__name">{{ row.config.name }}</td>
-            <td class="agent-configs__description">{{ row.config.description || '—' }}</td>
-            <td>{{ mode(row) }}</td>
-            <td>
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="agent-configs__name">{{ row.config.name }}</td>
+            <td role="cell" data-label="Description" class="agent-configs__description">
+              {{ row.config.description || '—' }}
+            </td>
+            <td role="cell" data-label="Execution mode">{{ mode(row) }}</td>
+            <td role="cell" data-label="Scope">
               <div class="agent-configs__tags">
                 <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
                   row.scope === 'platform' ? 'Platform' : 'Namespace'
@@ -43,7 +47,7 @@
                 }
               </div>
             </td>
-            <td class="agent-configs__actions">
+            <td role="cell" data-label="Actions" data-actions class="agent-configs__actions">
               <button type="button" (click)="inspect(row)">Inspect</button>
               @if (canLaunch(row)) {
                 <button type="button" (click)="launch(row)">Launch</button>

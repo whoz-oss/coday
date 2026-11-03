@@ -67,6 +67,38 @@
       </div>
 
       <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-shared-exchange-path">Shared files folder</label>
+        <input
+          id="ns-shared-exchange-path"
+          class="namespace-form__input"
+          type="text"
+          placeholder="Default location managed by AgentOS"
+          aria-describedby="ns-shared-exchange-path-hint"
+          [attr.aria-invalid]="canEditSharedExchangePath() && sharedExchangePathControl.invalid"
+          [readOnly]="!canEditSharedExchangePath()"
+          [formControl]="sharedExchangePathControl"
+          autocomplete="off"
+        />
+        <span id="ns-shared-exchange-path-hint" class="namespace-form__hint">
+          @if (canEditSharedExchangePath()) {
+            Absolute path of a folder on the server that holds the files shared by the namespace. Leave empty for the
+            default location.
+          } @else {
+            Only a super-admin can change this folder.
+          }
+        </span>
+        @if (
+          canEditSharedExchangePath() &&
+          sharedExchangePathControl.invalid &&
+          (sharedExchangePathControl.dirty || sharedExchangePathControl.touched)
+        ) {
+          <span id="ns-shared-exchange-path-error" class="namespace-form__error" role="alert">
+            Enter an absolute path (e.g. /home/me/Coday or C:\Coday), or leave the field empty.
+          </span>
+        }
+      </div>
+
+      <div class="namespace-form__field">
         <label class="namespace-form__label" for="ns-run-cost-threshold">Run cost threshold</label>
         <input
           id="ns-run-cost-threshold"
@@ -74,17 +106,46 @@
           type="number"
           min="0"
           step="0.01"
-          placeholder="Optional maximum cost per run (e.g. 0.50)"
+          aria-describedby="ns-run-cost-threshold-hint"
+          [placeholder]="runCostThresholdPlaceholder()"
           [formControl]="runCostThresholdControl"
         />
-        <span class="namespace-form__hint">Leave empty to inherit the platform default.</span>
+        <span id="ns-run-cost-threshold-hint" class="namespace-form__hint">{{ runCostThresholdHint() }}</span>
+      </div>
+
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-max-tool-rounds">Maximum tool rounds</label>
+        <input
+          id="ns-max-tool-rounds"
+          class="namespace-form__input"
+          type="number"
+          min="1"
+          step="1"
+          placeholder="Server default"
+          aria-describedby="ns-max-tool-rounds-hint"
+          [attr.aria-invalid]="maxToolRoundsControl.invalid || maxToolRoundsUnparsable()"
+          [formControl]="maxToolRoundsControl"
+          (input)="onMaxToolRoundsInput($event)"
+        />
+        <span id="ns-max-tool-rounds-hint" class="namespace-form__hint">
+          Most tool rounds one agent run may take. Leave empty to inherit the server default. A change applies from the
+          next agent run.
+        </span>
+        @if (
+          maxToolRoundsUnparsable() ||
+          (maxToolRoundsControl.invalid && (maxToolRoundsControl.dirty || maxToolRoundsControl.touched))
+        ) {
+          <span id="ns-max-tool-rounds-error" class="namespace-form__error" role="alert">
+            Enter a whole number of at least 1, or leave the field empty.
+          </span>
+        }
       </div>
 
       <div class="namespace-form__actions">
         <button
           class="namespace-form__btn namespace-form__btn--primary"
           type="submit"
-          [disabled]="nameControl.invalid || isSubmitting()"
+          [disabled]="form.invalid || isSubmitting()"
         >
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>

@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * than corrupts. Moving to several instances requires a real claim/lease runner, which is a
  * separate piece of work.
  *
- * Opt-in: the worker only starts with `agentos.git.worker.enabled=true` (`AGENTOS_GIT_WORKER_ENABLED`).
+ * Opt-out: the worker only starts with `agentos.git.worker.enabled=true` (`AGENTOS_GIT_WORKER_ENABLED`).
  * [GitWorkerStartupCheck] logs a notice when the GIT plugin is loaded while it is off. On a live
  * instance, [GitWorkspacesEndpoint] pauses and resumes it through [GitWorkspacesControl].
  */

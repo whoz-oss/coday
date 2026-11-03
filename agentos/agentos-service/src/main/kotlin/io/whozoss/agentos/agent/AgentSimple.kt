@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.chat.UsageTrackingChatModel
 import io.whozoss.agentos.logging.withMdc
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -199,6 +200,8 @@ class AgentSimple(
                 // Keeping those two sources separate makes the live activity timeline truthful.
                 val contentBuilder = StringBuilder()
                 var currentTurnLogged = false
+                // Set from the last response when the tool round limit cut the run short.
+                var maxIterationsReached: Int? = null
 
                 coroutineScope {
                     // Keep the producer/consumer bridge bounded: unlike tool callbacks,
@@ -211,8 +214,12 @@ class AgentSimple(
                             try {
                                 // takeWhile cancels the upstream reactive stream as soon as
                                 // shouldContinue() returns false, rather than merely skipping chunks.
-                                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
-                                    textChunkChannel.send(chunk)
+                                streamSpec.chatResponse().asFlow().takeWhile { shouldContinue() }.collect { response ->
+                                    response.metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED)?.let {
+                                        maxIterationsReached = it
+                                    }
+                                    val chunk = response.result?.output?.text
+                                    if (!chunk.isNullOrEmpty()) textChunkChannel.send(chunk)
                                 }
                                 textChunkChannel.close()
                             } catch (e: Throwable) {
@@ -281,6 +288,8 @@ class AgentSimple(
                     emit(toolEvent)
                 }
 
+                maxIterationsReached?.let { emitMaxIterationsWarning(namespaceId, caseId, it) }
+
                 // Emit the final assistant message
                 if (content.isNotEmpty()) {
                     emit(
@@ -305,6 +314,7 @@ class AgentSimple(
                         agentName = name,
                         llmProvider = llmProvider,
                         llmModel = llmModel,
+                        maxIterationsReached = maxIterationsReached,
                     ),
                 )
             } catch (e: AgentInterrupt) {
