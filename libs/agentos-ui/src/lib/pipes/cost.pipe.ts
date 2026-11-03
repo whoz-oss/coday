@@ -16,6 +16,16 @@ const CENT = 0.01
 const AT_LEAST = '\u2265\u00a0'
 
 /**
+ * What a cost too small for four decimals prints instead of `0.0000`.
+ *
+ * `0.0000` is the very reading this pipe exists to prevent: a priced call that cost something
+ * must not look free. Below the printable floor the only true statement left is the bound itself.
+ * No `≥` is prefixed to it — "≥ < 0.0001" contradicts itself, and the warning beside the figure
+ * already says what is missing.
+ */
+const BELOW_FLOOR = '< 0.0001'
+
+/**
  * Formats an estimated cost for display.
  *
  * Two decimals is what the figures are read for — comparing runs, noticing an expensive one — and
@@ -60,7 +70,12 @@ export class CostPipe implements PipeTransform {
     const partial = Number.isFinite(unknownCount) && unknownCount > 0
     // Nothing priced: there is no lower bound to report, only the absence of one.
     if (partial && safe === 0) return UNKNOWN_COST
-    const formatted = safe === 0 ? '0.00' : safe >= CENT ? safe.toFixed(2) : safe.toFixed(4)
+    if (safe === 0) return '0.00'
+    const fourDecimals = safe.toFixed(4)
+    if (Number(fourDecimals) === 0) return BELOW_FLOOR
+    // Trailing zeros are dropped below a cent, so one amount has one width: 0.00999 printed
+    // `0.0100` sat beside the `0.01` of the value it rounds to.
+    const formatted = safe >= CENT ? safe.toFixed(2) : fourDecimals.replace(/0+$/, '')
     return partial ? `${AT_LEAST}${formatted}` : formatted
   }
 }

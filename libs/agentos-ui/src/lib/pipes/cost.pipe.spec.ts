@@ -10,7 +10,7 @@ describe('CostPipe', () => {
   })
 
   it('keeps four decimals under a cent rather than collapsing a cheap run to zero', () => {
-    expect(pipe.transform(0.004)).toBe('0.0040')
+    expect(pipe.transform(0.004)).toBe('0.004')
     expect(pipe.transform(0.0004)).toBe('0.0004')
   })
 
@@ -29,7 +29,7 @@ describe('CostPipe', () => {
 
     it('marks a partial total as a lower bound', () => {
       expect(pipe.transform(0.42, 2)).toBe('\u2265\u00a00.42')
-      expect(pipe.transform(0.004, 2)).toBe('\u2265\u00a00.0040')
+      expect(pipe.transform(0.004, 2)).toBe('\u2265\u00a00.004')
     })
 
     it('leaves a complete total unmarked', () => {
@@ -51,8 +51,18 @@ describe('CostPipe', () => {
     expect(pipe.transform(-1)).toBe('0.00')
   })
 
-  it('rounds the smallest non-zero figure to something other than zero', () => {
-    // A figure this small is still evidence that the run was priced: it must not read as free.
-    expect(pipe.transform(0.00004)).not.toBe('0.00')
+  it('states the bound rather than printing a zero, below four decimals', () => {
+    // The assertion is on the string, not on "something other than 0.00": `0.0000` passes that
+    // test while reading exactly as free, which is what this pipe exists to prevent.
+    expect(pipe.transform(0.00004)).toBe('< 0.0001')
+    expect(pipe.transform(1e-7)).toBe('< 0.0001')
+    expect(pipe.transform(0.0001)).toBe('0.0001')
+  })
+
+  it('keeps a value that rounds to a cent with the two-decimal figures', () => {
+    // 0.0100 beside 0.01 is the same amount printed at two widths.
+    expect(pipe.transform(0.00999)).toBe('0.01')
+    expect(pipe.transform(0.0094)).toBe('0.0094')
+    expect(pipe.transform(0.01)).toBe('0.01')
   })
 })

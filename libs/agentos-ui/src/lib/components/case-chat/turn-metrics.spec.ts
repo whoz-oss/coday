@@ -53,7 +53,7 @@ describe('buildTurnMetrics', () => {
     expect(metrics.get('f-2')!.cumulativeCost).toBeCloseTo(0.35)
   })
 
-  it('stops the running total at the first unpriced turn instead of skipping it silently', () => {
+  it('reports the running total as a lower bound once a turn is unpriced', () => {
     const events = [
       running('2026-11-03T10:00:00.000Z'),
       finished('f-1', '2026-11-03T10:00:01.000Z', { llmUsage: usage({ estimatedCostUsd: 0.1 }) }),
@@ -65,11 +65,47 @@ describe('buildTurnMetrics', () => {
 
     const metrics = buildTurnMetrics(events)
 
-    expect(metrics.get('f-1')!.cumulativeCost).toBeCloseTo(0.1)
-    expect(metrics.get('f-2')!.cumulativeCost).toBeUndefined()
+    expect(metrics.get('f-1')!.cumulativeUnknownCount).toBe(0)
     expect(metrics.get('f-2')!.cost).toBeUndefined()
-    // Once a turn is unknown, no later total can claim to be complete.
-    expect(metrics.get('f-3')!.cumulativeCost).toBeUndefined()
+    // The known part is still worth showing; the count is what marks it as a floor.
+    expect(metrics.get('f-3')!.cumulativeCost).toBeCloseTo(0.4)
+    expect(metrics.get('f-3')!.cumulativeUnknownCount).toBe(1)
+  })
+
+  it('counts a turn whose event carried no usage, instead of dropping it from the total', () => {
+    // The service builds a synthetic finished event when a run throws and never enriches it, while
+    // the spend it already made is recorded. Ignoring it would make later totals look whole.
+    const events = [
+      running('2026-11-03T10:00:00.000Z'),
+      finished('f-1', '2026-11-03T10:00:01.000Z', { llmUsage: usage({ estimatedCostUsd: 0.1 }) }),
+      running('2026-11-03T10:01:00.000Z'),
+      finished('f-2', '2026-11-03T10:01:01.000Z'),
+      running('2026-11-03T10:02:00.000Z'),
+      finished('f-3', '2026-11-03T10:02:01.000Z', { llmUsage: usage({ estimatedCostUsd: 0.3 }) }),
+    ]
+
+    const metrics = buildTurnMetrics(events)
+
+    expect(metrics.has('f-2')).toBe(false)
+    expect(metrics.get('f-3')!.cumulativeUnknownCount).toBe(1)
+  })
+
+  it('marks a turn that delegated: its own figure cannot see the sub-case spend', () => {
+    const events = [
+      running('2026-11-03T10:00:00.000Z'),
+      { id: 's-1', type: 'SubCaseStartedEvent', timestamp: '2026-11-03T10:00:00.500Z' } as unknown as CaseEvent,
+      finished('f-1', '2026-11-03T10:00:01.000Z', { llmUsage: usage({ estimatedCostUsd: 0.1 }) }),
+      running('2026-11-03T10:01:00.000Z'),
+      finished('f-2', '2026-11-03T10:01:01.000Z', { llmUsage: usage({ estimatedCostUsd: 0.2 }) }),
+    ]
+
+    const metrics = buildTurnMetrics(events)
+
+    expect(metrics.get('f-1')!.costUnknownCount).toBe(1)
+    // The next turn delegated nothing: its own figure is complete again.
+    expect(metrics.get('f-2')!.costUnknownCount).toBe(0)
+    // The conversation total stays a floor from then on.
+    expect(metrics.get('f-2')!.cumulativeUnknownCount).toBe(1)
   })
 
   it('reports no metrics when usage tracking produced nothing', () => {
@@ -131,8 +167,21 @@ describe('formatTurnDuration', () => {
     [59_900, '59.9s'],
     [60_000, '1m'],
     [100_000, '1m 40s'],
-    [3_600_000, '60m'],
+    [3_600_000, '1h'],
+    [3_900_000, '1h 5m'],
   ])('reads %sms as %s', (ms, expected) => {
     expect(formatTurnDuration(ms)).toBe(expected)
+  })
+
+  it('never prints sixty seconds inside a minute', () => {
+    // The remainder of 119 500ms rounds to 60 on its own: two minutes, not "1m 60s".
+    expect(formatTurnDuration(119_500)).toBe('2m')
+    expect(formatTurnDuration(179_900)).toBe('3m')
+  })
+
+  it('has no gap where a value reads as both seconds and a minute', () => {
+    expect(formatTurnDuration(59_400)).toBe('59.4s')
+    expect(formatTurnDuration(59_950)).toBe('1m')
+    expect(formatTurnDuration(60_000)).toBe('1m')
   })
 })
