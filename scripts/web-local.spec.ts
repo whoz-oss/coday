@@ -1,13 +1,12 @@
 import * as path from 'path'
 import {
-  AGENTOS_PLUGINS,
   builtJarGlob,
   devJarTarget,
-  FACTORY_PLUGINS,
   installManifest,
   isSetupDone,
   localLayout,
   NPM_PACKAGES,
+  pluginArtifactIds,
   resolveLocalRoot,
   tarballPrefix,
   unsafeRootReason,
@@ -60,7 +59,7 @@ describe('web-local helpers', () => {
 
   it('never places a JAR outside the jar directories, so the data dirs of a kept config are left alone', () => {
     for (const kind of ['agentos', 'factory'] as const) {
-      for (const artifactId of [`${kind}-service`, ...(kind === 'agentos' ? AGENTOS_PLUGINS : FACTORY_PLUGINS)]) {
+      for (const artifactId of [`${kind}-service`, `${kind}-some-plugin`]) {
         const target = devJarTarget('/c', kind, artifactId)
         expect(path.relative(path.join('/c', kind, 'data'), target).startsWith('..')).toBe(true)
         expect(target.endsWith('-dev.jar')).toBe(true)
@@ -68,16 +67,27 @@ describe('web-local helpers', () => {
     }
   })
 
-  it('ships every plugin the release publishes', () => {
-    expect(AGENTOS_PLUGINS).toEqual([
+  it('derives the plugins from what the repository holds, whatever their name', () => {
+    const agentosEntries = [
+      'agentos-service',
+      'agentos-sdk',
+      'agentos-git', // shared lib, not a plugin
+      'agentos-plugins-filesystem', // not named <kind>-<name>-plugin
+      'agentos-git-plugin',
       'agentos-bash-plugin',
-      'agentos-file-plugin',
-      'agentos-mcp-plugin',
-      'agentos-http-plugin',
-      'agentos-tmux-plugin',
+      'agentos-brand-new-plugin',
+      'factory-forge-plugin', // other platform
+      'docs',
+    ]
+    expect(pluginArtifactIds('agentos', agentosEntries)).toEqual([
+      'agentos-bash-plugin',
+      'agentos-brand-new-plugin',
       'agentos-git-plugin',
     ])
-    expect(FACTORY_PLUGINS).toEqual(['factory-forge-plugin'])
+    expect(pluginArtifactIds('factory', ['factory-service', 'factory-forge-plugin', 'agentos-bash-plugin'])).toEqual([
+      'factory-forge-plugin',
+    ])
+    expect(pluginArtifactIds('factory', [])).toEqual([])
   })
 })
 

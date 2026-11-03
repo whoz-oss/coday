@@ -12,8 +12,21 @@ export const NPM_PACKAGES = [
   { name: '@whoz-oss/coday-web', dir: 'apps/web' },
 ] as const
 
-export const AGENTOS_PLUGINS = ['bash', 'file', 'mcp', 'http', 'tmux', 'git'].map((n) => `agentos-${n}-plugin`)
-export const FACTORY_PLUGINS = ['factory-forge-plugin']
+/**
+ * Plugin artifact ids among the entries of `<workspace>/<kind>/`: every `<kind>-<name>-plugin` directory, the same
+ * naming rule `selectArtifacts` (apps/server/src/lib/jar-set.ts) applies to a release manifest. Nothing is listed by
+ * hand: a plugin added to (or removed from) the repository is picked up by `web:local` without touching the script.
+ * Shared libs (`agentos-git`) and the services do not match.
+ */
+export function pluginArtifactIds(kind: 'agentos' | 'factory', entries: string[]): string[] {
+  const prefix = `${kind}-`
+  const suffix = '-plugin'
+  return entries
+    .filter(
+      (entry) => entry.startsWith(prefix) && entry.endsWith(suffix) && entry.length > prefix.length + suffix.length
+    )
+    .sort()
+}
 
 /** Name of the persistent root directory, created in the user's home. */
 export const DEFAULT_LOCAL_DIRNAME = '.coday-local'
