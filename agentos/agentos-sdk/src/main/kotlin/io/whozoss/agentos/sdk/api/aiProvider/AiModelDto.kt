@@ -61,4 +61,9 @@ data class AiModelDto(
      * Anthropic and Gemini providers, where the service cannot send it reliably yet.
      */
     val reasoningEffort: io.whozoss.agentos.sdk.aiProvider.ReasoningEffort? = null,
+    /**
+     * When true, agents using this model that do not set an execution mode themselves run in
+     * ADVANCED instead of SIMPLE. An agent's explicit choice always wins.
+     */
+    val supportsAdvancedExecution: Boolean = false,
 )

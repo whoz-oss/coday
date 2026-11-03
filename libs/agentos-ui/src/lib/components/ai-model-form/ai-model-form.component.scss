@@ -98,6 +98,35 @@
     font-family: monospace;
   }
 
+  &__toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  &__toggle-checkbox {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+  }
+
+  &__toggle-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  &__toggle-hint {
+    margin: 0.25rem 0 0 1.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+  }
+
   &__section {
     border: 1px solid var(--color-divider);
     border-radius: 0;

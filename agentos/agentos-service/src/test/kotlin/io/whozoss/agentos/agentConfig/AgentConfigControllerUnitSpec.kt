@@ -177,7 +177,6 @@ class AgentConfigControllerUnitSpec :
                     description = "Writes code",
                     instructions = "Write clean code.",
                     modelName = "claude-3-opus",
-                    executionMode = ExecutionMode.SIMPLE,
                     createdOn = c.metadata.created,
                     updatedOn = c.metadata.modified,
                     enabled = false,
@@ -210,13 +209,24 @@ class AgentConfigControllerUnitSpec :
             result.advancedExecution shouldBe true
         }
 
-        "toDto exposes the resolved executionMode for a legacy config without executionMode" {
+        "toDto exposes the explicit executionMode of a legacy config without executionMode" {
             val c = config().copy(executionMode = null, advancedExecution = true)
 
             val result = toDto(c)
 
             result.executionMode shouldBe ExecutionMode.ADVANCED
             result.advancedExecution shouldBe true
+        }
+
+        "toDto exposes a null executionMode when the agent leaves the choice to its model" {
+            val result = toDto(config().copy(executionMode = null, advancedExecution = false))
+
+            result.executionMode shouldBe null
+            result.advancedExecution shouldBe null
+        }
+
+        "toDto keeps an explicit SIMPLE distinct from no choice" {
+            toDto(config().copy(executionMode = ExecutionMode.SIMPLE)).executionMode shouldBe ExecutionMode.SIMPLE
         }
 
         "toDto derives advancedExecution from executionMode, never contradicting it" {
@@ -341,7 +351,20 @@ class AgentConfigControllerUnitSpec :
 
         "toDomain resolves the legacy advancedExecution flag into executionMode" {
             toDomain(resource().copy(advancedExecution = true)).executionMode shouldBe ExecutionMode.ADVANCED
-            toDomain(resource().copy(advancedExecution = null)).executionMode shouldBe ExecutionMode.SIMPLE
+        }
+
+        "toDomain persists null executionMode and advancedExecution=false when the client sends neither field" {
+            val result = toDomain(resource().copy(executionMode = null, advancedExecution = null))
+
+            result.executionMode shouldBe null
+            result.advancedExecution shouldBe false
+        }
+
+        "toDomain treats advancedExecution=false as no explicit choice" {
+            val result = toDomain(resource().copy(executionMode = null, advancedExecution = false))
+
+            result.executionMode shouldBe null
+            result.advancedExecution shouldBe false
         }
 
         "toDomain derives advancedExecution from executionMode when only executionMode is sent" {
@@ -589,6 +612,40 @@ class AgentConfigControllerUnitSpec :
             every { service.update(any()) } answers {
                 val saved = firstArg<AgentConfig>()
                 saved.enabled shouldBe true
+                saved
+            }
+
+            controller.update(c.id, payload)
+
+            verify(exactly = 1) { service.update(any()) }
+        }
+
+        "update persists null executionMode when the payload sends neither field" {
+            val c = config().copy(executionMode = ExecutionMode.ADVANCED, advancedExecution = true)
+            val payload = resource(id = c.id).copy(executionMode = null, advancedExecution = null)
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.executionMode shouldBe null
+                saved.advancedExecution shouldBe false
+                saved
+            }
+
+            controller.update(c.id, payload)
+
+            verify(exactly = 1) { service.update(any()) }
+        }
+
+        "update maps the legacy advancedExecution=true to ADVANCED" {
+            val c = config()
+            val payload = resource(id = c.id).copy(executionMode = null, advancedExecution = true)
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.executionMode shouldBe ExecutionMode.ADVANCED
+                saved.advancedExecution shouldBe true
                 saved
             }
 

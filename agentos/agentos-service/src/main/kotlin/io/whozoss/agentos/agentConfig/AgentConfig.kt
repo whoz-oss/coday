@@ -75,17 +75,18 @@ data class AgentConfig(
     val integrations: Map<String, List<String>?>? = null,
     /**
      * Execution mode for this agent. When non-null, takes precedence over [advancedExecution].
-     * - [ExecutionMode.SIMPLE]: single LLM call per turn (default).
+     * - [ExecutionMode.SIMPLE]: single LLM call per turn.
      * - [ExecutionMode.ADVANCED]: multi-step LLM orchestration loop.
      * - [ExecutionMode.LOOP]: zero LLM calls, programmatic tool sequence.
      *
-     * Null means: fall back to [advancedExecution] for backward compatibility.
+     * Null means: fall back to [advancedExecution] for backward compatibility, and if that is not set
+     * either, leave the choice to the agent's model (see [explicitExecutionMode]).
      */
     val executionMode: ExecutionMode? = null,
     /**
      * Legacy flag kept for backward compatibility with persisted configs that predate [executionMode].
      * When [executionMode] is non-null, this field is ignored.
-     * When [executionMode] is null: `true` → ADVANCED, `false` → SIMPLE.
+     * When [executionMode] is null: `true` → ADVANCED, `false` → no explicit choice.
      *
      * @deprecated Prefer [executionMode].
      */
@@ -186,10 +187,13 @@ data class AgentConfig(
         get() = metadata.version == null
 
     /**
-     * Resolves the effective [ExecutionMode] for this agent, applying backward-compatibility
-     * fallback: when [executionMode] is null, [advancedExecution] is used
-     * (`true` → [ExecutionMode.ADVANCED], `false` → [ExecutionMode.SIMPLE]).
+     * The execution mode this agent explicitly asks for: [executionMode] when set, otherwise
+     * [ExecutionMode.ADVANCED] when the legacy [advancedExecution] flag is `true`.
+     *
+     * Null means the agent leaves the choice to its model: the effective mode is then decided in
+     * [io.whozoss.agentos.agent.AgentServiceImpl] from [io.whozoss.agentos.sdk.aiProvider.AiModel.supportsAdvancedExecution].
      */
-    val resolvedExecutionMode: ExecutionMode
-        get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
+    @Suppress("DEPRECATION")
+    val explicitExecutionMode: ExecutionMode?
+        get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else null
 }

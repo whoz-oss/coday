@@ -43,6 +43,10 @@ import { CONFIG_AGENT_TYPE, isConfigAgentExposed } from './config-agent-exposure
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
 
+/** Value of the execution mode selector when the agent leaves the choice to its model (sent as null). */
+const MODEL_DEFAULT_MODE = ''
+type ExecutionModeChoice = ExecutionMode | typeof MODEL_DEFAULT_MODE
+
 /** Represents one sub-agent glob pattern entry in the list. */
 interface SubAgentRow {
   control: FormControl<string>
@@ -178,7 +182,7 @@ export class AgentConfigFormComponent implements OnInit {
     description: new FormControl<string | null>(null),
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
-    executionMode: new FormControl<ExecutionMode>(AgentConfigExecutionModeEnum.SIMPLE, { nonNullable: true }),
+    executionMode: new FormControl<ExecutionModeChoice>(MODEL_DEFAULT_MODE, { nonNullable: true }),
     delegationTimeoutSeconds: new FormControl<number | null>(null, {
       validators: [Validators.min(1), Validators.max(2147483647), Validators.pattern(/^\d+$/)],
     }),
@@ -265,6 +269,9 @@ export class AgentConfigFormComponent implements OnInit {
 
   /** Expose the enum to the template for option value bindings. */
   protected readonly ExecutionMode = AgentConfigExecutionModeEnum
+
+  /** Selector value meaning "no explicit choice, use the model's default". */
+  protected readonly modelDefaultMode = MODEL_DEFAULT_MODE
 
   /** Placeholder illustrating the AgentLoopPayload shape expected by loopConfig. */
   protected readonly loopConfigPlaceholder = JSON.stringify(
@@ -384,10 +391,10 @@ export class AgentConfigFormComponent implements OnInit {
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
-          // Backward compat: if executionMode is absent but advancedExecution is true, infer ADVANCED.
-          const mode: ExecutionMode =
+          // No explicit mode (and no legacy advancedExecution flag) means the model decides.
+          const mode: ExecutionModeChoice =
             config.executionMode ??
-            (config.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
+            (config.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : MODEL_DEFAULT_MODE)
           this.executionModeControl.setValue(mode)
           this.delegationTimeoutControl.setValue(config.delegationTimeoutSeconds ?? null)
           this.enabledControl.setValue(config.enabled ?? true)
@@ -732,7 +739,8 @@ export class AgentConfigFormComponent implements OnInit {
       modelName: this.modelNameControl.value?.trim() || undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
-      executionMode: this.executionModeControl.value,
+      // null = "Model default": the backend then lets the agent's model decide.
+      executionMode: (this.executionModeControl.value || null) as AgentConfig['executionMode'],
       // Keep advancedExecution for backward compat with older backend versions.
       advancedExecution: this.executionModeControl.value === AgentConfigExecutionModeEnum.ADVANCED,
       enabled: this.enabledControl.value,
