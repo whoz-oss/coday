@@ -1,32 +1,36 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import {
   AiModel,
-  AiProvider,
   AiModelControllerService,
+  AiProvider,
   AiProviderControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, combineLatest, map, Observable, switchMap } from 'rxjs'
-import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
+import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { BehaviorSubject, combineLatest, switchMap } from 'rxjs'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
+
+interface AiModelRow {
+  key: string
+  model: AiModel
+  title: string
+  providerName: string
+}
 
 /**
- * PlatformAiModelsComponent — list view for platform-level AI models.
+ * PlatformAiModelsComponent — table view for platform-level AI models.
  *
  * Loaded at /agentos/admin/ai-models. Accessible to super-admins only
  * (backend enforces via 403; frontend shows the link only when user.isAdmin).
  *
- * Platform models have namespaceId IS NULL. They are grouped by their parent
- * platform AI provider (loaded in parallel to resolve group labels).
- *
- * Edit navigates to the existing AiModelFormComponent via 'none' as namespaceId
- * sentinel (same pattern as platform AI providers).
+ * Platform models have namespaceId IS NULL. Their parent platform AI provider is loaded in
+ * parallel to resolve the provider column (falls back to the provider id).
  */
 @Component({
   selector: 'agentos-platform-ai-models',
-  imports: [AsyncPipe, EntityListComponent, AiModelItemComponent, IconButtonComponent],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
   templateUrl: './platform-ai-models.component.html',
   styleUrl: './platform-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,72 +44,65 @@ export class PlatformAiModelsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-
-  /**
-   * Raw models and their parent providers loaded in parallel.
-   * Providers are scoped to platform level (namespaceId='none') so group labels
-   * resolve correctly without falling back to UUIDs.
-   */
-  private readonly data$: Observable<[AiModel[], AiProvider[]]> = this.refresh$.pipe(
-    switchMap(() => {
-      this.isLoading.set(true)
-      return combineLatest([
-        this.aiModelController.listPlatformLevelAiModel(),
-        this.aiProviderController.listAiProvider('none'),
-      ])
-    })
+  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly rows = signal<AiModelRow[]>([])
+  protected readonly rowFilter = createRowFilter(this.rows, (row) =>
+    [row.title, row.model.apiModelName, row.providerName].filter(Boolean).join(' ')
   )
-
-  /** Mapped to EntityListItem[] with groupKey/groupLabel for ds-entity-list grouping. */
-  protected readonly modelItems$ = this.data$.pipe(
-    map(([models, providers]) => {
-      const providerNames = new Map(providers.map((p: AiProvider) => [p.id ?? '', p.name]))
-      return models.map(
-        (m: AiModel): EntityListItem => ({
-          id: m.id ?? '',
-          name: m.alias ?? m.apiModelName,
-          description: m.apiModelName,
-          groupKey: m.aiProviderId,
-          groupLabel: providerNames.get(m.aiProviderId) ?? m.aiProviderId,
-        })
-      )
-    })
-  )
-
-  /** Full model objects indexed by id — used to resolve itemTemplate events. */
-  private modelsById = new Map<string, AiModel>()
 
   constructor() {
-    this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ([models]) => {
-        this.modelsById = new Map(models.map((m: AiModel) => [m.id ?? '', m]))
-        this.isLoading.set(false)
-      },
-      error: () => this.isLoading.set(false),
-    })
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
+    this.refresh$
+      .pipe(
+        switchMap(() => {
+          this.isLoading.set(true)
+          // Providers are scoped to platform level (namespaceId='none') so provider names
+          // resolve correctly without falling back to UUIDs.
+          return combineLatest([
+            this.aiModelController.listPlatformLevelAiModel(),
+            this.aiProviderController.listAiProvider('none'),
+          ])
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: ([models, providers]) => {
+          const providerNames = new Map(providers.map((p: AiProvider) => [p.id ?? '', p.name]))
+          this.rows.set(
+            models.map((model: AiModel, index) => ({
+              key: model.id ?? `model:${index}`,
+              model,
+              title: model.alias ?? model.apiModelName,
+              providerName: providerNames.get(model.aiProviderId) ?? model.aiProviderId,
+            }))
+          )
+          this.isLoading.set(false)
+        },
+        error: () => this.isLoading.set(false),
+      })
   }
 
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', 'admin', 'ai-models', 'new'])
+    void this.router.navigate(['/agentos', 'admin', 'ai-models', 'new'])
   }
 
-  protected deleteModel(model: AiModel): void {
+  protected edit(row: AiModelRow): void {
+    if (!row.model.id) return
+    void this.router.navigate(['/agentos', 'admin', 'ai-models', row.model.id, 'edit'])
+  }
+
+  protected requestDelete(row: AiModelRow): void {
+    this.pendingDeleteId.set(row.key)
+  }
+
+  protected cancelDelete(): void {
+    this.pendingDeleteId.set(null)
+  }
+
+  protected confirmDelete(row: AiModelRow): void {
+    this.pendingDeleteId.set(null)
     this.aiModelController
-      .deleteAiModel(model.id ?? '')
+      .deleteAiModel(row.model.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
-  }
-
-  protected onEdit(model: AiModel): void {
-    if (!model.id) return
-    this.router.navigate(['/agentos', 'admin', 'ai-models', model.id, 'edit'])
-  }
-
-  protected resolveModel(id: string): AiModel | null {
-    return this.modelsById.get(id) ?? null
   }
 }

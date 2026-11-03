@@ -1,25 +1,24 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AiProvider, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
-import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
+import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { BehaviorSubject, switchMap } from 'rxjs'
+import { createRowFilter } from '../../utils/filter-rows'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
- * PlatformAiProvidersComponent — list view for platform-level AI providers.
+ * PlatformAiProvidersComponent — table view for platform-level AI providers.
  *
  * Loaded at /agentos/admin/ai-providers. Accessible to super-admins only
  * (backend enforces via 403; frontend shows the link only when user.isAdmin).
  *
- * Platform providers have namespaceId IS NULL (sentinel: 'none').
- * The scope badge shows 'NS' for all items — there is no user-scoped provider at
- * platform level, and the badge still conveys the shared-namespace semantic.
+ * Platform providers have namespaceId IS NULL (sentinel: 'none'). The API key is never
+ * displayed here: credentials are only visible (masked) in the form.
  */
 @Component({
   selector: 'agentos-platform-ai-providers',
-  imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent, IconButtonComponent],
+  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent],
   templateUrl: './platform-ai-providers.component.html',
   styleUrl: './platform-ai-providers.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,63 +31,53 @@ export class PlatformAiProvidersComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-
-  /** Raw platform providers, kept for delete lookups. */
-  private readonly providers$ = this.refresh$.pipe(
-    switchMap(() => {
-      this.isLoading.set(true)
-      return this.aiProviderController.listAiProvider('none')
-    })
+  protected readonly pendingDeleteId = signal<string | null>(null)
+  protected readonly providers = signal<AiProvider[]>([])
+  protected readonly rowFilter = createRowFilter(this.providers, (provider) =>
+    [provider.name, provider.apiType, provider.baseUrl].filter(Boolean).join(' ')
   )
-
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly providerItems$ = this.providers$.pipe(
-    map((providers) =>
-      providers.map(
-        (p: AiProvider): EntityListItem => ({
-          id: p.id ?? '',
-          name: p.name,
-          description: p.apiType,
-        })
-      )
-    )
-  )
-
-  /** Full provider objects indexed by id — used to resolve itemTemplate events. */
-  private providersById = new Map<string, AiProvider>()
 
   constructor() {
-    this.providers$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (providers) => {
-        this.providersById = new Map(providers.map((p: AiProvider) => [p.id ?? '', p]))
-        this.isLoading.set(false)
-      },
-      error: () => this.isLoading.set(false),
-    })
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
+    this.refresh$
+      .pipe(
+        switchMap(() => {
+          this.isLoading.set(true)
+          return this.aiProviderController.listAiProvider('none')
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: (providers) => {
+          this.providers.set(providers)
+          this.isLoading.set(false)
+        },
+        error: () => this.isLoading.set(false),
+      })
   }
 
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', 'admin', 'ai-providers', 'new'])
+    void this.router.navigate(['/agentos', 'admin', 'ai-providers', 'new'])
   }
 
-  protected onEdit(provider: AiProvider): void {
+  protected edit(provider: AiProvider): void {
     if (!provider.id) return
-    this.router.navigate(['/agentos', 'admin', 'ai-providers', provider.id, 'edit'])
+    void this.router.navigate(['/agentos', 'admin', 'ai-providers', provider.id, 'edit'])
   }
 
-  protected onDelete(provider: AiProvider): void {
+  protected requestDelete(provider: AiProvider): void {
+    this.pendingDeleteId.set(provider.id ?? null)
+  }
+
+  protected cancelDelete(): void {
+    this.pendingDeleteId.set(null)
+  }
+
+  protected confirmDelete(provider: AiProvider): void {
+    this.pendingDeleteId.set(null)
     if (!provider.id) return
     this.aiProviderController
       .deleteAiProvider(provider.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
-  }
-
-  protected resolveProvider(id: string): AiProvider | null {
-    return this.providersById.get(id) ?? null
   }
 }

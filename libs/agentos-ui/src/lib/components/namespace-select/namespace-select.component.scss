@@ -20,9 +20,29 @@
     font-family: inherit;
     cursor: pointer;
 
-    &:focus {
-      outline: none;
-      border-color: var(--color-primary, #007aff);
+    // The native outline was removed without a replacement: keep a visible keyboard focus.
+    &:focus-visible {
+      outline: 2px solid var(--color-accent, #007aff);
+      outline-offset: 2px;
+      border-color: var(--color-accent, #007aff);
+    }
+  }
+}
+
+// Mobile: label above the control would waste height, so the control takes the free width
+// next to its label and gets a touch-sized target.
+@media (max-width: 760px) {
+  :host {
+    display: block;
+  }
+
+  .namespace-select {
+    display: flex;
+
+    &__control {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 44px;
     }
   }
 }

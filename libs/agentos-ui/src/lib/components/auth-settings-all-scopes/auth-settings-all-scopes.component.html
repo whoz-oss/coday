@@ -2,6 +2,12 @@
   title="Auth settings"
   description="Authentication settings available in this namespace, including inherited platform and personal entries."
 >
+  <agentos-table-filter
+    label="Filter auth settings"
+    placeholder="Filter auth settings…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
   <button class="auth-settings__new" type="button" (click)="openCreateForm()">New auth setting</button>
 </ds-section-header>
 @if (isLoading()) {
@@ -9,28 +15,22 @@
 } @else if (rows().length === 0) {
   <p class="auth-settings__status">No auth settings available.</p>
 } @else {
-  <agentos-table-filter
-    label="Filter auth settings"
-    placeholder="Filter auth settings…"
-    [query]="rowFilter.query()"
-    (queryChange)="rowFilter.query.set($event)"
-  />
   <div class="auth-settings__table-wrap">
-    <table dsTable>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Authentication type</th>
-          <th>Scope</th>
-          <th><span class="sr-only">Actions</span></th>
+    <table dsTable role="table" aria-label="Auth settings">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Authentication type</th>
+          <th role="columnheader">Scope</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
-          <tr>
-            <td class="auth-settings__name">{{ row.config.name }}</td>
-            <td class="auth-settings__type">{{ row.config.authType }}</td>
-            <td>
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="auth-settings__name">{{ row.config.name }}</td>
+            <td role="cell" data-label="Authentication type" class="auth-settings__type">{{ row.config.authType }}</td>
+            <td role="cell" data-label="Scope">
               <div class="auth-settings__tags">
                 <ds-tag
                   [variant]="
@@ -43,7 +43,7 @@
                 }
               </div>
             </td>
-            <td class="auth-settings__actions">
+            <td role="cell" data-label="Actions" data-actions class="auth-settings__actions">
               <button type="button" (click)="duplicate(row)">Duplicate</button>
               @if (row.canMutate) {
                 <button type="button" (click)="edit(row)">Edit</button
