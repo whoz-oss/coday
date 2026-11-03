@@ -1,6 +1,11 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   height: 100%;
+}
+
+agentos-action-card {
+  flex: 1;
 }
 
 .ns-action {
