@@ -47,6 +47,13 @@ class UsageTrackingChatModel(
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
     private val maxToolRounds: Int = LimitsConfigProperties().agentMaxIterations,
 ) : ChatModel by delegate {
+    /**
+     * Kotlin `by delegate` does not forward Java interface default methods: without this override,
+     * ChatClient would see generic DefaultChatOptions instead of the provider's options, and
+     * provider-specific settings such as Anthropic cacheOptions would be lost (issue #1538).
+     */
+    override fun getDefaultOptions(): ChatOptions = delegate.defaultOptions
+
     override fun call(prompt: Prompt): ChatResponse =
         try {
             callRound(externalTools(prompt), 0)
