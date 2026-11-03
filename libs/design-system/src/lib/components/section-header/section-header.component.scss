@@ -25,12 +25,64 @@ p {
 .section-header__actions {
   display: flex;
   flex: none;
+  align-items: center;
   gap: 8px;
+
+  // Projected actions belong to the consumer, so they need ::ng-deep to be reached from here.
+  // A text button must never be truncated: it keeps its label and the row wraps instead.
+  ::ng-deep > button {
+    flex: none;
+    white-space: nowrap;
+  }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 760px) {
   :host {
     align-items: stretch;
     flex-direction: column;
+    gap: 12px;
+  }
+
+  h2 {
+    font-size: 21px;
+    overflow-wrap: anywhere;
+  }
+
+  // Actions are stacked, never wrapped side by side: each projected control (filter, then the
+  // `New …` button) takes the full width and is at least 44px tall.
+  .section-header__actions {
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+
+    ::ng-deep > * {
+      flex: none;
+      width: 100%;
+      min-width: 0;
+      max-width: none;
+      box-sizing: border-box;
+    }
+
+    // The filter component itself has an encapsulated 240px desktop max-width. The host must be
+    // stretched here; its internal field already uses width: 100% on mobile.
+    ::ng-deep agentos-table-filter {
+      display: block;
+      align-self: stretch;
+      flex: none;
+      width: 100% !important;
+      max-width: none !important;
+      min-width: 0;
+    }
+
+    ::ng-deep agentos-table-filter .table-filter {
+      width: 100% !important;
+      max-width: none !important;
+    }
+
+    ::ng-deep > button {
+      min-height: 44px;
+    }
   }
 }
