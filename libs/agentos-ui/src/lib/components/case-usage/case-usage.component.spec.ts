@@ -193,9 +193,13 @@ describe('CaseUsageComponent', () => {
     // The two figures the panel is opened for must be readable without opening it, each under the
     // word that says what it is.
     const summary = fixture.nativeElement.querySelector('summary')
-    const labels = Array.from(summary.querySelectorAll('dt')).map((dt) => (dt as HTMLElement).textContent?.trim())
+    const labels = Array.from(summary.querySelectorAll('.usage__figure-label')).map((el) =>
+      (el as HTMLElement).textContent?.trim()
+    )
     expect(labels).toEqual(['this run', 'threshold', 'conversation', 'tokens'])
     expect(summary.textContent).toContain('150')
+    // `summary` takes phrasing content: a definition list there is non-conforming.
+    expect(summary.querySelector('dl')).toBeNull()
     fixture.destroy()
   }))
 
@@ -211,9 +215,9 @@ describe('CaseUsageComponent', () => {
   /** The value of the summary figure carrying [label], so an assertion names what it reads. */
   function figure(fixture: ComponentFixture<CaseUsageComponent>, label: string): string | undefined {
     const pair = Array.from(fixture.nativeElement.querySelectorAll('.usage__figure')).find(
-      (row) => (row as HTMLElement).querySelector('dt')?.textContent?.trim() === label
+      (row) => (row as HTMLElement).querySelector('.usage__figure-label')?.textContent?.trim() === label
     )
-    return (pair as HTMLElement | undefined)?.querySelector('dd')?.textContent?.trim()
+    return (pair as HTMLElement | undefined)?.querySelector('.usage__figure-value')?.textContent?.trim()
   }
 
   it('identifies a parent pause and uses the parent threshold while showing the child run', fakeAsync(() => {

@@ -507,6 +507,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly delegations = computed(() => buildDelegations(this.events()))
 
   /**
+   * What each agent turn cost, keyed by the id of its `AgentFinishedEvent`.
+   *
+   * Keyed on `events()` alone, like [delegations]: the timeline also depends on the technical-log
+   * and tool-call toggles, and walking the whole stream again on every flip of a checkbox buys
+   * nothing.
+   */
+  private readonly turnMetrics = computed(() => buildTurnMetrics(this.events()))
+
+  /**
    * What the agent is doing right now — shown in place of a spinner while the turn runs.
    * Derived from the event stream and from the delegation pairing above, so it follows the turn
    * without any extra bookkeeping.
@@ -560,8 +569,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Keyed by AgentFinishedEvent id: the service already enriched that event with the turn's usage.
-    const turnMetrics = buildTurnMetrics(allEvents)
+    const turnMetrics = this.turnMetrics()
 
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
@@ -576,6 +584,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // Index of the agent message the current turn's footer belongs to, if the turn produced one.
     let lastAgentMessageIndex: number | null = null
     for (const e of allEvents) {
+      // A run opening closes whatever the previous one left behind: a turn killed mid-flight emits
+      // no finished event, and without this its answer would still be waiting to receive the next
+      // turn's figures.
+      if (e.type === 'AgentRunningEvent') lastAgentMessageIndex = null
       if (e.type === 'AgentFinishedEvent') {
         const metrics = turnMetrics.get(e.id)
         const item = lastAgentMessageIndex === null ? undefined : items[lastAgentMessageIndex]
@@ -589,8 +601,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const role = msg.actor.role
         const isFirstInGroup = role !== lastMessageRole
         lastMessageRole = role
-        // A new user message opens a turn: a failure that persists is worth warning about again.
-        if (role === 'USER') warningsThisTurn.clear()
+        // A new user message opens a turn: a failure that persists is worth warning about again,
+        // and no answer from before it may still collect figures.
+        if (role === 'USER') {
+          warningsThisTurn.clear()
+          lastAgentMessageIndex = null
+        }
         items.push({
           kind: 'message',
           event: msg,
@@ -1454,16 +1470,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * The strip's tooltip: the exact token count and which model produced it.
+   * The exact token count, for the cell that shows it rounded.
    *
-   * The strip itself is compact on purpose (`12k`, not `12,345`), and the model is not on it at
-   * all — it would double the width for something that rarely changes within a conversation. Both
-   * belong one hover away rather than nowhere.
+   * Only the count: the provider and model are already on screen for the turn, beside the agent's
+   * name ([agentModelAttribution]), so repeating them in a tooltip that only a mouse can reach
+   * hides nothing and says it twice.
    */
-  protected turnMetricsTitle(metrics: TurnMetrics): string {
-    const model = [metrics.llmProvider, metrics.llmModel].filter((part): part is string => !!part).join(' / ')
-    const tokens = `${metrics.totalTokens.toLocaleString()} tokens`
-    return model ? `${tokens} · ${model}` : tokens
+  protected turnTokensTitle(metrics: TurnMetrics): string {
+    return `${metrics.totalTokens.toLocaleString()} tokens`
   }
 
   /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */

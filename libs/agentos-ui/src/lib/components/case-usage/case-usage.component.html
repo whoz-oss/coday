@@ -17,41 +17,49 @@
           <span class="usage__title">Usage</span>
         }
         <!-- A readout, not a sentence: four figures, each under the word that says what it is. -->
-        <dl class="usage__figures">
-          <div class="usage__figure">
-            <dt class="usage__figure-label">this run</dt>
-            <dd class="usage__figure-value usage__figure-value--strong">
+        <!--
+          Spans, not a definition list: `summary` is the disclosure control of `details` and its
+          content model is phrasing content, so a `dl` there is non-conforming and leaves the
+          native marker behaviour undefined. The layout is unchanged — `.usage__figures` sets its
+          own `display: flex` either way.
+        -->
+        <span class="usage__figures">
+          <span class="usage__figure">
+            <span class="usage__figure-label">this run</span>
+            <span class="usage__figure-value usage__figure-value--strong">
               {{ state.cost | agentosCost: state.unknownCostCount }}
-            </dd>
-          </div>
+            </span>
+          </span>
           @if (state.runCostThreshold !== null && state.runCostThreshold !== undefined) {
-            <div class="usage__figure">
-              <dt class="usage__figure-label">threshold</dt>
-              <dd class="usage__figure-value">{{ state.runCostThreshold | agentosCost }}</dd>
-            </div>
+            <span class="usage__figure">
+              <span class="usage__figure-label">threshold</span>
+              <!-- A threshold is a number someone typed, not an estimate: it is shown as set. -->
+              <span class="usage__figure-value">{{ state.runCostThreshold | number: '1.2-6' }}</span>
+            </span>
           }
           <!-- The conversation figures belong in the summary: they are what the panel is opened for. -->
           @if (total(); as all) {
-            <div class="usage__figure">
-              <dt class="usage__figure-label">conversation</dt>
-              <dd class="usage__figure-value">{{ all.cost | agentosCost: all.unknownCostCount }}</dd>
-            </div>
-            <div class="usage__figure">
-              <dt class="usage__figure-label">tokens</dt>
-              <dd class="usage__figure-value" [title]="all.totalTokens.toLocaleString() + ' recorded tokens'">
+            <span class="usage__figure">
+              <span class="usage__figure-label">conversation</span>
+              <span class="usage__figure-value">{{ all.cost | agentosCost: all.unknownCostCount }}</span>
+            </span>
+            <span class="usage__figure">
+              <span class="usage__figure-label">tokens</span>
+              <span class="usage__figure-value" [title]="all.totalTokens.toLocaleString() + ' recorded tokens'">
                 {{ all.totalTokens | agentosTokens }}
-              </dd>
-            </div>
+              </span>
+            </span>
           }
-        </dl>
+        </span>
       </summary>
       <div class="usage__body">
         <p>Includes delegated work. Costs are estimates in the platform currency.</p>
         @if (total(); as all) {
           <p>
             Conversation: {{ all.cost | agentosCost: all.unknownCostCount }} recorded ·
-            {{ all.totalTokens | number }} recorded tokens, of which {{ all.inputTokens | number }} input,
-            {{ all.outputTokens | number }} output and {{ all.cacheReadTokens | number }} read from cache
+            {{ all.totalTokens | number }} recorded tokens — {{ all.inputTokens | number }} input,
+            {{ all.outputTokens | number }} output, {{ all.cacheReadTokens | number }} read from cache,
+            {{ all.cacheWriteTokens | number }} written to cache
           </p>
         }
         @if (state.liveTokens > 0) {
@@ -77,7 +85,7 @@
             @if (limit.canContinue) {
               @if (limit.threshold > 0) {
                 <button type="button" (click)="continue(limit)" [disabled]="saving() || !!error()">
-                  Continue · double threshold to {{ limit.threshold * 2 | agentosCost }}
+                  Continue · double threshold to {{ limit.threshold * 2 | number: '1.2-6' }}
                 </button>
               } @else {
                 <p>

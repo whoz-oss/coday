@@ -55,6 +55,24 @@ class UsageTrackingChatModel(
      */
     override fun getDefaultOptions(): ChatOptions = delegate.defaultOptions
 
+    /**
+     * Needed because of limitation of Kotlin `by delegate`
+     * Here default implementation provided by ChatModel is enough
+     * because it already delegates to `call(prompt)`
+     */
+    override fun call(message: String?): String? {
+        return super.call(message)
+    }
+
+    /**
+     * Needed because of limitation of Kotlin `by delegate`
+     * Here default implementation provided by ChatModel is enough
+     * because it already delegates to `call(prompt)`
+     */
+    override fun call(vararg messages: Message?): String? {
+        return super.call(*messages)
+    }
+
     override fun call(prompt: Prompt): ChatResponse =
         try {
             callRound(externalTools(prompt), 0)

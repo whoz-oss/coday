@@ -14,10 +14,14 @@ import { Pipe, PipeTransform } from '@angular/core'
 export function formatTokenCount(tokens: number | null | undefined): string {
   if (tokens === null || tokens === undefined || !Number.isFinite(tokens)) return '0'
   const safe = Math.max(0, tokens)
-  if (safe >= 1_000_000) return `${(safe / 1_000_000).toFixed(1)}m`
-  if (safe >= 10_000) return `${Math.round(safe / 1000)}k`
-  if (safe >= 1000) return `${(safe / 1000).toFixed(1)}k`
-  return String(Math.round(safe))
+  if (safe < 1000) return String(Math.round(safe))
+  // Each tier is chosen from the value as it will be rounded, not as it arrives. Testing the raw
+  // value instead puts 9 999 and 10 000 in different tiers though both read ten thousand, and lets
+  // 999 999 print `1000k` — four digits and a unit, beside the `1.0m` of its own neighbour.
+  const thousands = safe / 1000
+  const rounded = Number(thousands.toFixed(1))
+  if (rounded >= 1000) return `${(safe / 1_000_000).toFixed(1)}m`
+  return rounded >= 10 ? `${Math.round(thousands)}k` : `${rounded.toFixed(1)}k`
 }
 
 /**
