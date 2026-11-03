@@ -185,7 +185,7 @@
     font-family: inherit;
     outline: none;
     box-sizing: border-box;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     transition: border-color 0.15s ease;
     resize: none;
 
@@ -220,7 +220,7 @@
     font-family: var(--font-heading);
     font-weight: 600;
     cursor: pointer;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
     transition:
       background 0.15s ease,
       border-color 0.15s ease;

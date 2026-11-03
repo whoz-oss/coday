@@ -58,7 +58,7 @@
     color: var(--color-text-secondary);
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
     padding: 0.125rem 0.5rem;
     letter-spacing: 0.02em;
     align-self: flex-start;
@@ -92,7 +92,7 @@
   &__textarea {
     width: 100%;
     padding: 0.625rem 0.875rem;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     border: 1px solid var(--color-divider);
     background: var(--color-surface);
     color: var(--color-text);
@@ -132,7 +132,7 @@
   &__select {
     width: 100%;
     padding: 0.625rem 0.875rem;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     border: 1px solid var(--color-divider);
     background: var(--color-surface);
     color: var(--color-text);
@@ -151,7 +151,7 @@
 
   &__integrations {
     border: 1px solid var(--color-divider);
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     padding: 1rem;
     margin: 0;
     display: flex;
@@ -258,7 +258,7 @@
 
   &__skills {
     border: 1px solid var(--color-divider);
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     padding: 1rem;
     margin: 0;
     display: flex;
@@ -465,7 +465,7 @@
 
   &__btn {
     padding: 0.6rem 1.25rem;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
     border: 1px solid var(--color-divider);
     background: transparent;
     color: var(--color-text);

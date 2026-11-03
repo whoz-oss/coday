@@ -93,7 +93,7 @@
     box-sizing: border-box;
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     background: var(--color-surface, #fff);
     color: var(--color-text, #1d1d1f);
     font-family: inherit;
