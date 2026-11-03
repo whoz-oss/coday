@@ -4,7 +4,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
-import io.kotest.matchers.string.shouldStartWith
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
@@ -22,6 +21,7 @@ class BashToolUnitSpec : StringSpec({
         defaultTimeoutSeconds = 10L,
     )
     val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
+    fun tmpDirReal(): String = java.io.File(System.getProperty("java.io.tmpdir")).canonicalPath
 
     // --- name ---
 
@@ -123,7 +123,7 @@ class BashToolUnitSpec : StringSpec({
         )
         val result = tool.execute(BashTool.Input(), ctx)
         result.success shouldBe true
-        result.output shouldStartWith "(no output)"
+        result.output shouldBe "(no output)\n\nWorking directory: ${tmpDirReal()}"
     }
 
     // --- execute: parameterised command ---
@@ -242,9 +242,8 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(), ctx)
-        // The output should be the resolved real path of java.io.tmpdir
-        val expectedDir = java.io.File(System.getProperty("java.io.tmpdir")).canonicalPath
-        result.output shouldStartWith expectedDir
+        val expectedDir = tmpDirReal()
+        result.output shouldBe "$expectedDir\n\nWorking directory: $expectedDir"
     }
 
     "output should report the working directory" {
@@ -252,9 +251,8 @@ class BashToolUnitSpec : StringSpec({
             toolConfig = BashToolConfig(name = "greet", description = "Greets", command = "echo hello"),
             integrationConfig = baseConfig,
         )
-        val expectedDir = java.io.File(System.getProperty("java.io.tmpdir")).canonicalPath
         val result = tool.execute(BashTool.Input(), ctx)
-        result.output shouldBe "hello\n\nWorking directory: $expectedDir"
+        result.output shouldBe "hello\n\nWorking directory: ${tmpDirReal()}"
         result.output shouldNotContain "__AGENTOS_PWD_"
     }
 
@@ -269,8 +267,7 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(parameters = "cd / && echo moved"), ctx)
-        result.output shouldContain "moved"
-        result.output shouldContain "Working directory: /"
+        result.output shouldBe "moved\n\nWorking directory: /"
     }
 
     "working directory should be reported on a non-zero exit too" {
@@ -280,8 +277,7 @@ class BashToolUnitSpec : StringSpec({
         )
         val result = tool.execute(BashTool.Input(), ctx)
         result.errorType shouldBe "NONZERO_EXIT"
-        result.output shouldContain "Exit code: 3"
-        result.output shouldContain "Working directory:"
+        result.output shouldBe "Exit code: 3\n\nWorking directory: ${tmpDirReal()}"
     }
 
     "tool with relative path should run in workingDirectory/path" {
@@ -299,7 +295,8 @@ class BashToolUnitSpec : StringSpec({
                 integrationConfig = baseConfig,
             )
             val result = tool.execute(BashTool.Input(), ctx)
-            result.output shouldContain subDir.name
+            val expected = subDir.canonicalPath
+            result.output shouldBe "$expected\n\nWorking directory: $expected"
         } finally {
             subDir.delete()
         }

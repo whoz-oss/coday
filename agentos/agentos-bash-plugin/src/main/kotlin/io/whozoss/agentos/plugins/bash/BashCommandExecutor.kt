@@ -21,8 +21,10 @@ private const val DEFAULT_MAX_OUTPUT_CHARS = 100_000
  *
  * The directory the shell ends up in (it may differ from the starting one after a `cd`) is
  * captured by an `EXIT` trap that prints `pwd` after a per-execution marker at the end of stdout.
- * The marker is stripped before the output is returned, so it never reaches the caller. A command
- * that replaces the shell (`exec`) or installs its own `EXIT` trap yields no working directory.
+ * The trap is installed on the same line as the command (`trap ...; <command>`), so line numbers in
+ * shell diagnostics and `$LINENO` are unchanged. The marker is stripped before the output is
+ * returned, so it never reaches the caller. A command that replaces the shell (`exec`) or installs
+ * its own `EXIT` trap yields no working directory (null), and its stdout is left intact.
  */
 object BashCommandExecutor : KLogging() {
 
@@ -87,7 +89,7 @@ object BashCommandExecutor : KLogging() {
     }
 
     private fun wrapWithPwdTrap(command: String, marker: String): String =
-        "trap 'printf \"\\n%s%s\\n\" \"$marker\" \"\$(pwd)\"' EXIT\n$command"
+        "trap 'printf \"\\n%s%s\\n\" \"$marker\" \"\$(pwd)\"' EXIT; $command"
 
     /**
      * Splits the marker line off the end of [stdout]. Returns the untouched stdout and a null
@@ -96,7 +98,10 @@ object BashCommandExecutor : KLogging() {
     private fun extractWorkingDirectory(stdout: String, marker: String): Pair<String, String?> {
         val index = stdout.lastIndexOf("\n$marker")
         return when {
-            index < 0 -> stdout to null
+            index < 0 -> {
+                logger.debug { "No working directory marker in stdout (exec, custom EXIT trap or early exit?)" }
+                stdout to null
+            }
             else ->
                 stdout.substring(0, index) to
                     stdout.substring(index + 1 + marker.length).removeSuffix("\n").takeIf { it.isNotBlank() }
