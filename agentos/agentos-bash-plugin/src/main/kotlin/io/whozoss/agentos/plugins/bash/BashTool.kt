@@ -140,7 +140,7 @@ class BashTool(
     private fun formatCompleted(result: BashExecutionResult.Completed): String =
         buildString {
             if (result.stdout.isNotBlank()) {
-                append(result.stdout)
+                append(result.stdout.trimEnd())
             }
             if (result.stderr.isNotBlank()) {
                 if (isNotEmpty()) append("\n\n")
@@ -153,6 +153,10 @@ class BashTool(
             }
             if (isEmpty()) {
                 append("(no output)")
+            }
+            result.workingDirectory?.let {
+                append("\n\nWorking directory: ")
+                append(it)
             }
         }
 }

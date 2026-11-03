@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.bash
 
 import mu.KLogging
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
@@ -17,6 +18,11 @@ private const val DEFAULT_MAX_OUTPUT_CHARS = 100_000
  *
  * [destroyForcibly] is called only on the timeout and error paths — not on
  * successful completion, where the process has already exited cleanly.
+ *
+ * The directory the shell ends up in (it may differ from the starting one after a `cd`) is
+ * captured by an `EXIT` trap that prints `pwd` after a per-execution marker at the end of stdout.
+ * The marker is stripped before the output is returned, so it never reaches the caller. A command
+ * that replaces the shell (`exec`) or installs its own `EXIT` trap yields no working directory.
  */
 object BashCommandExecutor : KLogging() {
 
@@ -27,9 +33,10 @@ object BashCommandExecutor : KLogging() {
         maxOutputChars: Int = DEFAULT_MAX_OUTPUT_CHARS,
     ): BashExecutionResult {
         logger.debug { "Running bash command in ${workingDirectory.absolutePath}: $command" }
+        val marker = "__AGENTOS_PWD_${UUID.randomUUID()}__:"
 
         val process = try {
-            ProcessBuilder("/bin/bash", "-c", command)
+            ProcessBuilder("/bin/bash", "-c", wrapWithPwdTrap(command, marker))
                 .directory(workingDirectory)
                 .redirectErrorStream(false)
                 .start()
@@ -62,12 +69,13 @@ object BashCommandExecutor : KLogging() {
             }
             else -> {
                 try {
-                    val stdout = stdoutFuture.get()
+                    val (stdout, finalDirectory) = extractWorkingDirectory(stdoutFuture.get(), marker)
                     val stderr = stderrFuture.get()
                     BashExecutionResult.Completed(
                         exitCode = process.exitValue(),
                         stdout = stdout.take(maxOutputChars),
                         stderr = stderr.take(maxOutputChars),
+                        workingDirectory = finalDirectory,
                     )
                 } catch (e: Exception) {
                     logger.error(e) { "Error reading process output for command: $command" }
@@ -77,10 +85,32 @@ object BashCommandExecutor : KLogging() {
             }
         }
     }
+
+    private fun wrapWithPwdTrap(command: String, marker: String): String =
+        "trap 'printf \"\\n%s%s\\n\" \"$marker\" \"\$(pwd)\"' EXIT\n$command"
+
+    /**
+     * Splits the marker line off the end of [stdout]. Returns the untouched stdout and a null
+     * directory when the marker is absent.
+     */
+    private fun extractWorkingDirectory(stdout: String, marker: String): Pair<String, String?> {
+        val index = stdout.lastIndexOf("\n$marker")
+        return when {
+            index < 0 -> stdout to null
+            else ->
+                stdout.substring(0, index) to
+                    stdout.substring(index + 1 + marker.length).removeSuffix("\n").takeIf { it.isNotBlank() }
+        }
+    }
 }
 
 sealed interface BashExecutionResult {
-    data class Completed(val exitCode: Int, val stdout: String, val stderr: String) : BashExecutionResult
+    data class Completed(
+        val exitCode: Int,
+        val stdout: String,
+        val stderr: String,
+        val workingDirectory: String? = null,
+    ) : BashExecutionResult
     data class Timeout(val timeoutSeconds: Long) : BashExecutionResult
     data class Error(val message: String) : BashExecutionResult
 }
