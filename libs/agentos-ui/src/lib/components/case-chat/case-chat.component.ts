@@ -87,8 +87,9 @@ import { ComposerAttachmentsService } from '../composer-attachments/composer-att
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 import { configChangeQuestionIds } from './config-change-questions'
-import { buildTurnMetrics, formatTokenCount, formatTurnDuration, TurnMetrics } from './turn-metrics'
+import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
 import { CostPipe } from '../../pipes/cost.pipe'
+import { TokenCountPipe } from '../../pipes/token-count.pipe'
 
 export interface ToolCall {
   requestId: string
@@ -194,6 +195,7 @@ function hasActiveSelection(): boolean {
     ConfirmDialogComponent,
     AgentActivityComponent,
     CostPipe,
+    TokenCountPipe,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -1446,14 +1448,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.extractText(item.event)
   }
 
-  /** Tokens of a turn, compact: `845`, `12k`, `1.2m`. */
-  protected turnTokens(metrics: TurnMetrics): string {
-    return formatTokenCount(metrics.totalTokens)
-  }
-
   /** How long the turn took, in the shortest form that still carries the information. */
   protected turnDuration(metrics: TurnMetrics): string | null {
     return metrics.durationMs === undefined ? null : formatTurnDuration(metrics.durationMs)
+  }
+
+  /**
+   * The strip's tooltip: the exact token count and which model produced it.
+   *
+   * The strip itself is compact on purpose (`12k`, not `12,345`), and the model is not on it at
+   * all — it would double the width for something that rarely changes within a conversation. Both
+   * belong one hover away rather than nowhere.
+   */
+  protected turnMetricsTitle(metrics: TurnMetrics): string {
+    const model = [metrics.llmProvider, metrics.llmModel].filter((part): part is string => !!part).join(' / ')
+    const tokens = `${metrics.totalTokens.toLocaleString()} tokens`
+    return model ? `${tokens} · ${model}` : tokens
   }
 
   /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */

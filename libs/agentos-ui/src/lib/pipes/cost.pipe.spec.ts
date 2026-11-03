@@ -20,6 +20,28 @@ describe('CostPipe', () => {
     expect(pipe.transform(undefined)).toBe(UNKNOWN_COST)
   })
 
+  describe('with usage whose price is partly or wholly unknown', () => {
+    it('reports no figure when nothing was priced', () => {
+      // The case every namespace without pricing produces: the panels used to render this as
+      // "At least 0.00", which reads as a free run.
+      expect(pipe.transform(0, 3)).toBe(UNKNOWN_COST)
+    })
+
+    it('marks a partial total as a lower bound', () => {
+      expect(pipe.transform(0.42, 2)).toBe('\u2265\u00a00.42')
+      expect(pipe.transform(0.004, 2)).toBe('\u2265\u00a00.0040')
+    })
+
+    it('leaves a complete total unmarked', () => {
+      expect(pipe.transform(0.42, 0)).toBe('0.42')
+      expect(pipe.transform(0, 0)).toBe('0.00')
+    })
+
+    it('ignores a count that is not a usable number', () => {
+      expect(pipe.transform(0.42, Number.NaN)).toBe('0.42')
+    })
+  })
+
   it('treats a non-finite figure as unknown instead of printing NaN', () => {
     expect(pipe.transform(Number.NaN)).toBe(UNKNOWN_COST)
     expect(pipe.transform(Number.POSITIVE_INFINITY)).toBe(UNKNOWN_COST)
