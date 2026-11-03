@@ -9,6 +9,10 @@ import {
 } from './model-catalogue'
 import { ApplyTracker } from './progress'
 
+/** Scope of a provider: platform when it has neither a namespace nor a user. */
+const scopeOf = (provider: Record<string, any>): string =>
+  `${provider['namespaceId'] ?? 'platform'}/${provider['userId'] ?? 'platform'}`
+
 /** In-memory AgentOS behind a mocked fetch: just enough REST to run the apply flow. */
 class FakeAgentos {
   providers: Array<Record<string, any>> = []
@@ -35,9 +39,16 @@ class FakeAgentos {
       return new Response('boom', { status: 500 })
     }
     const p = url.pathname
-    if (method === 'GET' && p === '/api/ai-providers') return json(this.providers)
+    if (method === 'GET' && p === '/api/ai-providers') {
+      // Like AgentOS: `namespaceId=none` lists the platform providers, no parameter lists the caller's own.
+      const platform = url.searchParams.get('namespaceId') === 'none'
+      return json(this.providers.filter((x) => (platform ? scopeOf(x) === scopeOf({}) : x['userId'] === this.me['id'])))
+    }
     if (method === 'POST' && p === '/api/ai-providers') {
       if (!this.me['isAdmin']) return new Response('Platform-level AiProvider requires Super Admin', { status: 403 })
+      if (this.providers.some((x) => x['name'] === body.name && scopeOf(x) === scopeOf(body))) {
+        return new Response('AiProvider already exists', { status: 409 })
+      }
       const created = { ...body, id: `prov-${++this.seq}` }
       this.providers.push(created)
       return json(created, 201)
@@ -221,6 +232,27 @@ describe('runApply', () => {
     await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)
     expect(fake.providers).toHaveLength(1)
     expect(fake.providers[0]).toMatchObject({ id: 'old', apiKey: 'sk-secret-anthropic-key' })
+  })
+
+  it('creates the platform provider next to a personal one of the same name, leaving it untouched', async () => {
+    const { fake, deps } = setup()
+    const personal = {
+      id: 'mine',
+      name: 'anthropic',
+      apiType: 'Anthropic',
+      apiKey: 'k',
+      namespaceId: null,
+      userId: 'user-1',
+    }
+    fake.providers.push({ ...personal })
+
+    expect(await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)).toBe(true)
+
+    expect(fake.providers).toHaveLength(2)
+    expect(fake.providers.find((p) => p['id'] === 'mine')).toEqual(personal)
+    const platform = fake.providers.find((p) => p['id'] !== 'mine')
+    expect(platform).toMatchObject({ namespaceId: null, userId: null, apiKey: 'sk-secret-anthropic-key' })
+    expect(fake.models.every((m) => m['aiProviderId'] === platform?.['id'])).toBe(true)
   })
 
   it('moves an existing model to the new priority when the ranking changed', async () => {

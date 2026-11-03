@@ -96,9 +96,9 @@ export class AgentosClient {
     return (text ? JSON.parse(text) : undefined) as T
   }
 
-  /** Platform-scope providers (no query parameter). */
+  /** Platform-scope providers. Without a query parameter AgentOS answers the caller's own providers instead. */
   listPlatformProviders(): Promise<AgentosProvider[]> {
-    return this.request('GET', '/api/ai-providers')
+    return this.request('GET', '/api/ai-providers?namespaceId=none')
   }
 
   createProvider(provider: AgentosProvider): Promise<AgentosProvider> {
