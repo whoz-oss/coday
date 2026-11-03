@@ -577,33 +577,34 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       (component as unknown as { executionModeControl: { value: string; setValue: (v: string) => void } })
         .executionModeControl
 
-    it('defaults a new agent to "Model default" and sends executionMode null', () => {
+    it('defaults a new agent to SIMPLE and sends it explicitly', () => {
       component.ngOnInit()
       internals().nameControl.setValue('new-agent')
 
       internals().submit()
 
-      expect(modeControl().value).toBe('')
-      expect(controller.createAgentConfig.mock.calls[0][0].executionMode).toBeNull()
-    })
-
-    it('sends the explicit mode when one is selected', () => {
-      component.ngOnInit()
-      internals().nameControl.setValue('new-agent')
-      modeControl().setValue('SIMPLE')
-
-      internals().submit()
-
+      expect(modeControl().value).toBe('SIMPLE')
       expect(controller.createAgentConfig.mock.calls[0][0].executionMode).toBe('SIMPLE')
     })
 
-    it('hydrates a config without executionMode as "Model default"', () => {
+    it('sends the selected mode', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-agent')
+      modeControl().setValue('ADVANCED')
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].executionMode).toBe('ADVANCED')
+      expect(controller.createAgentConfig.mock.calls[0][0].advancedExecution).toBe(true)
+    })
+
+    it('hydrates a config without executionMode as SIMPLE', () => {
       routeAgentConfigId = 'a-1'
       controller.getByIdAgentConfig.mockReturnValue(of(editConfig({})))
 
       component.ngOnInit()
 
-      expect(modeControl().value).toBe('')
+      expect(modeControl().value).toBe('SIMPLE')
     })
 
     it('hydrates the legacy advancedExecution flag as ADVANCED', () => {
@@ -615,24 +616,14 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(modeControl().value).toBe('ADVANCED')
     })
 
-    it('clears a previously explicit mode when switched back to "Model default"', () => {
-      routeAgentConfigId = 'a-1'
-      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ executionMode: 'ADVANCED' as never })))
-      component.ngOnInit()
-      modeControl().setValue('')
-
-      internals().submit()
-
-      expect(controller.updateAgentConfig.mock.calls[0][1].executionMode).toBeNull()
-    })
-
-    it('offers a "Model default" option first in the selector', () => {
+    it('offers SIMPLE, ADVANCED and LOOP, without any "model default" option', () => {
       fixture.detectChanges()
       const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
         '#agent-config-execution-mode'
       )!
 
-      expect(Array.from(select.options).map((o) => o.value)).toEqual(['', 'SIMPLE', 'ADVANCED', 'LOOP'])
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['SIMPLE', 'ADVANCED', 'LOOP'])
+      expect(select.textContent).not.toContain('Model default')
     })
   })
 

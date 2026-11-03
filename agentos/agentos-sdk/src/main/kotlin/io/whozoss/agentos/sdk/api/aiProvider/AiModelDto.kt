@@ -62,8 +62,8 @@ data class AiModelDto(
      */
     val reasoningEffort: io.whozoss.agentos.sdk.aiProvider.ReasoningEffort? = null,
     /**
-     * When true, agents using this model that do not set an execution mode themselves run in
-     * ADVANCED instead of SIMPLE. An agent's explicit choice always wins.
+     * Whether this model can run agents in ADVANCED execution mode. It never changes an agent's mode:
+     * an agent configured ADVANCED that runs on a model without this flag fails with an error.
      */
     val supportsAdvancedExecution: Boolean = false,
 )

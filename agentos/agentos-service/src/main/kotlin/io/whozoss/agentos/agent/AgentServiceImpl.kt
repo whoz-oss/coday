@@ -437,7 +437,7 @@ class AgentServiceImpl(
                     skillTools,
             )
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
-        val executionMode = resolveExecutionMode(agentConfig, modelConfig)
+        val executionMode = agentConfig.resolvedExecutionMode
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
@@ -462,27 +462,25 @@ class AgentServiceImpl(
     }
 
     /**
-     * Decides the effective [ExecutionMode] of [agentConfig] running on [modelConfig].
+     * Fails when [definition] asks for ADVANCED execution on a model that does not support it.
      *
-     * Precedence: the agent's explicit choice ([AgentConfig.explicitExecutionMode]: execution mode,
-     * then legacy `advancedExecution: true`) > the model's [AiModel.supportsAdvancedExecution] > SIMPLE.
-     * This is the only place that knows both the agent and its resolved model.
+     * The agent decides its mode and the model only constrains it: there is no silent downgrade to SIMPLE.
+     * SIMPLE and LOOP are never concerned (LOOP makes no LLM call). Deliberately not part of
+     * [resolveAgentDefinition]: the definition inspection endpoint must keep working so that an admin
+     * can see the misconfiguration.
+     *
+     * @throws AdvancedExecutionNotSupportedException naming the agent, the model and the fix
      */
-    private fun resolveExecutionMode(
-        agentConfig: AgentConfig,
-        modelConfig: AiModel,
-    ): ExecutionMode {
-        val explicit = agentConfig.explicitExecutionMode
-        val (mode, source) =
-            when {
-                explicit != null -> explicit to "agent"
-                modelConfig.supportsAdvancedExecution -> ExecutionMode.ADVANCED to "model default"
-                else -> ExecutionMode.SIMPLE to "model default"
-            }
-        logger.info {
-            "Execution mode for agent '${agentConfig.name}': $mode (source=$source, model='${modelConfig.apiModelName}')"
-        }
-        return mode
+    private fun requireModelSupportsExecutionMode(definition: ResolvedAgentDefinition) {
+        val model = definition.resolvedModel
+        if (definition.executionMode != ExecutionMode.ADVANCED || model.supportsAdvancedExecution) return
+        val message =
+            "Agent '${definition.name}' is configured in ADVANCED execution mode but its model " +
+                "'${model.alias ?: model.apiModelName}' (${definition.resolvedProvider.name}/${model.apiModelName}) " +
+                "does not support advanced execution. Set supportsAdvancedExecution on the model " +
+                "or switch the agent to SIMPLE."
+        logger.warn { message }
+        throw AdvancedExecutionNotSupportedException(message)
     }
 
     /**
@@ -530,12 +528,16 @@ class AgentServiceImpl(
      * Constructs the Spring AI chat client and the appropriate agent type
      * ([AgentSimple] or [AgentAdvanced]). Requires the original [context] for
      * the case-scoped providers that cannot be captured in the definition.
+     *
+     * @throws AdvancedExecutionNotSupportedException when the agent is ADVANCED and its model does not
+     *   support it (see [requireModelSupportsExecutionMode])
      */
     private fun instantiateAgent(
         definition: ResolvedAgentDefinition,
         context: AgentExecutionContext,
         resolvedUser: User?,
     ): Agent {
+        requireModelSupportsExecutionMode(definition)
         val modelConfig = definition.resolvedModel
         val providerConfig = definition.resolvedProvider
 

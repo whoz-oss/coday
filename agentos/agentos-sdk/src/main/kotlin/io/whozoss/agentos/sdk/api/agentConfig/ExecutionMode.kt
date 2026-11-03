@@ -15,10 +15,12 @@ package io.whozoss.agentos.sdk.api.agentConfig
  * experimental.
  *
  * Replaces the legacy `advancedExecution: Boolean` flag.
- * Precedence when an agent runs (decided in `AgentServiceImpl`): the agent's explicit `executionMode`
- * > the legacy `advancedExecution: true` flag (→ [ADVANCED]) > the model's
- * `AiModel.supportsAdvancedExecution` (→ [ADVANCED]) > [SIMPLE]. A null `executionMode` on an
- * [AgentConfigDto] or `AgentConfig` therefore means "no explicit choice, use the model's default".
+ * Backward compatibility: when [executionMode] is null on an [AgentConfigDto] or [AgentConfig],
+ * the legacy [AgentConfig.advancedExecution] field is used as a fallback
+ * (`true` → [ADVANCED], `false` → [SIMPLE]).
+ *
+ * The agent alone decides its mode; the model never changes it. [ADVANCED] additionally requires
+ * the agent's model to have `AiModel.supportsAdvancedExecution`, otherwise the run fails.
  */
 enum class ExecutionMode {
     SIMPLE,

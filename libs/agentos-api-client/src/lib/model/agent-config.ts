@@ -23,7 +23,7 @@ export interface AgentConfig {
   description?: string
   enabled?: boolean
   /**
-   * Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental and may change or be removed without notice). Takes precedence over advancedExecution on input. Null means the agent has no explicit choice and uses the model\'s default (SIMPLE, or ADVANCED when the model supports advanced execution); the effective mode is given by the definition endpoint.
+   * Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental and may change or be removed without notice). Takes precedence over advancedExecution on input; always resolved on output.
    */
   executionMode?: AgentConfigExecutionModeEnum
   externalMetadata?: { [key: string]: any }

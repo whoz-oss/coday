@@ -8,7 +8,8 @@ import org.springframework.data.neo4j.core.Neo4jClient
  *
  * Rule: a model linked to at least one persisted, non-removed agent running ADVANCED (explicit
  * `executionMode = 'ADVANCED'`, or no `executionMode` and the legacy `advancedExecution = true`)
- * gets the flag `true`; every other migrated model gets `false`.
+ * gets the flag `true`; every other migrated model gets `false`. `supportsAdvancedExecution` is a
+ * capability that ADVANCED agents require, so this keeps the existing ADVANCED agents running.
  *
  * The marker is the missing property: only nodes where `supportsAdvancedExecution IS NULL` are
  * written, and each of them gets an explicit boolean. Nodes saved by the current code always carry
@@ -53,11 +54,9 @@ class AiModelAdvancedExecutionMigration(
 
         val models = loadModels()
         val legacyIds = loadLegacyModelIds()
-        val advancedLinkedIds =
-            loadAgents(advanced = true)
-                .flatMap { linkedModels(it, models) }
-                .map { it.id }
-                .toSet()
+        val advancedAgents = loadAgents()
+        val links = advancedAgents.associateWith { linkedModels(it, models) }
+        val advancedLinkedIds = links.values.flatten().map { it.id }.toSet()
         val toTrue = models.filter { it.id in legacyIds && it.id in advancedLinkedIds }
 
         // One statement for every legacy node: true for the linked ones, false for all the others.
@@ -83,25 +82,11 @@ class AiModelAdvancedExecutionMigration(
                 "${toTrue.map { it.label }.sorted()}, to false on ${total - enabled}"
         }
 
-        warnAgentsSwitchingToAdvanced(models, toTrue)
-    }
-
-    /**
-     * Agents with no explicit mode run SIMPLE on a model without the flag and ADVANCED with it: the
-     * migration does not change them, but their behaviour changes with it, so each one is reported.
-     */
-    private fun warnAgentsSwitchingToAdvanced(
-        models: List<ModelRow>,
-        newlyEnabled: List<ModelRow>,
-    ) {
-        val enabledIds = newlyEnabled.map { it.id }.toSet()
-        loadAgents(advanced = false).forEach { agent ->
-            val switching = linkedModels(agent, models).filter { it.id in enabledIds }
-            if (switching.isNotEmpty()) {
-                logger.warn {
-                    "[Migration] Agent '${agent.name}' (id=${agent.id}) has no explicit execution mode and its model " +
-                        "${switching.map { it.label }.sorted()} now supports ADVANCED: it switches from SIMPLE to ADVANCED"
-                }
+        // Such an agent cannot run: it fails at instantiation for lack of a model. Worth a line in the logs.
+        links.filterValues { it.isEmpty() }.keys.forEach { agent ->
+            logger.warn {
+                "[Migration] ADVANCED agent '${agent.name}' (id=${agent.id}) matches no persisted AiModel " +
+                    "(modelName=${agent.modelName}): no model was marked for it"
             }
         }
     }
@@ -146,16 +131,12 @@ class AiModelAdvancedExecutionMigration(
             }
 
     /**
-     * Non-removed persisted agents: those running ADVANCED when [advanced] is true, those with no
-     * explicit mode (`executionMode` null and no legacy flag) otherwise. Disabled agents are included.
+     * Non-removed persisted agents running ADVANCED: an explicit `executionMode`, or no `executionMode`
+     * and the legacy flag. Disabled agents are included.
      */
-    private fun loadAgents(advanced: Boolean): List<AgentRow> {
+    private fun loadAgents(): List<AgentRow> {
         val modeFilter =
-            if (advanced) {
-                "a.executionMode = 'ADVANCED' OR (a.executionMode IS NULL AND coalesce(a.advancedExecution, false) = true)"
-            } else {
-                "a.executionMode IS NULL AND coalesce(a.advancedExecution, false) = false"
-            }
+            "a.executionMode = 'ADVANCED' OR (a.executionMode IS NULL AND coalesce(a.advancedExecution, false) = true)"
         return neo4jClient
             .query(
                 """

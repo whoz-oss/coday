@@ -256,15 +256,14 @@ class AgentConfigController(
 
 /**
  * Execution mode requested by a client: [AgentConfigDto.executionMode] when present, otherwise the
- * deprecated [AgentConfigDto.advancedExecution] flag (`true` → ADVANCED), otherwise `null`: the client
- * expressed no choice and the agent's model decides (see `AiModel.supportsAdvancedExecution`).
+ * deprecated [AgentConfigDto.advancedExecution] flag (`true` → ADVANCED, absent/`false` → SIMPLE).
  *
  * Both persisted fields are derived from this single value so the deprecated flag stays consistent
- * for legacy readers, whichever field the client sent (`null` persists `advancedExecution = false`).
+ * for legacy readers, whichever field the client sent.
  */
 @Suppress("DEPRECATION")
-private fun AgentConfigDto.requestedExecutionMode(): ExecutionMode? =
-    executionMode ?: if (advancedExecution == true) ExecutionMode.ADVANCED else null
+private fun AgentConfigDto.requestedExecutionMode(): ExecutionMode =
+    executionMode ?: if (advancedExecution == true) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
 
 @Suppress("DEPRECATION")
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {
@@ -299,10 +298,10 @@ internal fun toDto(entity: AgentConfig) =
         instructions = entity.instructions,
         modelName = entity.modelName,
         integrations = entity.integrations,
-        // The explicit choice only: null = the agent leaves the mode to its model's default, and the
-        // deprecated flag never contradicts executionMode.
-        executionMode = entity.explicitExecutionMode,
-        advancedExecution = (entity.explicitExecutionMode == ExecutionMode.ADVANCED).takeIf { it },
+        // Both derived from the resolved mode: legacy configs (executionMode = null) expose their mode,
+        // and the deprecated flag never contradicts executionMode.
+        executionMode = entity.resolvedExecutionMode,
+        advancedExecution = (entity.resolvedExecutionMode == ExecutionMode.ADVANCED).takeIf { it },
         externalMetadata = entity.externalMetadata,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,

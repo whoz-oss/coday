@@ -41,15 +41,15 @@ export class AgentConfigItemComponent {
   protected readonly pendingDelete = signal(false)
 
   /**
-   * Badge metadata for the execution mode. Returns null for an explicit SIMPLE (no badge shown),
-   * a label + mode string for ADVANCED and LOOP so the template can apply the right modifier, and a
-   * "Model default" badge when the agent makes no explicit choice (its model decides).
-   * The legacy advancedExecution flag is honoured when executionMode is absent.
+   * Badge metadata for the execution mode. Returns null for SIMPLE (no badge shown),
+   * a label + mode string for ADVANCED and LOOP so the template can apply the right modifier.
+   * Backward compat: if executionMode is absent but advancedExecution is true, show ADVANCED.
    */
   protected readonly executionModeBadge = computed(() => {
     const cfg = this.config()
-    const mode = cfg.executionMode ?? (cfg.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : null)
-    if (mode === null) return { mode: 'MODEL_DEFAULT', label: 'Model default' }
+    const mode =
+      cfg.executionMode ??
+      (cfg.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
     if (mode === AgentConfigExecutionModeEnum.ADVANCED) return { mode, label: 'ADVANCED' }
     if (mode === AgentConfigExecutionModeEnum.LOOP) return { mode, label: 'LOOP' }
     return null

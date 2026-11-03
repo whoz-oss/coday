@@ -75,9 +75,10 @@ data class AiModel(
      */
     val reasoningEffort: ReasoningEffort? = null,
     /**
-     * When true, agents using this model that do not set an execution mode themselves run in
-     * ADVANCED instead of SIMPLE. An agent's explicit choice (execution mode, or the legacy
-     * advancedExecution flag) always wins over this default.
+     * Capability flag: whether this model can run agents in ADVANCED execution mode (the multi-step
+     * intention loop). It never changes an agent's mode, the agent decides that: an agent configured
+     * ADVANCED that runs on a model without this flag fails with an error. SIMPLE and LOOP agents are
+     * unaffected.
      *
      * Models persisted before this property existed were migrated once at startup: true when an
      * ADVANCED agent used them, false otherwise. The value is an ordinary setting afterwards.

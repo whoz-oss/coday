@@ -81,7 +81,7 @@ data class AgentConfigNode(
                 executionMode?.let {
                     runCatching { ExecutionMode.valueOf(it) }.getOrElse { _ ->
                         logger.warn {
-                            "[AgentConfigNode] Unknown executionMode '$it' for agent '$name' (id=$id) — falling back to null (the agent then leaves the choice to its model)"
+                            "[AgentConfigNode] Unknown executionMode '$it' for agent '$name' (id=$id) — falling back to null (resolvedExecutionMode will apply default)"
                         }
                         null
                     }
