@@ -47,9 +47,9 @@
                 [state]="deletion"
                 deleteClass="user-groups__delete"
                 confirmLabelClass="user-groups__confirm-label"
-                (request)="deletion.request(group.userGroupId)"
-                (confirm)="confirmDelete(group)"
-                (cancel)="deletion.cancel()"
+                (deleteRequested)="deletion.request(group.userGroupId)"
+                (deleteConfirmed)="confirmDelete(group)"
+                (deleteCancelled)="deletion.cancel()"
               />
             </td>
           </tr>

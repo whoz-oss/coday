@@ -65,9 +65,9 @@
                     [rowLabel]="row.config.name"
                     [state]="deletion"
                     deleteClass="integrations__delete"
-                    (request)="deletion.request(row.key)"
-                    (confirm)="confirmDelete(row)"
-                    (cancel)="deletion.cancel()"
+                    (deleteRequested)="deletion.request(row.key)"
+                    (deleteConfirmed)="confirmDelete(row)"
+                    (deleteCancelled)="deletion.cancel()"
                   />
                 }
                 @if (!row.canEdit && !row.canDelete) {

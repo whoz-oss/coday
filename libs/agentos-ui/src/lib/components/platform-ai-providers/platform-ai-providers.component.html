@@ -47,9 +47,9 @@
                     [state]="deletion"
                     deleteClass="settings-table__delete"
                     confirmLabelClass="settings-table__confirm-label"
-                    (request)="deletion.request(provider.id)"
-                    (confirm)="confirmDelete(provider)"
-                    (cancel)="deletion.cancel()"
+                    (deleteRequested)="deletion.request(provider.id)"
+                    (deleteConfirmed)="confirmDelete(provider)"
+                    (deleteCancelled)="deletion.cancel()"
                   />
                 }
               </div>

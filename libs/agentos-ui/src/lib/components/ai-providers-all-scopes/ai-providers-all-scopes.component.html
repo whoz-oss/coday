@@ -58,9 +58,9 @@
                   [rowLabel]="row.config.name"
                   [state]="deletion"
                   deleteClass="ai-providers__delete"
-                  (request)="deletion.request(row.key)"
-                  (confirm)="confirmDelete(row)"
-                  (cancel)="deletion.cancel()"
+                  (deleteRequested)="deletion.request(row.key)"
+                  (deleteConfirmed)="confirmDelete(row)"
+                  (deleteCancelled)="deletion.cancel()"
                 />
               } @else {
                 <button type="button" disabled>Inherited</button>
