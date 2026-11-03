@@ -191,6 +191,21 @@
                       >
                     }
                   </div>
+                  <!-- What this answer cost, from the usage the service attached to the turn. -->
+                  @if (item.metrics; as metrics) {
+                    <p class="case-chat__turn-metrics">
+                      <span class="case-chat__turn-metric">{{ turnTokens(metrics) }} tokens</span>
+                      <span class="case-chat__turn-metric">{{ metrics.cost | agentosCost }}</span>
+                      @if (metrics.cumulativeCost !== undefined) {
+                        <span class="case-chat__turn-metric case-chat__turn-metric--muted"
+                          >{{ metrics.cumulativeCost | agentosCost }} total</span
+                        >
+                      }
+                      @if (turnDuration(metrics); as duration) {
+                        <span class="case-chat__turn-metric case-chat__turn-metric--muted">{{ duration }}</span>
+                      }
+                    </p>
+                  }
                 </div>
               } @else if (item.kind === 'streaming') {
                 <div class="case-chat__turn case-chat__turn--agent case-chat__turn--streaming">

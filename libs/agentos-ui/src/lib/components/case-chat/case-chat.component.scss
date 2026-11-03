@@ -433,6 +433,29 @@
     }
   }
 
+  // Under the bubble, not inside it: the figures are about the answer, not part of it, and the
+  // bubble already reserves its bottom padding for the timestamp.
+  &__turn-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 10px;
+    margin: 4px 0 0;
+    padding: 0 4px;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    line-height: 1.4;
+    color: var(--color-text-tertiary);
+  }
+
+  &__turn-metric {
+    white-space: nowrap;
+
+    // The secondary figures read as context for the first two, not as four equal numbers.
+    &--muted {
+      opacity: 0.75;
+    }
+  }
+
   &__bubble {
     padding: 16px 18px 28px;
     font-size: 16px;
