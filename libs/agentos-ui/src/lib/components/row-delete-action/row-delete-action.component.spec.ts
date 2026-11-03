@@ -23,7 +23,7 @@ describe('RowDeleteActionComponent', () => {
 
   it('shows normal delete mode with an accessible row label and emits request', () => {
     const request = jest.fn()
-    fixture.componentInstance.request.subscribe(request)
+    fixture.componentInstance.deleteRequested.subscribe(request)
 
     expect(buttons().map((button) => button.textContent?.trim())).toEqual(['Delete'])
     expect(buttons()[0].getAttribute('aria-label')).toBe('Delete Acme provider')
@@ -35,8 +35,8 @@ describe('RowDeleteActionComponent', () => {
   it('shows confirmation controls with row labels and emits confirm and cancel', () => {
     const confirm = jest.fn()
     const cancel = jest.fn()
-    fixture.componentInstance.confirm.subscribe(confirm)
-    fixture.componentInstance.cancel.subscribe(cancel)
+    fixture.componentInstance.deleteConfirmed.subscribe(confirm)
+    fixture.componentInstance.deleteCancelled.subscribe(cancel)
     state.request('row-1')
     fixture.detectChanges()
 

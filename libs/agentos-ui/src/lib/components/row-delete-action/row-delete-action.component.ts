@@ -15,22 +15,22 @@ export class RowDeleteActionComponent {
   readonly deleteClass = input<string>('')
   readonly confirmLabelClass = input<string>('')
 
-  readonly request = output<void>()
-  readonly confirm = output<void>()
-  readonly cancel = output<void>()
+  readonly deleteRequested = output<void>()
+  readonly deleteConfirmed = output<void>()
+  readonly deleteCancelled = output<void>()
 
   protected readonly isConfirming = computed(() => this.state().confirmingId() === this.rowKey())
   protected readonly isDeleting = computed(() => this.state().deletingId() === this.rowKey())
 
   protected requestDelete(): void {
-    this.request.emit()
+    this.deleteRequested.emit()
   }
 
   protected confirmDelete(): void {
-    this.confirm.emit()
+    this.deleteConfirmed.emit()
   }
 
   protected cancelDelete(): void {
-    this.cancel.emit()
+    this.deleteCancelled.emit()
   }
 }

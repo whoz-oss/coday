@@ -53,9 +53,9 @@
                   [state]="deletion"
                   deleteClass="settings-table__delete"
                   confirmLabelClass="settings-table__confirm-label"
-                  (request)="deletion.request(group.userGroupId)"
-                  (confirm)="confirmDelete(group)"
-                  (cancel)="deletion.cancel()"
+                  (deleteRequested)="deletion.request(group.userGroupId)"
+                  (deleteConfirmed)="confirmDelete(group)"
+                  (deleteCancelled)="deletion.cancel()"
                 />
               </div>
             </td>
