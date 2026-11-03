@@ -122,7 +122,7 @@ class AgentConfigController(
         val existing =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        SubAgentSelectorValidation.requireNameSelectors(resource.subAgents)
+        SubAgentSelectorValidation.requireNoNewIdSelectors(resource.subAgents, existing.subAgents)
         val executionMode = resource.requestedExecutionMode()
         @Suppress("DEPRECATION")
         return toDto(
