@@ -1418,6 +1418,28 @@ paths:
       summary: Add a message
       tags:
       - case-controller
+  /api/cases/{caseId}/messaging/continue:
+    post:
+      operationId: continueCaseInMessaging
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagingContinueRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+      summary: Continue the case in the direct chat of the current user with a bot
+      tags:
+      - messaging-controller
   /api/cases/{caseId}/read:
     post:
       description: "POST /api/cases/{caseId}/read — record that the current user has\
@@ -2086,6 +2108,177 @@ paths:
           description: OK
       tags:
       - integration-type-controller
+  /api/messaging/bot-managers:
+    get:
+      operationId: listMessagingBotManagers
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessagingBotManagerDto"
+          description: OK
+      summary: List the bot managers of the instance
+      tags:
+      - messaging-bot-controller
+    put:
+      operationId: setMessagingBotManager
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagingBotManagerRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingBotManagerDto"
+          description: OK
+      summary: "Set the bot manager of a platform from its token, replacing the previous\
+        \ one"
+      tags:
+      - messaging-bot-controller
+  /api/messaging/bot-managers/{platform}:
+    delete:
+      operationId: deleteMessagingBotManager
+      parameters:
+      - in: path
+        name: platform
+        required: true
+        schema:
+          $ref: "#/components/schemas/MessagingPlatform"
+      responses:
+        "204":
+          description: No Content
+      summary: Remove the bot manager of a platform; the bots it created stay
+      tags:
+      - messaging-bot-controller
+  /api/messaging/bots:
+    get:
+      operationId: listMessagingBots
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessagingBotDto"
+          description: OK
+      summary: List the bots of the agents the current user can talk to
+      tags:
+      - messaging-controller
+  /api/messaging/bots/{botId}:
+    delete:
+      operationId: deleteMessagingBot
+      parameters:
+      - in: path
+        name: botId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: "Remove the bot of an agent, with its token and its users' links"
+      tags:
+      - messaging-bot-controller
+    patch:
+      operationId: updateMessagingBot
+      parameters:
+      - in: path
+        name: botId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagingBotUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingBotDto"
+          description: OK
+      summary: Turn the bot of an agent on or off
+      tags:
+      - messaging-bot-controller
+  /api/messaging/bots/{botId}/link:
+    post:
+      operationId: createMessagingLink
+      parameters:
+      - in: path
+        name: botId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingLinkDto"
+          description: OK
+      summary: Get a single-use link that connects a messaging account to the current
+        user through a bot
+      tags:
+      - messaging-controller
+  /api/messaging/capabilities:
+    get:
+      operationId: getMessagingCapabilities
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingCapabilitiesDto"
+          description: OK
+      summary: "What the instance offers for messaging, such as creating the bot of\
+        \ an agent with no token"
+      tags:
+      - messaging-controller
+  /api/messaging/identities:
+    get:
+      operationId: listMessagingIdentities
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessagingIdentityDto"
+          description: OK
+      summary: List the messaging accounts linked to the current user
+      tags:
+      - messaging-controller
+  /api/messaging/identities/{identityId}:
+    delete:
+      operationId: deleteMessagingIdentity
+      parameters:
+      - in: path
+        name: identityId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: Unlink a messaging account of the current user
+      tags:
+      - messaging-controller
   /api/namespaces:
     get:
       operationId: listAllNamespace
@@ -2330,6 +2523,98 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots:
+    get:
+      operationId: listAgentMessagingBots
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: agentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessagingBotDto"
+          description: OK
+      summary: List the bots of an agent in a namespace
+      tags:
+      - messaging-bot-controller
+    post:
+      operationId: attachMessagingBot
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: agentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagingBotAttachRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingBotDto"
+          description: Created
+      summary: "Give an agent a bot created outside AgentOS, from its token"
+      tags:
+      - messaging-bot-controller
+  /api/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots/creation:
+    post:
+      operationId: requestMessagingBotCreation
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: agentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagingBotCreationRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingLinkDto"
+          description: OK
+      summary: Get the single-use link that creates the bot of an agent through the
+        instance's bot manager
+      tags:
+      - messaging-bot-controller
   /api/namespaces/{namespaceId}/case-invalidation:
     get:
       description: "Each 'namespace-case-invalidation' event carries the neutral JSON\
@@ -5700,6 +5985,203 @@ components:
       - namespaceId
       - timestamp
       - type
+    MessagingBotAttachRequest:
+      type: object
+      properties:
+        platform:
+          $ref: "#/components/schemas/MessagingPlatform"
+        token:
+          type: string
+          description: "The bot's token. Stored encrypted, never returned."
+          maxLength: 200
+          minLength: 0
+          writeOnly: true
+      required:
+      - platform
+      - token
+    MessagingBotCreationRequest:
+      type: object
+      properties:
+        platform:
+          $ref: "#/components/schemas/MessagingPlatform"
+      required:
+      - platform
+    MessagingBotDto:
+      type: object
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        displayName:
+          type: string
+          description: How the platform names the bot
+        enabled:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        linked:
+          type: boolean
+          description: True when the current user has linked an account through this
+            bot
+        managed:
+          type: boolean
+          description: True when AgentOS created the bot through the instance's bot
+            manager
+        namespaceId:
+          type: string
+          format: uuid
+          description: "The namespace the agent answers in: the cases its bot starts\
+            \ belong to it"
+        platform:
+          $ref: "#/components/schemas/MessagingPlatform"
+        status:
+          $ref: "#/components/schemas/MessagingBotStatus"
+        url:
+          type: string
+          description: The address that opens the bot in the messaging application
+        username:
+          type: string
+          description: "The bot's username on the platform, without @"
+      required:
+      - agentId
+      - agentName
+      - createdAt
+      - displayName
+      - enabled
+      - id
+      - linked
+      - managed
+      - namespaceId
+      - platform
+      - status
+      - url
+      - username
+    MessagingBotManagerDto:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        platform:
+          $ref: "#/components/schemas/MessagingPlatform"
+        status:
+          $ref: "#/components/schemas/MessagingBotStatus"
+        username:
+          type: string
+          description: "The manager's username on the platform, without @"
+      required:
+      - createdAt
+      - platform
+      - status
+      - username
+    MessagingBotManagerRequest:
+      type: object
+      properties:
+        platform:
+          $ref: "#/components/schemas/MessagingPlatform"
+        token:
+          type: string
+          description: "The manager bot's token. For Telegram, the bot must have Bot\
+            \ Management Mode on in BotFather's Mini App. Stored encrypted, never\
+            \ returned."
+          maxLength: 200
+          minLength: 0
+          writeOnly: true
+      required:
+      - platform
+      - token
+    MessagingBotStatus:
+      type: string
+      enum:
+      - STARTING
+      - RUNNING
+      - DISABLED
+      - TOKEN_REJECTED
+      - CONFLICT
+      - UNREACHABLE
+    MessagingBotUpdateRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
+    MessagingCapabilitiesDto:
+      type: object
+      properties:
+        botCreation:
+          type: array
+          description: "The platforms where the bot of an agent can be created from\
+            \ AgentOS, with no token to copy: those with a running bot manager"
+          items:
+            $ref: "#/components/schemas/MessagingPlatform"
+      required:
+      - botCreation
+    MessagingContinueRequest:
+      type: object
+      properties:
+        botId:
+          type: string
+          format: uuid
+          description: The bot whose direct chat with the current user continues the
+            case
+      required:
+      - botId
+    MessagingIdentityDto:
+      type: object
+      properties:
+        agentName:
+          type: string
+          description: The agent the bot answers as; null when the bot was removed
+            since
+        botId:
+          type: string
+          format: uuid
+          description: The bot the account was linked through; null when that bot
+            was removed since
+        botUsername:
+          type: string
+          description: "The bot's username, without @; null when the bot was removed\
+            \ since"
+        displayName:
+          type: string
+          description: How the platform names the account
+        id:
+          type: string
+          format: uuid
+        linkedAt:
+          type: string
+          format: date-time
+        platform:
+          $ref: "#/components/schemas/MessagingPlatform"
+      required:
+      - displayName
+      - id
+      - linkedAt
+      - platform
+    MessagingLinkDto:
+      type: object
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+        url:
+          type: string
+          description: "Opens the bot in the messaging application; usable once, until\
+            \ expiresAt"
+      required:
+      - expiresAt
+      - url
+    MessagingPlatform:
+      type: string
+      enum:
+      - TELEGRAM
     ModelPricing:
       type: object
       properties:

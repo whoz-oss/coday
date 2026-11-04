@@ -4,16 +4,20 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationsProperties
+import io.whozoss.agentos.messaging.MessagingBotRegistry
+import io.whozoss.agentos.messaging.MessagingBotService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.sdk.api.messaging.MessagingBotStatus
+import io.whozoss.agentos.sdk.api.messaging.MessagingPlatform
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
  * What the config agent reads about a namespace and a user, besides the configuration entities:
- * whether a member's message reaches an agent there ([readiness]) and who the user is
- * ([capabilities]).
+ * whether a member's message reaches an agent there ([readiness]), who the user is
+ * ([capabilities]), and which agents have a bot on a messaging platform ([messaging]).
  */
 @Service
 class ConfigNamespaceDiagnosis(
@@ -23,6 +27,8 @@ class ConfigNamespaceDiagnosis(
     private val userService: UserService,
     private val integrationsProperties: IntegrationsProperties,
     private val configReadService: ConfigReadService,
+    private val messagingBots: MessagingBotService,
+    private val messagingBotRegistry: MessagingBotRegistry,
 ) {
     /**
      * Whether a member's message without `@mention` in [namespaceId] reaches an agent, resolved like
@@ -74,6 +80,28 @@ class ConfigNamespaceDiagnosis(
         )
     }
 
+    /**
+     * The bots of the agents of [namespaceId] on messaging platforms, and how an agent gets one. A bot is not a
+     * proposal: it takes either the user's confirmation in the messaging application or a token they type, both
+     * on the agent's page.
+     */
+    fun messaging(namespaceId: UUID): Map<String, Any?> =
+        mapOf(
+            "botCreationWithoutToken" to MessagingPlatform.entries.filter { messagingBotRegistry.manager(it) != null },
+            "bots" to
+                messagingBots.findAllAgentBots().filter { it.namespaceId == namespaceId }.map { bot ->
+                    mapOf(
+                        "agentId" to bot.agentId,
+                        "agentName" to bot.agentId?.let { agentConfigService.findById(it)?.name },
+                        "platform" to bot.platform,
+                        "username" to bot.username,
+                        "enabled" to bot.enabled,
+                        "status" to (messagingBotRegistry.status(bot.id) ?: MessagingBotStatus.STARTING),
+                    )
+                },
+            "howTo" to MESSAGING_HOW_TO,
+        )
+
     private fun defaultAgentStatus(
         defaultName: String?,
         resolved: AgentConfig?,
@@ -86,4 +114,14 @@ class ConfigNamespaceDiagnosis(
             candidates.none { it.enabled } -> DefaultAgentStatus.DISABLED
             else -> DefaultAgentStatus.NOT_DEPLOYED
         }
+
+    private companion object {
+        const val MESSAGING_HOW_TO =
+            "An agent gets a bot on its page in AgentOS (the namespace's settings, Agents, the agent, section " +
+                "Messaging). Create a bot: no token, when botCreationWithoutToken lists the platform; the user " +
+                "confirms in Telegram. Use an existing bot: the user creates one with Telegram's @BotFather and types " +
+                "its token there. Only an admin of the namespace can do either. Each user then links their own " +
+                "account from their AgentOS profile, Messaging, Connect. The change applies at once, no restart. " +
+                "Give the user these steps: no proposal can attach a bot."
+    }
 }

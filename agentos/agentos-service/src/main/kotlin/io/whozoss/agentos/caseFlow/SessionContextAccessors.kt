@@ -1,5 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
+import java.util.UUID
+
 /**
  * Typed reads of the session context map (see [SessionContextKeys]).
  *
@@ -25,3 +27,11 @@ fun Map<String, Any?>.userDisplayName(): String? =
                 .mapNotNull { (userContext[it] as? String)?.trim()?.takeIf { name -> name.isNotEmpty() } }
         }?.joinToString(" ")
         ?.ifBlank { null }
+
+/**
+ * Id of the messaging conversation a message came from ([SessionContextKeys.CONVERSATION_ID] of
+ * [SessionContextKeys.MESSAGING]), or null for a message typed in the UI or a value that is not a UUID.
+ */
+fun Map<String, Any?>.messagingConversationId(): UUID? =
+    ((this[SessionContextKeys.MESSAGING] as? Map<*, *>)?.get(SessionContextKeys.CONVERSATION_ID) as? String)
+        ?.let { runCatching { UUID.fromString(it) }.getOrNull() }

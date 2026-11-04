@@ -21,6 +21,7 @@ The SDK is the stable public API. Plugins depend only on `agentos-sdk` (via `com
 | `chat` | `ChatClientProvider` / `ChatModelFactory` — Spring AI client construction |
 | `configAgent` | Built-in `AGENTOS_CONFIG` integration: read and propose tools, frozen plans, server-side apply (see `config-agent.md`) |
 | `entity` | `EntityController` — abstract CRUD base for all REST resources |
+| `messaging` | `MessagingBotService` / `MessagingBotSupervisor` / `MessagingGateway` / `MessagingDelivery` / `TelegramDriver` — the bots of agents, run at once from the database, that feed cases and answer from them (see `messaging.md`) |
 | `namespace` | `Namespace` / `NamespaceController` — multi-tenancy grouping |
 | `plugin` | `PluginService` — PF4J plugin loading and management |
 | `tool` | `ToolRegistry` / `ToolExecutorService` / `ToolController` — tool registry and execution |
@@ -74,6 +75,7 @@ how many base classes or interfaces a controller inherits from.
 | `api.configChange` | `ConfigChangeApi`, `ConfigChangeViewDto`, `ConfigChangeReportDto`, `ConfigChangeApplyRequest`, `ConfigChangeRejectRequest`, the operation/result DTOs (`ConfigOperationViewDto`, `ConfigFieldChangeDto`, `ConfigSecretInputDto`, `ConfigOperationResultDto`) and their enums — HTTP contract for `/api/cases/{caseId}/config-changes` |
 | `api.feedback` | `FeedbackDto`, `FeedbackInput` — HTTP DTOs for `/api/feedbacks` |
 | `api.integrationConfig` | `IntegrationConfigDto`, `IntegrationTypeDescriptor` — HTTP DTOs for `/api/integration-configs` and `/api/integration-types` |
+| `api.messaging` | `MessagingApi`, `MessagingBotApi`, `MessagingBotDto`, `MessagingBotManagerDto`, `MessagingIdentityDto`, `MessagingLinkDto`, `MessagingContinueRequest`, `MessagingPlatform` — HTTP contract for `/api/messaging`, `/api/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots` and `/api/cases/{caseId}/messaging` |
 | `api.namespace` | `NamespaceDto`, `NamespaceListItem`, `NamespaceUserListItem`, `NamespaceRoleEntry`, `SyncUserRolesRequest`, `NamespaceAgentDeployRequest` — HTTP DTOs for `/api/namespaces` |
 | `api.user` | `UserDto`, `GroupsByExternalIdsRequest` — HTTP DTOs for `/api/users` |
 | `api.userGroup` | `UserGroupSummary`, `UserGroupSearchResult`, `UserGroupCreateRequest`, `UserGroupUpdateRequest` — HTTP DTOs for `/api/user-groups` |

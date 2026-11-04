@@ -1,0 +1,118 @@
+package io.whozoss.agentos.messaging
+
+import io.whozoss.agentos.sdk.api.messaging.MessagingPlatform
+import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.ResponseStatus
+import java.util.UUID
+
+/**
+ * One running bot on one messaging platform, as [MessagingGateway] and [MessagingDelivery] use it: what they
+ * send and how a user is sent to the bot. Receiving is the driver's business ([MessagingDriver.start]); it hands
+ * what it receives to the bot's [MessagingSink].
+ *
+ * Calls block on the network: callers run them off the case threads.
+ */
+interface MessagingAdapter {
+    /** The bot this adapter sends as. */
+    val bot: MessagingBotRef
+
+    val platform: MessagingPlatform get() = bot.platform
+
+    /** Id of the bot account, part of every identity and conversation key. */
+    val accountId: String get() = bot.accountId
+
+    /** The URL that opens the bot with [token] as its start parameter, given to a user who links an account. */
+    fun linkUrl(token: String): String
+
+    /**
+     * Sends [message] to [chatId], split into several messages when the platform needs it.
+     *
+     * @throws MessagingDeliveryException when the platform refuses the message
+     */
+    fun send(
+        chatId: String,
+        message: OutboundMessage,
+    )
+
+    /** Shows that the bot is writing in [chatId]. Best effort: a failure is ignored. */
+    fun showTyping(chatId: String)
+
+    /** Answers a button click so that the application stops waiting, with an optional short [notice]. */
+    fun acknowledgeClick(
+        clickId: String,
+        notice: String? = null,
+    )
+
+    /** Removes the buttons of the message [messageId] once one of them was used. Best effort. */
+    fun removeButtons(
+        chatId: String,
+        messageId: String,
+    )
+}
+
+/**
+ * The extra calls of a bot manager ([MessagingBotRole.MANAGER]): it offers a user to create a bot it will
+ * manage, then fetches that bot's token, so that nobody copies one.
+ */
+interface MessagingManagerAdapter : MessagingAdapter {
+    /** Sends [offer] to [chatId], with the button that opens the platform's bot creation. */
+    fun offerBotCreation(
+        chatId: String,
+        offer: BotCreationOffer,
+    )
+
+    /**
+     * The token of the bot [accountId], which this bot manages.
+     *
+     * @throws MessagingDeliveryException when the platform refuses or cannot be reached
+     */
+    fun managedBotToken(accountId: String): String
+}
+
+/** What a bot manager proposes to create: the user may change the name and username before confirming. */
+data class BotCreationOffer(
+    val text: String,
+    val buttonLabel: String,
+    val suggestedName: String,
+    val suggestedUsername: String,
+)
+
+/** A message to send, in Markdown: the adapter converts it to what its platform renders. */
+data class OutboundMessage(
+    val text: String,
+    val buttons: List<MessagingButton> = emptyList(),
+)
+
+data class MessagingButton(
+    val label: String,
+    val action: MessagingAction,
+)
+
+/** What a button does when clicked. Encoded into the button by [MessagingActionCodec]. */
+sealed interface MessagingAction {
+    /** Answers the question [questionId] with its option at [optionIndex]. */
+    data class AnswerQuestion(
+        val questionId: UUID,
+        val optionIndex: Int,
+    ) : MessagingAction
+
+    /** Moves the chat to the case [caseId]. */
+    data class OpenCase(
+        val caseId: UUID,
+    ) : MessagingAction
+
+    /** Opens [url] in the browser. Handled by the platform, never sent back to AgentOS. */
+    data class OpenUrl(
+        val url: String,
+    ) : MessagingAction
+}
+
+/**
+ * The platform refused a message or could not be reached: the reason is the platform's, never the content of the
+ * message. Reaches an API caller as `502 Bad Gateway`.
+ */
+@ResponseStatus(HttpStatus.BAD_GATEWAY)
+class MessagingDeliveryException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

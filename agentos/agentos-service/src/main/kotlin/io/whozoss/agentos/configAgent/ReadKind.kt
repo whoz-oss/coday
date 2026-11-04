@@ -19,6 +19,7 @@ enum class ReadKind(
     INTEGRATION_TYPE("integration-type"),
     DEPLOYMENT("deployment"),
     CAPABILITIES("capabilities"),
+    MESSAGING("messaging"),
     ;
 
     companion object {
