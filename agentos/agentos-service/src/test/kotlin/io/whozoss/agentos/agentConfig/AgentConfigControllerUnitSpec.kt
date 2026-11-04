@@ -14,6 +14,7 @@ import io.mockk.verify
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.agent.ResolvedAgentDefinition
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -31,8 +32,6 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 
 /**
  * Unit tests for [AgentConfigController].
@@ -578,12 +577,11 @@ class AgentConfigControllerUnitSpec :
             every { userService.getCurrentUser() } returns superAdmin
 
             val thrown =
-                shouldThrow<ResponseStatusException> {
+                shouldThrow<BadRequestException> {
                     controller.create(resource().copy(subAgents = listOf(id)))
                 }
 
-            thrown.statusCode shouldBe HttpStatus.BAD_REQUEST
-            thrown.reason!! shouldContain id
+            thrown.message!! shouldContain id
             verify(exactly = 0) { service.create(any()) }
         }
 
@@ -604,11 +602,10 @@ class AgentConfigControllerUnitSpec :
             every { service.findById(c.id) } returns c
 
             val thrown =
-                shouldThrow<ResponseStatusException> {
+                shouldThrow<BadRequestException> {
                     controller.update(c.id, resource(id = c.id).copy(subAgents = listOf("Reviewer", id)))
                 }
 
-            thrown.statusCode shouldBe HttpStatus.BAD_REQUEST
             verify(exactly = 0) { service.update(any()) }
         }
 

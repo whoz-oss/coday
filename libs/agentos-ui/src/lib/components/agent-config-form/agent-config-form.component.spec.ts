@@ -29,6 +29,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   let controller: {
     getByIdAgentConfig: jest.Mock
     listByParentAgentConfig: jest.Mock
+    listPlatformAgentsAgentConfig: jest.Mock
     createAgentConfig: jest.Mock
     updateAgentConfig: jest.Mock
   }
@@ -103,6 +104,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       newSubAgentControl: { setValue: (v: string) => void; value: string }
       addSubAgent: () => void
       removeSubAgent: (row: { selector: string }) => void
+      toggleAllSubAgents: () => void
       toggleSubAgent: (row: { pattern: boolean; selected: { (): boolean; set: (v: boolean) => void } }) => void
       submitError: () => string | null
       submit: () => void
@@ -626,6 +628,95 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       ).toBe(false)
     })
 
+    it('stops saying "via pattern" when * takes over, since the glob is not saved either', () => {
+      // buildSubAgentsPayload writes ['*'] alone, so the globs are dropped. The third path that
+      // changes what gets saved, and the one the earlier fix left out.
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer', 'Reviewer')))
+
+      component.ngOnInit()
+      internals().newSubAgentControl.setValue('*Fixer')
+      internals().addSubAgent()
+      expect(
+        internals()
+          .subAgentRows()
+          .find((r) => r.name === 'BugFixer')?.grantedByPattern
+      ).toBe(true)
+
+      internals().toggleAllSubAgents()
+
+      expect(
+        internals()
+          .subAgentRows()
+          .find((r) => r.name === 'BugFixer')?.grantedByPattern
+      ).toBe(false)
+    })
+
+    it('keeps the agent itself as a real row when its config already delegates to itself', () => {
+      // buildDelegationTools resolves against every deployed agent, the agent included, so a
+      // selector naming itself does build a delegation tool. Flagging it "no matching agent" had
+      // the form contradict the run and invite deleting a selector that works.
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Orchestrator', 'BugFixer')))
+      controller.getByIdAgentConfig.mockReturnValue(
+        of(editConfig({ name: 'Orchestrator', subAgents: ['Orchestrator'] }))
+      )
+
+      component.ngOnInit()
+
+      const self = internals()
+        .subAgentRows()
+        .find((r) => r.name === 'Orchestrator')
+      expect(self?.unresolved).toBe(false)
+      expect(self?.selected()).toBe(true)
+    })
+
+    it('does not offer the agent itself when its config does not name it', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('Orchestrator', 'BugFixer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ name: 'Orchestrator', subAgents: [] })))
+
+      component.ngOnInit()
+
+      expect(
+        internals()
+          .subAgentRows()
+          .some((r) => r.name === 'Orchestrator')
+      ).toBe(false)
+    })
+
+    it('collapses names that differ only by case, which one selector grants together', () => {
+      // Agent names are unique per scope and case-insensitively, but the platform and the
+      // namespace are two scopes. The server grants both from one selector, so two rows would let
+      // the user tick one, see the other unticked, and ship a grant covering both.
+      routeAgentConfigId = 'a-1'
+      controller.listPlatformAgentsAgentConfig.mockReturnValue(of(named('Reviewer')))
+      controller.listByParentAgentConfig.mockReturnValue(of(named('reviewer', 'BugFixer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['Reviewer'] })))
+
+      component.ngOnInit()
+
+      const rows = internals().subAgentRows()
+      expect(rows.filter((r) => r.name.toLowerCase() === 'reviewer').length).toBe(1)
+      expect(rows.find((r) => r.name.toLowerCase() === 'reviewer')?.selected()).toBe(true)
+    })
+
+    it('keeps the platform agents when only the namespace list is refused', () => {
+      // One catchError around both calls threw away the list that did load and flagged every
+      // selector unverifiable, including platform ones that resolve.
+      routeAgentConfigId = 'a-1'
+      controller.listPlatformAgentsAgentConfig.mockReturnValue(of(named('PlatformHelper')))
+      controller.listByParentAgentConfig.mockReturnValue(throwError(() => ({ status: 403 })))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['PlatformHelper'] })))
+
+      component.ngOnInit()
+
+      const row = internals()
+        .subAgentRows()
+        .find((r) => r.name === 'PlatformHelper')
+      expect(row?.unresolved).toBe(false)
+      expect(row?.selected()).toBe(true)
+    })
+
     it('matches a selector written in another case, like the server glob does', () => {
       routeAgentConfigId = 'a-1'
       controller.listByParentAgentConfig.mockReturnValue(of(named('Reviewer')))
@@ -827,14 +918,37 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       )
     })
 
-    it('falls back to a generic line when the error carries no message', () => {
-      controller.createAgentConfig.mockReturnValue(throwError(() => ({ status: 0 })))
+    it('falls back to a generic line when a refusal carries no message', () => {
+      // A real refusal with an empty body. status 0 is not one: it has its own line below.
+      controller.createAgentConfig.mockReturnValue(throwError(() => ({ status: 400 })))
 
       component.ngOnInit()
       internals().nameControl.setValue('fresh')
       internals().submit()
 
       expect(internals().submitError()).toContain('gave no reason')
+    })
+
+    it('says the server could not be reached, instead of blaming the values', () => {
+      // status 0 means the request never arrived: nothing was refused, so telling the user to
+      // check their values sends them hunting a validation problem in a form that is valid.
+      controller.createAgentConfig.mockReturnValue(throwError(() => ({ status: 0 })))
+
+      component.ngOnInit()
+      internals().nameControl.setValue('fresh')
+      internals().submit()
+
+      expect(internals().submitError()).toBe('The server could not be reached. The agent was not saved.')
+    })
+
+    it('names a server failure as one', () => {
+      controller.createAgentConfig.mockReturnValue(throwError(() => ({ status: 502 })))
+
+      component.ngOnInit()
+      internals().nameControl.setValue('fresh')
+      internals().submit()
+
+      expect(internals().submitError()).toBe('The server failed to save the agent (HTTP 502). Nothing was changed.')
     })
 
     it('clears a previous refusal when the next save starts', () => {
