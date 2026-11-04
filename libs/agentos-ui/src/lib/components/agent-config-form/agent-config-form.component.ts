@@ -38,6 +38,7 @@ import {
   normalizeSkillSelector,
 } from '../../services/skill-selector.utils'
 import { SkillStateService } from '../../services/skill-state.service'
+import { AgentMessagingComponent } from '../agent-messaging/agent-messaging.component'
 import { CONFIG_AGENT_TYPE, isConfigAgentExposed } from './config-agent-exposure'
 
 /** Convenience alias for the generated enum. */
@@ -143,7 +144,7 @@ interface SkillRow {
  */
 @Component({
   selector: 'agentos-agent-config-form',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, AgentMessagingComponent],
   templateUrl: './agent-config-form.component.html',
   styleUrl: './agent-config-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -166,6 +167,9 @@ export class AgentConfigFormComponent implements OnInit {
    * (route is /admin/agent-configs/... and has no :namespaceId segment).
    */
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+
+  /** The agent being edited; empty in create mode. */
+  protected readonly agentConfigId = this.route.snapshot.paramMap.get('agentConfigId') ?? ''
 
   /** True when editing/creating a platform-level config (namespaceId IS NULL). */
   protected readonly isPlatformMode = !this.namespaceId

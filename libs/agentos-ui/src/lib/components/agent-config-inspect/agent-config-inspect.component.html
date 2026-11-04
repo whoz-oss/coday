@@ -162,6 +162,10 @@
           </ul>
         }
       </section>
+
+      @if (namespaceId) {
+        <agentos-agent-messaging [namespaceId]="namespaceId" [agentId]="agentConfigId" />
+      }
     </div>
   }
 </div>

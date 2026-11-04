@@ -82,7 +82,9 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
-import { findLegitimateAnswer } from './case-chat.utils'
+import { findLegitimateAnswer, messageAuthorLabel, messagingPlatformLabel } from './case-chat.utils'
+import { CaseContinueMessagingComponent } from '../case-continue-messaging/case-continue-messaging.component'
+import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -196,6 +198,7 @@ function hasActiveSelection(): boolean {
     AgentActivityComponent,
     CostPipe,
     TokenCountPipe,
+    CaseContinueMessagingComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -214,6 +217,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
+  private readonly userState = inject(UserStateService)
   private readonly oauthService = inject(OAuthAgentosService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
@@ -1478,6 +1482,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   protected turnTokensTitle(metrics: TurnMetrics): string {
     return `${metrics.totalTokens.toLocaleString()} tokens`
+  }
+
+  /** "You" for the current user's messages, the author's name for anyone else's. */
+  protected authorLabel(message: CaseMessageEvent): string {
+    return messageAuthorLabel(message.actor, this.userState.currentUser()?.id)
+  }
+
+  /** The messaging application a user message was sent from, or null for one typed here. */
+  protected messagingPlatform(message: CaseMessageEvent): string | null {
+    return message.actor.role === 'USER' ? messagingPlatformLabel(message.sessionContext) : null
   }
 
   /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */

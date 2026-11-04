@@ -28,6 +28,10 @@ export * from './integration-config-controller.service'
 import { IntegrationConfigControllerService } from './integration-config-controller.service'
 export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
+export * from './messaging-bot-controller.service'
+import { MessagingBotControllerService } from './messaging-bot-controller.service'
+export * from './messaging-controller.service'
+import { MessagingControllerService } from './messaging-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
 export * from './namespace-git-controller.service'
@@ -76,6 +80,8 @@ export const APIS = [
   GitWorkspacesConfigurationControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
+  MessagingBotControllerService,
+  MessagingControllerService,
   NamespaceControllerService,
   NamespaceGitControllerService,
   NamespaceMembershipControllerService,

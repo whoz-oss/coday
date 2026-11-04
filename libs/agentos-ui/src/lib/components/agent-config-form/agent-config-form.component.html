@@ -359,5 +359,9 @@
         <button class="agent-config-form__btn" type="button" (click)="cancel()">Cancel</button>
       </div>
     </form>
+
+    @if (isEditMode() && namespaceId) {
+      <agentos-agent-messaging [namespaceId]="namespaceId" [agentId]="agentConfigId" />
+    }
   }
 </div>

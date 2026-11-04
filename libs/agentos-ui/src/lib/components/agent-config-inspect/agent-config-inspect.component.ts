@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { AgentConfigControllerService, AgentDefinition, AgentDefinitionToolSummary } from '@whoz-oss/agentos-api-client'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
+import { AgentMessagingComponent } from '../agent-messaging/agent-messaging.component'
 
 /**
  * AgentConfigInspectComponent — read-only view of a resolved AgentDefinition.
@@ -18,7 +19,7 @@ import { MarkdownPipe } from '../../pipes/markdown.pipe'
  */
 @Component({
   selector: 'agentos-agent-config-inspect',
-  imports: [RouterLink, MarkdownPipe],
+  imports: [RouterLink, MarkdownPipe, AgentMessagingComponent],
   templateUrl: './agent-config-inspect.component.html',
   styleUrl: './agent-config-inspect.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

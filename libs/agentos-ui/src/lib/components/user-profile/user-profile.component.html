@@ -109,6 +109,9 @@
       </div>
     </div>
 
+    <!-- Messaging accounts are linked outside the profile form, in both modes. Hidden when no bot runs. -->
+    <agentos-messaging-accounts />
+
     @if (isEditing()) {
       <!-- Edit mode -->
       <form class="user-profile__form" [formGroup]="form" (ngSubmit)="save()">

@@ -1,5 +1,5 @@
 import { ActorRoleEnum, AnswerEvent, QuestionEvent, QuestionEventQuestionTypeEnum } from '@whoz-oss/agentos-api-client'
-import { findLegitimateAnswer } from './case-chat.utils'
+import { findLegitimateAnswer, messageAuthorLabel, messagingPlatformLabel } from './case-chat.utils'
 
 const metadata = { id: '', created: '', modified: '', removed: false }
 
@@ -69,5 +69,37 @@ describe('findLegitimateAnswer', () => {
     const a = answer('a1', 'q1', 'ABCDEF00-0000-0000-0000-000000000001', 'red')
     const q = question('q1', 'abcdef00-0000-0000-0000-000000000001')
     expect(findLegitimateAnswer(q, [q, a])).toBe(a)
+  })
+})
+
+describe('messageAuthorLabel', () => {
+  const ada = { id: 'ADA-1', role: ActorRoleEnum.USER, displayName: 'Ada Lovelace' }
+
+  it('names the current user "You", whatever the case of the id', () => {
+    expect(messageAuthorLabel(ada, 'ada-1')).toBe('You')
+  })
+
+  it('names another user by their name', () => {
+    expect(messageAuthorLabel(ada, 'bob-2')).toBe('Ada Lovelace')
+  })
+
+  it('keeps "You" for every user message while the current user is unknown', () => {
+    expect(messageAuthorLabel(ada, undefined)).toBe('You')
+  })
+
+  it('names an agent by its name', () => {
+    expect(messageAuthorLabel({ id: 'a', role: ActorRoleEnum.AGENT, displayName: 'Coday' }, 'ada-1')).toBe('Coday')
+  })
+})
+
+describe('messagingPlatformLabel', () => {
+  it('names the application a message came from', () => {
+    expect(messagingPlatformLabel({ messaging: { platform: 'TELEGRAM', conversationId: 'c' } })).toBe('Telegram')
+  })
+
+  it('is null for a message typed in the UI or an unknown platform', () => {
+    expect(messagingPlatformLabel(undefined)).toBeNull()
+    expect(messagingPlatformLabel({ userContext: {} })).toBeNull()
+    expect(messagingPlatformLabel({ messaging: { platform: 'FAX' } })).toBeNull()
   })
 })

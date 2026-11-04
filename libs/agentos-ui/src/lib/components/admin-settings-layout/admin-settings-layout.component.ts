@@ -20,7 +20,10 @@ export class AdminSettingsLayoutComponent {
     },
     {
       label: 'Connections',
-      items: [{ label: 'Platform integrations', commands: ['integration-configs'] }],
+      items: [
+        { label: 'Platform integrations', commands: ['integration-configs'] },
+        { label: 'Messaging', commands: ['messaging'] },
+      ],
     },
     {
       label: 'AI',

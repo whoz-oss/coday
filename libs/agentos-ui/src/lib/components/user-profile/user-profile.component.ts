@@ -19,6 +19,7 @@ import {
 } from '../../services/theme.service'
 import { EnterKeyBehavior, USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
+import { MessagingAccountsComponent } from '../messaging-accounts/messaging-accounts.component'
 
 interface UserGlobalEntry {
   category: 'integration' | 'aiProvider' | 'authSetting'
@@ -49,7 +50,7 @@ interface UserGlobalRecap {
  */
 @Component({
   selector: 'agentos-user-profile',
-  imports: [ReactiveFormsModule, IconButtonComponent],
+  imports: [ReactiveFormsModule, IconButtonComponent, MessagingAccountsComponent],
   templateUrl: './user-profile.component.html',
   styleUrl: './user-profile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
