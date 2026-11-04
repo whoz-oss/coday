@@ -66,7 +66,12 @@ class ContextBudget(
     private val state = AtomicReference(State())
     private val reported = AtomicBoolean(false)
 
-    /** Characters of everything the provider receives for [prompt]. Never throws: a measure must not fail a run. */
+    /**
+     * Characters of everything the provider receives for [prompt].
+     *
+     * May throw: tool definitions come from plugin code. A caller that must not fail a run guards the call,
+     * as [io.whozoss.agentos.chat.UsageTrackingChatModel] does when it observes a request.
+     */
     fun promptChars(prompt: Prompt): Long {
         val messages = prompt.instructions.sumOf { messageChars(it) }
         val options = prompt.options as? ToolCallingChatOptions
@@ -97,9 +102,13 @@ class ContextBudget(
         promptChars: Long,
         observedPromptTokens: Long,
     ) {
-        if (promptChars <= 0 || observedPromptTokens <= 0) return
-        val ratio = (promptChars.toDouble() / observedPromptTokens).coerceIn(MIN_CHARS_PER_TOKEN, MAX_CHARS_PER_TOKEN)
-        state.updateAndGet { it.copy(charsPerToken = ratio, lastObservedTokens = observedPromptTokens) }
+        when {
+            promptChars <= 0 || observedPromptTokens <= 0 -> Unit
+            else -> {
+                val ratio = (promptChars.toDouble() / observedPromptTokens).coerceIn(MIN_CHARS_PER_TOKEN, MAX_CHARS_PER_TOKEN)
+                state.updateAndGet { it.copy(charsPerToken = ratio, lastObservedTokens = observedPromptTokens) }
+            }
+        }
     }
 
     /** Whether a prompt estimated at [estimatedTokens] has reached the trigger. Always false when disabled. */

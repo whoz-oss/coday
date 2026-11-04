@@ -17,7 +17,7 @@ were caused by context overflow. Its 2026-09-07 update says the cause is **not e
 it could be the context limit, an iteration limit, or another error. This ADR first describes
 what the code does today. Several assumptions in the issue no longer match it.
 
-### Inventory (as of this ADR)
+### Inventory (code before Phase 0, 2026-11-03)
 
 **Model limit registry: the field exists but nothing reads it.**
 `AiModel.contextWindow: Long?` (SDK, `aiProvider/AiModel.kt`) is persisted (`AiModelNode`),
@@ -130,7 +130,7 @@ What it got wrong, and this design must not repeat:
 durable non-destructive case event.** It ships in three phases. Each phase is useful on its
 own, and phase 0 answers the open question of the issue.
 
-### Phase 0 — Diagnose and recover once
+### Phase 0 — Diagnose
 
 - **Classify** context-overflow responses in `util/WebClientExceptionUtils.kt` from their
   status and body *pattern* (Anthropic `prompt is too long`, OpenAI/vLLM
