@@ -8,7 +8,10 @@ import { UserStateService } from '../../services/user-state.service'
  * ShellTopbarComponent — navigation shared by every settings page (namespace, administration, profile).
  *
  * One bar to hop between all configuration scopes without going back through the cases view:
- * - "Cases" (and the logo) return to the work in progress: active namespace AND open case
+ * - "Back to <namespace>" is the one way out of every settings page, back to the work in progress: active
+ *   namespace AND open case (or, if nothing was visited yet, the namespace the cases view opens by default). It is
+ *   always the leftmost element (no logo: a settings page is not the app's home) and is left out when the user has
+ *   no namespace to go back to.
  * - "Namespace settings" jumps straight to the active namespace configuration
  * - "Namespaces", "User settings" and "Administration" reach the other scopes
  *
@@ -32,6 +35,18 @@ export class ShellTopbarComponent {
   /** Namespace the user is working in; null until a cases or namespace settings page has resolved one. */
   protected readonly activeNamespaceId = this.namespaceState.activeNamespaceId
 
-  /** Query params restoring the active namespace and open case on the cases view. */
-  protected readonly workQueryParams = computed(() => this.shellContext.workQueryParams())
+  /** Label of the way out, naming the namespace it leads to; null (link hidden) while there is none to name. */
+  protected readonly backLabel = computed(() => {
+    const target = this.shellContext.backTarget()
+    return target ? `Back to ${target.name}` : null
+  })
+
+  /** Query params restoring that namespace and its open case on the cases view. */
+  protected readonly workQueryParams = computed(() =>
+    this.shellContext.workQueryParams(this.shellContext.backTarget()?.id ?? null)
+  )
+
+  constructor() {
+    this.shellContext.loadBackTarget()
+  }
 }

@@ -432,6 +432,7 @@
     font-weight: 600;
     font-size: 12px;
     color: var(--color-accent-700);
+    overflow: hidden;
   }
 
   // Name/role text block
@@ -470,6 +471,7 @@
     font-weight: 600;
     font-size: 12px;
     color: var(--color-accent-700);
+    overflow: hidden;
     cursor: pointer;
     transition: border-color 140ms;
 

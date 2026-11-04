@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
@@ -22,9 +22,8 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-integration-configs',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
+  imports: [ButtonDirective, SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-integration-configs.component.html',
-  styleUrl: './platform-integration-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformIntegrationConfigsComponent {

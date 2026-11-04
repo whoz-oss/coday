@@ -1,134 +1,112 @@
-<div class="ai-provider-form">
-  <header class="ai-provider-form__header">
-    <button class="ai-provider-form__back" type="button" (click)="cancel()" title="Back to AI providers">
-      <span class="ai-provider-form__back-icon">&#8592;</span>
-      AI Providers
+<ds-page>
+  <ds-section-header [title]="isEditMode() ? 'Edit AI provider' : 'New AI provider'">
+    <button dsButton variant="ghost" type="button" title="Back to AI providers" (click)="cancel()">
+      &larr; AI providers
     </button>
-    <h1 class="ai-provider-form__title">{{ isEditMode() ? 'Edit AI provider' : 'New AI provider' }}</h1>
-  </header>
+  </ds-section-header>
 
   @if (isLoading()) {
-    <p class="ai-provider-form__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <form class="ai-provider-form__form" [formGroup]="form" (ngSubmit)="submit()">
+    <form class="ds-form" [formGroup]="form" (ngSubmit)="submit()">
       @if (!isPlatformMode) {
-        <fieldset class="ai-provider-form__scope" [disabled]="isEditMode()">
-          <legend class="ai-provider-form__label">Portée de la configuration</legend>
+        <ds-fieldset legend="Configuration scope" [disabled]="isEditMode()">
           @for (opt of scopeOptions; track trackByScope($index, opt)) {
-            <label class="ai-provider-form__scope-option">
+            <label dsCheck>
               <input
                 type="radio"
                 [formControl]="scopeControl"
                 [value]="opt.value"
                 [disabled]="opt.value === 'namespace' && !isAdmin()"
               />
-              <span>{{ opt.label }}</span>
+              {{ opt.label }}
             </label>
           }
-        </fieldset>
+        </ds-fieldset>
       }
 
-      <div class="ai-provider-form__field">
-        <label class="ai-provider-form__label" for="llm-api-type">API type <span aria-hidden="true">*</span></label>
-        <select id="llm-api-type" class="ai-provider-form__select" [formControl]="apiTypeControl">
+      <ds-form-field label="API type" controlId="llm-api-type" required>
+        <select dsControl id="llm-api-type" [formControl]="apiTypeControl">
           @for (type of apiTypeOptions; track type) {
             <option [value]="type">{{ type }}</option>
           }
         </select>
-      </div>
+      </ds-form-field>
 
-      <div class="ai-provider-form__field">
-        <label class="ai-provider-form__label" for="llm-name">Name <span aria-hidden="true">*</span></label>
+      <ds-form-field label="Name" controlId="llm-name" required>
         <input
+          dsControl
           id="llm-name"
-          class="ai-provider-form__input"
           type="text"
           placeholder="e.g. OpenAI prod"
           [formControl]="nameControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-provider-form__field">
-        <label class="ai-provider-form__label" for="llm-description">Description</label>
+      <ds-form-field label="Description" controlId="llm-description">
         <input
+          dsControl
           id="llm-description"
-          class="ai-provider-form__input"
           type="text"
           placeholder="Optional — short description of this provider"
           [formControl]="descriptionControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-provider-form__field">
-        <label class="ai-provider-form__label" for="llm-base-url">Base URL</label>
+      <ds-form-field label="Base URL" controlId="llm-base-url">
         <input
+          dsControl
           id="llm-base-url"
-          class="ai-provider-form__input"
           type="url"
           placeholder="Optional — leave empty for default endpoint"
           [formControl]="baseUrlControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-provider-form__field">
-        <label class="ai-provider-form__label" for="llm-api-key">API key</label>
+      <ds-form-field label="API key" controlId="llm-api-key">
         <input
+          dsControl
           id="llm-api-key"
-          class="ai-provider-form__input ai-provider-form__input--secret"
           type="password"
           placeholder="sk-…"
           [formControl]="apiKeyControl"
           autocomplete="new-password"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-provider-form__headers" [formArrayName]="'headers'">
-        <div class="ai-provider-form__headers-title">
-          <span class="ai-provider-form__label">Custom headers</span>
-          <button class="ai-provider-form__headers-add" type="button" (click)="addHeader()">+ Add header</button>
-        </div>
-        @for (headerGroup of headersArray.controls; track $index) {
-          <div class="ai-provider-form__header-row" [formGroupName]="$index">
-            <input
-              class="ai-provider-form__input"
-              type="text"
-              placeholder="Header name"
-              formControlName="key"
-              autocomplete="off"
-            />
-            <input
-              class="ai-provider-form__input"
-              type="text"
-              placeholder="Value"
-              formControlName="value"
-              autocomplete="off"
-            />
-            <button
-              class="ai-provider-form__header-remove"
-              type="button"
-              (click)="removeHeader($index)"
-              title="Remove header"
-              aria-label="Remove header"
-            >
-              &times;
-            </button>
+      <ds-form-field label="Custom headers">
+        <div class="ds-stack ds-stack--sm" [formArrayName]="'headers'">
+          @for (headerGroup of headersArray.controls; track $index) {
+            <div class="ds-inline" [formGroupName]="$index">
+              <input dsControl type="text" placeholder="Header name" formControlName="key" autocomplete="off" />
+              <input dsControl type="text" placeholder="Value" formControlName="value" autocomplete="off" />
+              <button
+                dsButton
+                variant="icon-danger"
+                type="button"
+                title="Remove header"
+                aria-label="Remove header"
+                (click)="removeHeader($index)"
+              >
+                &times;
+              </button>
+            </div>
+          }
+          <div>
+            <button dsButton variant="ghost" type="button" (click)="addHeader()">+ Add header</button>
           </div>
-        }
-      </div>
+        </div>
+      </ds-form-field>
 
-      <div class="ai-provider-form__actions">
-        <button
-          class="ai-provider-form__btn ai-provider-form__btn--primary"
-          type="submit"
-          [disabled]="form.invalid || isSubmitting()"
-        >
+      <ds-form-actions>
+        <button dsButton variant="primary" type="submit" [disabled]="form.invalid || isSubmitting()">
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
-        <button class="ai-provider-form__btn" type="button" (click)="cancel()">Cancel</button>
-      </div>
+        <button dsButton type="button" (click)="cancel()">Cancel</button>
+      </ds-form-actions>
     </form>
   }
-</div>
+</ds-page>

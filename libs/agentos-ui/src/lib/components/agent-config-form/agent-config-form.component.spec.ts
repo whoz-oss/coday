@@ -566,8 +566,8 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: ['readFile', 'ls'] } })))
       fixture.detectChanges()
 
-      const restriction = (fixture.nativeElement as HTMLElement).querySelector(
-        '.agent-config-form__integration-restriction'
+      const restriction = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('p')).find((p) =>
+        p.textContent?.includes('Restricted to')
       )
       expect(restriction?.textContent).toContain('readFile, ls')
     })

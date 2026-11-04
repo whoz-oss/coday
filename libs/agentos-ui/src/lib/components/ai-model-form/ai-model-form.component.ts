@@ -12,6 +12,7 @@ import {
   ModelPricing,
   ReasoningEffort,
 } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 
 /**
  * AiModelFormComponent — full-page create / edit form for an AI model.
@@ -34,9 +35,8 @@ const NO_REASONING_EFFORT_API_TYPES: readonly AiProviderApiTypeEnum[] = [
 
 @Component({
   selector: 'agentos-ai-model-form',
-  imports: [ReactiveFormsModule],
+  imports: [DS_PAGE_KIT, ReactiveFormsModule],
   templateUrl: './ai-model-form.component.html',
-  styleUrl: './ai-model-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiModelFormComponent implements OnInit {

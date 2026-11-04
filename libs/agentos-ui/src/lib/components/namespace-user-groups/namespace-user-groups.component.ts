@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { catchError, Observable, of, tap } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
@@ -13,9 +13,8 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
 /** Namespace-scoped user-group settings page. */
 @Component({
   selector: 'agentos-namespace-user-groups',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
+  imports: [ButtonDirective, SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './namespace-user-groups.component.html',
-  styleUrl: './namespace-user-groups.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceUserGroupsComponent {

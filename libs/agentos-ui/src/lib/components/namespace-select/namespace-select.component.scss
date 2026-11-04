@@ -1,30 +1,32 @@
+@use 'libs/design-system/src/styles/scale' as t;
+
 .namespace-select {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
 
   &__label {
-    font-size: 0.8rem;
+    font-size: t.$text-small;
     font-weight: 500;
-    color: var(--color-text-secondary, #6e6e73);
+    color: var(--color-text-secondary);
     white-space: nowrap;
   }
 
   &__control {
     padding: 0.35rem 0.6rem;
-    border-radius: 8px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    background: transparent;
-    color: var(--color-text, #1d1d1f);
-    font-size: 0.875rem;
-    font-family: inherit;
+    border-radius: var(--radius-md, 0);
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: t.$text-body;
     cursor: pointer;
 
     // The native outline was removed without a replacement: keep a visible keyboard focus.
     &:focus-visible {
-      outline: 2px solid var(--color-accent, #007aff);
+      outline: 2px solid var(--color-accent);
       outline-offset: 2px;
-      border-color: var(--color-accent, #007aff);
+      border-color: var(--color-accent);
     }
   }
 }

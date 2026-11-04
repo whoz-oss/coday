@@ -93,6 +93,8 @@ export class CaseShellComponent {
     return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
   })
 
+  protected readonly userAvatarUrl = this.userState.avatarUrl
+
   protected readonly userName = computed(() => {
     const user = this.userState.currentUser()
     if (!user) return ''
@@ -216,6 +218,7 @@ export class CaseShellComponent {
       const nsList = this.namespaces()
       const nsId = this.namespaceId()
       if (!nsList.length) return
+      this.shellContext.rememberNamespaceNames(nsList)
 
       if (nsId) {
         const found = nsList.find((ns) => ns.id === nsId)

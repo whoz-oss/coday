@@ -1,11 +1,12 @@
 <div class="shell-topbar">
-  <a class="shell-topbar__brand" routerLink="/home" [queryParams]="workQueryParams()" title="Back to cases">
-    <img src="CODAY-Logo.png" alt="" class="shell-topbar__logo-img" />
-    <span class="shell-topbar__logo-text">Coday</span>
-  </a>
+  @if (backLabel(); as label) {
+    <a class="shell-topbar__back" routerLink="/home" [queryParams]="workQueryParams()" [title]="label">
+      <span aria-hidden="true">&larr;</span>
+      <span class="shell-topbar__back-label">{{ label }}</span>
+    </a>
+  }
 
   <nav class="shell-topbar__links" aria-label="AgentOS navigation">
-    <a class="shell-topbar__link--work" routerLink="/home" [queryParams]="workQueryParams()">Cases</a>
     @if (activeNamespaceId(); as namespaceId) {
       <a [routerLink]="['/', namespaceId]" routerLinkActive="shell-topbar__link--active">Namespace settings</a>
     }

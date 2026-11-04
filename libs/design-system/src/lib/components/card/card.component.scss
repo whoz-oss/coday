@@ -1,0 +1,19 @@
+@use '../../../styles/scale' as t;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-md, 0);
+  font-size: t.$text-body;
+}
+
+.ds-card__heading {
+  margin: 0;
+  color: var(--color-text, #1d1f20);
+  font-size: t.$text-heading;
+  font-weight: 600;
+}

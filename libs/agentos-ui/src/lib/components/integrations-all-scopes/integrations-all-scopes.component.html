@@ -8,20 +8,20 @@
     [query]="rowFilter.query()"
     (queryChange)="rowFilter.query.set($event)"
   />
-  <button class="integrations__new" type="button" (click)="openCreateForm()">New integration</button>
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New integration</button>
 </ds-section-header>
 
 @if (deletion.error()) {
-  <p class="integrations__error" role="alert">{{ deletion.error() }}</p>
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
 }
 @if (isLoading()) {
-  <p class="integrations__status" role="status">Loading integrations…</p>
+  <p class="settings-table__status" role="status">Loading integrations…</p>
 } @else if (rows().length === 0) {
-  <p class="integrations__status">No integrations available.</p>
+  <p class="settings-table__status">No integrations available.</p>
 } @else if (rowFilter.filteredRows().length === 0) {
-  <p class="integrations__status" role="status">No integrations match the current filter.</p>
+  <p class="settings-table__status" role="status">No integrations match the current filter.</p>
 } @else {
-  <div class="integrations__table-wrap">
+  <div class="settings-table__wrap">
     <table dsTable role="table" aria-label="Integrations">
       <thead role="rowgroup">
         <tr role="row">
@@ -34,10 +34,12 @@
       <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
           <tr role="row">
-            <td role="cell" data-label="Name" data-title class="integrations__name">{{ row.config.name }}</td>
-            <td role="cell" data-label="Type" class="integrations__type">{{ row.config.integrationType }}</td>
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ row.config.name }}</td>
+            <td role="cell" data-label="Type" class="settings-table__secondary">
+              {{ row.config.integrationType }}
+            </td>
             <td role="cell" data-label="Scope">
-              <div class="integrations__tags">
+              <div class="settings-table__tags">
                 <ds-tag
                   [variant]="
                     row.scopeLabel === 'Platform' ? 'neutral' : row.scopeLabel === 'Personal' ? 'outline' : 'accent'
@@ -51,29 +53,38 @@
                 }
               </div>
             </td>
-            <td role="cell" data-label="Actions" data-actions class="integrations__actions">
-              @if (row.source === 'FILESYSTEM') {
-                <button type="button" (click)="view(row)">View</button>
-              } @else {
-                <button type="button" (click)="duplicate(row)">Duplicate</button>
-                @if (row.canEdit) {
-                  <button type="button" (click)="edit(row)">Edit</button>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (row.source === 'FILESYSTEM') {
+                  <button type="button" [attr.aria-label]="'View ' + row.config.name" (click)="view(row)">View</button>
+                } @else {
+                  @if (deletion.confirmingId() !== row.key) {
+                    <button type="button" [attr.aria-label]="'Duplicate ' + row.config.name" (click)="duplicate(row)">
+                      Duplicate
+                    </button>
+                    @if (row.canEdit) {
+                      <button type="button" [attr.aria-label]="'Edit ' + row.config.name" (click)="edit(row)">
+                        Edit
+                      </button>
+                    }
+                  }
+                  @if (row.canDelete) {
+                    <agentos-row-delete-action
+                      [rowKey]="row.key"
+                      [rowLabel]="row.config.name"
+                      [state]="deletion"
+                      deleteClass="settings-table__delete"
+                      confirmLabelClass="settings-table__confirm-label"
+                      (deleteRequested)="deletion.request(row.key)"
+                      (deleteConfirmed)="confirmDelete(row)"
+                      (deleteCancelled)="deletion.cancel()"
+                    />
+                  }
+                  @if (!row.canEdit && !row.canDelete) {
+                    <button type="button" disabled>Inherited</button>
+                  }
                 }
-                @if (row.canDelete) {
-                  <agentos-row-delete-action
-                    [rowKey]="row.key"
-                    [rowLabel]="row.config.name"
-                    [state]="deletion"
-                    deleteClass="integrations__delete"
-                    (deleteRequested)="deletion.request(row.key)"
-                    (deleteConfirmed)="confirmDelete(row)"
-                    (deleteCancelled)="deletion.cancel()"
-                  />
-                }
-                @if (!row.canEdit && !row.canDelete) {
-                  <button type="button" disabled>Inherited</button>
-                }
-              }
+              </div>
             </td>
           </tr>
         }

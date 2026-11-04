@@ -8,20 +8,20 @@
     [query]="groupFilter.query()"
     (queryChange)="groupFilter.query.set($event)"
   />
-  <button class="user-groups__new" type="button" (click)="openCreateForm()">New user group</button>
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New user group</button>
 </ds-section-header>
 
 @if (deletion.error()) {
-  <p class="user-groups__error" role="alert">{{ deletion.error() }}</p>
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
 }
 @if (isLoading()) {
-  <p class="user-groups__status" role="status">Loading user groups…</p>
+  <p class="settings-table__status" role="status">Loading user groups…</p>
 } @else if (groups().length === 0) {
-  <p class="user-groups__status">No user groups configured.</p>
+  <p class="settings-table__status">No user groups configured.</p>
 } @else if (groupFilter.filteredRows().length === 0) {
-  <p class="user-groups__status" role="status">No user groups match the current filter.</p>
+  <p class="settings-table__status" role="status">No user groups match the current filter.</p>
 } @else {
-  <div class="user-groups__table-wrap">
+  <div class="settings-table__wrap">
     <table dsTable role="table" aria-label="User groups">
       <thead role="rowgroup">
         <tr role="row">
@@ -34,23 +34,25 @@
       <tbody role="rowgroup">
         @for (group of groupFilter.filteredRows(); track group.userGroupId) {
           <tr role="row">
-            <td role="cell" data-label="Name" data-title class="user-groups__name">{{ group.name }}</td>
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ group.name }}</td>
             <td role="cell" data-label="Agents">{{ group.agentIds.length }}</td>
             <td role="cell" data-label="Members">{{ group.userCount }}</td>
-            <td role="cell" data-label="Actions" data-actions class="user-groups__actions">
-              @if (deletion.confirmingId() !== group.userGroupId) {
-                <button type="button" (click)="edit(group)">Edit</button>
-              }
-              <agentos-row-delete-action
-                [rowKey]="group.userGroupId"
-                [rowLabel]="group.name"
-                [state]="deletion"
-                deleteClass="user-groups__delete"
-                confirmLabelClass="user-groups__confirm-label"
-                (deleteRequested)="deletion.request(group.userGroupId)"
-                (deleteConfirmed)="confirmDelete(group)"
-                (deleteCancelled)="deletion.cancel()"
-              />
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (deletion.confirmingId() !== group.userGroupId) {
+                  <button type="button" [attr.aria-label]="'Edit ' + group.name" (click)="edit(group)">Edit</button>
+                }
+                <agentos-row-delete-action
+                  [rowKey]="group.userGroupId"
+                  [rowLabel]="group.name"
+                  [state]="deletion"
+                  deleteClass="settings-table__delete"
+                  confirmLabelClass="settings-table__confirm-label"
+                  (deleteRequested)="deletion.request(group.userGroupId)"
+                  (deleteConfirmed)="confirmDelete(group)"
+                  (deleteCancelled)="deletion.cancel()"
+                />
+              </div>
             </td>
           </tr>
         }

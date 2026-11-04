@@ -141,7 +141,9 @@
       <div class="shell-sidebar__user-menu">
         <button class="shell-sidebar__user-btn" type="button" title="User menu" (click)="menuToggled.emit($event)">
           <!-- Initials square -->
-          <span class="shell-sidebar__user-avatar">{{ userInitials() || '??' }}</span>
+          <span class="shell-sidebar__user-avatar">
+            <ds-avatar [src]="userAvatarUrl()" [initials]="userInitials() || '??'" />
+          </span>
           <!-- Full name -->
           <span class="shell-sidebar__user-info">
             <span class="shell-sidebar__user-name">{{ userName() }}</span>
@@ -352,7 +354,7 @@
       title="User menu"
       (click)="onCompactUserBtnClick($event)"
     >
-      {{ userInitials() || '?' }}
+      <ds-avatar [src]="userAvatarUrl()" [initials]="userInitials() || '?'" />
     </button>
 
     <!-- Menu en position fixed pour échapper à overflow:hidden -->

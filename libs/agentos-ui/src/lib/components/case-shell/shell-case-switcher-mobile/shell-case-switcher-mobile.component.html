@@ -359,7 +359,9 @@
           </div>
         }
         <button class="mobile-drawer__user-btn" type="button" (click)="userMenuOpen.set(!userMenuOpen())">
-          <span class="mobile-drawer__user-avatar">{{ userInitials() }}</span>
+          <span class="mobile-drawer__user-avatar">
+            <ds-avatar [src]="userAvatarUrl()" [initials]="userInitials()" />
+          </span>
           <span class="mobile-drawer__user-info">
             <span class="mobile-drawer__user-name">{{ userName() }}</span>
           </span>

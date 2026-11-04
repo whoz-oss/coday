@@ -20,6 +20,7 @@ import {
   SchedulerEndType,
   SchedulerUnit,
 } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { catchError, forkJoin, of, Observable } from 'rxjs'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
 
@@ -36,9 +37,8 @@ import { ScheduledPromptStateService } from '../../services/scheduled-prompt-sta
  */
 @Component({
   selector: 'agentos-scheduled-prompt-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DS_PAGE_KIT],
   templateUrl: './scheduled-prompt-form.component.html',
-  styleUrl: './scheduled-prompt-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ScheduledPromptFormComponent implements OnInit {
