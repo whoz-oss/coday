@@ -21,8 +21,17 @@ interface MessagingAdapter {
     /** Id of the bot account, part of every identity and conversation key. */
     val accountId: String get() = bot.accountId
 
-    /** The URL that opens the bot with [token] as its start parameter, given to a user who links an account. */
+    /**
+     * The URL that opens the chat with the bot, given to a user who links an account: with [token] as its start
+     * parameter where the platform's links carry one.
+     */
     fun linkUrl(token: String): String
+
+    /** The message to send to the bot to link an account, on a platform whose links cannot carry [token]; null elsewhere. */
+    fun linkCode(token: String): String? = null
+
+    /** What starts a gateway command in the platform's chats: `/`, unless the platform keeps it for its own commands. */
+    val commandPrefix: String get() = MessagingCommand.SLASH
 
     /**
      * Sends [message] to [chatId], split into several messages when the platform needs it.

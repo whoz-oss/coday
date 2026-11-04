@@ -80,8 +80,9 @@ class MessagingBotService(
     }
 
     /**
-     * Gives [agentId] the bot of [token] on [platform], replacing the agent's bot there. Attaching the agent's own
-     * bot again only updates its token, and keeps the links of its users.
+     * Gives [agentId] the bot of [token] on [platform], replacing the agent's bot there; [appToken] is the second
+     * token of a platform that needs one (Slack). Attaching the agent's own bot again only updates its tokens, and
+     * keeps the links of its users.
      *
      * @throws BadRequestException when the platform refuses the token
      * @throws ConflictException when the bot already serves another agent or is a bot manager
@@ -91,10 +92,11 @@ class MessagingBotService(
         agentId: UUID,
         platform: MessagingPlatform,
         token: String,
+        appToken: String? = null,
         managed: Boolean = false,
     ): MessagingBot {
         val agent = requireAgent(namespaceId, agentId)
-        val probed = drivers.get(platform).probe(token.trim())
+        val probed = drivers.get(platform).probe(token.trim(), appToken?.trim()?.ifEmpty { null })
         val slotKey = MessagingBot.agentSlotKey(platform, namespaceId, agent.id)
         findByAccount(platform, probed.accountId)
             ?.takeIf { it.slotKey != slotKey }
@@ -103,7 +105,13 @@ class MessagingBotService(
         val bot =
             when {
                 previous != null && previous.accountId == probed.accountId ->
-                    previous.copy(token = token.trim(), username = probed.username, displayName = probed.displayName)
+                    previous.copy(
+                        token = token.trim(),
+                        appToken = appToken?.trim()?.ifEmpty { null },
+                        username = probed.username,
+                        displayName = probed.displayName,
+                        url = probed.url,
+                    )
                 else -> {
                     previous?.let { remove(it) }
                     MessagingBot(
@@ -111,7 +119,9 @@ class MessagingBotService(
                         accountId = probed.accountId,
                         username = probed.username,
                         displayName = probed.displayName,
+                        url = probed.url,
                         token = token.trim(),
+                        appToken = appToken?.trim()?.ifEmpty { null },
                         agentId = agent.id,
                         namespaceId = namespaceId,
                         managed = managed,
@@ -153,7 +163,9 @@ class MessagingBotService(
         platform: MessagingPlatform,
         token: String,
     ): MessagingBot {
-        val probed = drivers.get(platform).probe(token.trim())
+        val driver = drivers.get(platform)
+        if (!driver.supportsBotManagers) throw BadRequestException("$platform has no bot managers")
+        val probed = driver.probe(token.trim())
         if (!probed.canManageBots) {
             throw BadRequestException(
                 "@${probed.username} cannot manage other bots: turn Bot Management Mode on for it in BotFather's Mini App",
@@ -166,7 +178,7 @@ class MessagingBotService(
         val manager =
             when {
                 previous != null && previous.accountId == probed.accountId ->
-                    previous.copy(token = token.trim(), username = probed.username, displayName = probed.displayName)
+                    previous.copy(token = token.trim(), username = probed.username, displayName = probed.displayName, url = probed.url)
                 else -> {
                     previous?.let { remove(it) }
                     MessagingBot(
@@ -175,6 +187,7 @@ class MessagingBotService(
                         accountId = probed.accountId,
                         username = probed.username,
                         displayName = probed.displayName,
+                        url = probed.url,
                         token = token.trim(),
                     )
                 }

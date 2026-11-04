@@ -55,6 +55,7 @@ class MessagingControllerIntegrationSpec : StringSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var platform: FakeMessagingDriver
+    @Autowired lateinit var slack: FakeSlackDriver
     @Autowired lateinit var bots: MessagingBotService
     @Autowired lateinit var identities: MessagingIdentityService
     @Autowired lateinit var users: UserRepository
@@ -96,6 +97,7 @@ class MessagingControllerIntegrationSpec : StringSpec() {
         beforeEach {
             Neo4jContainerSupport.clearDatabase(driver)
             platform.reset()
+            slack.reset()
             ada = user("ada")
             bob = user("bob")
             root = user("root", admin = true)
@@ -264,6 +266,32 @@ class MessagingControllerIntegrationSpec : StringSpec() {
                         .content("""{"platform":"TELEGRAM"}"""),
                 ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.url").value(startsWith("https://t.me/agentos_manager_bot?start=")))
+        }
+
+        "a Slack app is created from the manifest AgentOS gives, and linking to it goes through a message" {
+            mockMvc
+                .perform(get("/api/namespaces/${namespace.id}/agent-configs/${helper.id}/messaging-bots/manifest").param("platform", "SLACK"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.manifest").value(org.hamcrest.Matchers.containsString("Helper")))
+                .andExpect(jsonPath("$.createUrl").value("https://api.slack.com/apps?new_app=1"))
+            mockMvc
+                .perform(get("/api/namespaces/${namespace.id}/agent-configs/${helper.id}/messaging-bots/manifest").param("platform", "TELEGRAM"))
+                .andExpect(status().isConflict)
+
+            slack.register("xoxb-helper", accountId = "T1.UBOT", username = "helper")
+            mockMvc
+                .perform(
+                    post("/api/namespaces/${namespace.id}/agent-configs/${helper.id}/messaging-bots")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"platform":"SLACK","token":"xoxb-helper","appToken":"xapp-helper"}"""),
+                ).andExpect(status().isCreated)
+                .andExpect(jsonPath("$.platform").value("SLACK"))
+            val botId = bots.findAgentBots(namespace.id, helper.id).single { it.platform == MessagingPlatform.SLACK }.id
+            mockMvc
+                .perform(post("/api/messaging/bots/$botId/link"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.url").value("https://slack.com/app_redirect?app=AT1.UBOT"))
+                .andExpect(jsonPath("$.code").value(startsWith("link ")))
         }
 
         "creating a bot with no manager is a conflict" {

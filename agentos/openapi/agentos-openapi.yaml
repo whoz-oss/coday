@@ -2615,6 +2615,38 @@ paths:
         instance's bot manager
       tags:
       - messaging-bot-controller
+  /api/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots/manifest:
+    get:
+      operationId: getMessagingBotAppManifest
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: agentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: platform
+        required: true
+        schema:
+          $ref: "#/components/schemas/MessagingPlatform"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingAppManifestDto"
+          description: OK
+      summary: "The manifest of the app to create for an agent, on a platform where\
+        \ a bot is such an app"
+      tags:
+      - messaging-bot-controller
   /api/namespaces/{namespaceId}/case-invalidation:
     get:
       description: "Each 'namespace-case-invalidation' event carries the neutral JSON\
@@ -5985,15 +6017,40 @@ components:
       - namespaceId
       - timestamp
       - type
+    MessagingAppManifestDto:
+      type: object
+      properties:
+        createUrl:
+          type: string
+          description: Where to paste it
+        manifest:
+          type: string
+          description: "The manifest, as JSON, to paste where the platform creates\
+            \ an app from a manifest"
+        platform:
+          $ref: "#/components/schemas/MessagingPlatform"
+      required:
+      - createUrl
+      - manifest
+      - platform
     MessagingBotAttachRequest:
       type: object
       properties:
+        appToken:
+          type: string
+          description: "Slack only, required there: the app-level token (xapp-) with\
+            \ the connections:write scope, which receives the messages (Socket Mode).\
+            \ Stored encrypted, never returned."
+          maxLength: 300
+          minLength: 0
+          writeOnly: true
         platform:
           $ref: "#/components/schemas/MessagingPlatform"
         token:
           type: string
-          description: "The bot's token. Stored encrypted, never returned."
-          maxLength: 200
+          description: "The bot's token: Telegram's from BotFather, Slack's Bot User\
+            \ OAuth Token (xoxb-). Stored encrypted, never returned."
+          maxLength: 300
           minLength: 0
           writeOnly: true
       required:
@@ -6168,6 +6225,11 @@ components:
     MessagingLinkDto:
       type: object
       properties:
+        code:
+          type: string
+          description: "When set, the message to send to the bot once the link opened\
+            \ the chat: the link of this platform cannot carry it (Slack). Usable\
+            \ once, until expiresAt."
         expiresAt:
           type: string
           format: date-time
@@ -6182,6 +6244,7 @@ components:
       type: string
       enum:
       - TELEGRAM
+      - SLACK
     ModelPricing:
       type: object
       properties:

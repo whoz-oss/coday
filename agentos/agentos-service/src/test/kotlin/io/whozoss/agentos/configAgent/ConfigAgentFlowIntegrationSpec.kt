@@ -755,6 +755,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                     accountId = "4242",
                     username = "dev_bot",
                     displayName = "Dev",
+                    url = "https://t.me/bot",
                     token = "4242:dev-token-dev-token-dev-token-dev-token",
                     agentId = devAgent.id,
                     namespaceId = namespace.id,

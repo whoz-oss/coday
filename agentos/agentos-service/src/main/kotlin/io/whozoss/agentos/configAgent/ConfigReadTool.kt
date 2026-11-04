@@ -41,8 +41,8 @@ class ConfigReadTool(
         i.e. whether a message without @mention reaches an agent and, if not, why: no default agent, agent missing,
         disabled or not deployed), integration-type (the available types and, with id = the type, its parameter
         schema), deployment (which agents are deployed on the namespace), capabilities (who the user is: super-admin,
-        role in the namespace), messaging (which agents have a bot on Telegram, and how to give an agent one: read it
-        whenever the user asks about Telegram or talking to an agent from a messaging application).
+        role in the namespace), messaging (which agents have a bot on Telegram or Slack, and how to give an agent one:
+        read it whenever the user asks about Telegram, Slack or talking to an agent from a messaging application).
         'namespaceId' reads another namespace the user administers instead of this one (list the namespaces first).
         Start with 'capabilities' and 'integration-type' before proposing a new integration. When a namespace does
         not answer, read it with kind 'namespace' before anything else.

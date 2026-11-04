@@ -40,7 +40,6 @@ class MessagingManagedBots(
     private val identities: MessagingIdentityService,
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
-    private val drivers: MessagingDrivers,
     properties: MessagingProperties,
     private val clock: Clock,
 ) {
@@ -187,14 +186,13 @@ class MessagingManagedBots(
                     ),
                 )
                 val agentName = agentConfigService.findById(request.agentId)?.name ?: "your agent"
-                val url = drivers.get(bot.platform).botUrl(bot.username)
                 manager.send(
                     inbound.chatId,
                     OutboundMessage(
                         text =
                             "✓ **@${bot.username}** is ready, and your account is linked to it. " +
                                 "Open it and say hello to **$agentName**.",
-                        buttons = listOf(MessagingButton("Open @${bot.username}", MessagingAction.OpenUrl(url))),
+                        buttons = listOf(MessagingButton("Open @${bot.username}", MessagingAction.OpenUrl(bot.url))),
                     ),
                 )
                 logger.info { "[Messaging] @${bot.username} created for agent $agentName by user ${request.userId}" }

@@ -17,7 +17,9 @@ open class Neo4jMessagingBotRepository(
 ) : MessagingBotRepository {
     @Transactional
     open override fun save(bot: MessagingBot): MessagingBot =
-        neo4jRepository.save(MessagingBotNode.fromDomain(bot, encryptor.encrypt(bot.token))).toDomain()
+        neo4jRepository
+            .save(MessagingBotNode.fromDomain(bot, encryptor.encrypt(bot.token), bot.appToken?.let(encryptor::encrypt)))
+            .toDomain()
 
     @Transactional(readOnly = true)
     open override fun findById(id: UUID): MessagingBot? = neo4jRepository.findByIdOrNull(id.toString())?.toDomain()
@@ -48,7 +50,8 @@ open class Neo4jMessagingBotRepository(
             }
         }
 
-    private fun MessagingBotNode.toDomain(): MessagingBot = toDomain(encryptor.decrypt(encryptedToken))
+    private fun MessagingBotNode.toDomain(): MessagingBot =
+        toDomain(encryptor.decrypt(encryptedToken), encryptedAppToken?.let(encryptor::decrypt))
 
     companion object : KLogging()
 }

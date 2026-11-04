@@ -67,6 +67,7 @@ class EmbeddedNeo4jMessagingPersistenceSpec : StringSpec() {
         accountId = accountId,
         username = "bot_$accountId",
         displayName = "Bot",
+        url = "https://t.me/bot",
         token = "$accountId:secret-secret-secret-secret-secret",
         agentId = agentId,
         namespaceId = namespaceId,

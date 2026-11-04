@@ -13,16 +13,28 @@ import org.springframework.stereotype.Component
 interface MessagingDriver {
     val platform: MessagingPlatform
 
+    /** True when a bot of the platform can create bots it then manages (Telegram's managed bots). */
+    val supportsBotManagers: Boolean get() = false
+
     /**
-     * Asks the platform which bot [token] belongs to.
+     * Asks the platform which bot [token] belongs to, checking [appToken] too on a platform that needs one.
      *
-     * @throws io.whozoss.agentos.exception.BadRequestException when the platform refuses the token
+     * @throws io.whozoss.agentos.exception.BadRequestException when the platform refuses a token, or one is missing
      * @throws MessagingDeliveryException when the platform cannot be reached
      */
-    fun probe(token: String): ProbedBot
+    fun probe(
+        token: String,
+        appToken: String? = null,
+    ): ProbedBot
 
-    /** The address that opens the bot [username] in the messaging application. */
-    fun botUrl(username: String): String
+    /**
+     * The manifest of the app an admin creates for the agent [agentName], on a platform where a bot is such an
+     * app (Slack); null on the others.
+     */
+    fun appManifest(
+        agentName: String,
+        agentDescription: String?,
+    ): AppManifest? = null
 
     /**
      * Starts receiving what [bot] is sent and hands it to [sink], one chat at a time; returns at once. [onStatus]
@@ -40,8 +52,16 @@ data class ProbedBot(
     val accountId: String,
     val username: String,
     val displayName: String,
+    /** The address that opens the bot in the messaging application. */
+    val url: String,
     /** True when the bot may create and manage other bots (Telegram's Bot Management Mode). */
     val canManageBots: Boolean,
+)
+
+/** The manifest of an app to create, and where the platform creates an app from one. */
+data class AppManifest(
+    val manifest: String,
+    val createUrl: String,
 )
 
 /** A running bot: what to send through, and how to stop it. */

@@ -10,7 +10,7 @@ import java.util.UUID
  * Feign client, adding their own `@FeignClient` and routing annotations.
  *
  * Authorization summary (enforced server-side, not expressed here):
- * - [listAgentMessagingBots]: READ on the namespace
+ * - [listAgentMessagingBots], [getMessagingBotAppManifest]: READ on the namespace
  * - [attachMessagingBot], [requestMessagingBotCreation], [updateMessagingBot], [deleteMessagingBot]: WRITE on
  *   the namespace of the bot (namespace ADMIN)
  * - [listMessagingBotManagers], [setMessagingBotManager], [deleteMessagingBotManager]: super-admin
@@ -33,6 +33,17 @@ interface MessagingBotApi {
         agentId: UUID,
         request: MessagingBotAttachRequest,
     ): MessagingBotDto
+
+    /**
+     * GET /api/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots/manifest?platform= — the manifest
+     * of the app to create for the agent, on a platform where a bot is an app the admin creates (Slack). 409 on a
+     * platform without app manifests.
+     */
+    fun getMessagingBotAppManifest(
+        namespaceId: UUID,
+        agentId: UUID,
+        platform: MessagingPlatform,
+    ): MessagingAppManifestDto
 
     /**
      * POST /api/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots/creation — a single-use link to

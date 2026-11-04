@@ -1,10 +1,12 @@
 package io.whozoss.agentos.messaging
 
 import io.swagger.v3.oas.annotations.Operation
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.messaging.MessagingAppManifestDto
 import io.whozoss.agentos.sdk.api.messaging.MessagingBotApi
 import io.whozoss.agentos.sdk.api.messaging.MessagingBotAttachRequest
 import io.whozoss.agentos.sdk.api.messaging.MessagingBotCreationRequest
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -44,6 +47,7 @@ import java.util.UUID
 class MessagingBotController(
     private val bots: MessagingBotService,
     private val managedBots: MessagingManagedBots,
+    private val drivers: MessagingDrivers,
     private val views: MessagingBotViews,
     private val permissionService: PermissionService,
     private val users: UserService,
@@ -73,9 +77,30 @@ class MessagingBotController(
         @Valid @RequestBody request: MessagingBotAttachRequest,
     ): MessagingBotDto =
         views.toDto(
-            bots.attach(namespaceId = namespaceId, agentId = agentId, platform = request.platform, token = request.token),
+            bots.attach(
+                namespaceId = namespaceId,
+                agentId = agentId,
+                platform = request.platform,
+                token = request.token,
+                appToken = request.appToken,
+            ),
             users.getCurrentUser().id,
         )
+
+    @GetMapping("/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots/manifest")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    @Operation(summary = "The manifest of the app to create for an agent, on a platform where a bot is such an app")
+    override fun getMessagingBotAppManifest(
+        @PathVariable namespaceId: UUID,
+        @PathVariable agentId: UUID,
+        @RequestParam platform: MessagingPlatform,
+    ): MessagingAppManifestDto {
+        val agent = bots.requireAgent(namespaceId, agentId)
+        val manifest =
+            drivers.get(platform).appManifest(agent.name, agent.description)
+                ?: throw ConflictException("A $platform bot is not created from an app manifest")
+        return MessagingAppManifestDto(platform = platform, manifest = manifest.manifest, createUrl = manifest.createUrl)
+    }
 
     @PostMapping(
         "/namespaces/{namespaceId}/agent-configs/{agentId}/messaging-bots/creation",

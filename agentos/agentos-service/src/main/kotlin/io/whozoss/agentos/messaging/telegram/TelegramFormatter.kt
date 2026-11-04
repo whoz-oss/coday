@@ -1,5 +1,7 @@
 package io.whozoss.agentos.messaging.telegram
 
+import io.whozoss.agentos.messaging.MarkdownBlocks
+
 /**
  * Turns the Markdown agents write into what Telegram renders: its HTML subset
  * (https://core.telegram.org/bots/api#html-style), in messages under its 4096-character limit.
@@ -16,11 +18,9 @@ object TelegramFormatter {
     /** Room left for the tags and escapes the conversion adds to a chunk of Markdown. */
     private const val MAX_CHUNK_LENGTH = 3500
 
-    private val FENCE = Regex("""^\s*(```|~~~)\s*([\w+#.-]*)\s*$""")
     private val HEADING = Regex("""^\s{0,3}#{1,6}\s+(.*)$""")
     private val QUOTE = Regex("""^\s{0,3}>\s?(.*)$""")
     private val BULLET = Regex("""^(\s*)[-*+]\s+(.*)$""")
-    private val TABLE_ROW = Regex("""^\s*\|.*\|\s*$""")
     private val HORIZONTAL_RULE = Regex("""^\s{0,3}([-*_])(\s*\1){2,}\s*$""")
 
     private val INLINE_CODE = Regex("""`([^`\n]+)`""")
@@ -38,108 +38,24 @@ object TelegramFormatter {
      * Cuts [markdown] into chunks of at most [MAX_CHUNK_LENGTH] characters, between blocks when it can, and
      * never inside a code block without closing and reopening it.
      */
-    fun split(markdown: String): List<String> =
-        blocks(markdown)
-            .flatMap { block -> if (block.text.length > MAX_CHUNK_LENGTH) cut(block) else listOf(block.text) }
-            .fold(mutableListOf<String>()) { chunks, block ->
-                val last = chunks.lastOrNull()
-                when {
-                    last != null && last.length + block.length + 2 <= MAX_CHUNK_LENGTH ->
-                        chunks[chunks.lastIndex] = last + "\n\n" + block
-                    else -> chunks.add(block)
-                }
-                chunks
-            }.ifEmpty { mutableListOf("") }
+    fun split(markdown: String): List<String> = MarkdownBlocks.split(markdown, MAX_CHUNK_LENGTH)
 
     /** Converts one chunk of Markdown to Telegram HTML. */
     fun toHtml(markdown: String): String =
-        blocks(markdown).joinToString("\n\n") { block ->
+        MarkdownBlocks.blocks(markdown).joinToString("\n\n") { block ->
             when (block.kind) {
-                BlockKind.CODE -> codeToHtml(block)
-                BlockKind.TABLE -> "<pre>${escape(block.text)}</pre>"
-                BlockKind.TEXT -> block.text.lines().joinToString("\n", transform = ::lineToHtml)
+                MarkdownBlocks.Kind.CODE -> codeToHtml(block)
+                MarkdownBlocks.Kind.TABLE -> "<pre>${escape(block.text)}</pre>"
+                MarkdownBlocks.Kind.TEXT -> block.text.lines().joinToString("\n", transform = ::lineToHtml)
             }
         }
 
     /** Escapes the three characters Telegram's HTML parser reads. */
     fun escape(text: String): String = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    private enum class BlockKind { TEXT, CODE, TABLE }
-
-    private data class Block(
-        val kind: BlockKind,
-        /** The block's Markdown, fences included for code. */
-        val text: String,
-        val language: String = "",
-    )
-
-    /** Groups lines into code blocks, tables and runs of text separated by blank lines. */
-    private fun blocks(markdown: String): List<Block> {
-        val blocks = mutableListOf<Block>()
-        val lines = markdown.replace("\r\n", "\n").lines()
-        var index = 0
-        while (index < lines.size) {
-            val line = lines[index]
-            val fence = FENCE.matchEntire(line)
-            when {
-                fence != null -> {
-                    val marker = fence.groupValues[1]
-                    val closing = (index + 1 until lines.size).firstOrNull { lines[it].trim() == marker } ?: lines.size
-                    val code = lines.subList(index, minOf(closing + 1, lines.size)).joinToString("\n")
-                    blocks.add(Block(BlockKind.CODE, code, language = fence.groupValues[2]))
-                    index = closing + 1
-                }
-                TABLE_ROW.matches(line) -> {
-                    val end = (index until lines.size).firstOrNull { !TABLE_ROW.matches(lines[it]) } ?: lines.size
-                    blocks.add(Block(BlockKind.TABLE, lines.subList(index, end).joinToString("\n")))
-                    index = end
-                }
-                line.isBlank() -> index++
-                else -> {
-                    val end =
-                        (index until lines.size).firstOrNull {
-                            lines[it].isBlank() || FENCE.matches(lines[it]) || TABLE_ROW.matches(lines[it])
-                        } ?: lines.size
-                    blocks.add(Block(BlockKind.TEXT, lines.subList(index, end).joinToString("\n")))
-                    index = end
-                }
-            }
-        }
-        return blocks
-    }
-
-    /** Cuts a block longer than a chunk by lines, closing and reopening the fence of a code block. */
-    private fun cut(block: Block): List<String> {
-        val (open, body, close) =
-            when (block.kind) {
-                BlockKind.CODE -> {
-                    val lines = block.text.lines()
-                    val hasClosing = lines.size > 1 && FENCE.matches(lines.last())
-                    Triple(lines.first(), lines.drop(1).dropLast(if (hasClosing) 1 else 0), lines.first().trim().take(3))
-                }
-                else -> Triple("", block.text.lines(), "")
-            }
-        val room = MAX_CHUNK_LENGTH - open.length - close.length - 2
-        return body
-            .flatMap { line -> line.chunked(room) }
-            .fold(mutableListOf<MutableList<String>>()) { pieces, line ->
-                val last = pieces.lastOrNull()
-                when {
-                    last != null && last.sumOf { it.length + 1 } + line.length <= room -> last.add(line)
-                    else -> pieces.add(mutableListOf(line))
-                }
-                pieces
-            }.map { piece ->
-                when (block.kind) {
-                    BlockKind.CODE -> (listOf(open) + piece + close).joinToString("\n")
-                    else -> piece.joinToString("\n")
-                }
-            }
-    }
-
-    private fun codeToHtml(block: Block): String {
+    private fun codeToHtml(block: MarkdownBlocks.Block): String {
         val lines = block.text.lines()
-        val hasClosing = lines.size > 1 && FENCE.matches(lines.last())
+        val hasClosing = lines.size > 1 && MarkdownBlocks.FENCE.matches(lines.last())
         val code = escape(lines.drop(1).dropLast(if (hasClosing) 1 else 0).joinToString("\n"))
         return when {
             block.language.isNotEmpty() ->

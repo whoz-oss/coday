@@ -43,6 +43,7 @@ class MessagingBotsIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var platform: FakeMessagingDriver
+    @Autowired lateinit var slack: FakeSlackDriver
     @Autowired lateinit var bots: MessagingBotService
     @Autowired lateinit var repository: MessagingBotRepository
     @Autowired lateinit var registry: MessagingBotRegistry
@@ -109,6 +110,7 @@ class MessagingBotsIntegrationSpec : StringSpec() {
         beforeEach {
             Neo4jContainerSupport.clearDatabase(driver)
             platform.reset()
+            slack.reset()
             ada = users.save(User(externalId = "ada-${UUID.randomUUID()}@example.com", firstname = "Ada"))
             namespace = namespaceService.create(Namespace(name = "Forge"))
             permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
@@ -203,6 +205,7 @@ class MessagingBotsIntegrationSpec : StringSpec() {
                         accountId = "4242",
                         username = "helper_bot",
                         displayName = "Helper",
+                        url = "https://t.me/bot",
                         token = HELPER_TOKEN,
                         agentId = helper.id,
                         namespaceId = namespace.id,
@@ -298,6 +301,28 @@ class MessagingBotsIntegrationSpec : StringSpec() {
             repository.findById(bot.id)?.token shouldBe OTHER_TOKEN
         }
 
+        "a Slack bot needs its app-level token too, and keeps both tokens encrypted" {
+            slack.register(SLACK_TOKEN, accountId = "T1.UBOT", username = "helper")
+
+            shouldThrow<BadRequestException> { bots.attach(namespace.id, helper.id, MessagingPlatform.SLACK, SLACK_TOKEN) }
+            val bot = bots.attach(namespace.id, helper.id, MessagingPlatform.SLACK, SLACK_TOKEN, appToken = SLACK_APP_TOKEN)
+
+            registry.status(bot.id) shouldBe MessagingBotStatus.RUNNING
+            repository.findById(bot.id)?.appToken shouldBe SLACK_APP_TOKEN
+            val stored =
+                driver.session().use { session ->
+                    session.run("MATCH (b:MessagingBot {id: \$id}) RETURN b.encryptedAppToken AS t", mapOf("id" to bot.id.toString())).single()["t"].asString()
+                }
+            (SLACK_APP_TOKEN in stored) shouldBe false
+            // A Telegram bot and a Slack bot for the same agent: one per platform.
+            attachHelper()
+            bots.findAgentBots(namespace.id, helper.id).map { it.platform }.toSet() shouldBe setOf(MessagingPlatform.SLACK, MessagingPlatform.TELEGRAM)
+        }
+
+        "Slack has no bot managers" {
+            shouldThrow<BadRequestException> { bots.setManager(MessagingPlatform.SLACK, SLACK_TOKEN) }
+        }
+
         "creating a bot needs a running bot manager" {
             shouldThrow<ConflictException> { managedBots.requestCreation(ada.id, namespace.id, helper.id, MessagingPlatform.TELEGRAM) }
         }
@@ -310,5 +335,7 @@ class MessagingBotsIntegrationSpec : StringSpec() {
         const val OTHER_TOKEN = "5151:other-token-other-token-other-token-x"
         const val NEW_TOKEN = "7777:created-token-created-token-created-tok"
         const val MANAGER_TOKEN = "9000:manager-token-manager-token-manager-tok"
+        const val SLACK_TOKEN = "xoxb-helper"
+        const val SLACK_APP_TOKEN = "xapp-helper"
     }
 }

@@ -12,7 +12,6 @@ import java.util.UUID
 class MessagingBotViews(
     private val agentConfigService: AgentConfigService,
     private val registry: MessagingBotRegistry,
-    private val drivers: MessagingDrivers,
     private val identities: MessagingIdentityService,
 ) {
     /** [bot] as [userId] sees it: whether they have linked an account through it. */
@@ -31,7 +30,7 @@ class MessagingBotViews(
             enabled = bot.enabled,
             managed = bot.managed,
             status = status(bot),
-            url = drivers.get(bot.platform).botUrl(bot.username),
+            url = bot.url,
             linked = identities.findByUser(userId, bot.platform, bot.accountId) != null,
             createdAt = bot.metadata.created,
         )

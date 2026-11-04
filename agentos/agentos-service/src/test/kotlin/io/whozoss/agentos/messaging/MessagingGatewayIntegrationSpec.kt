@@ -147,6 +147,23 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             bot.textsTo(chatId)[1] shouldContain "expired or was already used"
         }
 
+        "a link message links the account that sends it, where a link cannot carry the token" {
+            text(MessagingCommand.linkMessage(identities.issueLinkToken(ada.id, bot.bot).token))
+
+            identities.findByAccount(MessagingPlatform.TELEGRAM, bot.accountId, chatId)?.userId shouldBe ada.id
+        }
+
+        "a command may start with an exclamation mark, for the platforms that keep the slash" {
+            linkAda()
+            text("first")
+            val first = conversation().caseId
+
+            text("!new")
+
+            conversation().caseId shouldBe null
+            first shouldNotBe null
+        }
+
         "a link token works only with the bot it was issued for" {
             val other = agentIn(namespace, "Reviewer")
             platform.register(OTHER_TOKEN, accountId = "5151", username = "reviewer_bot")

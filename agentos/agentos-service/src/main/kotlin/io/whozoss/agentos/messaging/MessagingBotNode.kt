@@ -15,8 +15,8 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [MessagingBot].
  *
- * [encryptedToken] holds the token as [Neo4jMessagingBotRepository] encrypted it: the plain token is never
- * written. The two keys are stored, though derived, because a constraint can only hold on a stored property.
+ * [encryptedToken] and [encryptedAppToken] hold the tokens as [Neo4jMessagingBotRepository] encrypted them: a
+ * plain token is never written. The two keys are stored, though derived, because a constraint can only hold on a stored property.
  */
 @Node("MessagingBot")
 data class MessagingBotNode(
@@ -27,7 +27,9 @@ data class MessagingBotNode(
     val accountId: String,
     val username: String,
     val displayName: String,
+    val url: String,
     val encryptedToken: String,
+    val encryptedAppToken: String?,
     val agentId: String?,
     val namespaceId: String?,
     val enabled: Boolean,
@@ -41,7 +43,10 @@ data class MessagingBotNode(
     @LastModifiedDate val modified: Instant = Instant.now(),
     @LastModifiedBy val modifiedBy: String? = null,
 ) {
-    fun toDomain(token: String): MessagingBot =
+    fun toDomain(
+        token: String,
+        appToken: String?,
+    ): MessagingBot =
         MessagingBot(
             metadata =
                 EntityMetadata(
@@ -57,7 +62,9 @@ data class MessagingBotNode(
             accountId = accountId,
             username = username,
             displayName = displayName,
+            url = url,
             token = token,
+            appToken = appToken,
             agentId = agentId?.let(UUID::fromString),
             namespaceId = namespaceId?.let(UUID::fromString),
             enabled = enabled,
@@ -70,6 +77,7 @@ data class MessagingBotNode(
         fun fromDomain(
             bot: MessagingBot,
             encryptedToken: String,
+            encryptedAppToken: String?,
         ): MessagingBotNode =
             MessagingBotNode(
                 id = bot.id.toString(),
@@ -78,7 +86,9 @@ data class MessagingBotNode(
                 accountId = bot.accountId,
                 username = bot.username,
                 displayName = bot.displayName,
+                url = bot.url,
                 encryptedToken = encryptedToken,
+                encryptedAppToken = encryptedAppToken,
                 agentId = bot.agentId?.toString(),
                 namespaceId = bot.namespaceId?.toString(),
                 enabled = bot.enabled,

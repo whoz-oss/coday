@@ -11,8 +11,8 @@ import java.util.UUID
  * manager of the instance, which creates the bots of agents (see [MessagingBotRole]).
  *
  * Bots are configuration data, taken into account at once by [MessagingBotSupervisor]: adding, turning off or
- * removing one needs no restart. The [token] is stored encrypted and never leaves the server; [toString] masks
- * it. A bot is at most one agent's ([botKey] unique), and an agent has at most one bot per platform and
+ * removing one needs no restart. The tokens are stored encrypted and never leave the server; [toString] masks
+ * them. A bot is at most one agent's ([botKey] unique), and an agent has at most one bot per platform and
  * namespace ([slotKey] unique).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -26,7 +26,11 @@ data class MessagingBot(
     val username: String,
     /** How the platform names the bot. */
     val displayName: String,
+    /** The address that opens the bot in the messaging application. */
+    val url: String,
     val token: String,
+    /** A second token, on platforms that receive with one and send with another: Slack's app-level token. */
+    val appToken: String? = null,
     /** The agent the bot answers as. Null for a bot manager. */
     val agentId: UUID? = null,
     /** The namespace the agent answers in: the cases the bot starts belong to it. Null for a bot manager. */
@@ -52,13 +56,15 @@ data class MessagingBot(
             role = role,
             accountId = accountId,
             username = username,
+            url = url,
             agentId = agentId,
             namespaceId = namespaceId,
         )
 
     override fun toString(): String =
         "MessagingBot(id=$id, platform=$platform, role=$role, accountId=$accountId, username=$username, " +
-            "agentId=$agentId, namespaceId=$namespaceId, enabled=$enabled, managed=$managed, token=****)"
+            "agentId=$agentId, namespaceId=$namespaceId, enabled=$enabled, managed=$managed, token=****, " +
+            "appToken=${appToken?.let { "****" }})"
 
     companion object {
         fun botKey(
@@ -94,6 +100,8 @@ data class MessagingBotRef(
     val role: MessagingBotRole,
     val accountId: String,
     val username: String,
+    /** The address that opens the bot in the messaging application. */
+    val url: String,
     val agentId: UUID?,
     val namespaceId: UUID?,
 )

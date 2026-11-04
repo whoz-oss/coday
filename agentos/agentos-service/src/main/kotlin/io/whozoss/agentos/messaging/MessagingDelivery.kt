@@ -126,7 +126,10 @@ class MessagingDelivery(
             else -> typing.remove(conversation.id)?.cancel()
         }
         if (event.status == CaseStatus.ERROR) {
-            adapter.send(conversation.chatId, OutboundMessage("The case stopped on an error. Send /new to start a new one."))
+            adapter.send(
+                conversation.chatId,
+                OutboundMessage("The case stopped on an error. Send ${adapter.commandPrefix}new to start a new one."),
+            )
         }
     }
 

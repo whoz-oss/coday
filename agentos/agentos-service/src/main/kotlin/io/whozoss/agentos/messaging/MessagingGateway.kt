@@ -126,8 +126,7 @@ class MessagingGateway(
         val command = MessagingCommand.parse(inbound.text)
         when {
             !inbound.direct -> logger.debug { "[Messaging] ignoring a group message of chat ${inbound.chatId}" }
-            command?.name == MessagingCommand.START && !command.argument.isNullOrBlank() ->
-                link(adapter, inbound, command.argument)
+            command?.linksAccount == true -> link(adapter, inbound, requireNotNull(command.argument))
             else ->
                 withChat(adapter, inbound.chatId, inbound.sender) { chat ->
                     when {
@@ -138,7 +137,7 @@ class MessagingGateway(
                                 conversations.update(chat.conversation) { it.copy(lastInboundMessageId = inbound.messageId) }
                             val current = chat.copy(conversation = recorded)
                             when (command?.name) {
-                                MessagingCommand.START, MessagingCommand.HELP -> reply(current, helpText(current.agent))
+                                MessagingCommand.START, MessagingCommand.HELP -> reply(current, helpText(current))
                                 MessagingCommand.NEW -> startNewCase(current)
                                 MessagingCommand.CASE -> showCurrentCase(current)
                                 MessagingCommand.CASES -> listCases(current)
@@ -167,7 +166,8 @@ class MessagingGateway(
             identities.link(token, adapter.bot, account)?.let { identity ->
                 val name = userService.findById(identity.userId)?.displayName() ?: identity.userId.toString()
                 val agent = agentOf(adapter)?.name?.let { "**$it**" } ?: "your agent"
-                "Your account is now linked to AgentOS as **$name**. Write to talk to $agent. /help lists the commands."
+                "Your account is now linked to AgentOS as **$name**. Write to talk to $agent. " +
+                    "${adapter.commandPrefix}help lists the commands."
             } ?: "This link has expired or was already used. Ask for a new one in your AgentOS profile${profileSuffix()}."
         adapter.send(inbound.chatId, OutboundMessage(text))
     }
@@ -490,19 +490,21 @@ class MessagingGateway(
 
     private fun notLinkedText(adapter: MessagingAdapter): String =
         "This account is not linked to AgentOS yet. Open your AgentOS profile${profileSuffix()}, " +
-            "find **@${adapter.bot.username}** under Messaging, choose **Connect**, and open the link it gives you."
+            "find **@${adapter.bot.username}** under Messaging, choose **Connect**, and follow what it says."
 
     private fun profileSuffix(): String = links.profile()?.let { " ($it)" } ?: ""
 
-    private fun helpText(agent: AgentConfig): String =
-        """
-        You are talking to **${agent.name}**: your messages go to the current case, and the agent answers here.
+    private fun helpText(chat: Chat): String {
+        val prefix = chat.adapter.commandPrefix
+        return """
+            You are talking to **${chat.agent.name}**: your messages go to the current case, and the agent answers here.
 
-        /new: start a new case with your next message
-        /cases: continue one of your recent cases here
-        /case: show the current case and its link
-        /help: show this help
-        """.trimIndent()
+            ${prefix}new: start a new case with your next message
+            ${prefix}cases: continue one of your recent cases here
+            ${prefix}case: show the current case and its link
+            ${prefix}help: show this help
+            """.trimIndent()
+    }
 
     private fun canWriteCase(
         user: User,

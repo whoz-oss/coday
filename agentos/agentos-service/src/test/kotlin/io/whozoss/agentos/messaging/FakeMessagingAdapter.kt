@@ -33,7 +33,16 @@ class FakeMessagingAdapter(
         offers.clear()
     }
 
-    override fun linkUrl(token: String): String = "https://t.me/${bot.username}?start=$token"
+    override fun linkUrl(token: String): String =
+        when (bot.platform) {
+            MessagingPlatform.SLACK -> bot.url
+            else -> "https://t.me/${bot.username}?start=$token"
+        }
+
+    override fun linkCode(token: String): String? = MessagingCommand.linkMessage(token).takeIf { bot.platform == MessagingPlatform.SLACK }
+
+    override val commandPrefix: String
+        get() = if (bot.platform == MessagingPlatform.SLACK) MessagingCommand.BANG else MessagingCommand.SLASH
 
     override fun send(
         chatId: String,
@@ -77,12 +86,14 @@ class FakeMessagingAdapter(
             agentId: UUID? = UUID.randomUUID(),
             namespaceId: UUID? = UUID.randomUUID(),
             role: MessagingBotRole = MessagingBotRole.AGENT,
+            platform: MessagingPlatform = MessagingPlatform.TELEGRAM,
         ) = MessagingBotRef(
             id = UUID.randomUUID(),
-            platform = MessagingPlatform.TELEGRAM,
+            platform = platform,
             role = role,
             accountId = accountId,
             username = username,
+            url = "https://t.me/$username",
             agentId = agentId,
             namespaceId = namespaceId,
         )

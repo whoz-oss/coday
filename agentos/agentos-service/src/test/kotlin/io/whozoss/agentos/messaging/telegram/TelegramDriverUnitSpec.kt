@@ -70,6 +70,7 @@ class TelegramDriverUnitSpec :
                 accountId = "4242",
                 username = "helper_bot",
                 displayName = "Helper",
+                url = "https://t.me/bot",
                 token = TOKEN,
                 agentId = UUID.randomUUID().takeIf { role == MessagingBotRole.AGENT },
                 namespaceId = UUID.randomUUID().takeIf { role == MessagingBotRole.AGENT },
@@ -79,7 +80,14 @@ class TelegramDriverUnitSpec :
 
         "a token is checked with getMe" {
             FakeBotApi { method, _ -> (200 to me).takeIf { method == "getMe" } }.use { api ->
-                driver(api).probe(TOKEN) shouldBe ProbedBot(accountId = "4242", username = "helper_bot", displayName = "Helper", canManageBots = true)
+                driver(api).probe(TOKEN) shouldBe
+                    ProbedBot(
+                        accountId = "4242",
+                        username = "helper_bot",
+                        displayName = "Helper",
+                        url = "https://t.me/helper_bot",
+                        canManageBots = true,
+                    )
             }
         }
 

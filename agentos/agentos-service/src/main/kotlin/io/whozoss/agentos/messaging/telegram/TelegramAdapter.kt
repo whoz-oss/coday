@@ -22,7 +22,7 @@ class TelegramAdapter(
     private val client: TelegramBotClient,
     override val bot: MessagingBotRef,
 ) : MessagingManagerAdapter {
-    override fun linkUrl(token: String): String = "${TelegramDriver.urlOf(bot.username)}?start=$token"
+    override fun linkUrl(token: String): String = "${bot.url}?start=$token"
 
     /** A reply keyboard of one button, which opens Telegram's bot creation and hides once used. */
     override fun offerBotCreation(

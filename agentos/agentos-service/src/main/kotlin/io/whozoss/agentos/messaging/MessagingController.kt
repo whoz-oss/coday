@@ -72,7 +72,7 @@ class MessagingController(
                 ?: throw ResourceNotFoundException("Messaging bot not found: $botId")
         val adapter = registry.adapter(bot.id) ?: throw ConflictException("@${bot.username} is not running")
         val issued = identities.issueLinkToken(userId, adapter.bot)
-        return MessagingLinkDto(url = adapter.linkUrl(issued.token), expiresAt = issued.expiresAt)
+        return MessagingLinkDto(url = adapter.linkUrl(issued.token), code = adapter.linkCode(issued.token), expiresAt = issued.expiresAt)
     }
 
     @GetMapping("/messaging/identities")

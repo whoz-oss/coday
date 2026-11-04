@@ -118,10 +118,12 @@ class ConfigNamespaceDiagnosis(
     private companion object {
         const val MESSAGING_HOW_TO =
             "An agent gets a bot on its page in AgentOS (the namespace's settings, Agents, the agent, section " +
-                "Messaging). Create a bot: no token, when botCreationWithoutToken lists the platform; the user " +
-                "confirms in Telegram. Use an existing bot: the user creates one with Telegram's @BotFather and types " +
-                "its token there. Only an admin of the namespace can do either. Each user then links their own " +
-                "account from their AgentOS profile, Messaging, Connect. The change applies at once, no restart. " +
-                "Give the user these steps: no proposal can attach a bot."
+                "Messaging), one per platform. Telegram: Create a bot, with no token, when botCreationWithoutToken " +
+                "lists TELEGRAM (the user confirms in Telegram); or Use an existing bot, with the token of a bot the " +
+                "user creates with @BotFather. Slack: the page gives the manifest of a Slack app; the user creates the " +
+                "app from it at api.slack.com/apps, installs it in the workspace, and pastes its Bot User OAuth Token " +
+                "(xoxb-) and an app-level token (xapp-, scope connections:write). Only an admin of the namespace can " +
+                "do this. Each user then links their own account from their AgentOS profile, Messaging, Connect. The " +
+                "change applies at once, no restart. Give the user these steps: no proposal can attach a bot."
     }
 }

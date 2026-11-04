@@ -33,6 +33,8 @@ class TelegramDriver(
 ) : MessagingDriver {
     override val platform: MessagingPlatform = MessagingPlatform.TELEGRAM
 
+    override val supportsBotManagers: Boolean = true
+
     private val httpClient =
         OkHttpClient
             .Builder()
@@ -41,7 +43,10 @@ class TelegramDriver(
             .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
 
-    override fun probe(token: String): ProbedBot {
+    override fun probe(
+        token: String,
+        appToken: String?,
+    ): ProbedBot {
         if (!TOKEN.matches(token)) throw BadRequestException("This is not a Telegram bot token")
         val me =
             try {
@@ -59,11 +64,10 @@ class TelegramDriver(
             accountId = me.id.toString(),
             username = me.username,
             displayName = me.displayName,
+            url = urlOf(me.username),
             canManageBots = me.canManageBots,
         )
     }
-
-    override fun botUrl(username: String): String = urlOf(username)
 
     override fun start(
         bot: MessagingBot,

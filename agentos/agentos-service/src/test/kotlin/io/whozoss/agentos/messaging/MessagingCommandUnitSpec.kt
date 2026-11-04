@@ -22,6 +22,21 @@ class MessagingCommandUnitSpec :
             MessagingCommand.parse("/standup yesterday") shouldBe null
         }
 
+        "where the platform keeps the slash for itself, the commands start with an exclamation mark" {
+            MessagingCommand.parse("!new") shouldBe MessagingCommand(MessagingCommand.NEW, null)
+            MessagingCommand.parse("!cases") shouldBe MessagingCommand(MessagingCommand.CASES, null)
+        }
+
+        "a link message links an account, as a start link does, and only with a token" {
+            val token = "abcdefghijklmnopqrstuvwxyz_0123456789-ABCDE"
+
+            MessagingCommand.parse("link $token") shouldBe MessagingCommand(MessagingCommand.LINK, token)
+            MessagingCommand.parse(MessagingCommand.linkMessage(token))?.linksAccount shouldBe true
+            MessagingCommand.parse("/start $token")?.linksAccount shouldBe true
+            MessagingCommand.parse("/start")?.linksAccount shouldBe false
+            MessagingCommand.parse("link to the docs please") shouldBe null
+        }
+
         "a message that does not start with a slash is no command" {
             MessagingCommand.parse("please /new things") shouldBe null
             MessagingCommand.parse("@dev /cases") shouldBe null

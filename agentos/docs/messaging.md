@@ -1,8 +1,8 @@
-# Messaging: talking to agents from Telegram
+# Messaging: talking to agents from Telegram and Slack
 
-An agent can have a bot on a messaging application. Its users link their account once, then write to the bot
-as they would to the agent: the messages go to their cases, the answers come back in the chat. Telegram is the
-first platform; the code is in `agentos-service`, package `io.whozoss.agentos.messaging`.
+An agent can have a bot on a messaging application, one per platform: Telegram and Slack. Its users link their
+account once, then write to the bot as they would to the agent: the messages go to their cases, the answers come
+back in the chat. The code is in `agentos-service`, package `io.whozoss.agentos.messaging`.
 
 A bot is configuration data, like the agent it belongs to: an admin of the namespace gives the agent a bot from
 the UI, and the bot answers at once. There is no setting to add to the instance and no restart.
@@ -26,7 +26,19 @@ admin of the namespace sees the actions.
 **Use an existing bot.** Create a bot with [@BotFather](https://t.me/BotFather) (`/newbot`), and paste its token in
 *Use an existing bot*. AgentOS checks the token with Telegram before saving it.
 
-Either way the token is stored encrypted (the field encryption of credentials) and never returned by the API.
+**Slack: connect a Slack app.** On Slack a bot is an app of the workspace. *Connect a Slack app* shows the
+manifest of the agent's app (its name, the permissions and settings AgentOS needs):
+
+1. Open [Slack's apps](https://api.slack.com/apps?new_app=1), choose *From a manifest*, pick the workspace and
+   paste the manifest.
+2. Install the app in the workspace, then copy its *Bot User OAuth Token* (`xoxb-`, *OAuth & Permissions*).
+3. In *Basic Information*, *App-Level Tokens*, generate a token with the `connections:write` scope (`xapp-`).
+4. Paste both tokens. AgentOS checks them with Slack before saving them.
+
+The app receives by Socket Mode: like Telegram's long polling, the instance opens the connection, so it needs no
+public URL. Slack has no managed bots: there is no bot manager for Slack.
+
+Either way the tokens are stored encrypted (the field encryption of credentials) and never returned by the API.
 From the same section, an admin turns the bot off and on, or removes it, which also removes the links of its
 users.
 
@@ -49,13 +61,15 @@ party's. Removing it leaves the bots it created running.
 ## Using a bot
 
 **Linking an account.** In the AgentOS profile, *Messaging* lists the bots of the agents the user can talk to;
-*Connect* gives a single-use link that opens the bot. Pressing *Start* in Telegram sends the link's token back:
-the account that sends it is linked to the user who asked for it. The link works with that bot only. The agent's
-page offers the same *Connect my account*.
+*Connect* gives a single-use link that opens the bot. In Telegram, pressing *Start* sends the link's token back. In
+Slack, whose links cannot carry it, the link opens the app's chat and the page shows the message to send there
+(`link <token>`). The account that sends the token is linked to the user who asked for it. The link works with
+that bot only. The agent's page offers the same *Connect my account*.
 
 **Writing.** In the direct chat with the bot, a message goes to the chat's current case; the first one starts a
 case with the bot's agent, in the agent's namespace. Start a message with `@name` to address another agent of the
-namespace, as in the UI. Other `/word` messages go to the case too, so prompt commands work. The bot's commands:
+namespace, as in the UI. Other `/word` messages go to the case too, so prompt commands work. Slack keeps `/` for
+its own commands: there, the bot's commands start with `!` (`!new`, `!cases`...). The bot's commands:
 
 | Command | Effect |
 |---|---|
@@ -68,11 +82,11 @@ A linked user who may not use the agent (not deployed to them, disabled) is told
 
 **Answers.** What the agent says in reply to a message from the chat goes back to the chat: its messages, its
 questions (choices as buttons, an authorization as a link button), warnings and errors, and a typing indicator
-while the case runs. Tool calls, thinking and sub-cases stay in the UI. The rule is the one of a conversation: an
+while the case runs (Telegram only: Slack shows none for a bot). Tool calls, thinking and sub-cases stay in the UI. The rule is the one of a conversation: an
 answer goes where the question came from, so a message typed in the UI is answered in the UI only.
 
-**Continuing a case from the UI.** The header of a case shows a *Continue on Telegram* button for each bot of the
-case's namespace the user has linked an account to: the bot posts the case's last answer in the direct chat,
+**Continuing a case from the UI.** The header of a case shows a *Continue on Telegram* (or *on Slack*) button for
+each bot of the case's namespace the user has linked an account to: the bot posts the case's last answer in the direct chat,
 which now goes to that case, with the bot's agent. Replying there continues it.
 
 ## Configuration
@@ -85,9 +99,10 @@ Nothing is needed to run bots. Optional properties:
 | `agentos.messaging.link-token-ttl-minutes` | `AGENTOS_MESSAGING_LINK_TOKEN_TTL_MINUTES` | `10` | How long a link to connect an account, or to create a bot, stays valid. |
 | `agentos.messaging.telegram.api-base-url` | `AGENTOS_MESSAGING_TELEGRAM_API_BASE_URL` | `https://api.telegram.org` | The Bot API endpoint. |
 | `agentos.messaging.telegram.poll-timeout-seconds` | `AGENTOS_MESSAGING_TELEGRAM_POLL_TIMEOUT_SECONDS` | `25` | Long-polling timeout. |
+| `agentos.messaging.slack.api-base-url` | `AGENTOS_MESSAGING_SLACK_API_BASE_URL` | `https://slack.com/api` | The Web API endpoint. |
 
-The bots poll Telegram (`getUpdates`): the instance needs no public URL and nothing reaches it from the outside,
-which suits an instance behind an access proxy.
+The Telegram bots poll (`getUpdates`) and the Slack apps hold a Socket Mode connection: the instance needs no
+public URL and nothing reaches it from the outside, which suits an instance behind an access proxy.
 
 ## How it works
 
@@ -96,7 +111,7 @@ which suits an instance behind an access proxy.
 | `MessagingBot` | A bot AgentOS runs: the bot of an agent in a namespace (role `AGENT`), or the bot manager of a platform (`MANAGER`). Token encrypted at rest. One agent per bot, one bot per agent, platform and namespace, one manager per platform. |
 | `MessagingBotService` | Attaches a bot from its token (checked with the platform first), turns it on or off, removes it; sets the bot manager. Publishes `MessagingBotChanged`. |
 | `MessagingBotSupervisor` | Runs the bots of the database: all of them when the application is ready, then each one as it is saved or removed, after the change is committed. Keeps their adapter and status in `MessagingBotRegistry`. |
-| `MessagingDriver` | One platform: checks a token, starts a bot. `TelegramDriver` runs a `TelegramAdapter` (HTML formatting, splitting, flood waits) fed by a `TelegramUpdatePoller`. |
+| `MessagingDriver` | One platform: checks a token, starts a bot. `TelegramDriver` runs a `TelegramAdapter` (HTML formatting, splitting, flood waits) fed by a `TelegramUpdatePoller`. `SlackDriver` gives the app manifest and runs a `SlackAdapter` (markdown blocks, Block Kit buttons, rate limits) fed by a `SlackSocket` (Socket Mode, reconnects when Slack refreshes the connection). |
 | `MessagingIdentity` | A platform account linked to a user through a bot. Unique per account and bot, and per user and bot, among active rows. |
 | `MessagingConversation` | A chat with a bot and the case its next message goes to. The chat moves between cases; the case does not move. |
 | `MessagingGateway` | Takes what the bot of an agent receives: links accounts, checks the user may use the agent, runs the commands, creates and feeds cases as the scheduler does (`create`, ADMIN grant, `publishCaseCreated`, `addMessage`, with `@agent` when the case would otherwise go to another agent). Runs each chat's work with the linked user authenticated. |
@@ -114,7 +129,8 @@ type.
 
 ## Limits of this version
 
-- Direct chats only: messages in groups are ignored.
+- Direct chats only: messages in groups and channels are ignored. In Slack, a reply in a thread of the direct chat
+  goes to the chat's case like any message, and the bot answers in the chat, not in the thread.
 - Text only: photos, files and voice messages are ignored.
 - The pending links (to connect an account or create a bot) and the origin of the current turn of each case are
   kept in memory: after a restart, a pending link has to be asked for again, and a case answers the chat again from
