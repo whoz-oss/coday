@@ -772,6 +772,71 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             result.output shouldContain "a: creating an agent needs 'value.enabled'"
         }
 
+        // subAgents is the one agent field keyed by name while every reference around it in the
+        // propose description is an id, so an id here is the expected mistake. Refused at plan time
+        // rather than only by the REST layer: the agent is still running and can fix its own call,
+        // whereas a frozen plan is applied later, by the user, and its first failure stops the rest.
+        "creating an agent with an id in subAgents is refused before the plan is frozen" {
+            val id = UUID.randomUUID()
+
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "boss-$suffix", "enabled": true, "subAgents": ["$id"] }, "deployTo": "NONE" } ] }
+                    """.trimIndent(),
+                    toolContext(alice),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "a: subAgents takes glob patterns matched against the name of each agent, never its id"
+            result.output shouldContain id.toString()
+        }
+
+        "replacing subAgents with an id the agent does not already hold is refused" {
+            val id = UUID.randomUUID()
+
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "d", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
+                          "changes": [ { "path": "/subAgents", "value": ["$id"] } ] } ] }
+                    """.trimIndent(),
+                    toolContext(alice),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "d: subAgents takes glob patterns"
+        }
+
+        "an id the agent already stores is carried over, so a broken agent stays editable" {
+            val stored = UUID.randomUUID().toString()
+            val broken =
+                agentConfigRepository.save(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespace.id,
+                        name = "broken-$suffix",
+                        enabled = true,
+                        subAgents = listOf(stored),
+                    ),
+                )
+
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "d", "kind": "AGENT", "action": "UPDATE", "id": "${broken.id}",
+                          "changes": [ { "path": "/subAgents", "value": ["$stored", "Reviewer"] } ] } ] }
+                    """.trimIndent(),
+                )
+
+            proposal.structuredOutput!!.toString() shouldContain stored
+        }
+
         "a tool response named like the propose tool, without a question of its own, does not supersede an open plan" {
             val proposal = propose(alice, promptPlan("kept"))
             val impostor = (proposal.structuredOutput!!.deepCopy<JsonNode>() as com.fasterxml.jackson.databind.node.ObjectNode).put("questionId", UUID.randomUUID().toString())

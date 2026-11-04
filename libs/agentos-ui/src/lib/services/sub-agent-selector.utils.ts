@@ -53,15 +53,21 @@ export function isSubAgentPattern(selector: string): boolean {
 }
 
 /**
- * The server's own glob, as `globToRegex` builds it: every regex metacharacter escaped, `*` left
- * as the only wildcard, anchored at both ends and case-insensitive.
+ * The server's own glob, as `globToRegex` builds it: anchored at both ends, case-insensitive, `*`
+ * the only wildcard.
+ *
+ * The escaped set is that function's, character for character — `\ . [ ] { } ( ) ^ $ |` — and
+ * deliberately not the full set of regex metacharacters. `?` and `+` are left alone there, so the
+ * server reads them as quantifiers: `Fix?er*` reaches an agent named `FierAgent`. Escaping them
+ * here, as this did, made the form answer no where the run answers yes. Mirroring the quirk is the
+ * point: the section reports what delegation will actually do, not what it ought to do.
  *
  * Kept in step with that function for the same reason [namedSubAgentKeys] lower-cases: a selector
  * the run will honour has to read as honoured here, or the section misreports what the agent can
  * actually do.
  */
 function subAgentPatternToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[\\^$.|?+()[\]{}]/g, '\\$&').replace(/\*/g, '.*')
+  const escaped = pattern.replace(/[\\.[\]{}()^$|]/g, '\\$&').replace(/\*/g, '.*')
   return new RegExp(`^${escaped}$`, 'i')
 }
 

@@ -768,14 +768,19 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   describe('server refusals', () => {
     it('shows the reason the server gave', () => {
       controller.createAgentConfig.mockReturnValue(
-        throwError(() => ({ status: 400, error: { message: 'subAgents holds 1 entity id(s)' } }))
+        throwError(() => ({
+          status: 400,
+          error: { message: 'subAgents takes glob patterns matched against the name of each agent, never its id' },
+        }))
       )
 
       component.ngOnInit()
       internals().nameControl.setValue('fresh')
       internals().submit()
 
-      expect(internals().submitError()).toBe('subAgents holds 1 entity id(s)')
+      expect(internals().submitError()).toBe(
+        'subAgents takes glob patterns matched against the name of each agent, never its id'
+      )
     })
 
     it('falls back to a generic line when the error carries no message', () => {
