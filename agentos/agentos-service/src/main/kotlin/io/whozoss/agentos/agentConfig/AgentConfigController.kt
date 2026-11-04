@@ -122,6 +122,7 @@ class AgentConfigController(
         val existing =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        SubAgentSelectorValidation.requireNoNewIdSelectors(resource.subAgents, existing.subAgents)
         val executionMode = resource.requestedExecutionMode()
         @Suppress("DEPRECATION")
         return toDto(
@@ -267,6 +268,7 @@ private fun AgentConfigDto.requestedExecutionMode(): ExecutionMode =
 
 @Suppress("DEPRECATION")
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {
+    SubAgentSelectorValidation.requireNameSelectors(resource.subAgents)
     val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
     val executionMode = resource.requestedExecutionMode()
     return AgentConfig(
