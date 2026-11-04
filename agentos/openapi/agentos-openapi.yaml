@@ -10,6 +10,22 @@ tags:
 - description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
   name: sse
 paths:
+  /api/admin/configuration:
+    get:
+      operationId: listEffectiveConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigurationEntry"
+          description: OK
+      summary: List the effective configuration (environment variables and Spring
+        properties) of the service
+      tags:
+      - effective-configuration-controller
   /api/agent-configs:
     post:
       operationId: createAgentConfig
@@ -4170,6 +4186,7 @@ components:
           type: string
           format: date-time
       required:
+      - modelName
       - name
     AgentConfigDefaultsDto:
       type: object
@@ -5012,6 +5029,29 @@ components:
       - key
       - label
       - path
+    ConfigurationEntry:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        description:
+          type: string
+        key:
+          type: string
+        sensitive:
+          type: boolean
+        source:
+          type: string
+          enum:
+          - ENVIRONMENT
+          - PROPERTY
+        value:
+          type: string
+      required:
+      - configured
+      - key
+      - sensitive
+      - source
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
