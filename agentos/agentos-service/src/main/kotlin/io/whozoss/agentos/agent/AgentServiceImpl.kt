@@ -474,6 +474,31 @@ class AgentServiceImpl(
     }
 
     /**
+     * Fails when [definition] asks for ADVANCED execution on a model that does not support it.
+     *
+     * The agent decides its mode and the model only constrains it: there is no silent downgrade to SIMPLE.
+     * SIMPLE and LOOP are never concerned (LOOP makes no LLM call). Deliberately not part of
+     * [resolveAgentDefinition]: the definition inspection endpoint must keep working so that an admin
+     * can see the misconfiguration.
+     *
+     * The message is shown to case participants: it names the agent and the model label only, never the
+     * provider or the API model name. The failure is logged by the caller, which knows the case id.
+     *
+     * @throws AdvancedExecutionNotSupportedException naming the agent, the model and the fix
+     */
+    private fun requireModelSupportsExecutionMode(definition: ResolvedAgentDefinition) {
+        val model = definition.resolvedModel
+        if (definition.executionMode == ExecutionMode.ADVANCED && !model.supportsAdvancedExecution) {
+            throw AdvancedExecutionNotSupportedException(
+                "Agent '${definition.name}' is configured in ADVANCED execution mode but its model " +
+                    "'${model.alias ?: model.apiModelName}' does not support advanced execution. " +
+                    "Ask an administrator to enable supportsAdvancedExecution on the model, " +
+                    "or to switch the agent to SIMPLE.",
+            )
+        }
+    }
+
+    /**
      * Persists and emits one [WarnEvent] per failed integration into the live case, with a fixed text that
      * carries the integration name only.
      *
@@ -548,12 +573,16 @@ class AgentServiceImpl(
      * Constructs the Spring AI chat client and the appropriate agent type
      * ([AgentSimple] or [AgentAdvanced]). Requires the original [context] for
      * the case-scoped providers that cannot be captured in the definition.
+     *
+     * @throws AdvancedExecutionNotSupportedException when the agent is ADVANCED and its model does not
+     *   support it (see [requireModelSupportsExecutionMode])
      */
     private fun instantiateAgent(
         definition: ResolvedAgentDefinition,
         context: AgentExecutionContext,
         resolvedUser: User?,
     ): Agent {
+        requireModelSupportsExecutionMode(definition)
         val modelConfig = definition.resolvedModel
         val providerConfig = definition.resolvedProvider
 

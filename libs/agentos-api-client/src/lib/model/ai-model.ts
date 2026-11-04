@@ -22,6 +22,7 @@ export interface AiModel {
   pricing?: ModelPricing
   priority: number
   reasoningEffort?: ReasoningEffort
+  supportsAdvancedExecution?: boolean
   temperature?: number
   userId?: string
 }

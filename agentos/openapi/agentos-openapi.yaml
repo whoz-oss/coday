@@ -4375,6 +4375,8 @@ components:
           format: int32
         reasoningEffort:
           $ref: "#/components/schemas/ReasoningEffort"
+        supportsAdvancedExecution:
+          type: boolean
         temperature:
           type: number
           format: double

@@ -572,6 +572,61 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(restriction?.textContent).toContain('readFile, ls')
     })
   })
+  describe('execution mode', () => {
+    const modeControl = () =>
+      (component as unknown as { executionModeControl: { value: string; setValue: (v: string) => void } })
+        .executionModeControl
+
+    it('defaults a new agent to SIMPLE and sends it explicitly', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-agent')
+
+      internals().submit()
+
+      expect(modeControl().value).toBe('SIMPLE')
+      expect(controller.createAgentConfig.mock.calls[0][0].executionMode).toBe('SIMPLE')
+    })
+
+    it('sends the selected mode', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-agent')
+      modeControl().setValue('ADVANCED')
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].executionMode).toBe('ADVANCED')
+      expect(controller.createAgentConfig.mock.calls[0][0].advancedExecution).toBe(true)
+    })
+
+    it('hydrates a config without executionMode as SIMPLE', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({})))
+
+      component.ngOnInit()
+
+      expect(modeControl().value).toBe('SIMPLE')
+    })
+
+    it('hydrates the legacy advancedExecution flag as ADVANCED', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ advancedExecution: true })))
+
+      component.ngOnInit()
+
+      expect(modeControl().value).toBe('ADVANCED')
+    })
+
+    it('offers SIMPLE, ADVANCED and LOOP, without any "model default" option', () => {
+      fixture.detectChanges()
+      const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+        '#agent-config-execution-mode'
+      )!
+
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['SIMPLE', 'ADVANCED', 'LOOP'])
+      expect(select.textContent).not.toContain('Model default')
+    })
+  })
+
   it('keeps a new agent inheriting the actual server default', () => {
     component.ngOnInit()
     expect(internals().defaultDelegationTimeoutSeconds()).toBe(1800)
