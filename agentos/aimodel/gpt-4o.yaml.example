@@ -4,6 +4,9 @@ modelName: gpt-4o
 providerName: openai
 temperature: 0.7
 maxTokens: 4096
+# Recommended: total context window in tokens (input + output). Leave it out when unknown:
+# without it the model gets no proactive context budget.
+contextWindow: 128000
 instructions: |
   You are a helpful, accurate, and concise AI assistant.
   Answer questions clearly and ask for clarification when needed.

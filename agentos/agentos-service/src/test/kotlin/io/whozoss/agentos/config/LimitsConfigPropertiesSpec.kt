@@ -1,5 +1,6 @@
 package io.whozoss.agentos.config
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -67,6 +68,59 @@ class LimitsConfigPropertiesSpec : StringSpec({
         shipped.withPropertyValues("agentos.limits.agent-max-iterations=7").run { context ->
             context.getBean(LimitsConfigProperties::class.java).agentMaxIterations shouldBe 7
         }
+    }
+
+    "the context compaction fractions default to 0.8 and 0.5, in the code and in the shipped application.yml" {
+        LimitsConfigProperties().contextCompactionThreshold shouldBe 0.8
+        LimitsConfigProperties().contextCompactionTarget shouldBe 0.5
+        shipped.run { context ->
+            with(context.getBean(LimitsConfigProperties::class.java)) {
+                contextCompactionThreshold shouldBe 0.8
+                contextCompactionTarget shouldBe 0.5
+            }
+            context.environment.getProperty("agentos.limits.context-compaction-threshold") shouldBe "0.8"
+            context.environment.getProperty("agentos.limits.context-compaction-target") shouldBe "0.5"
+        }
+    }
+
+    "AGENTOS_LIMITS_CONTEXT_COMPACTION_* override the shipped fractions" {
+        shipped
+            .withSystemEnvironment(
+                mapOf(
+                    "AGENTOS_LIMITS_CONTEXT_COMPACTION_THRESHOLD" to "0.9",
+                    "AGENTOS_LIMITS_CONTEXT_COMPACTION_TARGET" to "0.4",
+                ),
+            ).run { context ->
+                with(context.getBean(LimitsConfigProperties::class.java)) {
+                    contextCompactionThreshold shouldBe 0.9
+                    contextCompactionTarget shouldBe 0.4
+                }
+            }
+    }
+
+    "fractions that do not satisfy 0 < target < threshold <= 1 are refused at construction" {
+        listOf(
+            0.0 to 0.8,
+            0.8 to 0.8,
+            0.9 to 0.8,
+            0.5 to 1.1,
+            -0.5 to 0.8,
+        ).forEach { (target, threshold) ->
+            shouldThrow<IllegalArgumentException> {
+                LimitsConfigProperties(contextCompactionThreshold = threshold, contextCompactionTarget = target)
+            }
+        }
+        LimitsConfigProperties(contextCompactionThreshold = 1.0, contextCompactionTarget = 0.1).contextCompactionThreshold shouldBe 1.0
+    }
+
+    "the service refuses to start with inverted fractions, as with any invalid limit" {
+        shipped
+            .withPropertyValues(
+                "agentos.limits.context-compaction-threshold=0.4",
+                "agentos.limits.context-compaction-target=0.6",
+            ).run { context ->
+                (context.startupFailure != null) shouldBe true
+            }
     }
 })
 

@@ -4,6 +4,9 @@ modelName: claude-opus-4-6
 providerName: anthropic
 temperature: 0.3
 maxTokens: 16384
+# Recommended: total context window in tokens (input + output), from the provider's documentation
+# for this exact model. Left unset here: without it the model gets no proactive context budget.
+# contextWindow: <tokens>
 instructions: |
   You are Claude, an AI assistant by Anthropic.
   You excel at thorough analysis, nuanced reasoning, and handling complex, lengthy content.

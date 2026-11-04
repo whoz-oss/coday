@@ -36,6 +36,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * - `AGENTOS_LIMITS_CASE_MAX_ITERATIONS`  (default: 100)
  * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 1000)
  * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: unset)
+ * - `AGENTOS_LIMITS_CONTEXT_COMPACTION_THRESHOLD` (default: 0.8)
+ * - `AGENTOS_LIMITS_CONTEXT_COMPACTION_TARGET`    (default: 0.5)
  *
  * Example (`application.yml`):
  * ```yaml
@@ -45,6 +47,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     agent-max-iterations: 1000
  *     agent-loop-max-items: 50
  *     run-cost-threshold: 10.0
+ *     context-compaction-threshold: 0.8
+ *     context-compaction-target: 0.5
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.limits")
@@ -125,4 +129,32 @@ data class LimitsConfigProperties(
      * Defaults to null for not defined.
      */
     val runCostThreshold: Double? = null,
-)
+    /**
+     * Fraction of the usable context window at which the prompt of an agent invocation counts as having
+     * reached its budget. The usable window is the model's `contextWindow` minus its `maxCompletionTokens`
+     * (see [io.whozoss.agentos.compaction.ContextBudget]); a model without `contextWindow` has no budget.
+     *
+     * It is the trigger of the compaction described in ADR 002.
+     *
+     * Must satisfy `0 < contextCompactionTarget < contextCompactionThreshold <= 1`; the service refuses to
+     * start otherwise, as it does for every invalid limit.
+     *
+     * Defaults to 0.8.
+     */
+    val contextCompactionThreshold: Double = 0.8,
+    /**
+     * Fraction of the usable context window the history is reduced to when it is compacted (ADR 002,
+     * not used yet). Keeping it below [contextCompactionThreshold] leaves room between two compactions,
+     * so the start of the prompt stays stable and prompt caching keeps working.
+     *
+     * Defaults to 0.5.
+     */
+    val contextCompactionTarget: Double = 0.5,
+) {
+    init {
+        require(contextCompactionTarget > 0.0 && contextCompactionTarget < contextCompactionThreshold && contextCompactionThreshold <= 1.0) {
+            "agentos.limits.context-compaction-target and context-compaction-threshold must satisfy " +
+                "0 < target < threshold <= 1 (target=$contextCompactionTarget, threshold=$contextCompactionThreshold)"
+        }
+    }
+}

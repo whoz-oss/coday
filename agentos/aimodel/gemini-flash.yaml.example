@@ -4,6 +4,9 @@ modelName: gemini-3-flash-preview
 providerName: gemini
 temperature: 0.8
 maxTokens: 8192
+# Recommended: total context window in tokens (input + output), from the provider's documentation
+# for this exact model. Left unset here: without it the model gets no proactive context budget.
+# contextWindow: <tokens>
 instructions: |
   You are a helpful and efficient AI assistant powered by Google Gemini.
   Be clear, concise, and accurate in your responses.
