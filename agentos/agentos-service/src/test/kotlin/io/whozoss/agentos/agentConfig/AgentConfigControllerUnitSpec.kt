@@ -219,6 +219,13 @@ class AgentConfigControllerUnitSpec :
             result.advancedExecution shouldBe true
         }
 
+        "toDto exposes SIMPLE when neither executionMode nor the legacy flag is set" {
+            val result = toDto(config().copy(executionMode = null, advancedExecution = false))
+
+            result.executionMode shouldBe ExecutionMode.SIMPLE
+            result.advancedExecution shouldBe null
+        }
+
         "toDto derives advancedExecution from executionMode, never contradicting it" {
             // Stored inconsistently by a client that only sent executionMode before the derivation existed.
             val advanced = toDto(config().copy(executionMode = ExecutionMode.ADVANCED, advancedExecution = false))
@@ -342,6 +349,20 @@ class AgentConfigControllerUnitSpec :
         "toDomain resolves the legacy advancedExecution flag into executionMode" {
             toDomain(resource().copy(advancedExecution = true)).executionMode shouldBe ExecutionMode.ADVANCED
             toDomain(resource().copy(advancedExecution = null)).executionMode shouldBe ExecutionMode.SIMPLE
+        }
+
+        "toDomain persists SIMPLE explicitly when the client sends neither field" {
+            val result = toDomain(resource().copy(executionMode = null, advancedExecution = null))
+
+            result.executionMode shouldBe ExecutionMode.SIMPLE
+            result.advancedExecution shouldBe false
+        }
+
+        "toDomain treats advancedExecution=false as SIMPLE" {
+            val result = toDomain(resource().copy(executionMode = null, advancedExecution = false))
+
+            result.executionMode shouldBe ExecutionMode.SIMPLE
+            result.advancedExecution shouldBe false
         }
 
         "toDomain derives advancedExecution from executionMode when only executionMode is sent" {
@@ -589,6 +610,40 @@ class AgentConfigControllerUnitSpec :
             every { service.update(any()) } answers {
                 val saved = firstArg<AgentConfig>()
                 saved.enabled shouldBe true
+                saved
+            }
+
+            controller.update(c.id, payload)
+
+            verify(exactly = 1) { service.update(any()) }
+        }
+
+        "update persists SIMPLE when the payload sends neither field" {
+            val c = config().copy(executionMode = ExecutionMode.ADVANCED, advancedExecution = true)
+            val payload = resource(id = c.id).copy(executionMode = null, advancedExecution = null)
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.executionMode shouldBe ExecutionMode.SIMPLE
+                saved.advancedExecution shouldBe false
+                saved
+            }
+
+            controller.update(c.id, payload)
+
+            verify(exactly = 1) { service.update(any()) }
+        }
+
+        "update maps the legacy advancedExecution=true to ADVANCED" {
+            val c = config()
+            val payload = resource(id = c.id).copy(executionMode = null, advancedExecution = true)
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.executionMode shouldBe ExecutionMode.ADVANCED
+                saved.advancedExecution shouldBe true
                 saved
             }
 

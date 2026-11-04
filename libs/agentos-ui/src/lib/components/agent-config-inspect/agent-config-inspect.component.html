@@ -22,11 +22,14 @@
         <dt>Provider</dt>
         <dd>{{ def.resolvedProviderName }}</dd>
 
-        <dt>Advanced execution</dt>
-        <dd>
-          <ds-tag [variant]="def.advancedExecution ? 'accent' : 'neutral'">
-            {{ def.advancedExecution ? 'Enabled' : 'Disabled' }}
-          </ds-tag>
+        <dt class="agent-config-inspect__dt">Execution mode</dt>
+        <dd class="agent-config-inspect__dd">
+          <span
+            class="agent-config-inspect__badge"
+            [class.agent-config-inspect__badge--active]="def.executionMode !== 'SIMPLE'"
+          >
+            {{ def.executionMode }}
+          </span>
         </dd>
 
         @if (def.userId) {

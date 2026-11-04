@@ -99,12 +99,37 @@ pricing:                    # per million tokens
   outputMTokens: 10
   cacheRead: 0.2
   cacheWrite: 2.5
+supportsAdvancedExecution: true   # optional, default false
 ```
 
 A file names its provider instead of referencing an id: the provider, which holds the API key, stays
 in each installation's database. A model whose provider does not exist there is skipped. A persisted
 namespace model with the same provider and alias (or `apiModelName`) wins over the file. To change a
 filesystem model, edit its file; the API cannot update or delete it.
+
+`supportsAdvancedExecution` (default `false`) declares that the model can run agents in `ADVANCED`
+execution mode. It is a capability, not a default: it never changes the mode of an agent.
+
+- The agent decides its execution mode: `SIMPLE` unless it sets `executionMode` (or the legacy
+  `advancedExecution: true`, which means `ADVANCED`). `LOOP` makes no LLM call and is unaffected.
+- An agent in `ADVANCED` mode requires `supportsAdvancedExecution: true` on its model. Otherwise the run
+  fails with an error, shown in the case, naming the agent, the model and the fix (set the flag on the
+  model, or switch the agent to `SIMPLE`). There is no silent downgrade to `SIMPLE`. The definition
+  inspection endpoint still works for such an agent, so the misconfiguration can be seen.
+
+Persisted models saved before this property existed are migrated once at startup (the missing property
+is the marker, so a restart never overrides a value set afterwards): a model used by at least one
+non-removed persisted agent running `ADVANCED` (explicit, or legacy `advancedExecution: true`) gets
+`true`, every other one `false`. Until the migration has completed, such models read as `false`.
+
+Filesystem models are not migrated. A persisted `ADVANCED` agent running on a filesystem model fails
+after an upgrade until `supportsAdvancedExecution: true` is added to the model file; the migration logs
+a warning naming each `ADVANCED` agent that matches no persisted model, which is how to find them. A
+persisted model that no `ADVANCED` agent uses is set to `false`, so an agent switched to `ADVANCED`
+later needs the flag enabled on its model.
+
+Through the API (`PUT /api/ai-models/{id}`), omitting `supportsAdvancedExecution` keeps the current
+value; an explicit `false` clears it. On creation, omitting it means `false`.
 
 ## Credentials Delivered to Plugins
 
