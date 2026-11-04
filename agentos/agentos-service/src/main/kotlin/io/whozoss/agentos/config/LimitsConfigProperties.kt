@@ -76,8 +76,8 @@ data class LimitsConfigProperties(
      * a [io.whozoss.agentos.sdk.caseEvent.WarnEvent] and breaks out of the loop,
      * then produces its final response based on what it has gathered so far.
      *
-     * Also bounds automatic tool rounds for AgentSimple when usage tracking is enabled
-     * ([io.whozoss.agentos.chat.UsageTrackingChatModel] runs that loop). At that bound the
+     * Also bounds automatic tool rounds for AgentSimple, whether usage tracking is enabled or not
+     * ([io.whozoss.agentos.chat.UsageTrackingChatModel] always runs that loop for agents). At that bound the
      * next request asks the model to answer without tools, summarizing its progress; its
      * tool calls are not executed, and the agent emits the same warning before finishing.
      *
@@ -134,7 +134,8 @@ data class LimitsConfigProperties(
      * reached its budget. The usable window is the model's `contextWindow` minus its `maxCompletionTokens`
      * (see [io.whozoss.agentos.compaction.ContextBudget]); a model without `contextWindow` has no budget.
      *
-     * It is the trigger of the compaction described in ADR 002.
+     * It is the trigger of the compaction described in ADR 002. Until compaction ships, reaching it is only
+     * logged, once per invocation at WARN; the prompt is sent unchanged. See `docs/context-budget.md`.
      *
      * Must satisfy `0 < contextCompactionTarget < contextCompactionThreshold <= 1`; the service refuses to
      * start otherwise, as it does for every invalid limit.

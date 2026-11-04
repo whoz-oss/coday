@@ -2,10 +2,12 @@
 
 ## Status
 
-Proposed — Phase 0 implemented.
+Proposed — Phase 0 and Phase 1 implemented.
 
 Answers the design questions of issue #1285. Implementation is split into the phases listed
-under [Decision](#decision); each phase is a separate PR.
+under [Decision](#decision). Phases 0 and 1 ship together in #1549; Phase 2 is a separate PR.
+The Inventory below describes the code **before** Phase 0. Operating notes for Phase 1 are in
+[context-budget.md](../context-budget.md).
 
 ## Context
 
@@ -151,20 +153,30 @@ one-shot retry after an overflow is part of phase 2, since it needs a compactor 
 - **Fill the registry**: set `contextWindow` in the bundled `aimodel/*.yaml` files and document
   it as recommended. Unknown (`null`) means "no proactive compaction", never a default guess.
 - **`ContextBudget`** (new, `agentos-service`, package `compaction/`), one per agent invocation:
-  - `limit = contextWindow − maxCompletionTokens − fixedOverhead`, where the fixed overhead is
-    the system message plus tool definitions;
-  - `trigger = 0.8 × limit` (`agentos.limits.context-compaction-threshold`, default `0.8`);
-  - `target = 0.5 × limit` (`agentos.limits.context-compaction-target`, default `0.5`). The gap
-    between trigger and target is the hysteresis that keeps the prompt start stable;
-  - **estimate** a prompt as characters / 3, as in Coday, and **correct** it with the provider's
-    native prompt size whenever a response reports it (`inputTokens + cacheReadTokens +
-    cacheWriteTokens`). The correction is a running chars-per-token ratio, so later estimates
-    in the same run use the measured value.
+  - `usable = contextWindow − maxCompletionTokens`;
+  - `trigger = 0.8 × usable` (`agentos.limits.context-compaction-threshold`, default `0.8`);
+  - `target = 0.5 × usable` (`agentos.limits.context-compaction-target`, default `0.5`). The gap
+    between trigger and target is the hysteresis that keeps the prompt start stable. The service
+    refuses to start unless `0 < target < threshold <= 1`;
+  - **estimate** the *whole* prompt (messages, tool-call arguments, tool responses and tool
+    definitions) at 3 characters per token, as in Coday, and compare it to `usable` directly.
+    This is equivalent to subtracting a fixed overhead for the system message and tool
+    definitions, but needs no separate bookkeeping of that overhead;
+  - **correct** it with the prompt size the provider reports: native
+    `inputTokens + cacheReadTokens + cacheWriteTokens` when readable, otherwise the generic
+    `promptTokens` (Gemini). The ratio from the last measured prompt replaces the previous one
+    (prompts of one invocation extend each other, so the latest is the best predictor), bounded
+    to 1..8 characters per token.
 - **Separate observation from cost**: the request wrapper that owns SIMPLE's tool loop and sees
-  every request must exist even when `agentos.usage.enabled=false`. `UsageTrackingChatModel` is
-  split into an always-on part (tool loop, round limit, context observation and compaction hook)
-  and the optional cost part (accumulator, cost gate). Cost estimation and the cost gate stay
-  behind the switch.
+  every request must exist even when `agentos.usage.enabled=false`. Implemented by keeping
+  `UsageTrackingChatModel` as one class (the name is historical) whose `UsageAccumulator` is
+  optional: the tool loop, round limit and context observation always run; accounting and the
+  cost gate run only with an accumulator, which exists only when usage is enabled.
+  `AgentExecutionContext.observeContext` (set by `CaseServiceImpl` for live runs) tells
+  `AgentServiceImpl` to build the budget; `ChatClientProvider` wraps the model whenever a budget
+  is given, so utility clients (case naming, prompt translation) are unaffected.
+- **Phase 1 behaviour**: a DEBUG line per request, and one WARN per invocation when the trigger
+  is first reached. The request is never changed.
 
 ### Phase 2 — Compact: summarisation as a durable event
 
