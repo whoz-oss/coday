@@ -30,7 +30,12 @@ import java.util.UUID
  * @param usageAccumulator When non-null, [io.whozoss.agentos.chat.ChatClientProvider] wraps the model in
  *   [io.whozoss.agentos.chat.UsageTrackingChatModel] to record each provider request.
  *   The caller retrieves the totals at the end of the run and attaches them to [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent].
- *   Null when usage tracking is not needed (e.g. definition resolution, tests).
+ *   Null when usage tracking is disabled or not needed (e.g. definition resolution, tests): the wrapper
+ *   then runs without its cost part, and the agent's tool loop and context observation are unaffected.
+ * @param observeContext True for a live agent run (set by [io.whozoss.agentos.caseFlow.CaseServiceImpl]): the
+ *   agent's chat client then owns the tool loop (and its round limit) and observes the context of every
+ *   request through a [io.whozoss.agentos.compaction.ContextBudget] built from the resolved model, whatever
+ *   the usage switch says. False for contexts that only resolve or preview an agent.
  * @param reasoningEffort The case-level override of the reasoning effort ([io.whozoss.agentos.caseFlow.Case.reasoningEffort]),
  *   read at the start of the run. Null means each agent uses the effort of its model. Replaces the effort of
  *   the model whatever it has configured.
@@ -44,6 +49,7 @@ data class AgentExecutionContext(
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
     val usageAccumulator: UsageAccumulator? = null,
     val reasoningEffort: ReasoningEffort? = null,
+    val observeContext: Boolean = false,
 ) {
     fun toToolContext(
         userExternalId: String?,

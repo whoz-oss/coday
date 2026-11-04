@@ -10,6 +10,7 @@ import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.chat.UsageTrackingChatModel
+import io.whozoss.agentos.compaction.ContextBudget
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
@@ -220,6 +221,139 @@ class ChatClientProviderUnitSpec :
 
             client.prompt("Hello").call().content() shouldBe "Done"
             verify(exactly = 1) { nativeModel.call(any<Prompt>()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // Agent execution is recognised by its context budget, not by the usage switch
+        // -------------------------------------------------------------------------
+
+        /** A provider that asks for the tool forever; counts the tools run, and the requests made. */
+        class LoopingProvider {
+            val executed = AtomicInteger()
+            val requests = AtomicInteger()
+            val callback =
+                object : ToolCallback {
+                    override fun getToolDefinition(): ToolDefinition =
+                        ToolDefinition
+                            .builder()
+                            .name("lookup")
+                            .description("Return a test result")
+                            .inputSchema("{\"type\":\"object\",\"properties\":{}}")
+                            .build()
+
+                    override fun call(input: String): String = executed.incrementAndGet().let { "tool result" }
+                }
+            val nativeModel =
+                mockk<ChatModel> {
+                    every { defaultOptions } returns ToolCallingChatOptions.builder().build()
+                    every { call(any<Prompt>()) } answers {
+                        requests.incrementAndGet()
+                        val toolCall =
+                            AssistantMessage
+                                .builder()
+                                .content("")
+                                .toolCalls(listOf(AssistantMessage.ToolCall("call-1", "function", "lookup", "{}")))
+                                .build()
+                        ChatResponse(listOf(Generation(toolCall)))
+                    }
+                }
+            val factory =
+                mockk<ChatModelFactory> {
+                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                }
+        }
+
+        listOf(false, true).forEach { usageEnabled ->
+            "an agent client owns the tool loop and its round limit with usage ${if (usageEnabled) "enabled" else "disabled"}" {
+                val provider = LoopingProvider()
+                val client =
+                    ChatClientProvider(provider.factory, LimitsConfigProperties(agentMaxIterations = 1000), UsageConfigProperties(enabled = usageEnabled))
+                        .getChatClient(
+                            model(),
+                            provider(),
+                            maxToolRounds = 3,
+                            contextBudget = ContextBudget(contextWindow = 1_000_000),
+                        )
+
+                val response = client.prompt("Hello").toolCallbacks(provider.callback).call().chatResponse()
+
+                response?.metadata?.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe 3
+                provider.executed.get() shouldBe 3
+                // Rounds 0..3 each ask for the tool (the last one is not executed), then the summary request.
+                provider.requests.get() shouldBe 5
+            }
+        }
+
+        "an agent client of a model without context window still owns the tool loop" {
+            val provider = LoopingProvider()
+            val client =
+                ChatClientProvider(provider.factory)
+                    .getChatClient(model(), provider(), maxToolRounds = 2, contextBudget = ContextBudget(contextWindow = null))
+
+            val response = client.prompt("Hello").toolCallbacks(provider.callback).call().chatResponse()
+
+            response?.metadata?.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe 2
+            provider.executed.get() shouldBe 2
+        }
+
+        "usage disabled: an accumulator is neither consulted nor fed, even next to a budget" {
+            val provider = LoopingProvider()
+            val accumulator = UsageAccumulator().also { it.beforeCall = { error("cost gate consulted while usage is disabled") } }
+            val client =
+                ChatClientProvider(provider.factory, usageConfig = UsageConfigProperties(enabled = false))
+                    .getChatClient(
+                        model(),
+                        provider(),
+                        accumulator = accumulator,
+                        maxToolRounds = 1,
+                        contextBudget = ContextBudget(contextWindow = 1_000_000),
+                    )
+
+            client.prompt("Hello").toolCallbacks(provider.callback).call().chatResponse()
+
+            accumulator.hasData shouldBe false
+        }
+
+        "usage enabled: an agent client accounts each request next to the budget" {
+            val provider = LoopingProvider()
+            val accumulator = UsageAccumulator()
+            var gateChecks = 0
+            accumulator.beforeCall = { gateChecks++.let { java.util.concurrent.CompletableFuture.completedFuture(null) } }
+            val client =
+                ChatClientProvider(provider.factory, usageConfig = UsageConfigProperties(enabled = true))
+                    .getChatClient(
+                        model(),
+                        provider(),
+                        accumulator = accumulator,
+                        maxToolRounds = 1,
+                        contextBudget = ContextBudget(contextWindow = 1_000_000),
+                    )
+
+            client.prompt("Hello").toolCallbacks(provider.callback).call().chatResponse()
+
+            (gateChecks > 0) shouldBe true
+        }
+
+        "a utility client, without budget and accumulator, is the native model, with usage enabled or not" {
+            listOf(false, true).forEach { usageEnabled ->
+                val nativeModel = mockk<ChatModel>()
+                every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder().internalToolExecutionEnabled(true).build()
+                every { nativeModel.call(any<Prompt>()) } answers {
+                    // Not the wrapper: the options it sets would turn Spring AI's own tool execution off.
+                    (firstArg<Prompt>().options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe true
+                    ChatResponse(listOf(Generation(AssistantMessage("Title"))))
+                }
+                val factory =
+                    mockk<ChatModelFactory> {
+                        every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                    }
+
+                ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = usageEnabled))
+                    .getChatClient(model(), provider(), caseId = "case-1")
+                    .prompt("Hello")
+                    .call()
+                    .content() shouldBe "Title"
+            }
         }
 
     })

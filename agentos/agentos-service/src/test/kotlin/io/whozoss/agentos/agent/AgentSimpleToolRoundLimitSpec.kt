@@ -6,12 +6,17 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.chat.UsageTrackingChatModel
+import io.whozoss.agentos.compaction.ContextBudget
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -114,5 +119,56 @@ class AgentSimpleToolRoundLimitSpec :
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
             (events.filterIsInstance<MessageEvent>().single().content.single() as MessageContent.Text).content shouldBe "Finished."
             (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe null
+        }
+
+        // The limit used to exist only with usage tracking on: with it off, Spring AI's own loop ran the tools
+        // and nothing bounded them. These go through the provider, as AgentServiceImpl does for an agent run.
+        listOf(false, true).forEach { usageEnabled ->
+            "usage ${if (usageEnabled) "enabled" else "disabled"}: the tool round limit applies to an AgentSimple built by the provider" {
+                val requests = AtomicInteger()
+                val raw = mockk<ChatModel>()
+                every { raw.stream(any<Prompt>()) } answers {
+                    val messages = firstArg<Prompt>().instructions
+                    val atLimit = messages.last() is UserMessage && messages.getOrNull(messages.size - 2) is ToolResponseMessage
+                    val index = requests.getAndIncrement()
+                    Flux.just(if (atLimit) answer("Two tools ran, one step remains.") else toolCall(index))
+                }
+                val factory =
+                    mockk<ChatModelFactory> {
+                        every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns raw
+                    }
+                val aiModel = AiModel(aiProviderId = UUID.randomUUID(), apiModelName = "test", contextWindow = 1_000_000L)
+                val aiProvider = AiProvider(namespaceId = UUID.randomUUID(), name = "test", apiType = AiApiType.OpenAI)
+                val usage = if (usageEnabled) UsageAccumulator() else null
+                val chatClient =
+                    ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = usageEnabled))
+                        .getChatClient(
+                            aiModel,
+                            aiProvider,
+                            accumulator = usage,
+                            maxToolRounds = 2,
+                            contextBudget = ContextBudget(contextWindow = aiModel.contextWindow),
+                        )
+                val agent = AgentSimple(name = "test", chatClient = chatClient, tools = listOf(tool), llmProvider = "test", llmModel = "test")
+                val input =
+                    MessageEvent(
+                        namespaceId = UUID.randomUUID(),
+                        caseId = UUID.randomUUID(),
+                        actor = Actor("user", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("Run the tools")),
+                    )
+
+                val events = agent.run(listOf(input)) { true }.toList()
+
+                events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 2
+                events.filterIsInstance<WarnEvent>().single().message shouldContain "maximum iterations (2)"
+                (events.filterIsInstance<MessageEvent>().single().content.single() as MessageContent.Text).content shouldBe
+                    "Two tools ran, one step remains."
+                (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe 2
+                // Rounds 0..2 each ask for a tool (the last one is not executed), then the summary request.
+                requests.get() shouldBe 4
+                // Accounting follows the switch only.
+                (usage?.hasData ?: false) shouldBe false
+            }
         }
     })

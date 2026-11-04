@@ -763,6 +763,7 @@ class CaseServiceImpl(
                 usageAccumulator = usageAccumulator,
                 // Read at every agent run, so a change applies from the next run on, never during one.
                 reasoningEffort = findById(caseId)?.reasoningEffort,
+                observeContext = true,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L

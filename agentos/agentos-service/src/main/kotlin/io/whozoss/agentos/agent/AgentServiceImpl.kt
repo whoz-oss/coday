@@ -15,6 +15,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.chat.sentTo
+import io.whozoss.agentos.compaction.ContextBudget
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.configAgent.ConfigToolGrantService
 import io.whozoss.agentos.delegation.DelegationTool
@@ -633,6 +634,7 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
+                        contextBudgetFor(agentName, modelConfig, context),
                     )
                 val advancedContext =
                     AgentAdvancedContext(
@@ -672,6 +674,7 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
+                        contextBudgetFor(agentName, modelConfig, context),
                     )
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
@@ -693,6 +696,29 @@ class AgentServiceImpl(
             }
         }
     }
+
+    /**
+     * The context budget of one invocation of this agent, or null outside a live agent run
+     * ([AgentExecutionContext.observeContext]). Built from the resolved model, so a model without
+     * `contextWindow` gets a budget that is never reached: its client still owns the tool loop.
+     * One budget per invocation: it holds the ratio learned from that invocation's own responses.
+     */
+    private fun contextBudgetFor(
+        agentName: String,
+        modelConfig: AiModel,
+        context: AgentExecutionContext,
+    ): ContextBudget? =
+        if (context.observeContext) {
+            ContextBudget(
+                contextWindow = modelConfig.contextWindow,
+                maxCompletionTokens = modelConfig.maxCompletionTokens,
+                threshold = limitsConfig.contextCompactionThreshold,
+                target = limitsConfig.contextCompactionTarget,
+                label = "case=${context.caseId} agent=$agentName model=${modelConfig.apiModelName}",
+            )
+        } else {
+            null
+        }
 
     /**
      * Build the namespace context block to be used as a system prompt, separate from
