@@ -807,21 +807,19 @@ export class AgentConfigFormComponent implements OnInit {
     } else if (pattern === ALL_SUB_AGENTS_SELECTOR) {
       this.allSubAgentsSelected.set(true)
     } else {
-      this.subAgentRows.update((rows) => [
-        ...rows.map((row) =>
-          row.unresolved || row.grantedByPattern || !isGrantedByPattern(row.name, [pattern])
-            ? row
-            : { ...row, grantedByPattern: true }
-        ),
-        {
-          selector: pattern,
-          name: pattern,
-          unresolved: true,
-          pattern: isSubAgentPattern(pattern),
-          grantedByPattern: false,
-          selected: signal(true),
-        },
-      ])
+      this.subAgentRows.update((rows) =>
+        AgentConfigFormComponent.withPatternGrants([
+          ...rows,
+          {
+            selector: pattern,
+            name: pattern,
+            unresolved: true,
+            pattern: isSubAgentPattern(pattern),
+            grantedByPattern: false,
+            selected: signal(true),
+          },
+        ])
+      )
     }
     this.newSubAgentControl.reset('')
   }
@@ -836,11 +834,34 @@ export class AgentConfigFormComponent implements OnInit {
    */
   protected removeSubAgent(row: SubAgentRow): void {
     const key = row.selector.toLowerCase()
-    this.subAgentRows.update((rows) => rows.filter((r) => r.selector.toLowerCase() !== key))
+    this.subAgentRows.update((rows) =>
+      AgentConfigFormComponent.withPatternGrants(rows.filter((r) => r.selector.toLowerCase() !== key))
+    )
   }
 
   protected toggleSubAgent(row: SubAgentRow): void {
     row.selected.update((v) => !v)
+    // Only a glob changes what the other rows are reached by; a name reaches itself alone.
+    if (row.pattern) this.subAgentRows.update((rows) => AgentConfigFormComponent.withPatternGrants(rows))
+  }
+
+  /**
+   * Re-answer, for every catalogue row, whether a glob the form would save reaches it.
+   *
+   * Recomputed from the whole list on every change rather than patched where the change happened:
+   * dropping a pattern row, or unticking it, used to leave the agents it had reached still labelled
+   * "via pattern". That label is a claim about what the saved config will allow, and a stale one
+   * invites the user to untick an agent's own box believing a glob still covers it, which produces
+   * exactly the silent "cannot delegate" this section exists to prevent.
+   *
+   * Only ticked rows count: an unticked selector is not written, so it grants nothing. Unresolved
+   * rows keep false, as they are the selectors themselves rather than agents a selector reaches.
+   */
+  private static withPatternGrants(rows: SubAgentRow[]): SubAgentRow[] {
+    const active = rows.filter((r) => r.selected()).map((r) => r.selector)
+    return rows.map((row) =>
+      row.unresolved ? row : { ...row, grantedByPattern: isGrantedByPattern(row.name, active) }
+    )
   }
 
   protected toggleAllSubAgents(): void {

@@ -94,6 +94,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
         name: string
         unresolved: boolean
         pattern: boolean
+        grantedByPattern: boolean
         selected: { (): boolean; set: (v: boolean) => void }
       }>
       allSubAgentsSelected: { (): boolean; set: (v: boolean) => void }
@@ -101,6 +102,8 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       namedSubAgentSelectionDropped: () => boolean
       newSubAgentControl: { setValue: (v: string) => void; value: string }
       addSubAgent: () => void
+      removeSubAgent: (row: { selector: string }) => void
+      toggleSubAgent: (row: { pattern: boolean; selected: { (): boolean; set: (v: boolean) => void } }) => void
       submitError: () => string | null
       submit: () => void
     }
@@ -580,6 +583,47 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       const rows = internals().subAgentRows()
       expect(rows.find((r) => r.name === 'BugFixer')?.grantedByPattern).toBe(true)
       expect(rows.find((r) => r.name === 'Reviewer')?.grantedByPattern).toBe(false)
+    })
+
+    it('stops saying "via pattern" once the glob is removed', () => {
+      // Found in the browser: the row went away and the badge stayed. The badge is a claim about
+      // the config that will be saved, and a stale one invites unticking an agent's own box in the
+      // belief a glob still covers it, which is the silent "cannot delegate" this section prevents.
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer', 'Reviewer')))
+
+      component.ngOnInit()
+      internals().newSubAgentControl.setValue('*Fixer')
+      internals().addSubAgent()
+      expect(
+        internals()
+          .subAgentRows()
+          .find((r) => r.name === 'BugFixer')?.grantedByPattern
+      ).toBe(true)
+
+      internals().removeSubAgent({ selector: '*Fixer' })
+
+      const rows = internals().subAgentRows()
+      expect(rows.some((r) => r.selector === '*Fixer')).toBe(false)
+      expect(rows.find((r) => r.name === 'BugFixer')?.grantedByPattern).toBe(false)
+    })
+
+    it('stops saying "via pattern" once the glob is unticked, since it would not be saved', () => {
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer')))
+
+      component.ngOnInit()
+      internals().newSubAgentControl.setValue('*Fixer')
+      internals().addSubAgent()
+
+      const patternRow = internals()
+        .subAgentRows()
+        .find((r) => r.selector === '*Fixer')!
+      internals().toggleSubAgent(patternRow)
+
+      expect(
+        internals()
+          .subAgentRows()
+          .find((r) => r.name === 'BugFixer')?.grantedByPattern
+      ).toBe(false)
     })
 
     it('matches a selector written in another case, like the server glob does', () => {
