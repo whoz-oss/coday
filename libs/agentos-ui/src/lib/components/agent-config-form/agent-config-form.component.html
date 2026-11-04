@@ -317,17 +317,20 @@
                     {{ subAgentCandidatesUnavailable() ? 'not verified' : 'no matching agent' }}
                   </span>
                 }
-                @if (row.unresolved) {
-                  <button
-                    class="agent-config-form__sub-agent-btn agent-config-form__sub-agent-btn--danger"
-                    type="button"
-                    title="Remove"
-                    (click)="removeSubAgent(row)"
-                  >
-                    &#128465;
-                  </button>
-                }
               </label>
+              <!-- Outside the label: a button is labelable, so nesting it here made its glyph part
+                   of the checkbox's accessible name. The skills rows keep their extras outside too. -->
+              @if (row.unresolved) {
+                <button
+                  class="agent-config-form__sub-agent-btn agent-config-form__sub-agent-btn--danger"
+                  type="button"
+                  [attr.aria-label]="'Remove ' + row.selector"
+                  title="Remove"
+                  (click)="removeSubAgent(row)"
+                >
+                  &#128465;
+                </button>
+              }
             </div>
           }
         }

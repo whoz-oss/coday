@@ -173,10 +173,10 @@ class ConfigPlanner(
         val effective = source?.takeUnless { value.has("name") }?.let { value.deepCopy().put("name", it.name) } ?: value
         val name = effective.path("name").asText("").trim()
         if (name.isEmpty()) errors += "CREATE needs 'value.name'."
-        if (kind == ConfigKind.AGENT && effective.get("enabled")?.isBoolean != true) {
-            errors += "creating an agent needs 'value.enabled': true (it can run) or false (it stays a draft nobody can use)."
-        }
         if (kind == ConfigKind.AGENT) {
+            if (effective.get("enabled")?.isBoolean != true) {
+                errors += "creating an agent needs 'value.enabled': true (it can run) or false (it stays a draft nobody can use)."
+            }
             SubAgentSelectorValidation.idSelectors(selectorsOf(effective.get(SUB_AGENTS_FIELD)))
                 .takeIf { it.isNotEmpty() }
                 ?.let { errors += SubAgentSelectorValidation.correction(it) }
@@ -263,7 +263,6 @@ class ConfigPlanner(
         val planned =
             changes.mapNotNull { change ->
                 val path = change.path?.trim().orEmpty()
-                val newSubAgentIds = newSubAgentIds(kind, path, change, current.dto)
                 when {
                     !isValidPath(path) -> {
                         errors += "change path '$path' must be a JSON Pointer of 1 to $MAX_PATH_DEPTH segments, like '/instructions' or '/integrations/MY_API'."
@@ -281,17 +280,22 @@ class ConfigPlanner(
                         errors += "'$path' goes through a list: replace the whole list with path '${listPrefix(current.dto, path)}'."
                         null
                     }
-                    newSubAgentIds.isNotEmpty() -> {
-                        errors += SubAgentSelectorValidation.correction(newSubAgentIds)
-                        null
+                    else -> {
+                        // Last, and only here: the path is known valid and not refused for another
+                        // reason, so the selectors are read once instead of for every change.
+                        val newIds = newSubAgentIds(kind, path, change, current.dto)
+                        if (newIds.isNotEmpty()) {
+                            errors += SubAgentSelectorValidation.correction(newIds)
+                            null
+                        } else {
+                            PlannedChange(
+                                path = path,
+                                after = if (change.remove == true) null else change.value ?: objectMapper.nullNode(),
+                                remove = change.remove == true,
+                                beforeHash = ConfigJson.hash(ConfigJson.valueAt(masked, path)),
+                            )
+                        }
                     }
-                    else ->
-                        PlannedChange(
-                            path = path,
-                            after = if (change.remove == true) null else change.value ?: objectMapper.nullNode(),
-                            remove = change.remove == true,
-                            beforeHash = ConfigJson.hash(ConfigJson.valueAt(masked, path)),
-                        )
                 }
             }
         if (current.fromFilesystem) errors += "${kind.name.lowercase()} '${current.name}' is defined in a file and cannot be changed here."
@@ -587,6 +591,8 @@ class ConfigPlanner(
      *
      * Only a whole-list replacement at `/subAgents` is read. A deeper path is refused anyway by the
      * list check above, and reading [ChangeInput.value] as the new list there would be wrong.
+     *
+     * Called from the last branch of the `when`, so [path] is already a valid pointer.
      */
     private fun newSubAgentIds(
         kind: ConfigKind,
@@ -594,7 +600,7 @@ class ConfigPlanner(
         change: ChangeInput,
         current: JsonNode,
     ): List<String> {
-        if (kind != ConfigKind.AGENT || change.remove == true || !isValidPath(path)) return emptyList()
+        if (kind != ConfigKind.AGENT || change.remove == true) return emptyList()
         if (ConfigJson.segments(path) != listOf(SUB_AGENTS_FIELD)) return emptyList()
         return SubAgentSelectorValidation.newIdSelectors(
             subAgents = selectorsOf(change.value),

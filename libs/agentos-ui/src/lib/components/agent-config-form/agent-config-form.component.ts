@@ -633,22 +633,49 @@ export class AgentConfigFormComponent implements OnInit {
    * [subAgentCandidatesUnavailable] rather than blocking the whole form.
    */
   private loadDelegationCandidates(): Observable<string[]> {
-    const platform$ = this.agentConfigController.listPlatformAgentsAgentConfig(false)
-    const agents$ = this.namespaceId
-      ? forkJoin({
-          namespace: this.agentConfigController.listByParentAgentConfig(this.namespaceId, false),
-          platform: platform$,
-        }).pipe(map(({ namespace, platform }) => [...platform, ...namespace]))
-      : platform$
-    return agents$.pipe(
+    const platform$ = this.agentConfigController.listPlatformAgentsAgentConfig(false).pipe(this.orNoCandidates())
+    const namespace$ = this.namespaceId
+      ? this.agentConfigController.listByParentAgentConfig(this.namespaceId, false).pipe(this.orNoCandidates())
+      : of([] as AgentConfig[])
+    return forkJoin({ platform: platform$, namespace: namespace$ }).pipe(
+      map(({ platform, namespace }) => [...platform, ...namespace]),
       map((agents) => agents.map((a) => a.name).filter((name): name is string => name.length > 0)),
-      map((names) => [...new Set(names)]),
-      catchError((err) => {
-        console.error('[agent-config-form] failed to load the delegation candidates', err)
-        this.subAgentCandidatesUnavailable.set(true)
-        return of([] as string[])
-      })
+      map((names) => AgentConfigFormComponent.dedupeByKey(names))
     )
+  }
+
+  /**
+   * Fallback for one of the two candidate lists: an empty list, and the section flagged.
+   *
+   * Per call rather than around the pair, so one refused list does not discard the other. A user
+   * with no read on the namespace still gets the platform agents, and their platform selectors
+   * still resolve, instead of every row being flagged as unverifiable.
+   */
+  private orNoCandidates(): (source: Observable<AgentConfig[]>) => Observable<AgentConfig[]> {
+    return catchError((err) => {
+      console.error('[agent-config-form] failed to load the delegation candidates', err)
+      this.subAgentCandidatesUnavailable.set(true)
+      return of([] as AgentConfig[])
+    })
+  }
+
+  /**
+   * The names with case-insensitive duplicates collapsed, keeping the first spelling.
+   *
+   * Agent names are unique per scope and case-insensitively (`AgentConfigServiceImpl`), but the
+   * platform and the namespace are two scopes, so `Reviewer` and `reviewer` can both be reachable.
+   * The server matches selectors case-insensitively, so one selector grants both and the form
+   * cannot offer them apart: two rows would let a user tick one, see the other unticked, and ship
+   * a grant that covers both.
+   */
+  private static dedupeByKey(names: string[]): string[] {
+    const seen = new Set<string>()
+    return names.filter((name) => {
+      const key = name.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   }
 
   /**
@@ -676,8 +703,16 @@ export class AgentConfigFormComponent implements OnInit {
     selectors: AgentConfig['subAgents'],
     selfName: string | null
   ): SubAgentRow[] {
-    const offered = candidateNames.filter((name) => name !== selfName)
     const declaredKeys = namedSubAgentKeys(selectors)
+    const selfKey = selfName?.toLowerCase() ?? null
+    // Self is withheld so the form never proposes an agent delegating to itself, but kept when the
+    // config already names it: the reachable set the run resolves against contains the agent, so
+    // self-delegation works, and showing that selector as "no matching agent" would have the form
+    // contradict the run and invite deleting a selector that does something.
+    const offered = candidateNames.filter((name) => {
+      const key = name.toLowerCase()
+      return key !== selfKey || declaredKeys.has(key)
+    })
     const offeredKeys = new Set(offered.map((name) => name.toLowerCase()))
 
     const rows: SubAgentRow[] = offered.map((name) => ({
@@ -808,7 +843,7 @@ export class AgentConfigFormComponent implements OnInit {
       this.allSubAgentsSelected.set(true)
     } else {
       this.subAgentRows.update((rows) =>
-        AgentConfigFormComponent.withPatternGrants([
+        this.withPatternGrants([
           ...rows,
           {
             selector: pattern,
@@ -834,15 +869,13 @@ export class AgentConfigFormComponent implements OnInit {
    */
   protected removeSubAgent(row: SubAgentRow): void {
     const key = row.selector.toLowerCase()
-    this.subAgentRows.update((rows) =>
-      AgentConfigFormComponent.withPatternGrants(rows.filter((r) => r.selector.toLowerCase() !== key))
-    )
+    this.subAgentRows.update((rows) => this.withPatternGrants(rows.filter((r) => r.selector.toLowerCase() !== key)))
   }
 
   protected toggleSubAgent(row: SubAgentRow): void {
     row.selected.update((v) => !v)
     // Only a glob changes what the other rows are reached by; a name reaches itself alone.
-    if (row.pattern) this.subAgentRows.update((rows) => AgentConfigFormComponent.withPatternGrants(rows))
+    if (row.pattern) this.subAgentRows.update((rows) => this.withPatternGrants(rows))
   }
 
   /**
@@ -854,11 +887,15 @@ export class AgentConfigFormComponent implements OnInit {
    * invites the user to untick an agent's own box believing a glob still covers it, which produces
    * exactly the silent "cannot delegate" this section exists to prevent.
    *
-   * Only ticked rows count: an unticked selector is not written, so it grants nothing. Unresolved
-   * rows keep false, as they are the selectors themselves rather than agents a selector reaches.
+   * Only ticked rows count: an unticked selector is not written, so it grants nothing. With `*` on,
+   * no row is granted by a glob either: [buildSubAgentsPayload] writes `*` alone and drops them.
+   * Unresolved rows keep false, as they are the selectors themselves rather than agents a selector
+   * reaches.
    */
-  private static withPatternGrants(rows: SubAgentRow[]): SubAgentRow[] {
-    const active = rows.filter((r) => r.selected()).map((r) => r.selector)
+  private withPatternGrants(rows: SubAgentRow[]): SubAgentRow[] {
+    // Reads the `*` toggle itself rather than taking it as an argument: every caller must account
+    // for it, and an omitted parameter would quietly restore the stale label this exists to stop.
+    const active = this.allSubAgentsSelected() ? [] : rows.filter((r) => r.selected()).map((r) => r.selector)
     return rows.map((row) =>
       row.unresolved ? row : { ...row, grantedByPattern: isGrantedByPattern(row.name, active) }
     )
@@ -866,6 +903,10 @@ export class AgentConfigFormComponent implements OnInit {
 
   protected toggleAllSubAgents(): void {
     this.allSubAgentsSelected.update((v) => !v)
+    // The third path that changes what gets saved: with `*` on, buildSubAgentsPayload writes it
+    // alone and drops the globs, so a "via pattern" badge would describe a selector the save
+    // discards. Same staleness as removing or unticking the glob.
+    this.subAgentRows.update((rows) => this.withPatternGrants(rows))
   }
 
   /**
@@ -995,16 +1036,25 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * The server's own explanation of a refused save, or a generic line when it gave none.
+   * The server's own explanation of a refused save, or the nearest true statement when it gave none.
    *
    * Reads `message` from the error body, which is where Spring puts the `ResponseStatusException`
-   * reason. Anything else — a network failure, an opaque gateway error — has no message to show,
-   * and inventing a cause would be worse than admitting there is none.
+   * reason.
+   *
+   * Without one, the fallback follows the status rather than assuming a refusal. A status of 0 is
+   * a request that never arrived, and a 5xx is a server that broke: telling the user to check
+   * their values sends them hunting a validation problem in a form that is valid, which is the
+   * same misreport as a stale badge, on the error path.
    */
   private static serverMessage(err: unknown): string {
     const body = (err as { error?: unknown } | null)?.error
     const message = (body as { message?: unknown } | null)?.message
     if (typeof message === 'string' && message.trim().length > 0) return message
+    const status = (err as { status?: unknown } | null)?.status
+    if (status === 0) return 'The server could not be reached. The agent was not saved.'
+    if (typeof status === 'number' && status >= 500) {
+      return `The server failed to save the agent (HTTP ${status}). Nothing was changed.`
+    }
     return 'The server refused the save and gave no reason. Check the values and try again.'
   }
 

@@ -65,10 +65,23 @@ export function isSubAgentPattern(selector: string): boolean {
  * Kept in step with that function for the same reason [namedSubAgentKeys] lower-cases: a selector
  * the run will honour has to read as honoured here, or the section misreports what the agent can
  * actually do.
+ *
+ * Returns null for a pattern this engine cannot compile, which the caller reads as "does not reach
+ * this row". Java accepts constructs JavaScript does not, so the mirror cannot be total.
  */
-function subAgentPatternToRegex(pattern: string): RegExp {
+function subAgentPatternToRegex(pattern: string): RegExp | null {
   const escaped = pattern.replace(/[\\.[\]{}()^$|]/g, '\\$&').replace(/\*/g, '.*')
-  return new RegExp(`^${escaped}$`, 'i')
+  try {
+    return new RegExp(`^${escaped}$`, 'i')
+  } catch {
+    // Mirroring the escape set means mirroring what it lets through, and Java takes constructs
+    // JavaScript refuses: `Fixer*+` becomes `^Fixer.*+$`, a possessive quantifier the server
+    // compiles and the browser throws `Nothing to repeat` on. Thrown from buildSubAgentRows this
+    // killed the whole form on load, since the throw escapes the subscribe's next handler and
+    // leaves isLoading set. Reporting the row as not reached is a worse answer than the server's
+    // and a far better outcome than a form that never renders.
+    return null
+  }
 }
 
 /**
@@ -81,5 +94,5 @@ export function isGrantedByPattern(name: string, selectors: AgentConfig['subAgen
   return (selectors ?? [])
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && s !== ALL_SUB_AGENTS_SELECTOR && isSubAgentPattern(s))
-    .some((s) => subAgentPatternToRegex(s).test(name))
+    .some((s) => subAgentPatternToRegex(s)?.test(name) ?? false)
 }

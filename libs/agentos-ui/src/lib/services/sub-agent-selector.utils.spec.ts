@@ -106,5 +106,16 @@ describe('sub-agent selector utils', () => {
     it('needs only one selector to match', () => {
       expect(isGrantedByPattern('BugFixer', ['Reviewer', 'Nope*', '*Fixer'])).toBe(true)
     })
+
+    it('survives a selector this engine cannot compile', () => {
+      // `Fixer*+` becomes `^Fixer.*+$`, a possessive quantifier Java compiles and JavaScript
+      // rejects with "Nothing to repeat". Thrown from the row builder it killed the whole form on
+      // load, since the throw escapes the subscribe's next handler before isLoading is cleared.
+      expect(() => isGrantedByPattern('FixerAgent', ['Fixer*+'])).not.toThrow()
+      expect(isGrantedByPattern('FixerAgent', ['Fixer*+'])).toBe(false)
+      // The server does grant it, so this is a worse answer than the run's, and the only one the
+      // browser can give. A valid selector beside it still works.
+      expect(isGrantedByPattern('FixerAgent', ['Fixer*+', 'Fixer*'])).toBe(true)
+    })
   })
 })

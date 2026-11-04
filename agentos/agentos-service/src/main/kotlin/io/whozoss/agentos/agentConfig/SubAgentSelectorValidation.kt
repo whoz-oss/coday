@@ -1,7 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
+import io.whozoss.agentos.exception.BadRequestException
 
 /**
  * Rejects the one value a [AgentConfig.subAgents] selector can never usefully hold: an entity id.
@@ -92,7 +91,10 @@ internal object SubAgentSelectorValidation {
 
     private fun refuse(ids: List<String>) {
         if (ids.isEmpty()) return
-        throw ResponseStatusException(HttpStatus.BAD_REQUEST, correction(ids))
+        // The project's own 400, like the ResourceNotFoundException thrown beside this guard in the
+        // controller. `server.error.include-message: always` puts its message in the body, so the
+        // UI and a configuring agent read the correction verbatim either way.
+        throw BadRequestException(correction(ids))
     }
 
     /** Enough of the offending entries to recognise the call, not the whole payload back. */
