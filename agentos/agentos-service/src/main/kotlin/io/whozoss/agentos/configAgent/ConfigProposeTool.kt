@@ -37,7 +37,7 @@ class ConfigProposeTool(
         in a card and clicks Apply or Reject; you then receive the result as their answer.
         Read the current state first with ${ConfigAgentIntegration.READ_TOOL_NAME}: UPDATE, ENABLE, DISABLE, DEPLOY
         and UNDEPLOY target an existing 'id'; CREATE carries a 'scope' and a 'value' with the fields of the new entity
-        (the same fields as the AgentOS REST API: e.g. an agent has name, description, instructions, modelName, enabled,
+        (the same fields as the AgentOS REST API: e.g. an agent has name, modelName (required: the model alias or name it runs on), description, instructions, enabled,
         integrations {"INTEGRATION_NAME": null or ["tool"]}, subAgents (the names of the agents it may delegate to, or
         glob patterns over those names, such as ["*"] for all of them: never an id, which matches no agent and leaves
         it unable to delegate); a prompt has name, content [..], agentConfigId;

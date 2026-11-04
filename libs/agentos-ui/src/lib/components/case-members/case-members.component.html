@@ -41,7 +41,7 @@
                   <span class="case-members__member-role-badge">{{ member.role | lowercase }}</span>
                 } @else {
                   <select
-                    class="case-members__member-role"
+                    class="ds-control ds-control--auto case-members__member-role"
                     [value]="member.role"
                     [attr.aria-label]="'Role of ' + member.label"
                     (change)="setMemberRole(member.userId, $event)"
