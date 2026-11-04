@@ -193,6 +193,68 @@
   }
 }
 
+// A table of rendered markdown, wrapped by the markdown renderers (innerHTML carries no component attribute, so only
+// a global rule can reach it). The table fills its container and wraps its cells at word boundaries; the wrapper only
+// scrolls sideways when a column cannot get narrower than its longest word. `overflow-wrap: normal` undoes the
+// `anywhere` of a chat bubble, which would otherwise squeeze every column down to a few letters.
+.ds-md-table {
+  max-width: 100%;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-sm, 0);
+  -webkit-overflow-scrolling: touch;
+
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: t.$text-small;
+    line-height: 1.45;
+    text-align: left;
+  }
+
+  th,
+  td {
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+    overflow-wrap: normal;
+    word-break: normal;
+    vertical-align: top;
+  }
+
+  th {
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    color: inherit;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  tbody tr:nth-child(even) {
+    background: color-mix(in srgb, currentColor 3%, transparent);
+  }
+
+  // GFM column alignment (`:---:`) arrives as an align attribute.
+  [align='center'] {
+    text-align: center;
+  }
+
+  [align='right'] {
+    text-align: right;
+  }
+}
+
 .ds-control.ds-indent {
   width: calc(100% - 1.5rem);
 }

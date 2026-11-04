@@ -29,7 +29,8 @@ export interface SetupStatus {
     download: { state: StepState; percent?: number; message?: string }
     java: { state: StepState; version?: string; hint?: string }
     agentos: StepStatus
-    factory: StepStatus
+    /** Only present when `FACTORY_URL` points to a Factory: Coday never downloads nor runs one. */
+    factory?: StepStatus
     providers: StepStatus
     models: StepStatus
     namespace: StepStatus

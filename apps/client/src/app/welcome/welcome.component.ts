@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Injector, OnInit } from '@angular/core'
-import { SetupStateService, WIZARD_STEPS, WizardStep } from './setup-state.service'
+import { ActivatedRoute } from '@angular/router'
+import { parseWelcomePreview, SetupStateService, WIZARD_STEPS, WizardStep } from './setup-state.service'
 import { EmailStepComponent } from './steps/email-step.component'
 import { FolderStepComponent } from './steps/folder-step.component'
 import { ProgressStepComponent } from './steps/progress-step.component'
@@ -27,10 +28,11 @@ export class WelcomeComponent implements OnInit {
   protected readonly state = inject(SetupStateService)
   protected readonly steps = WIZARD_STEPS.map((id) => ({ id, label: STEP_LABELS[id] }))
   private readonly injector = inject(Injector)
+  private readonly route = inject(ActivatedRoute)
 
   ngOnInit(): void {
     void this.applyTheme()
-    void this.state.init()
+    void this.state.init(parseWelcomePreview(this.route.snapshot.queryParamMap.get('preview')))
   }
 
   /**

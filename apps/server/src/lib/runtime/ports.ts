@@ -23,14 +23,38 @@ export interface PickedPorts {
   factory: number
 }
 
+/** Preferred ports overriding the packaged defaults (e.g. the `web:local` stack, which runs next to `coday-web`). */
+export type PreferredPorts = Partial<Omit<PickedPorts, 'express'>>
+
+const parsePort = (value: string | undefined): number | undefined => {
+  const port = Number(value)
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : undefined
+}
+
+/**
+ * `CODAY_AGENTOS_PORT`, `CODAY_AGENTOS_BOLT_PORT`, `CODAY_FACTORY_PORT`: where each service PREFERS to run (it still
+ * falls back to the next free port). Invalid values are ignored. Express has its own `PORT`.
+ */
+export function parsePreferredPorts(env: NodeJS.ProcessEnv = process.env): PreferredPorts {
+  const agentos = parsePort(env['CODAY_AGENTOS_PORT'])
+  const agentosBolt = parsePort(env['CODAY_AGENTOS_BOLT_PORT'])
+  const factory = parsePort(env['CODAY_FACTORY_PORT'])
+  return {
+    ...(agentos ? { agentos } : {}),
+    ...(agentosBolt ? { agentosBolt } : {}),
+    ...(factory ? { factory } : {}),
+  }
+}
+
 /**
  * Every service prefers its packaged-mode port (AgentOS 8224, its embedded Neo4j Bolt 7788, Factory 8241)
  * and falls back to the next free one. Express keeps the port it was given and no service ever shares a
- * port with Express or with another service.
+ * port with Express or with another service. `preferred` replaces the packaged defaults.
  */
 export async function pickPorts(
   express: number,
-  find: (start: number, attempts: number) => Promise<number> = findAvailablePort
+  find: (start: number, attempts: number) => Promise<number> = findAvailablePort,
+  preferred: PreferredPorts = {}
 ): Promise<PickedPorts> {
   const taken = new Set<number>([express])
   // The sequential probes release their ports: bump past every port already assigned in this run.
@@ -40,8 +64,8 @@ export async function pickPorts(
     taken.add(port)
     return port
   }
-  const agentos = await pick(AGENTOS_DEFAULT_PORT)
-  const agentosBolt = await pick(AGENTOS_BOLT_DEFAULT_PORT)
-  const factory = await pick(FACTORY_DEFAULT_PORT)
+  const agentos = await pick(preferred.agentos ?? AGENTOS_DEFAULT_PORT)
+  const agentosBolt = await pick(preferred.agentosBolt ?? AGENTOS_BOLT_DEFAULT_PORT)
+  const factory = await pick(preferred.factory ?? FACTORY_DEFAULT_PORT)
   return { express, agentos, agentosBolt, factory }
 }
