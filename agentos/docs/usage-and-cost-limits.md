@@ -23,11 +23,13 @@ unless it is given `enabled = true`, like `agentos.limits.run-cost-threshold`, w
 null in code and 2 in the yml.
 
 When disabled, agent execution creates no `UsageAccumulator`, registers no live cost
-session, and neither reads nor writes usage records. The chat model uses its native
-tool execution without the usage wrapper; OpenAI-compatible requests do not opt into
-stream usage reporting. Existing case and agent iteration settings are not changed by
-this switch; AgentSimple's additional tool-round limit belongs to the usage wrapper
-and only applies while it is enabled.
+session, and neither reads nor writes usage records. OpenAI-compatible requests do not
+opt into stream usage reporting. The switch does **not** change how an agent runs: its
+chat model is wrapped in either case, so AgentOS (not Spring AI) executes AgentSimple's
+tool rounds, applies the tool-round limit and observes the context budget (see
+[context-budget.md](context-budget.md)). Only accounting, the cost gate and the stream
+usage opt-in depend on the switch. Case and agent iteration settings are not changed by
+it either.
 
 `GET /api/usage-configuration` reports the effective `enabled` value without accessing
 usage storage. The UI waits for this value before fetching costs; when disabled it does
@@ -64,7 +66,7 @@ Stop interrupts the case and its active descendants and releases their cost wait
 
 These are estimates checked **between requests**, not a hard billing cap: a request already running, concurrent delegated calls or unknown prices can exceed the displayed threshold. The threshold is snapshotted for an active run; an edit is otherwise picked up by the next run. Monetary confirmation does not alter the separate iteration guards.
 
-The same tracked chat client also bounds AgentSimple's automatic tool rounds with `agentos.limits.agent-max-iterations`. At that bound the model is asked once more, without running any tool, to summarize what it has done and what remains; its answer becomes the agent's message. The finished event carries `maxIterationsReached`: the conversation shows the stop with a Continue action, and a delegating agent receives the flag with the summary so it can resume the sub-case.
+The agent's chat client also bounds AgentSimple's automatic tool rounds with `agentos.limits.agent-max-iterations` (or the namespace's `maxToolRounds`), whether usage tracking is enabled or not. At that bound the model is asked once more, without running any tool, to summarize what it has done and what remains; its answer becomes the agent's message. The finished event carries `maxIterationsReached`: the conversation shows the stop with a Continue action, and a delegating agent receives the flag with the summary so it can resume the sub-case.
 
 When usage tracking is enabled and no threshold applies to a run or its ancestors, a failed historical cost query does not prevent execution. Live usage is still collected and persisted, but the affected run-cost endpoint returns an unavailable error rather than an incomplete total. It can recover after the active session ends and historical queries succeed again. If any applicable threshold is configured, including zero, unavailable history still prevents execution so that the limit cannot be bypassed.
 

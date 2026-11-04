@@ -36,6 +36,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * - `AGENTOS_LIMITS_CASE_MAX_ITERATIONS`  (default: 100)
  * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 1000)
  * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: 2 in the shipped `application.yml`; null in code)
+ * - `AGENTOS_LIMITS_CONTEXT_COMPACTION_THRESHOLD` (default: 0.8)
+ * - `AGENTOS_LIMITS_CONTEXT_COMPACTION_TARGET`    (default: 0.5)
  *
  * Example (`application.yml`):
  * ```yaml
@@ -45,6 +47,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     agent-max-iterations: 1000
  *     agent-loop-max-items: 50
  *     run-cost-threshold: 2.0
+ *     context-compaction-threshold: 0.8
+ *     context-compaction-target: 0.5
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.limits")
@@ -72,8 +76,8 @@ data class LimitsConfigProperties(
      * a [io.whozoss.agentos.sdk.caseEvent.WarnEvent] and breaks out of the loop,
      * then produces its final response based on what it has gathered so far.
      *
-     * Also bounds automatic tool rounds for AgentSimple when usage tracking is enabled
-     * ([io.whozoss.agentos.chat.UsageTrackingChatModel] runs that loop). At that bound the
+     * Also bounds automatic tool rounds for AgentSimple, whether usage tracking is enabled or not
+     * ([io.whozoss.agentos.chat.UsageTrackingChatModel] always runs that loop for agents). At that bound the
      * next request asks the model to answer without tools, summarizing its progress; its
      * tool calls are not executed, and the agent emits the same warning before finishing.
      *
@@ -133,4 +137,33 @@ data class LimitsConfigProperties(
      * existing case.
      */
     val runCostThreshold: Double? = null,
-)
+    /**
+     * Fraction of the usable context window at which the prompt of an agent invocation counts as having
+     * reached its budget. The usable window is the model's `contextWindow` minus its `maxCompletionTokens`
+     * (see [io.whozoss.agentos.compaction.ContextBudget]); a model without `contextWindow` has no budget.
+     *
+     * It is the trigger of the compaction described in ADR 002. Until compaction ships, reaching it is only
+     * logged, once per invocation at WARN; the prompt is sent unchanged. See `docs/context-budget.md`.
+     *
+     * Must satisfy `0 < contextCompactionTarget < contextCompactionThreshold <= 1`; the service refuses to
+     * start otherwise, as it does for every invalid limit.
+     *
+     * Defaults to 0.8.
+     */
+    val contextCompactionThreshold: Double = 0.8,
+    /**
+     * Fraction of the usable context window the history is reduced to when it is compacted (ADR 002,
+     * not used yet). Keeping it below [contextCompactionThreshold] leaves room between two compactions,
+     * so the start of the prompt stays stable and prompt caching keeps working.
+     *
+     * Defaults to 0.5.
+     */
+    val contextCompactionTarget: Double = 0.5,
+) {
+    init {
+        require(contextCompactionTarget > 0.0 && contextCompactionTarget < contextCompactionThreshold && contextCompactionThreshold <= 1.0) {
+            "agentos.limits.context-compaction-target and context-compaction-threshold must satisfy " +
+                "0 < target < threshold <= 1 (target=$contextCompactionTarget, threshold=$contextCompactionThreshold)"
+        }
+    }
+}

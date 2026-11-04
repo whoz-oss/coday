@@ -1,5 +1,6 @@
 package io.whozoss.agentos.chat
 
+import io.whozoss.agentos.compaction.ContextBudget
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -19,9 +20,13 @@ import org.springframework.stereotype.Service
  * Resolution of which model/provider pair to use is the responsibility of the caller
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
  *
- * When usage is enabled, tracking is applied to the model so every call/stream terminal and internal tool
- * round goes through accounting and the cost gate. Clients outside agent execution
- * (no accumulator) retain their existing behaviour.
+ * Agent execution is recognised by the [ContextBudget] it passes to [getChatClient]. Its model is then
+ * wrapped in [UsageTrackingChatModel], whatever the usage switch says: AgentOS owns the tool loop (and so
+ * the cap on tool rounds) and observes the context of every request. Only the cost part depends on the
+ * switch: when usage is enabled and an accumulator is given, every request also goes through accounting
+ * and the cost gate. Clients outside agent execution (case naming, prompt translation, utility calls) pass
+ * no budget and keep their existing behaviour: no wrapper, unless usage is enabled and they hand over an
+ * accumulator.
  *
  * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
  * when given, else the platform's `agentos.limits.agent-max-iterations`.
@@ -38,6 +43,7 @@ class ChatClientProvider(
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
         maxToolRounds: Int? = null,
+        contextBudget: ContextBudget? = null,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(
@@ -50,14 +56,16 @@ class ChatClientProvider(
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
                 reasoningEffort = modelConfig.reasoningEffort,
             )
+        val costAccumulator = accumulator.takeIf { usageConfig.enabled }
         val trackedModel =
-            if (usageConfig.enabled && accumulator != null) {
+            if (contextBudget != null || costAccumulator != null) {
                 UsageTrackingChatModel(
                     chatModel,
-                    accumulator,
+                    costAccumulator,
                     providerConfig.apiType,
                     modelConfig,
                     maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
+                    contextBudget = contextBudget ?: ContextBudget.disabled(),
                 )
             } else {
                 chatModel

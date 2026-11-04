@@ -5,3 +5,5 @@ alias: default
 priority: 0
 temperature: 0.5
 maxTokens: 4000
+# Total context window in tokens (input + output), from the provider's documentation for this exact model.
+contextWindow: 200000
