@@ -84,6 +84,17 @@
             }
           </button>
         }
+        @if (canConfigureNamespace() && selectedNamespace()) {
+          <div class="shell-topbar-mobile__ns-separator" role="separator"></div>
+          <button
+            class="shell-topbar-mobile__ns-item shell-topbar-mobile__ns-item--config"
+            type="button"
+            (click)="configureNamespaceRequested.emit()"
+          >
+            <span class="material-icons shell-topbar-mobile__ns-config-icon" aria-hidden="true">settings</span>
+            <span class="shell-topbar-mobile__ns-item-name">Configure {{ selectedNamespace()?.name }}</span>
+          </button>
+        }
       </div>
     }
   </div>

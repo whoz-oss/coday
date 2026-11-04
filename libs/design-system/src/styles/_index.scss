@@ -21,6 +21,12 @@
 // ── Typography — font stacks, text-* mixins ───────────────────────────────────
 @forward 'typography';
 
+// ── Scale — $text-* sizes of the settings pages, micro-label mixin ─────────────────────────────────────────
+@forward 'scale';
+
+// NOTE: `primitives` is deliberately NOT forwarded here. It emits plain CSS, and every component stylesheet that
+// `@use`s this barrel would then ship its own copy. The host app includes it once (apps/client/src/styles.scss).
+
 // ── Surfaces — card, clickable-card, dropdown, glass, mark ───────────────────
 @forward 'surfaces';
 

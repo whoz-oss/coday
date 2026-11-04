@@ -29,6 +29,7 @@ import {
   IntegrationTypeDescriptor,
   SkillSummary,
 } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { catchError, forkJoin, map, Observable, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import {
@@ -169,9 +170,8 @@ interface SkillRow {
  */
 @Component({
   selector: 'agentos-agent-config-form',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
   templateUrl: './agent-config-form.component.html',
-  styleUrl: './agent-config-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentConfigFormComponent implements OnInit {
@@ -255,6 +255,17 @@ export class AgentConfigFormComponent implements OnInit {
     this.delegationTimeoutControl.setValue(null)
     this.delegationTimeoutControl.markAsDirty()
   }
+
+  /** Explains the timeout and, once known, the server default that an empty field inherits. */
+  protected readonly delegationTimeoutHint = computed(() => {
+    const seconds = this.defaultDelegationTimeoutSeconds()
+    const inherited = seconds !== null ? `: ${seconds} s (${seconds / 60} min)` : ''
+    return (
+      'How long each delegation launched by this agent waits without activity from the sub-agent, including its own ' +
+      'delegations. When it runs out, the sub-agent and its active descendants are stopped and can be resumed. ' +
+      `Leave empty to use the server default${inherited}.`
+    )
+  })
 
   protected get enabledControl() {
     return this.form.controls.enabled

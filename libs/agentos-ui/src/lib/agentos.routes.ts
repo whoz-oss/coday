@@ -314,6 +314,8 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceSettingsLayoutComponent
               ),
             children: [
+              // `/:namespaceId` alone is the target of the topbar "Namespace settings" link.
+              { path: '', redirectTo: 'edit', pathMatch: 'full' },
               // --- Namespace details (edit form) ---
               {
                 path: 'edit',
@@ -481,25 +483,25 @@ export const AGENTOS_ROUTES: Route[] = [
               },
               // --- Skills ---
               {
-                path: ':namespaceId/skills/new',
+                path: 'skills/new',
                 canActivate: [agentosReadyGuard],
                 loadComponent: () =>
                   import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
               },
               {
-                path: ':namespaceId/skills/:skillId/edit',
+                path: 'skills/:skillId/edit',
                 canActivate: [agentosReadyGuard],
                 loadComponent: () =>
                   import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
               },
               {
-                path: ':namespaceId/skills/:skillId/inspect',
+                path: 'skills/:skillId/inspect',
                 canActivate: [agentosReadyGuard],
                 loadComponent: () =>
                   import('./components/skill-inspect/skill-inspect.component').then((m) => m.SkillInspectComponent),
               },
               {
-                path: ':namespaceId/skills',
+                path: 'skills',
                 canActivate: [agentosReadyGuard],
                 loadComponent: () =>
                   import('./components/namespace-skills/namespace-skills.component').then(

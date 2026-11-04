@@ -10,6 +10,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { firstValueFrom } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 
 /**
  * AgentConfigLaunchComponent — launch page for LOOP-mode agent configs.
@@ -23,9 +24,8 @@ import { CaseStateService } from '../../services/case-state.service'
  */
 @Component({
   selector: 'agentos-agent-config-launch',
-  imports: [],
+  imports: [DS_PAGE_KIT],
   templateUrl: './agent-config-launch.component.html',
-  styleUrl: './agent-config-launch.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentConfigLaunchComponent implements OnInit {

@@ -1,22 +1,26 @@
 <ds-section-header
   title="AI models"
   description="AI models configured for this namespace, including models inherited from the platform."
-  ><agentos-table-filter
+>
+  <agentos-table-filter
     label="Filter AI models"
     placeholder="Filter AI models…"
     [query]="rowFilter.query()"
     (queryChange)="rowFilter.query.set($event)"
   />
-  <button class="ai-models__new" type="button" (click)="openCreateForm()">New AI model</button></ds-section-header
->
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New AI model</button>
+</ds-section-header>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
 @if (isLoading()) {
-  <p class="ai-models__status" role="status">Loading AI models…</p>
+  <p class="settings-table__status" role="status">Loading AI models…</p>
 } @else if (rows().length === 0) {
-  <p class="ai-models__status">No AI models configured.</p>
+  <p class="settings-table__status">No AI models configured.</p>
 } @else if (rowFilter.filteredRows().length === 0) {
-  <p class="ai-models__status" role="status">No AI models match the current filter.</p>
+  <p class="settings-table__status" role="status">No AI models match the current filter.</p>
 } @else {
-  <div class="ai-models__table-wrap">
+  <div class="settings-table__wrap">
     <table dsTable role="table" aria-label="AI models">
       <thead role="rowgroup">
         <tr role="row">
@@ -30,13 +34,13 @@
       <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
           <tr role="row">
-            <td role="cell" data-label="Name" data-title class="ai-models__name">
-              {{ row.model.alias ?? row.model.apiModelName }}
-            </td>
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ title(row) }}</td>
             <td role="cell" data-label="Provider">{{ row.providerName }}</td>
-            <td role="cell" data-label="API model name" class="ai-models__secondary">{{ row.model.apiModelName }}</td>
+            <td role="cell" data-label="API model name" class="settings-table__secondary">
+              {{ row.model.apiModelName }}
+            </td>
             <td role="cell" data-label="Scope">
-              <div class="ai-models__tags">
+              <div class="settings-table__tags">
                 <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
                   row.scope === 'platform' ? 'Platform' : 'Namespace'
                 }}</ds-tag>
@@ -45,13 +49,26 @@
                 }
               </div>
             </td>
-            <td role="cell" data-label="Actions" data-actions class="ai-models__actions">
-              @if (row.scope === 'namespace') {
-                <button type="button" (click)="edit(row)">Edit</button
-                ><button class="ai-models__delete" type="button" (click)="delete(row)">Delete</button>
-              } @else {
-                <button type="button" disabled>Inherited</button>
-              }
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (row.scope === 'namespace') {
+                  @if (deletion.confirmingId() !== row.key) {
+                    <button type="button" [attr.aria-label]="'Edit ' + title(row)" (click)="edit(row)">Edit</button>
+                  }
+                  <agentos-row-delete-action
+                    [rowKey]="row.key"
+                    [rowLabel]="title(row)"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (deleteRequested)="deletion.request(row.key)"
+                    (deleteConfirmed)="confirmDelete(row)"
+                    (deleteCancelled)="deletion.cancel()"
+                  />
+                } @else {
+                  <button type="button" disabled>Inherited</button>
+                }
+              </div>
             </td>
           </tr>
         }

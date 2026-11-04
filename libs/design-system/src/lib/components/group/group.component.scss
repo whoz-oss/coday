@@ -1,0 +1,20 @@
+@use '../../../styles/scale' as t;
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.ds-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ds-group__title {
+  @include t.micro-label;
+  margin: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  color: var(--color-neutral-600, #7a7a7d);
+}

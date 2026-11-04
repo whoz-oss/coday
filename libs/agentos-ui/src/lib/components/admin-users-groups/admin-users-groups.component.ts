@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem, NamespaceListItemRoleEnum } from '@whoz-oss/agentos-api-client'
+import { PageComponent, SectionHeaderComponent, SegmentedComponent, SegmentedOption } from '@whoz-oss/design-system'
 import { UserGroupListComponent } from '../user-group-list/user-group-list.component'
 import { UserListComponent } from '../user-list/user-list.component'
 
@@ -19,15 +20,19 @@ type AdminTab = 'users' | 'groups'
  */
 @Component({
   selector: 'agentos-admin-users-groups',
-  imports: [UserListComponent, UserGroupListComponent],
+  imports: [PageComponent, SectionHeaderComponent, SegmentedComponent, UserListComponent, UserGroupListComponent],
   templateUrl: './admin-users-groups.component.html',
-  styleUrl: './admin-users-groups.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminUsersGroupsComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly destroyRef = inject(DestroyRef)
   private readonly namespaceController = inject(NamespaceControllerService)
+
+  protected readonly tabs: ReadonlyArray<SegmentedOption<AdminTab>> = [
+    { value: 'users', label: 'Users', id: 'admin-tab-users' },
+    { value: 'groups', label: 'Groups', id: 'admin-tab-groups' },
+  ]
 
   protected readonly activeTab = signal<AdminTab>(
     this.route.snapshot.queryParamMap.get('tab') === 'groups' ? 'groups' : 'users'

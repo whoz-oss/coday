@@ -30,6 +30,7 @@ import {
 } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
@@ -75,6 +76,7 @@ export class CaseShellComponent {
   private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
   protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
+  private readonly shellContext = inject(ShellContextService)
   private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
@@ -90,6 +92,8 @@ export class CaseShellComponent {
     const last = user.lastname?.[0] ?? ''
     return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
   })
+
+  protected readonly userAvatarUrl = this.userState.avatarUrl
 
   protected readonly userName = computed(() => {
     const user = this.userState.currentUser()
@@ -178,10 +182,16 @@ export class CaseShellComponent {
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
-  protected readonly canWriteActiveCase = computed(() => {
+  /** Admin of the platform or of the current namespace: allowed to open the namespace settings. */
+  protected readonly canConfigureNamespace = computed(() => {
+    if (this.isAdmin()) return true
     const namespaceRole = this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.role
+    return namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN'
+  })
+
+  protected readonly canWriteActiveCase = computed(() => {
     const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
-    return this.isAdmin() || namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN' || caseRole === 'ADMIN'
+    return this.canConfigureNamespace() || caseRole === 'ADMIN'
   })
 
   constructor() {
@@ -208,6 +218,7 @@ export class CaseShellComponent {
       const nsList = this.namespaces()
       const nsId = this.namespaceId()
       if (!nsList.length) return
+      this.shellContext.rememberNamespaceNames(nsList)
 
       if (nsId) {
         const found = nsList.find((ns) => ns.id === nsId)
@@ -233,6 +244,11 @@ export class CaseShellComponent {
       const subscription = this.caseListUpdates.connect(nsId).subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
     })
+
+    // Remember the open case so the settings pages can bring the user back to it.
+    effect(() => {
+      this.shellContext.rememberCase(this.namespaceId(), this.activeCaseId())
+    })
   }
 
   // ---------------------------------------------------------------------------
@@ -243,6 +259,13 @@ export class CaseShellComponent {
     this.selectedNamespace.set(ns)
     this.nsMenuOpen.set(false)
     this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
+  }
+
+  protected onConfigureNamespace(): void {
+    const nsId = this.selectedNamespace()?.id ?? this.namespaceId()
+    this.nsMenuOpen.set(false)
+    if (!nsId) return
+    void this.router.navigate(['/agentos', nsId, 'edit'])
   }
 
   protected toggleNsMenu(event?: Event): void {

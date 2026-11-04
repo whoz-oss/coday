@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { IntegrationConfig, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
   IntegrationConfigStateService,
@@ -29,9 +29,15 @@ interface IntegrationRow {
 
 @Component({
   selector: 'agentos-integrations-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './integrations-all-scopes.component.html',
-  styleUrl: './integrations-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IntegrationsAllScopesComponent implements OnInit {

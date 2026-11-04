@@ -196,6 +196,8 @@ agentos-shell {
   /* ── Typography ── */
   --font-body: 'Barlow', system-ui, sans-serif;
   --font-heading: 'IBM Plex Mono', 'Fira Code', monospace;
+  /* Code, paths, identifiers: the monospace of the skin. Components ask for this token, never for a bare `monospace`. */
+  --font-code: 'IBM Plex Mono', 'Fira Code', ui-monospace, monospace;
 
   /* ── Shape / Radius — 0 = square corners. Industry and Terminal inherit it; Whoz OSS redefines all four. ── */
   --radius-sm: 0;
@@ -408,6 +410,7 @@ agentos-shell[data-theme='terminal-light'],
 :is([data-theme='terminal-light']) agentos-shell {
   --font-body: 'JetBrains Mono', ui-monospace, monospace;
   --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+  --font-code: 'JetBrains Mono', ui-monospace, monospace;
 
   --color-accent: #a35a00;
   --color-accent-100: #f4f1e8;
@@ -499,6 +502,7 @@ agentos-shell[data-theme='terminal-dark'],
 :is([data-theme='terminal-dark']) agentos-shell {
   --font-body: 'JetBrains Mono', ui-monospace, monospace;
   --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+  --font-code: 'JetBrains Mono', ui-monospace, monospace;
 
   --color-accent: #ffb000;
   --color-accent-100: #2a1f00;
@@ -599,6 +603,7 @@ agentos-shell[data-theme='terminal-dark'],
   /* ── Typography ── */
   --font-body: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-heading: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-code: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   /* ── Shape / Radius (always with a unit) ── */
   --radius-sm: 6px;
