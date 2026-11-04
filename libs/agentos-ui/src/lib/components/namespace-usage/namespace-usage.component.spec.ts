@@ -101,7 +101,7 @@ describe('NamespaceUsageComponent', () => {
       '2026-09-22T23:59:59.999Z'
     )
     expect(fixture.nativeElement.textContent).toContain('Agent One')
-    expect(fixture.nativeElement.textContent).toContain('At least 12.00')
+    expect(fixture.nativeElement.textContent).toContain('\u2265\u00a012.00')
   })
   it('clears an old report when access is denied or the dates are invalid', () => {
     const fixture = render()

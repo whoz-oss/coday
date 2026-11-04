@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
@@ -112,17 +113,19 @@ class ToolResolverServiceSpec :
             val agentIntegrations = mapOf("MY_DATETIME" to null)
 
             val tools1 =
-                service.resolveToolsForRun(
-                    agentIntegrations = agentIntegrations,
-                    context = ctx(nsId),
-                    allIntegrationConfigs = listOf(config),
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = agentIntegrations,
+                        context = ctx(nsId),
+                        allIntegrationConfigs = listOf(config),
+                    ).tools
             val tools2 =
-                service.resolveToolsForRun(
-                    agentIntegrations = agentIntegrations,
-                    context = ctx(nsId),
-                    allIntegrationConfigs = listOf(config),
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = agentIntegrations,
+                        context = ctx(nsId),
+                        allIntegrationConfigs = listOf(config),
+                    ).tools
 
             tools1 shouldHaveSize 1
             tools2 shouldHaveSize 1
@@ -136,7 +139,7 @@ class ToolResolverServiceSpec :
         "resolveToolsForRun returns no tools when allIntegrationConfigs is empty" {
             val service = buildService(plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime")))
 
-            service.resolveToolsForRun(context = ctx(UUID.randomUUID()), allIntegrationConfigs = emptyList()).shouldBeEmpty()
+            service.resolveToolsForRun(context = ctx(UUID.randomUUID()), allIntegrationConfigs = emptyList()).tools.shouldBeEmpty()
         }
 
         "resolveToolsForRun returns all tools from a matching config" {
@@ -145,11 +148,12 @@ class ToolResolverServiceSpec :
             val service = buildService(plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime", "GetCurrentDate")))
 
             val tools =
-                service.resolveToolsForRun(
-                    agentIntegrations = mapOf("MY_DATETIME" to null),
-                    context = ctx(nsId),
-                    allIntegrationConfigs = listOf(config),
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = mapOf("MY_DATETIME" to null),
+                        context = ctx(nsId),
+                        allIntegrationConfigs = listOf(config),
+                    ).tools
 
             tools shouldHaveSize 2
             tools.map { it.name }.toSet() shouldBe setOf("MY_DATETIME__GetCurrentDateTime", "MY_DATETIME__GetCurrentDate")
@@ -168,11 +172,12 @@ class ToolResolverServiceSpec :
                 )
 
             val tools =
-                service.resolveToolsForRun(
-                    agentIntegrations = mapOf("MY_DATETIME" to null, "JIRA_PROD" to null),
-                    context = ctx(nsId),
-                    allIntegrationConfigs = configs,
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = mapOf("MY_DATETIME" to null, "JIRA_PROD" to null),
+                        context = ctx(nsId),
+                        allIntegrationConfigs = configs,
+                    ).tools
 
             tools shouldHaveSize 2
             tools.map { it.name }.toSet() shouldBe setOf("MY_DATETIME__GetCurrentDateTime", "JIRA_PROD__GetIssue")
@@ -191,11 +196,12 @@ class ToolResolverServiceSpec :
                 )
 
             val tools =
-                service.resolveToolsForRun(
-                    agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = ctx(nsId),
-                    allIntegrationConfigs = configs,
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = mapOf("JIRA_PROD" to null),
+                        context = ctx(nsId),
+                        allIntegrationConfigs = configs,
+                    ).tools
 
             tools shouldHaveSize 1
             tools.first().name shouldBe "JIRA_PROD__GetIssue"
@@ -214,11 +220,12 @@ class ToolResolverServiceSpec :
                 )
 
             val tools =
-                service.resolveToolsForRun(
-                    agentIntegrations = mapOf("JIRA_PROD" to null, "JIRA_STAGING" to null),
-                    context = ctx(nsId),
-                    allIntegrationConfigs = configs,
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = mapOf("JIRA_PROD" to null, "JIRA_STAGING" to null),
+                        context = ctx(nsId),
+                        allIntegrationConfigs = configs,
+                    ).tools
 
             tools shouldHaveSize 4
             tools.map { it.name }.toSet() shouldBe
@@ -242,7 +249,7 @@ class ToolResolverServiceSpec :
                     integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
                 )
 
-            service.resolveToolsForRun(agentIntegrations = null, context = ctx(nsId), allIntegrationConfigs = configs).shouldBeEmpty()
+            service.resolveToolsForRun(agentIntegrations = null, context = ctx(nsId), allIntegrationConfigs = configs).tools.shouldBeEmpty()
         }
 
         "resolveToolsForRun with explicit integrations map returns all matching tools" {
@@ -257,11 +264,12 @@ class ToolResolverServiceSpec :
                     integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
                 )
 
-            service.resolveToolsForRun(
-                agentIntegrations = mapOf("JIRA_PROD" to null, "MY_DATETIME" to null),
-                context = ctx(nsId),
-                allIntegrationConfigs = configs,
-            ) shouldHaveSize 2
+            service
+                .resolveToolsForRun(
+                    agentIntegrations = mapOf("JIRA_PROD" to null, "MY_DATETIME" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = configs,
+                ).tools shouldHaveSize 2
         }
 
         "resolveToolsForRun with non-null allowed list filters tools within an integration" {
@@ -270,11 +278,12 @@ class ToolResolverServiceSpec :
             val config = integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA")
 
             val tools =
-                service.resolveToolsForRun(
-                    agentIntegrations = mapOf("JIRA_PROD" to listOf("GetIssue", "SearchIssues")),
-                    context = ctx(nsId),
-                    allIntegrationConfigs = listOf(config),
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = mapOf("JIRA_PROD" to listOf("GetIssue", "SearchIssues")),
+                        context = ctx(nsId),
+                        allIntegrationConfigs = listOf(config),
+                    ).tools
 
             tools shouldHaveSize 2
             tools.map { it.name }.toSet() shouldBe setOf("JIRA_PROD__GetIssue", "JIRA_PROD__SearchIssues")
@@ -285,11 +294,12 @@ class ToolResolverServiceSpec :
             val service = buildService(plugins = listOf(makePlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")))
             val config = integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA")
 
-            service.resolveToolsForRun(
-                agentIntegrations = mapOf("JIRA_PROD" to null),
-                context = ctx(nsId),
-                allIntegrationConfigs = listOf(config),
-            ) shouldHaveSize 3
+            service
+                .resolveToolsForRun(
+                    agentIntegrations = mapOf("JIRA_PROD" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
+                ).tools shouldHaveSize 3
         }
 
         // -------------------------------------------------------------------------
@@ -427,11 +437,12 @@ class ToolResolverServiceSpec :
             val config = integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA")
 
             val tools =
-                service.resolveToolsForRun(
-                    agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = ctx(nsId),
-                    allIntegrationConfigs = listOf(config),
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = mapOf("JIRA_PROD" to null),
+                        context = ctx(nsId),
+                        allIntegrationConfigs = listOf(config),
+                    ).tools
 
             // Alphabetical: JIRA_PROD__GetIssue < JIRA_PROD__SearchIssues
             tools.map { it.name } shouldBe listOf("JIRA_PROD__GetIssue", "JIRA_PROD__SearchIssues")
@@ -462,14 +473,69 @@ class ToolResolverServiceSpec :
             val config = integrationConfig(namespaceId = nsId, name = "REDIRECT_all", integrationType = "REDIRECT")
 
             val tools =
-                service.resolveToolsForRun(
-                    agentIntegrations = mapOf("REDIRECT_all" to null),
-                    context = ctx(nsId),
-                    allIntegrationConfigs = listOf(config),
-                )
+                service
+                    .resolveToolsForRun(
+                        agentIntegrations = mapOf("REDIRECT_all" to null),
+                        context = ctx(nsId),
+                        allIntegrationConfigs = listOf(config),
+                    ).tools
 
             capturedContext shouldNotBe null
             capturedContext!!.namespaceId shouldBe nsId
             tools shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // failedIntegrations: only names, never the exception
+        // -------------------------------------------------------------------------
+
+        "resolveToolsForRun reports the name of an integration whose plugin throws, and keeps the others" {
+            val nsId = UUID.randomUUID()
+            val throwingPlugin =
+                object : ToolPlugin {
+                    override val integrationType = "ATLASSIAN_TYPE"
+                    override val configSchema: JsonNode? = null
+
+                    override fun provideTools(
+                        config: JsonNode?,
+                        configName: String?,
+                        context: ToolContext?,
+                    ): List<StandardTool<*>> = throw Exception("secret=XYZ")
+                }
+            val service = buildService(plugins = listOf(throwingPlugin, makePlugin("DATETIME", "GetCurrentDateTime")))
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "ATLASSIAN", integrationType = "ATLASSIAN_TYPE"),
+                    integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
+                )
+
+            val resolution =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("ATLASSIAN" to null, "MY_DATETIME" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = configs,
+                )
+
+            resolution.failedIntegrations shouldBe listOf("ATLASSIAN")
+            resolution.failedIntegrations.forEach { it shouldNotContain "XYZ" }
+            resolution.tools.map { it.name } shouldBe listOf("MY_DATETIME__GetCurrentDateTime")
+        }
+
+        "resolveToolsForRun reports no failed integration when every plugin provides its tools, even none" {
+            val nsId = UUID.randomUUID()
+            val service = buildService(plugins = listOf(makePlugin("EMPTY"), makePlugin("DATETIME", "GetCurrentDateTime")))
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "NOTHING", integrationType = "EMPTY"),
+                    integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
+                )
+
+            service
+                .resolveToolsForRun(
+                    agentIntegrations = mapOf("NOTHING" to null, "MY_DATETIME" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = configs,
+                ).failedIntegrations
+                .shouldBeEmpty()
         }
     })

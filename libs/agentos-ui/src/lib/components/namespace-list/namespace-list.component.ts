@@ -79,6 +79,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos/namespaces/new'])
   }
 
+  protected openConfigure(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'edit'])
+  }
+
   protected openIntegrations(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'integrations'])
   }

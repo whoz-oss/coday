@@ -18,6 +18,7 @@ export class NamespaceItemComponent {
   readonly namespace = input.required<Namespace>()
 
   readonly selected = output<Namespace>()
+  readonly configureRequested = output<Namespace>()
   readonly integrationsRequested = output<Namespace>()
   readonly aiProvidersRequested = output<Namespace>()
   readonly aiModelsRequested = output<Namespace>()
@@ -40,6 +41,9 @@ export class NamespaceItemComponent {
 
   protected onSelect(): void {
     this.selected.emit(this.namespace())
+  }
+  protected onConfigure(): void {
+    this.configureRequested.emit(this.namespace())
   }
   protected onIntegrations(): void {
     this.integrationsRequested.emit(this.namespace())

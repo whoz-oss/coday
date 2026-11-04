@@ -143,303 +143,348 @@
         </div>
       }
 
-      <div #messagesContainer class="case-chat__messages">
-        @if (timeline().length === 0) {
-          <div class="case-chat__empty">
-            <p>No messages yet.</p>
-          </div>
-        } @else {
-          @for (item of timeline(); track trackTimelineItem($index, item)) {
-            @if (item.kind === 'message') {
-              <div
-                class="case-chat__turn"
-                [class.case-chat__turn--user]="item.event.actor.role === 'USER'"
-                [class.case-chat__turn--agent]="item.event.actor.role === 'AGENT'"
-              >
-                @if (item.isFirstInGroup) {
-                  <span class="case-chat__role-label">
-                    {{ item.event.actor.role === 'USER' ? 'You' : item.event.actor.displayName || 'Agent' }}
-                    @if (agentModelAttribution(item.event); as modelAttribution) {
-                      <span class="case-chat__role-model">({{ modelAttribution }})</span>
-                    }
-                  </span>
-                }
-                @if (showTechnical() && item.event.sessionContext) {
-                  <div class="case-chat__session-context">
-                    <span class="case-chat__session-context-label">session context</span>
-                    <pre class="case-chat__session-context-body">{{ item.event.sessionContext | json }}</pre>
-                  </div>
-                }
-                <div class="case-chat__bubble-wrapper">
-                  @if (item.event.actor.role === 'USER') {
-                    <div
-                      class="case-chat__bubble case-chat__message-text--markdown"
-                      dsBlueprint
-                      [innerHTML]="item.html"
-                    ></div>
-                  } @else {
-                    <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
-                  }
-                  <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
-                  @if (item.isLastInGroup) {
-                    <time
-                      class="case-chat__message-time"
-                      [attr.datetime]="item.event.timestamp"
-                      [title]="formatMessageTimestampTitle(item.event.timestamp)"
-                      >{{ formatMessageTime(item.event.timestamp) }}</time
-                    >
-                  }
-                </div>
-              </div>
-            } @else if (item.kind === 'streaming') {
-              <div class="case-chat__turn case-chat__turn--agent case-chat__turn--streaming">
-                <span class="case-chat__role-label">{{ agentDisplayName() }}</span>
-                <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="streamingHtml()"></div>
-              </div>
-            } @else if (item.kind === 'notice') {
-              <div
-                class="case-chat__execution-notice"
-                [class.case-chat__execution-notice--warning]="item.notice.severity === 'warning'"
-                [class.case-chat__execution-notice--error]="
-                  item.notice.severity === 'error' || item.notice.severity === 'terminal'
-                "
-                role="status"
-              >
-                <span class="case-chat__execution-notice-title">{{ item.notice.title }}</span>
-                @if (item.notice.detail) {
-                  <span class="case-chat__execution-notice-detail">{{ item.notice.detail }}</span>
-                }
-                @if (
-                  item.eventId === continuableStopId() && !isRunning() && !isTerminal() && !attachments.isUploading()
-                ) {
-                  <button type="button" class="case-chat__execution-notice-action" (click)="continueAfterLimit()">
-                    Continue
-                  </button>
-                }
-              </div>
-            } @else if (item.kind === 'technical') {
-              <details class="case-chat__log">
-                <summary class="case-chat__log-summary">⚙ System log · {{ item.item.label }}</summary>
-                @if (item.item.detail) {
-                  <pre class="case-chat__log-body">{{ item.item.detail }}</pre>
-                }
-              </details>
-            } @else if (item.kind === 'question') {
-              <!-- An OAuth question is only shown while its popup flow is pending (or once answered). -->
-              @if (
-                item.answer ||
-                item.event.questionType !== 'OAUTH_AUTHORIZE' ||
-                oauthPendingQuestion()?.id === item.event.id
-              ) {
-                <!-- The question is an agent turn (left), with its answer controls attached under the bubble. -->
-                <div class="case-chat__turn case-chat__turn--agent">
-                  <span class="case-chat__role-label">{{ item.event.agentName || 'Agent' }}</span>
-                  <div class="case-chat__bubble-wrapper">
-                    <div class="case-chat__bubble case-chat__bubble--plain" [id]="questionElementId(item.event)">
-                      {{ item.event.question }}
-                    </div>
-                    <ds-copy-button class="case-chat__bubble-copy" [text]="item.event.question" title="Copy message" />
-                    <time
-                      class="case-chat__message-time"
-                      [attr.datetime]="item.event.timestamp"
-                      [title]="formatMessageTimestampTitle(item.event.timestamp)"
-                      >{{ formatMessageTime(item.event.timestamp) }}</time
-                    >
-                  </div>
-                  @if (!item.answer) {
-                    <div [attr.data-question-controls]="item.event.id" class="case-chat__question-controls">
-                      @if (configChangeQuestionIds().has(item.event.id)) {
-                        <agentos-config-change-card
-                          [caseId]="caseId"
-                          [questionId]="item.event.id"
-                          [disabled]="isRunning()"
-                        />
-                      } @else {
-                        <agentos-question-panel
-                          variant="inline"
-                          [questionEvent]="item.event"
-                          [disabled]="isRunning()"
-                          (answered)="onQuestionAnswered(item.event, $event)"
-                          (cancelled)="onQuestionCancelled()"
-                        />
+      <div class="case-chat__messages-region">
+        <div #messagesContainer class="case-chat__messages">
+          @if (timeline().length === 0) {
+            <div class="case-chat__empty">
+              <p>No messages yet.</p>
+            </div>
+          } @else {
+            @for (item of timeline(); track trackTimelineItem($index, item)) {
+              @if (item.kind === 'message') {
+                <div
+                  class="case-chat__turn"
+                  [class.case-chat__turn--user]="item.event.actor.role === 'USER'"
+                  [class.case-chat__turn--agent]="item.event.actor.role === 'AGENT'"
+                >
+                  @if (item.isFirstInGroup) {
+                    <span class="case-chat__role-label">
+                      {{ item.event.actor.role === 'USER' ? 'You' : item.event.actor.displayName || 'Agent' }}
+                      @if (agentModelAttribution(item.event); as modelAttribution) {
+                        <span class="case-chat__role-model">({{ modelAttribution }})</span>
                       }
+                    </span>
+                  }
+                  @if (showTechnical() && item.event.sessionContext) {
+                    <div class="case-chat__session-context">
+                      <span class="case-chat__session-context-label">session context</span>
+                      <pre class="case-chat__session-context-body">{{ item.event.sessionContext | json }}</pre>
                     </div>
                   }
-                </div>
-                @if (item.answer; as answer) {
-                  <!-- The answer is a user turn (right), like any other user message. -->
-                  <div class="case-chat__turn case-chat__turn--user">
-                    <span class="case-chat__role-label">{{ answerLabel(answer) }}</span>
-                    <div class="case-chat__bubble-wrapper">
-                      <div class="case-chat__bubble case-chat__bubble--plain">{{ answer.answer }}</div>
-                      <ds-copy-button class="case-chat__bubble-copy" [text]="answer.answer" title="Copy message" />
+                  <div class="case-chat__bubble-wrapper">
+                    @if (item.event.actor.role === 'USER') {
+                      <div
+                        class="case-chat__bubble case-chat__message-text--markdown"
+                        dsBlueprint
+                        [innerHTML]="item.html"
+                      ></div>
+                    } @else {
+                      <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                    }
+                    <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
+                    @if (item.isLastInGroup) {
                       <time
                         class="case-chat__message-time"
-                        [attr.datetime]="answer.timestamp"
-                        [title]="formatMessageTimestampTitle(answer.timestamp)"
-                        >{{ formatMessageTime(answer.timestamp) }}</time
+                        [attr.datetime]="item.event.timestamp"
+                        [title]="formatMessageTimestampTitle(item.event.timestamp)"
+                        >{{ formatMessageTime(item.event.timestamp) }}</time
+                      >
+                    }
+                  </div>
+                  <!-- What this answer cost, from the usage the service attached to the turn. -->
+                  @if (item.metrics; as metrics) {
+                    <dl class="case-chat__turn-metrics" role="group" aria-label="Usage for this answer">
+                      <div class="case-chat__metric">
+                        <dt class="case-chat__metric-label">tokens</dt>
+                        <dd class="case-chat__metric-value" [title]="turnTokensTitle(metrics)">
+                          {{ metrics.totalTokens | agentosTokens }}
+                        </dd>
+                      </div>
+                      <div class="case-chat__metric">
+                        <dt class="case-chat__metric-label">cost</dt>
+                        <dd class="case-chat__metric-value case-chat__metric-value--strong">
+                          {{ metrics.cost | agentosCost: metrics.costUnknownCount }}
+                        </dd>
+                      </div>
+                      <div class="case-chat__metric case-chat__metric--secondary">
+                        <dt class="case-chat__metric-label">total</dt>
+                        <dd class="case-chat__metric-value">
+                          {{ metrics.cumulativeCost | agentosCost: metrics.cumulativeUnknownCount }}
+                        </dd>
+                      </div>
+                      @if (turnDuration(metrics); as duration) {
+                        <div class="case-chat__metric case-chat__metric--secondary">
+                          <dt class="case-chat__metric-label">took</dt>
+                          <dd class="case-chat__metric-value">{{ duration }}</dd>
+                        </div>
+                      }
+                    </dl>
+                  }
+                </div>
+              } @else if (item.kind === 'streaming') {
+                <div class="case-chat__turn case-chat__turn--agent case-chat__turn--streaming">
+                  <span class="case-chat__role-label">{{ agentDisplayName() }}</span>
+                  <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="streamingHtml()"></div>
+                </div>
+              } @else if (item.kind === 'notice') {
+                <div
+                  class="case-chat__execution-notice"
+                  [class.case-chat__execution-notice--warning]="item.notice.severity === 'warning'"
+                  [class.case-chat__execution-notice--error]="
+                    item.notice.severity === 'error' || item.notice.severity === 'terminal'
+                  "
+                  role="status"
+                >
+                  <span class="case-chat__execution-notice-title">{{ item.notice.title }}</span>
+                  @if (item.notice.detail) {
+                    <span class="case-chat__execution-notice-detail">{{ item.notice.detail }}</span>
+                  }
+                  @if (
+                    item.eventId === continuableStopId() && !isRunning() && !isTerminal() && !attachments.isUploading()
+                  ) {
+                    <button type="button" class="case-chat__execution-notice-action" (click)="continueAfterLimit()">
+                      Continue
+                    </button>
+                  }
+                </div>
+              } @else if (item.kind === 'technical') {
+                <details class="case-chat__log">
+                  <summary class="case-chat__log-summary">
+                    <span>⚙ System log · {{ item.item.label }}</span>
+                    @if (item.item.timestamp; as logTimestamp) {
+                      <time
+                        class="case-chat__log-time"
+                        [attr.datetime]="logTimestamp"
+                        [title]="formatMessageTimestampTitle(logTimestamp)"
+                        >{{ formatMessageDateTime(logTimestamp) }}</time
+                      >
+                    }
+                  </summary>
+                  @if (item.item.detail) {
+                    <pre class="case-chat__log-body">{{ item.item.detail }}</pre>
+                  }
+                </details>
+              } @else if (item.kind === 'question') {
+                <!-- An OAuth question is only shown while its popup flow is pending (or once answered). -->
+                @if (
+                  item.answer ||
+                  item.event.questionType !== 'OAUTH_AUTHORIZE' ||
+                  oauthPendingQuestion()?.id === item.event.id
+                ) {
+                  <!-- The question is an agent turn (left), with its answer controls attached under the bubble. -->
+                  <div class="case-chat__turn case-chat__turn--agent">
+                    <span class="case-chat__role-label">{{ item.event.agentName || 'Agent' }}</span>
+                    <div class="case-chat__bubble-wrapper">
+                      <div class="case-chat__bubble case-chat__bubble--plain" [id]="questionElementId(item.event)">
+                        {{ item.event.question }}
+                      </div>
+                      <ds-copy-button
+                        class="case-chat__bubble-copy"
+                        [text]="item.event.question"
+                        title="Copy message"
+                      />
+                      <time
+                        class="case-chat__message-time"
+                        [attr.datetime]="item.event.timestamp"
+                        [title]="formatMessageTimestampTitle(item.event.timestamp)"
+                        >{{ formatMessageTime(item.event.timestamp) }}</time
                       >
                     </div>
-                  </div>
-                }
-              }
-            } @else if (item.kind === 'delegation') {
-              <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />
-            } @else {
-              <div
-                class="case-chat__tool-call"
-                [class.case-chat__tool-call--pending]="!item.call.response"
-                [class.case-chat__tool-call--success]="item.call.response?.success === true"
-                [class.case-chat__tool-call--error]="item.call.response?.success === false"
-              >
-                <button
-                  type="button"
-                  class="case-chat__tool-call-header"
-                  (click)="toggleToolCall(item.call.requestId)"
-                  [attr.aria-expanded]="isToolCallExpanded(item.call.requestId)"
-                >
-                  <span class="case-chat__tool-call-icon">
-                    @if (!item.call.response) {
-                      ⏳
-                    } @else if (item.call.response.success) {
-                      ✅
-                    } @else {
-                      ❌
-                    }
-                  </span>
-                  <span class="case-chat__tool-call-name">{{ item.call.toolName }}</span>
-                  <span class="case-chat__tool-call-status">
-                    @if (!item.call.response) {
-                      Running
-                    } @else if (item.call.response.success) {
-                      Completed
-                    } @else {
-                      Failed
-                    }
-                  </span>
-                  @if (item.call.timestamp) {
-                    <time
-                      class="case-chat__tool-call-time"
-                      [attr.datetime]="item.call.timestamp"
-                      [title]="formatMessageTimestampTitle(item.call.timestamp)"
-                      >{{ formatMessageTime(item.call.timestamp) }}</time
-                    >
-                  }
-                  <span class="case-chat__tool-call-chevron">{{
-                    isToolCallExpanded(item.call.requestId) ? '▼' : '▶'
-                  }}</span>
-                </button>
-
-                @if (isToolCallExpanded(item.call.requestId)) {
-                  <div class="case-chat__tool-call-output">
-                    @if (showTechnical()) {
-                      <div class="case-chat__tool-call-section case-chat__enrichment-section">
-                        <span class="case-chat__tool-call-label">Enrichment phases</span>
-                        @if (item.call.enrichmentPhases?.length) {
-                          @for (phase of item.call.enrichmentPhases; track phase.phaseIndex) {
-                            <div
-                              class="case-chat__enrichment-phase"
-                              [class.case-chat__enrichment-phase--failed]="!phase.success"
-                            >
-                              <div class="case-chat__enrichment-phase-header">
-                                <span class="case-chat__enrichment-phase-index">Phase {{ phase.phaseIndex }}</span>
-                                <span class="case-chat__enrichment-phase-status">{{
-                                  phase.success ? '✅' : '❌'
-                                }}</span>
-                              </div>
-                              <div class="case-chat__enrichment-phase-row">
-                                <span class="case-chat__enrichment-phase-label">Prompt</span>
-                                <pre>{{ phase.prompt }}</pre>
-                              </div>
-                              <div class="case-chat__enrichment-phase-row">
-                                <span class="case-chat__enrichment-phase-label">LLM output</span>
-                                <pre>{{ phase.llmOutput }}</pre>
-                              </div>
-                              @if (phase.enrichmentContent) {
-                                <div class="case-chat__enrichment-phase-row">
-                                  <span class="case-chat__enrichment-phase-label">Enrichment content</span>
-                                  <pre>{{ phase.enrichmentContent }}</pre>
-                                </div>
-                              }
-                            </div>
-                          }
+                    @if (!item.answer) {
+                      <div [attr.data-question-controls]="item.event.id" class="case-chat__question-controls">
+                        @if (configChangeQuestionIds().has(item.event.id)) {
+                          <agentos-config-change-card
+                            [caseId]="caseId"
+                            [questionId]="item.event.id"
+                            [disabled]="isRunning()"
+                          />
                         } @else {
-                          <span class="case-chat__tool-call-empty">No enrichment trace was provided.</span>
+                          <agentos-question-panel
+                            variant="inline"
+                            [questionEvent]="item.event"
+                            [disabled]="isRunning()"
+                            (answered)="onQuestionAnswered(item.event, $event)"
+                            (cancelled)="onQuestionCancelled()"
+                          />
                         }
                       </div>
                     }
-                    @if (formatToolArguments(item.call.args); as args) {
+                  </div>
+                  @if (item.answer; as answer) {
+                    <!-- The answer is a user turn (right), like any other user message. -->
+                    <div class="case-chat__turn case-chat__turn--user">
+                      <span class="case-chat__role-label">{{ answerLabel(answer) }}</span>
+                      <div class="case-chat__bubble-wrapper">
+                        <div class="case-chat__bubble case-chat__bubble--plain">{{ answer.answer }}</div>
+                        <ds-copy-button class="case-chat__bubble-copy" [text]="answer.answer" title="Copy message" />
+                        <time
+                          class="case-chat__message-time"
+                          [attr.datetime]="answer.timestamp"
+                          [title]="formatMessageTimestampTitle(answer.timestamp)"
+                          >{{ formatMessageTime(answer.timestamp) }}</time
+                        >
+                      </div>
+                    </div>
+                  }
+                }
+              } @else if (item.kind === 'delegation') {
+                <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />
+              } @else {
+                <div
+                  class="case-chat__tool-call"
+                  [class.case-chat__tool-call--pending]="!item.call.response"
+                  [class.case-chat__tool-call--success]="item.call.response?.success === true"
+                  [class.case-chat__tool-call--error]="item.call.response?.success === false"
+                >
+                  <button
+                    type="button"
+                    class="case-chat__tool-call-header"
+                    (click)="toggleToolCall(item.call.requestId)"
+                    [attr.aria-expanded]="isToolCallExpanded(item.call.requestId)"
+                  >
+                    <span class="case-chat__tool-call-icon">
+                      @if (!item.call.response) {
+                        ⏳
+                      } @else if (item.call.response.success) {
+                        ✅
+                      } @else {
+                        ❌
+                      }
+                    </span>
+                    <span class="case-chat__tool-call-name">{{ item.call.toolName }}</span>
+                    <span class="case-chat__tool-call-status">
+                      @if (!item.call.response) {
+                        Running
+                      } @else if (item.call.response.success) {
+                        Completed
+                      } @else {
+                        Failed
+                      }
+                    </span>
+                    @if (item.call.timestamp) {
+                      <time
+                        class="case-chat__tool-call-time"
+                        [attr.datetime]="item.call.timestamp"
+                        [title]="formatMessageTimestampTitle(item.call.timestamp)"
+                        >{{ formatMessageTime(item.call.timestamp) }}</time
+                      >
+                    }
+                    <span class="case-chat__tool-call-chevron">{{
+                      isToolCallExpanded(item.call.requestId) ? '▼' : '▶'
+                    }}</span>
+                  </button>
+
+                  @if (isToolCallExpanded(item.call.requestId)) {
+                    <div class="case-chat__tool-call-output">
+                      @if (showTechnical()) {
+                        <div class="case-chat__tool-call-section case-chat__enrichment-section">
+                          <span class="case-chat__tool-call-label">Enrichment phases</span>
+                          @if (item.call.enrichmentPhases?.length) {
+                            @for (phase of item.call.enrichmentPhases; track phase.phaseIndex) {
+                              <div
+                                class="case-chat__enrichment-phase"
+                                [class.case-chat__enrichment-phase--failed]="!phase.success"
+                              >
+                                <div class="case-chat__enrichment-phase-header">
+                                  <span class="case-chat__enrichment-phase-index">Phase {{ phase.phaseIndex }}</span>
+                                  <span class="case-chat__enrichment-phase-status">{{
+                                    phase.success ? '✅' : '❌'
+                                  }}</span>
+                                </div>
+                                <div class="case-chat__enrichment-phase-row">
+                                  <span class="case-chat__enrichment-phase-label">Prompt</span>
+                                  <pre>{{ phase.prompt }}</pre>
+                                </div>
+                                <div class="case-chat__enrichment-phase-row">
+                                  <span class="case-chat__enrichment-phase-label">LLM output</span>
+                                  <pre>{{ phase.llmOutput }}</pre>
+                                </div>
+                                @if (phase.enrichmentContent) {
+                                  <div class="case-chat__enrichment-phase-row">
+                                    <span class="case-chat__enrichment-phase-label">Enrichment content</span>
+                                    <pre>{{ phase.enrichmentContent }}</pre>
+                                  </div>
+                                }
+                              </div>
+                            }
+                          } @else {
+                            <span class="case-chat__tool-call-empty">No enrichment trace was provided.</span>
+                          }
+                        </div>
+                      }
+                      @if (formatToolArguments(item.call.args); as args) {
+                        <div class="case-chat__tool-call-section">
+                          <span class="case-chat__tool-call-label">
+                            Arguments
+                            @if (!isStructuredPayload(item.call.args)) {
+                              · Text
+                            }
+                          </span>
+                          <pre [class.case-chat__tool-call-code--text]="!isStructuredPayload(item.call.args)">{{
+                            args
+                          }}</pre>
+                        </div>
+                      }
+                      @if (showTechnical() && formatToolDuration(item.call); as duration) {
+                        <div class="case-chat__tool-call-section">
+                          <span class="case-chat__tool-call-label">Duration</span>
+                          <span>{{ duration }}</span>
+                        </div>
+                      }
                       <div class="case-chat__tool-call-section">
                         <span class="case-chat__tool-call-label">
-                          Arguments
-                          @if (!isStructuredPayload(item.call.args)) {
+                          {{ item.call.response?.success === false ? 'Error' : 'Output' }}
+                          @if (!isToolOutputStructured(item.call)) {
                             · Text
                           }
                         </span>
-                        <pre [class.case-chat__tool-call-code--text]="!isStructuredPayload(item.call.args)">{{
-                          args
-                        }}</pre>
-                      </div>
-                    }
-                    @if (showTechnical() && formatToolDuration(item.call); as duration) {
-                      <div class="case-chat__tool-call-section">
-                        <span class="case-chat__tool-call-label">Duration</span>
-                        <span>{{ duration }}</span>
-                      </div>
-                    }
-                    <div class="case-chat__tool-call-section">
-                      <span class="case-chat__tool-call-label">
-                        {{ item.call.response?.success === false ? 'Error' : 'Output' }}
-                        @if (!isToolOutputStructured(item.call)) {
-                          · Text
+                        @if (extractToolOutput(item.call); as output) {
+                          <pre [class.case-chat__tool-call-code--text]="!isToolOutputStructured(item.call)">{{
+                            output
+                          }}</pre>
+                        } @else if (!item.call.response) {
+                          <span class="case-chat__tool-call-pending">Running…</span>
+                        } @else {
+                          <span class="case-chat__tool-call-empty">No output</span>
                         }
-                      </span>
-                      @if (extractToolOutput(item.call); as output) {
-                        <pre [class.case-chat__tool-call-code--text]="!isToolOutputStructured(item.call)">{{
-                          output
-                        }}</pre>
-                      } @else if (!item.call.response) {
-                        <span class="case-chat__tool-call-pending">Running…</span>
-                      } @else {
-                        <span class="case-chat__tool-call-empty">No output</span>
+                      </div>
+                      @if (showTechnical() && formatToolMetadata(item.call); as metadata) {
+                        <div class="case-chat__tool-call-section">
+                          <span class="case-chat__tool-call-label">
+                            Metadata
+                            @if (!isToolMetadataStructured(item.call)) {
+                              · Text
+                            }
+                          </span>
+                          <pre [class.case-chat__tool-call-code--text]="!isToolMetadataStructured(item.call)">{{
+                            metadata
+                          }}</pre>
+                        </div>
                       }
                     </div>
-                    @if (showTechnical() && formatToolMetadata(item.call); as metadata) {
-                      <div class="case-chat__tool-call-section">
-                        <span class="case-chat__tool-call-label">
-                          Metadata
-                          @if (!isToolMetadataStructured(item.call)) {
-                            · Text
-                          }
-                        </span>
-                        <pre [class.case-chat__tool-call-code--text]="!isToolMetadataStructured(item.call)">{{
-                          metadata
-                        }}</pre>
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
+                  }
+                </div>
+              }
             }
           }
-        }
 
-        @if (isRunning()) {
-          <agentos-agent-activity [activity]="activity()" />
+          @if (isRunning()) {
+            <agentos-agent-activity [activity]="activity()" />
+          }
+        </div>
+
+        <!-- Floating scroll-to-bottom button — visible when not at the bottom -->
+        @if (!isAtBottom()) {
+          <div class="case-chat__scroll-anchor">
+            <ds-icon-button
+              icon="keyboard_arrow_down"
+              variant="default"
+              title="Scroll to bottom"
+              (action)="onScrollToBottomClick()"
+            />
+          </div>
         }
       </div>
-
-      <!-- Floating scroll-to-bottom button — visible when not at the bottom -->
-      @if (!isAtBottom()) {
-        <div class="case-chat__scroll-anchor">
-          <ds-icon-button
-            icon="keyboard_arrow_down"
-            variant="default"
-            title="Scroll to bottom"
-            (action)="onScrollToBottomClick()"
-          />
-        </div>
-      }
 
       <div class="case-chat__composer" dsBlueprint>
         @if (autocomplete.atSuggestions().length > 0) {

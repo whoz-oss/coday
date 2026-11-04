@@ -23,11 +23,11 @@ export class ShellUserMenuComponent {
   /** Whether dark mode is active */
   readonly isDark = input.required<boolean>()
 
-  /** Active theme variant ('industry' | 'terminal') */
-  readonly themeVariant = input.required<string>()
+  /** False for a light-only (or dark-only) variant: the light/dark entry is then hidden. */
+  readonly canToggleMode = input(true)
 
-  /** Whether technical logs are currently shown — drives the active state of the menu item */
-  readonly showTechnical = input.required<boolean>()
+  /** Active theme variant id (see THEME_VARIANT_DEFINITIONS) */
+  readonly themeVariant = input.required<string>()
 
   /** Whether tool calls are currently shown — drives the active state of the menu item. */
   readonly showToolCalls = input.required<boolean>()
@@ -52,9 +52,6 @@ export class ShellUserMenuComponent {
   /** Emits when the user switches theme variant */
   readonly themeVariantChanged = output<string>()
 
-  /** Emits when the user toggles technical logs */
-  readonly logsToggled = output<void>()
-
   /** Emits when the user toggles tool calls. */
   readonly toolCallsToggled = output<void>()
 
@@ -71,10 +68,6 @@ export class ShellUserMenuComponent {
 
   protected onThemeVariantChange(variant: string): void {
     this.themeVariantChanged.emit(variant)
-  }
-
-  protected onLogsToggle(): void {
-    this.logsToggled.emit()
   }
 
   protected onToolCallsToggle(): void {

@@ -17,6 +17,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator
 import io.whozoss.agentos.skill.Skill
 import io.whozoss.agentos.skill.SkillAuthorizationService

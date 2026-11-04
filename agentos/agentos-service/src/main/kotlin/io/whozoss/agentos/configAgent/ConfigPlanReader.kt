@@ -3,6 +3,7 @@ package io.whozoss.agentos.configAgent
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeState
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent

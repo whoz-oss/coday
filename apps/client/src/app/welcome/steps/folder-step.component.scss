@@ -1,0 +1,130 @@
+.selected {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+
+  &__label {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+  &__path {
+    font-size: 14px;
+    word-break: break-all;
+  }
+}
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  overflow: hidden;
+
+  &__bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: var(--color-surface-muted);
+    border-bottom: 1px solid var(--color-border);
+  }
+  &__icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-bg-hover);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+  }
+  &__path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl; // keep the end of a long path visible
+    text-align: left;
+  }
+  &__list {
+    margin: 0;
+    padding: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    list-style: none;
+  }
+  &__empty {
+    padding: 18px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+  }
+  &__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--color-border);
+  }
+  &__new {
+    display: flex;
+    flex: 1;
+    gap: 8px;
+
+    .field__input {
+      padding: 8px 12px;
+    }
+  }
+  &__hidden {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+}
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--color-text);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+  }
+  &__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  &__tag {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+  }
+}

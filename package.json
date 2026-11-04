@@ -19,7 +19,8 @@
     "test": "nx run-many --target=test",
     "web": "npx --yes @whoz-oss/coday-web",
     "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2",
-    "web:dev:tmux": "bash scripts/web-dev-tmux.sh"
+    "web:dev:tmux": "bash scripts/web-dev-tmux.sh",
+    "web:serve:dev": "nx run web:serve:dev"
   },
   "lint-staged": {
     "!(*nx|*project).json": [

@@ -17,6 +17,7 @@ import {
   OnInit,
   output,
   signal,
+  Signal,
   viewChild,
   ChangeDetectionStrategy,
 } from '@angular/core'
@@ -86,6 +87,9 @@ import { ComposerAttachmentsService } from '../composer-attachments/composer-att
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 import { configChangeQuestionIds } from './config-change-questions'
+import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
+import { CostPipe } from '../../pipes/cost.pipe'
+import { TokenCountPipe } from '../../pipes/token-count.pipe'
 
 export interface ToolCall {
   requestId: string
@@ -99,10 +103,12 @@ export interface ToolCall {
   enrichmentPhases?: EnrichmentPhaseTrace[] | null
 }
 
-/** A technical event displayed only when showTechnical is enabled. */
+/** A technical event, displayed only when the technical logs preference is enabled. */
 export interface TechnicalItem {
   label: string
   detail?: string
+  /** ISO timestamp of the source event. */
+  timestamp?: string
 }
 
 export interface ExecutionNotice {
@@ -118,6 +124,14 @@ export type TimelineItem =
       html: SafeHtml
       isFirstInGroup: boolean
       isLastInGroup: boolean
+      /**
+       * What the agent turn this message closes cost, when the turn reported any usage.
+       *
+       * Set on the last agent message before the turn's `AgentFinishedEvent`, which is where the
+       * reader looks for it: the answer is on screen, the question "what did that cost" is about
+       * that answer.
+       */
+      metrics?: TurnMetrics
     }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming' }
@@ -180,6 +194,8 @@ function hasActiveSelection(): boolean {
     DelegationCardComponent,
     ConfirmDialogComponent,
     AgentActivityComponent,
+    CostPipe,
+    TokenCountPipe,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -335,7 +351,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // Header action outputs — handled by CaseShellComponent
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()
-  readonly logsToggled = output<void>()
   readonly updateRequested = output<{ id: string; title?: string; runCostThreshold?: number | null }>()
 
   // ---------------------------------------------------------------------------
@@ -388,8 +403,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
-  readonly showTechnicalOverride = input(false)
-  protected readonly showTechnical = computed(() => this.showTechnicalOverride())
+  /** Technical logs visibility: a user preference (My profile), shown by default. */
+  protected readonly showTechnical: Signal<boolean> = this.preferences.showTechnical
 
   readonly showToolCallsOverride = input(true)
   protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
@@ -492,6 +507,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly delegations = computed(() => buildDelegations(this.events()))
 
   /**
+   * What each agent turn cost, keyed by the id of its `AgentFinishedEvent`.
+   *
+   * Keyed on `events()` alone, like [delegations]: the timeline also depends on the technical-log
+   * and tool-call toggles, and walking the whole stream again on every flip of a checkbox buys
+   * nothing.
+   */
+  private readonly turnMetrics = computed(() => buildTurnMetrics(this.events()))
+
+  /**
    * What the agent is doing right now — shown in place of a spinner while the turn runs.
    * Derived from the event stream and from the delegation pairing above, so it follows the turn
    * without any extra bookkeeping.
@@ -545,18 +569,44 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
+    const turnMetrics = this.turnMetrics()
+
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     const emittedDelegationIds = new Set<string>()
+    // One integration failure is warned once per agent run of a message — delegates included — and again by a
+    // resume, and the events are persisted, so the copies also come back on every reload. The first warning of
+    // a turn carries everything the user needs; the identical ones until their next message are dropped.
+    const warningsThisTurn = new Set<string>()
     // Track the last role to detect group boundaries (consecutive same-role messages).
     // Any non-message item (tool call, technical event) resets the group.
     let lastMessageRole: string | null = null
+    // Index of the agent message the current turn's footer belongs to, if the turn produced one.
+    let lastAgentMessageIndex: number | null = null
     for (const e of allEvents) {
+      // A run opening closes whatever the previous one left behind: a turn killed mid-flight emits
+      // no finished event, and without this its answer would still be waiting to receive the next
+      // turn's figures.
+      if (e.type === 'AgentRunningEvent') lastAgentMessageIndex = null
+      if (e.type === 'AgentFinishedEvent') {
+        const metrics = turnMetrics.get(e.id)
+        const item = lastAgentMessageIndex === null ? undefined : items[lastAgentMessageIndex]
+        // A turn that answered nothing — interrupted, or pure tool calls — has no message to carry
+        // its figures. They stay in the usage panel rather than being moved onto someone else's answer.
+        if (metrics && item?.kind === 'message') item.metrics = metrics
+        lastAgentMessageIndex = null
+      }
       if (e.type === 'MessageEvent') {
         const msg = e as CaseMessageEvent
         const role = msg.actor.role
         const isFirstInGroup = role !== lastMessageRole
         lastMessageRole = role
+        // A new user message opens a turn: a failure that persists is worth warning about again,
+        // and no answer from before it may still collect figures.
+        if (role === 'USER') {
+          warningsThisTurn.clear()
+          lastAgentMessageIndex = null
+        }
         items.push({
           kind: 'message',
           event: msg,
@@ -564,6 +614,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           isFirstInGroup,
           isLastInGroup: false,
         })
+        if (role === 'AGENT') lastAgentMessageIndex = items.length - 1
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
@@ -598,8 +649,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // Not a diagnostic: the run stopped before finishing, and only the user can let it continue.
         items.push({ kind: 'notice', notice: this.toIterationLimitNotice(e as AgentFinishedEvent), eventId: e.id })
         lastMessageRole = null
+      } else if (e.type === 'WarnEvent') {
+        // Not a diagnostic either: a warning tells the user something they must know about their run
+        // (an integration that failed to load, an agent not found), whatever the technical logs preference.
+        const warning = e as WarnEvent
+        if (!warningsThisTurn.has(warning.message)) {
+          warningsThisTurn.add(warning.message)
+          items.push({ kind: 'notice', notice: this.toWarningNotice(warning), eventId: e.id })
+          lastMessageRole = null
+        }
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
-        // Execution notices and the generic fallback are diagnostics: keep them entirely
+        // The other execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
         const notice = this.toExecutionNotice(e, lastCaseStatusEventId)
         if (notice) {
@@ -1367,6 +1427,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString()
   }
 
+  /** Local date and time for technical log lines, which can be days apart; the full timestamp stays in the title. */
+  protected formatMessageDateTime(timestamp: string): string {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date)
+  }
+
   protected toggleToolCall(requestId: string): void {
     this.collapsedTools.update((set) => {
       const next = new Set(set)
@@ -1384,13 +1459,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.collapsedTools().has(requestId)
   }
 
-  protected toggleShowTechnical(): void {
-    this.logsToggled.emit()
-  }
-
   /** Extract plain text from a message item for clipboard copy. */
   protected messageText(item: TimelineItem & { kind: 'message' }): string {
     return this.extractText(item.event)
+  }
+
+  /** How long the turn took, in the shortest form that still carries the information. */
+  protected turnDuration(metrics: TurnMetrics): string | null {
+    return metrics.durationMs === undefined ? null : formatTurnDuration(metrics.durationMs)
+  }
+
+  /**
+   * The exact token count, for the cell that shows it rounded.
+   *
+   * Only the count: the provider and model are already on screen for the turn, beside the agent's
+   * name ([agentModelAttribution]), so repeating them in a tooltip that only a mouse can reach
+   * hides nothing and says it twice.
+   */
+  protected turnTokensTitle(metrics: TurnMetrics): string {
+    return `${metrics.totalTokens.toLocaleString()} tokens`
   }
 
   /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */
@@ -1446,10 +1533,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  private toWarningNotice(event: WarnEvent): ExecutionNotice {
+    return { severity: 'warning', title: 'Warning', detail: event.message }
+  }
+
   /**
-   * Map a CaseEvent to an ExecutionNotice for display in the timeline.
+   * Map a CaseEvent to an ExecutionNotice for display in the timeline. WarnEvent has its own
+   * notice, shown outside technical mode (see toWarningNotice).
    *
-   * WarnEvent and ErrorEvent are immutable historical facts and always produce a notice.
+   * ErrorEvent is an immutable historical fact and always produces a notice.
    * CaseStatusEvent notices are assertions about the PRESENT state: only the LATEST
    * CaseStatusEvent (identified by lastCaseStatusEventId) may emit a terminal banner.
    * A superseded KILLED/ERROR falls through to the generic technical log item instead,
@@ -1457,8 +1549,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   private toExecutionNotice(event: CaseEvent, lastCaseStatusEventId: string | null = null): ExecutionNotice | null {
     switch (event.type) {
-      case 'WarnEvent':
-        return { severity: 'warning', title: 'Warning', detail: (event as WarnEvent).message }
       case 'ErrorEvent':
         return { severity: 'error', title: 'Execution error', detail: (event as ErrorEvent).message }
       case 'CaseStatusEvent': {
@@ -1475,6 +1565,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private toTechnicalItem(event: CaseEvent): TechnicalItem {
+    return { ...this.describeTechnicalEvent(event), timestamp: event.timestamp }
+  }
+
+  private describeTechnicalEvent(event: CaseEvent): Pick<TechnicalItem, 'label' | 'detail'> {
     switch (event.type) {
       case 'CaseStatusEvent':
         return { label: `Status: ${(event as CaseStatusEvent).status}` }

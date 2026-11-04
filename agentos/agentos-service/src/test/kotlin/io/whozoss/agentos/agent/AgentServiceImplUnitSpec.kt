@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -58,6 +59,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
@@ -69,6 +71,7 @@ import io.whozoss.agentos.skill.Skill
 import io.whozoss.agentos.skill.SkillService
 import io.whozoss.agentos.skill.SkillToolGrantService
 import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.tool.ToolResolution
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -160,6 +163,41 @@ class AgentServiceImplUnitSpec : StringSpec() {
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
+    private val noToolResolution = ToolResolution(tools = emptyList(), failedIntegrations = emptyList())
+
+    /** An [AgentServiceImpl] wired like [agentService] but with the REAL [ToolResolverService] over [toolRegistryService]. */
+    private fun realToolResolverAgentService(): AgentServiceImpl =
+        AgentServiceImpl(
+            chatClientProvider = chatClientProvider,
+            toolResolverService = ToolResolverService(toolRegistryService),
+            aiModelService = aiModelService,
+            aiProviderService = aiProviderService,
+            namespaceService = namespaceService,
+            integrationConfigService = integrationConfigService,
+            userService = userService,
+            agentConfigService = agentConfigService,
+            intentionGenerator = intentionGenerator,
+            confirmationManager = confirmationManager,
+            objectMapper = testObjectMapper,
+            toolRegistryService = toolRegistryService,
+            toolMetricsService = toolMetricsService,
+            caseEventService = caseEventService,
+            authServiceFactory = authServiceFactory,
+            oAuthFlowService = oAuthFlowService,
+            staticCredentialFactory = staticCredentialFactory,
+            exchangeStorageService = exchangeStorageService,
+            exchangeCapabilityService = exchangeCapabilityService,
+            exchangeToolGrantService = exchangeToolGrantService,
+            agentDocumentResolver = agentDocumentResolver,
+            skillService = skillService,
+            skillToolGrantService = skillToolGrantService,
+            configToolGrantService = configToolGrantService,
+            idCompressorService = IdCompressorService(),
+            agentConfigProperties = AgentConfigProperties(),
+            limitsConfig = LimitsConfigProperties(),
+            exchangeRootResolver = exchangeRootResolver,
+            loopWorkflowRunnerService = mockk(relaxed = true),
+        )
     private val aiProviderId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
     private val caseCreatedAt: Instant = Instant.parse("2025-12-15T10:30:00Z")
@@ -231,7 +269,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 allIntegrationConfigs = any(),
                 credentialProviderFactory = capture(factorySlot),
             )
-        } returns emptyList()
+        } returns noToolResolution
         val config = agentConfig(name = agentName, modelName = "sonnet")
         val userId = context.userId
         if (userId != null) {
@@ -261,8 +299,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 allIntegrationConfigs = any(),
                 credentialProviderFactory = any(),
             )
-        } returns
-            emptyList()
+        } returns noToolResolution
         // dedupToolsByName is the shared collision-reconciler; identity is fine (no collisions in these tests).
         every { toolResolverService.dedupToolsByName(any()) } answers { firstArg() }
         // Both exchange scopes are denied unless a test says otherwise, mirroring the shipped defaults.
@@ -888,7 +925,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { impostor.name } returns "AGENTOS_CONFIG__propose"
             every {
                 toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any())
-            } returns listOf(impostor)
+            } returns ToolResolution(tools = listOf(impostor), failedIntegrations = emptyList())
             every { configToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns listOf(builtIn)
             val combinedTools = mutableListOf<List<StandardTool<*>>>()
             every { toolResolverService.dedupToolsByName(capture(combinedTools)) } answers { firstArg() }
@@ -2062,7 +2099,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allIntegrationConfigs = any(),
                     credentialProviderFactory = capture(factories),
                 )
-            } returns emptyList()
+            } returns noToolResolution
 
             agentService.findAgentByName("my-agent", context)
             agentService.findAgentByName("my-agent", context)
@@ -2078,7 +2115,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         //   if (setting.authType in OAUTH_AUTH_TYPES && caseId != null && emitEvent != null) → OAuthFlowService
         //   else → AuthService.resolveCredential
         //
-        // toolResolverService.resolveToolsForRun is stubbed to return emptyList() in these tests,
+        // toolResolverService.resolveToolsForRun is stubbed to return no tools in these tests,
         // which means the factory is never invoked as a side-effect of resolveAgentDefinition.
         // We capture the factory via a slot and invoke it directly so the dispatch branch
         // is actually exercised.
@@ -2140,7 +2177,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allIntegrationConfigs = any(),
                     credentialProviderFactory = capture(factorySlot),
                 )
-            } returns emptyList()
+            } returns noToolResolution
 
             val config = agentConfig(name = "oauth-agent", modelName = "sonnet")
             every {
@@ -2221,7 +2258,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allIntegrationConfigs = any(),
                     credentialProviderFactory = capture(factorySlot),
                 )
-            } returns emptyList()
+            } returns noToolResolution
 
             val config = agentConfig(name = "apikey-agent", modelName = "sonnet")
             every {
@@ -2711,6 +2748,146 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
             val advancedCtx = contextField.get(agent) as AgentAdvancedContext
             advancedCtx.redirectGuideline shouldBe "Always redirect to TRSharing when finished."
+        }
+
+        // -------------------------------------------------------------------------
+        // Integration load failure notice: only names reach the model and the case, never the exception.
+        // The REAL ToolResolverService is used so the whole path plugin -> resolver -> instructions/WarnEvent
+        // is exercised: a mock would hide a leak between the layers.
+        // -------------------------------------------------------------------------
+
+        /** Runs one agent on a live case whose integration `ATLASSIAN` is served by [plugin]; returns the agent and the emitted events. */
+        suspend fun runWithIntegration(
+            agentName: String,
+            plugin: ToolPlugin,
+            emitEventAvailable: Boolean = true,
+        ): Pair<AgentSimple, List<CaseEvent>> {
+            val emitted = mutableListOf<CaseEvent>()
+            val integration =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "ATLASSIAN",
+                    integrationType = "ATLASSIAN_TYPE",
+                    description = "Atlassian workspace",
+                )
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(integration)
+            every { toolRegistryService.findPlugin("ATLASSIAN_TYPE") } returns plugin
+            every { agentConfigService.findByName(namespaceId, agentName) } returns
+                agentConfig(name = agentName, instructions = "Base instructions", modelName = "sonnet")
+                    .copy(integrations = mapOf("ATLASSIAN" to null))
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val realResolverService = realToolResolverAgentService()
+            val recordingEmit: ((CaseEvent) -> CaseEvent)? =
+                if (emitEventAvailable) {
+                    { event: CaseEvent ->
+                        emitted.add(event)
+                        event
+                    }
+                } else {
+                    null
+                }
+            return try {
+                val liveCase = context.copy(emitEvent = recordingEmit)
+                (realResolverService.findAgentByName(agentName, liveCase) as AgentSimple) to emitted
+            } finally {
+                every { toolRegistryService.findPlugin(any()) } returns null
+            }
+        }
+
+        val failingPlugin =
+            object : ToolPlugin {
+                override val integrationType = "ATLASSIAN_TYPE"
+                override val configSchema: JsonNode? = null
+
+                override fun provideTools(
+                    config: JsonNode?,
+                    configName: String?,
+                    context: ToolContext?,
+                ): List<StandardTool<*>> = throw Exception("secret=XYZ")
+            }
+
+        "a failing integration is named in the instructions and in a WarnEvent, and its secret is in neither" {
+            val (agent, emitted) = runWithIntegration(agentName = "failing-agent", plugin = failingPlugin)
+
+            val instructions = agent.instructions ?: ""
+            instructions shouldContain "Integrations that failed to load in this run, their tools are missing: ATLASSIAN."
+            // Only when the request needs it: the block also reaches agents that never use the integration.
+            instructions shouldContain "Mention it only when the user's request needs one of them"
+            instructions shouldContain "Do not guess a cause."
+            // The block comes last, so the cached prefix of the prompt is unchanged.
+            instructions.indexOf("Base instructions") shouldBe 0
+            instructions.trimEnd().endsWith("Do not guess a cause.") shouldBe true
+            instructions shouldNotContain "XYZ"
+            (agent.systemPrompt ?: "") shouldNotContain "XYZ"
+
+            val warnings = emitted.filterIsInstance<WarnEvent>()
+            warnings.map { it.message } shouldBe
+                listOf(
+                    "Integration ATLASSIAN could not be loaded for this message. " +
+                        "An administrator can find the cause in the server logs.",
+                )
+            warnings.single().caseId shouldBe caseId
+            warnings.single().namespaceId shouldBe namespaceId
+            emitted.forEach { it.toString() shouldNotContain "XYZ" }
+        }
+
+        "the failed integrations are listed sorted, once each, in the instructions" {
+            val zulu = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "ZULU", integrationType = "ATLASSIAN_TYPE")
+            val alpha = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "ALPHA", integrationType = "ATLASSIAN_TYPE")
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(zulu, alpha)
+            every { toolRegistryService.findPlugin("ATLASSIAN_TYPE") } returns failingPlugin
+            every { agentConfigService.findByName(namespaceId, "two-failures") } returns
+                agentConfig(name = "two-failures", modelName = "sonnet").copy(integrations = mapOf("ZULU" to null, "ALPHA" to null))
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            val emitted = mutableListOf<CaseEvent>()
+
+            try {
+                val agent =
+                    realToolResolverAgentService().findAgentByName(
+                        "two-failures",
+                        context.copy(emitEvent = { event -> event.also { emitted.add(it) } }),
+                    ) as AgentSimple
+
+                agent.instructions shouldContain "their tools are missing: ALPHA, ZULU."
+                emitted.filterIsInstance<WarnEvent>().map { it.message } shouldBe
+                    listOf("ALPHA", "ZULU").map { IntegrationLoadFailureNotice.warnMessage(integrationName = it) }
+            } finally {
+                every { toolRegistryService.findPlugin(any()) } returns null
+            }
+        }
+
+        "a run outside a live case still names the failed integration in the instructions, without emitting" {
+            val (agent, emitted) =
+                runWithIntegration(agentName = "no-emit-agent", plugin = failingPlugin, emitEventAvailable = false)
+
+            agent.instructions shouldContain "their tools are missing: ATLASSIAN."
+            emitted.shouldBeEmpty()
+        }
+
+        "nothing is appended and nothing is emitted when every integration loads" {
+            val healthyPlugin =
+                object : ToolPlugin {
+                    override val integrationType = "ATLASSIAN_TYPE"
+                    override val configSchema: JsonNode? = null
+
+                    override fun provideTools(
+                        config: JsonNode?,
+                        configName: String?,
+                        context: ToolContext?,
+                    ): List<StandardTool<*>> = emptyList()
+                }
+
+            val (agent, emitted) = runWithIntegration(agentName = "healthy-agent", plugin = healthyPlugin)
+
+            (agent.instructions ?: "") shouldNotContain "failed to load"
+            (agent.instructions ?: "") shouldNotContain "Integration load failures"
+            emitted.shouldBeEmpty()
         }
     }
 }

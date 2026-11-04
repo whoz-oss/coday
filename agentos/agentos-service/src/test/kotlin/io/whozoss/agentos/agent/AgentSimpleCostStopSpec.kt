@@ -41,6 +41,7 @@ import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.model.tool.ToolCallingChatOptions
 import org.springframework.ai.openai.api.OpenAiApi
 import reactor.core.publisher.Flux
 import java.util.UUID
@@ -82,6 +83,7 @@ class AgentSimpleCostStopSpec :
                             }
                         }
                     val raw = mockk<ChatModel>()
+                    every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
                     every { raw.stream(any<Prompt>()) } answers {
                         val round = calls.incrementAndGet()
                         val tokens = if (round == 2) 10 else 1

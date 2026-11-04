@@ -12,21 +12,54 @@
     >
       <summary>
         @if (state.paused || state.pausedCases.length > 0) {
-          <strong>Paused · cost threshold reached</strong>
+          <span class="usage__title usage__title--paused">Paused · cost threshold reached</span>
         } @else {
-          <strong>Usage</strong>
+          <span class="usage__title">Usage</span>
         }
-        <span>{{ state.unknownCostCount > 0 ? 'At least ' : '' }}{{ state.cost | number: '1.2-6' }} this run</span>
-        @if (state.runCostThreshold !== null && state.runCostThreshold !== undefined) {
-          <span> / {{ state.runCostThreshold | number: '1.2-6' }} threshold</span>
-        }
+        <!-- A readout, not a sentence: four figures, each under the word that says what it is. -->
+        <!--
+          Spans, not a definition list: `summary` is the disclosure control of `details` and its
+          content model is phrasing content, so a `dl` there is non-conforming and leaves the
+          native marker behaviour undefined. The layout is unchanged — `.usage__figures` sets its
+          own `display: flex` either way.
+        -->
+        <span class="usage__figures">
+          <span class="usage__figure">
+            <span class="usage__figure-label">this run</span>
+            <span class="usage__figure-value usage__figure-value--strong">
+              {{ state.cost | agentosCost: state.unknownCostCount }}
+            </span>
+          </span>
+          @if (state.runCostThreshold !== null && state.runCostThreshold !== undefined) {
+            <span class="usage__figure">
+              <span class="usage__figure-label">threshold</span>
+              <!-- A threshold is a number someone typed, not an estimate: it is shown as set. -->
+              <span class="usage__figure-value">{{ state.runCostThreshold | number: '1.2-6' }}</span>
+            </span>
+          }
+          <!-- The conversation figures belong in the summary: they are what the panel is opened for. -->
+          @if (total(); as all) {
+            <span class="usage__figure">
+              <span class="usage__figure-label">conversation</span>
+              <span class="usage__figure-value">{{ all.cost | agentosCost: all.unknownCostCount }}</span>
+            </span>
+            <span class="usage__figure">
+              <span class="usage__figure-label">tokens</span>
+              <span class="usage__figure-value" [title]="all.totalTokens.toLocaleString() + ' recorded tokens'">
+                {{ all.totalTokens | agentosTokens }}
+              </span>
+            </span>
+          }
+        </span>
       </summary>
       <div class="usage__body">
         <p>Includes delegated work. Costs are estimates in the platform currency.</p>
         @if (total(); as all) {
           <p>
-            Conversation: {{ all.unknownCostCount > 0 ? 'at least ' : '' }}{{ all.cost | number: '1.2-6' }} recorded ·
-            {{ all.totalTokens | number }} recorded tokens
+            Conversation: {{ all.cost | agentosCost: all.unknownCostCount }} recorded ·
+            {{ all.totalTokens | number }} recorded tokens — {{ all.inputTokens | number }} input,
+            {{ all.outputTokens | number }} output, {{ all.cacheReadTokens | number }} read from cache,
+            {{ all.cacheWriteTokens | number }} written to cache
           </p>
         }
         @if (state.liveTokens > 0) {
@@ -47,7 +80,7 @@
             <p>
               {{
                 limit.ancestor ? 'Parent conversation' : limit.caseId === caseId() ? 'Conversation' : 'Delegated run'
-              }}: {{ limit.cost | number: '1.2-6' }} consumed.
+              }}: {{ limit.cost | agentosCost }} consumed.
             </p>
             @if (limit.canContinue) {
               @if (limit.threshold > 0) {

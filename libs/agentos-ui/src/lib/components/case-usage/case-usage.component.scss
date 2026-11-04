@@ -8,13 +8,75 @@
 }
 summary {
   cursor: pointer;
-  padding: 0.65rem 1rem;
+  padding: 0.55rem 1rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.4rem 0.9rem;
+}
+
+/* The panel's own label, in the micro-label register the rest of the readout uses. */
+.usage__title {
+  font-family: var(--font-heading);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.usage__title--paused {
+  color: var(--status-pending-text, #b06f1e);
 }
 .usage__body {
   padding: 0 1rem 0.8rem;
+}
+/* Four figures side by side, each unbreakable, so a narrow panel wraps between them, never inside
+   one. Rules rather than middots as separators: the same readout language as the chat strip. */
+.usage__figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+}
+.usage__figure {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0 0.7rem;
+  border-right: 1px solid var(--color-divider);
+  white-space: nowrap;
+}
+.usage__figure:first-child {
+  padding-left: 0;
+}
+.usage__figure:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+.usage__figure-label {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+}
+.usage__figure-value {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--color-text-secondary, inherit);
+}
+/* The run cost is the figure the threshold acts on, so it is the one that carries weight. */
+.usage__figure-value--strong {
+  color: var(--color-text);
+  font-weight: 600;
 }
 p {
   margin: 0.45rem 0;
@@ -24,7 +86,7 @@ button {
   color: inherit;
   background: transparent;
   border: 1px solid currentColor;
-  border-radius: 0.4rem;
+  border-radius: var(--radius-pill, 0.4rem);
   padding: 0.5rem 0.75rem;
   margin: 0.3rem 0.5rem 0 0;
   cursor: pointer;

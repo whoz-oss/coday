@@ -106,16 +106,20 @@ management:
 
 agentos:
   usage:
-    # Opt in to LLM usage accounting, analytical records and the run-cost guard.
-    # Disabled by default in every profile, including Whoz.
+    # LLM usage accounting, analytical records and the run-cost guard (the live usage panel of a case, the
+    # run-cost threshold and its confirmation). Enabled by default in every profile, including Whoz.
+    # Set AGENTOS_USAGE_ENABLED=false to switch the whole feature off. Read at startup, not dynamically.
+    # The Kotlin default of UsageConfigProperties stays false, so that classes built by hand are inert;
+    # this file is what makes it true for the running service.
     enabled: ${AGENTOS_USAGE_ENABLED:true}
   git:
     worker:
-      enabled: ${AGENTOS_GIT_WORKER_ENABLED:false}
+      enabled: ${AGENTOS_GIT_WORKER_ENABLED:true}
     workspaces:
-      # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
-      # runs exactly as without Git, whatever the namespace's Git association.
-      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
+      # Case-family Git worktrees. On (default): a new root case gets a worktree when its namespace
+      # asks for one. Set AGENTOS_GIT_WORKSPACES_ENABLED=false and every case keeps its own Exchange
+      # directory and runs exactly as without Git, whatever the namespace's Git association.
+      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:true}
   encryption:
     key: ${AGENTOS_ENCRYPTION_KEY:NONE}
     salt: ${AGENTOS_ENCRYPTION_SALT:NONE}
@@ -218,6 +222,16 @@ agentos:
     # agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     enabled-by-default: ${AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT:true}
+  personal-namespace:
+    # Give every user a private namespace (externalId 'user:<externalId of the user>') that they administer,
+    # with its own agent 'Coday' (a namespace-scoped agent, created in that namespace) deployed on it and set
+    # as its default agent. Created when the user is, and re-checked on their next request if that failed.
+    # Idempotent, and it only adds: a namespace the user renamed, or whose default agent they changed, is
+    # left as it is, and a 'Coday' the namespace already owns is never rewritten. The one exception is an
+    # upgrade: the legacy platform agent 'Coday' of earlier versions is undeployed from the personal namespace
+    # (the platform agent itself is neither modified nor deleted).
+    # Override with env var: AGENTOS_PERSONAL_NAMESPACE_ENABLED
+    enabled: ${AGENTOS_PERSONAL_NAMESPACE_ENABLED:true}
   user-group:
     # Declare that a platform-scoped 'USER_GROUP' integration configuration should exist.
     # When true (shipped default), UserGroupIntegrationConfigSeeder creates it at startup
@@ -273,8 +287,12 @@ agentos:
     # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
     # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
     # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
+    # Shipped default: 2. It only takes effect while usage tracking is on (agentos.usage.enabled, on by default),
+    # and it is written on a case when the case is created: existing cases and namespaces that set their own value
+    # keep it. An empty value (AGENTOS_LIMITS_RUN_COST_THRESHOLD=) means no platform limit; 0 asks for a
+    # confirmation on the first request, it does not disable the check.
     # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
-    # run-cost-threshold: 10.0
+    run-cost-threshold: ${AGENTOS_LIMITS_RUN_COST_THRESHOLD:2}
     # Context budget of an agent invocation, as fractions of the usable window of its model
     # (contextWindow - maxCompletionTokens; a model without contextWindow has no budget).
     # threshold: the share at which the prompt counts as having reached its budget. target: the share
@@ -287,6 +305,21 @@ agentos:
     # Seconds a delegation waits without activity from its sub-case before stopping it.
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
     delegation-timeout-seconds: ${AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS:600}
+    coday-agent:
+      # Declare that every personal namespace should own an agent named 'Coday'. When true (shipped
+      # default), CodayAgentSeeder creates it in the namespace, as a namespace-scoped agent, when the
+      # namespace is provisioned and owns none (nothing is created at startup): the friendly default
+      # agent, on the model alias BIG, with the built-in AGENTOS_CONFIG (read and propose configuration
+      # changes) and CASE_FILE_EXCHANGE (files of the conversation) and NAMESPACE_FILE_EXCHANGE (the
+      # shared folder of the namespace, e.g. the files folder of the first-run wizard) integrations.
+      # The personal namespace deploys it and makes it its default agent. It is namespace-scoped, not a
+      # platform agent, so that it can never clash with an agent of the same name in another namespace.
+      #
+      # This declares EXISTENCE, not content: once a namespace owns an agent named 'Coday' it belongs to
+      # the administrators of that namespace and is never rewritten. It is also create-only: setting this
+      # back to false later does NOT delete an already-created agent; disable or delete it through the API.
+      # Override with env var: AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED
+      enabled: ${AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED:true}
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
   # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME

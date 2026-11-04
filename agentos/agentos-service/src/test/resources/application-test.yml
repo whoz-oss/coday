@@ -42,6 +42,14 @@ agentos:
   persistence:
     mode: embedded-neo4j
     data-dir: build/test-neo4j-data/
+  personal-namespace:
+    # Off in tests: it would give every fixture user a namespace and an agent deployment, which no other
+    # spec expects. The specs of the feature switch it on explicitly.
+    enabled: false
+  defaults:
+    coday-agent:
+      # Off in tests for the same reason: the seeder would add a platform agent to every context.
+      enabled: false
   bootstrap:
     # Disabled in tests — fixtures manage their own users, the bootstrap
     # invariants (default admin / single-user migration) would otherwise

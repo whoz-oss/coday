@@ -35,7 +35,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variables (Spring Boot relaxed binding):
  * - `AGENTOS_LIMITS_CASE_MAX_ITERATIONS`  (default: 100)
  * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 1000)
- * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: unset)
+ * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: 2 in the shipped `application.yml`; null in code)
  * - `AGENTOS_LIMITS_CONTEXT_COMPACTION_THRESHOLD` (default: 0.8)
  * - `AGENTOS_LIMITS_CONTEXT_COMPACTION_TARGET`    (default: 0.5)
  *
@@ -46,7 +46,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     case-max-iterations: 100
  *     agent-max-iterations: 1000
  *     agent-loop-max-items: 50
- *     run-cost-threshold: 10.0
+ *     run-cost-threshold: 2.0
  *     context-compaction-threshold: 0.8
  *     context-compaction-target: 0.5
  * ```
@@ -126,7 +126,15 @@ data class LimitsConfigProperties(
      * "unlimited". A case that materialises its own value leaves the inherited regime and is
      * no longer affected by later namespace changes.
      *
-     * Defaults to null for not defined.
+     * ## Default
+     *
+     * The code default is null (not defined), which keeps the classes that build these properties by hand
+     * free of a limit. The shipped `application.yml` sets the platform default to **2**, overridable with
+     * `AGENTOS_LIMITS_RUN_COST_THRESHOLD`; an empty value binds to null, i.e. no platform limit.
+     *
+     * The guard only runs while usage tracking is enabled (`agentos.usage.enabled`), and the value is
+     * materialised on a [io.whozoss.agentos.caseFlow.Case] when it is created: it never reaches an
+     * existing case.
      */
     val runCostThreshold: Double? = null,
     /**

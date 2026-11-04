@@ -4,6 +4,7 @@ import io.whozoss.agentos.caseFlow.CaseLaunchGate
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.LaunchDecision
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -65,8 +66,17 @@ class GitCaseLaunchGate(
         )
     }
 
+    /**
+     * A case that no longer exists has no workspace to keep open for: shutdown must not fail on it,
+     * nor log a stack trace per case. Any other lookup failure still propagates.
+     */
     override fun keepOpenOnShutdown(caseId: UUID): Boolean =
-        exchangeRootResolver.resolveGit(caseId).binding != null
+        try {
+            exchangeRootResolver.resolveGit(caseId).binding != null
+        } catch (e: ResourceNotFoundException) {
+            logger.debug { "Case $caseId no longer exists at shutdown: ${e.message}" }
+            false
+        }
 
     override fun requireAccepting(caseId: UUID) {
         exchangeRootResolver.resolveGit(caseId).binding?.let { binding ->

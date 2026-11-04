@@ -17,5 +17,13 @@ export interface IntegrationConfig {
   name: string
   namespaceId?: string | null
   parameters?: any | null
+  /**
+   * Configuration origin. FILESYSTEM entries are read-only; no local path is exposed.
+   */
+  readonly source: IntegrationConfigSourceEnum
   userId?: string | null
+}
+export enum IntegrationConfigSourceEnum {
+  NEO4J = 'NEO4J',
+  FILESYSTEM = 'FILESYSTEM',
 }

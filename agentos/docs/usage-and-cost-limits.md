@@ -4,18 +4,23 @@ Agent execution now connects model pricing (#1305), usage persistence and aggreg
 
 ## Platform switch
 
-Usage tracking and cost confirmation are **disabled by default**, including in the Whoz profile.
-Enable them explicitly at process startup:
+Usage tracking and cost confirmation are **enabled by default**, in every profile including
+Whoz. Disable them explicitly at process startup:
 
 ```yaml
 agentos:
   usage:
-    enabled: true
+    enabled: false
 ```
 
-The equivalent environment variable is `AGENTOS_USAGE_ENABLED=true`. Set it to `false`
-and restart the service to disable the feature during an incident. This switch takes
+The equivalent environment variable is `AGENTOS_USAGE_ENABLED=false`. Set it and restart
+the service to disable the feature, for instance during an incident. This switch takes
 precedence over every platform, namespace and case cost threshold.
+
+The default lives in the shipped `application.yml`. The Kotlin class `UsageConfigProperties`
+stays `false` in code, so a service built by hand (a unit test, for instance) is inert
+unless it is given `enabled = true`, like `agentos.limits.run-cost-threshold`, which is
+null in code and 2 in the yml.
 
 When disabled, agent execution creates no `UsageAccumulator`, registers no live cost
 session, and neither reads nor writes usage records. OpenAI-compatible requests do not
@@ -37,10 +42,16 @@ and loses uncommitted live usage; it does not transparently resume suspended cal
 After re-enabling, collection starts with new agent invocations; the disabled period
 cannot be reconstructed from missing usage metadata.
 
+Because it is on by default, the platform threshold of 2 applies out of the box: a run
+asks for a confirmation once its known cost reaches it. Cost is a lower bound, or unknown,
+for a model with no `pricing`, and AgentSimple's tool-round limit applies as well.
+
 ## Setup
 
-1. Enable the platform switch, then configure model prices using the existing `AiModel.pricing` fields, per million tokens: input, output, cache read and cache write. Use one consistent currency across the platform. Historical records retain the estimate calculated when the call ran.
-2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace → platform. When the threshold environment variable is absent, the platform threshold is `null`; if the entire chain is unset, the monetary gate is disabled while enabled usage tracking continues. A positive value enables the check at that threshold. `0` is a zero threshold and therefore stops for confirmation immediately; it does not disable the check. Negative values are unsupported and do not mean unlimited. Existing iteration guards remain independent.
+1. Leave the platform switch on (it is by default), then configure model prices using the existing `AiModel.pricing` fields, per million tokens: input, output, cache read and cache write. Use one consistent currency across the platform. Historical records retain the estimate calculated when the call ran.
+2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace → platform. The shipped platform default is **2**, in the platform's currency unit, so every deployment has a limit unless it says otherwise. To run without a platform limit, set the variable to an empty value (`AGENTOS_LIMITS_RUN_COST_THRESHOLD=`): the platform threshold is then `null`, and if the entire chain is unset the monetary gate is disabled while enabled usage tracking continues. A positive value enables the check at that threshold. `0` is a zero threshold and therefore stops for confirmation immediately; it does not disable the check. Negative values are unsupported and do not mean unlimited. Existing iteration guards remain independent.
+
+   The default is written on a case when the case is created (see below), so changing it never reaches an existing case, and a namespace or case that sets its own value keeps it. Like the rest of the monetary gate it does nothing when the platform switch has been turned off.
 3. Deploy the matching SDK, service and generated API client/UI together. No additional Copilot provider configuration shape is introduced by this PR; prices and thresholds must be populated through the configuration introduced by the prerequisite PRs.
 
 ## Runtime behavior
