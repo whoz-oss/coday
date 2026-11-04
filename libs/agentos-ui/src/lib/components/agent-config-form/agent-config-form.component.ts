@@ -37,15 +37,41 @@ import {
   namedSelectorKeys,
   normalizeSkillSelector,
 } from '../../services/skill-selector.utils'
+import {
+  ALL_SUB_AGENTS_SELECTOR,
+  grantsAllSubAgents,
+  isGrantedByPattern,
+  isSubAgentPattern,
+  namedSubAgentKeys,
+} from '../../services/sub-agent-selector.utils'
 import { SkillStateService } from '../../services/skill-state.service'
 import { CONFIG_AGENT_TYPE, isConfigAgentExposed } from './config-agent-exposure'
 
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
 
-/** Represents one sub-agent glob pattern entry in the list. */
+/**
+ * One line of the sub-agents section: an agent this one may delegate to.
+ *
+ * Shaped like [SkillRow] and for the same reason — [selector] is what gets written back, [name]
+ * what gets displayed, and they differ for an [unresolved] row, where the persisted selector is
+ * kept verbatim rather than rewritten into something the form cannot verify.
+ *
+ * The section offers names because the server resolves the allowlist against names: an id matches
+ * nobody and leaves the agent with no delegation tool at all, which it then reports as being unable
+ * to delegate rather than as a broken configuration.
+ */
 interface SubAgentRow {
-  control: FormControl<string>
+  /** Value written to AgentConfig.subAgents when the row is selected. */
+  selector: string
+  name: string
+  /** The agent declares this selector but no reachable agent carries that name. */
+  unresolved: boolean
+  /** The selector is a glob, so it resolves against names this form cannot enumerate. */
+  pattern: boolean
+  /** A glob among the selectors reaches this agent, whether or not its own box is ticked. */
+  grantedByPattern: boolean
+  selected: WritableSignal<boolean>
 }
 
 /**
@@ -252,16 +278,65 @@ export class AgentConfigFormComponent implements OnInit {
 
   // ── Sub-agents list ───────────────────────────────────────────────────────
 
-  /** Current list of sub-agent glob patterns, each backed by a live FormControl. */
+  /** One row per reachable agent, plus one per selector no reachable agent matches. */
   protected readonly subAgentRows = signal<SubAgentRow[]>([])
 
-  /** Input control for the "add new pattern" field at the bottom of the list. */
+  /** The `*` selector: delegate to whatever the namespace resolves to, now and later. */
+  protected readonly allSubAgentsSelected = signal(false)
+
+  /**
+   * True when the reachable agents could not be listed. The rows then come from the agent's own
+   * selectors alone, so they must not be labelled unknown — the form simply has nothing to check
+   * them against this session.
+   */
+  protected readonly subAgentCandidatesUnavailable = signal(false)
+
+  /**
+   * True when saving would make the selection below redundant by granting `*`.
+   *
+   * Every pattern is tried server-side and any match wins, so the names would still resolve — but
+   * they would no longer decide anything, and the stored list would read as a restriction that is
+   * not one. Surfaced before the save rather than discovered after it.
+   */
+  protected readonly namedSubAgentSelectionDropped = computed(
+    () => this.allSubAgentsSelected() && this.subAgentRows().some((r) => r.selected())
+  )
+
+  /**
+   * How many flagged selectors `*` would delete, i.e. ticked rows no reachable agent answers for.
+   *
+   * Counted apart because those are the rows the section promises to keep: a selector an agent
+   * already declares, which no catalogue entry matches, is the one thing here that cannot be
+   * typed back from what is on screen. "Replaces the selection below" reads as the ticked names,
+   * so without this the save silently drops an id or a retired agent's name, which is both a
+   * deletion of someone else's configuration and the loss of the evidence that it was broken.
+   */
+  protected readonly droppedUnresolvedSubAgents = computed(() =>
+    this.allSubAgentsSelected() ? this.subAgentRows().filter((r) => r.unresolved && r.selected()).length : 0
+  )
+
+  /** Whether this agent ends up with any delegation at all, by name or through `*`. */
+  protected readonly hasAnySubAgent = computed(
+    () => this.allSubAgentsSelected() || this.subAgentRows().some((r) => r.selected())
+  )
+
+  /** Input control for the "add a pattern" field under the list. */
   protected readonly newSubAgentControl = new FormControl<string>('', { nonNullable: true })
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isExporting = signal(false)
+
+  /**
+   * Why the last save was refused, as the server explained it.
+   *
+   * The form used to drop the error and only clear its submitting flag, so a refused save looked
+   * like nothing happening at all — the caller could not tell a validation refusal from a dead
+   * button. The service answers with `server.error.include-message: always`, so the reason it gives
+   * is worth showing verbatim.
+   */
+  protected readonly submitError = signal<string | null>(null)
 
   /** Expose the enum to the template for option value bindings. */
   protected readonly ExecutionMode = AgentConfigExecutionModeEnum
@@ -306,7 +381,7 @@ export class AgentConfigFormComponent implements OnInit {
       integrationTypes: this.integrationRows()
         .filter((row) => row.enabled())
         .map((row) => row.config.integrationType),
-      hasSubAgents: this.subAgentRows().length > 0,
+      hasSubAgents: this.hasAnySubAgent(),
     })
   )
 
@@ -375,10 +450,18 @@ export class AgentConfigFormComponent implements OnInit {
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
       builtInTypes: this.loadBuiltInTypes(),
       skillCatalogue: this.loadSkillCatalogue(),
+      delegationCandidates: this.loadDelegationCandidates(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ config, namespaceIntegrations, platformIntegrations, builtInTypes, skillCatalogue }) => {
+        next: ({
+          config,
+          namespaceIntegrations,
+          platformIntegrations,
+          builtInTypes,
+          skillCatalogue,
+          delegationCandidates,
+        }) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
@@ -395,9 +478,8 @@ export class AgentConfigFormComponent implements OnInit {
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, config.integrations ?? undefined))
-          this.subAgentRows.set(
-            (config.subAgents ?? []).map((p) => ({ control: new FormControl<string>(p, { nonNullable: true }) }))
-          )
+          this.allSubAgentsSelected.set(grantsAllSubAgents(config.subAgents))
+          this.subAgentRows.set(this.buildSubAgentRows(delegationCandidates, config.subAgents, config.name))
           this.allSkillsSelected.set(grantsAllSkills(config.skillSelectors))
           this.skillRows.set(this.buildSkillRows(skillCatalogue, config.skillSelectors))
           this.isLoading.set(false)
@@ -421,13 +503,16 @@ export class AgentConfigFormComponent implements OnInit {
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
       builtInTypes: this.loadBuiltInTypes(),
       skillCatalogue: this.loadSkillCatalogue(),
+      delegationCandidates: this.loadDelegationCandidates(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ namespaceIntegrations, platformIntegrations, builtInTypes, skillCatalogue }) => {
+        next: ({ namespaceIntegrations, platformIntegrations, builtInTypes, skillCatalogue, delegationCandidates }) => {
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, existingIntegrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, existingIntegrations ?? undefined))
+          this.allSubAgentsSelected.set(false)
+          this.subAgentRows.set(this.buildSubAgentRows(delegationCandidates, undefined, null))
           this.allSkillsSelected.set(false)
           this.skillRows.set(this.buildSkillRows(skillCatalogue, undefined))
         },
@@ -544,6 +629,135 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
+   * The agents this config may delegate to, as the server resolves them.
+   *
+   * `findDeployedByNamespaceIdAndUserId` keeps `a.namespaceId IS NULL OR a.namespaceId = $ns` and
+   * `$withDisabled OR a.enabled` with the flag defaulted to false, so the reachable set is the
+   * platform agents **plus** the namespace's own, **enabled only**. Offering the namespace alone
+   * flagged a working platform selector as matching nothing, and offering disabled agents let the
+   * form produce the configuration this whole change exists to prevent: a selector that resolves
+   * to nobody and silently leaves the agent with no delegation tool.
+   *
+   * Still an approximation in one direction: the query also requires the agent to be deployed to
+   * the namespace or to a group the user belongs to, which no endpoint exposes. An agent that
+   * exists but is not deployed is therefore offered here and will not resolve at run time.
+   *
+   * Fail-safe like [loadSkillCatalogue]: an error yields an empty list and flags
+   * [subAgentCandidatesUnavailable] rather than blocking the whole form.
+   */
+  private loadDelegationCandidates(): Observable<string[]> {
+    const platform$ = this.agentConfigController.listPlatformAgentsAgentConfig(false).pipe(this.orNoCandidates())
+    const namespace$ = this.namespaceId
+      ? this.agentConfigController.listByParentAgentConfig(this.namespaceId, false).pipe(this.orNoCandidates())
+      : of([] as AgentConfig[])
+    return forkJoin({ platform: platform$, namespace: namespace$ }).pipe(
+      map(({ platform, namespace }) => [...platform, ...namespace]),
+      map((agents) => agents.map((a) => a.name).filter((name): name is string => name.length > 0)),
+      map((names) => AgentConfigFormComponent.dedupeByKey(names))
+    )
+  }
+
+  /**
+   * Fallback for one of the two candidate lists: an empty list, and the section flagged.
+   *
+   * Per call rather than around the pair, so one refused list does not discard the other. A user
+   * with no read on the namespace still gets the platform agents, and their platform selectors
+   * still resolve, instead of every row being flagged as unverifiable.
+   */
+  private orNoCandidates(): (source: Observable<AgentConfig[]>) => Observable<AgentConfig[]> {
+    return catchError((err) => {
+      console.error('[agent-config-form] failed to load the delegation candidates', err)
+      this.subAgentCandidatesUnavailable.set(true)
+      return of([] as AgentConfig[])
+    })
+  }
+
+  /**
+   * The names with case-insensitive duplicates collapsed, keeping the first spelling.
+   *
+   * Agent names are unique per scope and case-insensitively (`AgentConfigServiceImpl`), but the
+   * platform and the namespace are two scopes, so `Reviewer` and `reviewer` can both be reachable.
+   * The server matches selectors case-insensitively, so one selector grants both and the form
+   * cannot offer them apart: two rows would let a user tick one, see the other unticked, and ship
+   * a grant that covers both.
+   */
+  private static dedupeByKey(names: string[]): string[] {
+    const seen = new Set<string>()
+    return names.filter((name) => {
+      const key = name.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
+
+  /**
+   * Build one row per reachable agent, pre-selected from the agent's selectors, then one extra row
+   * per selector nothing matched.
+   *
+   * Those extra rows are the point of the method: a selector naming an agent that was renamed or
+   * deleted, a glob such as `*Fixer`, or an id written by a configuring agent before the server
+   * refused them, all stay visible and selected so an unrelated save preserves them verbatim.
+   * Dropping one would be a silent edit of someone else's configuration — and, for the id, would
+   * hide the very reason delegation is not working.
+   *
+   * Matching is case-insensitive, like the server's glob match, so a selector stored as `reviewer`
+   * ticks the row of the agent named `Reviewer` instead of adding an unresolved twin. Writing back
+   * then stores the agent's own spelling, which is the same allowlist either way.
+   *
+   * [selfName] is withheld from the offered names so the form never proposes an agent delegating to
+   * itself; a config that already names itself keeps it as a row, so nothing is lost.
+   *
+   * The `*` grant is not a row: the caller reads it from the same selectors into
+   * [allSubAgentsSelected], so this method only maps the named ones.
+   */
+  private buildSubAgentRows(
+    candidateNames: string[],
+    selectors: AgentConfig['subAgents'],
+    selfName: string | null
+  ): SubAgentRow[] {
+    const declaredKeys = namedSubAgentKeys(selectors)
+    const selfKey = selfName?.toLowerCase() ?? null
+    // Self is withheld so the form never proposes an agent delegating to itself, but kept when the
+    // config already names it: the reachable set the run resolves against contains the agent, so
+    // self-delegation works, and showing that selector as "no matching agent" would have the form
+    // contradict the run and invite deleting a selector that does something.
+    const offered = candidateNames.filter((name) => {
+      const key = name.toLowerCase()
+      return key !== selfKey || declaredKeys.has(key)
+    })
+    const offeredKeys = new Set(offered.map((name) => name.toLowerCase()))
+
+    const rows: SubAgentRow[] = offered.map((name) => ({
+      selector: name,
+      name,
+      unresolved: false,
+      pattern: false,
+      // Named or not, a glob below may already reach it: saying nothing would report this agent
+      // as outside a grant the run will honour.
+      grantedByPattern: isGrantedByPattern(name, selectors),
+      selected: signal(declaredKeys.has(name.toLowerCase())),
+    }))
+
+    const seen = new Set<string>()
+    const named = (selectors ?? []).map((s) => s.trim()).filter((s) => s.length > 0 && s !== ALL_SUB_AGENTS_SELECTOR)
+    for (const selector of named) {
+      const key = selector.toLowerCase()
+      if (offeredKeys.has(key) || seen.has(key)) continue
+      seen.add(key)
+      rows.push({
+        selector,
+        name: selector,
+        unresolved: true,
+        pattern: isSubAgentPattern(selector),
+        grantedByPattern: false,
+        selected: signal(true),
+      })
+    }
+    return rows
+  }
+
+  /**
    * Resolve whether the file-exchange plugin is loaded by looking for a `FILE_ACCESS`
    * integration type. Resilient: any error (e.g. endpoint unavailable) resolves to an empty
    * list so it never blocks the integrations load, and the built-in rows stay hidden (fail-safe).
@@ -625,28 +839,106 @@ export class AgentConfigFormComponent implements OnInit {
     return row.enabledByDefault ? 'Platform default (enabled)' : 'Platform default (disabled)'
   }
 
-  /** Add the current newSubAgentControl value as a new row, then reset the input. */
+  /**
+   * Add the typed pattern as a selected row, then reset the input.
+   *
+   * Kept for the globs the checkboxes cannot express — `*Fixer` and the like. A plain name typed
+   * here ticks its existing row instead of creating a duplicate, so the list never shows the same
+   * agent twice.
+   */
   protected addSubAgent(): void {
     const pattern = this.newSubAgentControl.value.trim()
     if (!pattern) return
-    this.subAgentRows.update((rows) => [...rows, { control: new FormControl<string>(pattern, { nonNullable: true }) }])
+    const existing = this.subAgentRows().find((r) => r.selector.toLowerCase() === pattern.toLowerCase())
+    if (existing) {
+      existing.selected.set(true)
+    } else if (pattern === ALL_SUB_AGENTS_SELECTOR) {
+      this.allSubAgentsSelected.set(true)
+    } else {
+      this.subAgentRows.update((rows) =>
+        this.withPatternGrants([
+          ...rows,
+          {
+            selector: pattern,
+            name: pattern,
+            unresolved: true,
+            pattern: isSubAgentPattern(pattern),
+            grantedByPattern: false,
+            selected: signal(true),
+          },
+        ])
+      )
+    }
     this.newSubAgentControl.reset('')
   }
 
-  /** Remove a row from the list. */
+  /**
+   * Drop a row entirely. Only ever offered on a row the catalogue did not provide.
+   *
+   * Matched on the selector, not on object identity: [addSubAgent] replaces the rows a new pattern
+   * reaches with copies, so a row handed to this method is not always the object now in the array.
+   * Selectors are unique across rows (the catalogue's names win, and a typed duplicate ticks the
+   * row it matches instead of adding one), so one selector removes one row.
+   */
   protected removeSubAgent(row: SubAgentRow): void {
-    this.subAgentRows.update((rows) => rows.filter((r) => r !== row))
+    const key = row.selector.toLowerCase()
+    this.subAgentRows.update((rows) => this.withPatternGrants(rows.filter((r) => r.selector.toLowerCase() !== key)))
+  }
+
+  protected toggleSubAgent(row: SubAgentRow): void {
+    row.selected.update((v) => !v)
+    // Only a glob changes what the other rows are reached by; a name reaches itself alone.
+    if (row.pattern) this.subAgentRows.update((rows) => this.withPatternGrants(rows))
   }
 
   /**
-   * Convert the sub-agent rows into the AgentConfig.subAgents payload.
-   * Empty list → undefined (no delegation capability).
+   * Re-answer, for every catalogue row, whether a glob the form would save reaches it.
+   *
+   * Recomputed from the whole list on every change rather than patched where the change happened:
+   * dropping a pattern row, or unticking it, used to leave the agents it had reached still labelled
+   * "via pattern". That label is a claim about what the saved config will allow, and a stale one
+   * invites the user to untick an agent's own box believing a glob still covers it, which produces
+   * exactly the silent "cannot delegate" this section exists to prevent.
+   *
+   * Only ticked rows count: an unticked selector is not written, so it grants nothing. With `*` on,
+   * no row is granted by a glob either: [buildSubAgentsPayload] writes `*` alone and drops them.
+   * Unresolved rows keep false, as they are the selectors themselves rather than agents a selector
+   * reaches.
+   */
+  private withPatternGrants(rows: SubAgentRow[]): SubAgentRow[] {
+    // Reads the `*` toggle itself rather than taking it as an argument: every caller must account
+    // for it, and an omitted parameter would quietly restore the stale label this exists to stop.
+    const active = this.allSubAgentsSelected() ? [] : rows.filter((r) => r.selected()).map((r) => r.selector)
+    return rows.map((row) =>
+      row.unresolved ? row : { ...row, grantedByPattern: isGrantedByPattern(row.name, active) }
+    )
+  }
+
+  protected toggleAllSubAgents(): void {
+    this.allSubAgentsSelected.update((v) => !v)
+    // The third path that changes what gets saved: with `*` on, buildSubAgentsPayload writes it
+    // alone and drops the globs, so a "via pattern" badge would describe a selector the save
+    // discards. Same staleness as removing or unticking the glob.
+    this.subAgentRows.update((rows) => this.withPatternGrants(rows))
+  }
+
+  /**
+   * Convert the sub-agents section into the AgentConfig.subAgents payload.
+   *
+   * `*` is written alone: every pattern is tried server-side and any match wins, so keeping the
+   * names beside it would store a restriction that restricts nothing. The template warns while the
+   * trade is still reversible.
+   *
+   * Nothing selected → undefined, which grants no delegation at all. The section lists every
+   * selector the agent has, including the ones it could not resolve, so an empty selection is a
+   * choice the user can see having made.
    */
   protected buildSubAgentsPayload(): AgentConfig['subAgents'] {
-    const patterns = this.subAgentRows()
-      .map((r) => r.control.value.trim())
-      .filter((p) => p.length > 0)
-    return patterns.length > 0 ? patterns : undefined
+    if (this.allSubAgentsSelected()) return [ALL_SUB_AGENTS_SELECTOR]
+    const selected = this.subAgentRows()
+      .filter((r) => r.selected())
+      .map((r) => r.selector)
+    return selected.length > 0 ? selected : undefined
   }
 
   /**
@@ -712,6 +1004,7 @@ export class AgentConfigFormComponent implements OnInit {
     // without pressing "+" or Enter, we include it rather than silently dropping it.
     this.addSubAgent()
 
+    this.submitError.set(null)
     this.isSubmitting.set(true)
 
     // createdOn / updatedOn are server-set audit fields — omitted on create, preserved from
@@ -748,8 +1041,34 @@ export class AgentConfigFormComponent implements OnInit {
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
-      error: () => this.isSubmitting.set(false),
+      error: (err: unknown) => {
+        this.isSubmitting.set(false)
+        this.submitError.set(AgentConfigFormComponent.serverMessage(err))
+      },
     })
+  }
+
+  /**
+   * The server's own explanation of a refused save, or the nearest true statement when it gave none.
+   *
+   * Reads `message` from the error body, which is where Spring puts the `ResponseStatusException`
+   * reason.
+   *
+   * Without one, the fallback follows the status rather than assuming a refusal. A status of 0 is
+   * a request that never arrived, and a 5xx is a server that broke: telling the user to check
+   * their values sends them hunting a validation problem in a form that is valid, which is the
+   * same misreport as a stale badge, on the error path.
+   */
+  private static serverMessage(err: unknown): string {
+    const body = (err as { error?: unknown } | null)?.error
+    const message = (body as { message?: unknown } | null)?.message
+    if (typeof message === 'string' && message.trim().length > 0) return message
+    const status = (err as { status?: unknown } | null)?.status
+    if (status === 0) return 'The server could not be reached. The agent was not saved.'
+    if (typeof status === 'number' && status >= 500) {
+      return `The server failed to save the agent (HTTP ${status}). Nothing was changed.`
+    }
+    return 'The server refused the save and gave no reason. Check the values and try again.'
   }
 
   protected exportYaml(): void {

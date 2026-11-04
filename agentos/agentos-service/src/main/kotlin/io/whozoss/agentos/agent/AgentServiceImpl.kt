@@ -974,7 +974,20 @@ class AgentServiceImpl(
         val allowedAgents = accessibleNames.filter { name -> regexes.any { it.matches(name) } }
 
         if (allowedAgents.isEmpty()) {
-            logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
+            // The agent is about to run with no delegation tool and no way to say why: to the model,
+            // a missing tool and a configuration that resolves to nobody look the same. Name the
+            // consequence and the candidates, so this line alone explains a run that answers
+            // "I cannot delegate" — the symptom the selectors were misconfigured for.
+            logger.warn {
+                "DelegationTool: agent '${config.name}' gets no delegation tool — none of the agents it can " +
+                    "reach matched its subAgents selectors $patterns. Selectors match agent names, not ids. " +
+                    "Reachable names: ${accessibleNames.take(DELEGATION_CANDIDATES_LOGGED)}" +
+                    if (accessibleNames.size > DELEGATION_CANDIDATES_LOGGED) {
+                        " (+${accessibleNames.size - DELEGATION_CANDIDATES_LOGGED} more)"
+                    } else {
+                        ""
+                    }
+            }
             return null
         }
 
@@ -1239,5 +1252,8 @@ class AgentServiceImpl(
                 AuthType.OAUTH_CUSTOM,
                 AuthType.OAUTH_MCP_DISCOVERABLE,
             )
+
+        /** Enough reachable names to correct a selector by hand; a large namespace must not flood the log. */
+        private const val DELEGATION_CANDIDATES_LOGGED = 20
     }
 }

@@ -252,42 +252,106 @@
         <p class="agent-config-form__toggle-hint">Disabled agents are excluded from namespace resolution.</p>
       </div>
 
-      <div class="agent-config-form__field">
-        <span class="agent-config-form__label">Sub-agents</span>
-        <p class="agent-config-form__field-hint">
-          Glob patterns for agents this agent may delegate to. <code class="agent-config-form__code">*</code> matches
-          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
-          <code class="agent-config-form__code">*</code> for all). Leave empty to disable delegation.
+      <!-- Sub-agents section: writes AgentConfig.subAgents -->
+      <fieldset class="agent-config-form__skills">
+        <legend class="agent-config-form__label">Sub-agents</legend>
+        <p class="agent-config-form__skills-hint">
+          The agents this one may delegate to. Selecting at least one grants it the
+          <code class="agent-config-form__code">DELEGATE__delegate</code> tool; selecting none grants it no way to
+          delegate. Entries are matched against agent names, never ids.
+          @if (isPlatformMode) {
+            A platform config can only list platform agents here: a namespace's agents are resolved per namespace when
+            the agent runs.
+          }
         </p>
 
-        @if (subAgentRows().length > 0) {
-          <ul class="agent-config-form__sub-agent-list">
-            @for (row of subAgentRows(); track $index) {
-              <li class="agent-config-form__sub-agent-row">
+        <label class="agent-config-form__skill-all">
+          <input
+            class="agent-config-form__skill-checkbox"
+            type="checkbox"
+            [checked]="allSubAgentsSelected()"
+            (change)="toggleAllSubAgents()"
+          />
+          <span class="agent-config-form__skill-name">
+            Every agent it can reach (<code class="agent-config-form__code">*</code>)
+          </span>
+        </label>
+        <p class="agent-config-form__field-hint">
+          Resolved at run time, so agents added later can be delegated to as well, without editing this agent.
+        </p>
+
+        @if (namedSubAgentSelectionDropped()) {
+          <p class="agent-config-form__skills-warning" role="alert">
+            Saving with this on replaces the selection below with
+            <code class="agent-config-form__code">*</code>.
+            @if (droppedUnresolvedSubAgents() > 0) {
+              That deletes
+              {{ droppedUnresolvedSubAgents() }}
+              flagged
+              {{ droppedUnresolvedSubAgents() === 1 ? 'selector' : 'selectors' }}
+              nothing matched, which this form cannot restore.
+            }
+          </p>
+        }
+
+        @if (subAgentCandidatesUnavailable()) {
+          <p class="agent-config-form__skills-warning" role="alert">
+            The list of agents could not be loaded. What this agent already declares is listed below and preserved on
+            save.
+          </p>
+        }
+
+        @if (subAgentRows().length === 0) {
+          <p class="agent-config-form__skills-empty">No other agent is available in this scope yet.</p>
+        } @else {
+          @for (row of subAgentRows(); track row.selector) {
+            <div class="agent-config-form__skill-row">
+              <label class="agent-config-form__skill-toggle">
                 <input
-                  class="agent-config-form__input agent-config-form__sub-agent-input"
-                  type="text"
-                  autocomplete="off"
-                  [formControl]="row.control"
+                  class="agent-config-form__skill-checkbox"
+                  type="checkbox"
+                  [checked]="row.selected()"
+                  [disabled]="allSubAgentsSelected()"
+                  (change)="toggleSubAgent(row)"
                 />
+                <span class="agent-config-form__skill-name">{{ row.name }}</span>
+                @if (row.pattern) {
+                  <span class="agent-config-form__skill-badge">pattern</span>
+                } @else if (row.grantedByPattern) {
+                  <!-- Reached by a glob below: the box is not ticked, yet the run grants it. -->
+                  <span class="agent-config-form__skill-badge">via pattern</span>
+                } @else if (row.unresolved) {
+                  <span class="agent-config-form__skill-badge agent-config-form__skill-badge--unresolved">
+                    {{ subAgentCandidatesUnavailable() ? 'not verified' : 'no matching agent' }}
+                  </span>
+                }
+              </label>
+              <!-- Outside the label: a button is labelable, so nesting it here made its glyph part
+                   of the checkbox's accessible name. The skills rows keep their extras outside too. -->
+              @if (row.unresolved) {
                 <button
                   class="agent-config-form__sub-agent-btn agent-config-form__sub-agent-btn--danger"
                   type="button"
+                  [attr.aria-label]="'Remove ' + row.selector"
                   title="Remove"
                   (click)="removeSubAgent(row)"
                 >
                   &#128465;
                 </button>
-              </li>
-            }
-          </ul>
+              }
+            </div>
+          }
         }
 
+        <p class="agent-config-form__field-hint">
+          Advanced — add a glob instead of picking a name, for example
+          <code class="agent-config-form__code">*Fixer</code> to cover BugFixer and StoryFixer.
+        </p>
         <div class="agent-config-form__sub-agent-add">
           <input
             class="agent-config-form__input agent-config-form__sub-agent-input"
             type="text"
-            placeholder="e.g. *Fixer or *"
+            placeholder="e.g. *Fixer"
             autocomplete="off"
             [formControl]="newSubAgentControl"
             (keydown.enter)="addSubAgent()"
@@ -302,7 +366,7 @@
             +
           </button>
         </div>
-      </div>
+      </fieldset>
 
       <div class="agent-config-form__field">
         <label class="agent-config-form__label" for="delegation-timeout">Delegation timeout (seconds)</label>
@@ -338,6 +402,10 @@
           </button>
         }
       </div>
+
+      @if (submitError(); as message) {
+        <p class="agent-config-form__submit-error" role="alert">{{ message }}</p>
+      }
 
       <div class="agent-config-form__actions">
         <button
