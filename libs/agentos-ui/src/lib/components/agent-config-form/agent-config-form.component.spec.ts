@@ -105,6 +105,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       addSubAgent: () => void
       removeSubAgent: (row: { selector: string }) => void
       toggleAllSubAgents: () => void
+      droppedUnresolvedSubAgents: () => number
       toggleSubAgent: (row: { pattern: boolean; selected: { (): boolean; set: (v: boolean) => void } }) => void
       submitError: () => string | null
       submit: () => void
@@ -649,6 +650,31 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
           .subAgentRows()
           .find((r) => r.name === 'BugFixer')?.grantedByPattern
       ).toBe(false)
+    })
+
+    it('counts the flagged selectors * would delete, which the form cannot restore', () => {
+      // The section promises that what the agent already declares is kept. With * on, the payload
+      // is ['*'] alone, so a stored id or a retired agent's name goes with it, and "replaces the
+      // selection below" reads as the ticked names rather than as that deletion.
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer')))
+      controller.getByIdAgentConfig.mockReturnValue(
+        of(editConfig({ subAgents: ['*', '3f2504e0-4f89-41d3-9a0c-0305e82c3301', 'RetiredAgent'] }))
+      )
+
+      component.ngOnInit()
+
+      expect(internals().droppedUnresolvedSubAgents()).toBe(2)
+    })
+
+    it('counts nothing to delete while * is off', () => {
+      routeAgentConfigId = 'a-1'
+      controller.listByParentAgentConfig.mockReturnValue(of(named('BugFixer')))
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ subAgents: ['RetiredAgent'] })))
+
+      component.ngOnInit()
+
+      expect(internals().droppedUnresolvedSubAgents()).toBe(0)
     })
 
     it('keeps the agent itself as a real row when its config already delegates to itself', () => {

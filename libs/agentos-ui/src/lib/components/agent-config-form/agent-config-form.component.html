@@ -283,6 +283,13 @@
           <p class="agent-config-form__skills-warning" role="alert">
             Saving with this on replaces the selection below with
             <code class="agent-config-form__code">*</code>.
+            @if (droppedUnresolvedSubAgents() > 0) {
+              That deletes
+              {{ droppedUnresolvedSubAgents() }}
+              flagged
+              {{ droppedUnresolvedSubAgents() === 1 ? 'selector' : 'selectors' }}
+              nothing matched, which this form cannot restore.
+            }
           </p>
         }
 

@@ -302,6 +302,19 @@ export class AgentConfigFormComponent implements OnInit {
     () => this.allSubAgentsSelected() && this.subAgentRows().some((r) => r.selected())
   )
 
+  /**
+   * How many flagged selectors `*` would delete, i.e. ticked rows no reachable agent answers for.
+   *
+   * Counted apart because those are the rows the section promises to keep: a selector an agent
+   * already declares, which no catalogue entry matches, is the one thing here that cannot be
+   * typed back from what is on screen. "Replaces the selection below" reads as the ticked names,
+   * so without this the save silently drops an id or a retired agent's name, which is both a
+   * deletion of someone else's configuration and the loss of the evidence that it was broken.
+   */
+  protected readonly droppedUnresolvedSubAgents = computed(() =>
+    this.allSubAgentsSelected() ? this.subAgentRows().filter((r) => r.unresolved && r.selected()).length : 0
+  )
+
   /** Whether this agent ends up with any delegation at all, by name or through `*`. */
   protected readonly hasAnySubAgent = computed(
     () => this.allSubAgentsSelected() || this.subAgentRows().some((r) => r.selected())
