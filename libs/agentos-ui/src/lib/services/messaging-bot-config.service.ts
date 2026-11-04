@@ -1,5 +1,6 @@
 import { inject, Injectable } from '@angular/core'
 import {
+  MessagingAppManifestDto,
   MessagingBotControllerService,
   MessagingBotDto,
   MessagingBotManagerDto,
@@ -21,14 +22,23 @@ export class MessagingBotConfigService {
     return this.botController.listAgentMessagingBots(namespaceId, agentId)
   }
 
-  /** Gives the agent the bot of [token], created with Telegram's BotFather. */
+  /**
+   * Gives the agent the bot of [token]: a Telegram bot created with BotFather, or a Slack app, whose [appToken]
+   * receives the messages.
+   */
   attach(
     namespaceId: string,
     agentId: string,
     platform: MessagingPlatform,
-    token: string
+    token: string,
+    appToken?: string
   ): Observable<MessagingBotDto> {
-    return this.botController.attachMessagingBot(namespaceId, agentId, { platform, token })
+    return this.botController.attachMessagingBot(namespaceId, agentId, { platform, token, appToken })
+  }
+
+  /** The manifest of the app to create for the agent, on a platform where a bot is such an app (Slack). */
+  manifest(namespaceId: string, agentId: string, platform: MessagingPlatform): Observable<MessagingAppManifestDto> {
+    return this.botController.getMessagingBotAppManifest(namespaceId, agentId, platform)
   }
 
   /** The single-use link to the bot manager that creates the agent's bot, with no token to copy. */

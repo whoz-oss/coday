@@ -72,6 +72,10 @@ export class MessagingAccountsComponent {
       })
   }
 
+  protected copy(text: string): void {
+    navigator.clipboard?.writeText(text).catch(() => undefined)
+  }
+
   protected unlink(identity: MessagingIdentityDto): void {
     this.pendingUnlinkId.set(null)
     this.messagingState

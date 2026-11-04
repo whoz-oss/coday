@@ -1,4 +1,5 @@
 import { Actor, AnswerEvent, CaseEvent, MessagingPlatform, QuestionEvent } from '@whoz-oss/agentos-api-client'
+import { messagingPlatformName } from '../messaging-accounts/messaging-platforms'
 
 /**
  * Finds the legitimate answer of a question, mirroring the backend rule
@@ -31,10 +32,6 @@ export function messageAuthorLabel(actor: Actor, currentUserId: string | undefin
   return actor.displayName || 'Someone'
 }
 
-const MESSAGING_PLATFORM_LABELS: Record<MessagingPlatform, string> = {
-  [MessagingPlatform.TELEGRAM]: 'Telegram',
-}
-
 /**
  * The messaging application a user message was sent from, read from the `messaging` entry the backend
  * writes in its session context (`SessionContextKeys.MESSAGING`). Null for a message typed in the UI.
@@ -42,7 +39,7 @@ const MESSAGING_PLATFORM_LABELS: Record<MessagingPlatform, string> = {
 export function messagingPlatformLabel(sessionContext: { [key: string]: unknown } | undefined): string | null {
   const messaging = sessionContext?.['messaging'] as { platform?: unknown } | undefined
   const platform = messaging?.platform
-  return typeof platform === 'string' && platform in MESSAGING_PLATFORM_LABELS
-    ? MESSAGING_PLATFORM_LABELS[platform as MessagingPlatform]
+  return typeof platform === 'string' && (Object.values(MessagingPlatform) as string[]).includes(platform)
+    ? messagingPlatformName(platform as MessagingPlatform)
     : null
 }

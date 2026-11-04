@@ -10,9 +10,13 @@
 import { MessagingPlatform } from './messaging-platform'
 
 export interface MessagingBotAttachRequest {
+  /**
+   * Slack only, required there: the app-level token (xapp-) with the connections:write scope, which receives the messages (Socket Mode). Stored encrypted, never returned.
+   */
+  appToken?: string
   platform: MessagingPlatform
   /**
-   * The bot\'s token. Stored encrypted, never returned.
+   * The bot\'s token: Telegram\'s from BotFather, Slack\'s Bot User OAuth Token (xoxb-). Stored encrypted, never returned.
    */
   token: string
 }

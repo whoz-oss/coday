@@ -1,135 +1,199 @@
 <section class="agent-messaging">
   <h2 class="agent-messaging__title">Messaging</h2>
   <p class="agent-messaging__hint">
-    Users talk to this agent from {{ platformName }} through its bot: their messages go to their cases in this
-    namespace, the answers come back in {{ platformName }}.
+    Users talk to this agent from a messaging application through its bot: their messages go to their cases in this
+    namespace, the answers come back in the application.
   </p>
 
-  @if (bot(); as bot) {
-    <div class="agent-messaging__row">
-      <a class="agent-messaging__bot" [href]="bot.url" target="_blank" rel="noopener">&#64;{{ bot.username }}</a>
-      <span class="agent-messaging__status" [class]="'agent-messaging__status--' + statusTone(bot.status)">
-        {{ statusLabel(bot.status) }}
-      </span>
-      @if (bot.managed) {
-        <span class="agent-messaging__note">created by AgentOS</span>
-      }
-      @if (canAdminister()) {
-        <span class="agent-messaging__spacer"></span>
-        <button type="button" class="agent-messaging__btn" [disabled]="busy()" (click)="toggle(bot)">
-          {{ bot.enabled ? 'Turn off' : 'Turn on' }}
-        </button>
-        @if (confirmingRemove()) {
-          <span class="agent-messaging__note">Remove the bot and its users' links?</span>
-          <button
-            type="button"
-            class="agent-messaging__btn agent-messaging__btn--danger"
-            [disabled]="busy()"
-            (click)="remove(bot)"
-          >
-            Remove
-          </button>
-          <button type="button" class="agent-messaging__btn" (click)="confirmingRemove.set(false)">Cancel</button>
-        } @else {
-          <button type="button" class="agent-messaging__btn" (click)="confirmingRemove.set(true)">Remove</button>
+  @for (platform of platforms; track platform) {
+    <div class="agent-messaging__platform">
+      <h3 class="agent-messaging__platform-title">{{ platformName(platform) }}</h3>
+
+      @if (botOf(platform); as bot) {
+        <div class="agent-messaging__row">
+          <a class="agent-messaging__bot" [href]="bot.url" target="_blank" rel="noopener">&#64;{{ bot.username }}</a>
+          <span class="agent-messaging__status" [class]="'agent-messaging__status--' + statusTone(bot.status)">
+            {{ statusLabel(bot.status) }}
+          </span>
+          @if (bot.managed) {
+            <span class="agent-messaging__note">created by AgentOS</span>
+          }
+          @if (canAdminister()) {
+            <span class="agent-messaging__spacer"></span>
+            <button type="button" class="agent-messaging__btn" [disabled]="busy()" (click)="toggle(bot)">
+              {{ bot.enabled ? 'Turn off' : 'Turn on' }}
+            </button>
+            @if (confirmingRemoveId() === bot.id) {
+              <span class="agent-messaging__note">Remove the bot and its users' links?</span>
+              <button
+                type="button"
+                class="agent-messaging__btn agent-messaging__btn--danger"
+                [disabled]="busy()"
+                (click)="remove(bot)"
+              >
+                Remove
+              </button>
+              <button type="button" class="agent-messaging__btn" (click)="confirmingRemoveId.set(null)">Cancel</button>
+            } @else {
+              <button type="button" class="agent-messaging__btn" (click)="confirmingRemoveId.set(bot.id)">
+                Remove
+              </button>
+            }
+          }
+        </div>
+
+        @if (bot.status === 'TOKEN_REJECTED') {
+          <p class="agent-messaging__warning">
+            {{ platformName(platform) }} refuses this bot's token: it was revoked or replaced. Remove the bot and give
+            the agent a new one.
+          </p>
+        } @else if (bot.status === 'CONFLICT') {
+          <p class="agent-messaging__warning">
+            Another program receives this bot's messages, such as another AgentOS instance: give each instance its own
+            bot.
+          </p>
         }
+
+        @if (bot.linked) {
+          <p class="agent-messaging__hint">Your {{ platformName(platform) }} account is connected to this bot.</p>
+        } @else if (connectLinkOf(bot); as link) {
+          <div class="agent-messaging__row">
+            <a
+              class="agent-messaging__btn agent-messaging__btn--primary"
+              [href]="link.url"
+              target="_blank"
+              rel="noopener"
+            >
+              Open &#64;{{ bot.username }}
+            </a>
+            @if (link.code; as code) {
+              <span class="agent-messaging__note">then send it this message:</span>
+              <code class="agent-messaging__code">{{ code }}</code>
+              <button type="button" class="agent-messaging__btn" (click)="copy(code)">Copy</button>
+            } @else {
+              <span class="agent-messaging__note">Press Start, then come back here.</span>
+            }
+            <span class="agent-messaging__note">Valid until {{ link.expiresAt | date: 'shortTime' }}.</span>
+          </div>
+        } @else if (bot.enabled) {
+          <div class="agent-messaging__row">
+            <button type="button" class="agent-messaging__btn" [disabled]="busy()" (click)="connect(bot)">
+              Connect my account
+            </button>
+          </div>
+        }
+      } @else if (canAdminister()) {
+        @if (platform === Platform.TELEGRAM && creationLink(); as link) {
+          <div class="agent-messaging__row">
+            <a
+              class="agent-messaging__btn agent-messaging__btn--primary"
+              [href]="link.url"
+              target="_blank"
+              rel="noopener"
+            >
+              Open Telegram
+            </a>
+            <span class="agent-messaging__note">
+              Press Start, then Create, and confirm the bot's name: this page shows the bot as soon as it exists. Valid
+              until {{ link.expiresAt | date: 'shortTime' }}.
+            </span>
+          </div>
+        } @else {
+          <div class="agent-messaging__row">
+            @if (canCreate(platform)) {
+              <button
+                type="button"
+                class="agent-messaging__btn agent-messaging__btn--primary"
+                [disabled]="busy()"
+                (click)="createBot(platform)"
+              >
+                Create a {{ platformName(platform) }} bot
+              </button>
+            }
+            <button type="button" class="agent-messaging__btn" (click)="openForm(platform)">
+              {{ platform === Platform.SLACK ? 'Connect a Slack app' : 'Use an existing bot' }}
+            </button>
+          </div>
+          @if (platform === Platform.TELEGRAM && !canCreate(platform)) {
+            <p class="agent-messaging__note">
+              Creating a bot without copying a token needs the instance's bot manager: a super-admin sets it in
+              Settings, Messaging.
+            </p>
+          }
+        }
+
+        @if (formPlatform() === platform) {
+          <form class="agent-messaging__form" (submit)="$event.preventDefault(); attach(platform)">
+            @if (platform === Platform.SLACK) {
+              <ol class="agent-messaging__steps">
+                <li>
+                  Create a Slack app from this manifest:
+                  @if (manifest(); as manifest) {
+                    <a class="agent-messaging__link" [href]="manifest.createUrl" target="_blank" rel="noopener"
+                      >open Slack's apps</a
+                    >, choose From a manifest, pick the workspace and paste it.
+                    <pre class="agent-messaging__manifest">{{ manifest.manifest }}</pre>
+                    <button type="button" class="agent-messaging__btn" (click)="copy(manifest.manifest)">
+                      {{ copied() ? 'Copied' : 'Copy the manifest' }}
+                    </button>
+                  }
+                </li>
+                <li>Install the app in the workspace, then copy its Bot User OAuth Token (OAuth &amp; Permissions).</li>
+                <li>
+                  In Basic Information, App-Level Tokens, generate a token with the connections:write scope, and copy
+                  it.
+                </li>
+              </ol>
+            }
+            <div class="agent-messaging__fields">
+              <label class="agent-messaging__label" [for]="'agent-messaging-token-' + platform">
+                {{ platform === Platform.SLACK ? 'Bot User OAuth Token' : 'Bot token' }}
+              </label>
+              <input
+                [id]="'agent-messaging-token-' + platform"
+                class="agent-messaging__input"
+                type="password"
+                name="token"
+                autocomplete="off"
+                [placeholder]="platform === Platform.SLACK ? 'xoxb-…' : '123456789:AA…'"
+                [value]="token()"
+                (input)="token.set($any($event.target).value)"
+              />
+              @if (platform === Platform.SLACK) {
+                <label class="agent-messaging__label" for="agent-messaging-app-token">App-level token</label>
+                <input
+                  id="agent-messaging-app-token"
+                  class="agent-messaging__input"
+                  type="password"
+                  name="appToken"
+                  autocomplete="off"
+                  placeholder="xapp-…"
+                  [value]="appToken()"
+                  (input)="appToken.set($any($event.target).value)"
+                />
+              }
+              <button
+                type="submit"
+                class="agent-messaging__btn agent-messaging__btn--primary"
+                [disabled]="busy() || !token().trim() || (platform === Platform.SLACK && !appToken().trim())"
+              >
+                Attach
+              </button>
+            </div>
+            <p class="agent-messaging__note">
+              @if (platform === Platform.TELEGRAM) {
+                Create a bot with &#64;BotFather in Telegram (/newbot) and paste its token.
+              }
+              The tokens are stored encrypted and never shown again.
+            </p>
+          </form>
+        }
+      } @else {
+        <p class="agent-messaging__note">
+          No bot yet. An admin of the namespace can give this agent a {{ platformName(platform) }} bot.
+        </p>
       }
     </div>
-
-    @if (bot.status === 'TOKEN_REJECTED') {
-      <p class="agent-messaging__warning">
-        {{ platformName }} refuses this bot's token: it was revoked or replaced. Remove the bot and give the agent a new
-        one.
-      </p>
-    } @else if (bot.status === 'CONFLICT') {
-      <p class="agent-messaging__warning">
-        Another program receives this bot's messages, such as another AgentOS instance: give each instance its own bot.
-      </p>
-    }
-
-    @if (bot.linked) {
-      <p class="agent-messaging__hint">Your {{ platformName }} account is connected to this bot.</p>
-    } @else if (connectLink(); as link) {
-      <div class="agent-messaging__row">
-        <a class="agent-messaging__btn agent-messaging__btn--primary" [href]="link.url" target="_blank" rel="noopener">
-          Open &#64;{{ bot.username }}
-        </a>
-        <span class="agent-messaging__note">
-          Press Start in {{ platformName }}, then come back here. Valid until {{ link.expiresAt | date: 'shortTime' }}.
-        </span>
-      </div>
-    } @else if (bot.enabled) {
-      <div class="agent-messaging__row">
-        <button type="button" class="agent-messaging__btn" [disabled]="busy()" (click)="connect(bot)">
-          Connect my account
-        </button>
-      </div>
-    }
-  } @else if (canAdminister()) {
-    @if (creationLink(); as link) {
-      <div class="agent-messaging__row">
-        <a class="agent-messaging__btn agent-messaging__btn--primary" [href]="link.url" target="_blank" rel="noopener">
-          Open {{ platformName }}
-        </a>
-        <span class="agent-messaging__note">
-          Press Start, then Create, and confirm the bot's name: this page shows the bot as soon as it exists. Valid
-          until {{ link.expiresAt | date: 'shortTime' }}.
-        </span>
-      </div>
-    } @else {
-      <div class="agent-messaging__row">
-        @if (canCreate()) {
-          <button
-            type="button"
-            class="agent-messaging__btn agent-messaging__btn--primary"
-            [disabled]="busy()"
-            (click)="createBot()"
-          >
-            Create a {{ platformName }} bot
-          </button>
-        }
-        <button type="button" class="agent-messaging__btn" (click)="showTokenForm.set(!showTokenForm())">
-          Use an existing bot
-        </button>
-      </div>
-      @if (!canCreate()) {
-        <p class="agent-messaging__note">
-          Creating a bot without copying a token needs the instance's bot manager: a super-admin sets it in Settings,
-          Messaging.
-        </p>
-      }
-    }
-
-    @if (showTokenForm()) {
-      <form class="agent-messaging__token" (submit)="$event.preventDefault(); attach()">
-        <label class="agent-messaging__label" for="agent-messaging-token">Bot token</label>
-        <input
-          id="agent-messaging-token"
-          class="agent-messaging__input"
-          type="password"
-          name="token"
-          autocomplete="off"
-          placeholder="123456789:AA…"
-          [value]="token()"
-          (input)="token.set($any($event.target).value)"
-        />
-        <button
-          type="submit"
-          class="agent-messaging__btn agent-messaging__btn--primary"
-          [disabled]="busy() || !token().trim()"
-        >
-          Attach
-        </button>
-        <p class="agent-messaging__note">
-          Create a bot with &#64;BotFather in {{ platformName }} (/newbot) and paste its token. It is stored encrypted
-          and never shown again.
-        </p>
-      </form>
-    }
-  } @else {
-    <p class="agent-messaging__note">
-      No bot yet. An admin of the namespace can give this agent a {{ platformName }} bot.
-    </p>
   }
 
   @if (error(); as message) {

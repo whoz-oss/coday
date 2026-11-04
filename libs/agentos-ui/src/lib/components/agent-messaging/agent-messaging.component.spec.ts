@@ -63,6 +63,13 @@ describe('AgentMessagingComponent', () => {
     botConfig = {
       agentBots: jest.fn(),
       attach: jest.fn(() => of(bot)),
+      manifest: jest.fn(() =>
+        of({
+          platform: MessagingPlatform.SLACK,
+          manifest: '{"name":"Helper"}',
+          createUrl: 'https://api.slack.com/apps?new_app=1',
+        })
+      ),
       requestCreation: jest.fn(() =>
         of({ url: 'https://t.me/agentos_manager_bot?start=x', expiresAt: '2099-01-01T00:00:00Z' })
       ),
@@ -100,7 +107,13 @@ describe('AgentMessagingComponent', () => {
     button(element, 'Attach').click()
     fixture.detectChanges()
 
-    expect(botConfig.attach).toHaveBeenCalledWith('ns-1', 'agent-1', MessagingPlatform.TELEGRAM, '4242:secret')
+    expect(botConfig.attach).toHaveBeenCalledWith(
+      'ns-1',
+      'agent-1',
+      MessagingPlatform.TELEGRAM,
+      '4242:secret',
+      undefined
+    )
     expect(element.textContent).toContain('@helper_bot')
   })
 
@@ -132,6 +145,43 @@ describe('AgentMessagingComponent', () => {
 
     expect(messagingState.createLink).toHaveBeenCalledWith('bot-1')
     expect(element.querySelector('a[href="https://t.me/helper_bot?start=y"]')).not.toBeNull()
+  })
+
+  it('walks an admin through the Slack app: its manifest, then its two tokens', () => {
+    const slackBot = { ...bot, id: 'bot-2', platform: MessagingPlatform.SLACK, username: 'helper' }
+    botConfig.attach.mockReturnValue(of(slackBot))
+    const element = render({ admin: true, canCreate: false, bots: [] })
+
+    button(element, 'Connect a Slack app').click()
+    fixture.detectChanges()
+
+    expect(botConfig.manifest).toHaveBeenCalledWith('ns-1', 'agent-1', MessagingPlatform.SLACK)
+    expect(element.querySelector('pre')?.textContent).toContain('"name":"Helper"')
+    const attach = button(element, 'Attach')
+    expect(attach.disabled).toBe(true)
+    const [token, appToken] = Array.from(element.querySelectorAll('input[type="password"]')) as HTMLInputElement[]
+    token.value = 'xoxb-1'
+    token.dispatchEvent(new Event('input'))
+    appToken.value = 'xapp-1'
+    appToken.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    attach.click()
+    fixture.detectChanges()
+
+    expect(botConfig.attach).toHaveBeenCalledWith('ns-1', 'agent-1', MessagingPlatform.SLACK, 'xoxb-1', 'xapp-1')
+    expect(element.textContent).toContain('@helper')
+  })
+
+  it('tells a Slack user the message to send, since the link only opens the chat', () => {
+    messagingState.createLink.mockReturnValue(
+      of({ url: 'https://slack.com/app_redirect?app=A1', code: 'link abc', expiresAt: '2099-01-01T00:00:00Z' })
+    )
+    const element = render({ admin: false, canCreate: false, bots: [{ ...bot, platform: MessagingPlatform.SLACK }] })
+
+    button(element, 'Connect my account').click()
+    fixture.detectChanges()
+
+    expect(element.querySelector('code')?.textContent).toBe('link abc')
   })
 
   it('lets an admin turn the bot off', () => {

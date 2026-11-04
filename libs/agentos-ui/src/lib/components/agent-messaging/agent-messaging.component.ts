@@ -1,26 +1,33 @@
 import { DatePipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { MessagingBotDto, MessagingBotStatus, MessagingLinkDto, MessagingPlatform } from '@whoz-oss/agentos-api-client'
+import {
+  MessagingAppManifestDto,
+  MessagingBotDto,
+  MessagingBotStatus,
+  MessagingLinkDto,
+  MessagingPlatform,
+} from '@whoz-oss/agentos-api-client'
 import { fromEvent, interval, Observable } from 'rxjs'
 import { MessagingBotConfigService } from '../../services/messaging-bot-config.service'
 import { MessagingStateService } from '../../services/messaging-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
-import { messagingPlatformName } from '../messaging-accounts/messaging-platforms'
+import { MESSAGING_PLATFORMS, messagingPlatformName } from '../messaging-accounts/messaging-platforms'
 
 /**
- * AgentMessagingComponent — the "Messaging" section of an agent's page: the agent's Telegram bot, which its
- * users talk to it through.
+ * AgentMessagingComponent — the "Messaging" section of an agent's page: the agent's bots, one per platform,
+ * which its users talk to it through.
  *
- * An admin of the namespace gives the agent a bot in one of two ways, both taken into account at once by the
- * server, with no restart:
- * - Create a bot: a single-use link to the instance's bot manager, which creates the bot in Telegram once the
- *   admin confirms there, and links the admin's account to it. Offered when the instance has a bot manager.
- * - Use an existing bot: the token of a bot created with Telegram's BotFather.
+ * An admin of the namespace gives the agent a bot, taken into account at once by the server, with no restart:
+ * - Telegram, Create a bot: a single-use link to the instance's bot manager, which creates the bot once the admin
+ *   confirms in Telegram, and links the admin's account to it. Offered when the instance has a bot manager.
+ * - Telegram, Use an existing bot: the token of a bot created with BotFather.
+ * - Slack: the admin creates a Slack app from the manifest the section shows, installs it, and pastes its two
+ *   tokens.
  *
  * While a creation is pending, the section reads the bots again every few seconds and when the window gets the
- * focus back: the admin confirms in Telegram, often on their phone. Every user may connect their own account
- * to the bot from here or from their profile.
+ * focus back: the admin confirms in Telegram, often on their phone. Every user may connect their own account to
+ * a bot from here or from their profile.
  */
 @Component({
   selector: 'agentos-agent-messaging',
@@ -38,29 +45,36 @@ export class AgentMessagingComponent implements OnInit {
   readonly namespaceId = input.required<string>()
   readonly agentId = input.required<string>()
 
-  protected readonly platform = MessagingPlatform.TELEGRAM
-  protected readonly platformName = messagingPlatformName(MessagingPlatform.TELEGRAM)
+  protected readonly platforms = MESSAGING_PLATFORMS
+  protected readonly platformName = messagingPlatformName
+  protected readonly Platform = MessagingPlatform
 
   protected readonly bots = signal<MessagingBotDto[]>([])
   protected readonly canAdminister = signal(false)
-  protected readonly canCreate = signal(false)
 
-  /** The bot of the agent on Telegram, the only platform so far. */
-  protected readonly bot = computed(() => this.bots().find((bot) => bot.platform === this.platform) ?? null)
+  /** The platforms whose bot can be created with no token: those with a running bot manager. */
+  protected readonly creatable = signal<MessagingPlatform[]>([])
 
   protected readonly creationLink = signal<MessagingLinkDto | null>(null)
-  protected readonly connectLink = signal<MessagingLinkDto | null>(null)
-  protected readonly showTokenForm = signal(false)
+  /** The link issued to connect the user's account, by bot, until the account shows up. */
+  protected readonly connectLinks = signal<Record<string, MessagingLinkDto>>({})
+
+  /** The platform whose "existing bot" form is open. */
+  protected readonly formPlatform = signal<MessagingPlatform | null>(null)
   protected readonly token = signal('')
+  protected readonly appToken = signal('')
+  protected readonly manifest = signal<MessagingAppManifestDto | null>(null)
+  protected readonly copied = signal(false)
+
   protected readonly busy = signal(false)
-  protected readonly confirmingRemove = signal(false)
+  protected readonly confirmingRemoveId = signal<string | null>(null)
   protected readonly error = signal<string | null>(null)
 
   constructor() {
     fromEvent(window, 'focus')
       .pipe(takeUntilDestroyed())
       .subscribe(() => {
-        if (this.creationLink() || this.connectLink()) this.refresh()
+        if (this.creationLink() || Object.keys(this.connectLinks()).length > 0) this.refresh()
       })
     interval(CREATION_POLL_MS)
       .pipe(takeUntilDestroyed())
@@ -81,10 +95,22 @@ export class AgentMessagingComponent implements OnInit {
       .capabilities()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (capabilities) => this.canCreate.set(capabilities.botCreation.includes(this.platform)),
+        next: (capabilities) => this.creatable.set(capabilities.botCreation),
         error: (err) => console.error('[AgentMessaging] Could not read the messaging capabilities:', err),
       })
     this.refresh()
+  }
+
+  protected botOf(platform: MessagingPlatform): MessagingBotDto | null {
+    return this.bots().find((bot) => bot.platform === platform) ?? null
+  }
+
+  protected canCreate(platform: MessagingPlatform): boolean {
+    return this.creatable().includes(platform)
+  }
+
+  protected connectLinkOf(bot: MessagingBotDto): MessagingLinkDto | undefined {
+    return this.connectLinks()[bot.id]
   }
 
   protected statusLabel(status: MessagingBotStatus): string {
@@ -102,25 +128,53 @@ export class AgentMessagingComponent implements OnInit {
     }
   }
 
-  protected createBot(): void {
+  protected openForm(platform: MessagingPlatform): void {
+    if (this.formPlatform() === platform) {
+      this.formPlatform.set(null)
+      return
+    }
+    this.formPlatform.set(platform)
+    this.token.set('')
+    this.appToken.set('')
+    this.manifest.set(null)
+    this.copied.set(false)
+    if (platform === MessagingPlatform.SLACK) {
+      this.run(
+        this.botConfig.manifest(this.namespaceId(), this.agentId(), platform),
+        (manifest) => this.manifest.set(manifest),
+        'Could not get the manifest of the Slack app.'
+      )
+    }
+  }
+
+  protected copy(text: string): void {
+    navigator.clipboard?.writeText(text).then(
+      () => this.copied.set(true),
+      () => this.copied.set(false)
+    )
+  }
+
+  protected createBot(platform: MessagingPlatform): void {
     this.run(
-      this.botConfig.requestCreation(this.namespaceId(), this.agentId(), this.platform),
+      this.botConfig.requestCreation(this.namespaceId(), this.agentId(), platform),
       (link) => this.creationLink.set(link),
       'Could not start the creation of the bot.'
     )
   }
 
-  protected attach(): void {
+  protected attach(platform: MessagingPlatform): void {
     const token = this.token().trim()
-    if (!token) return
+    const appToken = this.appToken().trim()
+    if (!token || (platform === MessagingPlatform.SLACK && !appToken)) return
     this.run(
-      this.botConfig.attach(this.namespaceId(), this.agentId(), this.platform, token),
+      this.botConfig.attach(this.namespaceId(), this.agentId(), platform, token, appToken || undefined),
       (bot) => {
         this.token.set('')
-        this.showTokenForm.set(false)
+        this.appToken.set('')
+        this.formPlatform.set(null)
         this.replace(bot)
       },
-      `${this.platformName} refused this token, or the bot already serves another agent.`
+      `${messagingPlatformName(platform)} refused these tokens, or the bot already serves another agent.`
     )
   }
 
@@ -133,7 +187,7 @@ export class AgentMessagingComponent implements OnInit {
   }
 
   protected remove(bot: MessagingBotDto): void {
-    this.confirmingRemove.set(false)
+    this.confirmingRemoveId.set(null)
     this.run(
       this.botConfig.remove(bot.id),
       () => {
@@ -150,7 +204,7 @@ export class AgentMessagingComponent implements OnInit {
   protected connect(bot: MessagingBotDto): void {
     this.run(
       this.messagingState.createLink(bot.id),
-      (link) => this.connectLink.set(link),
+      (link) => this.connectLinks.update((links) => ({ ...links, [bot.id]: link })),
       'Could not get a link to the bot.'
     )
   }
@@ -162,8 +216,12 @@ export class AgentMessagingComponent implements OnInit {
       .subscribe({
         next: (bots) => {
           this.bots.set(bots)
-          if (bots.some((bot) => bot.platform === this.platform)) this.creationLink.set(null)
-          if (bots.some((bot) => bot.linked)) this.connectLink.set(null)
+          if (bots.some((bot) => bot.platform === MessagingPlatform.TELEGRAM)) this.creationLink.set(null)
+          this.connectLinks.update((links) =>
+            Object.fromEntries(
+              Object.entries(links).filter(([botId]) => !bots.some((bot) => bot.id === botId && bot.linked))
+            )
+          )
         },
         error: (err) => console.error('[AgentMessaging] Could not load the bots of the agent:', err),
       })

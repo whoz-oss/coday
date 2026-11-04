@@ -10,4 +10,6 @@
 
 export enum MessagingPlatform {
   TELEGRAM = 'TELEGRAM',
+
+  SLACK = 'SLACK',
 }

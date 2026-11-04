@@ -105,6 +105,7 @@ model/member-item.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
+model/messaging-app-manifest-dto.ts
 model/messaging-bot-attach-request.ts
 model/messaging-bot-creation-request.ts
 model/messaging-bot-dto.ts

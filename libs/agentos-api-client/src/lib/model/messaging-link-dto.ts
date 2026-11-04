@@ -9,6 +9,10 @@
  */
 
 export interface MessagingLinkDto {
+  /**
+   * When set, the message to send to the bot once the link opened the chat: the link of this platform cannot carry it (Slack). Usable once, until expiresAt.
+   */
+  code?: string
   expiresAt: string
   /**
    * Opens the bot in the messaging application; usable once, until expiresAt

@@ -42,10 +42,18 @@
           >
             Open &#64;{{ bot.username }}
           </a>
-          <span class="messaging-accounts__since">
-            Press Start in {{ platformName(bot.platform) }}, then come back here. Valid until
-            {{ link.expiresAt | date: 'shortTime' }}.
-          </span>
+          @if (link.code; as code) {
+            <span class="messaging-accounts__since">
+              Then send it this message: <code class="messaging-accounts__code">{{ code }}</code>
+              <button type="button" class="messaging-accounts__btn" (click)="copy(code)">Copy</button>
+              Valid until {{ link.expiresAt | date: 'shortTime' }}.
+            </span>
+          } @else {
+            <span class="messaging-accounts__since">
+              Press Start in {{ platformName(bot.platform) }}, then come back here. Valid until
+              {{ link.expiresAt | date: 'shortTime' }}.
+            </span>
+          }
         } @else {
           <span class="messaging-accounts__account messaging-accounts__account--none">Not connected</span>
           <button type="button" class="messaging-accounts__btn messaging-accounts__btn--primary" (click)="connect(bot)">

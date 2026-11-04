@@ -95,6 +95,7 @@ describe('messageAuthorLabel', () => {
 describe('messagingPlatformLabel', () => {
   it('names the application a message came from', () => {
     expect(messagingPlatformLabel({ messaging: { platform: 'TELEGRAM', conversationId: 'c' } })).toBe('Telegram')
+    expect(messagingPlatformLabel({ messaging: { platform: 'SLACK', conversationId: 'c' } })).toBe('Slack')
   })
 
   it('is null for a message typed in the UI or an unknown platform', () => {
