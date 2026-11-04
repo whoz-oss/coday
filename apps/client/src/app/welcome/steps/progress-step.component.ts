@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, untracked } from '@angular/core'
 import { Router } from '@angular/router'
-import { SetupStateService } from '../setup-state.service'
+import { SetupStateService, LandingTarget } from '../setup-state.service'
 import { StepState } from '../setup.models'
 
 const ICONS: Record<StepState, string> = {
@@ -34,10 +34,12 @@ export class ProgressStepComponent {
   protected readonly loading = computed(() => this.state.mode() === 'loading')
   protected readonly items = computed(() => (this.loading() ? this.state.loadingChecklist() : this.state.checklist()))
 
+  private leaving = false
+
   constructor() {
     effect(() => {
-      if (!this.loading() || !this.state.loadingReady()) return
-      untracked(() => this.leave(this.state.loadingTarget()))
+      if (!this.loading() || !this.state.loadingReady() || this.state.preview()) return
+      untracked(() => void this.leaveToPersonalNamespace())
     })
   }
 
@@ -46,7 +48,14 @@ export class ProgressStepComponent {
     if (target) this.leave(target)
   }
 
-  private leave(target: { path: string; queryParams: Record<string, string> }): void {
+  private async leaveToPersonalNamespace(): Promise<void> {
+    if (this.leaving) return
+    this.leaving = true
+    this.state.stopPolling()
+    this.leave(await this.state.loadingTarget())
+  }
+
+  private leave(target: LandingTarget): void {
     this.state.stopPolling()
     void this.router.navigate([target.path], { queryParams: target.queryParams })
   }

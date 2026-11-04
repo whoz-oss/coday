@@ -58,6 +58,15 @@ export const AGENTOS_ROUTES: Route[] = [
               ),
             children: [
               { path: '', redirectTo: 'users', pathMatch: 'full' },
+              // --- Admin: Effective configuration (read-only) ---
+              {
+                path: 'configuration',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/platform-configuration/platform-configuration.component').then(
+                    (m) => m.PlatformConfigurationComponent
+                  ),
+              },
               // --- Admin: Tool invoke (debug) ---
               {
                 path: 'tool-invoke',

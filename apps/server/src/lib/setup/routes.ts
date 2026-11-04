@@ -30,6 +30,7 @@ import { ApplyValidationError, runApply, validateApplyInput } from './apply'
 import { browse, BrowseError, defaultCodayFolder, mkdir } from './browse'
 import { MODEL_CATALOGUE } from './model-catalogue'
 import { ApplyTracker, buildSetupStatus, decideIdentityChange } from './progress'
+import { isManagedFactoryDisabled } from '../runtime/factory-option'
 
 export interface SetupRouterOptions {
   configDir: string
@@ -103,13 +104,16 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
   router.get('/status', async (_req, res) => {
     const state = readState(configDir)
     const base = agentosBase(configDir)
+    const factoryDisabled = isManagedFactoryDisabled()
     const factoryPort = state?.ports.factory
     const agentosHealthUrl = options.externalAgentosUrl
       ? `${trimSlash(options.externalAgentosUrl)}/management/health`
       : base && `${base}/management/health`
     const factoryHealthUrl = options.externalFactoryUrl
       ? `${trimSlash(options.externalFactoryUrl)}/actuator/health`
-      : factoryPort && `http://${LOOPBACK}:${factoryPort}/actuator/health`
+      : !factoryDisabled && factoryPort
+        ? `http://${LOOPBACK}:${factoryPort}/actuator/health`
+        : undefined
     const [agentosHealthy, factoryHealthy] = await Promise.all([
       agentosHealthUrl ? isHealthy(agentosHealthUrl, fetchFn) : false,
       factoryHealthUrl ? isHealthy(factoryHealthUrl, fetchFn) : false,
@@ -124,6 +128,7 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
         factoryHealthy,
         apply: tracker.get(),
         external: { agentos: !!options.externalAgentosUrl, factory: !!options.externalFactoryUrl },
+        factoryDisabled,
       }),
       defaults: { sharedExchangePath: defaultCodayFolder(options.homeDir) },
       providers: Object.values(MODEL_CATALOGUE).map((p) => ({

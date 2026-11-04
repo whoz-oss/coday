@@ -3,8 +3,8 @@ import * as os from 'os'
 import * as path from 'path'
 import { inspectJava, javaInstallHint, parseJavaVersionOutput } from './java'
 import { agentosDataDir } from './paths'
-import { decideProfile } from './profile'
-import { pickPorts } from './ports'
+import { borrowsRuntime, decideProfile, parseForcedProfile } from './profile'
+import { parsePreferredPorts, pickPorts } from './ports'
 import { initialState, mergeState, overallDownload, readState, updateState } from './state'
 import {
   agentosDatabaseExists,
@@ -47,6 +47,51 @@ describe('decideProfile', () => {
     fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
     saveIdentity(configDir, 'me@acme.com')
     expect(decideProfile(base()).profile).toBe('laptop')
+  })
+
+  describe('CODAY_PROFILE', () => {
+    it('forces laptop over an external AgentOS, without the wizard', () => {
+      expect(decideProfile({ ...base(), agentosUrl: 'http://localhost:8224', forcedProfile: 'laptop' })).toMatchObject({
+        profile: 'laptop',
+        setupEnabled: false,
+      })
+    })
+
+    it('forces laptop with the wizard when nothing else prevents it', () => {
+      fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
+      expect(decideProfile({ ...base(), forcedProfile: 'Laptop' })).toMatchObject({
+        profile: 'laptop',
+        setupEnabled: true,
+      })
+    })
+
+    it('forces managed on a fresh install', () => {
+      expect(decideProfile({ ...base(), forcedProfile: 'managed' })).toMatchObject({
+        profile: 'managed',
+        setupEnabled: false,
+      })
+    })
+
+    it('ignores an unknown value', () => {
+      expect(parseForcedProfile('whatever')).toBeUndefined()
+      expect(parseForcedProfile(undefined)).toBeUndefined()
+      expect(decideProfile({ ...base(), forcedProfile: 'whatever' })).toMatchObject({ profile: 'laptop' })
+    })
+  })
+})
+
+describe('borrowsRuntime', () => {
+  const base = () => ({ auth: false, configDir })
+
+  it('borrows the runtime of an external AgentOS on a provisioned configDir, in-process only', () => {
+    const external = { ...base(), agentosUrl: 'http://localhost:8224' }
+    expect(borrowsRuntime(external, true, 'in-process')).toBe(true)
+    expect(borrowsRuntime(external, false, 'in-process')).toBe(false)
+    expect(borrowsRuntime(base(), true, 'in-process')).toBe(false)
+  })
+
+  it('never borrows in Nx mode: the server task reads its Express port from what provision wrote', () => {
+    expect(borrowsRuntime({ ...base(), agentosUrl: 'http://localhost:8224' }, true, 'nx')).toBe(false)
   })
 })
 
@@ -209,6 +254,46 @@ describe('pickPorts', () => {
     const ports = await pickPorts(7788, identityFind)
     expect(ports).toEqual({ express: 7788, agentos: 8224, agentosBolt: 7789, factory: 8241 })
     expect(new Set(Object.values(ports)).size).toBe(4)
+  })
+})
+
+describe('preferred ports (web:local next to coday-web)', () => {
+  const identityFind = async (start: number) => start
+
+  it('parses the env vars and ignores invalid values', () => {
+    expect(parsePreferredPorts({ CODAY_AGENTOS_PORT: '8324', CODAY_FACTORY_PORT: '8341' })).toEqual({
+      agentos: 8324,
+      factory: 8341,
+    })
+    expect(parsePreferredPorts({ CODAY_AGENTOS_BOLT_PORT: '7888' })).toEqual({ agentosBolt: 7888 })
+    expect(
+      parsePreferredPorts({ CODAY_AGENTOS_PORT: 'abc', CODAY_FACTORY_PORT: '0', CODAY_AGENTOS_BOLT_PORT: '70000' })
+    ).toEqual({})
+    expect(parsePreferredPorts({})).toEqual({})
+  })
+
+  it('replaces the packaged defaults', async () => {
+    expect(await pickPorts(3001, identityFind, { agentos: 8324, agentosBolt: 7888, factory: 8341 })).toEqual({
+      express: 3001,
+      agentos: 8324,
+      agentosBolt: 7888,
+      factory: 8341,
+    })
+  })
+
+  it('keeps the default for a service without preference, and still falls back when a preferred port is taken', async () => {
+    const busy = new Set([8324])
+    const find = async (start: number) => {
+      let port = start
+      while (busy.has(port)) port++
+      return port
+    }
+    expect(await pickPorts(3001, find, { agentos: 8324 })).toEqual({
+      express: 3001,
+      agentos: 8325,
+      agentosBolt: 7788,
+      factory: 8241,
+    })
   })
 })
 

@@ -87,12 +87,13 @@ describe('buildSetupStatus', () => {
     })
     const setup = { identity: { email: 'a@b.co' } }
     expect(buildSetupStatus(facts({ state: started, setup })).steps.agentos.state).toBe('running')
-    expect(buildSetupStatus(facts({ state: started, setup })).steps.factory.state).toBe('pending')
+    expect(buildSetupStatus(facts({ state: started, setup })).steps.factory?.state).toBe('pending')
     const up = buildSetupStatus(facts({ state: started, setup, agentosHealthy: true }))
     expect(up.steps.agentos.state).toBe('done')
-    expect(up.steps.factory.state).toBe('running')
+    expect(up.steps.factory?.state).toBe('running')
     expect(
-      buildSetupStatus(facts({ state: started, setup, agentosHealthy: true, factoryHealthy: true })).steps.factory.state
+      buildSetupStatus(facts({ state: started, setup, agentosHealthy: true, factoryHealthy: true })).steps.factory
+        ?.state
     ).toBe('done')
   })
 
@@ -102,13 +103,48 @@ describe('buildSetupStatus', () => {
     expect(waiting.steps.download).toEqual({ state: 'done', percent: 100 })
     expect(waiting.steps.java).toEqual({ state: 'done' })
     expect(waiting.steps.agentos).toEqual({ state: 'running', message: 'Waiting for AgentOS' })
-    expect(waiting.steps.factory.state).toBe('pending')
+    expect(waiting.steps.factory?.state).toBe('pending')
 
     const up = buildSetupStatus(
       facts({ state, setupEnabled: false, external: { agentos: true, factory: true }, agentosHealthy: true })
     )
     expect(up.steps.agentos.state).toBe('done')
-    expect(up.steps.factory.state).toBe('running')
+    expect(up.steps.factory?.state).toBe('running')
+  })
+
+  it('leaves the Factory out of the status when it is disabled (CODAY_NO_FACTORY): no step, no download share', () => {
+    const state = laptopState({
+      downloads: { agentos: { state: 'running', percent: 50 }, factory: { state: 'error', message: 'stale' } },
+    })
+    const { steps } = buildSetupStatus(facts({ state, factoryDisabled: true }))
+    expect(steps.download).toEqual({ state: 'running', percent: 50 })
+    expect(steps.factory).toBeUndefined()
+    expect('factory' in steps).toBe(false)
+  })
+
+  it('does not wait for a Factory once it is disabled: AgentOS up is all there is', () => {
+    const started = laptopState({ agentosStarted: true, downloads: { agentos: { state: 'done' } } })
+    const setup = { identity: { email: 'a@b.co' } }
+    const up = buildSetupStatus(facts({ state: started, setup, agentosHealthy: true, factoryDisabled: true }))
+    expect(up.steps.agentos.state).toBe('done')
+    expect(up.steps.factory).toBeUndefined()
+  })
+
+  it('has nothing to download or check for an external AgentOS when the Factory is disabled', () => {
+    const state = laptopState({ profile: 'managed', java: { state: 'missing', hint: 'install java' } })
+    const { steps } = buildSetupStatus(
+      facts({ state, setupEnabled: false, external: { agentos: true }, factoryDisabled: true })
+    )
+    expect(steps.download).toEqual({ state: 'done', percent: 100 })
+    expect(steps.java).toEqual({ state: 'done' })
+  })
+
+  it('still waits for an external Factory even when the managed one is disabled', () => {
+    const state = laptopState({ profile: 'managed' })
+    const { steps } = buildSetupStatus(
+      facts({ state, setupEnabled: false, external: { factory: true }, factoryDisabled: true })
+    )
+    expect(steps.factory).toEqual({ state: 'pending' })
   })
 
   it('still reports a managed Factory download while only AgentOS is external', () => {

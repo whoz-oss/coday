@@ -46,6 +46,10 @@ export class MarkdownPipe implements PipeTransform {
   private buildRenderer(): Renderer {
     const renderer = new Renderer()
     const originalLink = renderer.link.bind(renderer)
+    const originalTable = renderer.table.bind(renderer)
+
+    // The wrapper scrolls a wide table sideways instead of squeezing its columns (styled by .ds-md-table).
+    renderer.table = (token): string => `<div class="ds-md-table">${originalTable(token)}</div>`
 
     renderer.link = (token): string => {
       let html = originalLink(token)

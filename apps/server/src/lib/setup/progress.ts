@@ -88,7 +88,8 @@ export interface SetupStatus {
     download: { state: StepState; percent?: number; message?: string }
     java: { state: StepState; version?: string; hint?: string }
     agentos: StepStatus
-    factory: StepStatus
+    /** Absent when the managed Factory is left out (`CODAY_NO_FACTORY`). */
+    factory?: StepStatus
     providers: StepStatus
     models: StepStatus
     namespace: StepStatus
@@ -136,6 +137,8 @@ export interface StatusFacts {
   apply: ApplySnapshot
   /** `AGENTOS_URL` / `FACTORY_URL`: the service is not run by Coday, so nothing to download nor to check Java for. */
   external?: { agentos?: boolean; factory?: boolean }
+  /** `CODAY_NO_FACTORY`: no managed Factory to download, start or wait for. */
+  factoryDisabled?: boolean
 }
 
 function javaStep(java: JavaStatus | undefined): SetupStatus['steps']['java'] {
@@ -151,14 +154,17 @@ function javaStep(java: JavaStatus | undefined): SetupStatus['steps']['java'] {
  */
 function downloadStep(
   state: RuntimeState | undefined,
-  external: StatusFacts['external'] = {}
+  external: StatusFacts['external'] = {},
+  factoryDisabled = false
 ): SetupStatus['steps']['download'] {
   if (!state) return { state: 'pending' }
-  if (external.agentos && external.factory) return { state: 'done', percent: 100 }
+  // A Factory that is external or left out has nothing to download.
+  const noFactoryDownload = !!external.factory || factoryDisabled
+  if (external.agentos && noFactoryDownload) return { state: 'done', percent: 100 }
   const { agentos, factory } = state.downloads
   const overall = overallDownload({
     agentos: external.agentos ? undefined : agentos,
-    factory: external.factory || factory?.state === 'error' ? undefined : factory,
+    factory: noFactoryDownload || factory?.state === 'error' ? undefined : factory,
   })
   switch (overall.state) {
     case 'done':
@@ -175,11 +181,12 @@ function downloadStep(
 export function buildSetupStatus(facts: StatusFacts): SetupStatus {
   const { setup, state, apply } = facts
   const external = facts.external ?? {}
+  const factoryDisabled = !!facts.factoryDisabled
   const setupDone = !!setup.setupDone
   // Java only matters for what Coday runs itself.
   const java: SetupStatus['steps']['java'] =
-    external.agentos && external.factory ? { state: 'done' } : javaStep(state?.java)
-  const download = downloadStep(state, external)
+    external.agentos && (external.factory || factoryDisabled) ? { state: 'done' } : javaStep(state?.java)
+  const download = downloadStep(state, external, factoryDisabled)
 
   let agentos: StepStatus
   if (facts.agentosHealthy) agentos = { state: 'done' }
@@ -195,13 +202,17 @@ export function buildSetupStatus(facts: StatusFacts): SetupStatus {
   else agentos = { state: 'running', message: download.state === 'done' ? 'Starting AgentOS' : 'Preparing AgentOS' }
 
   const factoryDownload = state?.downloads.factory
-  const factory: StepStatus = facts.factoryHealthy
-    ? { state: 'done' }
-    : factoryDownload?.state === 'error'
-      ? { state: 'error', message: factoryDownload.message }
-      : agentos.state === 'done'
-        ? { state: 'running' }
-        : { state: 'pending' }
+  // Left out (and not external): no Factory step at all, the client does not wait for one.
+  const factory: StepStatus | undefined =
+    factoryDisabled && !external.factory
+      ? undefined
+      : facts.factoryHealthy
+        ? { state: 'done' }
+        : factoryDownload?.state === 'error'
+          ? { state: 'error', message: factoryDownload.message }
+          : agentos.state === 'done'
+            ? { state: 'running' }
+            : { state: 'pending' }
 
   // After a completed setup nothing is replayed: a restart must not show stale pending steps.
   const applyDone: StepStatus = { state: 'done' }
@@ -214,7 +225,7 @@ export function buildSetupStatus(facts: StatusFacts): SetupStatus {
     setupEnabled: facts.setupEnabled,
     setupDone,
     ...(setup.identity ? { identity: setup.identity } : {}),
-    steps: { download, java, agentos, factory, ...steps },
+    steps: { download, java, agentos, ...(factory ? { factory } : {}), ...steps },
     apply: { status: setupDone ? 'done' : apply.status, ...(apply.error ? { error: apply.error } : {}) },
     ...(apply.namespaceId ? { namespaceId: apply.namespaceId } : {}),
   }
