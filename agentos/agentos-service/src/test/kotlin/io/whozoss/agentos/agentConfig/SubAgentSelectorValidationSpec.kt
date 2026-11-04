@@ -94,8 +94,22 @@ class SubAgentSelectorValidationSpec : StringSpec({
         val id = UUID.randomUUID().toString()
 
         shouldNotThrowAny {
-            SubAgentSelectorValidation.requireNoNewIdSelectors(listOf("  ${'$'}{id.uppercase()}  "), listOf(id))
+            SubAgentSelectorValidation.requireNoNewIdSelectors(listOf("  ${id.uppercase()}  "), listOf(id))
         }
+    }
+
+    "an id that is not the stored one is this write's, however it is spelled" {
+        // The other half of the normalisation: trimming and lowercasing both sides must not make
+        // any id look carried over. Without this, comparing loosely would let a new id through.
+        val stored = UUID.randomUUID().toString()
+        val other = UUID.randomUUID().toString()
+
+        val thrown =
+            shouldThrow<ResponseStatusException> {
+                SubAgentSelectorValidation.requireNoNewIdSelectors(listOf("  ${other.uppercase()}  "), listOf(stored))
+            }
+
+        thrown.reason!! shouldContain other.uppercase()
     }
 
     "with nothing stored, every id is one this write introduces" {

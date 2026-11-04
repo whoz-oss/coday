@@ -5,8 +5,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -33,6 +31,8 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 
 /**
  * Unit tests for [AgentConfigController].

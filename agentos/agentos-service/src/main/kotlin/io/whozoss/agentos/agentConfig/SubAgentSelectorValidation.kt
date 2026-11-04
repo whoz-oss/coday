@@ -19,6 +19,12 @@ import org.springframework.web.server.ResponseStatusException
  * are the one field keyed by name. So the write is refused with the correction in the message,
  * which is what lets a configuring agent fix its own call instead of accepting a broken config.
  *
+ * The refusal itself is reused rather than reimplemented: the config agent's plan stage asks for
+ * the offending entries with [idSelectors] and [newIdSelectors] and reports [correction] as a
+ * planning error, so a proposal carrying an id is refused before it is frozen and shown to anyone.
+ * Without that, the same id is only caught here, once the user has clicked Apply, and the failure
+ * stops the rest of their plan.
+ *
  * Only the HTTP write path is guarded. File-based configs are parsed by
  * [FilesystemAgentConfigRepository] while a namespace loads, where refusing one field would cost
  * the whole namespace its agents; an id there still resolves to nobody and warns.
@@ -34,14 +40,14 @@ internal object SubAgentSelectorValidation {
      * inherited from. Blank entries are not this object's business:
      * [io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems] already drops them.
      */
-    fun requireNameSelectors(subAgents: List<String>?) = refuse(entityIds(subAgents))
+    fun requireNameSelectors(subAgents: List<String>?) = refuse(idSelectors(subAgents))
 
     /**
      * Throws 400 when [subAgents] introduces an entity id that [stored] did not already hold.
      *
      * An update replaces the whole resource, so every caller sends the selectors back as they were
      * read: the UI from its own rows, and the config agent because
-     * [io.whozoss.agentos.configChange.ApiBeanConfigWriter] reads the DTO, applies the one field
+     * [io.whozoss.agentos.configAgent.ApiBeanConfigWriter] reads the DTO, applies the one field
      * its plan targets and PUTs the result. Refusing the whole list would therefore make an agent
      * whose stored selectors already hold an id — the very state this guard exists to stop
      * producing — impossible to edit at all, including for a change that never touches delegation,
@@ -54,23 +60,39 @@ internal object SubAgentSelectorValidation {
     fun requireNoNewIdSelectors(
         subAgents: List<String>?,
         stored: List<String>?,
-    ) {
+    ) = refuse(newIdSelectors(subAgents, stored))
+
+    /** The entries of [subAgents] that are entity ids, as they were written. */
+    fun idSelectors(subAgents: List<String>?): List<String> = entityIds(subAgents)
+
+    /** The entity ids [subAgents] introduces: those [stored] does not already carry. */
+    fun newIdSelectors(
+        subAgents: List<String>?,
+        stored: List<String>?,
+    ): List<String> {
         val carriedOver = stored.orEmpty().map { it.trim().lowercase() }.toSet()
-        refuse(entityIds(subAgents).filterNot { it.trim().lowercase() in carriedOver })
+        return entityIds(subAgents).filterNot { it.trim().lowercase() in carriedOver }
     }
+
+    /**
+     * The correction for [ids], worded once so the write path and the plan stage say the same thing.
+     *
+     * The rule comes before the offending values: the plan stage prefixes it with the operation's
+     * ref, and [io.whozoss.agentos.configAgent.ConfigChangeAnswer] truncates what it replays to the
+     * agent, so a message that led with the ids would lose the instruction that makes it useful.
+     */
+    fun correction(ids: List<String>): String =
+        "subAgents takes glob patterns matched against the name of each agent, never its id: " +
+            "an id matches no agent and leaves this agent unable to delegate. " +
+            "Pass the name of each sub-agent, or a pattern over names such as '*' for all of them. " +
+            "Refused ${ids.size} entity id(s): ${ids.take(ID_SAMPLE).joinToString(", ") { "'$it'" }}."
 
     private fun entityIds(subAgents: List<String>?): List<String> =
         subAgents?.filter { ENTITY_ID.matches(it.trim()) }.orEmpty()
 
     private fun refuse(ids: List<String>) {
         if (ids.isEmpty()) return
-        throw ResponseStatusException(
-            HttpStatus.BAD_REQUEST,
-            "subAgents holds ${ids.size} entity id(s) (${ids.take(ID_SAMPLE).joinToString(", ") { "'$it'" }}). " +
-                "The field takes glob patterns matched against the name of each agent, never its id: " +
-                "an id matches no agent and leaves this agent unable to delegate. " +
-                "Pass the name of each sub-agent, or a pattern over names such as '*' for all of them.",
-        )
+        throw ResponseStatusException(HttpStatus.BAD_REQUEST, correction(ids))
     }
 
     /** Enough of the offending entries to recognise the call, not the whole payload back. */

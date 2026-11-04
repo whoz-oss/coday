@@ -826,9 +826,17 @@ export class AgentConfigFormComponent implements OnInit {
     this.newSubAgentControl.reset('')
   }
 
-  /** Drop a row entirely. Only ever offered on a row the catalogue did not provide. */
+  /**
+   * Drop a row entirely. Only ever offered on a row the catalogue did not provide.
+   *
+   * Matched on the selector, not on object identity: [addSubAgent] replaces the rows a new pattern
+   * reaches with copies, so a row handed to this method is not always the object now in the array.
+   * Selectors are unique across rows (the catalogue's names win, and a typed duplicate ticks the
+   * row it matches instead of adding one), so one selector removes one row.
+   */
   protected removeSubAgent(row: SubAgentRow): void {
-    this.subAgentRows.update((rows) => rows.filter((r) => r !== row))
+    const key = row.selector.toLowerCase()
+    this.subAgentRows.update((rows) => rows.filter((r) => r.selector.toLowerCase() !== key))
   }
 
   protected toggleSubAgent(row: SubAgentRow): void {
