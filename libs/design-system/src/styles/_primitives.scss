@@ -156,9 +156,10 @@
     color: var(--color-neutral-500, #98989b);
   }
 
+  // background-color, not the shorthand: it would reset the arrow image of a disabled select.
   &:disabled,
   &[readonly] {
-    background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+    background-color: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
     color: var(--color-text-secondary, #5c5c5f);
     cursor: default;
   }
@@ -176,8 +177,28 @@ textarea.ds-control {
   resize: vertical;
 }
 
+// The native arrow sits against the right border and cannot be moved: it is replaced by one drawn with two
+// gradients (a chevron-like triangle), which follows the text token of every skin. The arrow spans 15–25px from
+// the right edge; the padding keeps the text clear of it. A compact select overriding `padding` must keep that
+// right padding (2.25rem).
 select.ds-control {
+  padding-right: 2.25rem;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-text-secondary, #5c5c5f) 50%),
+    linear-gradient(135deg, var(--color-text-secondary, #5c5c5f) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.25rem) 50%,
+    calc(100% - 0.9375rem) 50%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
   cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
 }
 
 .ds-control--mono,

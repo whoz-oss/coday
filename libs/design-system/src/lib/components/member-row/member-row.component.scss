@@ -44,6 +44,6 @@
 .ds-member__role {
   flex-shrink: 0;
   width: auto;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem 2.25rem 0.3rem 0.5rem; // right padding clears the arrow of select.ds-control
   cursor: pointer;
 }

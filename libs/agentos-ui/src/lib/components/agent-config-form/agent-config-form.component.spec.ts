@@ -8,10 +8,12 @@ import {
   AgentConfigControllerService,
   AgentConfigDefaultsControllerService,
   AgentConfigExportService,
+  AiModel,
   IntegrationTypeControllerService,
   SkillSummary,
 } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
+import { AiModelStateService } from '../../services/ai-model-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { SkillStateService } from '../../services/skill-state.service'
 import { AgentConfigFormComponent } from './agent-config-form.component'
@@ -37,6 +39,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   let integrationState: { loadNamespaceConfigs: jest.Mock; loadPlatformConfigs: jest.Mock }
   let integrationType: { listTypesIntegrationType: jest.Mock }
   let skillState: { listEffective: jest.Mock; listPlatform: jest.Mock }
+  let aiModelState: { listAvailable: jest.Mock }
   let router: { navigate: jest.Mock }
   let routeAgentConfigId: string | null
   let fixture: ComponentFixture<AgentConfigFormComponent>
@@ -74,6 +77,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       useDefaultDelegationTimeout: () => void
       defaultDelegationTimeoutSeconds: () => number | null
       nameControl: { setValue: (v: string) => void }
+      modelNameControl: { setValue: (v: string | null) => void; invalid: boolean; hasError: (e: string) => boolean }
       builtInRows: () => Array<{
         type: string
         enabledByDefault: boolean
@@ -129,6 +133,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       name: 'agent',
       createdOn: '2026-01-01T00:00:00Z',
       updatedOn: '2026-01-01T00:00:00Z',
+      modelName: 'BIG',
       ...overrides,
     } as AgentConfig
   }
@@ -156,6 +161,8 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       listEffective: jest.fn().mockReturnValue(of([])),
       listPlatform: jest.fn().mockReturnValue(of([])),
     }
+    // Default: no model defined, so the form falls back to free text like it did before the select.
+    aiModelState = { listAvailable: jest.fn().mockReturnValue(of([])) }
     router = { navigate: jest.fn() }
     const activatedRoute = {
       snapshot: {
@@ -174,12 +181,149 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
         { provide: IntegrationConfigStateService, useValue: integrationState },
         { provide: IntegrationTypeControllerService, useValue: integrationType },
         { provide: SkillStateService, useValue: skillState },
+        { provide: AiModelStateService, useValue: aiModelState },
         { provide: AgentConfigExportService, useValue: { exportAsYaml: jest.fn() } },
       ],
     })
 
     fixture = TestBed.createComponent(AgentConfigFormComponent)
     component = fixture.componentInstance
+    // The model name is required: a new agent starts with one so the tests below only vary what they are about.
+    // Edit mode overwrites it from the loaded config (editConfig carries one).
+    internals().modelNameControl.setValue('BIG')
+  })
+
+  describe('model name', () => {
+    it('is required: a new agent without one is not submitted', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+      internals().modelNameControl.setValue(null)
+
+      internals().submit()
+
+      expect(internals().modelNameControl.invalid).toBe(true)
+      expect(controller.createAgentConfig).not.toHaveBeenCalled()
+    })
+
+    it.each(['', '   '])('refuses %j as a model name, since the server refuses it too', (value) => {
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+      internals().modelNameControl.setValue(value)
+
+      internals().submit()
+
+      expect(internals().modelNameControl.invalid).toBe(true)
+      expect(controller.createAgentConfig).not.toHaveBeenCalled()
+    })
+
+    it('is sent trimmed on create', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+      internals().modelNameControl.setValue('  SMALL  ')
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].modelName).toBe('SMALL')
+    })
+
+    it('blocks the update of an agent stored without one until it gets one', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ modelName: undefined })))
+      component.ngOnInit()
+
+      internals().submit()
+      expect(controller.updateAgentConfig).not.toHaveBeenCalled()
+
+      internals().modelNameControl.setValue('BIG')
+      internals().submit()
+      expect(controller.updateAgentConfig.mock.calls[0][1].modelName).toBe('BIG')
+    })
+
+    it('is flagged as required in the template', () => {
+      fixture.detectChanges()
+      const label = (fixture.nativeElement as HTMLElement).querySelector('label[for="agent-config-model-name"]')
+      expect(label?.textContent).toContain('*')
+    })
+
+    describe('with models available', () => {
+      const model = (overrides: Partial<AiModel>): AiModel => ({
+        aiProviderId: 'p-1',
+        apiModelName: 'x',
+        priority: 0,
+        ...overrides,
+      })
+      const modelSelect = () =>
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('select#agent-config-model-name')
+
+      beforeEach(() => {
+        aiModelState.listAvailable.mockReturnValue(
+          of([model({ alias: 'BIG', apiModelName: 'gpt-4o' }), model({ apiModelName: 'claude-sonnet' })])
+        )
+      })
+
+      it('asks for the models of the route namespace', () => {
+        component.ngOnInit()
+        expect(aiModelState.listAvailable).toHaveBeenCalledWith('ns-1')
+      })
+
+      it('offers a select of aliases and API model names instead of a text field', () => {
+        fixture.detectChanges()
+
+        const select = modelSelect()
+        expect(select).not.toBeNull()
+        expect(select!.querySelector('input')).toBeNull()
+        expect(Array.from(select!.querySelectorAll('optgroup')).map((g) => g.label)).toEqual([
+          'Aliases',
+          'API model names',
+        ])
+        expect(select!.textContent).toContain('BIG (gpt-4o)')
+        expect(select!.textContent).toContain('claude-sonnet')
+      })
+
+      it('writes the chosen alias, not its label', () => {
+        fixture.detectChanges()
+        internals().nameControl.setValue('My Agent')
+        const select = modelSelect()!
+        const option = Array.from(select.options).find((o) => o.textContent?.includes('BIG (gpt-4o)'))!
+        select.value = option.value
+        select.dispatchEvent(new Event('change'))
+
+        internals().submit()
+
+        expect(controller.createAgentConfig.mock.calls[0][0].modelName).toBe('BIG')
+      })
+
+      it('keeps a stored model nothing lists, flagged, and writes it back on an unrelated save', () => {
+        routeAgentConfigId = 'a-1'
+        controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ modelName: 'RETIRED' })))
+        fixture.detectChanges()
+
+        expect(modelSelect()!.textContent).toContain('RETIRED (not in the list)')
+        expect(modelSelect()!.value).not.toBe('')
+
+        internals().submit()
+
+        expect(controller.updateAgentConfig.mock.calls[0][1].modelName).toBe('RETIRED')
+      })
+
+      it('hydrates the stored alias on the select', () => {
+        routeAgentConfigId = 'a-1'
+        controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ modelName: 'BIG' })))
+        fixture.detectChanges()
+
+        const select = modelSelect()!
+        expect(select.options[select.selectedIndex].textContent).toContain('BIG (gpt-4o)')
+      })
+    })
+
+    it('falls back to a text field when no model can be listed', () => {
+      aiModelState.listAvailable.mockReturnValue(of([]))
+      fixture.detectChanges()
+
+      const root = fixture.nativeElement as HTMLElement
+      expect(root.querySelector('select#agent-config-model-name')).toBeNull()
+      expect(root.querySelector('input#agent-config-model-name')).not.toBeNull()
+    })
   })
 
   describe('built-in rows', () => {
@@ -1194,6 +1338,8 @@ describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
         { provide: IntegrationTypeControllerService, useValue: { listTypesIntegrationType: () => of([]) } },
         // Stubbed so the only outstanding request this test verifies is the defaults one.
         { provide: SkillStateService, useValue: { listEffective: () => of([]), listPlatform: () => of([]) } },
+        // Stubbed too: it would otherwise add model requests to the ones this test verifies.
+        { provide: AiModelStateService, useValue: { listAvailable: () => of([]) } },
       ],
     })
     const fixture = TestBed.createComponent(AgentConfigFormComponent)
@@ -1230,7 +1376,7 @@ describe('AgentConfigFormComponent (platform-scope skills)', () => {
 
   function setUp(config: Partial<AgentConfig> | null) {
     const controller = {
-      getByIdAgentConfig: jest.fn().mockReturnValue(of({ id: 'a-1', name: 'agent', ...config })),
+      getByIdAgentConfig: jest.fn().mockReturnValue(of({ id: 'a-1', name: 'agent', modelName: 'BIG', ...config })),
       createAgentConfig: jest.fn().mockReturnValue(of({})),
       updateAgentConfig: jest.fn().mockReturnValue(of({})),
       listByParentAgentConfig: jest.fn().mockReturnValue(of([])),
@@ -1259,6 +1405,7 @@ describe('AgentConfigFormComponent (platform-scope skills)', () => {
         { provide: IntegrationConfigStateService, useValue: { loadPlatformConfigs: () => of([]) } },
         { provide: IntegrationTypeControllerService, useValue: { listTypesIntegrationType: () => of([]) } },
         { provide: SkillStateService, useValue: skillState },
+        { provide: AiModelStateService, useValue: { listAvailable: () => of([]) } },
         { provide: AgentConfigExportService, useValue: {} },
       ],
     })

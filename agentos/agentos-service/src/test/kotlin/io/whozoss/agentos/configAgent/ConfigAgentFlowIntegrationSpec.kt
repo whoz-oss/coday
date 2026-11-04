@@ -216,7 +216,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                         { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
                           "changes": [ { "path": "/integrations/ACME_$suffix", "value": null } ] },
                         { "ref": "sup", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "support-$suffix", "instructions": "Help the user", "enabled": true }, "deployTo": "NAMESPACE" },
+                          "value": { "name": "support-$suffix", "instructions": "Help the user", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" },
                         { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current", "userId": null },
                           "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
                       ] }
@@ -228,7 +228,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         { "summary": "Copy the setup into a new namespace",
           "operations": [
             { "ref": "dev", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
-              "value": { "name": "dev-copy-$suffix", "instructions": "Help the user", "enabled": true }, "deployTo": "NAMESPACE" },
+              "value": { "name": "dev-copy-$suffix", "instructions": "Help the user", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" },
             { "ref": "shared", "kind": "AGENT", "action": "DEPLOY", "id": "${platformAgent.id}", "scope": { "namespaceId": { "${'$'}op": "ns" } } },
             { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
               "value": { "name": "ACME_$suffix", "integrationType": "JIRA" } },
@@ -292,6 +292,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                         metadata = EntityMetadata(id = UUID.randomUUID()),
                         namespaceId = namespace.id,
                         name = "dev-$suffix",
+                        modelName = "BIG",
                         enabled = true,
                         subAgents = listOf("helper-$suffix"),
                     ),
@@ -698,7 +699,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                     """
                     { "operations": [
                         { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "lonely-$suffix", "enabled": true }, "deployTo": "NAMESPACE" } ] }
+                          "value": { "name": "lonely-$suffix", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" } ] }
                     """.trimIndent(),
                 )
 
@@ -757,6 +758,23 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                 .errorType shouldBe "NOT_FOUND"
         }
 
+        "creating an agent needs a model name, which the REST API would refuse the agent without" {
+            for (value in listOf("""{ "name": "nomodel-$suffix", "enabled": true }""", """{ "name": "nomodel-$suffix", "modelName": "  ", "enabled": true }""")) {
+                val result =
+                    proposeTool(alice).executeWithJson(
+                        """
+                        { "operations": [
+                            { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                              "value": $value, "deployTo": "NAMESPACE" } ] }
+                        """.trimIndent(),
+                        toolContext(alice),
+                    )
+
+                result.errorType shouldBe "INVALID_PROPOSAL"
+                result.output shouldContain "a: creating an agent needs 'value.modelName'"
+            }
+        }
+
         "creating an agent needs an explicit enabled flag" {
             val result =
                 proposeTool(alice).executeWithJson(
@@ -784,7 +802,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                     """
                     { "operations": [
                         { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "boss-$suffix", "enabled": true, "subAgents": ["$id"] }, "deployTo": "NONE" } ] }
+                          "value": { "name": "boss-$suffix", "modelName": "BIG", "enabled": true, "subAgents": ["$id"] }, "deployTo": "NONE" } ] }
                     """.trimIndent(),
                     toolContext(alice),
                 )

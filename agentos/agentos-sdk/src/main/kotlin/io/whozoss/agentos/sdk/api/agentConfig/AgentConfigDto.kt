@@ -14,7 +14,10 @@ import java.util.UUID
  * HTTP DTO for AgentConfig entities — used as both request body and response body on
  * the `/api/agent-configs` endpoints.
  *
- * [namespaceId] and [name] are required on create. All other fields are optional.
+ * [name] and [modelName] are required on create and update. All other fields are optional.
+ *
+ * [modelName] stays nullable in the type because agents stored before it became required have none and are
+ * still read back as is: the constraint only refuses a write that leaves it null or blank.
  *
  * [integrations] maps integration type names to an optional list of allowed tool names.
  * A null list means all tools from that integration are allowed.
@@ -40,6 +43,7 @@ data class AgentConfigDto(
     val name: String,
     val description: String? = null,
     val instructions: String? = null,
+    @field:NotBlank(message = "modelName must not be blank")
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     /**
