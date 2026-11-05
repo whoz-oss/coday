@@ -1,6 +1,7 @@
 <article
   class="delegation-card"
   [class.delegation-card--working]="delegation().status === 'WORKING'"
+  [class.delegation-card--waiting]="delegation().status === 'WAITING_USER' || lastEventSummary()?.waitingForUser"
   [class.delegation-card--error]="
     delegation().status === 'ERROR' || delegation().status === 'TIMEOUT' || delegation().status === 'KILLED'
   "
@@ -28,13 +29,21 @@
       Open sub-case
     </button>
   </header>
+  @if (lastEventSummary(); as summary) {
+    <div
+      class="delegation-card__last-event"
+      [class.delegation-card__last-event--waiting]="delegation().status === 'WAITING_USER' || summary.waitingForUser"
+    >
+      <span class="delegation-card__last-event-text">{{ summary.label }}</span>
+    </div>
+  }
   @if (open()) {
     @if (delegation().result) {
       <agentos-delegation-result [result]="delegation().result!" />
     } @else {
       <ol class="delegation-card__activity" aria-label="Live sub-case activity">
         @if (activity().length) {
-          @for (entry of activity(); track entry) {
+          @for (entry of activity(); track $index) {
             <li>{{ entry }}</li>
           }
         } @else {

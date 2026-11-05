@@ -5,8 +5,28 @@
   border-left: 3px solid var(--color-success);
   background: var(--color-surface);
 }
-.delegation-card--working {
+.delegation-card--working,
+.delegation-card--waiting {
   border-left-color: var(--color-warning);
+}
+.delegation-card__last-event {
+  padding: 0.4rem 0.7rem;
+  border-top: 1px solid var(--color-divider);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+.delegation-card__last-event-text {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.delegation-card__last-event--waiting {
+  color: var(--color-warning);
+}
+.delegation-card__last-event--waiting .delegation-card__last-event-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .delegation-card--error {
   border-left-color: var(--color-error);
