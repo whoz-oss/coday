@@ -538,6 +538,12 @@
     &--plain {
       white-space: pre-wrap;
     }
+
+    // Voice message: the player sits above the transcript, which wraps like any user bubble
+    &--audio {
+      display: flex;
+      flex-direction: column;
+    }
   }
 
   // ── Tool calls ─────────────────────────────────────────────────────
