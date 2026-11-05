@@ -5,7 +5,8 @@
  *   0. identify   a first call as the first-run user: AgentOS creates the user and its personal namespace on the
  *                 first request it sees, whatever else its database already holds
  *   1. providers  platform-scope AI providers, one per chosen catalogue entry
- *   2. models     the 4 aliased models of each provider, priority derived from the rank
+ *   2. models     the 4 aliased chat models of each provider, plus its WHISPER transcription model when it has one
+ *                 (OpenAI, Requesty), priority derived from the rank
  *   3. namespace  the personal namespace `user:<email>` (created asynchronously by AgentOS),
  *                 its `sharedExchangePath` set to the chosen folder
  *   4. agent      the default agent is deployed and is the namespace default
@@ -17,7 +18,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { AgentosClient, AgentosHttpError, AgentosModelPricing, AgentosNamespace } from './agentos-client'
+import { AgentosClient, AgentosHttpError, AgentosModel, AgentosModelPricing, AgentosNamespace } from './agentos-client'
 import { CatalogueProvider, getCatalogueProvider, MODEL_ALIASES, priorityForRank } from './model-catalogue'
 import { ApplyTracker } from './progress'
 
@@ -152,6 +153,9 @@ const PRICING_KEYS = ['inputMTokens', 'outputMTokens', 'cacheRead', 'cacheWrite'
 const samePricing = (a: AgentosModelPricing | null | undefined, b: AgentosModelPricing | undefined): boolean =>
   PRICING_KEYS.every((key) => (a?.[key] ?? null) === (b?.[key] ?? null))
 
+const findByAlias = (models: AgentosModel[], alias: string): AgentosModel | undefined =>
+  models.find((m) => m.alias?.toLowerCase() === alias.toLowerCase())
+
 async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, providerId: string, priority: number) {
   const existing = await deps.client.listModelsOfProvider(providerId)
   for (const alias of MODEL_ALIASES) {
@@ -166,7 +170,7 @@ async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, provi
       ...(wanted.contextWindow ? { contextWindow: wanted.contextWindow } : {}),
       ...(wanted.maxCompletionTokens ? { maxCompletionTokens: wanted.maxCompletionTokens } : {}),
     }
-    const match = existing.find((m) => m.alias?.toLowerCase() === alias.toLowerCase())
+    const match = findByAlias(existing, alias)
     if (!match) {
       await deps.client.createModel(body)
     } else if (
@@ -178,7 +182,27 @@ async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, provi
       await deps.client.updateModel(match.id, body)
     }
   }
+
+  // Transcription: same idempotency (by alias) and same priority rule, but no pricing nor limits to compare.
+  const transcription = catalogue.transcription
+  if (transcription) {
+    const body = {
+      aiProviderId: providerId,
+      apiModelName: transcription.apiModelName,
+      alias: transcription.alias,
+      priority,
+      description: transcription.description,
+    }
+    const match = findByAlias(existing, transcription.alias)
+    if (!match) {
+      await deps.client.createModel(body)
+    } else if (match.id && (match.apiModelName !== body.apiModelName || match.priority !== priority)) {
+      await deps.client.updateModel(match.id, body)
+    }
+  }
 }
+
+const modelCountOf = (catalogue: CatalogueProvider): number => MODEL_ALIASES.length + (catalogue.transcription ? 1 : 0)
 
 async function findPersonalNamespace(deps: ApplyDeps): Promise<AgentosNamespace> {
   const attempts = deps.namespaceAttempts ?? 30
@@ -246,11 +270,13 @@ export async function runApply(
     tracker.step('providers', 'done')
 
     tracker.step('models', 'running')
+    let modelCount = 0
     for (const [index, p] of ordered.entries()) {
       const catalogue = getCatalogueProvider(p.id) as CatalogueProvider
       await ensureModels(deps, catalogue, providerIds.get(p.id) as string, priorityForRank(index + 1, ordered.length))
+      modelCount += modelCountOf(catalogue)
     }
-    tracker.step('models', 'done', `${ordered.length * MODEL_ALIASES.length} models`)
+    tracker.step('models', 'done', `${modelCount} models`)
 
     // 3. personal namespace + shared folder
     tracker.step('namespace', 'running', 'Waiting for your personal namespace')

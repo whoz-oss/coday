@@ -4,6 +4,7 @@ import {
   MODEL_ALIASES,
   MODEL_CATALOGUE,
   priorityForRank,
+  TRANSCRIPTION_ALIAS,
 } from './model-catalogue'
 
 describe('model catalogue shape', () => {
@@ -46,6 +47,30 @@ describe('model catalogue shape', () => {
   it('uses the provider id as the AgentOS provider name (the idempotency key)', () => {
     for (const id of CATALOGUE_PROVIDER_IDS) expect(MODEL_CATALOGUE[id].name).toBe(id)
     expect(getCatalogueProvider('nope')).toBeUndefined()
+  })
+})
+
+describe('transcription model', () => {
+  it('is whisper-1 for OpenAI, openai/whisper-1 for Requesty, and absent for Anthropic', () => {
+    expect(MODEL_CATALOGUE.openai.transcription).toMatchObject({ alias: 'WHISPER', apiModelName: 'whisper-1' })
+    expect(MODEL_CATALOGUE.requesty.transcription).toMatchObject({
+      alias: 'WHISPER',
+      apiModelName: 'openai/whisper-1',
+    })
+    expect(MODEL_CATALOGUE.anthropic.transcription).toBeUndefined()
+  })
+
+  it('stays out of the chat aliases and carries no pricing nor limits', () => {
+    expect(TRANSCRIPTION_ALIAS).toBe('WHISPER')
+    expect(MODEL_ALIASES).not.toContain(TRANSCRIPTION_ALIAS)
+    for (const id of CATALOGUE_PROVIDER_IDS) {
+      const transcription = MODEL_CATALOGUE[id].transcription
+      if (!transcription) continue
+      expect(transcription.description.length).toBeGreaterThan(0)
+      expect(transcription).not.toHaveProperty('pricing')
+      expect(transcription).not.toHaveProperty('contextWindow')
+      expect(transcription).not.toHaveProperty('maxCompletionTokens')
+    }
   })
 })
 
