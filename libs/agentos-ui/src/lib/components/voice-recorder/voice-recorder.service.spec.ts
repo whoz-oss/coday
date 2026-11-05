@@ -292,6 +292,111 @@ describe('VoiceRecorderService', () => {
     })
   })
 
+  describe('target resolved at send time', () => {
+    it('does not resolve the target while recording, only once the recording is sent', async () => {
+      const resolver = jest.fn().mockResolvedValue('case-new')
+      await service.start(resolver, handlers)
+      jest.advanceTimersByTime(2_000)
+      expect(resolver).not.toHaveBeenCalled()
+
+      const sent = await service.stopAndSend()
+
+      expect(sent).toBe(true)
+      expect(resolver).toHaveBeenCalledTimes(1)
+      expect(api.postVoiceMessage).toHaveBeenCalledTimes(1)
+      expect(api.postVoiceMessage.mock.calls[0]![0]).toBe('case-new')
+      expect(handlers.onSent).toHaveBeenCalledTimes(1)
+    })
+
+    it('resolves after the microphone is released, and the host sees the sending state first', async () => {
+      const order: string[] = []
+      handlers.onSending.mockImplementation(() => order.push('sending'))
+      mic.track.stop.mockImplementation(() => order.push('mic-released'))
+      const resolver = jest.fn().mockImplementation(async () => {
+        order.push('resolve')
+        return 'case-new'
+      })
+      await service.start(resolver, handlers)
+
+      await service.stopAndSend()
+
+      expect(order).toEqual(['sending', 'mic-released', 'resolve'])
+    })
+
+    it('a resolver that fails is an error: nothing is posted, the microphone is released, the host is told', async () => {
+      const resolver = jest.fn().mockRejectedValue(new Error('Could not create the case.'))
+      await service.start(resolver, handlers)
+
+      const sent = await service.stopAndSend()
+
+      expect(sent).toBe(false)
+      expect(api.postVoiceMessage).not.toHaveBeenCalled()
+      expect(service.state()).toBe('error')
+      expect(service.error()).toBe('Could not create the case.')
+      expect(mic.track.stop).toHaveBeenCalled()
+      expect(handlers.onSendFailed).toHaveBeenCalledTimes(1)
+      expect(handlers.onSent).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the generic message when the resolver fails without an error message', async () => {
+      await service.start(() => Promise.reject({ status: 500 }), handlers)
+
+      await service.stopAndSend()
+
+      expect(service.error()).toBe(VOICE_ERRORS.sendFailed)
+      expect(api.postVoiceMessage).not.toHaveBeenCalled()
+    })
+
+    it('does not resolve the target of a recording that is cancelled', async () => {
+      const resolver = jest.fn().mockResolvedValue('case-new')
+      await service.start(resolver, handlers)
+
+      service.cancel()
+
+      expect(resolver).not.toHaveBeenCalled()
+      expect(api.postVoiceMessage).not.toHaveBeenCalled()
+      expect(mic.track.stop).toHaveBeenCalled()
+    })
+
+    it('does not resolve the target of an empty recording', async () => {
+      const resolver = jest.fn().mockResolvedValue('case-new')
+      await service.start(resolver, handlers)
+      recorder.data = new Blob([])
+
+      await service.stopAndSend()
+
+      expect(resolver).not.toHaveBeenCalled()
+      expect(service.error()).toBe(VOICE_ERRORS.empty)
+    })
+
+    it('posts nothing when the recorder is reset while the target is being resolved', async () => {
+      let resolve!: (caseId: string) => void
+      await service.start(() => new Promise<string>((r) => (resolve = r)), handlers)
+      const sending = service.stopAndSend()
+      await flush()
+
+      service.reset()
+      resolve('case-new')
+      const sent = await sending
+
+      expect(sent).toBe(false)
+      expect(api.postVoiceMessage).not.toHaveBeenCalled()
+      expect(handlers.onSent).not.toHaveBeenCalled()
+      expect(service.state()).toBe('idle')
+    })
+
+    it('sends by itself at the length limit through a resolved target too', async () => {
+      const resolver = jest.fn().mockResolvedValue('case-new')
+      await service.start(resolver, handlers)
+
+      jest.advanceTimersByTime(MAX_RECORDING_MS + 1_000)
+      await flush()
+
+      expect(resolver).toHaveBeenCalledTimes(1)
+      expect(api.postVoiceMessage.mock.calls[0]![0]).toBe('case-new')
+    })
+  })
+
   describe('cancel and teardown', () => {
     it('cancel discards the recording, releases the microphone and posts nothing', async () => {
       await service.start('c-1', handlers)
