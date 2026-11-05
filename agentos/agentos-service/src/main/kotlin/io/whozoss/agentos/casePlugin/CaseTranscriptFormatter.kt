@@ -113,5 +113,6 @@ object CaseTranscriptFormatter {
         when (content) {
             is MessageContent.Text -> content.content
             is MessageContent.Image -> "[image]"
+            is MessageContent.Audio -> "[audio]"
         }
 }

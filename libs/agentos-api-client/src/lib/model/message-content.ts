@@ -8,6 +8,7 @@
  * Do not edit the class manually.
  */
 import { Text } from './text'
+import { Audio } from './audio'
 import { Image } from './image'
 
-export type MessageContent = Image | Text
+export type MessageContent = Audio | Image | Text

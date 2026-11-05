@@ -62,6 +62,8 @@ export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export * from './user-group-controller.service'
 import { UserGroupControllerService } from './user-group-controller.service'
+export * from './voice-message-controller.service'
+import { VoiceMessageControllerService } from './voice-message-controller.service'
 export const APIS = [
   AgentConfigControllerService,
   AgentConfigDefaultsControllerService,
@@ -95,4 +97,5 @@ export const APIS = [
   UsageRecordControllerService,
   UserControllerService,
   UserGroupControllerService,
+  VoiceMessageControllerService,
 ]

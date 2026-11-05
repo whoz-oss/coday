@@ -1,0 +1,26 @@
+<div class="audio-message">
+  @switch (state()) {
+    @case ('ready') {
+      <audio class="audio-message__player" controls autoplay preload="metadata" [src]="url() ?? ''"></audio>
+    }
+    @case ('unavailable') {
+      <span class="audio-message__note" role="status">
+        <span class="material-icons audio-message__note-icon" aria-hidden="true">volume_off</span>
+        Audio unavailable
+      </span>
+    }
+    @default {
+      <ds-icon-button
+        [icon]="state() === 'loading' ? 'progress_activity' : 'play_arrow'"
+        variant="primary"
+        title="Play voice message"
+        [disabled]="state() === 'loading'"
+        (action)="load()"
+      />
+      <span class="audio-message__label">Voice message</span>
+      @if (audio().durationMs; as duration) {
+        <span class="audio-message__duration">{{ formatElapsed(duration) }}</span>
+      }
+    }
+  }
+</div>
