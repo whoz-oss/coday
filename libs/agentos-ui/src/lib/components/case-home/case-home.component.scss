@@ -157,6 +157,14 @@
     gap: 0.75rem;
   }
 
+  // Mic + send, kept together on the right of the footer
+  &__footer-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: none;
+  }
+
   &__attachments {
     display: block;
     padding: 0.75rem 0.75rem 0;

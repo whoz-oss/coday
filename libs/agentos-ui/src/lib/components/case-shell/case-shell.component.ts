@@ -318,6 +318,19 @@ export class CaseShellComponent {
       })
   }
 
+  /** Stop (kill) a case from the list. The case stays in the list as KILLED and can be reopened. */
+  protected onKillRequested(caseId: string): void {
+    this.caseState
+      .killCase(caseId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to stop case ${caseId}:`, err)
+          alert('Could not stop the case. Please try again.')
+        },
+      })
+  }
+
   protected onStarToggled(event: { id: string; starred: boolean }): void {
     this.caseState
       .setStarred(event.id, event.starred)

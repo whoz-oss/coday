@@ -94,6 +94,14 @@
             [class.case-chat__header-star--active]="activeCase()?.favorite"
             (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
           />
+          <!-- Stop (kill) — asks for confirmation through the dialog below -->
+          <ds-icon-button
+            icon="cancel"
+            variant="danger"
+            title="Stop case — terminates the agent and all running sub-cases"
+            [disabled]="isTerminal()"
+            (action)="confirmingKill.set(true)"
+          />
           <!-- Delete -->
           <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
         } @else {
@@ -562,6 +570,17 @@
               (action)="attachmentsUi.openPicker()"
             />
           }
+          @if (activeCase()) {
+            <span
+              class="case-chat__effort"
+              title="Type /effort to change it. Not applied to Anthropic and Gemini providers."
+            >
+              effort: {{ caseEffortLabel() }}
+            </span>
+          }
+          <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
+
+          <!-- Right next to the send button, on its left -->
           @if (voice.state() === 'recording') {
             <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
           } @else if (voiceCapability.available()) {
@@ -573,15 +592,6 @@
               (action)="startRecording()"
             />
           }
-          @if (activeCase()) {
-            <span
-              class="case-chat__effort"
-              title="Type /effort to change it. Not applied to Anthropic and Gemini providers."
-            >
-              effort: {{ caseEffortLabel() }}
-            </span>
-          }
-          <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 
           @if (isRunning()) {
             <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
@@ -594,13 +604,6 @@
               (action)="onSendClick()"
             />
           }
-          <ds-icon-button
-            icon="cancel"
-            variant="danger"
-            title="Stop case — terminates the agent and all running sub-cases"
-            [disabled]="isTerminal()"
-            (action)="confirmingKill.set(true)"
-          />
         </div>
 
         @if (isTerminal()) {
