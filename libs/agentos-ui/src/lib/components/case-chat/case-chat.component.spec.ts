@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@angular/core'
+import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -19,7 +19,7 @@ import {
   VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { of, throwError } from 'rxjs'
+import { of, Observable, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
@@ -107,7 +107,12 @@ describe('CaseChatComponent — submit with attachments', () => {
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         {
           provide: USER_PREFERENCES_PORT,
-          useValue: { shouldSend: jest.fn().mockReturnValue(false), composerHint: () => 'hint', showTechnical },
+          useValue: {
+            shouldSend: jest.fn().mockReturnValue(false),
+            composerHint: () => 'hint',
+            showTechnical,
+            enterKeyBehavior: signal('send'),
+          },
         },
       ],
     })
@@ -1388,6 +1393,172 @@ describe('CaseChatComponent — submit with attachments', () => {
         const item = ref.instance['timeline']()[0]!
         expect(item.kind === 'message' && ref.instance['audioOf'](item.event)).toBeFalsy()
         expect(item.kind === 'message' && ref.instance['messageText'](item)).toBe('just text')
+      })
+    })
+
+    describe('keys and action bar while recording', () => {
+      const keydown = (init: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { cancelable: true, ...init })
+      const shouldSend = () => TestBed.inject(USER_PREFERENCES_PORT).shouldSend as jest.Mock
+
+      async function recording(): Promise<ComponentRef<CaseChatComponent>> {
+        const ref = makeComponent()
+        ref.instance['startRecording']()
+        await flush()
+        expect(ref.instance['voice'].state()).toBe('recording')
+        return ref
+      }
+
+      it('the send button of the action bar sends the recording, not the typed text', async () => {
+        const ref = await recording()
+        const submit = jest.spyOn(ref.instance as never, 'submit')
+
+        expect(ref.instance['canSendNow']).toBe(true)
+        ref.instance['onSendClick']()
+        await flush()
+
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+        expect(submit).not.toHaveBeenCalled()
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('the cancel button of the action bar discards the recording', async () => {
+        const ref = await recording()
+
+        ref.instance['cancelRecording']()
+
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(track.stop).toHaveBeenCalled()
+        expect(ref.instance['voice'].state()).toBe('idle')
+      })
+
+      it('without a recording the send button sends the typed message, and only when there is one', async () => {
+        const ref = makeComponent()
+        expect(ref.instance['canSendNow']).toBe(false)
+
+        ref.instance['inputValue'].set('typed')
+        expect(ref.instance['canSendNow']).toBe(true)
+        ref.instance['onSendClick']()
+        await flush()
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'typed', userId: 'default-user' })
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+      })
+
+      it('Enter sends the recording when the preference says the key sends', async () => {
+        shouldSend().mockReturnValue(true)
+        const ref = await recording()
+        const event = keydown({ key: 'Enter' })
+
+        ref.instance['onRecordingKeydown'](event)
+        await flush()
+
+        expect(shouldSend()).toHaveBeenCalledWith(event)
+        expect(event.defaultPrevented).toBe(true)
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+      })
+
+      it('Enter does not send the recording when the preference says it is a new line (needs Ctrl/Cmd)', async () => {
+        shouldSend().mockReturnValue(false)
+        const ref = await recording()
+        const event = keydown({ key: 'Enter' })
+
+        ref.instance['onRecordingKeydown'](event)
+        await flush()
+
+        expect(event.defaultPrevented).toBe(false)
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(ref.instance['voice'].state()).toBe('recording')
+      })
+
+      it('Escape discards the recording', async () => {
+        const ref = await recording()
+        const event = keydown({ key: 'Escape' })
+
+        ref.instance['onRecordingKeydown'](event)
+
+        expect(event.defaultPrevented).toBe(true)
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(track.stop).toHaveBeenCalled()
+        expect(ref.instance['voice'].state()).toBe('idle')
+      })
+
+      it('a second Enter while the recording is being sent does nothing', async () => {
+        shouldSend().mockReturnValue(true)
+        let respond!: (v: unknown) => void
+        voiceApi.postVoiceMessage.mockReturnValue(
+          new Observable((subscriber) => {
+            respond = (v) => {
+              subscriber.next(v)
+              subscriber.complete()
+            }
+          })
+        )
+        const ref = await recording()
+
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter' }))
+        await flush()
+        expect(ref.instance['voice'].state()).toBe('sending')
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter' }))
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Escape' }))
+        await flush()
+
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+        expect(ref.instance['voice'].state()).toBe('sending')
+        respond({ transcript: 't', path: 'p' })
+        await flush()
+      })
+
+      it('a held-down Enter (key repeat) does not send twice, nor does the auto-send racing with it', async () => {
+        shouldSend().mockReturnValue(true)
+        const ref = await recording()
+
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter', repeat: true }))
+        await flush()
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+
+        // The length limit sends first, then the user's Enter arrives: nothing more is posted.
+        void ref.instance['voice'].stopAndSend()
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter' }))
+        await flush()
+
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+      })
+
+      it('keys do nothing when not recording: the textarea keeps its usual behaviour', () => {
+        shouldSend().mockReturnValue(true)
+        const ref = makeComponent()
+        const enter = keydown({ key: 'Enter' })
+
+        ref.instance['onRecordingKeydown'](enter)
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Escape' }))
+
+        expect(enter.defaultPrevented).toBe(false)
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('the textarea Enter still sends the typed message (unchanged behaviour)', async () => {
+        shouldSend().mockReturnValue(true)
+        const ref = makeComponent()
+        ref.instance['inputValue'].set('typed')
+        const event = keydown({ key: 'Enter' })
+
+        ref.instance['onKeydown'](event)
+        await flush()
+
+        expect(event.defaultPrevented).toBe(true)
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'typed', userId: 'default-user' })
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+      })
+
+      it('names the key of the recording hint after the Enter preference', () => {
+        const ref = makeComponent()
+        const preferences = TestBed.inject(USER_PREFERENCES_PORT) as unknown as {
+          enterKeyBehavior: WritableSignal<string>
+        }
+        expect(ref.instance['sendKeyLabel']).toBe('Enter')
+        preferences.enterKeyBehavior.set('newline')
+        expect(ref.instance['sendKeyLabel']).toBe('Ctrl/Cmd+Enter')
       })
     })
 

@@ -853,6 +853,43 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected cancelRecording(): void {
     this.voice.cancel()
+    // The recording bar leaves: the focus goes back to the textarea, once it is shown again.
+    afterNextRender(() => this.composerInput()?.nativeElement.focus(), { injector: this.injector })
+  }
+
+  /** The send button of the action bar: while recording it sends the recording, otherwise the typed message. */
+  protected onSendClick(): void {
+    if (this.voice.state() === 'recording') {
+      this.sendRecording()
+    } else {
+      void this.submit()
+    }
+  }
+
+  /** A recording can be sent as soon as it runs; the typed message follows the usual rules. */
+  protected get canSendNow(): boolean {
+    return this.voice.state() === 'recording' || this.canSend
+  }
+
+  /** The key that sends, for the recording hint: the Enter preference decides whether it needs Ctrl/Cmd. */
+  protected get sendKeyLabel(): string {
+    return this.preferences.enterKeyBehavior() === 'newline' ? 'Ctrl/Cmd+Enter' : 'Enter'
+  }
+
+  /**
+   * Keys of the recording bar (the textarea is hidden while recording, so it cannot read them): Enter sends the
+   * recording under the same preference as a typed message, Escape discards it. A key held down, or pressed again
+   * once the recording is on its way (the length limit may have sent it), does nothing.
+   */
+  protected onRecordingKeydown(event: KeyboardEvent): void {
+    if (this.voice.state() !== 'recording') return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelRecording()
+    } else if (this.preferences.shouldSend(event)) {
+      event.preventDefault()
+      if (!event.repeat) this.sendRecording()
+    }
   }
 
   /** The recording of a voice message, when this message is one. */
