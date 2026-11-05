@@ -33,6 +33,7 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.whozoss.factory.workspace.RunWorktreeResolver
 import io.whozoss.factory.workspace.WorkspacePrecheckService
+import io.whozoss.factory.run.service.RunService
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -40,6 +41,8 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
@@ -187,6 +190,9 @@ class SessionRunService(
      * may omit it and keep the caller-provided root.
      */
     private val runWorktreeResolver: RunWorktreeResolver? = null,
+    @Lazy
+    @Autowired(required = false)
+    private val runService: RunService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -259,15 +265,19 @@ class SessionRunService(
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The session has no steps.")
         }
         // Lot F read-only pre-check: BEFORE the run's root case is created, refuse
-        // a run whose namespace/Git/workstream/agents prerequisites are missing.
-        // It never repairs; a missing prerequisite is surfaced as an actionable
-        // error (WorkspacePrecheckException).
+        // a run whose namespace/workstream/agents prerequisites are missing.
+        // Git worktree association is required only for Forge/plugin-governed runs
+        // (`execution.plugin == "forge"`, parent `runId`, or a `code` step); a
+        // classical agent/human workflow run can execute in a namespace without a
+        // Git repository association.
+        val requiresGitWorkspace = requiresGitWorkspace(instance, steps)
         workspacePrecheckService?.precheck(
             scope = scope,
             namespaceId = namespaceId,
             requiredAgents = steps
                 .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
                 .mapNotNull { it.responsibility.name },
+            requireGitWorkspace = requiresGitWorkspace,
         )
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
         var suspended = false
@@ -296,8 +306,9 @@ class SessionRunService(
                 // inside a transaction; the waiter either proves the exact
                 // worktree or throws — it never silently uses another directory.
                 if (step.responsibility.kind == ResponsibilityKind.CODE) {
+                    val worktreeOwnerId = parentRunId(instance) ?: workflowId
                     val resolvedRoot = try {
-                        runWorktreeResolver?.resolve(scope, workflowId, effectiveRepoRoot) ?: effectiveRepoRoot
+                        runWorktreeResolver?.resolve(scope, worktreeOwnerId, effectiveRepoRoot) ?: effectiveRepoRoot
                     } catch (error: Exception) {
                         // Root resolution is part of the code step, not runner infrastructure.
                         // Claim first so the failure has one authoritative owner, then persist the
@@ -343,7 +354,40 @@ class SessionRunService(
                 if (committedRevision != null) put("revision", committedRevision)
             },
         )
-        return SessionRunResult(namespaceId, workflowId, sessionStatus, statusesOf(steps, statuses.statuses))
+        val sessionResult = SessionRunResult(namespaceId, workflowId, sessionStatus, statusesOf(steps, statuses.statuses))
+        runService?.onFragmentSessionUpdated(
+            scope = scope,
+            namespaceId = namespaceId,
+            fragmentWorkflowId = workflowId,
+            sessionResult = sessionResult,
+            repoRoot = effectiveRepoRoot,
+            sessionRunService = this,
+        )
+        return sessionResult
+    }
+
+    /** The parent Run id carried by a fragment workflow instance, or null for standalone workflows. */
+    private fun parentRunId(instance: WorkflowInstanceRecord): String? {
+        (instance.instance["runId"] as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+        val relations = instance.instance["relations"] as? Map<*, *>
+        return (relations?.get("runId") as? String)?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * True when the session requires a provisioned Git worktree:
+     * - it belongs to a parent Run (`runId` present), OR
+     * - it declares an execution plugin (`execution.plugin`, e.g. `"forge"`), OR
+     * - it contains at least one `code` step that executes in a worktree.
+     * Classical agent/human runs without a Git repo association do not require one.
+     */
+    private fun requiresGitWorkspace(
+        instance: WorkflowInstanceRecord,
+        steps: List<WorkflowStepDefinition>,
+    ): Boolean {
+        if (parentRunId(instance) != null) return true
+        val executionPlugin = (instance.instance["execution"] as? Map<*, *>)?.get("plugin") as? String
+        if (!executionPlugin.isNullOrBlank()) return true
+        return steps.any { it.responsibility.kind == ResponsibilityKind.CODE }
     }
 
     /** The ticket carried by a persisted instance (top-level or in its relations). */

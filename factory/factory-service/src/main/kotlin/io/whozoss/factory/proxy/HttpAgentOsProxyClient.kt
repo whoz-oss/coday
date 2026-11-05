@@ -58,6 +58,32 @@ class HttpAgentOsProxyClient(
 
     private class AgentOsNotFound : RuntimeException()
 
+    override fun ensureRunRootCase(caseId: String, namespaceId: String, title: String, externalUserId: String) {
+        require(externalUserId.isNotBlank()) { "Authenticated provisioning identity is required" }
+        fun read(): Map<String, Any?>? = try {
+            relay("/api/cases/$caseId", externalUserId, object : ParameterizedTypeReference<Map<String, Any?>>() {})
+        } catch (_: AgentOsNotFound) { null }
+        fun validate(remote: Map<String, Any?>) {
+            check(remote["id"] == caseId && remote["namespaceId"] == namespaceId &&
+                remote["parentCaseId"] == null && remote["parentId"] == null && remote["removed"] != true) {
+                "AgentOS root case identity mismatch"
+            }
+        }
+        read()?.let { validate(it); return }
+        try {
+            val remote = client.post().uri("/api/cases")
+                .header("X-External-User-Id", externalUserId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(mapOf("id" to caseId, "namespaceId" to namespaceId, "title" to title, "worktree" to true))
+                .retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+                ?: error("AgentOS returned no root case")
+            validate(remote)
+        } catch (error: RestClientResponseException) {
+            if (error.statusCode.value() != 409) throw error
+            validate(read() ?: error("Conflicting AgentOS root case cannot be read"))
+        }
+    }
+
     override fun fetchAgents(namespaceId: String, externalUserId: String?): Any? =
         relay("/api/agent-configs/by-parentId/$namespaceId", externalUserId, object : ParameterizedTypeReference<Any>() {})
 
@@ -93,6 +119,32 @@ class HttpAgentOsProxyClient(
 
     override fun fetchCaseEvents(caseId: String, externalUserId: String?): Any? =
         relay("/api/case-events/by-parentId/$caseId", externalUserId, object : ParameterizedTypeReference<Any>() {})
+
+    override fun fetchWorkspaceChanges(caseId: String, externalUserId: String?): Map<String, Any?>? =
+        try {
+            relay(
+                "/api/cases/$caseId/workspace/changes",
+                externalUserId,
+                object : ParameterizedTypeReference<Map<String, Any?>>() {},
+            )
+        } catch (_: AgentOsNotFound) {
+            null
+        }
+
+    override fun fetchWorkspaceDiff(caseId: String, path: String, externalUserId: String?): Map<String, Any?>? =
+        try {
+            val encodedPath = java.net.URLEncoder.encode(path, Charsets.UTF_8)
+            relay(
+                "/api/cases/$caseId/workspace/diff?path=$encodedPath",
+                externalUserId,
+                object : ParameterizedTypeReference<Map<String, Any?>>() {},
+            )
+        } catch (_: AgentOsNotFound) {
+            null
+        } catch (error: AgentOsUnavailableException) {
+            // AgentOS returns 400 BadRequestException when a file is not in the current diff.
+            if (error.message?.contains("400") == true) null else throw error
+        }
 
     /**
      * Run-cost read (W-metrics). Unlike the other relays this NEVER throws: an

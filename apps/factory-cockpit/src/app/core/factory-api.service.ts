@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable, catchError, map, throwError } from 'rxjs'
-import { AgentQuestion, AllowedAction, GetActionsResponse, WorkflowBlocker } from './models'
+import { AgentQuestion, AllowedAction, GetActionsResponse, ParentRunDetail, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
 
@@ -223,6 +223,41 @@ export class FactoryApiService {
       `/api/factory/workflows/${encodeURIComponent(workflowId)}`,
       {},
       requireNamespaceId(namespaceId)
+    )
+  }
+
+  /** GET `/api/factory/runs?namespaceId=…` — list parent Runs (Lot 5). */
+  getParentRuns(namespaceId: string): Observable<ParentRunDetail[]> {
+    return this.request<unknown>('/api/factory/runs', {}, requireNamespaceId(namespaceId)).pipe(
+      map((payload) => {
+        if (Array.isArray(payload)) return payload as ParentRunDetail[]
+        const items = (payload as { items?: unknown } | null)?.items
+        return Array.isArray(items) ? (items as ParentRunDetail[]) : []
+      })
+    )
+  }
+
+  /** GET `/api/factory/runs/:runId?namespaceId=…` — read one parent Run with its fragment chain, domainState, findings and escalation (Lot 5). */
+  getParentRun(runId: string, namespaceId: string): Observable<ParentRunDetail> {
+    return this.request<ParentRunDetail>(
+      `/api/factory/runs/${encodeURIComponent(runId)}`,
+      {},
+      requireNamespaceId(namespaceId)
+    )
+  }
+
+  /** POST `/api/factory/runs/:runId/escalations/:escalationId/reply` — resolve a run-level human escalation (Lot 5). */
+  replyParentRunEscalation(
+    runId: string,
+    escalationId: string,
+    payload: { selectedOption: string; text?: string },
+    namespaceId: string
+  ): Observable<ParentRunDetail> {
+    const ns = requireNamespaceId(namespaceId)
+    return this.post<ParentRunDetail>(
+      `/api/factory/runs/${encodeURIComponent(runId)}/escalations/${encodeURIComponent(escalationId)}/reply`,
+      { ...payload, namespaceId: ns },
+      ns
     )
   }
 

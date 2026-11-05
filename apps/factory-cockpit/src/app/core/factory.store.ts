@@ -28,6 +28,7 @@ import {
   CostSummary,
   FactoryRun,
   GetActionsResponse,
+  ParentRunDetail,
   SupervisorCaseResult,
   RecentTask,
   RunSummary,
@@ -100,6 +101,8 @@ export class FactoryStore implements OnDestroy {
 
   /** Factory runs derived from the real active/removed workflows (empty until loaded). */
   readonly runs = signal<FactoryRun[]>([])
+  /** Loaded parent Runs (`Run` entity with fragment chain, findings and activeEscalation, Lot 5) keyed by `runId`. */
+  readonly parentRuns = signal<Map<string, ParentRunDetail>>(new Map())
   /** No real recent-teardown API exists yet; kept empty for backwards-compat. */
   readonly recentTasks = signal<RecentTask[]>([])
   readonly showDestroyed = signal(false)
@@ -280,6 +283,59 @@ export class FactoryStore implements OnDestroy {
     // Keep the intentional built-in demo only; never fabricate an arbitrary
     // real run when a scoped fetch has not found it.
     return runId === SESSION_872641A8.id ? SESSION_872641A8 : undefined
+  }
+
+  /**
+   * Look up the parent Run associated with a session `workflowId` (either `runId`
+   * itself or the prefix before `__f<ordinal>`).
+   */
+  parentRunFor(workflowOrRunId: string): ParentRunDetail | undefined {
+    if (!workflowOrRunId) return undefined
+    const direct = this.parentRuns().get(workflowOrRunId)
+    if (direct) return direct
+    const sep = workflowOrRunId.indexOf('__f')
+    if (sep > 0) {
+      const parentId = workflowOrRunId.slice(0, sep)
+      return this.parentRuns().get(parentId)
+    }
+    return undefined
+  }
+
+  /** Fetch and cache a parent Run (`GET /api/factory/runs/:runId`). */
+  loadParentRun(workflowOrRunId: string, namespaceId?: string): void {
+    const sep = workflowOrRunId.indexOf('__f')
+    const targetRunId = sep > 0 ? workflowOrRunId.slice(0, sep) : workflowOrRunId
+    const ns = namespaceId ?? this.namespaceFor(workflowOrRunId)
+    if (!targetRunId || !ns) return
+    this.api.getParentRun(targetRunId, ns).subscribe({
+      next: (detail) => {
+        if (detail && detail.runId) {
+          this.parentRuns.update((m) => new Map(m).set(detail.runId, detail))
+        }
+      },
+      error: () => undefined,
+    })
+  }
+
+  /** Reply to a run-level human escalation (`POST /api/factory/runs/:runId/escalations/:escalationId/reply`, Lot 5). */
+  replyParentRunEscalation(
+    runId: string,
+    escalationId: string,
+    selectedOption: string,
+    text?: string,
+    namespaceId?: string
+  ): void {
+    const ns = namespaceId ?? this.namespaceFor(runId)
+    if (!ns) return
+    this.api.replyParentRunEscalation(runId, escalationId, { selectedOption, text }, ns).subscribe({
+      next: (updated) => {
+        if (updated && updated.runId) {
+          this.parentRuns.update((m) => new Map(m).set(updated.runId, updated))
+        }
+        this.refreshAfterAction(this.selectedWorkflowId ?? runId)
+      },
+      error: () => undefined,
+    })
   }
 
   /** Select the only workflow whose expensive detail endpoints may be loaded. */

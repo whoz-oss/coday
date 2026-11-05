@@ -3,10 +3,10 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 /**
  * Factory Forge plugin — a PF4J plugin packaged as a standalone JAR.
  *
- * The plugin is compiled against the host Factory Service (and the Factory SDK it
- * exposes) but never bundles it: Spring, Jackson, PF4J, the SDK and the core
- * error/persistence types are all `compileOnly` and resolved from the host
- * classloader at runtime (APD strategy configured in factory-service).
+ * The plugin compiles exclusively against the Factory SDK (`factory-sdk`) and
+ * never against `factory-service`. Spring, Jackson, PF4J and the SDK are all
+ * `compileOnly` and resolved from the host classloader at runtime (APD strategy
+ * configured in factory-service).
  */
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -16,7 +16,7 @@ plugins {
 
 group = "whoz-oss.factory"
 version = libs.versions.factoryService.get()
-description = "Factory Forge plugin — PF4J plugin exposing the Forge/BMAD and Jira surfaces"
+description = "Factory Forge plugin — PF4J plugin enriching the Factory engine with BMAD flows and Jira surfaces"
 
 java {
     toolchain {
@@ -37,8 +37,7 @@ dependencies {
     compileOnly(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.springBoot.get()}"))
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.springBoot.get()}"))
 
-    // Host + SDK are provided by the service classloader at runtime.
-    compileOnly("whoz-oss.factory:factory-service:${libs.versions.factoryService.get()}")
+    // Only the SDK is visible to the plugin — zero dependency on factory-service.
     compileOnly("whoz-oss.factory:factory-sdk:${libs.versions.factorySdk.get()}")
 
     // Host-provided libraries: compileOnly so the plugin never bundles them, but
@@ -61,11 +60,17 @@ dependencies {
         exclude(group = "org.slf4j", module = "slf4j-log4j12")
     }
 
-    // Tests: the moved Forge tests are pure/direct (no Spring context, no DB).
-    // `FactoryForgePluginIntegrationTest` additionally boots the host
-    // factory-service (H2-backed `openapi` profile) with the plugin deployed.
-    // The host runtime plus the standard test stack is enough for both.
-    testImplementation("whoz-oss.factory:factory-service:${libs.versions.factoryService.get()}")
+    // Tests run purely against the SDK and the plugin's own PF4J JAR without
+    // depending on factory-service.
+    testImplementation("whoz-oss.factory:factory-sdk:${libs.versions.factorySdk.get()}")
+    testImplementation(libs.pf4j) {
+        exclude(group = "org.slf4j", module = "slf4j-reload4j")
+        exclude(group = "org.slf4j", module = "slf4j-log4j12")
+    }
+    testImplementation(libs.pf4j.spring) {
+        exclude(group = "org.slf4j", module = "slf4j-reload4j")
+        exclude(group = "org.slf4j", module = "slf4j-log4j12")
+    }
     testImplementation(libs.spring.boot.starter.web)
     testImplementation(libs.jackson.module.kotlin)
     testImplementation(libs.spring.boot.starter.test)
@@ -89,24 +94,11 @@ tasks.named<Jar>("jar") {
     }
 }
 
-// The host-boot integration test (`FactoryForgePluginIntegrationTest`) deploys the
-// freshly built plugin JAR into a temp `plugins/` directory and starts the full
-// factory-service application, so the JAR must exist first and its path is handed
-// to the test through a system property.
 val pluginJar = tasks.named<Jar>("jar")
-// Resolve the plugin JAR path at configuration time so the configuration cache
-// can serialize it as a plain String. Capturing pluginJar (a TaskProvider) or
-// archiveFile (a Provider<RegularFile>) inside a doFirst closure would hold a
-// reference to a Gradle script object, which the configuration cache cannot
-// serialize and would fail with:
-//   "configuration cache cannot serialize Gradle script object references".
 val pluginJarPath: String = pluginJar.get().archiveFile.get().asFile.absolutePath
 tasks.withType<Test> {
     useJUnitPlatform()
     dependsOn(pluginJar)
-    // A test-time Java agent appends to the bootstrap classpath, which makes the
-    // JDK emit a class-data-sharing warning on the test JVM. Disabling CDS for
-    // tests removes the noise without affecting test behaviour.
     jvmArgs("-Xshare:off")
     systemProperty("factory.forge.plugin.jar", pluginJarPath)
 }
@@ -133,7 +125,7 @@ publishing {
 
             pom {
                 name.set("Factory Forge Plugin")
-                description.set("Factory Forge plugin — PF4J plugin exposing the Forge/BMAD and Jira surfaces")
+                description.set("Factory Forge plugin — PF4J plugin enriching the Factory engine with BMAD flows and Jira surfaces")
                 url.set("https://github.com/whoz-oss/coday")
 
                 licenses {
