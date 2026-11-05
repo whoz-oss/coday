@@ -6,6 +6,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   OnInit,
   signal,
@@ -104,6 +105,7 @@ export class CaseHomeComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly injector = inject(Injector)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   /** Nom du namespace actif — passé par CaseShellComponent */
   readonly namespaceName = input<string | null>(null)
@@ -308,6 +310,50 @@ export class CaseHomeComponent implements OnInit {
 
   protected cancelRecording(): void {
     this.voice.cancel()
+    // The recording bar leaves: the textarea is shown again, sized to its content, and takes the focus back.
+    afterNextRender(
+      () => {
+        const input = this.composerInput()?.nativeElement
+        input?.focus()
+        this.resizeComposer(input)
+      },
+      { injector: this.injector }
+    )
+  }
+
+  /** The send button of the footer: while recording it sends the recording, otherwise the typed message. */
+  protected onSendClick(): void {
+    if (this.voice.state() === 'recording') {
+      this.sendRecording()
+    } else {
+      void this.submit()
+    }
+  }
+
+  /** A recording can be sent as soon as it runs; the typed message follows the usual rules. */
+  protected get canSendNow(): boolean {
+    return this.voice.state() === 'recording' || this.canSend
+  }
+
+  /** The key that sends, for the recording hint: the Enter preference decides whether it needs Ctrl/Cmd. */
+  protected get sendKeyLabel(): string {
+    return this.preferences.enterKeyBehavior() === 'newline' ? 'Ctrl/Cmd+Enter' : 'Enter'
+  }
+
+  /**
+   * Keys of the recording bar (the textarea is hidden while recording, so it cannot read them): Enter sends the
+   * recording under the same preference as a typed message, Escape discards it. A key held down, or pressed again
+   * once the recording is on its way (the length limit may have sent it), does nothing.
+   */
+  protected onRecordingKeydown(event: KeyboardEvent): void {
+    if (this.voice.state() !== 'recording') return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelRecording()
+    } else if (this.preferences.shouldSend(event)) {
+      event.preventDefault()
+      if (!event.repeat) this.sendRecording()
+    }
   }
 
   protected onInput(event: Event): void {

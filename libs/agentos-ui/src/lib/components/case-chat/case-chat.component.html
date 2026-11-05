@@ -547,8 +547,8 @@
           [state]="voice.state()"
           [elapsedMs]="voice.elapsedMs()"
           [error]="voice.error()"
-          (cancelled)="cancelRecording()"
-          (sent)="sendRecording()"
+          [sendKey]="sendKeyLabel"
+          (keyPressed)="onRecordingKeydown($event)"
         />
         <div class="case-chat__actions">
           @if (canAttach()) {
@@ -560,7 +560,9 @@
               (action)="attachmentsUi.openPicker()"
             />
           }
-          @if (voiceCapability.available()) {
+          @if (voice.state() === 'recording') {
+            <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
+          } @else if (voiceCapability.available()) {
             <ds-icon-button
               icon="mic"
               variant="default"
@@ -585,9 +587,9 @@
             <ds-icon-button
               icon="send"
               variant="primary"
-              [title]="preferences.composerHint()"
-              [disabled]="!canSend"
-              (action)="submit()"
+              [title]="voice.state() === 'recording' ? 'Send voice message' : preferences.composerHint()"
+              [disabled]="!canSendNow"
+              (action)="onSendClick()"
             />
           }
           <ds-icon-button

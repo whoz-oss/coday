@@ -1,48 +1,57 @@
+// The recorder sits in the composer where the textarea is (the host hides the textarea while recording): same
+// padding, same minimum height, text aligned to the left like the typed text. No border, margin or gap of its own.
+:host {
+  display: block;
+}
+
 .voice-recorder {
   display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  min-height: 52px;
-  padding: 0.5rem 0.75rem 0.25rem 1rem;
+  align-items: flex-start;
+  gap: 10px;
   box-sizing: border-box;
   width: 100%;
+  min-height: 52px;
+  padding: 13px 16px 4px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-text);
+  // The composer already shows that it has the focus (border): no second ring on the bar.
+  outline: none;
 
   &__pulse {
     flex: none;
-    width: 0.75rem;
-    height: 0.75rem;
+    width: 8px;
+    height: 8px;
+    // Centered on the first line of text (line-height 1.55 * 14px = 21.7px).
+    margin-top: 7px;
     border-radius: 50%;
     background: var(--color-error, #d13438);
     animation: voice-recorder-pulse 1.2s ease-in-out infinite;
   }
 
   &__time {
-    font-family: var(--font-heading);
     font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    font-size: 0.9375rem;
-    color: var(--color-text);
   }
 
-  &__label {
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
-  }
-
-  &__spacer {
-    flex: 1;
+  &__hint {
+    font-size: 12px;
+    color: var(--color-neutral-700);
   }
 
   &__spinner {
     flex: none;
-    font-size: 1.25rem;
-    color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+    margin-top: 2px;
+    font-size: 18px;
+    color: var(--color-neutral-700);
     animation: voice-recorder-spin 1s linear infinite;
   }
 
+  // One line, like the limit error of the attachments row.
   &__error {
     margin: 0;
-    padding: 0.25rem 1rem 0;
+    padding: 0 16px 4px;
+    font-family: var(--font-body);
     font-size: 0.75rem;
     color: var(--color-error, #d13438);
   }

@@ -1,5 +1,8 @@
 package io.whozoss.agentos.transcription
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.TranscriptionModelFactory
@@ -68,7 +71,24 @@ class TranscriptionService(
             object : ByteArrayResource(audio) {
                 override fun getFilename(): String = "audio.${AudioMimeTypes.extensionFor(mimeType) ?: "webm"}"
             }
-        return transcriptionModel.call(AudioTranscriptionPrompt(resource)).result.output
+        return normalizeTranscript(transcriptionModel.call(AudioTranscriptionPrompt(resource)).result.output)
+    }
+
+    /**
+     * Some OpenAI-compatible routers answer a JSON document (`{"text": "..."}`) whatever the requested format.
+     * Trim the output and, when it is a JSON object with a string `text` field, keep only that field.
+     * Anything else is kept as is. The transcript is user content and is never logged.
+     */
+    private fun normalizeTranscript(output: String?): String {
+        val trimmed = output?.trim().orEmpty()
+        if (!trimmed.startsWith("{")) return trimmed
+        val text =
+            try {
+                (jsonMapper.readTree(trimmed) as? ObjectNode)?.get("text")?.takeIf { it.isTextual }?.asText()
+            } catch (_: JsonProcessingException) {
+                null
+            }
+        return text?.trim() ?: trimmed
     }
 
     private fun findPlatformWhisperModel(): AiModel? =
@@ -79,5 +99,6 @@ class TranscriptionService(
 
     companion object {
         const val WHISPER_ALIAS = "WHISPER"
+        private val jsonMapper = ObjectMapper()
     }
 }

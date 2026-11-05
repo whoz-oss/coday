@@ -1,16 +1,20 @@
 @if (state() === 'recording') {
-  <div class="voice-recorder" role="status" aria-label="Recording a voice message">
+  <div
+    #bar
+    class="voice-recorder"
+    tabindex="-1"
+    role="status"
+    aria-label="Recording a voice message"
+    (keydown)="keyPressed.emit($event)"
+  >
     <span class="voice-recorder__pulse" aria-hidden="true"></span>
     <span class="voice-recorder__time">{{ formatElapsed(elapsedMs()) }}</span>
-    <span class="voice-recorder__label">Recording…</span>
-    <span class="voice-recorder__spacer"></span>
-    <ds-icon-button icon="delete" variant="danger" title="Cancel recording" (action)="cancelled.emit()" />
-    <ds-icon-button icon="send" variant="primary" title="Send voice message" (action)="sent.emit()" />
+    <span class="voice-recorder__hint">Recording… press {{ sendKey() }} to send</span>
   </div>
 } @else if (state() === 'sending') {
-  <div class="voice-recorder voice-recorder--sending" role="status">
+  <div class="voice-recorder" role="status">
     <span class="voice-recorder__spinner material-icons" aria-hidden="true">progress_activity</span>
-    <span class="voice-recorder__label">Sending and transcribing…</span>
+    <span class="voice-recorder__hint">Sending and transcribing…</span>
   </div>
 }
 @if (error(); as message) {
