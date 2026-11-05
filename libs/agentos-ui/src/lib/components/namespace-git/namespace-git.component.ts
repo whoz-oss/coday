@@ -9,6 +9,7 @@ import {
   NamespaceGitCheckoutStatusEnum,
   NamespaceGitControllerService,
 } from '@whoz-oss/agentos-api-client'
+import { ConfirmDialogComponent, DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { catchError, forkJoin, of } from 'rxjs'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 
@@ -50,9 +51,8 @@ const AUTH_TYPE_LABELS: Readonly<Record<string, string>> = {
 @Component({
   selector: 'agentos-namespace-git',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ConfirmDialogComponent, DS_PAGE_KIT],
   templateUrl: './namespace-git.component.html',
-  styleUrl: './namespace-git.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceGitComponent implements OnInit {
@@ -63,6 +63,8 @@ export class NamespaceGitComponent implements OnInit {
 
   readonly isLoading = signal(true)
   readonly isSaving = signal(false)
+  /** Opens the confirmation dialog of the association removal. */
+  readonly confirmingRemove = signal(false)
   readonly associationLoaded = signal(false)
   readonly errorMessage = signal<string | null>(null)
   readonly association = signal<NamespaceGit | null>(null)
@@ -194,9 +196,15 @@ export class NamespaceGitComponent implements OnInit {
       })
   }
 
+  /** Asks for confirmation; the removal itself runs from {@link confirmRemove}. */
   remove(): void {
     if (!this.associationLoaded() || this.isLoading() || this.isSaving() || !this.isAssociated()) return
-    if (!confirm('Remove the repository association? Existing workspaces keep their worktree.')) return
+    this.confirmingRemove.set(true)
+  }
+
+  confirmRemove(): void {
+    this.confirmingRemove.set(false)
+    if (!this.associationLoaded() || this.isLoading() || this.isSaving() || !this.isAssociated()) return
     this.isSaving.set(true)
 
     this.gitApi

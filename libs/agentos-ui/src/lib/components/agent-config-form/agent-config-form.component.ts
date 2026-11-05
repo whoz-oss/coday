@@ -20,6 +20,7 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
+  AiModel,
   AgentConfigControllerService,
   AgentConfigExecutionModeEnum,
   AgentConfigDefaultsControllerService,
@@ -29,7 +30,9 @@ import {
   IntegrationTypeDescriptor,
   SkillSummary,
 } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { catchError, forkJoin, map, Observable, of } from 'rxjs'
+import { AiModelStateService } from '../../services/ai-model-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import {
   ALL_SKILLS_SELECTOR,
@@ -46,6 +49,7 @@ import {
 } from '../../services/sub-agent-selector.utils'
 import { SkillStateService } from '../../services/skill-state.service'
 import { CONFIG_AGENT_TYPE, isConfigAgentExposed } from './config-agent-exposure'
+import { buildModelOptions, ModelOptions } from './model-options'
 
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
@@ -169,9 +173,8 @@ interface SkillRow {
  */
 @Component({
   selector: 'agentos-agent-config-form',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
   templateUrl: './agent-config-form.component.html',
-  styleUrl: './agent-config-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentConfigFormComponent implements OnInit {
@@ -186,6 +189,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly integrationConfigState = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
   private readonly skillState = inject(SkillStateService)
+  private readonly aiModelState = inject(AiModelStateService)
 
   /**
    * namespaceId from the route, or undefined when operating in platform mode
@@ -202,7 +206,9 @@ export class AgentConfigFormComponent implements OnInit {
       validators: [Validators.required, Validators.minLength(1)],
     }),
     description: new FormControl<string | null>(null),
-    modelName: new FormControl<string | null>(null),
+    modelName: new FormControl<string | null>(null, {
+      validators: [Validators.required, AgentConfigFormComponent.notBlankValidator],
+    }),
     instructions: new FormControl<string | null>(null),
     executionMode: new FormControl<ExecutionMode>(AgentConfigExecutionModeEnum.SIMPLE, { nonNullable: true }),
     delegationTimeoutSeconds: new FormControl<number | null>(null, {
@@ -211,6 +217,15 @@ export class AgentConfigFormComponent implements OnInit {
     enabled: new FormControl<boolean>(false, { nonNullable: true }),
     loopConfig: new FormControl<string | null>(null, { validators: [AgentConfigFormComponent.jsonValidator] }),
   })
+
+  /**
+   * Refuses a value made of whitespace only, which `Validators.required` lets through and the server
+   * (`@NotBlank`) refuses. Without it the form would enable Save for a value the server then rejects.
+   */
+  static notBlankValidator(control: AbstractControl): ValidationErrors | null {
+    const value = control.value
+    return typeof value === 'string' && value.length > 0 && value.trim().length === 0 ? { required: true } : null
+  }
 
   /**
    * Validates that the control value is either empty/null or a valid JSON string.
@@ -255,6 +270,17 @@ export class AgentConfigFormComponent implements OnInit {
     this.delegationTimeoutControl.setValue(null)
     this.delegationTimeoutControl.markAsDirty()
   }
+
+  /** Explains the timeout and, once known, the server default that an empty field inherits. */
+  protected readonly delegationTimeoutHint = computed(() => {
+    const seconds = this.defaultDelegationTimeoutSeconds()
+    const inherited = seconds !== null ? `: ${seconds} s (${seconds / 60} min)` : ''
+    return (
+      'How long each delegation launched by this agent waits without activity from the sub-agent, including its own ' +
+      'delegations. When it runs out, the sub-agent and its active descendants are stopped and can be resumed. ' +
+      `Leave empty to use the server default${inherited}.`
+    )
+  })
 
   protected get enabledControl() {
     return this.form.controls.enabled
@@ -385,6 +411,29 @@ export class AgentConfigFormComponent implements OnInit {
     })
   )
 
+  // ── Model ─────────────────────────────────────────────────────────────────────────────────────
+
+  /** What the model select offers: aliases, then API model names, plus the stored value when unlisted. */
+  protected readonly modelOptions = signal<ModelOptions>({ aliases: [], apiNames: [], current: null })
+
+  /** True once the models were requested, whether or not any came back. */
+  private readonly modelCatalogueLoaded = signal(false)
+
+  /**
+   * Free text stands in only when the catalogue is known to be empty (no model defined in this scope,
+   * or the lists could not be read), so a failing endpoint never prevents naming a model. Until then
+   * the select is shown, which avoids an input flashing into a select on load.
+   */
+  protected readonly modelAsFreeText = computed(() => {
+    const { aliases, apiNames } = this.modelOptions()
+    return this.modelCatalogueLoaded() && aliases.length + apiNames.length === 0
+  })
+
+  private applyModelCatalogue(models: AiModel[], current: string | null): void {
+    this.modelOptions.set(buildModelOptions(models, current))
+    this.modelCatalogueLoaded.set(true)
+  }
+
   /** Integration rows built from the namespace's IntegrationConfig list. */
   protected readonly integrationRows = signal<IntegrationRow[]>([])
 
@@ -451,6 +500,7 @@ export class AgentConfigFormComponent implements OnInit {
       builtInTypes: this.loadBuiltInTypes(),
       skillCatalogue: this.loadSkillCatalogue(),
       delegationCandidates: this.loadDelegationCandidates(),
+      models: this.aiModelState.listAvailable(this.namespaceId),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -461,8 +511,10 @@ export class AgentConfigFormComponent implements OnInit {
           builtInTypes,
           skillCatalogue,
           delegationCandidates,
+          models,
         }) => {
           this.existingConfig = config
+          this.applyModelCatalogue(models, config.modelName ?? null)
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
@@ -504,10 +556,19 @@ export class AgentConfigFormComponent implements OnInit {
       builtInTypes: this.loadBuiltInTypes(),
       skillCatalogue: this.loadSkillCatalogue(),
       delegationCandidates: this.loadDelegationCandidates(),
+      models: this.aiModelState.listAvailable(this.namespaceId),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ namespaceIntegrations, platformIntegrations, builtInTypes, skillCatalogue, delegationCandidates }) => {
+        next: ({
+          namespaceIntegrations,
+          platformIntegrations,
+          builtInTypes,
+          skillCatalogue,
+          delegationCandidates,
+          models,
+        }) => {
+          this.applyModelCatalogue(models, null)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, existingIntegrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, existingIntegrations ?? undefined))

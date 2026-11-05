@@ -28,7 +28,8 @@
  *   --fresh          delete `config/` and `files/` first: a brand-new first run (the wizard shows again)
  *   --managed        run everything in one process, without the Nx TUI (what the desktop apps get; used by e2e)
  *   --no-open        do not open the browser when the server is up (Nx mode opens it; also CODAY_NO_OPEN=1)
- *   --port <n>       Express port (default 3000, next free one otherwise)
+ *   --port <n>       Express port (default 3001: 3000 is left to the `coday-web` package, 3001 is taken strictly)
+ *                    AgentOS / Factory / Bolt prefer 8324 / 8341 / 7888 (the `coday-web` package prefers 8224 / 8241 / 7788)
  *   --prepare-only   prepare everything, print the paths as JSON on the last line and exit (no server)
  *   --clean          delete the WHOLE root (config included) when the server stops
  *
@@ -56,6 +57,19 @@ import {
 } from './utils/web-local-helpers'
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+/** Express port of the local stack. 3000 belongs to the `coday-web` package, so both can run side by side. */
+const DEFAULT_PORT = '3001'
+
+/**
+ * Preferred ports of the services of the local stack: neither the packaged ones (8224 / 8241 / 7788, `coday-web`) nor
+ * the dev ones (8124 / 8141 / 7688). They are only preferences: a taken port falls back to the next free one.
+ */
+const LOCAL_SERVICE_PORTS = {
+  CODAY_AGENTOS_PORT: '8324',
+  CODAY_FACTORY_PORT: '8341',
+  CODAY_AGENTOS_BOLT_PORT: '7888',
+}
 
 const log = (message: string) => console.log(`[web-local] ${message}`)
 
@@ -209,14 +223,16 @@ async function main(): Promise<void> {
     ...(flag('--managed') ? ['--managed'] : []),
     ...(flag('--no-open') ? ['--no-open'] : []),
   ]
-  const port = value('--port') ?? '3000'
+  const port = value('--port') ?? DEFAULT_PORT
   const env = {
     ...process.env,
     CODAY_AGENTOS_VERSION: 'dev',
     CODAY_FACTORY_VERSION: 'dev',
     // The wizard proposes this folder instead of ~/Coday: the local stack never writes in the real home.
     CODAY_DEFAULT_FILES_DIR: filesFolder,
-    ...(value('--port') ? { PORT: port } : {}),
+    ...LOCAL_SERVICE_PORTS,
+    // Always forced (strict): never silently fall back onto 3000, which belongs to the coday-web package.
+    PORT: port,
   }
 
   if (flag('--prepare-only')) {
@@ -229,7 +245,7 @@ async function main(): Promise<void> {
         args: launchArgs,
         port,
         firstRun,
-        env: { CODAY_AGENTOS_VERSION: 'dev', CODAY_FACTORY_VERSION: 'dev' },
+        env: { CODAY_AGENTOS_VERSION: 'dev', CODAY_FACTORY_VERSION: 'dev', ...LOCAL_SERVICE_PORTS },
       })
     )
     return

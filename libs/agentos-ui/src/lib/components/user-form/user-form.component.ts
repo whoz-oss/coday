@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
 import { UserStateService } from '../../services/user-state.service'
 
@@ -21,9 +22,8 @@ import { UserStateService } from '../../services/user-state.service'
  */
 @Component({
   selector: 'agentos-user-form',
-  imports: [ReactiveFormsModule],
+  imports: [DS_PAGE_KIT, ReactiveFormsModule],
   templateUrl: './user-form.component.html',
-  styleUrl: './user-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserFormComponent implements OnInit {

@@ -13,8 +13,9 @@ In a terminal (Nx mode, see below) the browser opens by itself, always on **`/we
 (`http://localhost:3000/welcome`), as soon as the Express server listens and whatever the install: that page only talks
 to Coday's own server, so it does not wait for AgentOS. On a **first run** it is the wizard. Otherwise (setup done, or an
 install without a wizard: `--auth`, an external AgentOS, an existing install without a wizard identity) it is a plain
-loading page (download, Java, AgentOS, Factory: nothing that reads as a setup) that follows the startup and leads into
-the app by itself as soon as AgentOS is up. With an external `AGENTOS_URL` / `FACTORY_URL` the page has nothing to
+loading page (download, Java, AgentOS, Factory: nothing that reads as a setup) that follows the startup and, as soon as
+AgentOS is up, leads into **the personal namespace of the user** (`user:<email>`) by itself. `/` redirects to `/welcome`.
+With an external `AGENTOS_URL` / `FACTORY_URL` the page has nothing to
 download or start for that service and only waits for it to answer. Pass `--no-open` or set `CODAY_NO_OPEN=1` to keep
 the browser closed (it is also never opened with `--auth`, a non-loopback host or `CI`). Without a terminal
 (`--managed`, desktop apps) nothing is opened: open the URL printed as `Server is running on http://localhost:PORT`
@@ -106,6 +107,10 @@ back to the next free port, the choice is written to `runtime/state.json`). The 
 (Factory) and 7688 (Bolt) are reserved for dev mode** (`pnpm web:serve:dev`, `bootRun`), so a packaged instance and a
 dev stack run side by side without colliding or picking up each other's services.
 
+`web:local` has its own preferred ports too: **AgentOS 8324, Factory 8341, Bolt 7888** (Express 3001), so it runs next
+to an `npx` / `coday-web` instance (8224 / 8241 / 7788, Express 3000) without ever taking its ports. They are only
+preferences (`CODAY_AGENTOS_PORT`, `CODAY_FACTORY_PORT`, `CODAY_AGENTOS_BOLT_PORT`): a taken port falls back to the next free one.
+
 ### Logs
 
 Each process writes to its own file, in addition to its pane / the console:
@@ -139,7 +144,10 @@ existing installs without a wizard identity keep their previous behaviour: no wi
 | `--managed` / `CODAY_NO_NX=1` | Force the single-process mode (no Nx) |
 | `--no-open` / `CODAY_NO_OPEN=1` | Do not open the browser on start (only Nx mode opens it; never with `--auth`, a non-loopback host or `CI`) |
 | `PORT` | Express port (strict when set; default 3000, 4100 in dev) |
-| `AGENTOS_URL`, `FACTORY_URL` | Use an external AgentOS / Factory instead of managed ones |
+| `CODAY_AGENTOS_PORT`, `CODAY_FACTORY_PORT`, `CODAY_AGENTOS_BOLT_PORT` | Preferred ports of the managed AgentOS, Factory and AgentOS Bolt (defaults 8224 / 8241 / 7788; next free port when taken). Set by `web:local` (8324 / 8341 / 7888) |
+| `AGENTOS_URL`, `FACTORY_URL` | Use an external AgentOS / Factory instead of managed ones. A service that is external has no pane in the Nx run (nothing to run); the `status` pane still reports it |
+| `CODAY_NO_FACTORY=1` | Leave the managed Factory out: no `factory` pane in the Nx run, it is neither downloaded nor started, `/api/factory` is not proxied, and the wizard and the loading page do not mention it. An external `FACTORY_URL` is still used |
+| `--profile laptop\|managed` / `CODAY_PROFILE` | Force the profile instead of deriving it (the flag wins over the env var). E.g. a dev server (`AGENTOS_URL`) started on the configDir of a running `coday-web` with `--profile laptop` keeps forwarding the wizard identity to that AgentOS. An external AgentOS on an already provisioned configDir never rewrites `runtime/state.json` (ports, progress) in the single-process mode, except for this profile |
 | `AGENTOS_EXTERNAL_USERID` | Impose the identity forwarded to AgentOS (disables the wizard) |
 | `CODAY_AGENTOS_VERSION`, `CODAY_FACTORY_VERSION` | JAR version to run (`dev` = JARs placed by hand in `<configDir>/{agentos,factory}`) |
 | `CODAY_DEFAULT_FILES_DIR` | Folder proposed by the wizard instead of `~/Coday` |
@@ -156,7 +164,7 @@ pnpm nx run web:local                     # everyday: build local code, run it l
 pnpm nx run web:local -- --fresh          # test the first-run wizard again (deletes the local config first)
 pnpm nx run web:local -- --managed        # single process, plain console (instead of the Nx TUI)
 pnpm nx run web:local -- --no-open        # do not open the browser (every restart would otherwise open a tab)
-pnpm nx run web:local -- --port 3100      # pick the port
+pnpm nx run web:local -- --port 3100      # pick another port (default 3001: 3000 is left to the coday-web package)
 ```
 
 The first time you get the wizard; afterwards the loading page and then the app, on the instance you configured, so you can stop,
@@ -181,7 +189,7 @@ lies in, them, your home or the repository), and nothing is published.
 | Option / env | Effect |
 |---|---|
 | `--fresh` | Delete `config/` and `files/` (printed) before starting: a brand-new first run |
-| `--managed`, `--port <n>` | Single-process mode, Express port |
+| `--managed`, `--port <n>` | Single-process mode, Express port (default **3001**, taken strictly: the run fails rather than use 3000, which belongs to the `coday-web` package) |
 | `--no-open` | Do not open the browser (also `CODAY_NO_OPEN=1`) |
 | `--prepare-only` | Prepare everything, print the paths as JSON on the last line, no server |
 | `--clean` | Delete the **whole** root when the server stops (setup and data included) |

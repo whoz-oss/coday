@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http'
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
+import { NamespaceControllerService, UserControllerService } from '@whoz-oss/agentos-api-client'
 import { catchError, firstValueFrom, of, Subscription, timer } from 'rxjs'
 import { exhaustMap } from 'rxjs/operators'
 import { SetupApiService } from './setup-api.service'
@@ -29,12 +30,31 @@ export interface ProviderDraft {
  */
 export type WelcomeMode = 'wizard' | 'loading'
 
+/**
+ * `/welcome?preview=fresh|nofresh`: look at the first-run wizard (`fresh`) or at the loading page (`nofresh`) whatever the
+ * install state, and never leave for the app by itself. Meant for working on those pages on an install that is already
+ * set up. It changes what is SHOWN only: the server still refuses the setup mutations once the setup is done.
+ *
+ * In a preview nothing is sent: saving the email and applying the setup only move to the next step, so every screen can
+ * be walked through. The progress shows the real status of the install.
+ */
+export type WelcomePreview = 'fresh' | 'nofresh'
+
+export const parseWelcomePreview = (value: string | null | undefined): WelcomePreview | null =>
+  value === 'fresh' || value === 'nofresh' ? value : null
+
+/** Where `/welcome` hands over to the app. */
+export interface LandingTarget {
+  path: string
+  queryParams: Record<string, string>
+}
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const POLL_INTERVAL_MS = 1_500
 const MIN_KEY_LENGTH = 8
 /**
- * The app only needs AgentOS. The Factory gets this long, once AgentOS is up, to report healthy before the loading
- * page leaves without it (a Factory that cannot start must not hold the user back).
+ * With a configured Factory (FACTORY_URL), it gets this long, once AgentOS is up, to report healthy before the loading
+ * page leaves without it (a Factory that cannot be reached must not hold the user back).
  */
 const FACTORY_GRACE_MS = 20_000
 
@@ -69,6 +89,8 @@ export const errorMessage = (err: unknown, fallback: string): string => {
 @Injectable({ providedIn: 'root' })
 export class SetupStateService {
   private readonly api = inject(SetupApiService)
+  private readonly users = inject(UserControllerService)
+  private readonly namespaces = inject(NamespaceControllerService)
   private readonly destroyRef = inject(DestroyRef)
 
   // --- server facts -------------------------------------------------------------------------------
@@ -87,6 +109,8 @@ export class SetupStateService {
 
   /** Decided once, on entering /welcome: `setupDone` flipping at the end of a first run must not change the page. */
   readonly mode = signal<WelcomeMode>('wizard')
+  /** Set by `?preview=`: forces the mode and keeps the page where it is. */
+  readonly preview = signal<WelcomePreview | null>(null)
   private readonly factoryGraceElapsed = signal(false)
   private factoryGraceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -108,7 +132,7 @@ export class SetupStateService {
     const s = this.status()?.steps
     if (!s) return []
     return [
-      checklistLine('download', 'Downloading AgentOS and the Factory', s.download),
+      checklistLine('download', 'Downloading AgentOS', s.download),
       checklistLine('java', 'Checking Java 25', s.java),
       checklistLine('agentos', 'Starting AgentOS', s.agentos),
       checklistLine('providers', 'Configuring your AI providers', s.providers),
@@ -123,17 +147,22 @@ export class SetupStateService {
     const s = this.status()?.steps
     if (!s) return []
     return [
-      checklistLine('download', 'Downloading AgentOS and the Factory', s.download),
+      checklistLine('download', 'Downloading AgentOS', s.download),
       checklistLine('java', 'Checking Java 25', s.java),
       checklistLine('agentos', 'Starting AgentOS', s.agentos),
-      checklistLine('factory', 'Starting the Factory', s.factory),
+      // Only with an external Factory (FACTORY_URL): Coday does not run one otherwise.
+      ...(s.factory ? [checklistLine('factory', 'Waiting for the Factory', s.factory)] : []),
     ]
   })
 
-  /** The loading page can hand over to the app: AgentOS is up and the Factory is up, failed, or out of grace. */
+  /**
+   * The loading page can hand over to the app: AgentOS is up and, when a Factory is configured, it is up, failed, or
+   * out of grace.
+   */
   readonly loadingReady = computed(() => {
     const s = this.status()?.steps
     if (!s || s.agentos.state !== 'done') return false
+    if (!s.factory) return true
     return s.factory.state === 'done' || s.factory.state === 'error' || this.factoryGraceElapsed()
   })
   readonly javaBlocked = computed(() => this.status()?.steps.java.state === 'blocked')
@@ -143,7 +172,7 @@ export class SetupStateService {
   })
   readonly failed = computed(() => this.status()?.apply.status === 'error')
   /** A setup was attempted: the email is AgentOS's administrator now, the wizard no longer goes back to it. */
-  readonly emailLocked = computed(() => (this.status()?.apply.status ?? 'idle') !== 'idle')
+  readonly emailLocked = computed(() => !this.preview() && (this.status()?.apply.status ?? 'idle') !== 'idle')
   readonly namespaceId = computed(() => this.status()?.namespaceId ?? null)
 
   private poller: Subscription | null = null
@@ -194,21 +223,24 @@ export class SetupStateService {
   }
 
   /** Called once on entering /welcome: resume where the previous session stopped. */
-  async init(): Promise<void> {
+  async init(preview: WelcomePreview | null = null): Promise<void> {
+    this.preview.set(preview)
     const status = await this.refreshStatus()
     if (!status) return
     if (status.defaults?.sharedExchangePath && !this.folder()) this.folder.set(status.defaults.sharedExchangePath)
     if (status.identity && !this.email()) this.email.set(status.identity.email)
     // Download and AgentOS startup are already running in the background: show them from the start.
     this.startPolling()
-    if (!(status.mode === 'laptop' && status.setupEnabled && !status.setupDone)) {
+    const wizard = preview ? preview === 'fresh' : status.mode === 'laptop' && status.setupEnabled && !status.setupDone
+    if (!wizard) {
       // No wizard to show (setup done, or a mode without one: --auth, external AgentOS, existing install): only the
       // loading page, which hands over to the app once AgentOS is up.
       this.mode.set('loading')
       this.step.set('progress')
       return
     }
-    if (status.apply.status === 'running' || status.apply.status === 'error' || status.apply.status === 'done') {
+    // A preview of the wizard always starts at the first step, whatever an earlier apply did.
+    if (!preview && ['running', 'error', 'done'].includes(status.apply.status)) {
       this.step.set('progress')
     }
   }
@@ -241,8 +273,12 @@ export class SetupStateService {
   /** Step 1: store the identity. It unblocks the AgentOS task (bootstrap admin). */
   async submitEmail(): Promise<void> {
     if (!this.emailValid() || this.busy()) return
-    this.busy.set(true)
     this.error.set(null)
+    if (this.preview()) {
+      this.step.set('providers')
+      return
+    }
+    this.busy.set(true)
     try {
       await firstValueFrom(this.api.saveIdentity(this.email().trim()))
       await this.refreshStatus()
@@ -333,8 +369,12 @@ export class SetupStateService {
   /** Step 3 -> 4: send everything to the server, which configures AgentOS. */
   async submitFolderAndApply(): Promise<void> {
     if (!this.providersValid() || !this.folderValid() || this.busy()) return
-    this.busy.set(true)
     this.error.set(null)
+    if (this.preview()) {
+      this.step.set('progress')
+      return
+    }
+    this.busy.set(true)
     try {
       await firstValueFrom(this.api.apply({ providers: this.applyProviders(), sharedExchangePath: this.folder() }))
       this.step.set('progress')
@@ -364,16 +404,30 @@ export class SetupStateService {
   }
 
   /**
-   * Where the loading page hands over. The personal namespace id is only known to a server that ran the apply since it
-   * started; without it the app picks the user's first namespace by itself.
+   * Where the loading page hands over: always the personal namespace of the user. The id is known to a server that ran
+   * the apply since it started; otherwise it is looked up in AgentOS (personal namespaces are keyed `user:<externalId>`).
+   * Only when that fails does the app pick the user's first namespace by itself.
    */
-  loadingTarget(): { path: string; queryParams: Record<string, string> } {
-    const ns = this.namespaceId()
+  async loadingTarget(): Promise<LandingTarget> {
+    const ns = this.namespaceId() ?? (await this.personalNamespaceId())
     return { path: '/home', queryParams: ns ? { ns } : {} }
   }
 
+  private async personalNamespaceId(): Promise<string | null> {
+    try {
+      const { externalId } = await firstValueFrom(this.users.getMeUser())
+      if (!externalId) return null
+      const key = `user:${externalId}`
+      const found = await firstValueFrom(this.namespaces.listByExternalIdsNamespace([key]))
+      return found.find((namespace) => namespace.externalId === key)?.id ?? null
+    } catch (err) {
+      console.warn('Could not look up the personal namespace', err)
+      return null
+    }
+  }
+
   /** The URL of the personal namespace, on a new case of the default (Coday) agent. */
-  landingCommands(): { path: string; queryParams: Record<string, string> } | null {
+  landingCommands(): LandingTarget | null {
     const ns = this.namespaceId()
     return ns ? { path: '/home', queryParams: { ns } } : null
   }

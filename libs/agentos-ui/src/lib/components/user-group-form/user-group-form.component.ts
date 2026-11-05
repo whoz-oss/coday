@@ -5,6 +5,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AgentConfig, UserGroupMemberRoleEnum, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT, MemberRoleOption, MemberRowComponent } from '@whoz-oss/design-system'
 import { Observable } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
 import { computeMemberDiff, memberLabel } from './user-group-form.util'
@@ -40,9 +41,8 @@ const MAX_NAME_LENGTH = 250
  */
 @Component({
   selector: 'agentos-user-group-form',
-  imports: [NgTemplateOutlet, ReactiveFormsModule],
+  imports: [NgTemplateOutlet, ReactiveFormsModule, DS_PAGE_KIT, MemberRowComponent],
   templateUrl: './user-group-form.component.html',
-  styleUrl: './user-group-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserGroupFormComponent implements OnInit {
@@ -78,6 +78,10 @@ export class UserGroupFormComponent implements OnInit {
   protected readonly selectedAgentIds = signal<Set<string>>(new Set())
 
   // --- Members ---
+  protected readonly memberRoleOptions: ReadonlyArray<MemberRoleOption> = [
+    { value: 'MEMBER', label: 'Member' },
+    { value: 'ADMIN', label: 'Admin' },
+  ]
   protected readonly selectedMembers = signal<SelectedMember[]>([])
   protected readonly memberInputValue = signal('')
   protected readonly memberInputError = signal<string | null>(null)

@@ -31,7 +31,7 @@ export interface AgentConfig {
   instructions?: string
   integrations?: { [key: string]: Array<string> }
   loopConfig?: any | null
-  modelName?: string
+  modelName: string
   name: string
   namespaceId?: string
   skillSelectors?: Array<string>

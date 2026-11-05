@@ -1,6 +1,8 @@
 /* Global styles */
 @use './app/styles/typography.scss';
 @use './app/styles/colors.scss';
+/* Global primitives of the design system (dsButton, dsControl, dsTable…): plain CSS, included once, after the tokens. */
+@use 'libs/design-system/src/styles/primitives';
 @use './app/styles/glass-effects.scss';
 @use './app/styles/animated-gradient-border.scss' as animated-gradient-border;
 
@@ -123,6 +125,12 @@ body {
  * (the root component of libs/agentos-ui, mounted at /).
  */
 agentos-shell {
+  /* The skin's body font. Declared here, not only as a token: without it everything that does not set its own
+   * font-family (labels, inputs, table cells, hints, paragraphs) fell back to the page's system font, while titles
+   * and filters used the token, so one screen mixed three families. Buttons and small uppercase labels opt into
+   * --font-heading explicitly. */
+  font-family: var(--font-body);
+
   /* Blueprint corner decorations — used by the dsBlueprint directive */
   .blueprint-corner {
     position: absolute;

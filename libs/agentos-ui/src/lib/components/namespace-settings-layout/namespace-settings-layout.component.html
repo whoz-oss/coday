@@ -5,14 +5,10 @@
   [groups]="navigationGroups()"
 >
   <nav settingsBreadcrumb aria-label="Breadcrumb">
-    <a routerLink="/agentos/namespaces">Namespaces</a>
+    <a routerLink="/namespaces">Namespaces</a>
     <span aria-hidden="true">/</span>
     <span>{{ namespaceName() }}</span>
   </nav>
-
-  <button settingsHeaderAction class="settings-header__open" type="button" (click)="openNamespace()">
-    Open namespace
-  </button>
 
   <router-outlet />
 </agentos-settings-layout>

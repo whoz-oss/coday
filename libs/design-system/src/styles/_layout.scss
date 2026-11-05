@@ -1,0 +1,300 @@
+@use 'scale' as t;
+
+///
+/// Coday Design System — layout utilities
+///
+/// Plain CSS, included with the primitives. Small, single-purpose classes for what sits between the components of
+/// a page: a form, a stack, a row of controls, a block of code. They carry no colour of their own beyond tokens.
+///
+
+.ds-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.ds-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.ds-stack--sm {
+  gap: 0.5rem;
+}
+
+// A row of controls and their buttons. A control in it takes the free width.
+.ds-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+
+  > .ds-control {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+}
+
+.ds-inline--wrap {
+  flex-wrap: wrap;
+  column-gap: 1rem;
+}
+
+.ds-inline--end {
+  align-items: flex-end;
+}
+
+.ds-inline--start {
+  align-items: flex-start;
+}
+
+.ds-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// A tinted block inside a form (a parameter row).
+.ds-panel {
+  padding: 0.75rem;
+  border-radius: var(--radius-md, 0);
+  background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+}
+
+.ds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// A line of a plain list: main text that grows, then its actions.
+.ds-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-md, 0);
+  font-size: t.$text-body;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+  }
+}
+
+.ds-row__grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The number in front of a numbered row.
+.ds-index {
+  flex-shrink: 0;
+  width: 1.5rem;
+  padding-top: 0.6rem;
+  color: var(--color-text-secondary, #5c5c5f);
+  font-size: t.$text-small;
+  font-weight: 600;
+  text-align: right;
+  user-select: none;
+}
+
+// Small uppercase label that is not a legend (a sub-title inside a fieldset).
+.ds-micro {
+  @include t.micro-label;
+  margin: 0;
+  color: var(--color-neutral-600, #7a7a7d);
+}
+
+.ds-strong {
+  color: var(--color-text, #1d1f20);
+  font-weight: 500;
+}
+
+.ds-meta {
+  color: var(--color-text-secondary, #5c5c5f);
+  font-family: var(--font-code, monospace);
+  font-size: t.$text-micro;
+}
+
+// A child of a checkbox row: lines up under its text. `.ds-hint.ds-indent` is spelled out because the layout rules
+// are emitted BEFORE the primitives, and `.ds-hint { margin: 0 }` would otherwise win at equal specificity.
+.ds-indent,
+.ds-hint.ds-indent {
+  margin-left: 1.5rem;
+}
+
+.ds-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+// Rendered markdown (innerHTML carries no component attribute, so only a global rule can reach it).
+.ds-prose {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+
+  p {
+    margin: 0 0 0.5em;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  ul,
+  ol {
+    margin: 0.25em 0 0.5em;
+    padding-left: 1.4em;
+  }
+
+  code {
+    padding: 0.1em 0.3em;
+    background: var(--color-code-bg, var(--color-bg-hover, rgba(29, 31, 32, 0.06)));
+    font-family: var(--font-code, monospace);
+    font-size: 0.9em;
+  }
+
+  pre {
+    padding: 0.75rem;
+    overflow-x: auto;
+    border-radius: var(--radius-sm, 0);
+    background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+    font-family: var(--font-code, monospace);
+    font-size: 0.9em;
+    white-space: pre-wrap;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 0.75em 0 0.25em;
+    font-size: 1em;
+    font-weight: 600;
+  }
+
+  a {
+    color: var(--color-accent-700, var(--color-accent, #416180));
+  }
+}
+
+// A table of rendered markdown, wrapped by the markdown renderers (innerHTML carries no component attribute, so only
+// a global rule can reach it). The table fills its container and wraps its cells at word boundaries; the wrapper only
+// scrolls sideways when a column cannot get narrower than its longest word. `overflow-wrap: normal` undoes the
+// `anywhere` of a chat bubble, which would otherwise squeeze every column down to a few letters.
+.ds-md-table {
+  max-width: 100%;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-sm, 0);
+  -webkit-overflow-scrolling: touch;
+
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: t.$text-small;
+    line-height: 1.45;
+    text-align: left;
+  }
+
+  th,
+  td {
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+    overflow-wrap: normal;
+    word-break: normal;
+    vertical-align: top;
+  }
+
+  th {
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    color: inherit;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  tbody tr:nth-child(even) {
+    background: color-mix(in srgb, currentColor 3%, transparent);
+  }
+
+  // GFM column alignment (`:---:`) arrives as an align attribute.
+  [align='center'] {
+    text-align: center;
+  }
+
+  [align='right'] {
+    text-align: right;
+  }
+}
+
+.ds-control.ds-indent {
+  width: calc(100% - 1.5rem);
+}
+
+.ds-control--narrow {
+  max-width: 8rem;
+}
+
+// After .ds-indent on purpose: same specificity, the later wins.
+.ds-control.ds-control--auto {
+  width: auto;
+}
+
+// A block of code or of preformatted text.
+.ds-pre {
+  max-height: 400px;
+  margin: 0;
+  padding: 0.875rem 1rem;
+  overflow: auto;
+  border-radius: var(--radius-sm, 0);
+  background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+  color: var(--color-text, #1d1f20);
+  font-family: var(--font-code, monospace);
+  font-size: t.$text-small;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ds-pre--prose {
+  font-family: var(--font-body, sans-serif);
+  font-size: t.$text-body;
+  line-height: 1.6;
+}
+
+.ds-hint code,
+.ds-code {
+  padding: 0.1em 0.3em;
+  background: var(--color-code-bg, var(--color-bg-hover, rgba(29, 31, 32, 0.06)));
+  color: var(--color-code-text, inherit);
+  font-family: var(--font-code, monospace);
+  font-size: 0.9em;
+}

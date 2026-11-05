@@ -169,6 +169,23 @@
   white-space: nowrap;
 }
 
+.shell-topbar-mobile__ns-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-divider);
+}
+
+.shell-topbar-mobile__ns-item--config {
+  color: var(--color-neutral-600);
+}
+
+.shell-topbar-mobile__ns-config-icon {
+  width: 20px;
+  flex: none;
+  font-size: 16px;
+  text-align: center;
+}
+
 // ── Spacer ────────────────────────────────────────────────────────────────────
 
 .shell-topbar-mobile__spacer {

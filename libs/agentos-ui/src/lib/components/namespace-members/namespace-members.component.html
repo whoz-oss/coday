@@ -1,88 +1,65 @@
-<div class="namespace-members">
-  <header class="namespace-members__header">
-    <h1 class="namespace-members__title">Members</h1>
-  </header>
+<ds-page>
+  <ds-section-header title="Members">
+    <span headerMeta class="ds-hint">Exactly one role per user: ADMIN or MEMBER.</span>
+  </ds-section-header>
 
   @if (isLoading()) {
-    <p class="namespace-members__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <div class="namespace-members__body">
-      @if (!isSuperAdmin()) {
-        <p class="namespace-members__hint">
-          You can change roles or remove existing members. Only a platform super-admin can add a new user to this
-          namespace.
-        </p>
+    @if (!isSuperAdmin()) {
+      <p class="ds-hint">
+        You can change roles or remove existing members. Only a platform super-admin can add a new user to this
+        namespace.
+      </p>
+    }
+
+    <ds-fieldset legend="Roster">
+      @if (selectedMembers().length === 0) {
+        <p class="ds-hint">No members yet.</p>
+      } @else {
+        <div class="ds-stack ds-stack--sm">
+          @for (member of selectedMembers(); track member.userId) {
+            <ds-member-row
+              [label]="member.label"
+              [detail]="member.email && member.email !== member.label ? member.email : ''"
+              [value]="member.role"
+              [options]="memberRoleOptions"
+              (valueChange)="setMemberRole(member.userId, $event)"
+              (removed)="removeMember(member.userId)"
+            />
+          }
+        </div>
       }
 
-      <fieldset class="namespace-members__section">
-        <legend class="namespace-members__label">
-          Roster
-          <span class="namespace-members__label-hint">Exactly one role per user: ADMIN or MEMBER</span>
-        </legend>
-
-        @if (selectedMembers().length === 0) {
-          <p class="namespace-members__empty-hint">No members yet.</p>
-        } @else {
-          <ul class="namespace-members__members">
-            @for (member of selectedMembers(); track member.userId) {
-              <li class="namespace-members__member">
-                <div class="namespace-members__member-info">
-                  <span class="namespace-members__member-name">{{ member.label }}</span>
-                  @if (member.email && member.email !== member.label) {
-                    <span class="namespace-members__member-email">{{ member.email }}</span>
-                  }
-                </div>
-                <select
-                  class="namespace-members__member-role"
-                  [value]="member.role"
-                  [attr.aria-label]="'Role of ' + member.label"
-                  (change)="setMemberRole(member.userId, $any($event.target).value)"
-                >
-                  <option value="MEMBER">Member</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
-                <button
-                  class="namespace-members__member-remove"
-                  type="button"
-                  [title]="'Remove ' + member.label"
-                  (click)="removeMember(member.userId)"
-                >
-                  &#215;
-                </button>
-              </li>
-            }
-          </ul>
-        }
-
-        @if (wouldLockOutAdmins()) {
-          <p class="namespace-members__warning">
-            At least one ADMIN must remain on the namespace. Assign ADMIN to someone before saving.
-          </p>
-        }
-
-        @if (isSuperAdmin()) {
-          <ds-autocomplete-input
-            [dataSource]="memberDataSource"
-            placeholder="Add a member…"
-            (itemSelected)="onMemberSelected($event)"
-          />
-        }
-      </fieldset>
-
-      @if (errorMessage()) {
-        <p class="namespace-members__error">{{ errorMessage() }}</p>
+      @if (wouldLockOutAdmins()) {
+        <ds-notice tone="warning">
+          At least one ADMIN must remain on the namespace. Assign ADMIN to someone before saving.
+        </ds-notice>
       }
 
-      <div class="namespace-members__actions">
-        <button
-          class="namespace-members__btn namespace-members__btn--primary"
-          type="button"
-          [disabled]="isSubmitting() || wouldLockOutAdmins()"
-          (click)="submit()"
-        >
-          Save changes
-        </button>
-      </div>
-    </div>
+      @if (isSuperAdmin()) {
+        <ds-autocomplete-input
+          [dataSource]="memberDataSource"
+          placeholder="Add a member…"
+          (itemSelected)="onMemberSelected($event)"
+        />
+      }
+    </ds-fieldset>
+
+    @if (errorMessage()) {
+      <ds-notice>{{ errorMessage() }}</ds-notice>
+    }
+
+    <ds-form-actions>
+      <button
+        dsButton
+        variant="primary"
+        type="button"
+        [disabled]="isSubmitting() || wouldLockOutAdmins()"
+        (click)="submit()"
+      >
+        Save changes
+      </button>
+    </ds-form-actions>
   }
-</div>
+</ds-page>

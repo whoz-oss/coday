@@ -9,7 +9,7 @@ import {
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
 } from '@whoz-oss/agentos-api-client'
-import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
+import { DS_PAGE_KIT, JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
@@ -43,9 +43,8 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-integration-form',
-  imports: [ReactiveFormsModule, JsonSchemaFormComponent],
+  imports: [DS_PAGE_KIT, ReactiveFormsModule, JsonSchemaFormComponent],
   templateUrl: './integration-form.component.html',
-  styleUrl: './integration-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IntegrationFormComponent implements OnInit {

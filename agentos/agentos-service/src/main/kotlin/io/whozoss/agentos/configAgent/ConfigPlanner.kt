@@ -174,6 +174,9 @@ class ConfigPlanner(
         val name = effective.path("name").asText("").trim()
         if (name.isEmpty()) errors += "CREATE needs 'value.name'."
         if (kind == ConfigKind.AGENT) {
+            if (effective.path("modelName").asText("").isBlank()) {
+                errors += "creating an agent needs 'value.modelName': the model alias or name it runs on, e.g. BIG."
+            }
             if (effective.get("enabled")?.isBoolean != true) {
                 errors += "creating an agent needs 'value.enabled': true (it can run) or false (it stays a draft nobody can use)."
             }

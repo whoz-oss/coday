@@ -1,162 +1,114 @@
-<div class="user-group-form">
-  <header class="user-group-form__header">
-    <button class="user-group-form__back" type="button" (click)="cancel()" title="Back to user groups">
-      <span class="user-group-form__back-icon">&#8592;</span>
-      User Groups
+<ds-page>
+  <ds-section-header [title]="isEditMode() ? 'Edit user group' : 'New user group'">
+    <button dsButton variant="ghost" type="button" title="Back to user groups" (click)="cancel()">
+      &larr; User groups
     </button>
-    <h1 class="user-group-form__title">{{ isEditMode() ? 'Edit user group' : 'New user group' }}</h1>
-  </header>
+  </ds-section-header>
 
   @if (isLoading()) {
-    <p class="user-group-form__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <form class="user-group-form__form" [formGroup]="form" (ngSubmit)="submit()">
-      <!-- Name -->
-      <div class="user-group-form__field">
-        <label class="user-group-form__label" for="user-group-name">Name <span aria-hidden="true">*</span></label>
+    <form class="ds-form" [formGroup]="form" (ngSubmit)="submit()">
+      <ds-form-field
+        label="Name"
+        controlId="user-group-name"
+        required
+        [error]="nameControl.invalid && nameControl.touched ? 'Name is required.' : null"
+      >
         <input
+          dsControl
           id="user-group-name"
-          class="user-group-form__input"
-          [class.user-group-form__input--invalid]="nameControl.invalid && nameControl.touched"
           type="text"
           placeholder="e.g. Support team"
           formControlName="name"
           autocomplete="off"
         />
-        @if (nameControl.invalid && nameControl.touched) {
-          <span class="user-group-form__field-error">Name is required.</span>
-        }
-      </div>
+      </ds-form-field>
 
-      <!-- Deployed agents -->
-      <fieldset class="user-group-form__section">
-        <legend class="user-group-form__label">
-          Deployed agents
-          <span class="user-group-form__label-hint">Agents this group can use</span>
-        </legend>
-        <p class="user-group-form__section-hint">
-          Pick from platform agents and this namespace's agents. An agent can be shared by multiple groups.
-        </p>
-
+      <ds-fieldset
+        legend="Deployed agents"
+        legendHint="Agents this group can use"
+        hint="Pick from platform agents and this namespace's agents. An agent can be shared by multiple groups."
+      >
         @if (platformAgents().length === 0 && namespaceAgents().length === 0) {
-          <p class="user-group-form__empty-hint">No agent configs available in this namespace.</p>
+          <p class="ds-hint">No agent configs available in this namespace.</p>
         }
-
         @if (platformAgents().length > 0) {
-          <div class="user-group-form__agent-group">
-            <span class="user-group-form__agent-group-title">Platform</span>
+          <div class="ds-stack ds-stack--sm">
+            <span class="ds-micro">Platform</span>
             @for (agent of platformAgents(); track agent.id) {
               <ng-container *ngTemplateOutlet="agentRow; context: { $implicit: agent }" />
             }
           </div>
         }
-
         @if (namespaceAgents().length > 0) {
-          <div class="user-group-form__agent-group">
-            <span class="user-group-form__agent-group-title">Namespace</span>
+          <div class="ds-stack ds-stack--sm">
+            <span class="ds-micro">Namespace</span>
             @for (agent of namespaceAgents(); track agent.id) {
               <ng-container *ngTemplateOutlet="agentRow; context: { $implicit: agent }" />
             }
           </div>
         }
-      </fieldset>
+      </ds-fieldset>
 
-      <!-- Members -->
-      <fieldset class="user-group-form__section">
-        <legend class="user-group-form__label">
-          Members
-          <span class="user-group-form__label-hint">Users in this group</span>
-        </legend>
-
-        <p class="user-group-form__section-hint">ADMIN members can manage this group; MEMBER is read-only.</p>
-
+      <ds-fieldset
+        legend="Members"
+        legendHint="Users in this group"
+        hint="ADMIN members can manage this group; MEMBER is read-only."
+      >
         @if (selectedMembers().length === 0) {
-          <p class="user-group-form__empty-hint">No members yet.</p>
+          <p class="ds-hint">No members yet.</p>
         } @else {
-          <ul class="user-group-form__members">
+          <div class="ds-stack ds-stack--sm">
             @for (member of selectedMembers(); track member.externalId) {
-              <li class="user-group-form__member">
-                <div class="user-group-form__member-info">
-                  <span class="user-group-form__member-name">{{ member.label }}</span>
-                  @if (member.email && member.email !== member.label) {
-                    <span class="user-group-form__member-email">{{ member.email }}</span>
-                  }
-                </div>
-                <select
-                  class="user-group-form__member-role"
-                  [value]="member.role"
-                  [attr.aria-label]="'Role of ' + member.label"
-                  (change)="setMemberRole(member.externalId, $any($event.target).value)"
-                >
-                  <option value="MEMBER">Member</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
-                <button
-                  class="user-group-form__member-remove"
-                  type="button"
-                  [title]="'Remove ' + member.label"
-                  (click)="removeMember(member.externalId)"
-                >
-                  &#215;
-                </button>
-              </li>
+              <ds-member-row
+                [label]="member.label"
+                [detail]="member.email && member.email !== member.label ? member.email : ''"
+                [value]="member.role"
+                [options]="memberRoleOptions"
+                (valueChange)="setMemberRole(member.externalId, $event)"
+                (removed)="removeMember(member.externalId)"
+              />
             }
-          </ul>
+          </div>
         }
 
-        <div class="user-group-form__member-add">
-          <input
-            class="user-group-form__input"
-            [class.user-group-form__input--invalid]="!!memberInputError()"
-            type="text"
-            placeholder="Enter external ID or email…"
-            [value]="memberInputValue()"
-            (input)="onMemberInputChange($any($event.target).value)"
-            (keydown)="onMemberInputKeydown($event)"
-            autocomplete="off"
-          />
-          <button
-            class="user-group-form__btn user-group-form__btn--secondary"
-            type="button"
-            (click)="addMemberFromInput()"
-          >
-            Add
-          </button>
-        </div>
-        @if (memberInputError()) {
-          <span class="user-group-form__field-error">{{ memberInputError() }}</span>
-        }
-      </fieldset>
+        <ds-form-field [error]="memberInputError()">
+          <div class="ds-inline">
+            <input
+              dsControl
+              type="text"
+              aria-label="External ID or email of the member to add"
+              placeholder="Enter external ID or email…"
+              [attr.aria-invalid]="!!memberInputError()"
+              [value]="memberInputValue()"
+              (input)="onMemberInputChange($any($event.target).value)"
+              (keydown)="onMemberInputKeydown($event)"
+              autocomplete="off"
+            />
+            <button dsButton type="button" (click)="addMemberFromInput()">Add</button>
+          </div>
+        </ds-form-field>
+      </ds-fieldset>
 
-      <!-- Error message -->
       @if (errorMessage()) {
-        <p class="user-group-form__error">{{ errorMessage() }}</p>
+        <ds-notice>{{ errorMessage() }}</ds-notice>
       }
 
-      <!-- Actions -->
-      <div class="user-group-form__actions">
-        <button
-          class="user-group-form__btn user-group-form__btn--primary"
-          type="submit"
-          [disabled]="nameControl.invalid || isSubmitting()"
-        >
+      <ds-form-actions>
+        <button dsButton variant="primary" type="submit" [disabled]="nameControl.invalid || isSubmitting()">
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
-        <button class="user-group-form__btn" type="button" (click)="cancel()">Cancel</button>
-      </div>
+        <button dsButton type="button" (click)="cancel()">Cancel</button>
+      </ds-form-actions>
     </form>
   }
-</div>
+</ds-page>
 
 <!-- Agent checkbox row (shared by the platform + namespace groups) -->
 <ng-template #agentRow let-agent>
-  <label class="user-group-form__agent">
-    <input
-      type="checkbox"
-      class="user-group-form__agent-checkbox"
-      [checked]="isAgentSelected(agent)"
-      (change)="toggleAgent(agent)"
-    />
-    <span class="user-group-form__agent-name">{{ agent.name }}</span>
+  <label dsCheck>
+    <input type="checkbox" [checked]="isAgentSelected(agent)" (change)="toggleAgent(agent)" />
+    {{ agent.name }}
   </label>
 </ng-template>

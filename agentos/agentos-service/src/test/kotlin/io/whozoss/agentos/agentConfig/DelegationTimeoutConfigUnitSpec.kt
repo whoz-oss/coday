@@ -55,10 +55,10 @@ class DelegationTimeoutConfigUnitSpec : StringSpec({
         Validation.buildDefaultValidatorFactory().use { factory ->
             val validator = factory.validator
             for (timeout in listOf(null, 1, 1800)) {
-                validator.validate(AgentConfigDto(name = "agent", delegationTimeoutSeconds = timeout)).isEmpty() shouldBe true
+                validator.validate(AgentConfigDto(name = "agent", modelName = "BIG", delegationTimeoutSeconds = timeout)).isEmpty() shouldBe true
             }
             for (timeout in listOf(0, -1)) {
-                validator.validate(AgentConfigDto(name = "agent", delegationTimeoutSeconds = timeout)).single().propertyPath.toString() shouldBe "delegationTimeoutSeconds"
+                validator.validate(AgentConfigDto(name = "agent", modelName = "BIG", delegationTimeoutSeconds = timeout)).single().propertyPath.toString() shouldBe "delegationTimeoutSeconds"
                 shouldThrow<IllegalArgumentException> {
                     AgentConfig(namespaceId = null, name = "agent", delegationTimeoutSeconds = timeout)
                 }

@@ -1,0 +1,94 @@
+<ds-section-header
+  title="Configuration"
+  description="Effective environment variables and Spring properties of the running service. Secrets are never shown, only whether they are set."
+>
+  <agentos-table-filter
+    label="Filter settings"
+    placeholder="Filter settings…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button dsButton type="button" (click)="reload()">Refresh</button>
+</ds-section-header>
+<div class="settings-table__toolbar">
+  <select
+    class="ds-control"
+    style="width: auto"
+    aria-label="Filter by source"
+    [value]="source()"
+    (change)="source.set($any($event.target).value)"
+  >
+    <option value="ALL">All sources</option>
+    <option [value]="Source.ENVIRONMENT">Environment variables</option>
+    <option [value]="Source.PROPERTY">Spring properties</option>
+  </select>
+  <select
+    class="ds-control"
+    style="width: auto"
+    aria-label="Filter by state"
+    [value]="status()"
+    (change)="status.set($any($event.target).value)"
+  >
+    <option value="ALL">Set and unset</option>
+    <option value="SET">Set only</option>
+    <option value="UNSET">Unset only</option>
+  </select>
+</div>
+@if (loadError()) {
+  <p class="settings-table__error" role="alert">Loading the configuration failed. Try refreshing.</p>
+} @else if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading configuration…</p>
+} @else if (rows().length === 0) {
+  <p class="settings-table__status">The service reported no settings.</p>
+} @else if (visibleRows().length === 0) {
+  <p class="settings-table__status" role="status">No settings match the current filters.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Effective configuration">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Setting</th>
+          <th role="columnheader">Source</th>
+          <th role="columnheader">Value</th>
+          <th role="columnheader">Description</th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (row of visibleRows(); track row.key) {
+          <tr role="row">
+            <td role="cell" data-label="Setting" data-title class="settings-table__name ds-mono">
+              {{ row.entry.key }}
+            </td>
+            <td role="cell" data-label="Source">
+              <ds-tag variant="neutral">
+                {{ row.entry.source === Source.ENVIRONMENT ? 'Environment' : 'Property' }}
+              </ds-tag>
+            </td>
+            <td role="cell" data-label="Value">
+              @switch (row.display.status) {
+                @case ('on') {
+                  <ds-tag variant="accent">on</ds-tag>
+                }
+                @case ('off') {
+                  <ds-tag variant="neutral">off</ds-tag>
+                }
+                @case ('hidden') {
+                  <ds-tag variant="neutral">{{ row.display.text }}</ds-tag>
+                }
+                @case ('unset') {
+                  <ds-tag variant="outline">{{ row.display.text }}</ds-tag>
+                }
+                @default {
+                  <span class="ds-mono">{{ row.display.text }}</span>
+                }
+              }
+            </td>
+            <td role="cell" data-label="Description" class="settings-table__secondary">
+              {{ row.entry.description || '—' }}
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

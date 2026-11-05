@@ -13,7 +13,7 @@
       [query]="groupFilter.query()"
       (queryChange)="groupFilter.query.set($event)"
     />
-    <button class="settings-table__new" type="button" (click)="openCreateForm()">New user group</button>
+    <button dsButton variant="primary" type="button" (click)="openCreateForm()">New user group</button>
   </div>
 </div>
 @if (deletion.error()) {

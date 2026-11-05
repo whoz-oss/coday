@@ -71,7 +71,7 @@ describe('UserGroupFormComponent agent sharing', () => {
     fixture = TestBed.createComponent(UserGroupFormComponent)
     fixture.detectChanges()
     return Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>('.user-group-form__agent-checkbox')
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>('form input[type="checkbox"]')
     )
   }
 

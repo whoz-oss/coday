@@ -11,6 +11,7 @@ export interface Argv {
   host?: string
   /** yargs boolean negation: `--no-open` gives `open: false`. */
   open?: boolean
+  profile?: string
   _: (string | number)[]
   $0: string
 }
@@ -35,6 +36,8 @@ export interface CodayOptions {
   host: string
   /** False with `--no-open` (the Nx `server` task then does not open the browser). Env: CODAY_NO_OPEN. */
   noOpen: boolean
+  /** `--profile laptop|managed` / `CODAY_PROFILE`: forces the runtime profile (see runtime/profile.ts). Unset: derived. */
+  profile?: string
 }
 
 /**
@@ -67,6 +70,10 @@ export function parseCodayOptions(
       type: 'boolean',
       description: 'Open the browser when the server is up (Nx mode); --no-open disables it. Env: CODAY_NO_OPEN',
     })
+    .option('profile', {
+      type: 'string',
+      description: 'Force the runtime profile: laptop or managed (default: derived). Env: CODAY_PROFILE',
+    })
     .help().argv as Argv
 
   // Set configDir with default value
@@ -75,11 +82,13 @@ export function parseCodayOptions(
 
   const auth: boolean = !!argv.auth
   const host = argv.host || env.CODAY_HOST || (auth ? '0.0.0.0' : '127.0.0.1')
+  const profile = argv.profile || env.CODAY_PROFILE || undefined
 
   return {
     configDir,
     auth,
     host,
     noOpen: argv.open === false,
+    ...(profile ? { profile } : {}),
   }
 }

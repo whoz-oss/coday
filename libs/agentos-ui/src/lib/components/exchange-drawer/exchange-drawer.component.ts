@@ -18,6 +18,7 @@ import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@who
 import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
+import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
 import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
 
 /**
@@ -43,6 +44,7 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
     SpinnerComponent,
     EmptyStateComponent,
     ExchangeFileListComponent,
+    ExchangeFolderNavComponent,
     ExchangeContentViewerComponent,
   ],
   templateUrl: './exchange-drawer.component.html',

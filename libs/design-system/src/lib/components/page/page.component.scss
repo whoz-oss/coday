@@ -1,0 +1,51 @@
+@use '../../../styles/scale' as t;
+
+:host {
+  display: block;
+  min-width: 0;
+  font-size: t.$text-body;
+}
+
+.ds-page {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  padding-bottom: 3rem;
+}
+
+:host(.ds-page--framed) {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: calc(1180px + 2rem);
+  margin: 0 auto;
+  padding: 24px 1rem 3rem;
+
+  .ds-page {
+    padding-bottom: 0;
+  }
+}
+
+// The header spans the column; what is under it stops at one width and aligns left.
+.ds-page__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+  padding-top: 1rem;
+}
+
+.ds-page__body--full {
+  max-width: none;
+  padding-top: 0;
+}
+
+@media (max-width: 760px) {
+  :host(.ds-page--framed) {
+    padding: 16px 12px 2rem;
+  }
+
+  .ds-page {
+    padding-bottom: 2rem;
+  }
+}
