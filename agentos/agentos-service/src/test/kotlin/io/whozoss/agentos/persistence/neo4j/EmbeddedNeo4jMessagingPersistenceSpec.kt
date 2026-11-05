@@ -85,6 +85,13 @@ class EmbeddedNeo4jMessagingPersistenceSpec : StringSpec() {
             botRepository.findByAgentId(bot.agentId!!).map { it.id } shouldBe listOf(bot.id)
         }
 
+        "a Telegram bot saved before bots had a url reads with the url Telegram gives it" {
+            val bot = botRepository.save(bot("4242"))
+            driver.session().use { it.run("MATCH (b:MessagingBot {id: \$id}) REMOVE b.url", mapOf("id" to bot.id.toString())).consume() }
+
+            botRepository.findAll().single().url shouldBe "https://t.me/bot_4242"
+        }
+
         "a bot serves one agent, and an agent has one bot per platform and namespace" {
             val bot = botRepository.save(bot("4242"))
 

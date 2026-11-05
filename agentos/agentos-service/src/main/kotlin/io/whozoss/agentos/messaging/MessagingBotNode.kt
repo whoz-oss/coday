@@ -1,5 +1,6 @@
 package io.whozoss.agentos.messaging
 
+import io.whozoss.agentos.messaging.telegram.TelegramDriver
 import io.whozoss.agentos.sdk.api.messaging.MessagingPlatform
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy
@@ -27,7 +28,8 @@ data class MessagingBotNode(
     val accountId: String,
     val username: String,
     val displayName: String,
-    val url: String,
+    /** Null on a Telegram bot saved before bots had a url: [toDomain] gives it the url Telegram gives every bot. */
+    val url: String?,
     val encryptedToken: String,
     val encryptedAppToken: String?,
     val agentId: String?,
@@ -62,7 +64,7 @@ data class MessagingBotNode(
             accountId = accountId,
             username = username,
             displayName = displayName,
-            url = url,
+            url = url ?: TelegramDriver.urlOf(username),
             token = token,
             appToken = appToken,
             agentId = agentId?.let(UUID::fromString),
