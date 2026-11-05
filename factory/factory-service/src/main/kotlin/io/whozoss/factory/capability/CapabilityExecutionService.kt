@@ -230,6 +230,21 @@ class CapabilityExecutionService(
     }
 
     /**
+     * True when the latest attempt of [stepId] has an accepted PASS or FAIL result
+     * (e.g. submitted after an out-of-band resumption of a NEEDS_RESEARCH step).
+     */
+    fun hasAcceptedFinalResult(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Boolean {
+        val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
+        val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, latest.attemptId) ?: return false
+        return accepted.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH
+    }
+
+    /**
      * Code capability: external process execution (Phase 2) then a short
      * transaction recording the code transition + evidence (Phase 3).
      */
@@ -1532,6 +1547,74 @@ class CapabilityExecutionService(
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
         if (existing != null && existing.status.terminal) {
+            if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH") {
+                val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, step.id, attemptId)
+                if (accepted != null && accepted.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
+                    val outcome = if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS) {
+                        CapabilityOutcome.AgentCompleted(
+                            step.id,
+                            step.responsibility.name,
+                            "PASS",
+                            mapOf(
+                                "summary" to accepted.summary,
+                                "claims" to accepted.claims,
+                                "findings" to accepted.findings,
+                                "artifacts" to accepted.artifacts,
+                            ),
+                        )
+                    } else {
+                        CapabilityOutcome.AgentFailed(
+                            step.id,
+                            step.responsibility.name,
+                            "FACTORY_STEP_RESULT_FAILED",
+                            accepted.summary,
+                            mapOf("resultId" to accepted.resultId),
+                        )
+                    }
+                    val evidenceId = UUID.randomUUID().toString()
+                    evidenceRepository.append(
+                        scope,
+                        namespaceId,
+                        workflowId,
+                        WorkflowEvidenceItem(
+                            evidenceId = evidenceId,
+                            namespaceId = namespaceId,
+                            workflowId = workflowId,
+                            stepId = step.id,
+                            kind = AGENT_RESULT_EVIDENCE_KIND,
+                            outcome = if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS) "pass" else "fail",
+                            source = mapOf("kind" to "agentos-adapter", "agentId" to agentId, "attemptId" to attemptId),
+                            facts = mapOf(
+                                "status" to accepted.status.name,
+                                "summary" to accepted.summary,
+                                "outputs" to mapOf(
+                                    "summary" to accepted.summary,
+                                    "claims" to accepted.claims,
+                                    "findings" to accepted.findings,
+                                    "artifacts" to accepted.artifacts,
+                                ),
+                                "attemptId" to attemptId,
+                                "stepId" to step.id,
+                            ),
+                            idempotencyKey = null,
+                            createdAt = null,
+                        ),
+                    )
+                    return AgentReservation(
+                        attemptId = attemptId,
+                        caseId = existing.caseId,
+                        ownerToken = existing.ownerToken ?: ownerToken,
+                        capabilityToken = existing.capabilityToken,
+                        parentCaseId = existing.parentCaseId,
+                        turnStarted = true,
+                        terminalStatus = if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS) {
+                            AgentAttemptStatus.SUCCEEDED
+                        } else {
+                            AgentAttemptStatus.FAILED
+                        },
+                    )
+                }
+            }
             return AgentReservation(
                 attemptId = attemptId,
                 caseId = existing.caseId,

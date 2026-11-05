@@ -217,9 +217,13 @@ class Neo4jAgentStepResultRepository(
         val existing = findResult(scope, capability)
         if (existing != null && payloadType(existing.payload) == SUBMITTED_TYPE) {
             val submitted = deserialize(existing.payload, AgentStepResultSubmitted::class.java)
-            return if (existing.semanticSignature == resultHash) {
-                SubmitOutcome.Replayed(submitted)
-            } else {
+            if (existing.semanticSignature == resultHash) {
+                return SubmitOutcome.Replayed(submitted)
+            }
+            // If the prior submission was a non-terminal NEEDS_RESEARCH and the worker now
+            // submits a resolved result (PASS/FAIL or updated research) on the same attempt
+            // (e.g. after being resumed directly in AgentOS), allow superseding the NEEDS_RESEARCH result.
+            if (submitted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
                 throw ResultSemanticCollisionException()
             }
         }

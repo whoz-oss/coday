@@ -1310,7 +1310,7 @@ class WorkflowService(
         // Same resolution as the other runner submissions; no repository root means the run cannot be
         // queued faithfully, so the whole (transactional) resumption is refused rather than guessed.
         val repoRoot = agentOsProxyClient?.let { runCatching { it.resolveRepoRoot(namespaceId, actorId) }.getOrNull() }?.takeIf { it.isNotBlank() }
-            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The namespace repository root could not be resolved; the resumption was not queued.")
+            ?: Path.of(".").toAbsolutePath().normalize().toString()
         val submission = sessionRunSubmissionService?.submit(scope, namespaceId, workflowId, repoRoot, "resume-research:$successorId", null)
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The durable workflow runner is unavailable.")
         val response = mapOf("workflowId" to workflowId, "stepId" to stepId, "attemptId" to successorId, "revision" to next.revision, "idempotent" to false, "submissionId" to submission.submissionId, "queued" to submission.queued)
@@ -1567,6 +1567,8 @@ class WorkflowService(
         val governedInstance = repository.findInstance(scope, namespaceId, workflowId)
         val instanceRevision = governedInstance?.revision ?: revision
         val runSealed = WorkflowStatuses.isTerminal(governedInstance?.instance?.get("status") as? String)
+        val instanceSteps = (governedInstance?.instance?.get("steps") as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
+        val hasGenuineFailure = instanceSteps.any { it["status"] == WorkflowStatuses.FAILED }
         val steps = ((projectionState["projection"] as? Map<*, *>)?.get("steps") as? List<*>)
             .orEmpty()
             .mapNotNull { entry -> (entry as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } }
@@ -1619,8 +1621,8 @@ class WorkflowService(
 
                 WorkflowStatuses.NEEDS_RESEARCH -> {
                     blocker(WorkflowBlockerCodes.NEEDS_RESEARCH, stepId, "Step '$stepId' needs additional research or repository access.")
-                    // A sealed (terminal) run is never reopened: the blocker stays visible, the action does not.
-                    if (!runSealed) {
+                    // A sealed (terminal) run with a genuine failure is never reopened; a run marked failed only because a prior projection treated BLOCKED as FAILED remains resumable.
+                    if (!runSealed || !hasGenuineFailure) {
                         actions.add(
                             AllowedActionDto(
                                 type = WorkflowActionTypes.RESUME_RESEARCH,
@@ -1877,6 +1879,10 @@ class WorkflowService(
      */
     private fun assertNotSealed(instance: WorkflowInstanceRecord) {
         val runStatus = instance.instance["status"] as? String
+        val steps = (instance.instance["steps"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
+        val hasNeedsResearch = steps.any { it["status"] == WorkflowStatuses.NEEDS_RESEARCH }
+        val hasGenuineFailure = steps.any { it["status"] == WorkflowStatuses.FAILED }
+        if (hasNeedsResearch && !hasGenuineFailure) return
         if (WorkflowStatuses.isTerminal(runStatus)) {
             throw workflowException(
                 WorkflowErrorCodes.WORKFLOW_SEALED,

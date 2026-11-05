@@ -56,6 +56,7 @@ export function mapWorkflowStateToRunStatus(state?: string, steps?: unknown[]): 
   switch (normalized) {
     case 'running':
     case 'waiting_human':
+    case 'needs_research':
       return 'running'
     case 'ready':
       return 'queued'

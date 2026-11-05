@@ -298,7 +298,12 @@ class SessionRunService(
                     }
                     continue
                 }
-                val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull() ?: return@run
+                val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull()
+                    ?: steps.firstOrNull { step ->
+                        statuses.statuses[step.id] == WorkflowStatuses.NEEDS_RESEARCH &&
+                            capabilityExecutionService.hasAcceptedFinalResult(scope, namespaceId, workflowId, step.id)
+                    }?.id
+                    ?: return@run
                 val step = steps.first { it.id == readyId }
                 // Lot F: bind a `code` step's repoRoot to the run's worktree
                 // explicitly. Resolved once, right before the step executes
@@ -483,6 +488,14 @@ class SessionRunService(
             setBlockedStatus(scope, namespaceId, workflowId, stepId, rootStepId, progress)
         }
         for (stepId in evaluation.ready) setStatus(scope, namespaceId, workflowId, stepId, WorkflowStatuses.READY, progress)
+        for (step in steps) {
+            if (progress.statuses[step.id] == WorkflowStatuses.BLOCKED &&
+                step.dependsOn.isNotEmpty() &&
+                step.dependsOn.all { progress.statuses[it] == WorkflowStatuses.COMPLETED }
+            ) {
+                setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, progress)
+            }
+        }
     }
 
     private fun blockingRootStepId(
@@ -578,7 +591,6 @@ class SessionRunService(
         // re-arms the step as a brand-new attempt on the same worktree.
         if (execution.outcome is CapabilityOutcome.AgentNeedsResearch) {
             val reArmed = routeNeedsResearch(scope, namespaceId, workflowId, step, execution.outcome, repoRoot, ticket)
-            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, expectedRevision)
             val resultingStatus = if (reArmed) WorkflowStatuses.READY else WorkflowStatuses.NEEDS_RESEARCH
             setStatus(scope, namespaceId, workflowId, step.id, resultingStatus, statuses)
             recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution, statuses)
@@ -797,7 +809,7 @@ class SessionRunService(
             namespaceId,
             workflowId,
             stepId,
-            fromStatuses = listOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING),
+            fromStatuses = listOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING, WorkflowStatuses.NEEDS_RESEARCH),
             payload = progress.payload(stepId) + mapOf("startedAt" to startedAt),
         )
         if (!claimed) {
@@ -1123,10 +1135,11 @@ class SessionRunService(
                     it == WorkflowStatuses.FAILED || it == WorkflowStatuses.CANCELLED ||
                         it == WorkflowStatuses.RUNNING || it == WorkflowStatuses.WAITING_HUMAN
                 } -> WorkflowStatuses.NEEDS_RESEARCH
-            progress.statuses.values.any { it == WorkflowStatuses.FAILED || it == WorkflowStatuses.BLOCKED } -> WorkflowStatuses.FAILED
+            progress.statuses.values.any { it == WorkflowStatuses.FAILED } -> WorkflowStatuses.FAILED
             progress.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN } -> WorkflowStatuses.WAITING_HUMAN
             progress.statuses.values.any { it == WorkflowStatuses.RUNNING } -> WorkflowStatuses.RUNNING
             progress.statuses.values.all { it == WorkflowStatuses.COMPLETED } -> WorkflowStatuses.COMPLETED
+            progress.statuses.values.any { it == WorkflowStatuses.BLOCKED } -> WorkflowStatuses.FAILED
             else -> WorkflowStatuses.PENDING
         }
         val nextInstance = instance.instance.toMutableMap()
