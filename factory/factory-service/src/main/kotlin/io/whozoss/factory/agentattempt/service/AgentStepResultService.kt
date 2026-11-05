@@ -159,8 +159,22 @@ class AgentStepResultService(
         if (idempotencyKey != null) {
             val existing = idempotency.find(scope, idempotencyKey)
             if (existing != null) {
-                if (existing.requestHash != requestHash) throw IdempotencyKeyCollisionException()
-                return cachedSubmission(existing.responsePayload)
+                if (existing.requestHash == requestHash) {
+                    return cachedSubmission(existing.responsePayload)
+                }
+                // Check if the existing result for this attempt is a non-terminal NEEDS_RESEARCH
+                // and the new submission resolves it (PASS or FAIL): if so, allow superseding it.
+                val capability = results.findByToken(scope, token)
+                val currentResult = capability?.let {
+                    results.getByAttempt(scope, it.namespaceId, it.workflowId, it.stepId, it.attemptId)
+                }
+                val incomingStatus = business?.path("status")?.asText()
+                val resolvesNeedsResearch =
+                    currentResult?.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH &&
+                        (incomingStatus == "PASS" || incomingStatus == "FAIL")
+                if (!resolvesNeedsResearch) {
+                    throw IdempotencyKeyCollisionException()
+                }
             }
         }
 

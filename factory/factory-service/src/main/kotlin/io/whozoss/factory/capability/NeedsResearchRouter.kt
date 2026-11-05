@@ -425,6 +425,6 @@ class NeedsResearchRouter(
         private val mapper = ObjectMapper()
 
         /** Deterministic synthetic step id of the Searcher attempt spawned for [stepId]. */
-        fun searcherStepId(stepId: String): String = "$stepId::searcher"
+        fun searcherStepId(stepId: String): String = "$stepId--searcher"
     }
 }

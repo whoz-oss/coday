@@ -11,6 +11,7 @@ export class SessionPageState {
 
   readonly selection = signal<BlockSelection | null>(null)
   readonly session = computed(() => this.store.session(this.runId()))
+  readonly parentRun = computed(() => this.store.parentRunFor(this.runId()))
   readonly run = computed(() => this.store.runs().find((candidate) => candidate.id === this.runId()))
   readonly selectedStepId = computed(() => this.selection()?.stepId ?? '')
   readonly selectedPhase = computed(() => {
@@ -57,7 +58,12 @@ export class SessionPageState {
     this.runId.set(runId)
     this.namespace.set(namespaceId)
     this.selection.set(null)
-    if (runId) this.store.selectSession(runId, namespaceId)
+    if (runId) {
+      this.store.selectSession(runId, namespaceId)
+      if (runId.includes('__f')) {
+        this.store.loadParentRun(runId, namespaceId)
+      }
+    }
   }
 
   selectDefaultStep(): void {

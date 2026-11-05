@@ -6,7 +6,7 @@ import io.whozoss.factory.forge.domain.JiraDomain
 import io.whozoss.factory.forge.infrastructure.HttpJiraClient
 import io.whozoss.factory.forge.port.JiraNotConfiguredException
 import io.whozoss.factory.forge.web.JiraProxyController
-import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.sdk.spi.FactoryCallerIdentity
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -16,11 +16,11 @@ import java.net.InetSocketAddress
 /**
  * Integration tests of the Jira relay handler: the `501 JIRA_NOT_CONFIGURED`
  * contract for missing credentials and a real ticket fetch against a local Jira
- * stub. These run without a Spring context (the plugin is a PF4J plugin).
+ * stub. These run without a Spring context and without `factory-service`.
  */
 class JiraProxyHttpTest {
 
-    private val user = AuthenticatedUser("user-1", "org-1")
+    private val caller = FactoryCallerIdentity(userId = "user-1", organizationId = "org-1")
 
     private fun unconfiguredController() = JiraProxyController(
         HttpJiraClient(RestClient.builder(), null, null, null),
@@ -28,7 +28,7 @@ class JiraProxyHttpTest {
 
     @Test
     fun `missing credentials raise 501 JIRA_NOT_CONFIGURED with the exact message`() {
-        assertThatThrownBy { unconfiguredController().ticket("PROJ-1", user) }
+        assertThatThrownBy { unconfiguredController().ticket("PROJ-1", caller) }
             .isInstanceOf(JiraNotConfiguredException::class.java)
             .hasMessageContaining("credentials Jira configurés")
             .hasMessageContaining("JIRA_BASE_URL=https://votre-instance.atlassian.net")
@@ -38,7 +38,7 @@ class JiraProxyHttpTest {
 
     @Test
     fun `the factory alias reaches the same unconfigured contract`() {
-        val error = runCatching { unconfiguredController().ticket("PROJ-2", user) }.exceptionOrNull()
+        val error = runCatching { unconfiguredController().ticket("PROJ-2", caller) }.exceptionOrNull()
         assertThat(error).isInstanceOf(JiraNotConfiguredException::class.java)
         assertThat((error as JiraNotConfiguredException).errorCode).isEqualTo("JIRA_NOT_CONFIGURED")
     }
@@ -82,7 +82,7 @@ class JiraProxyHttpTest {
             assertThat(ticket.ticketContent).contains("**Alice**")
             assertThat(ticket.commentCount).isEqualTo(1)
 
-            val relayed = JiraProxyController(client).ticket("PROJ-1", user)
+            val relayed = JiraProxyController(client).ticket("PROJ-1", caller)
             assertThat(relayed["summary"]).isEqualTo("My ticket")
             assertThat(relayed["epicKey"]).isEqualTo("EPIC-9")
         } finally {

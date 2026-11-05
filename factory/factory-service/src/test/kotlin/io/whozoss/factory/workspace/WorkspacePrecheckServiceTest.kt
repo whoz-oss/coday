@@ -150,6 +150,24 @@ class WorkspacePrecheckServiceTest {
     }
 
     @Test
+    fun `a classical run with requireGitWorkspace=false skips Git association checks while verifying namespace, workstream and agents`() {
+        stubNamespaceAccessible()
+        stubWorkstream()
+        every { readPort.availableAgents(namespace, any()) } returns listOf("architect")
+
+        val report = service().precheck(
+            scope = scope,
+            namespaceId = namespace,
+            requiredAgents = listOf("architect"),
+            requireGitWorkspace = false,
+        )
+
+        assertThat(report.enabled).isTrue
+        assertThat(report.verified).containsExactly("namespace", "workstream", "agents")
+        verify(exactly = 0) { readPort.namespaceGitState(any(), any()) }
+    }
+
+    @Test
     fun `a disabled pre-check consults no API and mutates nothing`() {
         val report = service(WorkspaceProperties(enabled = false)).precheck(scope, namespace)
 

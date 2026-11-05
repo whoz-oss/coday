@@ -568,6 +568,77 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
+    fun `reconcileResult with fresh terminal event and known baseline returns proof`() {
+        val store = HighWaterMarkStore()
+        val builder = RestClient.builder()
+        val server = MockRestServiceServer.bindTo(builder).build()
+        val adapter = DefaultAgentOsExecutionAdapter(builder, baseUrl, checkpointStore = store)
+        store.setBaseline("case-1", "attempt-1", HighWaterMark("2026-01-01T00:00:00Z", "base"))
+        server.expect(requestTo(eventsUrl)).andRespond(withSuccess(
+            """[{"id":"idle","type":"CaseStatusEvent","status":"IDLE","caseId":"case-1","timestamp":"2026-01-01T00:00:01Z"}]""",
+            MediaType.APPLICATION_JSON,
+        ))
+        server.expect(requestTo(eventsUrl)).andRespond(withSuccess(
+            """[{"id":"idle","type":"CaseStatusEvent","status":"IDLE","caseId":"case-1","timestamp":"2026-01-01T00:00:01Z"}]""",
+            MediaType.APPLICATION_JSON,
+        ))
+
+        val result = adapter.reconcileResult(TurnToken("case-1", "attempt-1", HighWaterMark(null, null)))
+
+        assertThat(result.runtimeProof).isEqualTo(VerdictDeriver.RuntimeCaseTerminationProof("case-1", "attempt-1", "idle", "IDLE"))
+        assertThat(result.verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        server.verify()
+    }
+
+    @Test
+    fun `reconcileResult without captured baseline preserves verdict and has no proof`() {
+        val (adapter, server) = build()
+        repeat(2) { server.expect(requestTo(eventsUrl)).andRespond(withSuccess(
+            """[{"id":"idle","type":"CaseStatusEvent","status":"IDLE","caseId":"case-1","timestamp":"2026-01-01T00:00:01Z"}]""",
+            MediaType.APPLICATION_JSON,
+        )) }
+
+        val result = adapter.reconcileResult(TurnToken.unbaselined("case-1", "attempt-1"))
+
+        assertThat(result.verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat(result.runtimeProof).isNull()
+        server.verify()
+    }
+
+    @Test
+    fun `reconcileResult with explicitly captured empty baseline accepts fresh terminal event`() {
+        val store = HighWaterMarkStore()
+        val builder = RestClient.builder()
+        val server = MockRestServiceServer.bindTo(builder).build()
+        val adapter = DefaultAgentOsExecutionAdapter(builder, baseUrl, checkpointStore = store)
+        store.setBaseline("case-1", "attempt-empty", HighWaterMark(null, null))
+        repeat(2) { server.expect(requestTo(eventsUrl)).andRespond(withSuccess(
+            """[{"id":"idle","type":"CaseStatusEvent","status":"IDLE","caseId":"case-1","timestamp":"2026-01-01T00:00:01Z"}]""",
+            MediaType.APPLICATION_JSON,
+        )) }
+
+        val result = adapter.reconcileResult(TurnToken.unbaselined("case-1", "attempt-empty"))
+
+        assertThat(result.runtimeProof).isNotNull()
+        server.verify()
+    }
+
+    @Test
+    fun `legacy adapter enriched defaults preserve verdict with null proof`() {
+        val legacy = object : AgentOsExecutionAdapter {
+            override fun createOrRecoverExecution(namespaceId:String,workflowId:String,stepId:String,externalUserId:String?,attemptId:String,capabilityToken:String?,caseId:String,parentCaseId:String?)=CaseHandle(caseId,namespaceId,false)
+            override fun startTurn(caseId:String,persona:String,brief:String,externalUserId:String?,attemptId:String,capabilityToken:String?)=Unit
+            override fun observeTurn(caseId:String,attemptId:String,timeoutMs:Long)=AgentOsExecutionVerdict.Indeterminate("legacy")
+            override fun reconcile(caseId:String)=AgentOsExecutionVerdict.Indeterminate("legacy")
+            override fun interrupt(caseId:String,reason:String)=Unit
+            override fun kill(caseId:String)=Unit
+        }
+        val result = legacy.reconcileResult(TurnToken.unbaselined("case-1", "attempt-1"))
+        assertThat(result.verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat(result.runtimeProof).isNull()
+    }
+
+    @Test
     fun `observeTurn falls back to the REST reconciliation after a connection drop`() {
         val (adapter, server) = build(sseFactory())
         // first SSE connection drops immediately with no data

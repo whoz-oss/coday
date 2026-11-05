@@ -56,6 +56,7 @@ export function mapWorkflowStateToRunStatus(state?: string, steps?: unknown[]): 
   switch (normalized) {
     case 'running':
     case 'waiting_human':
+    case 'needs_research':
       return 'running'
     case 'ready':
       return 'queued'
@@ -136,14 +137,17 @@ function attemptStepStatus(attempt: AgentAttempt): TimelineStepStatus {
   const status = attempt.status.toLowerCase()
   if (attempt.failureCode?.toUpperCase() === 'AGENT_NEEDS_RESEARCH') return 'waiting_human'
   if (status === 'succeeded' || status === 'completed' || status === 'superseded') return 'completed'
+  if (status === 'starting' || status === 'running') return 'running'
   if (status === 'interrupted' || status === 'cancelled') return 'cancelled'
-  if (status === 'failed' || status === 'indeterminate' || status === 'running' || status === 'waiting_human')
+  if (status === 'failed' || status === 'indeterminate' || status === 'waiting_human')
     return status
   return 'pending'
 }
 
 /**
  * Replace agent steps with their durable execution attempts for the timeline.
+ * Also appends attempts whose `stepId` is synthetic (e.g. `technical-design--searcher`
+ * spawned by NeedsResearchRouter) so Searcher executions appear on their own lane!
  */
 export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unknown[] {
   const byStep = new Map<string, AgentAttempt[]>()
@@ -154,9 +158,11 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unkno
     byStep.set(attempt.stepId, history)
   }
 
-  return steps.flatMap((step) => {
+  const knownStepIds = new Set<string>()
+  const mappedSteps = steps.flatMap((step) => {
     const obj = asObject(step) ?? {}
     const stepId = getString(obj, 'id')
+    if (stepId) knownStepIds.add(stepId)
     const history = stepId ? byStep.get(stepId) : undefined
     if (classifyActorKind(obj) !== 'agent' || !history?.length) return [step]
 
@@ -182,7 +188,7 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unkno
           name: attempt.agentName || actorName(obj),
         },
         status: attemptStepStatus(attempt),
-        startedAt: attempt.startedAt,
+        startedAt: attempt.startedAt ?? attempt.activeSince ?? attempt.createdAt,
         completedAt: terminal ? attempt.completedAt : undefined,
         activeDurationMs: attempt.activeDurationMs,
         activeSince: attempt.activeSince,
@@ -192,6 +198,41 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unkno
       }
     })
   })
+
+  // Include synthetic attempts (e.g. Searcher attempts `stepId--searcher`) that are not
+  // declared as static steps in the workflow projection.
+  const syntheticSteps: unknown[] = []
+  for (const [stepId, history] of byStep.entries()) {
+    if (knownStepIds.has(stepId) || !history.length) continue
+    const ordered = [...history].sort(compareAttempts)
+    for (const attempt of ordered) {
+      const terminal = TERMINAL_ATTEMPT_STATUSES.has(attempt.status.toLowerCase())
+      const baseLabel = attempt.agentName || stepId
+      syntheticSteps.push({
+        id: `${stepId}:attempt:${attempt.attemptId}`,
+        sourceStepId: stepId,
+        name: ordered.length > 1 ? `${baseLabel} \u00b7 attempt ${attempt.attemptNumber || '?'}` : baseLabel,
+        agentName: attempt.agentName || undefined,
+        attemptId: attempt.attemptId,
+        attemptNumber: attempt.attemptNumber,
+        caseId: attempt.caseId || undefined,
+        failureCode: attempt.failureCode || undefined,
+        responsibility: {
+          kind: 'agent',
+          name: attempt.agentName || 'Searcher',
+        },
+        status: attemptStepStatus(attempt),
+        startedAt: attempt.startedAt ?? attempt.activeSince ?? attempt.createdAt,
+        completedAt: terminal ? attempt.completedAt : undefined,
+        activeDurationMs: attempt.activeDurationMs,
+        activeSince: attempt.activeSince,
+        waitingDurationMs: attempt.waitingDurationMs,
+        waitingSince: attempt.waitingSince,
+      })
+    }
+  }
+
+  return [...mappedSteps, ...syntheticSteps]
 }
 
 // ---------------------------------------------------------------------------
@@ -543,10 +584,10 @@ export function mapProjectionToRunSummary(
 
   const mappedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const cardState: RunSummary['cardState'] =
-    mappedStatus === 'failed'
-      ? 'failed'
-      : waitingHuman
-        ? 'waiting_human'
+    waitingHuman
+      ? 'waiting_human'
+      : mappedStatus === 'failed'
+        ? 'failed'
         : blockedStepIds.size > 0
           ? 'blocked'
           : mappedStatus === 'running'
