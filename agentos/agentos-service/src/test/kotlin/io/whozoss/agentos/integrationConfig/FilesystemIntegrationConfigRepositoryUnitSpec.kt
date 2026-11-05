@@ -10,6 +10,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -194,7 +195,7 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             val id2 = repo2.findByNamespaceId(namespaceId).single().id
 
             id1 shouldBe id2
-            id1 shouldBe filesystemEntityId("integration", namespaceId, "JIRA")
+            id1 shouldBe filesystemEntityId(FilesystemEntityKind.INTEGRATION, namespaceId, "JIRA")
         }
 
         // -------------------------------------------------------------------------
@@ -636,7 +637,7 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
         "findByIds resolves a synthetic filesystem integration id" {
             val root = tempDir()
             writeYaml(integrationsDir(root), "jira.yaml", integrationYaml("JIRA", "JIRA"))
-            val fsId = filesystemEntityId("integration", namespaceId, "JIRA")
+            val fsId = filesystemEntityId(FilesystemEntityKind.INTEGRATION, namespaceId, "JIRA")
             val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString())
             val delegate = mockk<IntegrationConfigRepository>()
             val nsRepo = mockk<NamespaceRepository>()
@@ -669,8 +670,8 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             val nsId2 = UUID.randomUUID()
             val ns1 = Namespace(metadata = EntityMetadata(id = nsId1), name = "ns1", configPath = root1.toString())
             val ns2 = Namespace(metadata = EntityMetadata(id = nsId2), name = "ns2", configPath = root2.toString())
-            val id1 = filesystemEntityId("integration", nsId1, "JIRA")
-            val id2 = filesystemEntityId("integration", nsId2, "JIRA")
+            val id1 = filesystemEntityId(FilesystemEntityKind.INTEGRATION, nsId1, "JIRA")
+            val id2 = filesystemEntityId(FilesystemEntityKind.INTEGRATION, nsId2, "JIRA")
 
             id1 shouldNotBe id2
 

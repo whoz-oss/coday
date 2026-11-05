@@ -12,6 +12,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
@@ -193,7 +194,7 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             val id2 = repo2.findByParent(namespaceId).single().id
 
             id1 shouldBe id2
-            id1 shouldBe filesystemEntityId("agent", namespaceId, "Dev")
+            id1 shouldBe filesystemEntityId(FilesystemEntityKind.AGENT, namespaceId, "Dev")
         }
 
         // -------------------------------------------------------------------------
@@ -723,7 +724,7 @@ class FilesystemAgentConfigRepositoryUnitSpec :
 
             val delegate = mockk<AgentConfigRepository>()
             val nsRepo = mockk<NamespaceRepository>()
-            val fsId = filesystemEntityId("agent", namespaceId, "Dev")
+            val fsId = filesystemEntityId(FilesystemEntityKind.AGENT, namespaceId, "Dev")
 
             every { delegate.findByIds(listOf(fsId), withRemoved = false) } returns emptyList()
             every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns
@@ -746,7 +747,7 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             val delegate = mockk<AgentConfigRepository>()
             val nsRepo = mockk<NamespaceRepository>()
             val neo4jConfig = persistedConfig(namespaceId, "Alpha")
-            val fsId = filesystemEntityId("agent", namespaceId, "Dev")
+            val fsId = filesystemEntityId(FilesystemEntityKind.AGENT, namespaceId, "Dev")
 
             every { delegate.findByIds(listOf(neo4jConfig.id, fsId), withRemoved = false) } returns listOf(neo4jConfig)
             every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns
@@ -785,7 +786,7 @@ class FilesystemAgentConfigRepositoryUnitSpec :
 
             val nsWithPath = Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString())
             val nsWithoutPath = Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "no-path", configPath = null)
-            val fsId = filesystemEntityId("agent", namespaceId, "Dev")
+            val fsId = filesystemEntityId(FilesystemEntityKind.AGENT, namespaceId, "Dev")
 
             val delegate = mockk<AgentConfigRepository>()
             val nsRepo = mockk<NamespaceRepository>()
@@ -809,8 +810,8 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             val nsId2 = UUID.randomUUID()
             val ns1 = Namespace(metadata = EntityMetadata(id = nsId1), name = "ns1", configPath = root1.toString())
             val ns2 = Namespace(metadata = EntityMetadata(id = nsId2), name = "ns2", configPath = root2.toString())
-            val id1 = filesystemEntityId("agent", nsId1, "Dev")
-            val id2 = filesystemEntityId("agent", nsId2, "Dev")
+            val id1 = filesystemEntityId(FilesystemEntityKind.AGENT, nsId1, "Dev")
+            val id2 = filesystemEntityId(FilesystemEntityKind.AGENT, nsId2, "Dev")
             val userId = UUID.randomUUID()
 
             id1 shouldNotBe id2
@@ -851,6 +852,49 @@ class FilesystemAgentConfigRepositoryUnitSpec :
 
             repo.findByIds(listOf(id1, id2), withRemoved = false).map { it.id to it.modelName } shouldContainExactlyInAnyOrder
                 listOf(id1 to "BIG", id2 to "SMALL")
+        }
+
+        "two namespaces sharing the same configPath get their own ids and the cached agent is never mutated" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev", modelName = "BIG"))
+
+            val nsId1 = UUID.randomUUID()
+            val nsId2 = UUID.randomUUID()
+            val ns1 = Namespace(metadata = EntityMetadata(id = nsId1), name = "ns1", configPath = root.toString())
+            val ns2 = Namespace(metadata = EntityMetadata(id = nsId2), name = "ns2", configPath = root.toString())
+            val id1 = filesystemEntityId(FilesystemEntityKind.AGENT, nsId1, "Dev")
+            val id2 = filesystemEntityId(FilesystemEntityKind.AGENT, nsId2, "Dev")
+
+            id1 shouldNotBe id2
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            every { delegate.findByIds(listOf(id1), withRemoved = false) } returns emptyList()
+            every { delegate.findByParent(nsId1, withDisabled = true) } returns emptyList()
+            every { delegate.findByParent(nsId2, withDisabled = true) } returns emptyList()
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns listOf(ns1, ns2)
+            every { nsRepo.findByIds(listOf(nsId1)) } returns listOf(ns1)
+            every { nsRepo.findByIds(listOf(nsId2)) } returns listOf(ns2)
+
+            val repo = buildRepo(delegate, nsRepo)
+
+            val first1 = repo.findByParent(nsId1).single()
+            first1.id shouldBe id1
+            first1.namespaceId shouldBe nsId1
+
+            val first2 = repo.findByParent(nsId2).single()
+            first2.id shouldBe id2
+            first2.namespaceId shouldBe nsId2
+
+            // Reading namespace 2 must not have altered what namespace 1 sees (shared cached object).
+            val second1 = repo.findByParent(nsId1).single()
+            second1.id shouldBe id1
+            second1.namespaceId shouldBe nsId1
+
+            val found = repo.findByIds(listOf(id1), withRemoved = false)
+            found shouldHaveSize 1
+            found.single().id shouldBe id1
+            found.single().namespaceId shouldBe nsId1
         }
 
         "findByParent with withDisabled=false places persisted first then filesystem" {
