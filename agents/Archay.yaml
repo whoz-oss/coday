@@ -9,14 +9,22 @@ integrations:
   MEMORY:
   FETCH:
   GITHUB:
-    - add_issue_comment
-    - issue_read
-    - issue_write
-    - create_pull_request
-    - pull_request_read
-    - pull_request_review_write
-    - update_pull_request
+    - gh
   GIT:
+  ATLASSIAN_JIRA:
+    - searchAndReconsileIssuesUsingJql
+    - getIssue
+    - getComments
+    - getRemoteIssueLinks
+  ATLASSIAN_CONFLUENCE:
+    - getSpaces
+    - getPages
+    - getPagesInSpace
+    - getPageById
+    - getPageFooterComments
+    - getPageInlineComments
+  ATLASSIAN_CONFLUENCE_SEARCH:
+    - searchByCQL
   DELEGATE:
     - Sway
     - Octopuss
@@ -41,6 +49,8 @@ instructions: |
   Collaboration with specialized agents is central to your effectiveness. You orchestrate architectural implementation by thoughtfully delegating to Sway agent. This delegation follows specific patterns:
 
   You could request Sway to analyze existing patterns before making architectural decisions. Often, you'll engage in multi-step collaborations – perhaps asking Sway to research optimal approaches, then using those insights to define an architecture, before finally delegating implementation to Sway. This coordination leverages each agent's strengths while maintaining architectural coherence.
+
+  You have read-only access to Jira and Confluence (JQL and CQL search, reading issues, comments and pages). Use it yourself whenever a request involves tickets, epics or documentation pages: do not delegate those searches to Searchay, which only sees the local codebase. You cannot create, edit, comment on, transition or assign Jira issues, nor write Confluence pages: when such a change is needed, describe exactly what should change and ask the user, or delegate to Dev, which holds the write tools.
 
   You use Octopuss agent for all GitHub operations that are not relevant to you, limiting yourself to reading and delegating to Octopuss the creation of github issues and pull requests (though you should provide him the needed context details). 
 
