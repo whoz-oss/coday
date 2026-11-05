@@ -36,10 +36,11 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Shows, applies and rejects the configuration plans frozen by `AGENTOS_CONFIG__propose`.
  *
- * Every method runs inside the HTTP request of the user who called the endpoint. Reads go through
- * [ConfigReadService] with that user's rights; writes go through [ConfigWriter], i.e. through the
- * REST controllers with the same request identity. After an apply or a reject the server posts the
- * answer to the question ([ConfigChangeAnswer]), which closes the plan and resumes the agent.
+ * Every method runs with the user who called the endpoint authenticated on the thread: the user of
+ * the HTTP request, or the user a messaging chat acts for. Reads go through [ConfigReadService] with
+ * that user's rights; writes go through [ConfigWriter], i.e. through the REST controllers with the
+ * same identity. After an apply or a reject the server posts the answer to the question
+ * ([ConfigChangeAnswer]), which closes the plan and resumes the agent.
  *
  * The plan comes from [ConfigPlanReader], and each operation's status from [ConfigChangeStatus].
  */
@@ -54,7 +55,7 @@ class ConfigChangeService(
 ) {
     /**
      * Questions whose plan is being applied or rejected. Entries live only for the duration of one
-     * request (removed in a `finally`). Single instance, like the case runtime registry.
+     * call (removed in a `finally`). Single instance, like the case runtime registry.
      */
     private val claims = ConcurrentHashMap.newKeySet<UUID>()
 

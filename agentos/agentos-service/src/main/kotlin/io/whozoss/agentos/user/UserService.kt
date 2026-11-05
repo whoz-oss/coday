@@ -8,8 +8,8 @@ import io.whozoss.agentos.entity.EntityService
  * Users are root-level entities; [findAll] is the primary listing operation.
  * [findByExternalId] is the low-level lookup used internally.
  * [resolveOrCreateByExternalId] resolves or auto-creates a user from a raw identity key.
- * [getCurrentUser] is the request-scoped entry point: resolves the caller's identity via
- * [io.whozoss.agentos.security.SecurityService] and returns the matching persisted [User].
+ * [getCurrentUser] is the caller's entry point: the user authenticated on the thread, else the one
+ * [io.whozoss.agentos.security.SecurityService] resolves, as the matching persisted [User].
  */
 interface UserService : EntityService<User, String> {
     /**
@@ -46,11 +46,14 @@ interface UserService : EntityService<User, String> {
     fun createByExternalIds(externalIds: Set<String>): List<User>
 
     /**
-     * Resolve the [User] for the current HTTP request.
+     * Resolve the [User] the current call is made for.
      *
-     * Delegates identity extraction to [io.whozoss.agentos.security.SecurityService],
-     * then calls [resolveOrCreateByExternalId]. Controllers call this method directly
-     * without any knowledge of how identity is resolved.
+     * That is the user authenticated on the thread
+     * ([io.whozoss.agentos.security.declarative.AgentOsAuthentication]) when there is one: the user of
+     * the HTTP request, or the user a messaging chat acts for. Otherwise identity extraction is delegated
+     * to [io.whozoss.agentos.security.SecurityService], then [resolveOrCreateByExternalId] is called.
+     * Both agree within a request, since the authentication filter resolves the request's user through
+     * this very method. Controllers call it without any knowledge of how identity is resolved.
      *
      * @return The caller's persisted [User], auto-created on first access.
      */

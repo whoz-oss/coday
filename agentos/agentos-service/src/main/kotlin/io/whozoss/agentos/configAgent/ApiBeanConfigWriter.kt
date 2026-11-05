@@ -17,21 +17,22 @@ import io.whozoss.agentos.sdk.api.prompt.PromptApi
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.skill.SkillApi
 import io.whozoss.agentos.sdk.api.skill.SkillDto
+import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import jakarta.validation.Validator
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
-import org.springframework.web.context.request.RequestContextHolder
 import java.util.UUID
 
 /**
  * Phase 1 [ConfigWriter]: calls the REST controllers in process, through their public `*Api`
  * interfaces, whose only implementation is the controller's method-security proxy.
  *
- * Must run inside the HTTP request of the user who applies: `@PreAuthorize` and the inline guards
- * (`requireSuperAdmin`, scope policies) read the identity of that request, so every write is
- * authorized exactly like the same call made by the browser. No access rule is copied here.
- * `ApiBeanBridgeAuthorizationSpec` proves the bridge. Every method checks it runs inside such a
- * request first, so a future asynchronous caller fails with a clear message rather than with an
+ * Must run with the user who applies authenticated on the thread ([AgentOsAuthentication]): the user
+ * of the HTTP request, or the user a messaging chat acts for. `@PreAuthorize` and the inline guards
+ * (`requireSuperAdmin`, scope policies, through `UserService.getCurrentUser`) all read that identity, so
+ * every write is authorized exactly like the same call made by the browser. No access rule is copied
+ * here. `ApiBeanBridgeAuthorizationSpec` proves the bridge. Every method checks that a user is
+ * authenticated first, so an asynchronous caller fails with a clear message rather than with an
  * authentication error from the proxy.
  *
  * `@Valid` does not apply to in-process calls, so every DTO is validated here with the same Bean
@@ -52,7 +53,7 @@ class ApiBeanConfigWriter(
         kind: ConfigKind,
         dto: ObjectNode,
     ): UUID =
-        asRequestUser {
+        asAuthenticatedUser {
             // Every DTO's id is nullable, so the check covers all the branches.
             when (kind) {
                 ConfigKind.AGENT -> agentConfigApi.create(validated(dto, AgentConfigDto::class.java)).id
@@ -68,7 +69,7 @@ class ApiBeanConfigWriter(
         kind: ConfigKind,
         id: UUID,
     ): ObjectNode =
-        asRequestUser {
+        asAuthenticatedUser {
             objectMapper.valueToTree(
                 when (kind) {
                     ConfigKind.AGENT -> agentConfigApi.getById(id)
@@ -85,7 +86,7 @@ class ApiBeanConfigWriter(
         kind: ConfigKind,
         id: UUID,
         change: (ObjectNode) -> Unit,
-    ): Unit = asRequestUser {
+    ): Unit = asAuthenticatedUser {
         val current = read(kind, id).also(change)
         when (kind) {
             ConfigKind.AGENT -> agentConfigApi.update(id, validated(current, AgentConfigDto::class.java))
@@ -101,7 +102,7 @@ class ApiBeanConfigWriter(
         agentId: UUID,
         enabled: Boolean,
     ): Unit =
-        asRequestUser {
+        asAuthenticatedUser {
             if (enabled) agentConfigApi.enable(agentId) else agentConfigApi.disable(agentId)
         }
 
@@ -109,14 +110,14 @@ class ApiBeanConfigWriter(
         namespaceId: UUID,
         agentId: UUID,
         deployed: Boolean,
-    ): Unit = asRequestUser {
+    ): Unit = asAuthenticatedUser {
         val request = NamespaceAgentDeployRequest(listOf(agentId))
         if (deployed) namespaceApi.deployAgents(namespaceId, request) else namespaceApi.undeployAgents(namespaceId, request)
     }
 
-    /** Runs [block] once sure to act as the user of the current HTTP request, whose identity the proxies read. */
-    private fun <T> asRequestUser(block: () -> T): T {
-        check(RequestContextHolder.getRequestAttributes() != null && SecurityContextHolder.getContext().authentication != null) { NO_REQUEST_USER }
+    /** Runs [block] once sure a user is authenticated on the thread: the identity the proxies read. */
+    private fun <T> asAuthenticatedUser(block: () -> T): T {
+        check(SecurityContextHolder.getContext().authentication is AgentOsAuthentication) { NO_AUTHENTICATED_USER }
         return block()
     }
 
@@ -132,6 +133,6 @@ class ApiBeanConfigWriter(
         }
 
     private companion object {
-        const val NO_REQUEST_USER = "ConfigWriter must run inside the HTTP request of the user who applies the plan"
+        const val NO_AUTHENTICATED_USER = "ConfigWriter must run with the user who applies the plan authenticated"
     }
 }
