@@ -544,10 +544,10 @@ export function mapProjectionToRunSummary(
 
   const mappedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const cardState: RunSummary['cardState'] =
-    mappedStatus === 'failed'
-      ? 'failed'
-      : waitingHuman
-        ? 'waiting_human'
+    waitingHuman
+      ? 'waiting_human'
+      : mappedStatus === 'failed'
+        ? 'failed'
         : blockedStepIds.size > 0
           ? 'blocked'
           : mappedStatus === 'running'
