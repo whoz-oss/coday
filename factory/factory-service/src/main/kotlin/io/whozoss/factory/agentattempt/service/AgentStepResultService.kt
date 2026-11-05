@@ -162,13 +162,17 @@ class AgentStepResultService(
                 if (existing.requestHash == requestHash) {
                     return cachedSubmission(existing.responsePayload)
                 }
-                // Check if the existing result for this attempt is a non-terminal NEEDS_RESEARCH:
-                // if so, allow superseding the NEEDS_RESEARCH submission instead of throwing 409.
+                // Check if the existing result for this attempt is a non-terminal NEEDS_RESEARCH
+                // and the new submission resolves it (PASS or FAIL): if so, allow superseding it.
                 val capability = results.findByToken(scope, token)
                 val currentResult = capability?.let {
                     results.getByAttempt(scope, it.namespaceId, it.workflowId, it.stepId, it.attemptId)
                 }
-                if (currentResult?.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
+                val incomingStatus = business?.path("status")?.asText()
+                val resolvesNeedsResearch =
+                    currentResult?.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH &&
+                        (incomingStatus == "PASS" || incomingStatus == "FAIL")
+                if (!resolvesNeedsResearch) {
                     throw IdempotencyKeyCollisionException()
                 }
             }
