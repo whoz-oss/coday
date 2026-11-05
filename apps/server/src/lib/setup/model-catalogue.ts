@@ -20,11 +20,27 @@
  * AgentOS prices ONE tier per model. Claude Haiku 5.5 is dearer past 100k prompt tokens ($0.50 in / $2.50 out):
  * the base tier is the one given here. The cache write rate is only used with the Anthropic API type (OpenAI-style
  * APIs, Requesty included, do not report cache writes), so it is only given there.
+ *
+ * Transcription (voice messages) is NOT a chat model, so it lives next to `models` in the optional `transcription` of a
+ * provider, with the fixed alias WHISPER: no context window, no token pricing (Whisper is billed per audio minute, cost
+ * tracking is out of scope). Only providers with a transcription API have one (Anthropic has none). Sources:
+ *   - OpenAI     platform.openai.com/docs/guides/speech-to-text (`whisper-1`)
+ *   - Requesty   router.eu.requesty.ai/v1/models (`openai/whisper-1`)
  * Model availability and prices change: update this file, nothing else.
+ *
+ * The `default` alias is the one AgentOS falls back to for an agent with no (or an unknown) `modelName`. It is not a
+ * catalogue entry of its own: each provider's `default` is a copy of its SMALL model (see `defaultModelOf`), so the
+ * smallest model of the best-ranked provider wins.
  */
 
 export const MODEL_ALIASES = ['FRONTIER', 'BIGGEST', 'BIG', 'SMALL'] as const
 export type ModelAlias = (typeof MODEL_ALIASES)[number]
+
+/** Alias of the platform model AgentOS uses when an agent names none: the smallest model of each provider. */
+export const DEFAULT_MODEL_ALIAS = 'default' as const
+
+/** Alias of the platform transcription model: the voice capability picks the one of highest priority. */
+export const TRANSCRIPTION_ALIAS = 'WHISPER' as const
 
 export type CatalogueProviderId = 'anthropic' | 'openai' | 'requesty'
 export type AiApiType = 'OpenAI' | 'Anthropic' | 'Gemini' | 'vLLM' | 'Ollama'
@@ -45,6 +61,13 @@ export interface CatalogueModel {
   pricing: CatalogueModelPricing
 }
 
+/** The speech-to-text model of a provider: not a chat model, so neither limits nor pricing. */
+export interface CatalogueTranscriptionModel {
+  alias: typeof TRANSCRIPTION_ALIAS
+  apiModelName: string
+  description: string
+}
+
 export interface CatalogueProvider {
   id: CatalogueProviderId
   /** Name of the platform provider created in AgentOS (also the idempotency key). */
@@ -56,6 +79,8 @@ export interface CatalogueProvider {
   /** Where the user gets a key (shown in the wizard). */
   keyUrl: string
   models: Record<ModelAlias, CatalogueModel>
+  /** Absent when the provider has no transcription API. */
+  transcription?: CatalogueTranscriptionModel
 }
 
 const ANTHROPIC_PRICING: Record<ModelAlias, CatalogueModelPricing> = {
@@ -165,6 +190,11 @@ export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
     baseUrl: 'https://api.openai.com',
     keyUrl: 'https://platform.openai.com/api-keys',
     models: openaiModels(''),
+    transcription: {
+      alias: TRANSCRIPTION_ALIAS,
+      apiModelName: 'whisper-1',
+      description: 'Whisper: speech-to-text for voice messages',
+    },
   },
   requesty: {
     id: 'requesty',
@@ -177,10 +207,21 @@ export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
     // Requesty prefixes the lab and spells Fable 5.1 with a dot. It serves both labs, but one alias
     // maps to ONE model per provider: the Claude family is used (the Coday agent is tuned on it).
     models: anthropicModels('anthropic/', 'claude-fable-5.1', REQUESTY_PRICING),
+    transcription: {
+      alias: TRANSCRIPTION_ALIAS,
+      apiModelName: 'openai/whisper-1',
+      description: 'Whisper (OpenAI, through Requesty): speech-to-text for voice messages',
+    },
   },
 }
 
 export const CATALOGUE_PROVIDER_IDS = Object.keys(MODEL_CATALOGUE) as CatalogueProviderId[]
+
+/** The `default` model of a provider: its SMALL model, under the `default` alias. */
+export function defaultModelOf(provider: CatalogueProvider): CatalogueModel {
+  const small = provider.models.SMALL
+  return { ...small, description: `Default model, the smallest of ${provider.label}: ${small.description}` }
+}
 
 export function getCatalogueProvider(id: string): CatalogueProvider | undefined {
   return (MODEL_CATALOGUE as Record<string, CatalogueProvider | undefined>)[id]

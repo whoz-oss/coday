@@ -6,6 +6,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   OnInit,
   signal,
@@ -20,6 +21,7 @@ import {
   filter,
   firstValueFrom,
   map,
+  Observable,
   of,
   shareReplay,
   Subject,
@@ -49,6 +51,9 @@ import { ComposerAttachmentsComponent } from '../composer-attachments/composer-a
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case-workspace.service'
+import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
+import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
+import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 
 const GIT_INTEGRATION_TYPE = 'GIT'
 
@@ -62,6 +67,12 @@ const GIT_INTEGRATION_TYPE = 'GIT'
  *    explicit request) and referenced in the message content
  * 4. POST /api/cases/:id/messages sends the first message
  * 5. Only then does the app navigate to the case chat
+ *
+ * A first message can also be a voice message (mic button, when the instance can transcribe). The case does
+ * not exist while recording: it is created when the recording is sent, exactly like on a text send, then the
+ * recording is posted to it (the server names the case from the transcript) and the app navigates. A voice
+ * message is the whole message, so the mic is off while files are staged. A failure after the case was created
+ * keeps it in [pendingCaseId] like a failed upload: the next send, typed or recorded, reuses it.
  *
  * When this instance has Git workspaces and the GIT plugin, and the namespace creates a worktree
  * for every top-level case, the composer offers it unchecked: checking it creates the case with a worktree.
@@ -78,8 +89,9 @@ const GIT_INTEGRATION_TYPE = 'GIT'
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
     ComposerAttachmentsComponent,
+    VoiceRecorderComponent,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
   templateUrl: './case-home.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-home.component.scss',
@@ -93,6 +105,7 @@ export class CaseHomeComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly injector = inject(Injector)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   /** Nom du namespace actif — passé par CaseShellComponent */
   readonly namespaceName = input<string | null>(null)
@@ -101,6 +114,9 @@ export class CaseHomeComponent implements OnInit {
   /** Files staged on the first message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
   protected readonly autocomplete = inject(ComposerAutocompleteService)
+  /** Voice messages: the recorder is component-scoped (microphone released with the host), the capability is app-wide. */
+  protected readonly voice = inject(VoiceRecorderService)
+  protected readonly voiceCapability = inject(VoiceCapabilityStateService)
 
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
@@ -150,6 +166,7 @@ export class CaseHomeComponent implements OnInit {
   )
 
   ngOnInit(): void {
+    this.voiceCapability.load()
     // Namespace-only exchange init: no case exists yet, but canWriteNamespace() gating
     // (namespace-intent badge and upload target) needs the namespace manifest.
     this.exchangeState.initializeForNamespace(this.namespaceId)
@@ -162,6 +179,7 @@ export class CaseHomeComponent implements OnInit {
       if (newNs && (newNs !== this.namespaceId || newParent !== this.parentCaseId())) {
         this.creationContext++
         this.creationChanged.next()
+        this.voice.reset()
         this.namespaceId = newNs
         this.parentCaseId.set(newParent)
         this.autocomplete.init(newNs)
@@ -220,7 +238,122 @@ export class CaseHomeComponent implements OnInit {
   }
 
   protected get canSend(): boolean {
-    return (!!this.inputValue().trim() || this.attachments.hasAttachments()) && !this.isCreating()
+    return (
+      (!!this.inputValue().trim() || this.attachments.hasAttachments()) && !this.isCreating() && !this.voice.isBusy()
+    )
+  }
+
+  /** Files can be staged (picker + drop) while nothing is being created and no recording is under way. */
+  protected get canStageFiles(): boolean {
+    return !this.isCreating() && !this.voice.isBusy()
+  }
+
+  /**
+   * The mic is usable where sending is, and while neither a file is staged nor a text typed: the recording is the
+   * whole message, and the home composer is left for the case chat on success, which would drop a draft silently.
+   */
+  protected get canRecord(): boolean {
+    return (
+      !this.isCreating() &&
+      !this.inputValue().trim() &&
+      !this.attachments.hasAttachments() &&
+      !this.attachments.isUploading() &&
+      !this.voice.isBusy()
+    )
+  }
+
+  /**
+   * Asks for the microphone, then records until the user sends or cancels (or the length limit sends). The case is
+   * created when the recording is sent, never before: a cancelled recording leaves nothing behind.
+   */
+  protected startRecording(): void {
+    if (!this.canRecord) return
+    // Switching namespace or parent abandons this recording, like a submit.
+    const namespaceId = this.namespaceId
+    const parentCaseId = this.parentCaseId()
+    const creationContext = this.creationContext
+    let caseId = ''
+    this.submitError.set('')
+    void this.voice.start(
+      async () => {
+        let created: string | null
+        try {
+          created = await firstValueFrom(this.ensureCase$(namespaceId, parentCaseId, creationContext))
+        } catch (err) {
+          console.error('[CaseHome] Failed to create case for the voice message', err)
+          // Shown in the recording bar, with the message the text flow would show.
+          throw new Error(this.errorMessage(err))
+        }
+        // Abandoned: the recorder was reset by the switch and ignores this.
+        if (created === null) throw new Error('Voice message abandoned')
+        caseId = created
+        return created
+      },
+      {
+        onSending: () => this.isCreating.set(true),
+        onSendFailed: () => {
+          if (!this.abandoned(creationContext)) this.isCreating.set(false)
+        },
+        onSent: () => {
+          if (this.abandoned(creationContext)) return
+          this.pendingCaseId.set(null)
+          this.router.navigate(['/agentos/home'], { queryParams: { ns: namespaceId, case: caseId } })
+          this.isCreating.set(false)
+        },
+      }
+    )
+  }
+
+  protected sendRecording(): void {
+    void this.voice.stopAndSend()
+  }
+
+  protected cancelRecording(): void {
+    this.voice.cancel()
+    // The recording bar leaves: the textarea is shown again, sized to its content, and takes the focus back.
+    afterNextRender(
+      () => {
+        const input = this.composerInput()?.nativeElement
+        input?.focus()
+        this.resizeComposer(input)
+      },
+      { injector: this.injector }
+    )
+  }
+
+  /** The send button of the footer: while recording it sends the recording, otherwise the typed message. */
+  protected onSendClick(): void {
+    if (this.voice.state() === 'recording') {
+      this.sendRecording()
+    } else {
+      void this.submit()
+    }
+  }
+
+  /** A recording can be sent as soon as it runs; the typed message follows the usual rules. */
+  protected get canSendNow(): boolean {
+    return this.voice.state() === 'recording' || this.canSend
+  }
+
+  /** The key that sends, for the recording hint: the Enter preference decides whether it needs Ctrl/Cmd. */
+  protected get sendKeyLabel(): string {
+    return this.preferences.enterKeyBehavior() === 'newline' ? 'Ctrl/Cmd+Enter' : 'Enter'
+  }
+
+  /**
+   * Keys of the recording bar (the textarea is hidden while recording, so it cannot read them): Enter sends the
+   * recording under the same preference as a typed message, Escape discards it. A key held down, or pressed again
+   * once the recording is on its way (the length limit may have sent it), does nothing.
+   */
+  protected onRecordingKeydown(event: KeyboardEvent): void {
+    if (this.voice.state() !== 'recording') return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelRecording()
+    } else if (this.preferences.shouldSend(event)) {
+      event.preventDefault()
+      if (!event.repeat) this.sendRecording()
+    }
   }
 
   protected onInput(event: Event): void {
@@ -287,28 +420,9 @@ export class CaseHomeComponent implements OnInit {
     this.isCreating.set(true)
 
     try {
-      // Step 1: create the case — once. A previous failed attempt is retried against the
-      // same case (pendingCaseId), so a duplicate is never created.
-      let caseId = this.pendingCaseId()
-      if (!caseId) {
-        const createdCase = await firstValueFrom(
-          this.caseApi.createCase({
-            namespaceId,
-            ...(parentCaseId ? { parentCaseId } : {}),
-            // When the box is offered for a top-level case, the creator's explicit choice is sent (true or false).
-            // Nothing is sent otherwise: the backend rejects a worktree choice on a sub-case.
-            ...(this.worktreeOffered() && !parentCaseId ? { worktree: this.worktree() } : {}),
-            status: CaseStatusEnum.PENDING,
-            favorite: false,
-            removed: false,
-          })
-        )
-        if (this.abandoned(creationContext)) return
-        this.caseState.addCase(createdCase)
-        caseId = createdCase.id ?? ''
-        this.pendingCaseId.set(caseId)
-      }
-      if (this.abandoned(creationContext)) return
+      // Step 1: create the case — once (see ensureCase$).
+      const caseId = await firstValueFrom(this.ensureCase$(namespaceId, parentCaseId, creationContext))
+      if (caseId === null) return
 
       // Keep the same case and local attachments on retry; never fill the worktree before Git does.
       if (this.attachments.hasAttachments()) {
@@ -374,14 +488,58 @@ export class CaseHomeComponent implements OnInit {
     } catch (err) {
       if (this.abandoned(creationContext)) return
       console.error('[CaseHome] Failed to create case or send first message', err)
-      this.submitError.set(
-        (err as { error?: { message?: string }; message?: string })?.error?.message ||
-          (err as Error)?.message ||
-          'Could not send the message. Retry to continue with the same case.'
-      )
+      this.submitError.set(this.errorMessage(err))
     } finally {
       if (!this.abandoned(creationContext)) this.isCreating.set(false)
     }
+  }
+
+  /**
+   * The case the first message goes to: the one a previous failed attempt created (pendingCaseId), else a new one,
+   * so a retry never creates a duplicate. Emits null when the composer moved on (namespace or parent switch,
+   * destroyed) meanwhile: the caller stops, and nothing was added to the case list.
+   *
+   * An Observable rather than an async function so that, as in the text flow before it was shared, nothing is
+   * awaited beyond the creation request itself.
+   */
+  private ensureCase$(
+    namespaceId: string,
+    parentCaseId: string | null,
+    creationContext: number
+  ): Observable<string | null> {
+    return defer(() => {
+      const pending = this.pendingCaseId()
+      if (pending) return of(pending)
+      return this.caseApi
+        .createCase({
+          namespaceId,
+          ...(parentCaseId ? { parentCaseId } : {}),
+          // When the box is offered for a top-level case, the creator's explicit choice is sent (true or false).
+          // Nothing is sent otherwise: the backend rejects a worktree choice on a sub-case.
+          ...(this.worktreeOffered() && !parentCaseId ? { worktree: this.worktree() } : {}),
+          status: CaseStatusEnum.PENDING,
+          favorite: false,
+          removed: false,
+        })
+        .pipe(
+          map((createdCase) => {
+            if (this.abandoned(creationContext)) return null
+            this.caseState.addCase(createdCase)
+            const caseId = createdCase.id ?? ''
+            this.pendingCaseId.set(caseId)
+            return caseId
+          })
+        )
+    }).pipe(map((caseId) => (this.abandoned(creationContext) ? null : caseId)))
+  }
+
+  /** What the creator is told when creating the case or sending the first message failed. */
+  private errorMessage(err: unknown): string {
+    return (
+      (err as { error?: { message?: string }; message?: string })?.error?.message ||
+      (err as Error)?.message ||
+      'Could not send the message. Retry to continue with the same case.'
+    )
   }
 
   /** True when the in-flight submit no longer belongs to the displayed composer. */

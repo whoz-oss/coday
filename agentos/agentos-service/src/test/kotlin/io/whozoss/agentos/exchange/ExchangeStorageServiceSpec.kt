@@ -218,6 +218,24 @@ class ExchangeStorageServiceSpec :
             shouldThrow<ExchangeFileTooLargeException> { service.readBytes(root, "big.txt") }
         }
 
+        "voice message recordings are stored under voice-messages/ whatever the audio extension, and read back intact" {
+            // Server-generated path: writeNew applies no extension allow-list (that gate is the controller's, for
+            // human uploads only), so the audio extensions are accepted as they are. The Content-Type of a
+            // download comes from the extension and is not asserted: the client types its Blob from the
+            // MessageContent.Audio mimeType instead.
+            val service = newService()
+            val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
+            val recording = ByteArray(1024) { it.toByte() }
+            listOf("webm", "ogg", "m4a", "mp3", "wav").forEach { extension ->
+                val path = "voice-messages/voice-20260101-120000-abcd1234.$extension"
+
+                service.writeNew(root, path, recording, ExchangeScope.CASE).path shouldBe path
+
+                service.readBytes(root, path).first.contentEquals(recording) shouldBe true
+            }
+            service.listManifest(root, ExchangeScope.CASE).size shouldBe 5
+        }
+
         "writeNew stores the file directly with no leftover staging artifact" {
             val service = newService()
             val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)

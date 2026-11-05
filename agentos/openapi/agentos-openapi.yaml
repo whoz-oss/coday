@@ -1539,6 +1539,54 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/voice-messages:
+    post:
+      operationId: postVoiceMessage
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: answerToEventId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: durationMs
+        required: false
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                answerToEventId:
+                  type: string
+                  format: uuid
+                audio:
+                  type: string
+                  format: binary
+                durationMs:
+                  type: integer
+                  format: int64
+              required:
+              - audio
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceMessageResponse"
+          description: OK
+      tags:
+      - voice-message-controller
   /api/cases/{caseId}/workspace:
     get:
       operationId: getCaseWorkspace
@@ -4061,6 +4109,18 @@ paths:
       summary: "Revoke a user's UserGroup and Namespace access, scoped to one namespace"
       tags:
       - user-controller
+  /api/voice-messages/capability:
+    get:
+      operationId: capabilityVoiceMessage
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceMessageCapabilityResponse"
+          description: OK
+      tags:
+      - voice-message-controller
 components:
   schemas:
     Actor:
@@ -4495,6 +4555,21 @@ components:
       required:
       - authType
       - name
+    Audio:
+      allOf:
+      - $ref: "#/components/schemas/MessageContent"
+      - type: object
+        properties:
+          durationMs:
+            type: integer
+            format: int64
+          mimeType:
+            type: string
+          path:
+            type: string
+      required:
+      - mimeType
+      - path
     AuthSettingDto:
       type: object
       discriminator:
@@ -5726,6 +5801,7 @@ components:
             type: array
             items:
               oneOf:
+              - $ref: "#/components/schemas/Audio"
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
           llmModel:
@@ -6838,6 +6914,7 @@ components:
               $ref: "#/components/schemas/Image"
           output:
             oneOf:
+            - $ref: "#/components/schemas/Audio"
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
           structuredOutput:
@@ -7221,6 +7298,23 @@ components:
           description: Internal user id.
       required:
       - userId
+    VoiceMessageCapabilityResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+      required:
+      - available
+    VoiceMessageResponse:
+      type: object
+      properties:
+        path:
+          type: string
+        transcript:
+          type: string
+      required:
+      - path
+      - transcript
     WarnEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

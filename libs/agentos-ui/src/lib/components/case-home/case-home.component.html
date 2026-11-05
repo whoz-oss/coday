@@ -1,9 +1,9 @@
 <div
   class="case-home"
-  (dragenter)="!isCreating() && attachments.onDragEnter($event)"
-  (dragover)="!isCreating() && attachments.onDragOver($event)"
+  (dragenter)="canStageFiles && attachments.onDragEnter($event)"
+  (dragover)="canStageFiles && attachments.onDragOver($event)"
   (dragleave)="attachments.onDragLeave()"
-  (drop)="!isCreating() && attachments.onDrop($event)"
+  (drop)="canStageFiles && attachments.onDrop($event)"
 >
   @if (attachments.isDragOver()) {
     <div class="case-home__drop-overlay" aria-hidden="true">
@@ -64,17 +64,25 @@
         placeholder="Describe your task or ask a question…"
         rows="4"
         [value]="inputValue()"
+        [hidden]="voice.isActive()"
         [disabled]="isCreating()"
         (input)="onInput($event)"
         (keydown)="onKeydown($event)"
       ></textarea>
+      <agentos-voice-recorder
+        [state]="voice.state()"
+        [elapsedMs]="voice.elapsedMs()"
+        [error]="voice.error()"
+        [sendKey]="sendKeyLabel"
+        (keyPressed)="onRecordingKeydown($event)"
+      />
       <div class="case-home__composer-footer">
         <div class="case-home__footer-left">
           <ds-icon-button
             icon="add"
             variant="default"
             title="Attach files"
-            [disabled]="isCreating()"
+            [disabled]="!canStageFiles"
             (action)="attachmentsUi.openPicker()"
           />
           @if (worktreeOffered() && !parentCaseId()) {
@@ -93,13 +101,29 @@
           }
           <span class="case-home__hint">{{ preferences.composerHint() }}</span>
         </div>
-        <ds-icon-button
-          icon="send"
-          variant="primary"
-          [title]="parentCaseId() ? 'Start sub-case' : 'Start case'"
-          [disabled]="!canSend"
-          (action)="submit()"
-        />
+        <!-- Mic (or cancel while recording) right next to the send button, on its left -->
+        <div class="case-home__footer-right">
+          @if (voice.state() === 'recording') {
+            <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
+          } @else if (voiceCapability.available()) {
+            <ds-icon-button
+              icon="mic"
+              variant="default"
+              title="Record a voice message"
+              [disabled]="!canRecord"
+              (action)="startRecording()"
+            />
+          }
+          <ds-icon-button
+            icon="send"
+            variant="primary"
+            [title]="
+              voice.state() === 'recording' ? 'Send voice message' : parentCaseId() ? 'Start sub-case' : 'Start case'
+            "
+            [disabled]="!canSendNow"
+            (action)="onSendClick()"
+          />
+        </div>
       </div>
     </div>
   </div>

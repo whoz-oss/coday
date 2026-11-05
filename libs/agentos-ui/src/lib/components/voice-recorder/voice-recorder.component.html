@@ -1,0 +1,23 @@
+@if (state() === 'recording') {
+  <div
+    #bar
+    class="voice-recorder"
+    tabindex="-1"
+    role="status"
+    aria-label="Recording a voice message"
+    (keydown)="keyPressed.emit($event)"
+  >
+    <span class="voice-recorder__pulse" aria-hidden="true"></span>
+    <span class="voice-recorder__time">{{ formatElapsed(elapsedMs()) }}</span>
+    <span class="voice-recorder__hint">Recording… press {{ sendKey() }} to send</span>
+  </div>
+} @else if (state() === 'sending') {
+  <div class="voice-recorder voice-recorder--sending" role="status">
+    <!-- A CSS spinner: the app loads the classic Material Icons font, which has no `progress_activity` glyph. -->
+    <span class="voice-recorder__spinner" aria-hidden="true"></span>
+    <span class="voice-recorder__hint">Sending and transcribing…</span>
+  </div>
+}
+@if (error(); as message) {
+  <p class="voice-recorder__error" role="alert">{{ message }}</p>
+}
