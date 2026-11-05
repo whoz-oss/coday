@@ -252,8 +252,9 @@ export class CompanionStateService {
       if (!found) return null
 
       if (!found.parentCaseId) {
-        const rootTitle = found.title ?? found.id.slice(0, 8)
-        return { rootCaseId: found.id, rootTitle, isSubCase }
+        const rootCaseId = found.id ?? currentId
+        const rootTitle = found.title ?? rootCaseId.slice(0, 8)
+        return { rootCaseId, rootTitle, isSubCase }
       }
 
       isSubCase = true
@@ -282,15 +283,16 @@ export class CompanionStateService {
     }
 
     return this.caseController.getByIdCase(caseId).pipe(
-      switchMap((c: Case) => {
+      switchMap((c: Case): Observable<ResolvedRootTarget> => {
         if (!c.parentCaseId) {
-          const rootTitle = c.title ?? c.id.slice(0, 8)
-          return of({ rootCaseId: c.id, rootTitle, isSubCase })
+          const rootCaseId = c.id ?? caseId
+          const rootTitle = c.title ?? rootCaseId.slice(0, 8)
+          return of({ rootCaseId, rootTitle, isSubCase })
         }
         return this.resolveRootAsync(c.parentCaseId, true, depth + 1)
       }),
-      map((target) => ({ ...target, isSubCase: isSubCase || target.isSubCase })),
-      catchError(() => of({ rootCaseId: caseId, rootTitle: caseId.slice(0, 8), isSubCase }))
+      map((target): ResolvedRootTarget => ({ ...target, isSubCase: isSubCase || target.isSubCase })),
+      catchError((): Observable<ResolvedRootTarget> => of({ rootCaseId: caseId, rootTitle: caseId.slice(0, 8), isSubCase }))
     )
   }
 
