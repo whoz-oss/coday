@@ -20,6 +20,13 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
 
     @Query("""MATCH(a:DurableAgentAttempt) WHERE NOT a.status IN ['succeeded','failed','indeterminate','interrupted','superseded'] RETURN a ORDER BY a.updatedAt ASC LIMIT ${'$'}limit""")
     fun findNonTerminal(limit:Long):List<DurableAgentAttemptNode>
+
+    @Query("""MATCH(a:DurableAgentAttempt) WHERE a.status IN ['succeeded','failed','indeterminate','interrupted','superseded'] AND a.occupancyResourceIdentity IS NOT NULL RETURN a ORDER BY a.updatedAt ASC LIMIT ${'$'}limit""")
+    fun findTerminalWithOccupancy(limit:Long):List<DurableAgentAttemptNode>
+
+    @Query("""MATCH(a:DurableAgentAttempt) WHERE a.status IN ['succeeded','failed','indeterminate','interrupted','superseded'] AND a.occupancyResourceIdentity IS NOT NULL AND (${'$'}afterId IS NULL OR a.id > ${'$'}afterId) RETURN a ORDER BY a.id ASC LIMIT ${'$'}limit""")
+    fun findTerminalWithOccupancyAfter(afterId:String?,limit:Long):List<DurableAgentAttemptNode>
+
     @Query("""MATCH(a:DurableAgentAttempt) WHERE a.organizationId=${'$'}organizationId AND a.workstreamId=${'$'}workstreamId AND a.namespaceId=${'$'}namespaceId AND a.workflowId=${'$'}workflowId AND a.attemptId=${'$'}attemptId RETURN a""")
     fun findByAttemptId(organizationId:String,workstreamId:String,namespaceId:String,workflowId:String,attemptId:String):List<DurableAgentAttemptNode>
     @Query("""MATCH(a:DurableAgentAttempt) WHERE a.organizationId=${'$'}organizationId AND a.attemptId=${'$'}attemptId RETURN a""")
@@ -70,6 +77,9 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
           a.lastObservedEventId=coalesce(${'$'}lastObservedEventId,a.lastObservedEventId),a.updatedAt=${'$'}now,a.revision=a.revision+1 RETURN count(a) AS transitioned
     """)
     fun transition(id:String,ownerToken:String,status:String,lastObservedEventId:String?,now:Instant):Long
+
+    @Query("""MATCH(a:DurableAgentAttempt{id:${'$'}id}) WHERE a.revision=${'$'}expectedRevision AND NOT a.status IN ['succeeded','failed','indeterminate','interrupted','superseded'] AND (a.occupancyResourceIdentity IS NULL OR (a.occupancyResourceIdentity=${'$'}resourceIdentity AND a.occupancyOwnerKind=${'$'}ownerKind AND a.occupancyOwnerId=${'$'}ownerId AND a.occupancyGeneration=${'$'}generation)) SET a.occupancyResourceIdentity=${'$'}resourceIdentity,a.occupancyOwnerKind=${'$'}ownerKind,a.occupancyOwnerId=${'$'}ownerId,a.occupancyGeneration=${'$'}generation,a.updatedAt=${'$'}now,a.revision=a.revision+1 RETURN count(a) AS updated""")
+    fun bindOccupancy(id:String,expectedRevision:Int,resourceIdentity:String,ownerKind:String,ownerId:String,generation:Long,now:Instant):Long
 
     @Query("""MATCH(a:DurableAgentAttempt{id:${'$'}id}) WHERE a.revision=${'$'}expectedRevision AND a.status IN ['running','waiting_human'] AND a.capabilityToken=${'$'}expectedCapabilityToken SET a.capabilityToken=${'$'}capabilityToken,a.updatedAt=${'$'}now,a.revision=a.revision+1 RETURN count(a) AS updated""")
     fun replaceCapability(id:String,expectedRevision:Int,expectedCapabilityToken:String,capabilityToken:String,now:Instant):Long

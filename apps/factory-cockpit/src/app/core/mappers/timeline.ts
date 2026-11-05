@@ -56,6 +56,7 @@ export function mapWorkflowStateToRunStatus(state?: string, steps?: unknown[]): 
   switch (normalized) {
     case 'running':
     case 'waiting_human':
+    case 'needs_research':
       return 'running'
     case 'ready':
       return 'queued'
@@ -543,10 +544,10 @@ export function mapProjectionToRunSummary(
 
   const mappedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const cardState: RunSummary['cardState'] =
-    mappedStatus === 'failed'
-      ? 'failed'
-      : waitingHuman
-        ? 'waiting_human'
+    waitingHuman
+      ? 'waiting_human'
+      : mappedStatus === 'failed'
+        ? 'failed'
         : blockedStepIds.size > 0
           ? 'blocked'
           : mappedStatus === 'running'

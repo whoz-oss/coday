@@ -2,52 +2,81 @@ package io.whozoss.factory.workflow.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.sdk.spi.FactoryFlowCatalogContributor
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.executionPolicyOf
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import org.pf4j.PluginManager
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * Classpath catalogue of the declarative session definitions bundled with the
- * service (resources under `sessions/`, JSON files).
+ * Classpath + PF4J plugin catalogue of the declarative session definitions
+ * (resources under `sessions/`, JSON files, plus flows contributed via
+ * [FactoryFlowCatalogContributor]).
  *
- * Every resource is validated through [WorkflowDefinitionValidator] (unique ids,
- * existing/acyclic `dependsOn`, `kind` in `agent|code|human`) before being
- * returned as a canonical [WorkflowDefinitionRecord]. A malformed bundled
- * definition fails loudly at load time instead of silently seeding garbage.
+ * Every resource or plugin-contributed JSON string is validated through
+ * [WorkflowDefinitionValidator] (unique ids, existing/acyclic `dependsOn`,
+ * `kind` in `agent|code|human`) before being returned as a canonical
+ * [WorkflowDefinitionRecord]. A malformed definition fails loudly at load time
+ * instead of silently seeding garbage.
  */
 @Component
 class SessionDefinitionCatalog(
     private val objectMapper: ObjectMapper,
+    private val pluginManager: PluginManager? = null,
 ) {
 
-    /** All bundled declarative definitions, sorted by file name for determinism. */
+    /** All bundled and plugin-contributed declarative definitions. */
     fun load(): List<WorkflowDefinitionRecord> {
         val resolver = PathMatchingResourcePatternResolver(javaClass.classLoader)
         val resources = resolver.getResources("classpath*:sessions/*.json")
-        return resources.sortedBy { it.filename ?: "" }.map { resource ->
+        val bundled = resources.sortedBy { it.filename ?: "" }.map { resource ->
             val raw = resource.inputStream.use { objectMapper.readValue(it, Any::class.java) }
-            when (val validation = WorkflowDefinitionValidator.validate(raw)) {
-                is WorkflowDefinitionValidation.Valid -> WorkflowDefinitionRecord(
-                    workflowType = validation.definition["workflowType"] as String,
-                    version = validation.definition["version"] as String,
-                    definitionHash = hashWorkflowDefinition(validation.definition),
-                    definition = validation.definition,
-                    executionPolicy = executionPolicyOf(validation.definition),
-                )
-                is WorkflowDefinitionValidation.Invalid -> throw IllegalArgumentException(
-                    "Bundled session definition ${resource.filename} is invalid: " +
-                        "${validation.error.code} at ${validation.error.path}",
-                )
+            validateAndBuildRecord(raw, "Bundled session definition ${resource.filename}")
+        }
+        val contributed = loadPluginFlows()
+        val byKey = LinkedHashMap<Pair<String, String>, WorkflowDefinitionRecord>()
+        for (record in bundled) {
+            byKey[record.workflowType to record.version] = record
+        }
+        for (record in contributed) {
+            byKey[record.workflowType to record.version] = record
+        }
+        return byKey.values.toList()
+    }
+
+    /** Loads and validates JSON definitions contributed by PF4J [FactoryFlowCatalogContributor] extensions. */
+    fun loadPluginFlows(): List<WorkflowDefinitionRecord> {
+        val manager = pluginManager ?: return emptyList()
+        val contributors = runCatching { manager.getExtensions(FactoryFlowCatalogContributor::class.java) }
+            .getOrDefault(emptyList())
+        return contributors.flatMap { contributor ->
+            contributor.flows().mapIndexed { index, rawJson ->
+                val raw = objectMapper.readValue(rawJson, Any::class.java)
+                validateAndBuildRecord(raw, "Plugin flow definition #${index + 1} from ${contributor.javaClass.name}")
             }
         }
     }
+
+    private fun validateAndBuildRecord(raw: Any?, sourceLabel: String): WorkflowDefinitionRecord =
+        when (val validation = WorkflowDefinitionValidator.validate(raw)) {
+            is WorkflowDefinitionValidation.Valid -> WorkflowDefinitionRecord(
+                workflowType = validation.definition["workflowType"] as String,
+                version = validation.definition["version"] as String,
+                definitionHash = hashWorkflowDefinition(validation.definition),
+                definition = validation.definition,
+                executionPolicy = executionPolicyOf(validation.definition),
+            )
+            is WorkflowDefinitionValidation.Invalid -> throw IllegalArgumentException(
+                "$sourceLabel is invalid: ${validation.error.code} at ${validation.error.path}",
+            )
+        }
 }
 
 /**

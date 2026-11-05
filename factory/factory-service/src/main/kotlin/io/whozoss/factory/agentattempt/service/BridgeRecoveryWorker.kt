@@ -4,6 +4,9 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
+import io.whozoss.factory.adapter.agentos.TurnToken
+import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
+import io.whozoss.factory.adapter.agentos.VerdictDeriver
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
@@ -12,6 +15,12 @@ import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableExcepti
 import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
+import io.whozoss.factory.worktree.ParentRunWorkspacePreflight
+import io.whozoss.factory.worktree.AgentOsWorkspaceIdentityValidator
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import java.util.UUID
 import mu.KotlinLogging
@@ -66,9 +75,15 @@ class BridgeRecoveryWorker(
     private val resultService: AgentStepResultService? = null,
     private val observationTimeoutMs: Long = DEFAULT_OBSERVATION_TIMEOUT_MS,
     private val leaseTtlMs: Long = DEFAULT_LEASE_TTL_MS,
+    private val workflowRepository: WorkflowRepository? = null,
+    private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
+    private val workspaceIdentityValidator: AgentOsWorkspaceIdentityValidator? = null,
+    private val worktreeOccupancyService: WorktreeExecutionOccupancyService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
+    private var terminalReleaseCursor: String? = null
+    private val terminalReleaseLock = Any()
 
     private enum class Outcome { FINALIZED, WAITING, RESUMED, REDRIVEN, SKIPPED, CONFLICTED }
 
@@ -78,8 +93,18 @@ class BridgeRecoveryWorker(
             .onFailure { logger.warn(it) { "Bridge startup recovery failed" } }
     }
 
+    @org.springframework.scheduling.annotation.Scheduled(
+        fixedDelayString = "\${factory.recovery.terminal-release-sweep-interval-ms:60000}",
+        initialDelayString = "\${factory.recovery.terminal-release-sweep-initial-delay-ms:60000}",
+    )
+    fun sweepTerminalOccupancies() {
+        runCatching { releaseAcceptedTerminalOccupancies(DurableAgentAttemptService.DEFAULT_RECOVERY_LIMIT) }
+            .onFailure { logger.warn(it) { "Periodic terminal occupancy release sweep failed" } }
+    }
+
     /** Runs one recovery sweep; exposed for tests and diagnostics. */
     fun recover(limit: Int = DurableAgentAttemptService.DEFAULT_RECOVERY_LIMIT): RecoveryReport {
+        releaseAcceptedTerminalOccupancies(limit)
         val scoped = runCatching { attempts.findNonTerminal(limit) }
             .onFailure { logger.warn(it) { "Bridge recovery could not list non-terminal attempts" } }
             .getOrElse { return RecoveryReport(0, 0, 0, 0, 0, 0) }
@@ -110,6 +135,56 @@ class BridgeRecoveryWorker(
         return report
     }
 
+    /** Completes the post-commit release crash window without re-dispatching terminal attempts. */
+    private fun releaseAcceptedTerminalOccupancies(limit: Int) = synchronized(terminalReleaseLock) {
+        val service = worktreeOccupancyService ?: return@synchronized
+        val results = resultService ?: return@synchronized
+        var remaining = limit
+        var cursor = terminalReleaseCursor
+        var scanned = 0
+        var wrapped = false
+        while (remaining > 0 && scanned < TERMINAL_RELEASE_SCAN_BUDGET) {
+            val pageSize = minOf(TERMINAL_RELEASE_SCAN_PAGE, TERMINAL_RELEASE_SCAN_BUDGET - scanned)
+            var page = attempts.findTerminalWithOccupancyAfter(cursor, pageSize)
+            if (page.isEmpty() && cursor != null && !wrapped) {
+                cursor = null
+                wrapped = true
+                page = attempts.findTerminalWithOccupancyAfter(null, pageSize)
+            }
+            if (page.isEmpty()) break
+            for (candidate in page) {
+                val attempt = candidate.attempt
+                cursor = io.whozoss.factory.agentattempt.persistence.DurableAgentAttemptNode.compositeId(
+                    candidate.scope.organizationId, candidate.scope.workstreamId,
+                    attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId,
+                )
+                terminalReleaseCursor = cursor
+                scanned++
+                runCatching {
+                    results.acceptedResult(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
+                }.getOrNull() ?: continue
+                val identity = attempt.occupancyResourceIdentity ?: continue
+                val kind = attempt.occupancyOwnerKind ?: continue
+                val owner = attempt.occupancyOwnerId ?: continue
+                val generation = attempt.occupancyGeneration ?: continue
+                if (service.releaseOwned(
+                    WorktreeExecutionOccupancyHandle(
+                        attempt.environmentRef ?: "", identity, candidate.scope, kind, owner, generation,
+                    ),
+                )) remaining--
+                if (remaining <= 0) break
+            }
+            if (remaining <= 0) break
+            if (page.size < pageSize && !wrapped) {
+                cursor = null
+                terminalReleaseCursor = null
+                wrapped = true
+            } else if (page.size < pageSize) {
+                break
+            }
+        }
+    }
+
     private fun recoverAttempt(candidate: ScopedDurableAgentAttempt): Outcome {
         val attempt = candidate.attempt
         // Guard: caseIds created by legacy versions of the service (e.g. Node.js)
@@ -124,14 +199,17 @@ class BridgeRecoveryWorker(
             }
             return Outcome.SKIPPED
         }
-        val snapshot = runCatching { adapter.reconcile(attempt.caseId) }.getOrNull() ?: return Outcome.SKIPPED
-        return when (snapshot) {
+        val snapshot = runCatching { adapter.reconcileResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId)) }.getOrNull() ?: return Outcome.SKIPPED
+        // A durable business result remains authoritative even if runtime reconciliation
+        // reports failure or a stale human wait instead of an indeterminate observation.
+        val authoritative = resolveAuthoritativeObservation(candidate, snapshot)
+        return when (authoritative.verdict) {
             is AgentOsExecutionVerdict.Succeeded,
             is AgentOsExecutionVerdict.Failed,
             is AgentOsExecutionVerdict.Interrupted,
-            -> finalizeWithFreshLease(candidate, snapshot)
+            -> finalizeWithFreshLease(candidate, authoritative)
 
-            is AgentOsExecutionVerdict.WaitingHuman -> reconcileWaitingHuman(candidate, snapshot)
+            is AgentOsExecutionVerdict.WaitingHuman -> reconcileWaitingHuman(candidate, authoritative.verdict)
 
             is AgentOsExecutionVerdict.Indeterminate -> when {
                 // Never claimed ⇒ `startTurn` could not have been accepted: the
@@ -162,11 +240,12 @@ class BridgeRecoveryWorker(
         }
     }
 
-    private fun finalizeWithFreshLease(candidate: ScopedDurableAgentAttempt, verdict: AgentOsExecutionVerdict): Outcome {
+    private fun finalizeWithFreshLease(candidate: ScopedDurableAgentAttempt, observation: AgentOsObservationResult): Outcome {
+        val verdict = observation.verdict
         val attempt = candidate.attempt
         val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         val target = when (verdict) {
-            is AgentOsExecutionVerdict.Succeeded -> AgentAttemptStatus.SUCCEEDED
+            is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict)) AgentAttemptStatus.INDETERMINATE else AgentAttemptStatus.SUCCEEDED
             is AgentOsExecutionVerdict.Interrupted -> AgentAttemptStatus.INTERRUPTED
             else -> AgentAttemptStatus.FAILED
         }
@@ -176,7 +255,7 @@ class BridgeRecoveryWorker(
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         }
-        val evidenceId = persistEvidence(candidate, verdict)
+        val evidenceId = persistEvidence(candidate, verdict, observation.runtimeProof)
         attempts.finalize(
             candidate.scope,
             attempt.namespaceId,
@@ -188,6 +267,7 @@ class BridgeRecoveryWorker(
             failureCode = failureCodeFor(verdict),
             resultEvidenceId = evidenceId,
         )
+        releaseOccupancyIfResultAccepted(candidate)
         return Outcome.FINALIZED
     }
 
@@ -285,14 +365,17 @@ class BridgeRecoveryWorker(
         val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
-        val verdict = runCatching { adapter.observeTurn(attempt.caseId, attempt.attemptId, observationTimeoutMs) }
-            .getOrElse {
+        val observation = runCatching {
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), observationTimeoutMs)
+        }.getOrElse {
+            AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(
                     reason = "AGENT_OBSERVATION_ERROR: ${it.message ?: it.toString()}",
                     evidence = mapOf("caseId" to attempt.caseId, "attemptId" to attempt.attemptId),
-                )
-            }
-        applyResumedVerdict(candidate, owner, verdict)
+                ),
+            )
+        }
+        applyResumedVerdict(candidate, owner, resolveAuthoritativeObservation(candidate, observation))
         return Outcome.RESUMED
     }
 
@@ -303,6 +386,15 @@ class BridgeRecoveryWorker(
         // The binding carries the full trusted identity of the attempt —
         // including the Lot B case-family parent — so a re-driven turn lands in
         // the exact same case family it was originally dispatched into.
+        val workflows = workflowRepository
+        val instance = workflows?.findInstance(candidate.scope, attempt.namespaceId, attempt.workflowId)
+        if (workflows == null || instance == null) {
+            // Recovery cannot prove that an unknown workflow is autonomous; never create or redrive.
+            return Outcome.SKIPPED
+        }
+        acquireRecoveryOccupancy(candidate)
+        val boundAttempt = attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
+            ?: error("Recovery attempt disappeared after occupancy binding")
         val binding = TrustedCaseBinding(
             caseId = attempt.caseId,
             attemptId = attempt.attemptId,
@@ -313,25 +405,65 @@ class BridgeRecoveryWorker(
             environmentRef = attempt.environmentRef,
             environmentRevision = attempt.expectedEnvironmentRevision,
         )
-        adapter.createOrRecoverExecution(binding, attempt.workflowId, attempt.stepId)
+        ParentRunWorkspacePreflight(workEnvironmentRepository, workspaceIdentityValidator).validate(
+            scope = candidate.scope, namespaceId = attempt.namespaceId, instance = instance,
+            attempt = boundAttempt, binding = binding.copy(caseId = instance.rootCaseId ?: binding.caseId),
+        )
+        val handle = adapter.createOrRecoverExecution(binding, attempt.workflowId, attempt.stepId)
+        val executionBinding = binding.copy(caseId = handle.caseId)
+        ParentRunWorkspacePreflight(workEnvironmentRepository, workspaceIdentityValidator).validate(
+            scope = candidate.scope,
+            namespaceId = attempt.namespaceId,
+            instance = instance,
+            attempt = boundAttempt,
+            binding = executionBinding,
+        )
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
         runCatching {
-            adapter.startTurn(binding, attempt.agentName, brief)
+            adapter.startTurn(executionBinding, attempt.agentName, brief)
         }
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
-        val verdict = runCatching { adapter.observeTurn(attempt.caseId, attempt.attemptId, observationTimeoutMs) }
-            .getOrElse {
+        val observation = runCatching {
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), observationTimeoutMs)
+        }.getOrElse {
+            AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(
                     reason = "AGENT_OBSERVATION_ERROR: ${it.message ?: it.toString()}",
                     evidence = mapOf("caseId" to attempt.caseId, "attemptId" to attempt.attemptId),
-                )
-            }
-        applyResumedVerdict(candidate, owner, verdict)
+                ),
+            )
+        }
+        applyResumedVerdict(candidate, owner, resolveAuthoritativeObservation(candidate, observation))
         return Outcome.REDRIVEN
     }
 
+    private fun acquireRecoveryOccupancy(candidate: ScopedDurableAgentAttempt) {
+        val original = candidate.attempt
+        val attempt = attempts.find(candidate.scope, original.namespaceId, original.workflowId, original.stepId, original.attemptId)
+            ?: error("Claimed recovery attempt disappeared before occupancy binding")
+        val instance = workflowRepository?.findInstance(candidate.scope, attempt.namespaceId, attempt.workflowId) ?: return
+        val parentRun = (instance.instance["runId"] as? String)
+            ?: ((instance.instance["relations"] as? Map<*, *>)?.get("runId") as? String)
+            ?: return
+        if (parentRun.isBlank()) return
+        val service = worktreeOccupancyService
+            ?: error("Worktree execution occupancy service is required for parent Run recovery")
+        val environment = attempt.environmentRef
+            ?: error("Parent Run recovery attempt has no captured environmentRef")
+        val revision = attempt.expectedEnvironmentRevision
+            ?: error("Parent Run recovery attempt has no captured environment revision")
+        service.acquireAndBindForAttemptEnvironment(
+            candidate.scope, environment, revision, attempt,
+        ) { handle ->
+            attempts.bindOccupancy(
+                candidate.scope, attempt, handle.resourceIdentity, handle.ownerKind, handle.ownerId, handle.generation,
+            )
+        }
+    }
+
     /** Applies the verdict observed while already owning a fenced lease. */
-    private fun applyResumedVerdict(candidate: ScopedDurableAgentAttempt, owner: String, verdict: AgentOsExecutionVerdict) {
+    private fun applyResumedVerdict(candidate: ScopedDurableAgentAttempt, owner: String, observation: AgentOsObservationResult) {
+        val verdict = observation.verdict
         val attempt = candidate.attempt
         when (verdict) {
             is AgentOsExecutionVerdict.WaitingHuman -> attempts.transition(
@@ -340,28 +472,32 @@ class BridgeRecoveryWorker(
             )
             else -> {
                 val target = when (verdict) {
-                    is AgentOsExecutionVerdict.Succeeded -> AgentAttemptStatus.SUCCEEDED
+                    is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict)) AgentAttemptStatus.INDETERMINATE else AgentAttemptStatus.SUCCEEDED
                     is AgentOsExecutionVerdict.Interrupted -> AgentAttemptStatus.INTERRUPTED
                     is AgentOsExecutionVerdict.Failed -> AgentAttemptStatus.FAILED
                     is AgentOsExecutionVerdict.Indeterminate -> AgentAttemptStatus.INDETERMINATE
                     is AgentOsExecutionVerdict.WaitingHuman -> error("handled above")
                 }
-                val evidenceId = persistEvidence(candidate, verdict)
+                val evidenceId = persistEvidence(candidate, verdict, observation.runtimeProof)
                 attempts.finalize(
                     candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner,
                     target, failureCode = failureCodeFor(verdict), resultEvidenceId = evidenceId,
                 )
+                releaseOccupancyIfResultAccepted(candidate)
             }
         }
     }
 
     /** Records an `agent-result` evidence fact (best-effort: recovery still finalizes without it). */
-    private fun persistEvidence(candidate: ScopedDurableAgentAttempt, verdict: AgentOsExecutionVerdict): String? {
+    private fun persistEvidence(candidate: ScopedDurableAgentAttempt, verdict: AgentOsExecutionVerdict, runtimeProof: VerdictDeriver.RuntimeCaseTerminationProof? = null): String? {
         val repository = evidenceRepository ?: return null
         val attempt = candidate.attempt
         val (outcome, facts) = when (verdict) {
             is AgentOsExecutionVerdict.Succeeded ->
-                "pass" to mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence)
+                (if (needsResearch(verdict)) "needs_research" else "pass") to mapOf(
+                    "status" to if (needsResearch(verdict)) "NEEDS_RESEARCH" else "PASS",
+                    "outputs" to verdict.outputs, "evidence" to verdict.evidence,
+                )
             is AgentOsExecutionVerdict.Interrupted ->
                 "fail" to mapOf("status" to "INTERRUPTED", "reason" to verdict.reason, "evidence" to verdict.evidence)
             is AgentOsExecutionVerdict.Failed ->
@@ -384,7 +520,7 @@ class BridgeRecoveryWorker(
                     kind = AGENT_RESULT_EVIDENCE_KIND,
                     outcome = outcome,
                     source = mapOf("kind" to "agentos-adapter", "attemptId" to attempt.attemptId, "recovered" to true),
-                    facts = facts + mapOf("attemptId" to attempt.attemptId, "stepId" to attempt.stepId),
+                    facts = facts + mapOf("attemptId" to attempt.attemptId, "stepId" to attempt.stepId) + runtimeProof?.let { mapOf("runtimeCaseTerminationProof" to mapOf("caseId" to it.caseId, "attemptId" to it.attemptId, "eventId" to it.eventId, "status" to it.status)) }.orEmpty(),
                     idempotencyKey = null,
                     createdAt = null,
                 ),
@@ -393,8 +529,55 @@ class BridgeRecoveryWorker(
         }.getOrNull()
     }
 
+    private fun needsResearch(verdict: AgentOsExecutionVerdict.Succeeded) = verdict.evidence["status"] == "NEEDS_RESEARCH"
+
+    private fun resolveAuthoritativeObservation(
+        candidate: ScopedDurableAgentAttempt,
+        raw: AgentOsObservationResult,
+    ): AgentOsObservationResult {
+        val attempt = candidate.attempt
+        val accepted = resultService?.acceptedResult(
+            candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId,
+        ) ?: return raw
+        val evidence = mapOf("resultId" to accepted.resultId, "source" to "factory-step-result")
+        val verdict = when (accepted.status) {
+            io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.FAIL -> AgentOsExecutionVerdict.Failed(
+                code = "FACTORY_STEP_RESULT_FAILED", message = accepted.summary, evidence = evidence,
+            )
+            io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS,
+            io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH,
+            -> AgentOsExecutionVerdict.Succeeded(
+                outputs = mapOf(
+                    "summary" to accepted.summary, "claims" to accepted.claims,
+                    "findings" to accepted.findings, "artifacts" to accepted.artifacts,
+                ),
+                evidence = evidence + if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
+                    mapOf("status" to "NEEDS_RESEARCH")
+                } else emptyMap(),
+            )
+        }
+        return AgentOsObservationResult(verdict, raw.runtimeProof)
+    }
+
+    private fun releaseOccupancyIfResultAccepted(candidate: ScopedDurableAgentAttempt) {
+        val service = worktreeOccupancyService ?: return
+        runCatching {
+            val original = candidate.attempt
+            if (resultService?.acceptedResult(candidate.scope, original.namespaceId, original.workflowId, original.stepId, original.attemptId) == null) return
+            val attempt = attempts.find(candidate.scope, original.namespaceId, original.workflowId, original.stepId, original.attemptId) ?: return
+            service.releaseOwned(
+                WorktreeExecutionOccupancyHandle(
+                    attempt.environmentRef ?: "", attempt.occupancyResourceIdentity ?: return, candidate.scope,
+                    attempt.occupancyOwnerKind ?: return, attempt.occupancyOwnerId ?: return,
+                    attempt.occupancyGeneration ?: return,
+                ),
+            )
+        }.onFailure { logger.warn(it) { "Recovered attempt occupancy retained: release failed" } }
+    }
+
     private fun failureCodeFor(verdict: AgentOsExecutionVerdict): String? = when (verdict) {
-        is AgentOsExecutionVerdict.Succeeded, is AgentOsExecutionVerdict.WaitingHuman -> null
+        is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict)) "AGENT_NEEDS_RESEARCH" else null
+        is AgentOsExecutionVerdict.WaitingHuman -> null
         is AgentOsExecutionVerdict.Failed -> verdict.code
         is AgentOsExecutionVerdict.Interrupted -> "AGENT_INTERRUPTED"
         is AgentOsExecutionVerdict.Indeterminate -> "AGENT_INDETERMINATE"
@@ -411,6 +594,8 @@ class BridgeRecoveryWorker(
         const val DEFAULT_OBSERVATION_TIMEOUT_MS = 600_000L
         const val DEFAULT_LEASE_TTL_MS = 3_600_000L
         private const val AGENTOS_RUNTIME_ID = "agentos-primary"
+        private const val TERMINAL_RELEASE_SCAN_PAGE = 256
+        private const val TERMINAL_RELEASE_SCAN_BUDGET = 4_096
 
         /**
          * Returns true when [value] is a syntactically valid UUID. Used to

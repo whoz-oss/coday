@@ -30,7 +30,27 @@ class WorkerResultSubmissionService(
         idempotencyKey: String,
     ): AgentStepResultSubmission {
         val found = resolveAttempt(organizationId, attemptId)
-        val attempt = found.attempt
+        var attempt = found.attempt
+        var effectiveKey = idempotencyKey
+
+        // If an agent was resumed Directly in AgentOS (instead of via Factory's resume_research)
+        // after a NEEDS_RESEARCH attempt, it reuses the predecessor's attemptId and Idempotency-Key.
+        // Transparently redirect to (or create) the latest open attempt for this step.
+        if (attempt.status == io.whozoss.factory.agentattempt.domain.AgentAttemptStatus.INDETERMINATE &&
+            attempt.failureCode == "AGENT_NEEDS_RESEARCH"
+        ) {
+            val latest = durableAttempts.findLatestForStep(
+                found.scope,
+                attempt.namespaceId,
+                attempt.workflowId,
+                attempt.stepId,
+            )
+            if (latest != null && latest.attemptId != attempt.attemptId && !latest.status.terminal) {
+                effectiveKey = idempotencyKey.replace(attempt.attemptId, latest.attemptId)
+                attempt = latest
+            }
+        }
+
         // Integrity: the attempt must still carry the frozen brief it was registered with.
         if (attempt.brief?.let(CanonicalJsonHash::sha256) == null) {
             throw InvalidResultRequestException("The durable attempt has no frozen context")
@@ -40,7 +60,7 @@ class WorkerResultSubmissionService(
             attempt = attempt,
             business = result,
             agentName = null,
-            idempotencyKey = "${attempt.attemptId}:$idempotencyKey",
+            idempotencyKey = "${attempt.attemptId}:$effectiveKey",
         )
     }
 

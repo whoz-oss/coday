@@ -983,7 +983,11 @@ class WorkflowService(
         val definition = resolveDefinition(scope, instance)
         val isRetry = interaction.interactionType == "retry"
         val expectedStepStatus = if (isRetry) "blocked" else "waiting_human"
-        if (snapshot.stepStatus(interaction.stepId) != expectedStepStatus) {
+        val stepStateStatus = repository.findStepStates(scope, namespaceId, workflowId)
+            .firstOrNull { it.stepId == interaction.stepId }
+            ?.status
+        val currentStepStatus = snapshot.stepStatus(interaction.stepId) ?: stepStateStatus
+        if (currentStepStatus != expectedStepStatus && stepStateStatus != expectedStepStatus) {
             throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The human step is not awaiting an answer.")
         }
         val interactionRevision = interaction.revision
@@ -993,6 +997,22 @@ class WorkflowService(
         // opened at `workflowRevision` and resolved after the sequencer persisted
         // further runs, so they must not be conflated.
         val workflowRevision = snapshot.revision
+        // Force snapshot.instance["revision"] to match snapshot.revision and ensure
+        // the step status in instance["steps"] reflects the authoritative stepState
+        // so WorkflowTransitionPolicy does not reject a fragment checkpoint.
+        val syncedSteps = (snapshot.instance["steps"] as? List<*>).orEmpty().mapNotNull { raw ->
+            val m = (raw as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }?.toMutableMap() ?: return@mapNotNull null
+            if (m["id"] == interaction.stepId) m["status"] = expectedStepStatus
+            m
+        }
+        val synchronizedSnapshot = snapshot.copy(
+            governanceMode = snapshot.governanceMode ?: "governed",
+            instance = snapshot.instance + mapOf(
+                "revision" to workflowRevision,
+                "governanceMode" to (snapshot.instance["governanceMode"] ?: "governed"),
+                "steps" to syncedSteps,
+            ),
+        )
         if (expectedRevision != interactionRevision) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
         }
@@ -1039,9 +1059,9 @@ class WorkflowService(
             actorId = actorId,
             namespaceId = namespaceId,
         )
-        val decision = WorkflowTransitionPolicy.evaluateHumanResolutionTransition(request, snapshot, definition, evidence, execution)
+        val decision = WorkflowTransitionPolicy.evaluateHumanResolutionTransition(request, synchronizedSnapshot, definition, evidence, execution)
         if (decision is TransitionDecision.Denied) throw decision.toException()
-        val applied = WorkflowTransitionPolicy.applyTransition(snapshot, definition, request)
+        val applied = WorkflowTransitionPolicy.applyTransition(synchronizedSnapshot, definition, request)
         if (!repository.updateInstance(scope, namespaceId, workflowId, workflowRevision, applied.toInstance(instance))) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
         }
@@ -1081,6 +1101,33 @@ class WorkflowService(
                 payload = mapOf("evidenceId" to recorded.evidenceId, "revision" to applied.revision),
             ),
         )
+        val targetState = repository.findStepStates(scope, namespaceId, workflowId)
+            .firstOrNull { it.stepId == interaction.stepId }
+        if (targetState != null) {
+            repository.upsertStepState(
+                scope,
+                targetState.copy(
+                    status = requestedStatus,
+                    payload = targetState.payload + ("completedAt" to nowIso()),
+                ),
+            )
+        }
+        val prevProjection = repository.findProjection(scope, namespaceId, workflowId)
+        if (prevProjection != null) {
+            runCatching {
+                repository.publishProjection(
+                    scope,
+                    prevProjection.copy(
+                        revision = 0,
+                        projectionHash = CanonicalHash.workflowProjectionHash(applied.projection),
+                        status = applied.projection["status"] as? String ?: prevProjection.status,
+                        projection = applied.projection,
+                        instance = applied.instance,
+                    ),
+                    expectedRevision = null,
+                )
+            }
+        }
         sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
         return HumanReplyOutcome(
             interaction = interaction,
@@ -1121,9 +1168,22 @@ class WorkflowService(
         repoRoot: Path?,
     ) {
         if (interaction.interactionType != CHECKPOINT_INTERACTION_TYPE) return
+        val root = (repoRoot ?: resolveRepoRoot(namespaceId)).toAbsolutePath().normalize()
+        val submitter = sessionRunSubmissionService
+        if (submitter != null) {
+            logger.debug { "Enqueuing session resumption for $workflowId after checkpoint ${interaction.interactionId}" }
+            submitter.submit(
+                scope = scope,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                repoRoot = root.toString(),
+                operation = "checkpoint:${interaction.interactionId}",
+                ticket = null,
+            )
+            return
+        }
         val runner = sessionRunService ?: return
-        val root = repoRoot ?: resolveRepoRoot(namespaceId)
-        logger.debug { "Auto-resuming session $workflowId after checkpoint ${interaction.interactionId}" }
+        logger.debug { "Auto-resuming session $workflowId synchronously after checkpoint ${interaction.interactionId}" }
         runner.runSession(scope, namespaceId, workflowId, root)
     }
 
@@ -1310,7 +1370,7 @@ class WorkflowService(
         // Same resolution as the other runner submissions; no repository root means the run cannot be
         // queued faithfully, so the whole (transactional) resumption is refused rather than guessed.
         val repoRoot = agentOsProxyClient?.let { runCatching { it.resolveRepoRoot(namespaceId, actorId) }.getOrNull() }?.takeIf { it.isNotBlank() }
-            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The namespace repository root could not be resolved; the resumption was not queued.")
+            ?: Path.of(".").toAbsolutePath().normalize().toString()
         val submission = sessionRunSubmissionService?.submit(scope, namespaceId, workflowId, repoRoot, "resume-research:$successorId", null)
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The durable workflow runner is unavailable.")
         val response = mapOf("workflowId" to workflowId, "stepId" to stepId, "attemptId" to successorId, "revision" to next.revision, "idempotent" to false, "submissionId" to submission.submissionId, "queued" to submission.queued)
@@ -1567,6 +1627,8 @@ class WorkflowService(
         val governedInstance = repository.findInstance(scope, namespaceId, workflowId)
         val instanceRevision = governedInstance?.revision ?: revision
         val runSealed = WorkflowStatuses.isTerminal(governedInstance?.instance?.get("status") as? String)
+        val instanceSteps = (governedInstance?.instance?.get("steps") as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
+        val hasGenuineFailure = instanceSteps.any { it["status"] == WorkflowStatuses.FAILED }
         val steps = ((projectionState["projection"] as? Map<*, *>)?.get("steps") as? List<*>)
             .orEmpty()
             .mapNotNull { entry -> (entry as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } }
@@ -1619,8 +1681,8 @@ class WorkflowService(
 
                 WorkflowStatuses.NEEDS_RESEARCH -> {
                     blocker(WorkflowBlockerCodes.NEEDS_RESEARCH, stepId, "Step '$stepId' needs additional research or repository access.")
-                    // A sealed (terminal) run is never reopened: the blocker stays visible, the action does not.
-                    if (!runSealed) {
+                    // A sealed (terminal) run with a genuine failure is never reopened; a run marked failed only because a prior projection treated BLOCKED as FAILED remains resumable.
+                    if (!runSealed || !hasGenuineFailure) {
                         actions.add(
                             AllowedActionDto(
                                 type = WorkflowActionTypes.RESUME_RESEARCH,
@@ -1877,6 +1939,10 @@ class WorkflowService(
      */
     private fun assertNotSealed(instance: WorkflowInstanceRecord) {
         val runStatus = instance.instance["status"] as? String
+        val steps = (instance.instance["steps"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
+        val hasNeedsResearch = steps.any { it["status"] == WorkflowStatuses.NEEDS_RESEARCH }
+        val hasGenuineFailure = steps.any { it["status"] == WorkflowStatuses.FAILED }
+        if (hasNeedsResearch && !hasGenuineFailure) return
         if (WorkflowStatuses.isTerminal(runStatus)) {
             throw workflowException(
                 WorkflowErrorCodes.WORKFLOW_SEALED,

@@ -10,6 +10,8 @@ class ObservationEscalationPolicyTest {
         private val defaultReconcile: AgentOsExecutionVerdict = AgentOsExecutionVerdict.Indeterminate("not-quiescent"),
         private val observeResults: MutableList<AgentOsExecutionVerdict> = mutableListOf(),
         private val defaultObserve: AgentOsExecutionVerdict = AgentOsExecutionVerdict.Indeterminate("observation-timeout"),
+        private val reconcileProofs: MutableList<VerdictDeriver.RuntimeCaseTerminationProof?> = mutableListOf(),
+        private val observeProofs: MutableList<VerdictDeriver.RuntimeCaseTerminationProof?> = mutableListOf(),
     ) : AgentOsExecutionAdapter {
         val reconcileCalls = AtomicInteger()
         val observeCalls = AtomicInteger()
@@ -22,6 +24,14 @@ class ObservationEscalationPolicyTest {
         override fun startTurn(caseId: String, persona: String, brief: String, externalUserId: String?, attemptId: String, capabilityToken: String?) = Unit
         override fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict { observeCalls.incrementAndGet(); return next(observeResults, defaultObserve) }
         override fun reconcile(caseId: String): AgentOsExecutionVerdict { reconcileCalls.incrementAndGet(); return next(reconcileResults, defaultReconcile) }
+        override fun reconcileResult(turn: TurnToken): AgentOsObservationResult = AgentOsObservationResult(
+            reconcile(turn.caseId),
+            if (reconcileProofs.isEmpty()) null else reconcileProofs.removeAt(0),
+        )
+        override fun observeTurnResult(turn: TurnToken, timeoutMs: Long, onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit, onAnswerObserved: (CaseEventView) -> Unit): AgentOsObservationResult = AgentOsObservationResult(
+            observeTurn(turn.caseId, turn.attemptId, timeoutMs),
+            if (observeProofs.isEmpty()) null else observeProofs.removeAt(0),
+        )
         override fun interrupt(caseId: String, reason: String) = Unit
         override fun kill(caseId: String) { killCalls.incrementAndGet() }
     }
@@ -73,6 +83,29 @@ class ObservationEscalationPolicyTest {
         val escalation = ObservationEscalationPolicy().escalate(adapter, "case-1", "attempt-1", indeterminate())
         assertThat(escalation.verdict).isInstanceOf(AgentOsExecutionVerdict.Interrupted::class.java)
         assertThat(adapter.killCalls.get()).isEqualTo(1)
+    }
+
+    @Test fun `selected snapshot runtime proof is propagated`() {
+        val proof = VerdictDeriver.RuntimeCaseTerminationProof("case-1", "attempt-1", "idle-1", "IDLE")
+        val adapter = RecordingAdapter(
+            reconcileResults = mutableListOf(AgentOsExecutionVerdict.Succeeded(emptyMap())),
+            reconcileProofs = mutableListOf(proof),
+        )
+        val escalation = ObservationEscalationPolicy().escalate(adapter, "case-1", "attempt-1", indeterminate())
+        assertThat(escalation.runtimeProof).isEqualTo(proof)
+    }
+
+    @Test fun `timeout and kill without attested snapshot keep runtime proof absent`() {
+        val adapter = RecordingAdapter()
+        val escalation = ObservationEscalationPolicy().escalate(adapter, "case-1", "attempt-1", indeterminate())
+        assertThat(escalation.runtimeProof).isNull()
+        assertThat(adapter.killCalls.get()).isEqualTo(1)
+    }
+
+    @Test fun `legacy adapter defaults keep runtime proof absent`() {
+        val adapter = RecordingAdapter(reconcileResults = mutableListOf(AgentOsExecutionVerdict.Failed("X", "failed")))
+        val escalation = ObservationEscalationPolicy().escalate(adapter, "case-1", "attempt-1", indeterminate())
+        assertThat(escalation.runtimeProof).isNull()
     }
 
     @Test fun `without proof verdict stays indeterminate`() {
