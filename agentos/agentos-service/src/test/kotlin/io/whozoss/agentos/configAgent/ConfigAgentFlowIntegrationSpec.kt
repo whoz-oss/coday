@@ -748,21 +748,29 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         }
 
         "messaging tells which agents have a bot, and how an agent gets one" {
-            // Saved without the service: nothing starts, the read only reports the bot.
-            messagingBotRepository.save(
-                MessagingBot(
-                    platform = MessagingPlatform.TELEGRAM,
-                    accountId = "4242",
-                    username = "dev_bot",
-                    displayName = "Dev",
-                    url = "https://t.me/bot",
-                    token = "4242:dev-token-dev-token-dev-token-dev-token",
-                    agentId = devAgent.id,
-                    namespaceId = namespace.id,
-                ),
-            )
+            // Saved without the service: nothing starts, the read only reports the bot. The test database is shared
+            // with the other contexts, which start the bots they find in it: an account of its own, deleted after,
+            // keeps this one out of the messaging specs.
+            val saved =
+                messagingBotRepository.save(
+                    MessagingBot(
+                        platform = MessagingPlatform.TELEGRAM,
+                        accountId = "cfg-$suffix",
+                        username = "dev_bot",
+                        displayName = "Dev",
+                        url = "https://t.me/bot",
+                        token = "4242:dev-token-dev-token-dev-token-dev-token",
+                        agentId = devAgent.id,
+                        namespaceId = namespace.id,
+                    ),
+                )
 
-            val messaging = read(carol, """{ "kind": "messaging" }""")
+            val messaging =
+                try {
+                    read(carol, """{ "kind": "messaging" }""")
+                } finally {
+                    messagingBotRepository.delete(saved.id)
+                }
 
             messaging["bots"].single().let { bot ->
                 bot["agentName"].asText() shouldBe devAgent.name

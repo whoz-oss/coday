@@ -49,6 +49,25 @@ class SlackAdapterUnitSpec :
             (elements[1] as Map<*, *>)["url"] shouldBe "https://example.com"
         }
 
+        "a button that asks for a confirmation opens Slack's dialog before the click is sent" {
+            val web = mockk<SlackWebClient>()
+            val blocks = slot<List<Map<String, Any?>>>()
+            every { web.postMessage(any(), any(), any(), capture(blocks)) } returns "1.000001"
+            val apply = MessagingButton("Apply", MessagingAction.ApplyPlan(UUID.randomUUID()), confirm = "Apply this plan?")
+
+            adapter(web).send("D1", OutboundMessage("A plan", listOf(apply, MessagingButton("Reject", MessagingAction.RejectPlan(UUID.randomUUID())))))
+
+            val elements = blocks.captured[1]["elements"] as List<*>
+            (elements[0] as Map<*, *>)["confirm"] shouldBe
+                mapOf(
+                    "title" to mapOf("type" to "plain_text", "text" to "Are you sure?"),
+                    "text" to mapOf("type" to "plain_text", "text" to "Apply this plan?"),
+                    "confirm" to mapOf("type" to "plain_text", "text" to "Apply"),
+                    "deny" to mapOf("type" to "plain_text", "text" to "Cancel"),
+                )
+            (elements[1] as Map<*, *>).containsKey("confirm") shouldBe false
+        }
+
         "the buttons of a message are removed by putting its text back alone" {
             val web = mockk<SlackWebClient>(relaxed = true)
             every { web.postMessage(any(), any(), any(), any()) } returns "1.000001"

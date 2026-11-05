@@ -1,5 +1,7 @@
 package io.whozoss.agentos.messaging
 
+import io.kotest.assertions.fail
+import io.kotest.assertions.withClue
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -11,6 +13,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
+import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -18,6 +21,8 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.caseFlow.messagingConversationId
+import io.whozoss.agentos.configAgent.ConfigAgentIntegration
+import io.whozoss.agentos.configAgent.ConfigToolGrantService
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -36,6 +41,9 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import org.neo4j.driver.Driver
@@ -49,7 +57,7 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The gateway end to end, on the real services and the embedded Neo4j, with a fake platform in place of
  * Telegram: an agent's bot, linking, starting and following a case with that agent, answering a question,
- * moving the chat between cases.
+ * moving the chat between cases, applying or rejecting a configuration plan from its card.
  */
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
@@ -70,6 +78,8 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
     @Autowired lateinit var cases: CaseRepository
     @Autowired lateinit var caseEventService: CaseEventService
     @Autowired lateinit var driver: Driver
+    @Autowired lateinit var delivery: MessagingDelivery
+    @Autowired lateinit var configToolGrantService: ConfigToolGrantService
 
     private val chatId = "1001"
     private var nextMessageId = 1L
@@ -87,8 +97,10 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         from: String = chatId,
     ) = gateway.handle(bot, MessagingInbound.Text(chatId = from, sender = sender(from), messageId = messageId, text = text, direct = true))
 
-    private fun click(action: MessagingAction) =
-        gateway.handle(bot, MessagingInbound.Click(chatId = chatId, sender = sender(), clickId = "click-1", messageId = "77", action = action))
+    private fun click(
+        action: MessagingAction,
+        from: String = chatId,
+    ) = gateway.handle(bot, MessagingInbound.Click(chatId = from, sender = sender(from), clickId = "click-1", messageId = "77", action = action))
 
     private fun conversation(): MessagingConversation = conversations.open(MessagingPlatform.TELEGRAM, bot.accountId, chatId, ada.id)
 
@@ -107,6 +119,69 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         }
 
     private fun messagesOf(caseId: UUID): List<MessageEvent> = caseEventService.findByParent(caseId).filterIsInstance<MessageEvent>()
+
+    /**
+     * A case of Ada's that the chat follows, as after a message sent from it. Saved without a runtime, so that the
+     * runtime the answer needs is rebuilt with the plan's question in it: a question is otherwise stored by the
+     * runtime that asks it.
+     */
+    private fun caseFollowedByTheChat(): Case =
+        cases.save(Case(namespaceId = namespace.id, title = "Tidy Helper")).also { case ->
+            permissionService.grantPermission(ada.id.toString(), EntityType.CASE, case.id.toString(), PermissionRelation.ADMIN)
+            delivery.redirect(case.id, conversation().id)
+        }
+
+    /** Runs the config agent's propose tool for Ada in [case] and stores what its run would have: the plan, then its question. */
+    private suspend fun proposeToAda(
+        case: Case,
+        description: String,
+    ): UUID {
+        val tool =
+            configToolGrantService
+                .grantTools(mapOf(ConfigAgentIntegration.TYPE to null), agentName = "config", namespaceId = namespace.id, userId = ada.id, caseId = case.id)
+                .single { it.name == ConfigAgentIntegration.PROPOSE_TOOL_NAME }
+        val input =
+            """
+            { "summary": "Describe Helper",
+              "operations": [ { "ref": "h", "kind": "AGENT", "action": "UPDATE", "id": "${agent.id}",
+                                "changes": [ { "path": "/description", "value": "$description" } ] } ] }
+            """.trimIndent()
+        val interrupt =
+            try {
+                val result = tool.executeWithJson(input, ToolContext(namespaceId = namespace.id, userId = ada.id, userExternalId = null, caseEvents = emptyList()))
+                fail("The proposal was not submitted: ${result.output}")
+            } catch (e: AgentInterrupt.AwaitAnswer) {
+                e
+            }
+        caseEventService.create(
+            ToolResponseEvent(
+                namespaceId = namespace.id,
+                caseId = case.id,
+                toolRequestId = "call-${UUID.randomUUID()}",
+                toolName = ConfigAgentIntegration.PROPOSE_TOOL_NAME,
+                output = MessageContent.Text("Waiting for the user's answer."),
+                structuredOutput = interrupt.structuredOutput,
+            ),
+        )
+        caseEventService.create(
+            QuestionEvent(
+                metadata = EntityMetadata(id = interrupt.questionId),
+                namespaceId = namespace.id,
+                caseId = case.id,
+                agentId = UUID.randomUUID(),
+                agentName = "config",
+                question = interrupt.question,
+                userId = interrupt.userId,
+            ),
+        )
+        // The card goes out on the chat's lane: wait for it, so that a test reads only what follows.
+        eventually(5.seconds) {
+            withClue({ "sent: ${bot.sent}" }) { bot.sent.any { it.message.buttons.isNotEmpty() || "proposes" in it.message.text } shouldBe true }
+        }
+        return interrupt.questionId
+    }
+
+    private fun answersOf(caseId: UUID): List<AnswerEvent> = caseEventService.findByParent(caseId).filterIsInstance<AnswerEvent>()
 
     init {
         beforeEach {
@@ -325,6 +400,8 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         "continuing a case in the chat moves the direct chat to it and posts its last answer" {
             linkAda()
             val case = caseService.create(Case(namespaceId = namespace.id, title = "Release notes"))
+            // The endpoint lets only a user who may write to the case continue it.
+            permissionService.grantPermission(ada.id.toString(), EntityType.CASE, case.id.toString(), PermissionRelation.ADMIN)
             caseEventService.create(
                 MessageEvent(
                     namespaceId = namespace.id,
@@ -346,10 +423,114 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         "continuing a case needs a linked account, and a case of the bot's namespace" {
             val case = caseService.create(Case(namespaceId = namespace.id))
             val elsewhere = caseService.create(Case(namespaceId = namespaceService.create(Namespace(name = "Other")).id))
+            listOf(case, elsewhere).forEach {
+                permissionService.grantPermission(ada.id.toString(), EntityType.CASE, it.id.toString(), PermissionRelation.ADMIN)
+            }
 
             shouldThrow<ConflictException> { gateway.continueCaseIn(bot.bot.id, case.id, ada) }
             linkAda()
             shouldThrow<ConflictException> { gateway.continueCaseIn(bot.bot.id, elsewhere.id, ada) }
+        }
+
+        "a plan the agent proposes in a case the chat follows comes as its card, and Apply applies it with the user's rights" {
+            permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
+            linkAda()
+            val case = caseFollowedByTheChat()
+
+            val questionId = proposeToAda(case, description = "Helps with the forge")
+
+            eventually(2.seconds) {
+                val card = bot.sent.single().message
+                card.text shouldContain "config proposes a configuration change"
+                card.text shouldContain "**Update agent Helper**"
+                card.buttons.map { it.action } shouldContain MessagingAction.ApplyPlan(questionId)
+            }
+            bot.clear()
+
+            click(MessagingAction.ApplyPlan(questionId))
+
+            agentConfigService.findById(agent.id)!!.description shouldBe "Helps with the forge"
+            bot.acknowledged.single().second shouldBe "✓ Applied"
+            bot.buttonsRemoved shouldContain "77"
+            bot.textsTo(chatId).first() shouldContain "✅ **Plan applied** by Ada Lovelace\n1. Update agent Helper: done"
+            answersOf(case.id).single().let { answer ->
+                answer.questionId shouldBe questionId
+                answer.actor.id shouldBe ada.id.toString()
+                answer.answer shouldContain "APPLIED by Ada Lovelace"
+            }
+        }
+
+        "Apply writes with the user's own rights: a member who may not change the agent gets nothing written" {
+            linkAda()
+            val case = caseFollowedByTheChat()
+            val questionId = proposeToAda(case, description = "Changed by a member")
+            bot.clear()
+
+            click(MessagingAction.ApplyPlan(questionId))
+
+            agentConfigService.findById(agent.id)!!.description shouldNotBe "Changed by a member"
+            bot.textsTo(chatId).first().let { report ->
+                report shouldContain "❌ **Plan not applied**"
+                report shouldContain "refused"
+            }
+        }
+
+        "Reject answers the agent, and a plan already answered cannot be applied after" {
+            permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
+            linkAda()
+            val case = caseFollowedByTheChat()
+            val questionId = proposeToAda(case, description = "Never applied")
+            bot.clear()
+
+            click(MessagingAction.RejectPlan(questionId))
+            click(MessagingAction.ApplyPlan(questionId))
+
+            agentConfigService.findById(agent.id)!!.description shouldNotBe "Never applied"
+            answersOf(case.id).single().answer shouldContain "REJECTED by Ada Lovelace"
+            bot.acknowledged.map { it.second } shouldBe listOf("✓ Rejected", "This plan was already applied or rejected.")
+            bot.textsTo(chatId).first() shouldBe "✖️ **Plan rejected** by Ada Lovelace. The agent is told."
+        }
+
+        "a user who cannot read the case cannot apply its plan, even with the button" {
+            permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
+            val case = caseFollowedByTheChat()
+            val questionId = proposeToAda(case, description = "Applied by someone else")
+            val bob = users.save(User(externalId = "bob-${UUID.randomUUID()}@example.com", firstname = "Bob"))
+            permissionService.grantPermission(bob.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.MEMBER)
+            text("/start ${identities.issueLinkToken(bob.id, bot.bot).token}", from = "2002")
+            bot.clear()
+
+            click(MessagingAction.ApplyPlan(questionId), from = "2002")
+
+            agentConfigService.findById(agent.id)!!.description shouldNotBe "Applied by someone else"
+            answersOf(case.id) shouldHaveSize 0
+            bot.acknowledged.single().second shouldBe "You cannot change the plans of this case."
+        }
+
+        "someone who may write to the case but was not proposed the plan can neither apply it nor take the case's answers" {
+            permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
+            val case = caseFollowedByTheChat()
+            val questionId = proposeToAda(case, description = "Applied by a co-admin")
+            val bob = users.save(User(externalId = "bob-${UUID.randomUUID()}@example.com", firstname = "Bob"))
+            permissionService.grantPermission(bob.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
+            permissionService.grantPermission(bob.id.toString(), EntityType.CASE, case.id.toString(), PermissionRelation.ADMIN)
+            text("/start ${identities.issueLinkToken(bob.id, bot.bot).token}", from = "2002")
+            bot.clear()
+
+            click(MessagingAction.ApplyPlan(questionId), from = "2002")
+            caseEventService.create(
+                MessageEvent(
+                    namespaceId = namespace.id,
+                    caseId = case.id,
+                    actor = Actor(id = "agent", displayName = "config", role = ActorRole.AGENT),
+                    content = listOf(MessageContent.Text("Still waiting for Ada.")),
+                ),
+            )
+
+            agentConfigService.findById(agent.id)!!.description shouldNotBe "Applied by a co-admin"
+            bot.acknowledged.single().second shouldBe MessagingPlanCards.NOT_RECIPIENT_TEXT
+            eventually(2.seconds) { bot.textsTo(chatId).any { "Still waiting for Ada." in it } shouldBe true }
+            bot.textsTo("2002") shouldHaveSize 0
         }
 
         "a message from a bot is ignored" {

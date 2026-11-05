@@ -111,8 +111,10 @@ class TelegramDriverUnitSpec :
                 api.methods().first() shouldBe "setMyCommands"
                 connection.adapter.bot.username shouldBe "helper_bot"
                 connection.stop()
-                val polled = api.methods().count { it == "getUpdates" }
+                // A poll already sent when the bot stops still reaches the server: let it land before counting.
                 Thread.sleep(200)
+                val polled = api.methods().count { it == "getUpdates" }
+                Thread.sleep(300)
                 api.methods().count { it == "getUpdates" } shouldBe polled
             }
         }

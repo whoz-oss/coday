@@ -85,6 +85,17 @@ questions (choices as buttons, an authorization as a link button), warnings and 
 while the case runs (Telegram only: Slack shows none for a bot). Tool calls, thinking and sub-cases stay in the UI. The rule is the one of a conversation: an
 answer goes where the question came from, so a message typed in the UI is answered in the UI only.
 
+**Configuration plans.** When the config agent proposes a configuration change in a case the chat follows, the bot
+sends the plan as its card in the UI shows it, built from the plan the server froze rather than from what the agent
+wrote: the summary, each operation with its fields before and after (current values masked as on the card), the
+warnings and the expiry. Its buttons are the card's: *Apply* applies the plan at once (Slack asks for a
+confirmation first), *Reject* rejects it, *Open in AgentOS* opens the case. The bot then removes the buttons and
+reports each operation's outcome, the UI card updates, and the agent's next answer comes back to the chat. Only the
+user the plan was proposed to gets the buttons. A plan that needs a secret (an API key, a password) cannot be
+applied from a chat, where the secret would stay in the chat's history on the platform's servers: the message sends
+the user to the card for it, and *Reject* stays. A click on a plan already applied, rejected, expired or replaced is
+told so.
+
 **Continuing a case from the UI.** The header of a case shows a *Continue on Telegram* (or *on Slack*) button for
 each bot of the case's namespace the user has linked an account to: the bot posts the case's last answer in the direct chat,
 which now goes to that case, with the bot's agent. Replying there continues it.
@@ -114,14 +125,30 @@ public URL and nothing reaches it from the outside, which suits an instance behi
 | `MessagingDriver` | One platform: checks a token, starts a bot. `TelegramDriver` runs a `TelegramAdapter` (HTML formatting, splitting, flood waits) fed by a `TelegramUpdatePoller`. `SlackDriver` gives the app manifest and runs a `SlackAdapter` (markdown blocks, Block Kit buttons, rate limits) fed by a `SlackSocket` (Socket Mode, reconnects when Slack refreshes the connection). |
 | `MessagingIdentity` | A platform account linked to a user through a bot. Unique per account and bot, and per user and bot, among active rows. |
 | `MessagingConversation` | A chat with a bot and the case its next message goes to. The chat moves between cases; the case does not move. |
-| `MessagingGateway` | Takes what the bot of an agent receives: links accounts, checks the user may use the agent, runs the commands, creates and feeds cases as the scheduler does (`create`, ADMIN grant, `publishCaseCreated`, `addMessage`, with `@agent` when the case would otherwise go to another agent). Runs each chat's work with the linked user authenticated. |
+| `MessagingGateway` | Takes what the bot of an agent receives: links accounts, checks the user may use the agent, runs the commands, reads, starts and feeds cases (with `@agent` when the case would otherwise go to another agent), applies or rejects a plan. All of it through the endpoints the UI calls, below. |
+| `MessagingPlanCards` | A configuration plan as a chat shows it, from the card's view (`ConfigChangeViewDto`), with Apply and Reject; the report of an apply. |
 | `MessagingManagedBots` | Takes what the bot manager receives: the creation link, the button that opens Telegram's bot creation, and the new bot, which it attaches and links to its creator. |
-| `MessagingDelivery` | Listens to `CaseEventCreatedEvent`, published by `CaseEventServiceImpl.create` for every stored event, and sends the readable ones to the chat the case's current turn came from. |
+| `MessagingDelivery` | Listens to `CaseEventCreatedEvent`, published by `CaseEventServiceImpl.create` for every stored event, and sends the readable ones to the chat the case's current turn came from; the question of a plan goes as its card. |
 | `MessagingController`, `MessagingBotController` | The UI's endpoints, contracts `MessagingApi` (using bots) and `MessagingBotApi` (configuring them) in `agentos-sdk` (`api.messaging`). |
+
+**Rights.** No message arrives through an HTTP request of the user: the bot fetches it from Telegram, or Slack
+pushes it on the app's socket, with the sender's account id set by the platform. The gateway finds the AgentOS user
+that account is linked to, and runs the chat's work with that user authenticated on the thread (`asUser`, an
+`AgentOsAuthentication`, as `AgentOsAuthenticationFilter` sets for a request). Everything a chat does then goes
+through the endpoints the UI calls, by their `*Api` beans, whose only implementation is the controller's
+method-security proxy: `CaseApi` to read, start and feed cases, `ConfigChangeApi` to show, apply or reject a plan,
+and, inside an apply, the `*Api` of each entity written. Their `@PreAuthorize` read the authenticated user, and so
+do their inline guards, since `UserService.getCurrentUser()` returns the authenticated user when there is one. A
+chat can therefore do exactly what its user can do in the UI. The gateway itself only checks what belongs to the
+bot: a linked account, an agent the user may use, a case of the bot's namespace. A button carries only the id of
+what it acts on (`MessagingActionCodec`); who clicks comes from the platform, and the plan applied is the one the
+endpoint reads back from the case.
 
 The origin of a message travels in its session context, under `messaging` (`SessionContextKeys.MESSAGING`):
 the platform, which the agent also sees, and the conversation, which tells `MessagingDelivery` where to answer.
-The updates of one chat are handled in order, different chats in parallel (`SerialLanes`).
+A session context comes from the message's client, so a message can only point its case at a chat of its own
+author: the answers of a case are never sent to a chat that belongs to someone else. The updates of one chat are
+handled in order, different chats in parallel (`SerialLanes`).
 
 The config agent (`AGENTOS_CONFIG`) reads the bots of a namespace (`messaging`) and tells the user how to give an
 agent one: attaching a bot is not a proposal, since it takes the user's confirmation in Telegram or a token they
@@ -138,3 +165,5 @@ type.
 - One long poll per running bot, on its own thread: fine for tens of bots.
 - Answers are sent once the agent's message is complete, not as it is written.
 - A cost pause is shown in the UI only.
+- A plan applied or rejected from the UI keeps its buttons in the chat; a click there is then told the plan is
+  already answered.

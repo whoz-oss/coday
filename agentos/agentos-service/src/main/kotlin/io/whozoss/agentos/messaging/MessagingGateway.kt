@@ -4,30 +4,34 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.AgentMention
-import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.case.AddMessageRequest
+import io.whozoss.agentos.sdk.api.case.CaseApi
+import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeApi
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeApplyRequest
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeDecision
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeState
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeViewDto
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
-import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
-import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -38,12 +42,16 @@ import java.util.UUID
  * A bot is one agent's ([MessagingBot.agentId]), in one namespace: talking to the bot is talking to the agent,
  * and the cases it starts belong to that namespace. A direct chat holds one conversation ([MessagingConversation])
  * whose messages go to one case at a time: the first message starts a case, the next ones follow it, and `/new`,
- * `/cases` or a "Continue on Telegram" request from the UI move the chat to another case. The case is created
- * and fed exactly as [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] does, with the agent named
- * at the start of the message (`@agent`) when the case would otherwise go to another one: the agent runs as the
- * linked user, with that user's rights and credentials. Only a user who may use the agent in its namespace is
- * served. What the gateway does for a chat runs with that user authenticated, as a request of theirs would, so
- * that the secured services apply their own rules.
+ * `/cases` or a "Continue on Telegram" request from the UI move the chat to another case. A message goes to the
+ * bot's agent, named at the start of the message (`@agent`) when the case would otherwise go to another one: the
+ * agent runs as the linked user, with that user's rights and credentials. A configuration plan the agent proposes
+ * is applied or rejected from its buttons, as from its card in the UI.
+ *
+ * What the gateway does for a chat runs with the linked user authenticated ([asUser]) and goes through the
+ * endpoints the UI calls, by their `*Api` beans: [CaseApi] to read, start and feed the cases, [ConfigChangeApi]
+ * to apply or reject a plan. Every action of a chat is thus authorized by the same `@PreAuthorize` and inline
+ * guards as the same action in the UI, and an action refused there is refused here. The gateway itself only
+ * checks what belongs to the bot: a linked account, an agent the user may use, a case of the bot's namespace.
  *
  * Every message carries its origin in its session context ([SessionContextKeys.MESSAGING]), which is how
  * [MessagingDelivery] knows to send the reply back to the chat.
@@ -54,13 +62,14 @@ import java.util.UUID
 class MessagingGateway(
     private val identities: MessagingIdentityService,
     private val conversations: MessagingConversationService,
+    private val cases: CaseApi,
+    private val configChanges: ConfigChangeApi,
     private val caseService: CaseService,
     private val caseEventService: CaseEventService,
     private val userService: UserService,
     private val agentConfigService: AgentConfigService,
     private val bots: MessagingBotService,
     private val permissionService: PermissionService,
-    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
     private val sessionContextResolver: UserSessionContextResolver,
     private val delivery: MessagingDelivery,
     private val registry: MessagingBotRegistry,
@@ -78,6 +87,9 @@ class MessagingGateway(
                 inbound is MessagingInbound.Click -> handleClick(adapter, inbound)
                 inbound is MessagingInbound.BotManaged -> logger.debug { "[Messaging] @${adapter.bot.username} manages no bot" }
             }
+        } catch (e: AccessDeniedException) {
+            logger.info { "[Messaging] AgentOS refused a ${adapter.platform} update from chat ${inbound.chatId}: ${e.message}" }
+            runCatching { adapter.send(inbound.chatId, OutboundMessage(DENIED_TEXT)) }
         } catch (e: Exception) {
             logger.warn(e) { "[Messaging] failed to handle a ${adapter.platform} update from chat ${inbound.chatId}" }
             runCatching { adapter.send(inbound.chatId, OutboundMessage(FAILURE_TEXT)) }
@@ -87,6 +99,8 @@ class MessagingGateway(
     /**
      * Moves [user]'s direct chat with the bot [botId] to [caseId] and posts the case's last answer there, so that
      * the user continues the case from the chat, with the bot's agent.
+     *
+     * Runs as [user], whom the calling endpoint authorized on the case.
      *
      * @throws ConflictException when the bot does not run, works in another namespace than the case, or the user
      *   has linked no account through it
@@ -100,7 +114,7 @@ class MessagingGateway(
     ): MessagingConversation {
         val adapter = registry.adapter(botId) ?: throw ConflictException("This bot is not running")
         val bot = adapter.bot
-        val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        val case = asUser(user) { readCase(caseId) } ?: throw ResourceNotFoundException("Case not found: $caseId")
         if (case.namespaceId != bot.namespaceId) throw ConflictException("@${bot.username} answers in another namespace than this case")
         val identity =
             identities.findByUser(user.id, bot.platform, bot.accountId)
@@ -108,10 +122,10 @@ class MessagingGateway(
         val conversation =
             conversations
                 .open(bot.platform, bot.accountId, identity.directChatId, user.id)
-                .let { opened -> conversations.update(opened) { it.copy(caseId = case.id) } }
-        delivery.redirect(case.id, conversation.id)
+                .let { opened -> conversations.update(opened) { it.copy(caseId = caseId) } }
+        delivery.redirect(caseId, conversation.id)
         adapter.send(identity.directChatId, OutboundMessage(caseSummary(case, CONTINUE_HINT)))
-        logger.info { "[Messaging] case ${case.id} continued with @${bot.username} by user ${user.id}" }
+        logger.info { "[Messaging] case $caseId continued with @${bot.username} by user ${user.id}" }
         return conversation
     }
 
@@ -177,10 +191,10 @@ class MessagingGateway(
         chat: Chat,
         text: String,
     ) {
-        val current = chat.conversation.caseId?.let { caseService.findById(it) }?.takeIf { canWriteCase(chat.user, it) }
+        val current = currentCase(chat)
         when {
             current != null && !current.status.isTerminal() -> {
-                addMessage(chat, current, addressed(chat, current, text))
+                addMessage(chat, current, addressed(chat, current.caseId, text))
                 chat.adapter.showTyping(chat.chatId)
             }
             else -> {
@@ -190,30 +204,24 @@ class MessagingGateway(
         }
     }
 
+    /** Starts a case as the UI does (the endpoint makes its creator its admin), then posts [text] to it. */
     private fun startCaseWith(
         chat: Chat,
         text: String,
     ) {
-        val case = caseService.create(Case(namespaceId = chat.namespaceId))
+        val case = cases.create(CaseDto(namespaceId = chat.namespaceId))
         try {
-            permissionService.grantPermission(
-                userId = chat.user.id.toString(),
-                entityType = EntityType.CASE,
-                entityId = case.id.toString(),
-                relation = PermissionRelation.ADMIN,
-            )
-            caseListUpdateBroadcaster.publishCaseCreated(case.namespaceId)
-            conversations.update(chat.conversation) { it.copy(caseId = case.id) }
+            conversations.update(chat.conversation) { it.copy(caseId = case.caseId) }
             addMessage(chat, case, addressed(chat, null, text))
         } catch (e: Exception) {
             // The failure itself is logged by handle(); this only records the compensation.
-            logger.warn { "[Messaging] starting case ${case.id} from chat ${chat.chatId} failed, deleting it" }
-            runCatching { caseService.delete(case.id) }
-                .onFailure { logger.warn(it) { "[Messaging] could not delete the half-started case ${case.id}" } }
+            logger.warn { "[Messaging] starting case ${case.caseId} from chat ${chat.chatId} failed, deleting it" }
+            runCatching { caseService.delete(case.caseId) }
+                .onFailure { logger.warn(it) { "[Messaging] could not delete the half-started case ${case.caseId}" } }
             throw e
         }
         chat.adapter.showTyping(chat.chatId)
-        logger.info { "[Messaging] case ${case.id} started with @${chat.adapter.bot.username} by user ${chat.user.id}" }
+        logger.info { "[Messaging] case ${case.caseId} started with @${chat.adapter.bot.username} by user ${chat.user.id}" }
     }
 
     /**
@@ -222,30 +230,28 @@ class MessagingGateway(
      */
     private fun addressed(
         chat: Chat,
-        case: Case?,
+        caseId: UUID?,
         text: String,
     ): String {
         // A selection names its agent: its id is derived from that name, not the agent's own.
         val lastAgentName =
-            case?.let { caseEventService.findByParent(it.id).filterIsInstance<AgentSelectedEvent>().lastOrNull()?.agentName }
+            caseId?.let { caseEventService.findByParent(it).filterIsInstance<AgentSelectedEvent>().lastOrNull()?.agentName }
         return when {
             AgentMention.extractName(text) != null || lastAgentName.equals(chat.agent.name, ignoreCase = true) -> text
             else -> "@${chat.agent.name} $text"
         }
     }
 
+    /** Posts [text] to [case] as its user, through the endpoint the UI posts to. */
     private fun addMessage(
         chat: Chat,
-        case: Case,
+        case: CaseDto,
         text: String,
         answerToEventId: UUID? = null,
     ) {
-        caseService.addMessage(
-            caseId = case.id,
-            actor = Actor(id = chat.user.id.toString(), displayName = chat.user.displayName(), role = ActorRole.USER),
-            content = listOf(MessageContent.Text(text)),
-            answerToEventId = answerToEventId,
-            sessionContext = sessionContext(chat, case.namespaceId),
+        cases.addMessage(
+            case.caseId,
+            AddMessageRequest(content = text, answerToEventId = answerToEventId, sessionContext = sessionContext(chat, case.namespaceId)),
         )
     }
 
@@ -289,7 +295,7 @@ class MessagingGateway(
     }
 
     private fun showCurrentCase(chat: Chat) {
-        val case = chat.conversation.caseId?.let { caseService.findById(it) }?.takeIf { canWriteCase(chat.user, it) }
+        val case = currentCase(chat)
         val text =
             when (case) {
                 null -> "No case yet: your next message starts one with **${chat.agent.name}**."
@@ -298,14 +304,14 @@ class MessagingGateway(
         reply(chat, text)
     }
 
-    /** The user's recent cases of the bot's namespace: the agent answers there only. */
+    /** The user's recent cases of the bot's namespace, as the case list of the UI has them: the agent answers there only. */
     private fun listCases(chat: Chat) {
-        val cases =
-            caseService
-                .findConcerningUser(chat.user.id)
-                .filter { it.parentCaseId == null && it.namespaceId == chat.namespaceId }
-        val lastMessageAt = caseEventService.findLastMessageTimestamps(cases.map { it.id })
-        val recent = cases.sortedByDescending { lastMessageAt[it.id] ?: it.metadata.modified }.take(MAX_LISTED_CASES)
+        val recent =
+            cases
+                .listMineByParent(chat.namespaceId)
+                .filter { it.parentCaseId == null }
+                .sortedByDescending { it.lastMessageAt ?: it.modified }
+                .take(MAX_LISTED_CASES)
         val message =
             when {
                 recent.isEmpty() -> OutboundMessage("You have no case here yet: send a message to start one.")
@@ -314,10 +320,10 @@ class MessagingGateway(
                         text = "Your recent cases. Choose the one to continue here:",
                         buttons =
                             recent.map { case ->
-                                val marker = if (case.id == chat.conversation.caseId) "• " else ""
+                                val marker = if (case.caseId == chat.conversation.caseId) "• " else ""
                                 MessagingButton(
-                                    label = marker + case.title.take(MAX_LABEL_LENGTH),
-                                    action = MessagingAction.OpenCase(case.id),
+                                    label = marker + case.name.take(MAX_LABEL_LENGTH),
+                                    action = MessagingAction.OpenCase(case.caseId),
                                 )
                             },
                     )
@@ -341,6 +347,8 @@ class MessagingGateway(
                             when (val action = inbound.action) {
                                 is MessagingAction.AnswerQuestion -> answer(access.chat, action, inbound.messageId)
                                 is MessagingAction.OpenCase -> openCase(access.chat, action.caseId)
+                                is MessagingAction.ApplyPlan -> applyPlan(access.chat, action.questionId, inbound.messageId)
+                                is MessagingAction.RejectPlan -> rejectPlan(access.chat, action.questionId, inbound.messageId)
                                 is MessagingAction.OpenUrl, null -> EXPIRED_BUTTON_NOTICE
                             }
                         }
@@ -348,6 +356,9 @@ class MessagingGateway(
                 }
             } catch (e: MessagingRefusal) {
                 e.message
+            } catch (e: AccessDeniedException) {
+                logger.info { "[Messaging] AgentOS refused a click in chat ${inbound.chatId}: ${e.message}" }
+                DENIED_NOTICE
             }
         adapter.acknowledgeClick(inbound.clickId, notice.take(MAX_NOTICE_LENGTH))
     }
@@ -361,20 +372,18 @@ class MessagingGateway(
         val question =
             caseEventService.findById(action.questionId) as? QuestionEvent
                 ?: throw MessagingRefusal("This question no longer exists.")
-        val case =
-            caseService.findById(question.caseId)?.takeIf { canWriteCase(chat.user, it) }
-                ?: throw MessagingRefusal("You can no longer answer in this case.")
+        val case = writableCase(chat, question.caseId) ?: throw MessagingRefusal("You can no longer answer in this case.")
         val option =
             question.options?.getOrNull(action.optionIndex)
                 ?: throw MessagingRefusal("This choice no longer exists.")
         when {
             question.userId != null && question.userId != chat.user.id ->
                 throw MessagingRefusal("This question is for someone else.")
-            caseEventService.findByParent(case.id).any { it is AnswerEvent && it.questionId == question.id } ->
+            caseEventService.findByParent(case.caseId).any { it is AnswerEvent && it.questionId == question.id } ->
                 throw MessagingRefusal("This question was already answered.")
         }
         // An answer carries no session context: the reply follows the chat it was given in, from before the run.
-        delivery.redirect(case.id, chat.conversation.id)
+        delivery.redirect(case.caseId, chat.conversation.id)
         addMessage(chat, case, option, answerToEventId = question.id)
         chat.adapter.removeButtons(chat.chatId, messageId)
         chat.adapter.showTyping(chat.chatId)
@@ -386,17 +395,122 @@ class MessagingGateway(
         caseId: UUID,
     ): String {
         val case =
-            caseService.findById(caseId)?.takeIf { canWriteCase(chat.user, it) && it.namespaceId == chat.namespaceId }
+            writableCase(chat, caseId)?.takeIf { it.namespaceId == chat.namespaceId }
                 ?: throw MessagingRefusal("You can no longer write in this case.")
-        conversations.update(chat.conversation) { it.copy(caseId = case.id) }
-        delivery.redirect(case.id, chat.conversation.id)
+        conversations.update(chat.conversation) { it.copy(caseId = caseId) }
+        delivery.redirect(caseId, chat.conversation.id)
         reply(chat, caseSummary(case, CONTINUE_HINT))
-        return "✓ ${case.title}"
+        return "✓ ${case.name}"
     }
+
+    /**
+     * Applies the plan the question [questionId] asks about, through the card's endpoint: only the user it was
+     * proposed to, who may write to the case, gets it applied, with their own rights for each write. The plan
+     * applied is the one the endpoint reads back from the case, bound by its hash.
+     */
+    private fun applyPlan(
+        chat: Chat,
+        questionId: UUID,
+        messageId: String,
+    ): String {
+        val view = recipientsPlan(chat, questionId, messageId)
+        // The agent's next answer comes back here, whichever chat or page the plan was proposed from.
+        delivery.redirect(view.caseId, chat.conversation.id)
+        val report =
+            planCall(chat, messageId) {
+                configChanges.applyConfigChange(view.caseId, questionId, ConfigChangeApplyRequest(expectedPlanHash = view.planHash))
+            }
+        // A plan whose answer could not reach the agent stays open: applying it again sends the answer.
+        if (report.answerPosted) chat.adapter.removeButtons(chat.chatId, messageId)
+        reply(chat, MessagingPlanCards.applied(view, report, chat.user.displayName()))
+        if (report.answerPosted) chat.adapter.showTyping(chat.chatId)
+        return when (report.decision) {
+            ConfigChangeDecision.APPLIED -> "✓ Applied"
+            ConfigChangeDecision.PARTIAL -> "✓ Partly applied"
+            ConfigChangeDecision.FAILED, ConfigChangeDecision.REJECTED -> "Not applied: nothing was written."
+        }
+    }
+
+    /** Rejects the plan the question [questionId] asks about, through the card's endpoint. */
+    private fun rejectPlan(
+        chat: Chat,
+        questionId: UUID,
+        messageId: String,
+    ): String {
+        val view = recipientsPlan(chat, questionId, messageId)
+        delivery.redirect(view.caseId, chat.conversation.id)
+        planCall(chat, messageId) { configChanges.rejectConfigChange(view.caseId, questionId, null) }
+        chat.adapter.removeButtons(chat.chatId, messageId)
+        reply(chat, MessagingPlanCards.rejected(chat.user.displayName()))
+        chat.adapter.showTyping(chat.chatId)
+        return "✓ Rejected"
+    }
+
+    /**
+     * The plan of [questionId] as the card shows it to the chat's user, who must be the one it was proposed to.
+     * The endpoints check it again; checking it first keeps anyone else from pointing the case at their chat.
+     */
+    private fun recipientsPlan(
+        chat: Chat,
+        questionId: UUID,
+        messageId: String,
+    ): ConfigChangeViewDto {
+        val question = caseEventService.findById(questionId) as? QuestionEvent ?: throw MessagingRefusal(PLAN_GONE_NOTICE)
+        val view = planCall(chat, messageId) { configChanges.viewConfigChange(question.caseId, questionId) }
+        if (view.recipientUserId != chat.user.id) throw MessagingRefusal(MessagingPlanCards.NOT_RECIPIENT_TEXT)
+        return view
+    }
+
+    /**
+     * [call] to the card's endpoint, its refusals told as the card tells them. The buttons of a plan that can no
+     * longer change are removed.
+     */
+    private fun <T> planCall(
+        chat: Chat,
+        messageId: String,
+        call: () -> T,
+    ): T =
+        try {
+            call()
+        } catch (e: AccessDeniedException) {
+            throw MessagingRefusal(
+                if (e.message.orEmpty().startsWith(NOT_RECIPIENT)) MessagingPlanCards.NOT_RECIPIENT_TEXT else "You cannot change the plans of this case.",
+            )
+        } catch (e: ResourceNotFoundException) {
+            throw MessagingRefusal(PLAN_GONE_NOTICE)
+        } catch (e: UnprocessableEntityException) {
+            throw MessagingRefusal(MessagingPlanCards.SECRET_TEXT)
+        } catch (e: ConflictException) {
+            val state = ConfigChangeState.entries.firstOrNull { e.message.orEmpty().startsWith("${it.name}:") }
+            if (state == ConfigChangeState.ANSWERED || state == ConfigChangeState.SUPERSEDED) chat.adapter.removeButtons(chat.chatId, messageId)
+            throw MessagingRefusal(state?.let(MessagingPlanCards::closedText) ?: "The plan changed since it was shown: open it in AgentOS.")
+        }
 
     // ======================================================
     // Helpers
     // ======================================================
+
+    /** The chat's case, when its user may still write to it. */
+    private fun currentCase(chat: Chat): CaseDto? = chat.conversation.caseId?.let { writableCase(chat, it) }
+
+    /**
+     * [caseId] read through its endpoint, when the chat's user may also write to it: whether the chat can keep
+     * using the case. The writes themselves are authorized by their own endpoints.
+     */
+    private fun writableCase(
+        chat: Chat,
+        caseId: UUID,
+    ): CaseDto? = readCase(caseId)?.takeIf { canWriteCase(chat.user, caseId) }
+
+    /** [caseId] read through its endpoint as the current user; null when it is gone or hidden from them. */
+    private fun readCase(caseId: UUID): CaseDto? =
+        try {
+            cases.getById(caseId)
+        } catch (e: ResourceNotFoundException) {
+            null
+        } catch (e: AccessDeniedException) {
+            null
+        }
 
     /** Runs [block] for a sender who may talk to the bot's agent, as that user; tells anyone else why not. */
     private fun withChat(
@@ -408,26 +522,6 @@ class MessagingGateway(
         when (val access = findChat(adapter, chatId, sender)) {
             is ChatAccess.Granted -> asUser(access.chat.user) { block(access.chat) }
             is ChatAccess.Refused -> adapter.send(chatId, OutboundMessage(access.text))
-        }
-    }
-
-    /**
-     * Runs [block] with [user] authenticated on this thread, as
-     * [io.whozoss.agentos.security.declarative.AgentOsAuthenticationFilter] does for a request, and puts the
-     * previous context back after. The chat's lane runs [block] on one thread
-     * from start to end: the gateway's calls block, they never suspend.
-     */
-    private fun <T> asUser(
-        user: User,
-        block: () -> T,
-    ): T {
-        val previous = SecurityContextHolder.getContext()
-        val context = SecurityContextHolder.createEmptyContext().also { it.authentication = AgentOsAuthentication(user) }
-        SecurityContextHolder.setContext(context)
-        return try {
-            block()
-        } finally {
-            SecurityContextHolder.setContext(previous)
         }
     }
 
@@ -463,12 +557,12 @@ class MessagingGateway(
     private fun agentOf(adapter: MessagingAdapter): AgentConfig? = adapter.bot.agentId?.let { agentConfigService.findById(it) }
 
     private fun caseSummary(
-        case: Case,
+        case: CaseDto,
         hint: String,
     ): String {
         val lastAnswer =
             caseEventService
-                .findByParent(case.id)
+                .findByParent(case.caseId)
                 .lastOrNull { it is MessageEvent && it.actor.role == ActorRole.AGENT }
                 ?.let { message ->
                     (message as MessageEvent).content.filterIsInstance<MessageContent.Text>().joinToString("\n") { it.content }
@@ -476,10 +570,10 @@ class MessagingGateway(
                 ?.takeIf { it.isNotBlank() }
                 ?.let { if (it.length > MAX_EXCERPT_LENGTH) it.take(MAX_EXCERPT_LENGTH) + "…" else it }
         return listOfNotNull(
-            "📁 **${case.title}**",
+            "📁 **${case.name}**",
             lastAnswer,
             hint,
-            links.case(case.namespaceId, case.id)?.let { "[Open in AgentOS]($it)" },
+            links.case(case.namespaceId, case.caseId)?.let { "[Open in AgentOS]($it)" },
         ).joinToString("\n\n")
     }
 
@@ -508,8 +602,12 @@ class MessagingGateway(
 
     private fun canWriteCase(
         user: User,
-        case: Case,
-    ): Boolean = permissionService.hasPermission(user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE)
+        caseId: UUID,
+    ): Boolean = permissionService.hasPermission(user.id.toString(), EntityType.CASE, caseId.toString(), Action.WRITE)
+
+    private val CaseDto.caseId: UUID get() = requireNotNull(id) { "A stored case has an id" }
+
+    private val CaseDto.name: String get() = title ?: "Case $caseId"
 
     /** A linked sender who may use the bot's agent, in a chat, with the conversation of that chat. */
     private data class Chat(
@@ -552,5 +650,11 @@ class MessagingGateway(
         private const val NOT_LINKED_NOTICE = "Link your account to AgentOS first."
         private const val NO_AGENT_TEXT = "The agent of this bot no longer exists."
         private const val EXPIRED_BUTTON_NOTICE = "This button no longer works."
+        private const val DENIED_TEXT = "AgentOS refused this: you do not have the rights for it. Ask an admin of the namespace."
+        private const val DENIED_NOTICE = "AgentOS refused this: you do not have the rights for it."
+        private const val PLAN_GONE_NOTICE = "This plan no longer exists."
+
+        /** How [io.whozoss.agentos.configAgent.ConfigChangeService] names a refusal to someone the plan is not for. */
+        private const val NOT_RECIPIENT = "NOT_RECIPIENT"
     }
 }

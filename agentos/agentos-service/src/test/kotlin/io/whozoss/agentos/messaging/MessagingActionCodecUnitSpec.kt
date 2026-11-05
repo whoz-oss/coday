@@ -12,6 +12,8 @@ class MessagingActionCodecUnitSpec :
             listOf(
                 MessagingAction.AnswerQuestion(UUID.randomUUID(), 3),
                 MessagingAction.OpenCase(UUID.randomUUID()),
+                MessagingAction.ApplyPlan(UUID.randomUUID()),
+                MessagingAction.RejectPlan(UUID.randomUUID()),
             ).forEach { action ->
                 MessagingActionCodec.decode(MessagingActionCodec.encode(action)) shouldBe action
             }
@@ -28,7 +30,7 @@ class MessagingActionCodecUnitSpec :
         }
 
         "a payload that is not one of ours decodes to nothing" {
-            listOf(null, "", "q", "q:not-a-uuid:1", "c:${UUID.randomUUID()}:extra", "x:${UUID.randomUUID()}", "q:${UUID.randomUUID()}:one")
+            listOf(null, "", "q", "q:not-a-uuid:1", "c:${UUID.randomUUID()}:extra", "x:${UUID.randomUUID()}", "q:${UUID.randomUUID()}:one", "a:not-a-uuid", "r:${UUID.randomUUID()}:1")
                 .forEach { payload -> MessagingActionCodec.decode(payload) shouldBe null }
         }
     })

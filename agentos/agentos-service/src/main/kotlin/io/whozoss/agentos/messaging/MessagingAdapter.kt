@@ -95,6 +95,8 @@ data class OutboundMessage(
 data class MessagingButton(
     val label: String,
     val action: MessagingAction,
+    /** Asked before the click is sent, where the platform has a confirmation dialog (Slack); ignored elsewhere. */
+    val confirm: String? = null,
 )
 
 /** What a button does when clicked. Encoded into the button by [MessagingActionCodec]. */
@@ -108,6 +110,16 @@ sealed interface MessagingAction {
     /** Moves the chat to the case [caseId]. */
     data class OpenCase(
         val caseId: UUID,
+    ) : MessagingAction
+
+    /** Applies the configuration plan the question [questionId] asks about, as the configuration card does. */
+    data class ApplyPlan(
+        val questionId: UUID,
+    ) : MessagingAction
+
+    /** Rejects the configuration plan the question [questionId] asks about. */
+    data class RejectPlan(
+        val questionId: UUID,
     ) : MessagingAction
 
     /** Opens [url] in the browser. Handled by the platform, never sent back to AgentOS. */

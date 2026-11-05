@@ -11,6 +11,8 @@ import java.util.UUID
 object MessagingActionCodec {
     private const val ANSWER = "q"
     private const val OPEN_CASE = "c"
+    private const val APPLY_PLAN = "a"
+    private const val REJECT_PLAN = "r"
     private const val SEPARATOR = ":"
 
     /** The payload of [action]. [MessagingAction.OpenUrl] has none: the platform opens it itself. */
@@ -18,6 +20,8 @@ object MessagingActionCodec {
         when (action) {
             is MessagingAction.AnswerQuestion -> join(ANSWER, action.questionId, action.optionIndex)
             is MessagingAction.OpenCase -> join(OPEN_CASE, action.caseId)
+            is MessagingAction.ApplyPlan -> join(APPLY_PLAN, action.questionId)
+            is MessagingAction.RejectPlan -> join(REJECT_PLAN, action.questionId)
             is MessagingAction.OpenUrl -> null
         }
 
@@ -29,6 +33,8 @@ object MessagingActionCodec {
                     parts.size == 3 && parts[0] == ANSWER ->
                         MessagingAction.AnswerQuestion(questionId = UUID.fromString(parts[1]), optionIndex = parts[2].toInt())
                     parts.size == 2 && parts[0] == OPEN_CASE -> MessagingAction.OpenCase(UUID.fromString(parts[1]))
+                    parts.size == 2 && parts[0] == APPLY_PLAN -> MessagingAction.ApplyPlan(UUID.fromString(parts[1]))
+                    parts.size == 2 && parts[0] == REJECT_PLAN -> MessagingAction.RejectPlan(UUID.fromString(parts[1]))
                     else -> null
                 }
             }.getOrNull()

@@ -18,8 +18,9 @@ import java.util.concurrent.ConcurrentHashMap
  * The [MessagingAdapter] of one Slack app, sending with its bot token.
  *
  * Messages go out as a `markdown` block, which renders the Markdown agents write (tables and code included), with
- * their text as the notification fallback; buttons as an `actions` block. A message Slack refuses as blocks goes
- * again as plain text without buttons; a rate limit is waited out, a bounded number of times.
+ * their text as the notification fallback; buttons as an `actions` block, with Slack's confirmation dialog on a
+ * button that asks for one ([MessagingButton.confirm]). A message Slack refuses as blocks goes again as plain text
+ * without buttons; a rate limit is waited out, a bounded number of times.
  *
  * Slack keeps `/` for its own commands: the gateway's start with `!`. A link to the app's chat cannot carry a link
  * token: the user sends it as a message ([linkCode]). Slack shows no typing indicator for a bot outside its AI
@@ -126,11 +127,26 @@ class SlackAdapter(
                         mapOf("type" to "button", "text" to label, "url" to action.url, "action_id" to "url_$index")
                     else ->
                         MessagingActionCodec.encode(action)?.let { value ->
-                            mapOf("type" to "button", "text" to label, "value" to value, "action_id" to "action_$index")
+                            mapOf("type" to "button", "text" to label, "value" to value, "action_id" to "action_$index") +
+                                button.confirm?.let { mapOf("confirm" to confirmation(button.label, it)) }.orEmpty()
                         }
                 }
             }.takeIf { it.isNotEmpty() }
             ?.let { elements -> mapOf("type" to "actions", "elements" to elements) }
+
+    /** Slack's confirmation dialog: [text] with a button that sends the click, labelled like the button, and Cancel. */
+    private fun confirmation(
+        label: String,
+        text: String,
+    ): Map<String, Any?> {
+        fun plain(value: String) = mapOf("type" to "plain_text", "text" to value)
+        return mapOf(
+            "title" to plain("Are you sure?"),
+            "text" to plain(text.take(MAX_CONFIRM_TEXT_LENGTH)),
+            "confirm" to plain(label.take(MAX_CONFIRM_LABEL_LENGTH)),
+            "deny" to plain("Cancel"),
+        )
+    }
 
     private fun <T> withRateLimitRetry(send: () -> T): T = rateLimitAttempt(send, RATE_LIMIT_ATTEMPTS)
 
@@ -182,6 +198,8 @@ class SlackAdapter(
         private const val MAX_CHUNK_LENGTH = 3500
         private const val MAX_BUTTONS = 25
         private const val MAX_LABEL_LENGTH = 75
+        private const val MAX_CONFIRM_TEXT_LENGTH = 300
+        private const val MAX_CONFIRM_LABEL_LENGTH = 30
         private const val MAX_REMEMBERED_MESSAGES = 500
         private const val RATE_LIMIT_ATTEMPTS = 3
         private const val SUCCESS_MARK = "✓"

@@ -3,6 +3,8 @@ package io.whozoss.agentos.messaging
 import io.whozoss.agentos.caseEvent.CaseEventCreatedEvent
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.caseFlow.messagingConversationId
+import io.whozoss.agentos.configAgent.ConfigAgentIntegration
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeApi
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
@@ -11,8 +13,10 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +29,7 @@ import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -36,10 +41,15 @@ import java.util.concurrent.ConcurrentHashMap
  * The rule is the one of a conversation: the answer goes where the question came from. The last user message
  * of a case says where it came from ([io.whozoss.agentos.caseFlow.SessionContextKeys.MESSAGING]); a message
  * typed in the UI says nothing, and its answer stays in the UI. "Continue on Telegram", a `/cases` choice or a
- * button answer point the case at their chat with [redirect]. Only what a person reads is sent: the agent's
- * messages and questions, warnings and errors (no default agent, an unknown `@name`, a run stopped at its
- * iteration limit...), and a typing indicator while the case runs. Tool calls, thinking and sub-cases stay in
- * AgentOS, one click away.
+ * button answer point the case at their chat with [redirect]. A message can only point its case at a chat of
+ * its own author: the session context of a message comes from its client, which could name any conversation,
+ * so a chat that belongs to someone else receives nothing.
+ *
+ * Only what a person reads is sent: the agent's messages and questions, warnings and errors (no default agent,
+ * an unknown `@name`, a run stopped at its iteration limit...), and a typing indicator while the case runs. A
+ * configuration plan of the config agent is sent as its card ([MessagingPlanCards]), read through the card's
+ * endpoint as the chat's user, with Apply and Reject. Tool calls, thinking and sub-cases stay in AgentOS, one
+ * click away.
  *
  * Events arrive from [CaseEventCreatedEvent], on the thread of the case: the listener only records the origin
  * and queues, the sending happens on [SerialLanes] per conversation, so that the replies of one chat keep their
@@ -53,9 +63,16 @@ class MessagingDelivery(
     private val registry: MessagingBotRegistry,
     private val conversations: MessagingConversationService,
     private val caseService: CaseService,
+    private val userService: UserService,
+    private val configChanges: ConfigChangeApi,
+    private val links: MessagingLinks,
+    private val clock: Clock,
 ) {
     /** For each case, the conversation its current turn came from. */
-    private val turnOrigins = ConcurrentHashMap<UUID, UUID>()
+    private val turnOrigins = ConcurrentHashMap<UUID, TurnOrigin>()
+
+    /** For each case a chat follows, the question of the configuration plan its agent just proposed. */
+    private val proposedPlans = ConcurrentHashMap<UUID, UUID>()
     private val typing = ConcurrentHashMap<UUID, Job>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lanes = SerialLanes<UUID>(scope, name = "MessagingDelivery")
@@ -71,12 +88,16 @@ class MessagingDelivery(
         val event = created.event
         when {
             event is MessageEvent && event.actor.role == ActorRole.USER -> trackOrigin(event)
+            event is ToolResponseEvent -> trackPlan(event)
             else ->
                 turnOrigins[event.caseId]
                     ?.takeIf { isDelivered(event) }
-                    ?.let { origin -> lanes.submit(origin) { deliver(event, origin) } }
+                    ?.let { origin -> lanes.submit(origin.conversationId) { deliver(event, origin) } }
         }
-        if (event is CaseStatusEvent && event.status.isTerminal()) turnOrigins.remove(event.caseId)
+        if (event is CaseStatusEvent && event.status.isTerminal()) {
+            turnOrigins.remove(event.caseId)
+            proposedPlans.remove(event.caseId)
+        }
     }
 
     /** Sends what [caseId] says next to [conversationId], until the next user message says otherwise. */
@@ -84,13 +105,24 @@ class MessagingDelivery(
         caseId: UUID,
         conversationId: UUID,
     ) {
-        turnOrigins[caseId] = conversationId
+        turnOrigins[caseId] = TurnOrigin(conversationId, authorId = null)
     }
 
     private fun trackOrigin(message: MessageEvent) {
         when (val origin = message.sessionContext?.messagingConversationId()) {
             null -> turnOrigins.remove(message.caseId)
-            else -> turnOrigins[message.caseId] = origin
+            else -> turnOrigins[message.caseId] = TurnOrigin(origin, authorId = message.actor.id)
+        }
+    }
+
+    /** Remembers the question a plan announces, so that the question goes out as the plan's card. */
+    private fun trackPlan(response: ToolResponseEvent) {
+        if (response.toolName == ConfigAgentIntegration.PROPOSE_TOOL_NAME && turnOrigins.containsKey(response.caseId)) {
+            response.structuredOutput
+                ?.path("questionId")
+                ?.asText()
+                ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?.let { questionId -> proposedPlans[response.caseId] = questionId }
         }
     }
 
@@ -103,16 +135,21 @@ class MessagingDelivery(
 
     private fun deliver(
         event: CaseEvent,
-        conversationId: UUID,
+        origin: TurnOrigin,
     ) {
-        val conversation = conversations.findById(conversationId)
+        val conversation = conversations.findById(origin.conversationId)
         val adapter = conversation?.let { registry.adapter(it.platform, it.accountId) }
         when {
             conversation == null || adapter == null ->
-                logger.debug { "[MessagingDelivery] conversation $conversationId or its bot is gone, ${event.caseId} not delivered" }
+                logger.debug { "[MessagingDelivery] conversation ${origin.conversationId} or its bot is gone, ${event.caseId} not delivered" }
+            origin.authorId != null && origin.authorId != conversation.userId.toString() ->
+                logger.warn {
+                    "[MessagingDelivery] a message of ${origin.authorId} named the conversation ${conversation.id} of another user, " +
+                        "${event.caseId} not delivered there"
+                }
             event is CaseStatusEvent -> deliverStatus(event, conversation, adapter)
             else ->
-                render(event)?.let { message -> adapter.send(conversation.chatId, inCaseOf(conversation, event.caseId, message)) }
+                render(event, conversation)?.let { message -> adapter.send(conversation.chatId, inCaseOf(conversation, event.caseId, message)) }
         }
     }
 
@@ -134,7 +171,10 @@ class MessagingDelivery(
     }
 
     /** What a person reads of [event], or null when there is nothing to read. */
-    private fun render(event: CaseEvent): OutboundMessage? =
+    private fun render(
+        event: CaseEvent,
+        conversation: MessagingConversation,
+    ): OutboundMessage? =
         when (event) {
             is MessageEvent ->
                 event.content
@@ -142,7 +182,8 @@ class MessagingDelivery(
                     .joinToString("\n\n") { it.content }
                     .takeIf { it.isNotBlank() }
                     ?.let { OutboundMessage(it) }
-            is QuestionEvent -> renderQuestion(event)
+            is QuestionEvent ->
+                if (proposedPlans.remove(event.caseId, event.id)) renderPlan(event, conversation) else renderQuestion(event)
             is WarnEvent -> OutboundMessage("⚠️ ${event.message.take(MAX_NOTICE_LENGTH)}")
             is ErrorEvent -> OutboundMessage("⚠️ ${event.message.take(MAX_NOTICE_LENGTH)}")
             else -> null
@@ -168,6 +209,27 @@ class MessagingDelivery(
                         },
                 )
         }
+
+    /**
+     * The card of the plan [question] asks about, read through the card's endpoint as the chat's user, who may
+     * apply it only if it was proposed to them. The plain question when the card cannot be read.
+     */
+    private fun renderPlan(
+        question: QuestionEvent,
+        conversation: MessagingConversation,
+    ): OutboundMessage {
+        val viewer = userService.findById(conversation.userId)
+        val view =
+            viewer?.let { user ->
+                runCatching { asUser(user) { configChanges.viewConfigChange(question.caseId, question.id) } }
+                    .onFailure { logger.warn(it) { "[MessagingDelivery] the plan of question ${question.id} cannot be read, sent as a question" } }
+                    .getOrNull()
+            }
+        return when {
+            viewer == null || view == null -> renderQuestion(question)
+            else -> MessagingPlanCards.card(view, viewer.id, clock.instant(), links.case(question.namespaceId, question.caseId))
+        }
+    }
 
     /** Names the case when the chat has moved on to another one since. */
     private fun inCaseOf(
@@ -199,6 +261,15 @@ class MessagingDelivery(
             },
         )?.cancel()
     }
+
+    /**
+     * Where the current turn of a case came from: [conversationId], named by the message of [authorId], or by
+     * AgentOS itself when null ([redirect]).
+     */
+    private data class TurnOrigin(
+        val conversationId: UUID,
+        val authorId: String?,
+    )
 
     companion object : KLogging() {
         private const val MAX_NOTICE_LENGTH = 500
