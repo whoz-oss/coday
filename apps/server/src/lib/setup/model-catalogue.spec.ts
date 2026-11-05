@@ -1,5 +1,7 @@
 import {
   CATALOGUE_PROVIDER_IDS,
+  DEFAULT_MODEL_ALIAS,
+  defaultModelOf,
   getCatalogueProvider,
   MODEL_ALIASES,
   MODEL_CATALOGUE,
@@ -47,6 +49,24 @@ describe('model catalogue shape', () => {
   it('uses the provider id as the AgentOS provider name (the idempotency key)', () => {
     for (const id of CATALOGUE_PROVIDER_IDS) expect(MODEL_CATALOGUE[id].name).toBe(id)
     expect(getCatalogueProvider('nope')).toBeUndefined()
+  })
+})
+
+describe('default model', () => {
+  it('is the `default` alias AgentOS falls back to, outside the 4 chat aliases', () => {
+    expect(DEFAULT_MODEL_ALIAS).toBe('default')
+    expect(MODEL_ALIASES).not.toContain(DEFAULT_MODEL_ALIAS)
+  })
+
+  it.each(CATALOGUE_PROVIDER_IDS)('%s: is its SMALL model, the cheapest one', (id) => {
+    const provider = MODEL_CATALOGUE[id]
+    const model = defaultModelOf(provider)
+    expect(model.apiModelName).toBe(provider.models.SMALL.apiModelName)
+    expect(model.pricing).toEqual(provider.models.SMALL.pricing)
+    expect(model.contextWindow).toBe(provider.models.SMALL.contextWindow)
+    expect(model.description).toContain(provider.label)
+    const inputs = Object.values(provider.models).map((m) => m.pricing.inputMTokens)
+    expect(model.pricing.inputMTokens).toBe(Math.min(...inputs))
   })
 })
 
