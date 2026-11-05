@@ -6,6 +6,8 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.chat.sentTo
@@ -199,6 +201,18 @@ class ChatModelFactoryUnitSpec : StringSpec({
         ReasoningEffort.MEDIUM.sentTo(AiApiType.Ollama) shouldBe ReasoningEffort.MEDIUM
         ReasoningEffort.HIGH.sentTo(AiApiType.Anthropic).shouldBeNull()
         ReasoningEffort.HIGH.sentTo(AiApiType.Gemini).shouldBeNull()
+    }
+
+    "Claude Code receives every level as is, and its lowest one for none" {
+        ReasoningEffort.MAX.sentTo(AiApiType.ClaudeCode) shouldBe ReasoningEffort.MAX
+        ReasoningEffort.XHIGH.sentTo(AiApiType.ClaudeCode) shouldBe ReasoningEffort.XHIGH
+        ReasoningEffort.NONE.sentTo(AiApiType.ClaudeCode) shouldBe ReasoningEffort.LOW
+    }
+
+    "a Claude Code model cannot serve as a chat model: it runs on the CLI" {
+        shouldThrow<UnsupportedOperationException> {
+            factory.createChatModel(AiApiType.ClaudeCode, baseUrl = null, apiKey = null, modelName = "sonnet")
+        }.message shouldContain "runs on the Claude Code CLI"
     }
 
     "Anthropic ignores the reasoning effort and keeps thinking unset" {

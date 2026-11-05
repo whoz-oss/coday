@@ -30,6 +30,8 @@ internal fun ReasoningEffort.sentTo(apiType: AiApiType): ReasoningEffort? =
             }
         // No effort is sent to them: see AiApiType.supportsReasoningEffort.
         AiApiType.Anthropic, AiApiType.Gemini -> null
+        // The CLI has no level without reasoning: NONE goes out as its lowest level.
+        AiApiType.ClaudeCode -> if (this == ReasoningEffort.NONE) ReasoningEffort.LOW else this
     }
 
 /**

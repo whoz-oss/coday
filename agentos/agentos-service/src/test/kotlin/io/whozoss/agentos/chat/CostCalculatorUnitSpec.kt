@@ -462,6 +462,22 @@ class CostCalculatorUnitSpec :
             sum.estimatedCostUsd.shouldNotBeNull() shouldBe (0.003 plusOrMinus 1e-10)
         }
 
+        "fromCounts prices plain counts, as reported by the Claude Code CLI" {
+            val usage = CostCalculator.fromCounts(100, 50, 1_000, 200, modelWithPricing(3.0, 15.0, 0.3, 3.75))
+
+            usage.inputTokens shouldBe 100L
+            usage.outputTokens shouldBe 50L
+            usage.cacheReadTokens shouldBe 1_000L
+            usage.cacheWriteTokens shouldBe 200L
+            usage.totalTokens shouldBe 1_350L
+            usage.estimatedCostUsd.shouldNotBeNull() shouldBe ((100 * 3.0 + 50 * 15.0 + 1_000 * 0.3 + 200 * 3.75) / 1_000_000.0 plusOrMinus 1e-12)
+        }
+
+        "fromCounts keeps the cost unknown without pricing, and zero with zero rates" {
+            CostCalculator.fromCounts(100, 50, 0, 0, modelWithPricing()).estimatedCostUsd.shouldBeNull()
+            CostCalculator.fromCounts(100, 50, 0, 0, modelWithPricing(0.0, 0.0, 0.0, 0.0)).estimatedCostUsd shouldBe 0.0
+        }
+
         "LlmUsage.plus: null cost on either operand propagates null" {
             // null means "pricing not configured" — the aggregate cost is then
             // an undercount and must not be reported as a known value.

@@ -352,6 +352,9 @@ agentos:
     # Turns running on Claude Code at once on this instance; further turns wait for a slot.
     # Override with env var: AGENTOS_CLAUDE_CODE_MAX_CONCURRENT_PROCESSES
     # max-concurrent-processes: 4
+    # A turn whose CLI prints nothing for this long is considered stuck and stopped.
+    # Override with env var: AGENTOS_CLAUDE_CODE_IDLE_TIMEOUT
+    # idle-timeout: 10m
   plugins:
     # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
     # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,

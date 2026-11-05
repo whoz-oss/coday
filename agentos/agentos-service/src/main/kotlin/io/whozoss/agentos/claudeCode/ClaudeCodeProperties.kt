@@ -20,6 +20,7 @@ import java.time.Duration
  * | `minimumVersion` | `AGENTOS_CLAUDE_CODE_MINIMUM_VERSION` | `2.1.317` | Oldest CLI version whose stream protocol was verified |
  * | `statusTimeout` | `AGENTOS_CLAUDE_CODE_STATUS_TIMEOUT` | `10s` | Timeout of `claude --version` and `claude auth status` |
  * | `maxConcurrentProcesses` | `AGENTOS_CLAUDE_CODE_MAX_CONCURRENT_PROCESSES` | `4` | Turns running at once on the instance; others wait |
+ * | `idleTimeout` | `AGENTOS_CLAUDE_CODE_IDLE_TIMEOUT` | `10m` | A turn whose CLI stays silent this long is stopped |
  */
 @ConfigurationProperties(prefix = "agentos.claude-code")
 data class ClaudeCodeProperties(
@@ -40,4 +41,9 @@ data class ClaudeCodeProperties(
      * and each process holds a Node runtime in memory.
      */
     val maxConcurrentProcesses: Int = 4,
+    /**
+     * The CLI streams while the model writes or thinks, and reports its API retries: a turn that prints
+     * nothing for this long is considered stuck and stopped.
+     */
+    val idleTimeout: Duration = Duration.ofMinutes(10),
 )
