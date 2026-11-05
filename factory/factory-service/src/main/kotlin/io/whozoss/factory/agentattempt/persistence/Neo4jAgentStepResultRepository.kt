@@ -221,9 +221,11 @@ class Neo4jAgentStepResultRepository(
                 return SubmitOutcome.Replayed(submitted)
             }
             // If the prior submission was a non-terminal NEEDS_RESEARCH and the worker now
-            // submits a resolved result (PASS/FAIL or updated research) on the same attempt
-            // (e.g. after being resumed directly in AgentOS), allow superseding the NEEDS_RESEARCH result.
-            if (submitted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
+            // submits a resolved result (PASS or FAIL) on the same attempt (e.g. after being
+            // resumed directly in AgentOS), allow superseding the NEEDS_RESEARCH result.
+            // A divergent second NEEDS_RESEARCH still collides as required by the spec.
+            val incomingStatus = AgentStepResultValidation.parseBusiness(business).status
+            if (submitted.status != AgentStepResultStatus.NEEDS_RESEARCH || incomingStatus == AgentStepResultStatus.NEEDS_RESEARCH) {
                 throw ResultSemanticCollisionException()
             }
         }

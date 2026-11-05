@@ -254,7 +254,7 @@ class SessionRunService(
         // stays stable until `persistProjection` bumps it at the end. Using it
         // (instead of a hardcoded 1) keeps `expectedRevision` in step with the
         // persisted snapshot and avoids stale-revision conflicts across turns.
-        val expectedRevision = instance.revision
+        val expectedRevision = { repository.findInstance(scope, namespaceId, workflowId)?.revision ?: instance.revision }
         // The ticket may be supplied by the run request, or have travelled with
         // the start command / instance relations. Either way it must reach the
         // step execution context (agent brief) and be persisted on the instance.
@@ -292,7 +292,7 @@ class SessionRunService(
                 reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
                 if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
-                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision)) {
+                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision())) {
                         suspended = true
                         return@run
                     }
@@ -321,7 +321,7 @@ class SessionRunService(
                         if (claimStep(scope, namespaceId, workflowId, step.id, statuses)) {
                             recordCodePreparationFailure(
                                 scope, namespaceId, workflowId, step, effectiveRepoRoot,
-                                error, expectedRevision, statuses,
+                                error, expectedRevision(), statuses,
                             )
                         }
                         continue
@@ -337,7 +337,7 @@ class SessionRunService(
                     step,
                     effectiveRepoRoot,
                     effectiveTicket,
-                    expectedRevision,
+                    expectedRevision(),
                     workflowType,
                 )?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
@@ -591,6 +591,7 @@ class SessionRunService(
         // re-arms the step as a brand-new attempt on the same worktree.
         if (execution.outcome is CapabilityOutcome.AgentNeedsResearch) {
             val reArmed = routeNeedsResearch(scope, namespaceId, workflowId, step, execution.outcome, repoRoot, ticket)
+            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, expectedRevision)
             val resultingStatus = if (reArmed) WorkflowStatuses.READY else WorkflowStatuses.NEEDS_RESEARCH
             setStatus(scope, namespaceId, workflowId, step.id, resultingStatus, statuses)
             recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution, statuses)
@@ -758,6 +759,8 @@ class SessionRunService(
         status: String,
         progress: SessionProgress,
     ) {
+        if (progress.statuses[stepId] == status) return
+        progress.statuses[stepId] = status
         val now = nowIso()
         when (status) {
             WorkflowStatuses.RUNNING -> progress.startedAt.putIfAbsent(stepId, now)
@@ -770,8 +773,6 @@ class SessionRunService(
                 progress.waitingQuestions.remove(stepId)
             }
         }
-        if (progress.statuses[stepId] == status && status != WorkflowStatuses.COMPLETED && status != WorkflowStatuses.FAILED) return
-        progress.statuses[stepId] = status
         repository.upsertStepState(
             scope,
             WorkflowStepStateRecord(
