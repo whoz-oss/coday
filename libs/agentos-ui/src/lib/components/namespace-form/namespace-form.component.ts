@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { UsageConfigurationService } from '../../services/usage-configuration.service'
 import { UserStateService } from '../../services/user-state.service'
 import { absolutePathValidator } from './absolute-path.validator'
@@ -23,9 +24,8 @@ const MAX_TOOL_ROUNDS_MAX = 2_147_483_647
  */
 @Component({
   selector: 'agentos-namespace-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DS_PAGE_KIT],
   templateUrl: './namespace-form.component.html',
-  styleUrl: './namespace-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceFormComponent implements OnInit {
@@ -41,6 +41,12 @@ export class NamespaceFormComponent implements OnInit {
    * but a super-admin (403). Others see the stored value, read-only, and the form sends it back untouched.
    */
   protected readonly canEditSharedExchangePath = computed(() => this.userState.currentUser()?.isAdmin === true)
+
+  protected readonly sharedExchangePathHint = computed(() =>
+    this.canEditSharedExchangePath()
+      ? 'Absolute path of a folder on the server that holds the files shared by the namespace. Leave empty for the default location.'
+      : 'Only a super-admin can change this folder.'
+  )
 
   /** Shows what an empty threshold inherits. Display only: the default is never written to the namespace. */
   protected readonly runCostThresholdPlaceholder = computed(() => {

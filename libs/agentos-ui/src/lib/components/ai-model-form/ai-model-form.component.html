@@ -1,93 +1,79 @@
-<div class="ai-model-form">
-  <header class="ai-model-form__header">
-    <button class="ai-model-form__back" type="button" (click)="cancel()" title="Back to AI models">
-      <span class="ai-model-form__back-icon">&#8592;</span>
-      AI models
+<ds-page>
+  <ds-section-header [title]="isEditMode() ? 'Edit AI model' : 'New AI model'">
+    <button dsButton variant="ghost" type="button" title="Back to AI models" (click)="cancel()">
+      &larr; AI models
     </button>
-    <h1 class="ai-model-form__title">{{ isEditMode() ? 'Edit AI model' : 'New AI model' }}</h1>
-  </header>
+  </ds-section-header>
 
   @if (isLoading()) {
-    <p class="ai-model-form__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <form class="ai-model-form__form" [formGroup]="form" (ngSubmit)="submit()">
-      <div class="ai-model-form__field">
-        <label class="ai-model-form__label" for="model-provider"> Provider <span aria-hidden="true">*</span> </label>
+    <form class="ds-form" [formGroup]="form" (ngSubmit)="submit()">
+      <ds-form-field label="Provider" controlId="model-provider" required>
         @if (isEditMode()) {
           <!-- Read-only in edit mode: provider cannot be reassigned after creation -->
-          <input
-            id="model-provider"
-            class="ai-model-form__input ai-model-form__input--readonly"
-            type="text"
-            [value]="selectedProviderLabel()"
-            readonly
-            tabindex="-1"
-          />
+          <input dsControl id="model-provider" type="text" [value]="selectedProviderLabel()" readonly tabindex="-1" />
         } @else {
-          <select id="model-provider" class="ai-model-form__select" [formControl]="aiProviderIdControl">
+          <select dsControl id="model-provider" [formControl]="aiProviderIdControl">
             <option value="" disabled>Select provider</option>
             @for (provider of providers(); track trackByProvider($index, provider)) {
               <option [value]="provider.id">{{ provider.name }} ({{ provider.apiType }})</option>
             }
           </select>
         }
-      </div>
+      </ds-form-field>
 
-      <div class="ai-model-form__field">
-        <label class="ai-model-form__label" for="model-api-name"> API name <span aria-hidden="true">*</span> </label>
+      <ds-form-field label="API name" controlId="model-api-name" required>
         <input
+          dsControl
+          mono
           id="model-api-name"
-          class="ai-model-form__input ai-model-form__input--mono"
           type="text"
           placeholder="e.g. gpt-4o, claude-3-5-sonnet-20241022"
           [formControl]="apiModelNameControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-model-form__field">
-        <label class="ai-model-form__label" for="model-description">Description</label>
+      <ds-form-field label="Description" controlId="model-description">
         <input
+          dsControl
           id="model-description"
-          class="ai-model-form__input"
           type="text"
           placeholder="Optional — short description of this model config"
           [formControl]="descriptionControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-model-form__field">
-        <label class="ai-model-form__label" for="model-alias">Alias</label>
+      <ds-form-field label="Alias" controlId="model-alias">
         <input
+          dsControl
           id="model-alias"
-          class="ai-model-form__input"
           type="text"
           placeholder="e.g. fast, smart — short identifier used internally"
           [formControl]="aliasControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-model-form__field">
-        <label class="ai-model-form__label" for="model-priority">Priority</label>
+      <ds-form-field label="Priority" controlId="model-priority">
         <input
+          dsControl
           id="model-priority"
-          class="ai-model-form__input"
           type="number"
           placeholder="0 — higher wins when multiple configs share the same alias"
           min="0"
           step="1"
           [formControl]="priorityControl"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-model-form__row">
-        <div class="ai-model-form__field">
-          <label class="ai-model-form__label" for="model-temperature">Temperature</label>
+      <div class="ds-grid-2">
+        <ds-form-field label="Temperature" controlId="model-temperature">
           <input
+            dsControl
             id="model-temperature"
-            class="ai-model-form__input"
             type="number"
             placeholder="0 – 2"
             min="0"
@@ -95,58 +81,54 @@
             step="0.1"
             [formControl]="temperatureControl"
           />
-        </div>
-
-        <div class="ai-model-form__field">
-          <label class="ai-model-form__label" for="model-context-window">Context window</label>
+        </ds-form-field>
+        <ds-form-field label="Context window" controlId="model-context-window">
           <input
+            dsControl
             id="model-context-window"
-            class="ai-model-form__input"
             type="number"
             placeholder="e.g. 128000"
             min="1"
             step="1"
             [formControl]="contextWindowControl"
           />
-        </div>
+        </ds-form-field>
       </div>
 
-      <div class="ai-model-form__field">
-        <label class="ai-model-form__label" for="model-max-completion-tokens">Max completion tokens</label>
+      <ds-form-field label="Max completion tokens" controlId="model-max-completion-tokens">
         <input
+          dsControl
           id="model-max-completion-tokens"
-          class="ai-model-form__input"
           type="number"
           placeholder="e.g. 4096"
           min="1"
           step="1"
           [formControl]="maxCompletionTokensControl"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="ai-model-form__field">
-        <label class="ai-model-form__label" for="model-reasoning-effort">Reasoning effort</label>
-        <select id="model-reasoning-effort" class="ai-model-form__select" [formControl]="reasoningEffortControl">
+      <ds-form-field label="Reasoning effort" controlId="model-reasoning-effort">
+        <select dsControl id="model-reasoning-effort" [formControl]="reasoningEffortControl">
           <option [ngValue]="null">Provider default</option>
           @for (effort of reasoningEffortOptions; track effort) {
             <option [ngValue]="effort">{{ effort.toLowerCase() }}</option>
           }
         </select>
         @if (reasoningEffortUnsupported()) {
-          <span class="ai-model-form__hint">Not supported yet for Anthropic and Gemini providers.</span>
+          <p class="ds-hint">Not supported yet for Anthropic and Gemini providers.</p>
         } @else {
-          <span class="ai-model-form__hint">
+          <p class="ds-hint">
             Sent as is to OpenAI-compatible providers, which reject levels the model does not support. Through Requesty,
             Claude models do not apply it faithfully.
-          </span>
+          </p>
         }
         @if (temperatureMayConflictWithEffort()) {
-          <span class="ai-model-form__hint ai-model-form__hint--warning">
+          <p class="ds-hint ds-hint--warning">
             OpenAI reasoning models (GPT-5.1 and later) reject a temperature other than 1 with an effort: leave
             Temperature empty or set it to 1.
-          </span>
+          </p>
         }
-      </div>
+      </ds-form-field>
 
       <div class="ai-model-form__field">
         <label class="ai-model-form__toggle-label">
@@ -164,79 +146,67 @@
       </div>
 
       <!-- Pricing section (all values per million tokens) -->
-      <fieldset class="ai-model-form__section" [formGroup]="pricingGroup">
-        <legend class="ai-model-form__section-title">
-          Pricing
-          <span class="ai-model-form__section-hint">(per million tokens — leave blank to skip cost monitoring)</span>
-        </legend>
-
-        <div class="ai-model-form__row">
-          <div class="ai-model-form__field">
-            <label class="ai-model-form__label" for="pricing-input">Input</label>
+      <ds-fieldset
+        legend="Pricing"
+        legendHint="per million tokens — leave blank to skip cost monitoring"
+        [formGroup]="pricingGroup"
+      >
+        <div class="ds-grid-2">
+          <ds-form-field label="Input" controlId="pricing-input">
             <input
+              dsControl
               id="pricing-input"
-              class="ai-model-form__input"
               type="number"
               placeholder="e.g. 2.50"
               min="0"
               step="0.01"
               formControlName="inputMTokens"
             />
-          </div>
-
-          <div class="ai-model-form__field">
-            <label class="ai-model-form__label" for="pricing-output">Output</label>
+          </ds-form-field>
+          <ds-form-field label="Output" controlId="pricing-output">
             <input
+              dsControl
               id="pricing-output"
-              class="ai-model-form__input"
               type="number"
               placeholder="e.g. 10.00"
               min="0"
               step="0.01"
               formControlName="outputMTokens"
             />
-          </div>
+          </ds-form-field>
         </div>
-
-        <div class="ai-model-form__row">
-          <div class="ai-model-form__field">
-            <label class="ai-model-form__label" for="pricing-cache-write">Cache write</label>
+        <div class="ds-grid-2">
+          <ds-form-field label="Cache write" controlId="pricing-cache-write">
             <input
+              dsControl
               id="pricing-cache-write"
-              class="ai-model-form__input"
               type="number"
               placeholder="e.g. 3.75"
               min="0"
               step="0.01"
               formControlName="cacheWrite"
             />
-          </div>
-
-          <div class="ai-model-form__field">
-            <label class="ai-model-form__label" for="pricing-cache-read">Cache read</label>
+          </ds-form-field>
+          <ds-form-field label="Cache read" controlId="pricing-cache-read">
             <input
+              dsControl
               id="pricing-cache-read"
-              class="ai-model-form__input"
               type="number"
               placeholder="e.g. 0.30"
               min="0"
               step="0.01"
               formControlName="cacheRead"
             />
-          </div>
+          </ds-form-field>
         </div>
-      </fieldset>
+      </ds-fieldset>
 
-      <div class="ai-model-form__actions">
-        <button
-          class="ai-model-form__btn ai-model-form__btn--primary"
-          type="submit"
-          [disabled]="form.invalid || isSubmitting()"
-        >
+      <ds-form-actions>
+        <button dsButton variant="primary" type="submit" [disabled]="form.invalid || isSubmitting()">
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
-        <button class="ai-model-form__btn" type="button" (click)="cancel()">Cancel</button>
-      </div>
+        <button dsButton type="button" (click)="cancel()">Cancel</button>
+      </ds-form-actions>
     </form>
   }
-</div>
+</ds-page>

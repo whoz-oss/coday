@@ -64,10 +64,32 @@
                     }
                   </button>
                 }
+                @if (canConfigureNamespace() && selectedNamespace()) {
+                  <div class="shell-sidebar__ns-menu-separator" role="separator"></div>
+                  <button
+                    class="shell-sidebar__ns-item shell-sidebar__ns-item--config"
+                    type="button"
+                    (click)="configureNamespaceRequested.emit()"
+                  >
+                    <span class="material-icons shell-sidebar__ns-config-icon" aria-hidden="true">settings</span>
+                    <span class="shell-sidebar__ns-item-name">Configure {{ selectedNamespace()?.name }}</span>
+                  </button>
+                }
               </div>
             }
           </div>
         </div>
+        @if (canConfigureNamespace() && selectedNamespace()) {
+          <button
+            type="button"
+            class="shell-sidebar__ns-config-btn"
+            [title]="'Configure ' + selectedNamespace()?.name"
+            [attr.aria-label]="'Configure ' + selectedNamespace()?.name"
+            (click)="configureNamespaceRequested.emit()"
+          >
+            <span class="material-icons" aria-hidden="true">settings</span>
+          </button>
+        }
       </div>
 
       <!-- Row 2: New case + Search -->
@@ -119,7 +141,9 @@
       <div class="shell-sidebar__user-menu">
         <button class="shell-sidebar__user-btn" type="button" title="User menu" (click)="menuToggled.emit($event)">
           <!-- Initials square -->
-          <span class="shell-sidebar__user-avatar">{{ userInitials() || '??' }}</span>
+          <span class="shell-sidebar__user-avatar">
+            <ds-avatar [src]="userAvatarUrl()" [initials]="userInitials() || '??'" />
+          </span>
           <!-- Full name -->
           <span class="shell-sidebar__user-info">
             <span class="shell-sidebar__user-name">{{ userName() }}</span>
@@ -224,6 +248,17 @@
               }
             </button>
           }
+          @if (canConfigureNamespace() && selectedNamespace()) {
+            <div class="shell-sidebar__ns-menu-separator" role="separator"></div>
+            <button
+              class="shell-sidebar__ns-item shell-sidebar__ns-item--config"
+              type="button"
+              (click)="onCompactConfigureNamespace()"
+            >
+              <span class="material-icons shell-sidebar__ns-config-icon" aria-hidden="true">settings</span>
+              <span class="shell-sidebar__ns-item-name">Configure {{ selectedNamespace()?.name }}</span>
+            </button>
+          }
         </div>
       }
     }
@@ -319,7 +354,7 @@
       title="User menu"
       (click)="onCompactUserBtnClick($event)"
     >
-      {{ userInitials() || '?' }}
+      <ds-avatar [src]="userAvatarUrl()" [initials]="userInitials() || '?'" />
     </button>
 
     <!-- Menu en position fixed pour échapper à overflow:hidden -->

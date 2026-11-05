@@ -1,24 +1,32 @@
-<section class="report">
-  <h1>Usage and costs</h1>
+<ds-page full>
+  <ds-section-header
+    title="Usage and costs"
+    description="Recorded LLM usage across this namespace. Costs are estimates in the platform currency."
+  />
   @if (configuration.state() === 'loading') {
-    <p role="status">Loading usage settings…</p>
+    <p class="settings-table__status" role="status">Loading usage settings…</p>
   } @else if (configuration.state() === 'error') {
-    <p role="alert">Could not load usage settings. Please try again.</p>
-    <button type="button" (click)="configuration.retry()">Retry usage settings</button>
+    <ds-notice>Could not load usage settings. Please try again.</ds-notice>
+    <div>
+      <button dsButton type="button" (click)="configuration.retry()">Retry usage settings</button>
+    </div>
   } @else if (configuration.state() === 'disabled') {
-    <p role="status">Usage tracking is disabled.</p>
+    <p class="settings-table__status" role="status">Usage tracking is disabled.</p>
   } @else {
-    <p>Recorded LLM usage across this namespace. Costs are estimates in the platform currency.</p>
-    <form (ngSubmit)="load()" class="filters">
-      <label>From (UTC)<input type="date" name="from" [(ngModel)]="from" required /></label>
-      <label>To (UTC)<input type="date" name="to" [(ngModel)]="to" required /></label>
-      <button type="submit">Refresh</button>
+    <form class="ds-inline ds-inline--wrap ds-inline--end" (ngSubmit)="load()">
+      <ds-form-field label="From (UTC)" controlId="usage-from">
+        <input dsControl id="usage-from" type="date" name="from" [(ngModel)]="from" required />
+      </ds-form-field>
+      <ds-form-field label="To (UTC)" controlId="usage-to">
+        <input dsControl id="usage-to" type="date" name="to" [(ngModel)]="to" required />
+      </ds-form-field>
+      <button dsButton variant="primary" type="submit">Refresh</button>
     </form>
     @if (error(); as message) {
-      <p role="alert">{{ message }}</p>
+      <ds-notice>{{ message }}</ds-notice>
     }
     @if (loading()) {
-      <p role="status">Loading usage…</p>
+      <p class="settings-table__status" role="status">Loading usage…</p>
     } @else if (!error()) {
       @for (
         group of [
@@ -27,34 +35,36 @@
         ];
         track group.title
       ) {
-        <h2>{{ group.title }}</h2>
+        <h3 class="ds-micro">{{ group.title }}</h3>
         @if (group.rows.length === 0) {
-          <p>No recorded usage for this period.</p>
+          <p class="settings-table__status">No recorded usage for this period.</p>
         } @else {
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Tokens</th>
-                  <th scope="col">Input / output</th>
-                  <th scope="col">Cache read / write</th>
-                  <th scope="col">Estimated cost</th>
+          <div class="settings-table__wrap">
+            <table dsTable role="table" [attr.aria-label]="'Usage ' + group.title.toLowerCase()">
+              <thead role="rowgroup">
+                <tr role="row">
+                  <th role="columnheader">Name</th>
+                  <th role="columnheader">Tokens</th>
+                  <th role="columnheader">Input / output</th>
+                  <th role="columnheader">Cache read / write</th>
+                  <th role="columnheader">Estimated cost</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody role="rowgroup">
                 @for (row of group.rows; track row.key) {
-                  <tr>
-                    <th scope="row">{{ row.key }}</th>
-                    <td>{{ row.aggregate.totalTokens | number }}</td>
-                    <td>{{ row.aggregate.inputTokens | number }} / {{ row.aggregate.outputTokens | number }}</td>
-                    <td>
+                  <tr role="row">
+                    <td role="cell" data-label="Name" data-title class="settings-table__name">{{ row.key }}</td>
+                    <td role="cell" data-label="Tokens">{{ row.aggregate.totalTokens | number }}</td>
+                    <td role="cell" data-label="Input / output">
+                      {{ row.aggregate.inputTokens | number }} / {{ row.aggregate.outputTokens | number }}
+                    </td>
+                    <td role="cell" data-label="Cache read / write">
                       {{ row.aggregate.cacheReadTokens | number }} / {{ row.aggregate.cacheWriteTokens | number }}
                     </td>
-                    <td>
+                    <td role="cell" data-label="Estimated cost">
                       {{ row.aggregate.cost | agentosCost: row.aggregate.unknownCostCount }}
                       @if (row.aggregate.unknownCostCount > 0) {
-                        <small>{{ row.aggregate.unknownCostCount }} record(s) with unknown cost</small>
+                        <p class="ds-hint">{{ row.aggregate.unknownCostCount }} record(s) with unknown cost</p>
                       }
                     </td>
                   </tr>
@@ -64,7 +74,9 @@
           </div>
         }
       }
-      <p>Unpriced usage is kept separate from known costs. Active agent runs appear here after they finish.</p>
+      <p class="ds-hint">
+        Unpriced usage is kept separate from known costs. Active agent runs appear here after they finish.
+      </p>
     }
   }
-</section>
+</ds-page>

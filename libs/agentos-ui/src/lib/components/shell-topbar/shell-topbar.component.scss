@@ -2,65 +2,81 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 24px;
   padding: 14px 12px;
   border-bottom: 1px solid var(--color-divider);
   background: var(--color-bg);
   flex-shrink: 0;
 
-  // ── Logo / brand ──────────────────────────────────────────────────────────
+  a {
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    text-decoration: none;
+    text-underline-offset: 4px;
+    white-space: nowrap;
 
-  &__brand {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    transition: opacity 140ms ease;
+    &:hover,
+    &.shell-topbar__link--active {
+      color: var(--color-accent-700);
+    }
 
-    &:hover {
-      opacity: 0.8;
+    &.shell-topbar__link--active {
+      text-decoration: underline;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
     }
   }
 
-  &__logo-img {
-    height: 28px;
-    width: auto;
-    object-fit: contain;
-    display: block;
-    flex: none;
+  // ── Way out: always leftmost, the same on every settings page ───────────────────────────────
+
+  &__back {
+    display: inline-flex;
+    align-items: baseline;
+    flex: 0 1 auto;
+    gap: 6px;
+    min-width: 0;
+    max-width: 320px;
+    font-weight: 600;
   }
 
-  &__logo-text {
-    font-weight: 700;
-    font-size: 18px;
-    color: var(--color-text);
-    letter-spacing: -0.02em;
-    white-space: nowrap;
+  // A long namespace name is cut, never wrapped: the bar keeps its height on every page.
+  &__back-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
+
+  // ── Configuration scopes ────────────────────────────────────────────────────────────────────
 
   &__links {
     display: flex;
     align-items: center;
     gap: 22px;
+    min-width: 0;
+    // Stays on the right even when the back link is not shown.
+    margin-left: auto;
+  }
+}
 
-    a {
-      color: var(--color-text);
-      font-family: var(--font-body);
-      font-size: 14px;
-      text-decoration: none;
-      text-underline-offset: 4px;
+// Narrow screens: the links scroll inside the bar instead of overflowing the page.
+@media (max-width: 760px) {
+  .shell-topbar {
+    gap: 16px;
+    padding: 10px 12px;
 
-      &:hover,
-      &.shell-topbar__link--active {
-        color: var(--color-accent-700);
-      }
+    &__back {
+      max-width: 45%;
+    }
 
-      &.shell-topbar__link--active {
-        text-decoration: underline;
-      }
+    &__links {
+      gap: 16px;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
     }
   }
 }

@@ -1,9 +1,7 @@
-import { Location } from '@angular/common'
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
-import { IconButtonComponent } from '@whoz-oss/design-system'
-import { Router } from '@angular/router'
+import { DisclosureComponent, DS_PAGE_KIT, SegmentedComponent } from '@whoz-oss/design-system'
 import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
@@ -49,15 +47,12 @@ interface UserGlobalRecap {
  */
 @Component({
   selector: 'agentos-user-profile',
-  imports: [ReactiveFormsModule, IconButtonComponent],
+  imports: [ReactiveFormsModule, DS_PAGE_KIT, SegmentedComponent, DisclosureComponent],
   templateUrl: './user-profile.component.html',
-  styleUrl: './user-profile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserProfileComponent implements OnInit {
   private readonly userState = inject(UserStateService)
-  private readonly router = inject(Router)
-  private readonly location = inject(Location)
   private readonly destroyRef = inject(DestroyRef)
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
@@ -93,6 +88,13 @@ export class UserProfileComponent implements OnInit {
    */
   protected readonly modeOverridden = computed(() => !isModeSupported(this.themeVariant(), this.themeMode()))
   protected readonly activeVariantLabel = computed(() => getThemeVariantDefinition(this.themeVariant()).label)
+  protected readonly activeVariantDescription = computed(
+    () => getThemeVariantDefinition(this.themeVariant()).description
+  )
+  /** Modes of the selector; one the active variant cannot render is shown disabled. */
+  protected readonly modeOptions = computed(() =>
+    this.themeOptions.map((option) => ({ ...option, disabled: this.isModeDisabled(option.value) }))
+  )
   /** Mode highlighted in the selector: the stored one, unless the variant cannot render it (the stored one is kept). */
   protected readonly shownMode = computed<ThemeMode>(() =>
     this.modeOverridden() ? resolveEffectiveMode(this.themeVariant(), this.themeMode(), false) : this.themeMode()
@@ -189,6 +191,16 @@ export class UserProfileComponent implements OnInit {
       } as UserGlobalRecap,
     }
   )
+
+  /** The recap, as the sections the template lists (empty ones left out). */
+  protected readonly recapSections = computed(() => {
+    const recap = this.recap()
+    return [
+      { title: 'Integrations', entries: recap.integrations },
+      { title: 'AI Providers', entries: recap.aiProviders },
+      { title: 'My global auth settings', entries: recap.authSettings },
+    ].filter((section) => section.entries.length > 0)
+  })
 
   ngOnInit(): void {
     if (this.currentUser()) {
@@ -306,14 +318,6 @@ export class UserProfileComponent implements OnInit {
 
   private entryKey(entry: UserGlobalEntry): string {
     return `${entry.category}:${entry.id}`
-  }
-
-  protected goBack(): void {
-    if (window.history.length > 1) {
-      this.location.back()
-    } else {
-      this.router.navigate(['/agentos'])
-    }
   }
 
   protected trackEntry(_index: number, entry: UserGlobalEntry): string {

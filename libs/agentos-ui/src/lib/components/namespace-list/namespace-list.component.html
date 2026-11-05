@@ -1,33 +1,72 @@
-<ds-entity-list
-  title="Namespaces"
-  [items]="(namespaceItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No namespaces yet. Create one to get started."
-  cardMinWidth="300px"
-  [itemTemplate]="namespaceItemTpl"
-  (itemSelected)="navigateToHome($event)"
-  (createRequested)="navigateToCreate()"
-/>
-
-<!-- Item template: renders NamespaceItemComponent for each entity-list card slot -->
-<ng-template #namespaceItemTpl let-item>
-  @if (namespacesById().get(item.id); as ns) {
-    <agentos-namespace-item
-      [namespace]="ns"
-      (selected)="navigateToHome($event.id ?? '')"
-      (configureRequested)="openConfigure($event)"
-      (deleteRequested)="deleteNamespace($event)"
-      (integrationsRequested)="openIntegrations($event)"
-      (aiProvidersRequested)="openAiProviders($event)"
-      (aiModelsRequested)="openAiModels($event)"
-      (agentConfigsRequested)="openAgentConfigs($event)"
-      (promptsRequested)="openPrompts($event)"
-      (skillsRequested)="openSkills($event)"
-      (scheduledPromptsRequested)="openScheduledPrompts($event)"
-      (userGroupsRequested)="openUserGroups($event)"
-      (authSettingsRequested)="openAuthSettings($event)"
-      (toolInvokeRequested)="openToolInvoke($event)"
+<ds-page framed full>
+  <ds-section-header
+    title="Namespaces"
+    description="Each namespace groups its own cases, agents, members and configuration."
+  >
+    <agentos-table-filter
+      label="Filter namespaces"
+      placeholder="Filter namespaces…"
+      [query]="rowFilter.query()"
+      (queryChange)="rowFilter.query.set($event)"
     />
+    <button dsButton variant="primary" type="button" (click)="openCreateForm()">New namespace</button>
+  </ds-section-header>
+  @if (deletion.error()) {
+    <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
   }
-</ng-template>
+  @if (isLoading()) {
+    <p class="settings-table__status" role="status">Loading namespaces…</p>
+  } @else if (namespaces().length === 0) {
+    <p class="settings-table__status">No namespaces yet. Create one to get started.</p>
+  } @else if (rowFilter.filteredRows().length === 0) {
+    <p class="settings-table__status" role="status">No namespaces match the current filter.</p>
+  } @else {
+    <div class="settings-table__wrap">
+      <table dsTable role="table" aria-label="Namespaces">
+        <thead role="rowgroup">
+          <tr role="row">
+            <th role="columnheader">Name</th>
+            <th role="columnheader">Description</th>
+            <th role="columnheader">Default agent</th>
+            <th role="columnheader"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody role="rowgroup">
+          @for (ns of rowFilter.filteredRows(); track ns.id ?? ns.name) {
+            <tr role="row" class="settings-table__row--link" (click)="open(ns)">
+              <td role="cell" data-label="Name" data-title class="settings-table__name">{{ ns.name }}</td>
+              <td role="cell" data-label="Description" class="settings-table__secondary">
+                {{ ns.description || '—' }}
+              </td>
+              <td role="cell" data-label="Default agent" class="settings-table__secondary">
+                {{ ns.defaultAgentName || '—' }}
+              </td>
+              <td role="cell" data-label="Actions" data-actions (click)="$event.stopPropagation()">
+                <div class="settings-table__actions">
+                  @if (deletion.confirmingId() !== ns.id) {
+                    <button type="button" [attr.aria-label]="'Open ' + ns.name" (click)="open(ns)">Open</button>
+                    <button type="button" [attr.aria-label]="'Configure ' + ns.name" (click)="configure(ns)">
+                      Configure
+                    </button>
+                  }
+                  @if (ns.id) {
+                    <agentos-row-delete-action
+                      [rowKey]="ns.id"
+                      [rowLabel]="ns.name"
+                      [state]="deletion"
+                      deleteClass="settings-table__delete"
+                      confirmLabelClass="settings-table__confirm-label"
+                      (deleteRequested)="deletion.request(ns.id)"
+                      (deleteConfirmed)="confirmDelete(ns)"
+                      (deleteCancelled)="deletion.cancel()"
+                    />
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</ds-page>

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
@@ -21,9 +21,8 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-prompts',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
+  imports: [ButtonDirective, SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-prompts.component.html',
-  styleUrl: './platform-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformPromptsComponent {

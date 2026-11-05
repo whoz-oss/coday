@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing'
+import { NamespaceControllerService, UserControllerService } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { SetupApiService } from './setup-api.service'
-import { SetupStateService } from './setup-state.service'
+import { parseWelcomePreview, SetupStateService } from './setup-state.service'
 import { SetupStatus } from './setup.models'
 
 const baseStatus = (patch: Partial<SetupStatus> = {}): SetupStatus =>
@@ -13,7 +14,6 @@ const baseStatus = (patch: Partial<SetupStatus> = {}): SetupStatus =>
       download: { state: 'running', percent: 40 },
       java: { state: 'done', version: 'openjdk 25' },
       agentos: { state: 'pending' },
-      factory: { state: 'pending' },
       providers: { state: 'pending' },
       models: { state: 'pending' },
       namespace: { state: 'pending' },
@@ -26,6 +26,8 @@ const baseStatus = (patch: Partial<SetupStatus> = {}): SetupStatus =>
 
 describe('SetupStateService', () => {
   let api: { getStatus: jest.Mock; saveIdentity: jest.Mock; apply: jest.Mock; browse: jest.Mock; mkdir: jest.Mock }
+  let getMeUser: jest.Mock
+  let listByExternalIdsNamespace: jest.Mock
   let state: SetupStateService
 
   beforeEach(() => {
@@ -36,7 +38,15 @@ describe('SetupStateService', () => {
       browse: jest.fn(),
       mkdir: jest.fn(),
     }
-    TestBed.configureTestingModule({ providers: [{ provide: SetupApiService, useValue: api }] })
+    getMeUser = jest.fn().mockReturnValue(of({ externalId: 'me@acme.com', isAdmin: true }))
+    listByExternalIdsNamespace = jest.fn().mockReturnValue(of([{ id: 'ns-personal', externalId: 'user:me@acme.com' }]))
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: SetupApiService, useValue: api },
+        { provide: UserControllerService, useValue: { getMeUser } },
+        { provide: NamespaceControllerService, useValue: { listByExternalIdsNamespace } },
+      ],
+    })
     state = TestBed.inject(SetupStateService)
   })
 
@@ -296,9 +306,13 @@ describe('SetupStateService', () => {
       expect(state.step()).toBe('progress')
     })
 
-    it('lists the services only, none of the setup steps', async () => {
+    it('lists the services only, none of the setup steps, and no Factory unless one is configured', async () => {
       api.getStatus.mockReturnValue(of(done()))
       await state.init()
+      expect(state.loadingChecklist().map((c) => c.key)).toEqual(['download', 'java', 'agentos'])
+
+      api.getStatus.mockReturnValue(of(done({ factory: { state: 'running' } })))
+      await state.refreshStatus()
       expect(state.loadingChecklist().map((c) => c.key)).toEqual(['download', 'java', 'agentos', 'factory'])
     })
 
@@ -308,7 +322,13 @@ describe('SetupStateService', () => {
       expect(state.loadingReady()).toBe(false)
     })
 
-    it('is ready once AgentOS and the Factory are up', async () => {
+    it('is ready once AgentOS is up when there is no Factory to wait for', async () => {
+      api.getStatus.mockReturnValue(of(done({ agentos: { state: 'done' } })))
+      await state.init()
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('is ready once AgentOS and a configured Factory are up', async () => {
       api.getStatus.mockReturnValue(of(done({ agentos: { state: 'done' }, factory: { state: 'done' } })))
       await state.init()
       expect(state.loadingReady()).toBe(true)
@@ -316,13 +336,13 @@ describe('SetupStateService', () => {
 
     it('does not hold the user back for a Factory that failed', async () => {
       api.getStatus.mockReturnValue(
-        of(done({ agentos: { state: 'done' }, factory: { state: 'error', message: 'download failed' } }))
+        of(done({ agentos: { state: 'done' }, factory: { state: 'error', message: 'unreachable' } }))
       )
       await state.init()
       expect(state.loadingReady()).toBe(true)
     })
 
-    it('gives a slow Factory a grace period once AgentOS is up, then leaves without it', async () => {
+    it('gives a slow configured Factory a grace period once AgentOS is up, then leaves without it', async () => {
       jest.useFakeTimers()
       api.getStatus.mockReturnValue(of(done({ agentos: { state: 'done' }, factory: { state: 'running' } })))
       await state.init()
@@ -331,13 +351,98 @@ describe('SetupStateService', () => {
       expect(state.loadingReady()).toBe(true)
     })
 
-    it('hands over to the app, on the personal namespace when it is known and by itself otherwise', async () => {
+    it('always hands over to the personal namespace: the one the apply made, else the one AgentOS knows', async () => {
+      api.getStatus.mockReturnValue(of(done({}, { namespaceId: 'ns-1' })))
+      await state.init()
+      expect(await state.loadingTarget()).toEqual({ path: '/home', queryParams: { ns: 'ns-1' } })
+      expect(getMeUser).not.toHaveBeenCalled()
+
+      // After a restart the server forgot the apply: the namespace is looked up as user:<externalId>.
+      api.getStatus.mockReturnValue(of(done()))
+      await state.refreshStatus()
+      expect(await state.loadingTarget()).toEqual({ path: '/home', queryParams: { ns: 'ns-personal' } })
+      expect(listByExternalIdsNamespace).toHaveBeenCalledWith(['user:me@acme.com'])
+    })
+
+    it('lets the app pick a namespace by itself when the personal one cannot be found', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined)
       api.getStatus.mockReturnValue(of(done()))
       await state.init()
-      expect(state.loadingTarget()).toEqual({ path: '/home', queryParams: {} })
-      api.getStatus.mockReturnValue(of(done({}, { namespaceId: 'ns-1' })))
-      await state.refreshStatus()
-      expect(state.loadingTarget()).toEqual({ path: '/home', queryParams: { ns: 'ns-1' } })
+
+      listByExternalIdsNamespace.mockReturnValue(of([]))
+      expect(await state.loadingTarget()).toEqual({ path: '/home', queryParams: {} })
+
+      getMeUser.mockReturnValue(throwError(() => new Error('boom')))
+      expect(await state.loadingTarget()).toEqual({ path: '/home', queryParams: {} })
+    })
+  })
+
+  describe('preview (?preview=fresh|nofresh)', () => {
+    const installed = () =>
+      baseStatus({
+        setupDone: true,
+        apply: { status: 'done' },
+        namespaceId: 'ns-1',
+        steps: { ...baseStatus().steps, agentos: { state: 'done' } },
+      })
+
+    it('only knows fresh and nofresh', () => {
+      expect(parseWelcomePreview('fresh')).toBe('fresh')
+      expect(parseWelcomePreview('nofresh')).toBe('nofresh')
+      expect(parseWelcomePreview('whatever')).toBeNull()
+      expect(parseWelcomePreview(null)).toBeNull()
+    })
+
+    it('shows the wizard from its first step on an install that is already set up', async () => {
+      api.getStatus.mockReturnValue(of(installed()))
+      await state.init('fresh')
+      expect(state.mode()).toBe('wizard')
+      expect(state.step()).toBe('email')
+      expect(state.preview()).toBe('fresh')
+    })
+
+    it('shows the loading page on a first run, which would show the wizard', async () => {
+      await state.init('nofresh')
+      expect(state.mode()).toBe('loading')
+      expect(state.step()).toBe('progress')
+      expect(state.preview()).toBe('nofresh')
+    })
+
+    it('walks through every step of the wizard without sending anything', async () => {
+      api.getStatus.mockReturnValue(of(installed()))
+      await state.init('fresh')
+
+      state.email.set('me@acme.com')
+      await state.submitEmail()
+      expect(state.step()).toBe('providers')
+
+      state.toggleProvider('anthropic')
+      state.setApiKey('anthropic', 'sk-ant-long-enough')
+      state.submitProviders()
+      expect(state.step()).toBe('folder')
+
+      await state.submitFolderAndApply()
+      expect(state.step()).toBe('progress')
+
+      expect(api.saveIdentity).not.toHaveBeenCalled()
+      expect(api.apply).not.toHaveBeenCalled()
+    })
+
+    it('can go back to the email step, although the install is set up', async () => {
+      api.getStatus.mockReturnValue(of(installed()))
+      await state.init('fresh')
+      state.email.set('me@acme.com')
+      await state.submitEmail()
+      expect(state.emailLocked()).toBe(false)
+      state.back()
+      expect(state.step()).toBe('email')
+    })
+
+    it('changes nothing without a preview', async () => {
+      api.getStatus.mockReturnValue(of(installed()))
+      await state.init()
+      expect(state.mode()).toBe('loading')
+      expect(state.preview()).toBeNull()
     })
   })
 

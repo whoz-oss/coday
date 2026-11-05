@@ -17,6 +17,8 @@ export class ShellTopbarMobileComponent {
   readonly selectedNamespace = input.required<NamespaceListItem | null>()
   readonly namespaces = input.required<NamespaceListItem[]>()
   readonly nsMenuOpen = input.required<boolean>()
+  /** Whether the current user may open the settings of the selected namespace. */
+  readonly canConfigureNamespace = input(false)
 
   // ── Outputs ──────────────────────────────────────────────
   /** Ouvre/ferme le drawer mobile (liste des cases) */
@@ -25,4 +27,5 @@ export class ShellTopbarMobileComponent {
   readonly namespaceSelected = output<NamespaceListItem>()
   readonly nsMenuToggled = output<MouseEvent>()
   readonly nsMenuClosed = output<Event>()
+  readonly configureNamespaceRequested = output<void>()
 }

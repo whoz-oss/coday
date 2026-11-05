@@ -38,24 +38,43 @@
   }
 }
 
+// The sections do not scroll as a whole: each one is capped at half of the panel height and scrolls
+// inside (section-body), so a long listing in one scope never pushes the other out of view.
 .exchange-drawer__sections {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  scrollbar-gutter: stable;
 }
 
 .exchange-drawer__section {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
   min-width: 0;
+  min-height: 0;
+  flex: 0 1 auto;
+  max-height: 50%;
+
+  // Alone in the panel (the other scope is not accessible), a section may use the whole height.
+  &:only-child {
+    max-height: none;
+  }
 
   + .exchange-drawer__section {
     padding-top: 12px;
     border-top: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
   }
+}
+
+.exchange-drawer__section-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .exchange-drawer__section-header {
@@ -64,6 +83,7 @@
   justify-content: space-between;
   gap: 0.5rem;
   min-height: 28px;
+  flex-shrink: 0;
   margin-bottom: 6px;
 }
 
@@ -176,39 +196,6 @@
 
 // ── Folder navigation ───────────────────────────────────────────────────────
 .exchange-drawer {
-  &__breadcrumb {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0 0 8px;
-    font-family: var(--font-heading, monospace);
-    font-size: 11px;
-  }
-
-  &__crumb {
-    background: none;
-    border: none;
-    padding: 2px 4px;
-    font: inherit;
-    cursor: pointer;
-    color: var(--color-text-secondary, #6e6e73);
-    overflow-wrap: anywhere;
-
-    &:hover {
-      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
-      color: var(--color-text, #1d1d1f);
-    }
-
-    &:focus-visible {
-      @include ds.focus-ring;
-    }
-  }
-
-  &__crumb-sep {
-    color: var(--color-text-secondary, #6b7280);
-  }
-
   &__folders {
     list-style: none;
     margin: 0 0 0.25rem;

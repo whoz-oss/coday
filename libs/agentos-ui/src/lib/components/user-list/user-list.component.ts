@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { MemberItem, Namespace, NamespaceMembershipControllerService, User } from '@whoz-oss/agentos-api-client'
-import { TableDirective } from '@whoz-oss/design-system'
+import { ButtonDirective, TableDirective } from '@whoz-oss/design-system'
 import { catchError, map, of, switchMap } from 'rxjs'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
@@ -27,9 +27,8 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-user-list',
-  imports: [TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
+  imports: [ButtonDirective, TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
   templateUrl: './user-list.component.html',
-  styleUrl: './user-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserListComponent implements OnInit {

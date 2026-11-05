@@ -54,8 +54,7 @@ export function buildAgentosSpec(input: AgentosSpecInput): ServiceSpec {
   const env: NodeJS.ProcessEnv = {
     ...baseEnv,
     // The callback must point at the actual Express port; an explicit env value wins (reverse proxy).
-    AGENTOS_OAUTH_REDIRECT_URI:
-      baseEnv.AGENTOS_OAUTH_REDIRECT_URI ?? `http://localhost:${expressPort}/agentos/oauth/callback`,
+    AGENTOS_OAUTH_REDIRECT_URI: baseEnv.AGENTOS_OAUTH_REDIRECT_URI ?? `http://localhost:${expressPort}/oauth/callback`,
     // Bolt port of the embedded Neo4j (7788 by default, next free one otherwise; 7688 is the dev default),
     // SDN must connect to the same one.
     AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT: boltPortValue,

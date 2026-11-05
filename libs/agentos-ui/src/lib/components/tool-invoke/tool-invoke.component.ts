@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { ToolInvokeStateService } from '../../services/tool-invoke-state.service'
 import { UserStateService } from '../../services/user-state.service'
 
@@ -26,9 +27,8 @@ type NamespaceOption = Pick<NamespaceListItem, 'id' | 'name'>
  */
 @Component({
   selector: 'agentos-tool-invoke',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DS_PAGE_KIT, TagComponent],
   templateUrl: './tool-invoke.component.html',
-  styleUrl: './tool-invoke.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ToolInvokeComponent implements OnInit {

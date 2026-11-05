@@ -1,6 +1,11 @@
-import { inject, Injectable, signal } from '@angular/core'
+import { computed, inject, Injectable, signal } from '@angular/core'
+import { toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { User, UserControllerService } from '@whoz-oss/agentos-api-client'
-import { Observable, tap } from 'rxjs'
+import { distinctUntilChanged, from, Observable, of, switchMap, tap } from 'rxjs'
+import { gravatarUrl } from './gravatar.utils'
+
+/** Largest avatar rendered in the app, in CSS pixels. */
+const AVATAR_SIZE = 40
 
 /**
  * UserStateService — reactive state for the current authenticated user.
@@ -19,6 +24,18 @@ export class UserStateService {
   private readonly userController = inject(UserControllerService)
 
   readonly currentUser = signal<User | null>(null)
+
+  /**
+   * Gravatar URL of the current user, null until known or when it cannot be computed.
+   * The image may still fail to load (no Gravatar for this email): `ds-avatar` then shows the initials.
+   */
+  readonly avatarUrl = toSignal(
+    toObservable(computed(() => this.currentUser()?.email ?? null)).pipe(
+      distinctUntilChanged(),
+      switchMap((email) => (email ? from(gravatarUrl(email, AVATAR_SIZE)) : of(null)))
+    ),
+    { initialValue: null }
+  )
 
   loadMe(): Observable<User> {
     return this.userController.getMeUser().pipe(tap((user) => this.currentUser.set(user)))

@@ -3,6 +3,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider, AiProviderApiTypeEnum } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { AiProviderConfigStateService, AiProviderScope } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
@@ -39,9 +40,8 @@ const SCOPE_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-ai-provider-form',
-  imports: [ReactiveFormsModule],
+  imports: [DS_PAGE_KIT, ReactiveFormsModule],
   templateUrl: './ai-provider-form.component.html',
-  styleUrl: './ai-provider-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiProviderFormComponent implements OnInit {

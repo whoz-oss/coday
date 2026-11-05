@@ -36,7 +36,7 @@ describe('buildAgentosSpec (laptop profile)', () => {
   })
 
   it('derives the OAuth redirect from the Express port unless one is set', () => {
-    expect(spec.env['AGENTOS_OAUTH_REDIRECT_URI']).toBe('http://localhost:3000/agentos/oauth/callback')
+    expect(spec.env['AGENTOS_OAUTH_REDIRECT_URI']).toBe('http://localhost:3000/oauth/callback')
     const custom = agentos({ baseEnv: { AGENTOS_OAUTH_REDIRECT_URI: 'https://x/cb' } })
     expect(custom.env['AGENTOS_OAUTH_REDIRECT_URI']).toBe('https://x/cb')
   })

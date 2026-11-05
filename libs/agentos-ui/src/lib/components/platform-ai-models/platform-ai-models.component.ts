@@ -7,7 +7,7 @@ import {
   AiProvider,
   AiProviderControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, combineLatest, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
 import { createRowDeletionState } from '../../utils/row-deletion-state'
@@ -32,9 +32,8 @@ interface AiModelRow {
  */
 @Component({
   selector: 'agentos-platform-ai-models',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
+  imports: [ButtonDirective, SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-ai-models.component.html',
-  styleUrl: './platform-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformAiModelsComponent {

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, output, 
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Namespace, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
-import { TableDirective } from '@whoz-oss/design-system'
+import { ButtonDirective, TableDirective } from '@whoz-oss/design-system'
 import { catchError, combineLatest, of, switchMap, tap } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
@@ -23,9 +23,8 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-user-group-list',
-  imports: [TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
+  imports: [ButtonDirective, TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
   templateUrl: './user-group-list.component.html',
-  styleUrl: './user-group-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserGroupListComponent {
