@@ -1,0 +1,70 @@
+.voice-recorder {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 52px;
+  padding: 0.5rem 0.75rem 0.25rem 1rem;
+  box-sizing: border-box;
+  width: 100%;
+
+  &__pulse {
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--color-error, #d13438);
+    animation: voice-recorder-pulse 1.2s ease-in-out infinite;
+  }
+
+  &__time {
+    font-family: var(--font-heading);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    color: var(--color-text);
+  }
+
+  &__label {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+  }
+
+  &__spacer {
+    flex: 1;
+  }
+
+  &__spinner {
+    flex: none;
+    font-size: 1.25rem;
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+    animation: voice-recorder-spin 1s linear infinite;
+  }
+
+  &__error {
+    margin: 0;
+    padding: 0.25rem 1rem 0;
+    font-size: 0.75rem;
+    color: var(--color-error, #d13438);
+  }
+}
+
+@keyframes voice-recorder-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+@keyframes voice-recorder-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
