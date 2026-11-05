@@ -329,6 +329,29 @@ agentos:
   # savings on multi-turn agent runs. Disable if prompt caching is not available on your plan.
   # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
   # prompt-caching-enabled: true
+  claude-code:
+    # Run agents on the official `claude` CLI signed in by the user with their own Claude subscription,
+    # instead of a model API key. Anthropic allows a subscription only through the unmodified CLI signed
+    # in by its owner: keep this for an instance a user runs for themselves. AgentOS never reads the
+    # login: each user signs in once from a terminal on this host with
+    # `CLAUDE_CONFIG_DIR=<config-root>/<userId> claude auth login`. See agentos/docs/claude-code-runtime.md.
+    # Override with env var: AGENTOS_CLAUDE_CODE_ENABLED
+    enabled: ${AGENTOS_CLAUDE_CODE_ENABLED:false}
+    # The CLI executable, a bare name resolved through PATH or an absolute path.
+    # Override with env var: AGENTOS_CLAUDE_CODE_EXECUTABLE
+    # executable: claude
+    # Parent of the per-user CLI configuration directories (login, transcripts of the conversations).
+    # Override with env var: AGENTOS_CLAUDE_CODE_CONFIG_ROOT
+    # config-root: ${user.home}/.coday/agentos/claude-code
+    # Oldest CLI version accepted: its stream-json output was checked against the parser.
+    # Override with env var: AGENTOS_CLAUDE_CODE_MINIMUM_VERSION
+    # minimum-version: 2.1.317
+    # Timeout of `claude --version` and `claude auth status` on the status page.
+    # Override with env var: AGENTOS_CLAUDE_CODE_STATUS_TIMEOUT
+    # status-timeout: 10s
+    # Turns running on Claude Code at once on this instance; further turns wait for a slot.
+    # Override with env var: AGENTOS_CLAUDE_CODE_MAX_CONCURRENT_PROCESSES
+    # max-concurrent-processes: 4
   plugins:
     # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
     # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,
