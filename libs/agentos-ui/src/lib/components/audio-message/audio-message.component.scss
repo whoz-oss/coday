@@ -1,0 +1,38 @@
+.audio-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 40px;
+  margin-bottom: 0.5rem;
+
+  &__player {
+    width: 100%;
+    max-width: 320px;
+    height: 40px;
+  }
+
+  &__label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  &__duration {
+    font-family: var(--font-heading);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+    opacity: 0.75;
+  }
+
+  &__note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-style: italic;
+    opacity: 0.75;
+  }
+
+  &__note-icon {
+    font-size: 1rem;
+  }
+}
