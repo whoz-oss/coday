@@ -14,6 +14,12 @@ import {
 
 export type VoiceRecorderState = 'idle' | 'starting' | 'recording' | 'sending' | 'error'
 
+/**
+ * The case a recording is posted to: its id, or a function resolving it when the recording is sent. The function
+ * serves a composer whose case does not exist yet while recording (the first-message composer creates it on send).
+ */
+export type VoiceRecorderTarget = string | (() => Promise<string>)
+
 /** What the host does around the posting of a recording (the case goes running like on a normal send). */
 export interface VoiceRecorderHandlers {
   /** The recording was stopped and is being uploaded and transcribed. */
@@ -44,6 +50,12 @@ function stopTracks(stream: MediaStream | null): void {
  * The microphone is released on every way out: send, cancel, error, [reset] and destroy.
  * A [generation] counter makes a stale async step (permission granted after a cancel, response of
  * a case that was left) a no-op instead of a write on the wrong state.
+ *
+ * When the target is a resolver, it runs once the recording is stopped, the microphone released and the
+ * recording known to be non-empty, so nothing is created for a recording that is not posted. A resolver that
+ * fails is an error like a failed post: nothing is posted, [VoiceRecorderHandlers.onSendFailed] runs, and the
+ * message shown is the one of the thrown Error (a resolver knows better than an HTTP status mapping what failed),
+ * or the generic send failure for anything else.
  */
 @Injectable()
 export class VoiceRecorderService implements OnDestroy {
@@ -66,16 +78,16 @@ export class VoiceRecorderService implements OnDestroy {
   private mimeType = ''
   private startedAt = 0
   private timer: ReturnType<typeof setInterval> | null = null
-  private caseId = ''
+  private target: VoiceRecorderTarget = ''
   private handlers: VoiceRecorderHandlers = { onSent: () => undefined }
   /** Unblocks a [finishRecording] still waiting for the recorder's `stop` when [reset] cuts in. */
   private abortStop: (() => void) | null = null
 
   /**
-   * Asks for the microphone and starts recording for [caseId]. The [handlers] run around the posting,
+   * Asks for the microphone and starts recording for [target]. The [handlers] run around the posting,
    * whether the user sent the recording or the length limit did.
    */
-  async start(caseId: string, handlers: VoiceRecorderHandlers): Promise<void> {
+  async start(target: VoiceRecorderTarget, handlers: VoiceRecorderHandlers): Promise<void> {
     if (this.isBusy()) return
     this.error.set(null)
     const mimeType = pickRecordingMimeType((candidate) => this.media.isTypeSupported(candidate))
@@ -124,7 +136,7 @@ export class VoiceRecorderService implements OnDestroy {
 
     this.stream = stream
     this.mimeType = mimeType
-    this.caseId = caseId
+    this.target = target
     this.handlers = handlers
     this.startedAt = Date.now()
     this.elapsedMs.set(0)
@@ -136,7 +148,7 @@ export class VoiceRecorderService implements OnDestroy {
   async stopAndSend(): Promise<boolean> {
     if (this.state() !== 'recording' || !this.recorder) return false
     const generation = this.generation
-    const caseId = this.caseId
+    const target = this.target
     const handlers = this.handlers
     this.clearTimer()
     const durationMs = Math.round(Date.now() - this.startedAt)
@@ -154,6 +166,18 @@ export class VoiceRecorderService implements OnDestroy {
 
     // A File, not a bare Blob: the multipart part then carries a filename matching its format.
     const file = new File([blob], `voice.${recordingExtension(this.mimeType)}`, { type: this.mimeType })
+    let caseId: string
+    try {
+      caseId = typeof target === 'string' ? target : await target()
+    } catch (err) {
+      if (generation === this.generation) {
+        this.fail(err instanceof Error && err.message ? err.message : VOICE_ERRORS.sendFailed)
+        handlers.onSendFailed?.()
+      }
+      return false
+    }
+    // Cancelled or left while the case was being resolved: nothing is posted.
+    if (generation !== this.generation) return false
     try {
       // Positional arguments of the generated client: the query-string twins of the two form fields come
       // first (left undefined), then the form fields Spring actually reads: answerToEventId and durationMs.
