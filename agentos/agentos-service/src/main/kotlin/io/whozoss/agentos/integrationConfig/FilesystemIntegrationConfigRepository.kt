@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.plugin.filesystem.substituteConfigPath
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -148,9 +150,20 @@ class FilesystemIntegrationConfigRepository(
         return cacheRegistry
             .getAll(directory)
             .filter { it.name.lowercase() !in excludeNames }
-            .map { it.copy(namespaceId = namespaceId) }
+            .map { it.inNamespace(namespaceId) }
             .sortedBy { it.name }
     }
+
+    /**
+     * Binds a parsed filesystem integration config to [namespaceId], including its id (see
+     * [filesystemEntityId]). Done at read time, never in [parseYamlFile], and without mutating the
+     * cached object: same rule as `AgentConfig.inNamespace` in the agent repository.
+     */
+    private fun IntegrationConfig.inNamespace(namespaceId: UUID): IntegrationConfig =
+        copy(
+            namespaceId = namespaceId,
+            metadata = metadata.copy(id = filesystemEntityId(FilesystemEntityKind.INTEGRATION, namespaceId, name)),
+        )
 
     /**
      * [directory] is the cache's root directory (`<configPath>/integrations`, possibly with
@@ -177,8 +190,7 @@ class FilesystemIntegrationConfigRepository(
         }
         val configPath = directory.parent?.toString()
         return IntegrationConfig(
-            // Stable UUID derived from the name so identity survives restarts.
-            // namespaceId is null here; it is overwritten by the caller.
+            // Provisional id, never exposed: replaced by filesystemEntityId(...) in inNamespace() when the entity is bound to its namespace.
             metadata =
                 EntityMetadata(
                     id = UUID.nameUUIDFromBytes("filesystem-integration:${integrationConfigYaml.name}".toByteArray(Charsets.UTF_8)),

@@ -2,13 +2,17 @@ package io.whozoss.agentos.prompt
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
@@ -165,7 +169,7 @@ class FilesystemPromptRepositoryUnitSpec :
             result.content shouldBe listOf("Step one", "Step two")
         }
 
-        "findByParent uses stable UUID derived from prompt name" {
+        "findByParent uses stable UUID derived from namespace and prompt name" {
             val root = tempDir()
             writeYaml(promptsDir(root), "plan.yaml", promptYaml("plan"))
 
@@ -181,6 +185,7 @@ class FilesystemPromptRepositoryUnitSpec :
             val id2 = repo2.findByParent(namespaceId).single().id
 
             id1 shouldBe id2
+            id1 shouldBe filesystemEntityId(FilesystemEntityKind.PROMPT, namespaceId, "plan")
         }
 
         // -------------------------------------------------------------------------
@@ -526,7 +531,7 @@ class FilesystemPromptRepositoryUnitSpec :
 
             val delegate = mockk<PromptRepository>()
             val nsRepo = mockk<NamespaceRepository>()
-            val fsId = UUID.nameUUIDFromBytes("filesystem-prompt:plan".toByteArray())
+            val fsId = filesystemEntityId(FilesystemEntityKind.PROMPT, namespaceId, "plan")
 
             every { delegate.findByIds(listOf(fsId), withRemoved = false) } returns emptyList()
             every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns
@@ -567,7 +572,7 @@ class FilesystemPromptRepositoryUnitSpec :
 
             val nsWithPath = Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString())
             val nsWithoutPath = Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "no-path", configPath = null)
-            val fsId = UUID.nameUUIDFromBytes("filesystem-prompt:plan".toByteArray())
+            val fsId = filesystemEntityId(FilesystemEntityKind.PROMPT, namespaceId, "plan")
 
             val delegate = mockk<PromptRepository>()
             val nsRepo = mockk<NamespaceRepository>()
@@ -579,6 +584,53 @@ class FilesystemPromptRepositoryUnitSpec :
 
             result shouldHaveSize 1
             result.single().name shouldBe "plan"
+        }
+
+        "two namespaces defining a prompt with the same name get distinct ids, each resolving to its own definition" {
+            val root1 = tempDir()
+            val root2 = tempDir()
+            writeYaml(promptsDir(root1), "plan.yaml", promptYaml("plan", content = listOf("Plan from namespace 1")))
+            writeYaml(promptsDir(root2), "plan.yaml", promptYaml("plan", content = listOf("Plan from namespace 2")))
+
+            val nsId1 = UUID.randomUUID()
+            val nsId2 = UUID.randomUUID()
+            val ns1 = Namespace(metadata = EntityMetadata(id = nsId1), name = "ns1", configPath = root1.toString())
+            val ns2 = Namespace(metadata = EntityMetadata(id = nsId2), name = "ns2", configPath = root2.toString())
+            val id1 = filesystemEntityId(FilesystemEntityKind.PROMPT, nsId1, "plan")
+            val id2 = filesystemEntityId(FilesystemEntityKind.PROMPT, nsId2, "plan")
+
+            id1 shouldNotBe id2
+
+            val delegate = mockk<PromptRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            every { delegate.findByIds(listOf(id1), withRemoved = false) } returns emptyList()
+            every { delegate.findByIds(listOf(id2), withRemoved = false) } returns emptyList()
+            every { delegate.findByIds(listOf(id1, id2), withRemoved = false) } returns emptyList()
+            every { delegate.findByParent(nsId1) } returns emptyList()
+            every { delegate.findByParent(nsId2) } returns emptyList()
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns listOf(ns1, ns2)
+            every { nsRepo.findByIds(listOf(nsId1)) } returns listOf(ns1)
+            every { nsRepo.findByIds(listOf(nsId2)) } returns listOf(ns2)
+
+            val repo = buildRepo(delegate, nsRepo)
+
+            // Listings expose the namespace-scoped id
+            repo.findByParent(nsId1).single().id shouldBe id1
+            repo.findByParent(nsId2).single().id shouldBe id2
+
+            // findByIds returns only the prompt of the matching namespace
+            val found1 = repo.findByIds(listOf(id1), withRemoved = false)
+            found1 shouldHaveSize 1
+            found1.single().namespaceId shouldBe nsId1
+            found1.single().content shouldBe listOf("Plan from namespace 1")
+
+            val found2 = repo.findByIds(listOf(id2), withRemoved = false)
+            found2 shouldHaveSize 1
+            found2.single().namespaceId shouldBe nsId2
+            found2.single().content shouldBe listOf("Plan from namespace 2")
+
+            repo.findByIds(listOf(id1, id2), withRemoved = false).map { it.id to it.content } shouldContainExactlyInAnyOrder
+                listOf(id1 to listOf("Plan from namespace 1"), id2 to listOf("Plan from namespace 2"))
         }
 
         // -------------------------------------------------------------------------

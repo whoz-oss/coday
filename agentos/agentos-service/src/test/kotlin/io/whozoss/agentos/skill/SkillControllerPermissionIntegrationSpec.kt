@@ -10,6 +10,8 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
@@ -437,7 +439,7 @@ class SkillControllerPermissionIntegrationSpec : StringSpec() {
                 PermissionRelation.ADMIN,
             )
 
-            val fsSkillId = FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, "fs-review")
+            val fsSkillId = filesystemEntityId(FilesystemEntityKind.SKILL, fsNamespace.id, "fs-review")
 
             mockMvc.perform(get("/api/skills/$fsSkillId"))
                 .andExpect(status().isOk)
@@ -474,7 +476,7 @@ class SkillControllerPermissionIntegrationSpec : StringSpec() {
                 PermissionRelation.ADMIN,
             )
 
-            val fsSkillId = FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, "fs-byids")
+            val fsSkillId = filesystemEntityId(FilesystemEntityKind.SKILL, fsNamespace.id, "fs-byids")
 
             mockMvc.perform(
                 post("/api/skills/by-ids")
@@ -507,7 +509,7 @@ class SkillControllerPermissionIntegrationSpec : StringSpec() {
             )
             // No permission granted to alice on fsNamespace — alice is a foreign user here.
 
-            val fsSkillId = FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, "fs-foreign")
+            val fsSkillId = filesystemEntityId(FilesystemEntityKind.SKILL, fsNamespace.id, "fs-foreign")
 
             mockMvc.perform(get("/api/skills/$fsSkillId"))
                 .andExpect(status().isNotFound)
@@ -672,6 +674,6 @@ class SkillControllerPermissionIntegrationSpec : StringSpec() {
             )
         }
 
-        return FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, skillName)
+        return filesystemEntityId(FilesystemEntityKind.SKILL, fsNamespace.id, skillName)
     }
 }
