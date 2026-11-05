@@ -4,6 +4,7 @@ import io.whozoss.agentos.messaging.MarkdownBlocks
 import io.whozoss.agentos.messaging.MessagingAction
 import io.whozoss.agentos.messaging.MessagingActionCodec
 import io.whozoss.agentos.messaging.MessagingAdapter
+import io.whozoss.agentos.messaging.MessagingAudio
 import io.whozoss.agentos.messaging.MessagingBotRef
 import io.whozoss.agentos.messaging.MessagingButton
 import io.whozoss.agentos.messaging.MessagingCommand
@@ -65,6 +66,23 @@ class SlackAdapter(
     }
 
     override fun showTyping(chatId: String) = Unit
+
+    /** [audio] by its URL; by its file id when the event carried none, which `files.info` then gives. */
+    override fun downloadAudio(
+        audio: MessagingAudio,
+        maxBytes: Long,
+    ): ByteArray =
+        try {
+            val url =
+                audio.ref.takeIf { it.startsWith("https://") }
+                    ?: web.fileInfo(token, audio.ref)?.let { it["url_private_download"] ?: it["url_private"] }?.asText()
+                    ?: throw MessagingDeliveryException("Slack gave no URL to download the voice message")
+            web.download(token, url, maxBytes)
+        } catch (e: SlackApiException) {
+            throw MessagingDeliveryException("Slack refused the voice message: ${e.error}", e)
+        } catch (e: IOException) {
+            throw MessagingDeliveryException("Slack could not be reached for the voice message", e)
+        }
 
     override fun acknowledgeClick(
         clickId: String,

@@ -80,6 +80,7 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
     @Autowired lateinit var driver: Driver
     @Autowired lateinit var delivery: MessagingDelivery
     @Autowired lateinit var configToolGrantService: ConfigToolGrantService
+    @Autowired lateinit var transcriber: FakeVoiceTranscriber
 
     private val chatId = "1001"
     private var nextMessageId = 1L
@@ -96,6 +97,18 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         messageId: Long = nextMessageId++,
         from: String = chatId,
     ) = gateway.handle(bot, MessagingInbound.Text(chatId = from, sender = sender(from), messageId = messageId, text = text, direct = true))
+
+    /** A voice message saying [words], as the platform holds it. */
+    private fun voice(
+        words: String,
+        durationSeconds: Int = 4,
+        from: String = chatId,
+    ) {
+        val ref = "voice-${UUID.randomUUID()}"
+        bot.audios[ref] = words.toByteArray()
+        val audio = MessagingAudio(ref = ref, mimeType = "audio/ogg", durationSeconds = durationSeconds, sizeBytes = words.length.toLong())
+        gateway.handle(bot, MessagingInbound.Voice(chatId = from, sender = sender(from), messageId = nextMessageId++, audio = audio, direct = true))
+    }
 
     private fun click(
         action: MessagingAction,
@@ -187,6 +200,7 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         beforeEach {
             Neo4jContainerSupport.clearDatabase(driver)
             platform.reset()
+            transcriber.reset()
             ada = users.save(User(externalId = "ada-${UUID.randomUUID()}@example.com", firstname = "Ada", lastname = "Lovelace"))
             namespace = namespaceService.create(Namespace(name = "Forge"))
             permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.MEMBER)
@@ -266,6 +280,58 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             eventually(5.seconds) {
                 caseEventService.findByParent(caseId).filterIsInstance<AgentSelectedEvent>().first().agentName shouldBe agent.name
             }
+        }
+
+        "a voice message is transcribed, shown to the chat, and posted as the text it says" {
+            linkAda()
+
+            voice("add a GitHub integration")
+
+            bot.textsTo(chatId).first() shouldBe "🎤 add a GitHub integration"
+            val caseId = conversation().caseId.shouldNotBeNull()
+            messagesOf(caseId).first().content shouldBe listOf(MessageContent.Text("@Helper 🎤 add a GitHub integration"))
+            bot.typing shouldContain chatId
+        }
+
+        "a voice message is not transcribed for an account that is not linked" {
+            voice("hello")
+
+            bot.textsTo(chatId).single() shouldContain "not linked to AgentOS"
+            transcriber.transcribed shouldBe emptyList()
+        }
+
+        "a voice message the server cannot take in is answered with why, and starts no case" {
+            linkAda()
+
+            transcriber.available = false
+            voice("hello")
+            transcriber.available = true
+            voice("a long story", durationSeconds = 61)
+            transcriber.failure = "whisper failed"
+            voice("hello again")
+            transcriber.failure = null
+            voice("   ")
+
+            bot.textsTo(chatId) shouldBe
+                listOf(
+                    MessagingGateway.VOICE_OFF_TEXT,
+                    "This voice message is too long: I transcribe up to 1 min. Split it, or write it.",
+                    MessagingGateway.VOICE_FAILED_TEXT,
+                    MessagingGateway.NO_WORDS_TEXT,
+                )
+            transcriber.transcribed shouldBe listOf("   ")
+            conversation().caseId shouldBe null
+        }
+
+        "a message the bot cannot read is answered with what it reads" {
+            linkAda()
+
+            gateway.handle(bot, MessagingInbound.Unsupported(chatId = chatId, sender = sender(), messageId = nextMessageId++, direct = true))
+            transcriber.available = false
+            gateway.handle(bot, MessagingInbound.Unsupported(chatId = chatId, sender = sender(), messageId = nextMessageId++, direct = true))
+
+            bot.textsTo(chatId) shouldBe listOf(MessagingGateway.UNSUPPORTED_TEXT, MessagingGateway.UNSUPPORTED_NO_VOICE_TEXT)
+            conversation().caseId shouldBe null
         }
 
         "a case whose agent is already the bot's gets the next messages as they are" {

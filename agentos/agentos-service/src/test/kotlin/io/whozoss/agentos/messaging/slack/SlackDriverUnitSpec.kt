@@ -113,7 +113,7 @@ class SlackDriverUnitSpec :
                 manifest["features"]["app_home"]["messages_tab_enabled"].asBoolean() shouldBe true
                 manifest["settings"]["socket_mode_enabled"].asBoolean() shouldBe true
                 manifest["settings"]["event_subscriptions"]["bot_events"].map { it.asText() } shouldBe listOf("message.im")
-                manifest["oauth_config"]["scopes"]["bot"].map { it.asText() } shouldContainAll listOf("chat:write", "im:history", "users:read")
+                manifest["oauth_config"]["scopes"]["bot"].map { it.asText() } shouldContainAll listOf("chat:write", "files:read", "im:history", "users:read")
             }
         }
     })

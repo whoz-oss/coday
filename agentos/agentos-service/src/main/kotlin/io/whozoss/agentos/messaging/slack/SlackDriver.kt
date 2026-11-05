@@ -164,6 +164,8 @@ class SlackDriver(
         val sender = inbound.sender.copy(displayName = adapter.displayName(inbound.sender.externalUserId))
         return when (inbound) {
             is MessagingInbound.Text -> inbound.copy(sender = sender)
+            is MessagingInbound.Voice -> inbound.copy(sender = sender)
+            is MessagingInbound.Unsupported -> inbound.copy(sender = sender)
             is MessagingInbound.Click -> inbound.copy(sender = sender)
             is MessagingInbound.BotManaged -> inbound
         }
@@ -205,8 +207,11 @@ class SlackDriver(
         private const val MAX_DISPLAY_NAME_LENGTH = 80
         private const val CREATE_APP_URL = "https://api.slack.com/apps?new_app=1"
 
-        /** What the app may do: write, read and open its direct chats, and name the people who write to it. */
-        private val BOT_SCOPES = listOf("chat:write", "im:history", "im:read", "im:write", "users:read")
+        /**
+         * What the app may do: write, read and open its direct chats, name the people who write to it, and download
+         * the voice clips they send it.
+         */
+        private val BOT_SCOPES = listOf("chat:write", "files:read", "im:history", "im:read", "im:write", "users:read")
 
         /** The messages of the app's direct chats. */
         private val BOT_EVENTS = listOf("message.im")

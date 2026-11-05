@@ -2,6 +2,7 @@ package io.whozoss.agentos.messaging.telegram
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.JsonNode
 
 /*
  * The few objects of the Telegram Bot API (https://core.telegram.org/bots/api) AgentOS reads. Unknown fields
@@ -23,6 +24,41 @@ data class TelegramMessage(
     @JsonProperty("from") val from: TelegramUser? = null,
     @JsonProperty("chat") val chat: TelegramChat,
     @JsonProperty("text") val text: String? = null,
+    /** A voice message, recorded in Telegram. */
+    @JsonProperty("voice") val voice: TelegramAudioFile? = null,
+    /** An audio file, sent as music. */
+    @JsonProperty("audio") val audio: TelegramAudioFile? = null,
+    // What the bot does not read: only whether the message holds some matters.
+    @JsonProperty("photo") val photo: JsonNode? = null,
+    @JsonProperty("document") val document: JsonNode? = null,
+    @JsonProperty("video") val video: JsonNode? = null,
+    @JsonProperty("video_note") val videoNote: JsonNode? = null,
+    @JsonProperty("animation") val animation: JsonNode? = null,
+    @JsonProperty("sticker") val sticker: JsonNode? = null,
+    @JsonProperty("location") val location: JsonNode? = null,
+    @JsonProperty("contact") val contact: JsonNode? = null,
+    @JsonProperty("poll") val poll: JsonNode? = null,
+) {
+    /** True when the message holds content the bot does not read, such as a photo or a file. */
+    val unreadable: Boolean
+        get() = listOf(photo, document, video, videoNote, animation, sticker, location, contact, poll).any { it != null }
+}
+
+/** A voice message or an audio file: [fileId] downloads it ([TelegramBotClient.getFile]). */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TelegramAudioFile(
+    @JsonProperty("file_id") val fileId: String,
+    @JsonProperty("duration") val duration: Int? = null,
+    @JsonProperty("mime_type") val mimeType: String? = null,
+    @JsonProperty("file_size") val fileSize: Long? = null,
+)
+
+/** A file ready to download from [filePath], as `getFile` describes it. */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TelegramFile(
+    @JsonProperty("file_id") val fileId: String,
+    @JsonProperty("file_size") val fileSize: Long? = null,
+    @JsonProperty("file_path") val filePath: String? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

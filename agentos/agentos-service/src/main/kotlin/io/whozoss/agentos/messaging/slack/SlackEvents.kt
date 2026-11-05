@@ -3,6 +3,7 @@ package io.whozoss.agentos.messaging.slack
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.messaging.MessagingActionCodec
+import io.whozoss.agentos.messaging.MessagingAudio
 import io.whozoss.agentos.messaging.MessagingInbound
 import io.whozoss.agentos.messaging.MessagingSender
 
@@ -52,9 +53,10 @@ object SlackEvents {
 
     /**
      * What [envelope] means to the bot [botUserId], or null when nothing: a message of a person in the bot's direct
-     * chat (an `im` channel), or a click on a button that comes back to AgentOS. The bot's own messages, edits and
-     * other subtypes, and clicks on link buttons, mean nothing. The sender is named by their id: the adapter
-     * looks the name up.
+     * chat (an `im` channel), or a click on a button that comes back to AgentOS. A message with files is a voice
+     * message when one of them is audio (a clip recorded in Slack), else one the bot cannot read. The bot's own
+     * messages, edits and other subtypes, and clicks on link buttons, mean nothing. The sender is named by their
+     * id: the adapter looks the name up.
      */
     fun inbound(
         envelope: Frame.Envelope,
@@ -73,19 +75,42 @@ object SlackEvents {
         val user = event?.get("user")?.asText()
         val ts = event?.get("ts")?.asText()
         val channel = event?.get("channel")?.asText()
+        val subtype = event?.get("subtype")?.asText()
+        val files = event?.get("files")?.takeIf { it.isArray && !it.isEmpty }
+        val direct = event?.get("channel_type")?.asText() == "im"
         return when {
-            event?.get("type")?.asText() != "message" || event.has("subtype") || event.has("bot_id") -> null
+            event?.get("type")?.asText() != "message" || (subtype != null && subtype != FILE_SHARE) || event.has("bot_id") -> null
             user == null || ts == null || channel == null || user == botUserId -> null
+            files != null -> {
+                val sender = MessagingSender(externalUserId = user, displayName = user, bot = false)
+                files.firstOrNull(::isAudio)?.let { file ->
+                    MessagingInbound.Voice(chatId = channel, sender = sender, messageId = messageId(ts), audio = audioOf(file), direct = direct)
+                } ?: MessagingInbound.Unsupported(chatId = channel, sender = sender, messageId = messageId(ts), direct = direct)
+            }
+            subtype != null -> null
             else ->
                 MessagingInbound.Text(
                     chatId = channel,
                     sender = MessagingSender(externalUserId = user, displayName = user, bot = false),
                     messageId = messageId(ts),
                     text = SlackText.toPlain(event["text"]?.asText().orEmpty()),
-                    direct = event["channel_type"]?.asText() == "im",
+                    direct = direct,
                 )
         }
     }
+
+    /** A clip recorded in Slack (`slack_audio`), or an audio file. */
+    private fun isAudio(file: JsonNode): Boolean =
+        file["subtype"]?.asText() == "slack_audio" || file["mimetype"]?.asText()?.startsWith("audio/") == true
+
+    /** The file's download URL, or its id when the event carries none (`file_access: check_file_info`). */
+    private fun audioOf(file: JsonNode): MessagingAudio =
+        MessagingAudio(
+            ref = (file["url_private_download"] ?: file["url_private"] ?: file["id"])?.asText().orEmpty(),
+            mimeType = file["mimetype"]?.asText(),
+            durationSeconds = file["duration_ms"]?.asLong()?.let { ((it + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND).toInt() },
+            sizeBytes = file["size"]?.asLong(),
+        )
 
     private fun click(payload: JsonNode): MessagingInbound? {
         val action = payload["actions"]?.firstOrNull()
@@ -105,6 +130,9 @@ object SlackEvents {
                 )
         }
     }
+
+    private const val FILE_SHARE = "file_share"
+    private const val MILLIS_PER_SECOND = 1000L
 
     /** A message timestamp (`1700000000.123456`) as a number that grows with each message of a channel. */
     fun messageId(ts: String): Long = ts.replace(".", "").toLongOrNull() ?: 0

@@ -11,8 +11,10 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.messaging.ManagedBotInfo
+import io.whozoss.agentos.messaging.MessagingAudio
 import io.whozoss.agentos.messaging.MessagingBot
 import io.whozoss.agentos.messaging.MessagingBotRole
+import io.whozoss.agentos.messaging.MessagingDeliveryException
 import io.whozoss.agentos.messaging.MessagingInbound
 import io.whozoss.agentos.messaging.MessagingProperties
 import io.whozoss.agentos.messaging.MessagingSink
@@ -149,6 +151,52 @@ class TelegramDriverUnitSpec :
                 val firstPoll = mapper.readTree(api.calls.first { it.first == "getUpdates" }.second)
                 firstPoll["allowed_updates"].map { it.asText() } shouldBe listOf("message", "managed_bot")
                 api.methods() shouldNotContain "setMyCommands"
+            }
+        }
+
+        "a voice message is handed on with its file, a photo as a message the bot cannot read" {
+            val updates =
+                """{"ok":true,"result":[""" +
+                    """{"update_id":1,"message":{"message_id":5,"from":{"id":1001,"first_name":"Ada"},"chat":{"id":1001,"type":"private"},""" +
+                    """"voice":{"file_id":"VOICE1","file_unique_id":"u1","duration":4,"mime_type":"audio/ogg","file_size":2100}}},""" +
+                    """{"update_id":2,"message":{"message_id":6,"from":{"id":1001,"first_name":"Ada"},"chat":{"id":1001,"type":"private"},""" +
+                    """"photo":[{"file_id":"P1","file_unique_id":"p1","width":90,"height":90}],"caption":"look"}}]}"""
+            FakeBotApi { method, call -> (200 to updates).takeIf { method == "getUpdates" && call == 1 } }.use { api ->
+                val received = CopyOnWriteArrayList<MessagingInbound>()
+                val connection = driver(api).start(bot(), MessagingSink { _, inbound -> received.add(inbound) }) {}
+
+                eventually(5.seconds) { received.size shouldBe 2 }
+                connection.stop()
+                val ada = io.whozoss.agentos.messaging.MessagingSender("1001", "Ada", bot = false)
+                received shouldBe
+                    listOf(
+                        MessagingInbound.Voice(
+                            chatId = "1001",
+                            sender = ada,
+                            messageId = 5,
+                            audio = MessagingAudio(ref = "VOICE1", mimeType = "audio/ogg", durationSeconds = 4, sizeBytes = 2100),
+                            direct = true,
+                        ),
+                        MessagingInbound.Unsupported(chatId = "1001", sender = ada, messageId = 6, direct = true),
+                    )
+            }
+        }
+
+        "a voice message downloads from the path getFile gives, within the size allowed" {
+            FakeBotApi { method, _ ->
+                when (method) {
+                    "getFile" -> 200 to """{"ok":true,"result":{"file_id":"VOICE1","file_size":7,"file_path":"voice/file_3.oga"}}"""
+                    "file_3.oga" -> 200 to "OggS..."
+                    else -> null
+                }
+            }.use { api ->
+                val connection = driver(api).start(bot(), MessagingSink { _, _ -> }) {}
+                val audio = MessagingAudio(ref = "VOICE1", mimeType = "audio/ogg", durationSeconds = 4, sizeBytes = 7)
+
+                connection.adapter.downloadAudio(audio, maxBytes = 1024).decodeToString() shouldBe "OggS..."
+                shouldThrow<MessagingDeliveryException> { connection.adapter.downloadAudio(audio, maxBytes = 3) }
+                connection.stop()
+                mapper.readTree(api.calls.first { it.first == "getFile" }.second)["file_id"].asText() shouldBe "VOICE1"
             }
         }
     })

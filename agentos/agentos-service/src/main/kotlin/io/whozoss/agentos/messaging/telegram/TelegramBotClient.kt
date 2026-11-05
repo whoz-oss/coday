@@ -3,6 +3,7 @@ package io.whozoss.agentos.messaging.telegram
 import com.fasterxml.jackson.databind.JavaType
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.messaging.readAtMost
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -108,6 +109,28 @@ class TelegramBotClient(
         call<JsonNode>("sendChatAction", mapOf("chat_id" to chatId, "action" to action), type(JsonNode::class.java))
     }
 
+    /** Where to download the file [fileId] from: Telegram keeps the path valid for an hour at least. */
+    fun getFile(fileId: String): TelegramFile = call("getFile", mapOf("file_id" to fileId), type(TelegramFile::class.java))
+
+    /**
+     * The bytes of the file at [filePath], a path [getFile] gave. Like every call, the URL holds the token: it is
+     * never logged.
+     *
+     * @throws TelegramApiException when Telegram refuses, or the file is larger than [maxBytes]
+     */
+    fun downloadFile(
+        filePath: String,
+        maxBytes: Long,
+    ): ByteArray {
+        val request = Request.Builder().url("$baseUrl/file/bot$token/$filePath").get().build()
+        return httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw TelegramApiException(DOWNLOAD, response.code, "HTTP ${response.code}", null)
+            val body = response.body ?: throw TelegramApiException(DOWNLOAD, response.code, "no content", null)
+            body.byteStream().use { readAtMost(it, maxBytes) }
+                ?: throw TelegramApiException(DOWNLOAD, TOO_LARGE, "the file is larger than $maxBytes bytes", null)
+        }
+    }
+
     /** The token of [botUserId], a bot this one manages. */
     fun getManagedBotToken(botUserId: Long): String =
         call("getManagedBotToken", mapOf("user_id" to botUserId), type(String::class.java))
@@ -165,6 +188,8 @@ class TelegramBotClient(
 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
+        private const val DOWNLOAD = "file download"
+        private const val TOO_LARGE = 413
     }
 }
 

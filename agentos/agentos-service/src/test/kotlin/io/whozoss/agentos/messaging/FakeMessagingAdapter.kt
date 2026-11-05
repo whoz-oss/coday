@@ -20,6 +20,9 @@ class FakeMessagingAdapter(
     val buttonsRemoved = CopyOnWriteArrayList<String>()
     val offers = CopyOnWriteArrayList<Pair<String, BotCreationOffer>>()
 
+    /** The voice messages the platform holds, by [MessagingAudio.ref]. */
+    val audios = ConcurrentHashMap<String, ByteArray>()
+
     /** The tokens of the bots this one manages, as the platform would give them. */
     val managedTokens = ConcurrentHashMap<String, String>()
 
@@ -31,6 +34,7 @@ class FakeMessagingAdapter(
         acknowledged.clear()
         buttonsRemoved.clear()
         offers.clear()
+        audios.clear()
     }
 
     override fun linkUrl(token: String): String =
@@ -61,6 +65,11 @@ class FakeMessagingAdapter(
     ) {
         acknowledged.add(clickId to notice)
     }
+
+    override fun downloadAudio(
+        audio: MessagingAudio,
+        maxBytes: Long,
+    ): ByteArray = audios[audio.ref] ?: throw MessagingDeliveryException("no such audio: ${audio.ref}")
 
     override fun removeButtons(
         chatId: String,

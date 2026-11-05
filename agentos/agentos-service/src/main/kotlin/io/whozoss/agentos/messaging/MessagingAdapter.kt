@@ -52,6 +52,17 @@ interface MessagingAdapter {
         notice: String? = null,
     )
 
+    /**
+     * The bytes of [audio], a voice message the bot received.
+     *
+     * @throws MessagingDeliveryException when the platform refuses, cannot be reached, or the audio is larger than
+     *   [maxBytes]
+     */
+    fun downloadAudio(
+        audio: MessagingAudio,
+        maxBytes: Long,
+    ): ByteArray
+
     /** Removes the buttons of the message [messageId] once one of them was used. Best effort. */
     fun removeButtons(
         chatId: String,

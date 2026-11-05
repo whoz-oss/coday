@@ -84,6 +84,9 @@ class MessagingManagedBots(
                 is MessagingInbound.Text -> handleText(manager, inbound)
                 is MessagingInbound.BotManaged -> handleBotManaged(manager, inbound)
                 is MessagingInbound.Click -> manager.acknowledgeClick(inbound.clickId)
+                // A bot manager only creates bots: what it cannot read gets the help, as any text does.
+                is MessagingInbound.Voice -> help(manager, inbound, inbound.direct)
+                is MessagingInbound.Unsupported -> help(manager, inbound, inbound.direct)
             }
         } catch (e: Exception) {
             logger.warn(e) { "[Messaging] the bot manager @${manager.bot.username} failed on an update from ${inbound.chatId}" }
@@ -102,6 +105,14 @@ class MessagingManagedBots(
                 offerCreation(manager, inbound, command.argument)
             else -> manager.send(inbound.chatId, OutboundMessage(HELP_TEXT))
         }
+    }
+
+    private fun help(
+        manager: MessagingManagerAdapter,
+        inbound: MessagingInbound,
+        direct: Boolean,
+    ) {
+        if (direct && !inbound.sender.bot) manager.send(inbound.chatId, OutboundMessage(HELP_TEXT))
     }
 
     /** Step 2. */

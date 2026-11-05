@@ -56,6 +56,10 @@ import java.util.UUID
  * Every message carries its origin in its session context ([SessionContextKeys.MESSAGING]), which is how
  * [MessagingDelivery] knows to send the reply back to the chat.
  *
+ * A voice message is transcribed on the server ([VoiceTranscriber]) and taken in as the text it says, marked 🎤;
+ * the chat is shown that text first, so that the user sees what the agent will read. A message the bot cannot
+ * read (a photo, a file...) is answered with what it reads, rather than met with silence.
+ *
  * Group chats are not handled yet: their messages are ignored.
  */
 @Service
@@ -74,6 +78,7 @@ class MessagingGateway(
     private val delivery: MessagingDelivery,
     private val registry: MessagingBotRegistry,
     private val links: MessagingLinks,
+    private val transcriber: VoiceTranscriber,
 ) {
     /** Handles what [adapter] received. Never throws: a failure is logged and, when possible, told to the sender. */
     fun handle(
@@ -84,6 +89,8 @@ class MessagingGateway(
             when {
                 inbound.sender.bot -> logger.debug { "[Messaging] ignoring the bot ${inbound.sender.externalUserId}" }
                 inbound is MessagingInbound.Text -> handleText(adapter, inbound)
+                inbound is MessagingInbound.Voice -> handleVoice(adapter, inbound)
+                inbound is MessagingInbound.Unsupported -> handleUnsupported(adapter, inbound)
                 inbound is MessagingInbound.Click -> handleClick(adapter, inbound)
                 inbound is MessagingInbound.BotManaged -> logger.debug { "[Messaging] @${adapter.bot.username} manages no bot" }
             }
@@ -143,25 +150,107 @@ class MessagingGateway(
             command?.linksAccount == true -> link(adapter, inbound, requireNotNull(command.argument))
             else ->
                 withChat(adapter, inbound.chatId, inbound.sender) { chat ->
-                    when {
-                        chat.conversation.lastInboundMessageId?.let { inbound.messageId <= it } == true ->
-                            logger.debug { "[Messaging] message ${inbound.messageId} of ${inbound.chatId} already taken in" }
-                        else -> {
-                            val recorded =
-                                conversations.update(chat.conversation) { it.copy(lastInboundMessageId = inbound.messageId) }
-                            val current = chat.copy(conversation = recorded)
-                            when (command?.name) {
-                                MessagingCommand.START, MessagingCommand.HELP -> reply(current, helpText(current))
-                                MessagingCommand.NEW -> startNewCase(current)
-                                MessagingCommand.CASE -> showCurrentCase(current)
-                                MessagingCommand.CASES -> listCases(current)
-                                else -> post(current, inbound.text)
-                            }
+                    takeIn(chat, inbound.messageId) { current ->
+                        when (command?.name) {
+                            MessagingCommand.START, MessagingCommand.HELP -> reply(current, helpText(current))
+                            MessagingCommand.NEW -> startNewCase(current)
+                            MessagingCommand.CASE -> showCurrentCase(current)
+                            MessagingCommand.CASES -> listCases(current)
+                            else -> post(current, inbound.text)
                         }
                     }
                 }
         }
     }
+
+    /**
+     * Runs [block] for the message [messageId] of [chat] the first time it arrives, with the message recorded as
+     * taken in: a platform may deliver a message again, after a restart.
+     */
+    private fun takeIn(
+        chat: Chat,
+        messageId: Long,
+        block: (Chat) -> Unit,
+    ) {
+        if (chat.conversation.lastInboundMessageId?.let { messageId <= it } == true) {
+            logger.debug { "[Messaging] message $messageId of ${chat.chatId} already taken in" }
+            return
+        }
+        val recorded = conversations.update(chat.conversation) { it.copy(lastInboundMessageId = messageId) }
+        block(chat.copy(conversation = recorded))
+    }
+
+    // ======================================================
+    // Voice messages, and what the bot cannot read
+    // ======================================================
+
+    /** Transcribes a voice message, shows the chat what it says, and posts that as a text message. */
+    private fun handleVoice(
+        adapter: MessagingAdapter,
+        inbound: MessagingInbound.Voice,
+    ) {
+        if (!inbound.direct) {
+            logger.debug { "[Messaging] ignoring a group voice message of chat ${inbound.chatId}" }
+            return
+        }
+        withChat(adapter, inbound.chatId, inbound.sender) { chat ->
+            takeIn(chat, inbound.messageId) { current ->
+                transcribe(current, inbound.audio)?.let { words ->
+                    reply(current, "$VOICE_MARK $words")
+                    post(current, "$VOICE_MARK $words")
+                }
+            }
+        }
+    }
+
+    /** The words of [audio]; null, and the chat told why, when there are none to post. */
+    private fun transcribe(
+        chat: Chat,
+        audio: MessagingAudio,
+    ): String? {
+        val tooLong = (audio.durationSeconds ?: 0) > transcriber.maxDurationSeconds || (audio.sizeBytes ?: 0) > transcriber.maxBytes
+        val refusal =
+            when {
+                !transcriber.available -> VOICE_OFF_TEXT
+                tooLong -> "This voice message is too long: I transcribe up to ${durationText(transcriber.maxDurationSeconds)}. Split it, or write it."
+                else -> null
+            }
+        if (refusal != null) {
+            reply(chat, refusal)
+            return null
+        }
+        chat.adapter.showTyping(chat.chatId)
+        val words =
+            try {
+                transcriber.transcribe(chat.adapter.downloadAudio(audio, transcriber.maxBytes))
+            } catch (e: MessagingDeliveryException) {
+                logger.warn(e) { "[Messaging] could not download a voice message of chat ${chat.chatId}" }
+                null
+            } catch (e: TranscriptionException) {
+                logger.warn { "[Messaging] could not transcribe a voice message of chat ${chat.chatId}: ${e.message}" }
+                null
+            }
+        return when {
+            words == null -> null.also { reply(chat, VOICE_FAILED_TEXT) }
+            words.isBlank() -> null.also { reply(chat, NO_WORDS_TEXT) }
+            else -> words
+        }
+    }
+
+    private fun handleUnsupported(
+        adapter: MessagingAdapter,
+        inbound: MessagingInbound.Unsupported,
+    ) {
+        if (!inbound.direct) return
+        withChat(adapter, inbound.chatId, inbound.sender) { chat ->
+            takeIn(chat, inbound.messageId) { current ->
+                reply(current, if (transcriber.available) UNSUPPORTED_TEXT else UNSUPPORTED_NO_VOICE_TEXT)
+            }
+        }
+    }
+
+    private fun durationText(seconds: Int): String =
+        if (seconds % SECONDS_PER_MINUTE == 0) "${seconds / SECONDS_PER_MINUTE} min" else "$seconds s"
 
     private fun link(
         adapter: MessagingAdapter,
@@ -653,6 +742,15 @@ class MessagingGateway(
         private const val DENIED_TEXT = "AgentOS refused this: you do not have the rights for it. Ask an admin of the namespace."
         private const val DENIED_NOTICE = "AgentOS refused this: you do not have the rights for it."
         private const val PLAN_GONE_NOTICE = "This plan no longer exists."
+        private const val SECONDS_PER_MINUTE = 60
+
+        /** Marks a message the user spoke, in the chat and in the case. */
+        const val VOICE_MARK = "🎤"
+        const val VOICE_OFF_TEXT = "Voice messages are not transcribed on this AgentOS instance: please write your message."
+        const val VOICE_FAILED_TEXT = "I could not transcribe this voice message: please try again, or write it."
+        const val NO_WORDS_TEXT = "I could not make out any words in this voice message."
+        const val UNSUPPORTED_TEXT = "I can only read text and voice messages: send yours as text, or as a voice message."
+        const val UNSUPPORTED_NO_VOICE_TEXT = "I can only read text messages: please write yours."
 
         /** How [io.whozoss.agentos.configAgent.ConfigChangeService] names a refusal to someone the plan is not for. */
         private const val NOT_RECIPIENT = "NOT_RECIPIENT"

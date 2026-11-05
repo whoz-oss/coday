@@ -369,6 +369,12 @@ agentos:
     #   Long-polling timeout of getUpdates, in seconds.
     #   Override with env var: AGENTOS_MESSAGING_TELEGRAM_POLL_TIMEOUT_SECONDS
     #   poll-timeout-seconds: 25
+    # transcription:
+    #   Voice messages are transcribed on this server by whisper.cpp (whisper-cli), after ffmpeg has decoded them;
+    #   both must be installed. Path of the whisper.cpp model (a ggml-*.bin file). Empty: voice messages are not
+    #   transcribed. The other settings (programs, language, limits) are in agentos/docs/messaging.md.
+    #   Override with env var: AGENTOS_MESSAGING_TRANSCRIPTION_MODEL
+    #   model:
   bootstrap:
     # Enable bootstrap service to run on startup
     # Override with env var: AGENTOS_BOOTSTRAP_ENABLED

@@ -3,6 +3,7 @@ package io.whozoss.agentos.messaging.telegram
 import io.whozoss.agentos.messaging.BotCreationOffer
 import io.whozoss.agentos.messaging.MessagingAction
 import io.whozoss.agentos.messaging.MessagingActionCodec
+import io.whozoss.agentos.messaging.MessagingAudio
 import io.whozoss.agentos.messaging.MessagingBotRef
 import io.whozoss.agentos.messaging.MessagingButton
 import io.whozoss.agentos.messaging.MessagingDeliveryException
@@ -23,6 +24,22 @@ class TelegramAdapter(
     override val bot: MessagingBotRef,
 ) : MessagingManagerAdapter {
     override fun linkUrl(token: String): String = "${bot.url}?start=$token"
+
+    /** [audio] by its file id: `getFile` gives its path, which downloads it. */
+    override fun downloadAudio(
+        audio: MessagingAudio,
+        maxBytes: Long,
+    ): ByteArray =
+        try {
+            val file = client.getFile(audio.ref)
+            if ((file.fileSize ?: 0) > maxBytes) throw MessagingDeliveryException("The voice message is larger than $maxBytes bytes")
+            val path = file.filePath ?: throw MessagingDeliveryException("Telegram gave no path to download the voice message")
+            client.downloadFile(path, maxBytes)
+        } catch (e: TelegramApiException) {
+            throw MessagingDeliveryException("Telegram refused the voice message: ${e.errorCode} ${e.description}", e)
+        } catch (e: IOException) {
+            throw MessagingDeliveryException("Telegram could not be reached for the voice message", e)
+        }
 
     /** A reply keyboard of one button, which opens Telegram's bot creation and hides once used. */
     override fun offerBotCreation(

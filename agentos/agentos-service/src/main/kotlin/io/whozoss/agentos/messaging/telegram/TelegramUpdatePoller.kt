@@ -4,6 +4,7 @@ import io.whozoss.agentos.messaging.ManagedBotInfo
 import io.whozoss.agentos.messaging.MessagingActionCodec
 import io.whozoss.agentos.messaging.MessagingInbound
 import io.whozoss.agentos.messaging.MessagingSender
+import io.whozoss.agentos.messaging.MessagingAudio
 import io.whozoss.agentos.messaging.MessagingSink
 import io.whozoss.agentos.messaging.SerialLanes
 import io.whozoss.agentos.sdk.api.messaging.MessagingBotStatus
@@ -148,6 +149,23 @@ class TelegramUpdatePoller(
                     sender = sender(message.from),
                     messageId = message.messageId,
                     text = message.text,
+                    direct = message.chat.private,
+                )
+            message?.from != null && (message.voice ?: message.audio) != null -> {
+                val file = requireNotNull(message.voice ?: message.audio)
+                MessagingInbound.Voice(
+                    chatId = message.chat.id.toString(),
+                    sender = sender(message.from),
+                    messageId = message.messageId,
+                    audio = MessagingAudio(ref = file.fileId, mimeType = file.mimeType, durationSeconds = file.duration, sizeBytes = file.fileSize),
+                    direct = message.chat.private,
+                )
+            }
+            message?.from != null && message.unreadable ->
+                MessagingInbound.Unsupported(
+                    chatId = message.chat.id.toString(),
+                    sender = sender(message.from),
+                    messageId = message.messageId,
                     direct = message.chat.private,
                 )
             click?.message != null ->

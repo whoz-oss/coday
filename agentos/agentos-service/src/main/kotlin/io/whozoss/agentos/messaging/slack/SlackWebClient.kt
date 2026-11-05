@@ -2,7 +2,9 @@ package io.whozoss.agentos.messaging.slack
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.messaging.readAtMost
 import okhttp3.FormBody
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -87,6 +89,42 @@ class SlackWebClient(
         json("chat.postEphemeral", token, mapOf("channel" to channel, "user" to user, "text" to text))
     }
 
+    /** The file [fileId]: its URLs (`url_private_download`), `mimetype`, `size`. */
+    fun fileInfo(
+        token: String,
+        fileId: String,
+    ): JsonNode? = form("files.info", token, mapOf("file" to fileId))["file"]
+
+    /**
+     * The bytes of the file at [url], a `url_private` or `url_private_download` of a file shared with the bot,
+     * which needs the `files:read` scope. The token goes to Slack's file host only: any other URL is refused.
+     *
+     * @throws SlackApiException when Slack refuses, or the file is larger than [maxBytes]
+     */
+    fun download(
+        token: String,
+        url: String,
+        maxBytes: Long,
+    ): ByteArray {
+        val target = url.toHttpUrlOrNull()?.takeIf { it.isHttps && it.host == FILES_HOST } ?: throw SlackApiException(DOWNLOAD, "not_a_slack_file", null)
+        val request =
+            Request
+                .Builder()
+                .url(target)
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+        return httpClient.newCall(request).execute().use { response ->
+            val body = response.body
+            when {
+                !response.isSuccessful || body == null -> throw SlackApiException(DOWNLOAD, "HTTP ${response.code}", null)
+                // Without files:read, Slack answers with its sign-in page instead of the file.
+                body.contentType()?.subtype == "html" -> throw SlackApiException(DOWNLOAD, "missing_scope files:read", null)
+                else -> body.byteStream().use { readAtMost(it, maxBytes) } ?: throw SlackApiException(DOWNLOAD, "file_too_large", null)
+            }
+        }
+    }
+
     private fun form(
         method: String,
         token: String,
@@ -129,6 +167,8 @@ class SlackWebClient(
 
     companion object {
         private const val TOO_MANY_REQUESTS = 429
+        private const val DOWNLOAD = "file download"
+        const val FILES_HOST = "files.slack.com"
         private val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }

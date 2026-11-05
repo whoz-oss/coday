@@ -15,6 +15,26 @@ sealed interface MessagingInbound {
         val direct: Boolean,
     ) : MessagingInbound
 
+    /**
+     * A voice message, or an audio file, that the gateway transcribes before taking it in as a text. [messageId]
+     * is ordered as a [Text]'s.
+     */
+    data class Voice(
+        override val chatId: String,
+        override val sender: MessagingSender,
+        val messageId: Long,
+        val audio: MessagingAudio,
+        val direct: Boolean,
+    ) : MessagingInbound
+
+    /** A message the bot cannot read: a photo, a file, a sticker... The gateway says so instead of keeping silent. */
+    data class Unsupported(
+        override val chatId: String,
+        override val sender: MessagingSender,
+        val messageId: Long,
+        val direct: Boolean,
+    ) : MessagingInbound
+
     /** A click on a button of a message the bot sent. [action] is null when the button encodes none. */
     data class Click(
         override val chatId: String,
@@ -34,6 +54,18 @@ sealed interface MessagingInbound {
         val bot: ManagedBotInfo,
     ) : MessagingInbound
 }
+
+/**
+ * The audio of a [MessagingInbound.Voice], as the platform describes it: [ref] is what its adapter downloads it
+ * with ([MessagingAdapter.downloadAudio]), a file id or a URL of the platform. [durationSeconds] and [sizeBytes]
+ * are null when the platform does not say.
+ */
+data class MessagingAudio(
+    val ref: String,
+    val mimeType: String?,
+    val durationSeconds: Int?,
+    val sizeBytes: Long?,
+)
 
 /** A bot created by a bot manager, as the manager is told about it. */
 data class ManagedBotInfo(
