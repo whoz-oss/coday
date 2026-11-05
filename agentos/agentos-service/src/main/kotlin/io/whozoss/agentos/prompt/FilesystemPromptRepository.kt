@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -170,14 +171,20 @@ class FilesystemPromptRepository(
         return cacheRegistry
             .getAll(directory)
             .filter { it.name.lowercase() !in excludeNames }
-            .map {
-                it.copy(
-                    namespaceId = namespaceId,
-                    metadata = it.metadata.copy(id = filesystemEntityId("prompt", namespaceId, it.name)),
-                )
-            }
+            .map { it.inNamespace(namespaceId) }
             .sortedBy { it.name }
     }
+
+    /**
+     * Binds a parsed filesystem prompt to [namespaceId], including its id (see [filesystemEntityId]).
+     * Done at read time, never in [parseYamlFile], and without mutating the cached object: same rule
+     * as `AgentConfig.inNamespace` in the agent repository.
+     */
+    private fun Prompt.inNamespace(namespaceId: UUID): Prompt =
+        copy(
+            namespaceId = namespaceId,
+            metadata = metadata.copy(id = filesystemEntityId(FilesystemEntityKind.PROMPT, namespaceId, name)),
+        )
 
     @Suppress("UNUSED_PARAMETER")
     private fun parseYamlFile(
@@ -212,8 +219,7 @@ class FilesystemPromptRepository(
             return null
         }
         return Prompt(
-            // Stable UUID derived from the name so identity survives restarts.
-            // namespaceId is null here; it is overwritten by the caller.
+            // Provisional id, never exposed: replaced by filesystemEntityId(...) in inNamespace() when the entity is bound to its namespace.
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-prompt:${model.name}".toByteArray(Charsets.UTF_8))),
             namespaceId = null,
             userId = null,

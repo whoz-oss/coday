@@ -11,6 +11,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
@@ -184,7 +185,7 @@ class FilesystemPromptRepositoryUnitSpec :
             val id2 = repo2.findByParent(namespaceId).single().id
 
             id1 shouldBe id2
-            id1 shouldBe filesystemEntityId("prompt", namespaceId, "plan")
+            id1 shouldBe filesystemEntityId(FilesystemEntityKind.PROMPT, namespaceId, "plan")
         }
 
         // -------------------------------------------------------------------------
@@ -530,7 +531,7 @@ class FilesystemPromptRepositoryUnitSpec :
 
             val delegate = mockk<PromptRepository>()
             val nsRepo = mockk<NamespaceRepository>()
-            val fsId = filesystemEntityId("prompt", namespaceId, "plan")
+            val fsId = filesystemEntityId(FilesystemEntityKind.PROMPT, namespaceId, "plan")
 
             every { delegate.findByIds(listOf(fsId), withRemoved = false) } returns emptyList()
             every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns
@@ -571,7 +572,7 @@ class FilesystemPromptRepositoryUnitSpec :
 
             val nsWithPath = Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString())
             val nsWithoutPath = Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "no-path", configPath = null)
-            val fsId = filesystemEntityId("prompt", namespaceId, "plan")
+            val fsId = filesystemEntityId(FilesystemEntityKind.PROMPT, namespaceId, "plan")
 
             val delegate = mockk<PromptRepository>()
             val nsRepo = mockk<NamespaceRepository>()
@@ -595,8 +596,8 @@ class FilesystemPromptRepositoryUnitSpec :
             val nsId2 = UUID.randomUUID()
             val ns1 = Namespace(metadata = EntityMetadata(id = nsId1), name = "ns1", configPath = root1.toString())
             val ns2 = Namespace(metadata = EntityMetadata(id = nsId2), name = "ns2", configPath = root2.toString())
-            val id1 = filesystemEntityId("prompt", nsId1, "plan")
-            val id2 = filesystemEntityId("prompt", nsId2, "plan")
+            val id1 = filesystemEntityId(FilesystemEntityKind.PROMPT, nsId1, "plan")
+            val id2 = filesystemEntityId(FilesystemEntityKind.PROMPT, nsId2, "plan")
 
             id1 shouldNotBe id2
 

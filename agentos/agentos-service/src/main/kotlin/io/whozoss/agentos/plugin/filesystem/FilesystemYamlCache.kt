@@ -5,7 +5,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -134,15 +133,3 @@ class FilesystemYamlCacheRegistry<T>(
                 FilesystemYamlCache(dir, { file -> parser(dir, file) }, ttl, filePredicate, maxDepth)
             }.getAll()
 }
-
-/**
- * Stable id of an entity loaded from a namespace's `configPath`.
- *
- * The id MUST include [namespaceId]: two namespaces may define an entity with the same [name],
- * and a name-only id would make them indistinguishable in `findByIds`.
- */
-fun filesystemEntityId(
-    kind: String,
-    namespaceId: UUID,
-    name: String,
-): UUID = UUID.nameUUIDFromBytes("filesystem-$kind:$namespaceId:$name".toByteArray(Charsets.UTF_8))
