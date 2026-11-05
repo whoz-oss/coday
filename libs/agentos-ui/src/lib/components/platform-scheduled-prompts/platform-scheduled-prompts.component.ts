@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { DAY_OF_WEEK_FULL_LABELS, ScheduledPrompt, SchedulerUnit } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
 import { createRowDeletionState } from '../../utils/row-deletion-state'
@@ -24,9 +24,15 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-scheduled-prompts',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './platform-scheduled-prompts.component.html',
-  styleUrl: './platform-scheduled-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformScheduledPromptsComponent {

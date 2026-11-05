@@ -2,6 +2,11 @@
   <div class="welcome__aurora" aria-hidden="true"></div>
 
   <section class="welcome__card" aria-live="polite">
+    @if (state.preview(); as preview) {
+      <p class="welcome__preview" data-testid="preview-badge">
+        Preview: {{ preview }}. Nothing is saved and this page stays here.
+      </p>
+    }
     <header class="welcome__header">
       <div class="welcome__logo" aria-hidden="true">C</div>
       <div>
@@ -34,7 +39,7 @@
       <p class="welcome__banner welcome__banner--error" role="alert">{{ state.statusError() }}</p>
     }
 
-    <div class="welcome__step">
+    <div class="welcome__step" [class.welcome__step--loading]="state.mode() === 'loading'">
       @switch (state.step()) {
         @case ('email') {
           <app-email-step />

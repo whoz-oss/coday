@@ -20,9 +20,17 @@ import {
 import { catchError, debounceTime, map, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
-import { THEME_PORT, ThemeMode, ThemeVariant } from '../../services/theme.service'
+import {
+  isThemeVariant,
+  prefersDarkScheme,
+  resolveEffectiveMode,
+  supportsModeSwitch,
+  THEME_PORT,
+  ThemeMode,
+} from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
@@ -68,6 +76,7 @@ export class CaseShellComponent {
   private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
   protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
+  private readonly shellContext = inject(ShellContextService)
   private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
@@ -84,6 +93,8 @@ export class CaseShellComponent {
     return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
   })
 
+  protected readonly userAvatarUrl = this.userState.avatarUrl
+
   protected readonly userName = computed(() => {
     const user = this.userState.currentUser()
     if (!user) return ''
@@ -94,16 +105,19 @@ export class CaseShellComponent {
   // Theme
   // ---------------------------------------------------------------------------
 
+  /**
+   * Whether the rendered theme is dark. Derived from the effective mode, not the chosen one: a variant that does
+   * not support the chosen mode (a light-only one) renders its own mode whatever the stored choice.
+   */
   protected readonly isDark = computed(() => {
-    const { mode } = this.themePort.theme()
-    if (mode === 'dark') return true
-    if (mode === 'light') return false
-    return (
-      typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')?.includes('dark') === true
-    )
+    const { variant, mode } = this.themePort.theme()
+    return resolveEffectiveMode(variant, mode, prefersDarkScheme()) === 'dark'
   })
 
   protected readonly themeVariant = computed(() => this.themePort.theme().variant)
+
+  /** Whether the active variant has both light and dark, i.e. whether a light/dark switch is meaningful. */
+  protected readonly canToggleMode = computed(() => supportsModeSwitch(this.themeVariant()))
 
   // ---------------------------------------------------------------------------
   // UI state
@@ -168,10 +182,16 @@ export class CaseShellComponent {
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
-  protected readonly canWriteActiveCase = computed(() => {
+  /** Admin of the platform or of the current namespace: allowed to open the namespace settings. */
+  protected readonly canConfigureNamespace = computed(() => {
+    if (this.isAdmin()) return true
     const namespaceRole = this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.role
+    return namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN'
+  })
+
+  protected readonly canWriteActiveCase = computed(() => {
     const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
-    return this.isAdmin() || namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN' || caseRole === 'ADMIN'
+    return this.canConfigureNamespace() || caseRole === 'ADMIN'
   })
 
   constructor() {
@@ -198,6 +218,7 @@ export class CaseShellComponent {
       const nsList = this.namespaces()
       const nsId = this.namespaceId()
       if (!nsList.length) return
+      this.shellContext.rememberNamespaceNames(nsList)
 
       if (nsId) {
         const found = nsList.find((ns) => ns.id === nsId)
@@ -223,6 +244,11 @@ export class CaseShellComponent {
       const subscription = this.caseListUpdates.connect(nsId).subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
     })
+
+    // Remember the open case so the settings pages can bring the user back to it.
+    effect(() => {
+      this.shellContext.rememberCase(this.namespaceId(), this.activeCaseId())
+    })
   }
 
   // ---------------------------------------------------------------------------
@@ -233,6 +259,13 @@ export class CaseShellComponent {
     this.selectedNamespace.set(ns)
     this.nsMenuOpen.set(false)
     this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
+  }
+
+  protected onConfigureNamespace(): void {
+    const nsId = this.selectedNamespace()?.id ?? this.namespaceId()
+    this.nsMenuOpen.set(false)
+    if (!nsId) return
+    void this.router.navigate(['/agentos', nsId, 'edit'])
   }
 
   protected toggleNsMenu(event?: Event): void {
@@ -375,14 +408,17 @@ export class CaseShellComponent {
 
   protected onMenuToggleTheme(): void {
     this.menuOpen.set(false)
+    // A light-only variant has nothing to switch to: leave the stored mode alone.
+    if (!this.canToggleMode()) return
     const next: ThemeMode = this.isDark() ? 'light' : 'dark'
     this.themePort.setTheme({ variant: this.themeVariant(), mode: next })
   }
 
   protected onMenuThemeVariantChanged(variant: string): void {
     this.menuOpen.set(false)
+    if (!isThemeVariant(variant)) return
     const current = this.themePort.theme()
-    this.themePort.setTheme({ variant: variant as ThemeVariant, mode: current.mode })
+    this.themePort.setTheme({ variant, mode: current.mode })
   }
 
   protected onMenuToggleToolCalls(): void {

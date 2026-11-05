@@ -39,5 +39,9 @@ export class AdminSettingsLayoutComponent {
         { label: 'Tool invoke', commands: ['tool-invoke'] },
       ],
     },
+    {
+      label: 'System',
+      items: [{ label: 'Configuration', commands: ['configuration'] }],
+    },
   ]
 }

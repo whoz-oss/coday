@@ -8,19 +8,19 @@
     [query]="rowFilter.query()"
     (queryChange)="rowFilter.query.set($event)"
   />
-  <button class="auth-settings__new" type="button" (click)="openCreateForm()">New auth setting</button>
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New auth setting</button>
 </ds-section-header>
 @if (deletion.error()) {
-  <p class="auth-settings__error" role="alert">{{ deletion.error() }}</p>
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
 }
 @if (isLoading()) {
-  <p class="auth-settings__status" role="status">Loading auth settings…</p>
+  <p class="settings-table__status" role="status">Loading auth settings…</p>
 } @else if (rows().length === 0) {
-  <p class="auth-settings__status">No auth settings available.</p>
+  <p class="settings-table__status">No auth settings available.</p>
 } @else if (rowFilter.filteredRows().length === 0) {
-  <p class="auth-settings__status" role="status">No auth settings match the current filter.</p>
+  <p class="settings-table__status" role="status">No auth settings match the current filter.</p>
 } @else {
-  <div class="auth-settings__table-wrap">
+  <div class="settings-table__wrap">
     <table dsTable role="table" aria-label="Auth settings">
       <thead role="rowgroup">
         <tr role="row">
@@ -33,10 +33,12 @@
       <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
           <tr role="row">
-            <td role="cell" data-label="Name" data-title class="auth-settings__name">{{ row.config.name }}</td>
-            <td role="cell" data-label="Authentication type" class="auth-settings__type">{{ row.config.authType }}</td>
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ row.config.name }}</td>
+            <td role="cell" data-label="Authentication type" class="settings-table__secondary">
+              {{ row.config.authType }}
+            </td>
             <td role="cell" data-label="Scope">
-              <div class="auth-settings__tags">
+              <div class="settings-table__tags">
                 <ds-tag
                   [variant]="
                     row.scopeLabel === 'Platform' ? 'neutral' : row.scopeLabel === 'Personal' ? 'outline' : 'accent'
@@ -48,24 +50,33 @@
                 }
               </div>
             </td>
-            <td role="cell" data-label="Actions" data-actions class="auth-settings__actions">
-              <button type="button" (click)="duplicate(row)">Duplicate</button>
-              @if (row.canMutate) {
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
                 @if (deletion.confirmingId() !== row.key) {
-                  <button type="button" (click)="edit(row)">Edit</button>
+                  <button type="button" [attr.aria-label]="'Duplicate ' + row.config.name" (click)="duplicate(row)">
+                    Duplicate
+                  </button>
                 }
-                <agentos-row-delete-action
-                  [rowKey]="row.key"
-                  [rowLabel]="row.config.name"
-                  [state]="deletion"
-                  deleteClass="auth-settings__delete"
-                  (deleteRequested)="deletion.request(row.key)"
-                  (deleteConfirmed)="confirmDelete(row)"
-                  (deleteCancelled)="deletion.cancel()"
-                />
-              } @else {
-                <button type="button" disabled>Inherited</button>
-              }
+                @if (row.canMutate) {
+                  @if (deletion.confirmingId() !== row.key) {
+                    <button type="button" [attr.aria-label]="'Edit ' + row.config.name" (click)="edit(row)">
+                      Edit
+                    </button>
+                  }
+                  <agentos-row-delete-action
+                    [rowKey]="row.key"
+                    [rowLabel]="row.config.name"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (deleteRequested)="deletion.request(row.key)"
+                    (deleteConfirmed)="confirmDelete(row)"
+                    (deleteCancelled)="deletion.cancel()"
+                  />
+                } @else {
+                  <button type="button" disabled>Inherited</button>
+                }
+              </div>
             </td>
           </tr>
         }

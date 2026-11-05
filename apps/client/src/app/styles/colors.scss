@@ -6,7 +6,8 @@
  *   - agentos-shell               : Industry palette (Barlow / steel blue) — agentos-ui
  *
  * Industry tokens are scoped under agentos-shell to avoid polluting the legacy app.
- * Terminal themes are also scoped under agentos-shell.
+ * Terminal and Whoz OSS themes are also scoped under agentos-shell (never on :root / html[data-theme]:
+ * `data-theme` is shared with the legacy glass app, which would be restyled).
  *
  * Shared tokens (--glass-*, --color-overlay, etc.) remain in :root because
  * the legacy app consumes them directly.
@@ -136,12 +137,14 @@
   --color-divider: rgba(255, 255, 255, 0.15);
 }
 
-/* ─── Dark theme aliases — terminal variants for legacy components ────────────────────
- * When agentos-ui switches to a terminal theme, data-theme='terminal-*' is set on <html>.
- * Legacy components don't understand terminal themes — map them to the nearest
- * equivalent: terminal-light → light (:root), terminal-dark → dark.
+/* ─── Dark theme aliases — terminal and whoz-oss variants for legacy components ───────
+ * When agentos-ui switches to a terminal or whoz-oss dark theme, data-theme='terminal-dark' / 'whoz-oss-dark' is set
+ * on <html>.
+ * Legacy components, dialogs and snackbars don't understand those themes — they take the dark glass palette below.
+ * A new `<variant>-dark` must be listed here, or its dialogs/snackbars stay on the light :root palette.
  */
-[data-theme='terminal-dark'] {
+[data-theme='terminal-dark'],
+[data-theme='whoz-oss-dark'] {
   /* Reuse the same dark glass morphism tokens as [data-theme='dark'] */
   --color-bg: #1c1c1e;
   --color-bg-solid: #1c1c1e;
@@ -193,6 +196,14 @@ agentos-shell {
   /* ── Typography ── */
   --font-body: 'Barlow', system-ui, sans-serif;
   --font-heading: 'IBM Plex Mono', 'Fira Code', monospace;
+  /* Code, paths, identifiers: the monospace of the skin. Components ask for this token, never for a bare `monospace`. */
+  --font-code: 'IBM Plex Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* ── Shape / Radius — 0 = square corners. Industry and Terminal inherit it; Whoz OSS redefines all four. ── */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-pill: 0;
 
   /* ── Accent steel (Industry) — light ── */
   --color-accent: #5980a6;
@@ -399,6 +410,7 @@ agentos-shell[data-theme='terminal-light'],
 :is([data-theme='terminal-light']) agentos-shell {
   --font-body: 'JetBrains Mono', ui-monospace, monospace;
   --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+  --font-code: 'JetBrains Mono', ui-monospace, monospace;
 
   --color-accent: #a35a00;
   --color-accent-100: #f4f1e8;
@@ -490,6 +502,7 @@ agentos-shell[data-theme='terminal-dark'],
 :is([data-theme='terminal-dark']) agentos-shell {
   --font-body: 'JetBrains Mono', ui-monospace, monospace;
   --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+  --font-code: 'JetBrains Mono', ui-monospace, monospace;
 
   --color-accent: #ffb000;
   --color-accent-100: #2a1f00;
@@ -574,4 +587,252 @@ agentos-shell[data-theme='terminal-dark'],
   --glass-border: rgba(216, 220, 208, 0.1);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
   --glass-backdrop-blur: blur(20px);
+}
+
+/* ─── Whoz OSS Light ───────────────────────────────────────────────────────────── */
+/* Light and dark (see THEME_VARIANT_DEFINITIONS). Colors are eyeballed from mockups, not Figma-exact.
+ * The whole token set is written ONCE, in a mixin, because it is applied to two scopes:
+ *   1. agentos-shell      — the app itself
+ *   2. .ds-kebab-panel    — the CDK overlay panels, which live under body, OUTSIDE agentos-shell, and so
+ *                           cannot inherit tokens defined on it (see styles.scss).
+ * Legacy: whoz-oss-light needs no alias (it matches none of the legacy dark selectors, so the light :root palette
+ * applies to the legacy app); whoz-oss-dark is listed in the legacy dark alias block above. */
+
+/* Shared by whoz-oss-light and whoz-oss-dark: font and shape do not change with the mode. */
+@mixin whoz-oss-base {
+  /* ── Typography ── */
+  --font-body: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-heading: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-code: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ── Shape / Radius (always with a unit) ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+}
+
+@mixin whoz-oss-light {
+  @include whoz-oss-base;
+
+  /* ── Accent blue ── */
+  --color-accent: #2f5bd3;
+  --color-accent-100: #eef3ff;
+  --color-accent-200: #dbe6ff;
+  --color-accent-300: #b4c9f8;
+  --color-accent-600: #2f58cc;
+  --color-accent-700: #2444a8;
+  --color-accent-800: #1b3380;
+  --color-accent-900: #122257;
+
+  /* ── Neutral scale ── */
+  --color-neutral-100: #f1f2f6;
+  --color-neutral-200: #e6e8ee;
+  --color-neutral-500: #8b91a0;
+  --color-neutral-600: #6b7280;
+  --color-neutral-700: #4b5262;
+  --color-neutral-900: #111827;
+
+  /* ── Semantic red ── */
+  --red: #d92d20;
+  --red-deep: #a61b12;
+  --red-bg: #fde4e1;
+
+  /* ── Surface / background (surface is lighter than the background, unlike Industry) ── */
+  --color-bg: #f6f7fa;
+  --color-bg-solid: #f6f7fa;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f1f2f6;
+  --color-bg-secondary: rgba(255, 255, 255, 0.7);
+  --color-bg-secondary-rgb: 255 255 255;
+  --color-text: #1f2430;
+  --color-text-secondary: #5b6270;
+  --color-text-tertiary: #8b91a0;
+  --color-text-inverse: #ffffff;
+  --color-text-on-accent: #ffffff;
+
+  /* ── Interactive ── */
+  --color-primary: var(--color-accent);
+  --color-primary-hover: var(--color-accent-700);
+  --color-link: var(--color-accent-700);
+  --color-bg-hover: rgba(31, 36, 48, 0.06);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(31, 36, 48, 0.04);
+  --color-input-bg: #ffffff;
+
+  /* ── Borders / Dividers ── */
+  --color-divider: rgba(31, 36, 48, 0.14);
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(31, 36, 48, 0.08);
+
+  /* ── Shadows (soft) ── */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.12), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --color-shadow: rgba(16, 24, 40, 0.08);
+
+  /* ── Status ── */
+  --color-success: #1f9d55;
+  --color-success-bg: #e3f5e9;
+  --color-error: #d92d20;
+  --color-warning: #f79009;
+  --color-info: #2e90fa;
+
+  /* ── Case status (blue-grays) ── */
+  --status-pending-color: #f79009;
+  --status-pending-text: #b54708;
+  --status-pending-bg: rgba(247, 144, 9, 0.1);
+  --status-idle-color: #8b93a6;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(139, 147, 166, 0.08);
+  --status-killed-color: #6b7385;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(107, 115, 133, 0.08);
+
+  /* ── Modal / Dialog ── */
+  --color-modal-bg: #ffffff;
+  --color-modal-border: rgba(31, 36, 48, 0.14);
+  --color-modal-shadow: 0 8px 40px rgba(16, 24, 40, 0.18), 0 2px 8px rgba(16, 24, 40, 0.1);
+  --color-overlay: rgba(16, 24, 40, 0.4);
+
+  /* ── Code ── */
+  --color-code-bg: rgba(31, 36, 48, 0.06);
+  --color-code-text: #d92d20;
+
+  /* ── Chat bubbles ── */
+  --color-message-user: rgba(47, 91, 211, 0.1);
+  --color-message-ai: #ffffff;
+  --color-bubble-agent-bg: #f1f2f6;
+  --color-bubble-user-bg: #e4ecff;
+  --color-bubble-system-bg: #1f2430;
+  --color-bubble-system-text: #f6f7fa;
+
+  /* ── Glass morphism — legacy ── */
+  --glass-bg: rgba(246, 247, 250, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px 0 rgba(16, 24, 40, 0.12);
+  --glass-backdrop-blur: blur(20px);
+}
+
+agentos-shell[data-theme='whoz-oss-light'],
+:is([data-theme='whoz-oss-light']) agentos-shell {
+  @include whoz-oss-light;
+}
+
+/* CDK overlay panels of agentos-ui (kebab menus): rendered under body, so they get the tokens directly. The class
+ * is exclusive to agentos-ui, which keeps the legacy app untouched. Industry and Terminal panels are unchanged. */
+[data-theme='whoz-oss-light'] .ds-kebab-panel {
+  @include whoz-oss-light;
+}
+
+/* ─── Whoz OSS Dark ────────────────────────────────────────────────────────────── */
+/* Same token names, font and radii as whoz-oss-light; blue a little lighter, deeper surfaces, stronger shadows. */
+@mixin whoz-oss-dark {
+  @include whoz-oss-base;
+
+  /* ── Accent blue (lighter) ── */
+  --color-accent: #6b8ef2;
+  --color-accent-100: #1a2547;
+  --color-accent-200: #233463;
+  --color-accent-300: #2f4690;
+  --color-accent-600: #8aa6f6;
+  --color-accent-700: #a9bdf9;
+  --color-accent-800: #cbd8fc;
+  --color-accent-900: #e8eefe;
+
+  /* ── Neutral scale ── */
+  --color-neutral-100: #222633;
+  --color-neutral-200: #1b1e27;
+  --color-neutral-500: #7c8394;
+  --color-neutral-600: #a6adbc;
+  --color-neutral-700: #c3c8d4;
+  --color-neutral-900: #eceef4;
+
+  /* ── Semantic red ── */
+  --red: #ff6b5b;
+  --red-deep: #ff9d92;
+  --red-bg: #4a1a15;
+
+  /* ── Surface / background ── */
+  --color-bg: #12141a;
+  --color-bg-solid: #12141a;
+  --color-surface: #1b1e27;
+  --color-surface-secondary: #222633;
+  --color-bg-secondary: rgba(27, 30, 39, 0.72);
+  --color-bg-secondary-rgb: 27 30 39;
+  --color-text: #eceef4;
+  --color-text-secondary: #a6adbc;
+  --color-text-tertiary: #7c8394;
+  --color-text-inverse: #12141a;
+  --color-text-on-accent: #0b1020;
+
+  /* ── Interactive ── */
+  --color-primary: var(--color-accent);
+  --color-primary-hover: var(--color-accent-600);
+  --color-link: var(--color-accent-700);
+  --color-bg-hover: rgba(236, 238, 244, 0.08);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(236, 238, 244, 0.05);
+  --color-input-bg: #1b1e27;
+
+  /* ── Borders / Dividers ── */
+  --color-divider: rgba(236, 238, 244, 0.14);
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(236, 238, 244, 0.07);
+
+  /* ── Shadows (stronger on dark) ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.3);
+  --color-shadow: rgba(0, 0, 0, 0.5);
+
+  /* ── Status ── */
+  --color-success: #32d583;
+  --color-success-bg: rgba(50, 213, 131, 0.15);
+  --color-error: #ff6b5b;
+  --color-warning: #fdb022;
+  --color-info: #53b1fd;
+
+  /* ── Case status (blue-grays) ── */
+  --status-pending-color: #fdb022;
+  --status-pending-text: #fec84b;
+  --status-pending-bg: rgba(253, 176, 34, 0.12);
+  --status-idle-color: #6b7385;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(107, 115, 133, 0.1);
+  --status-killed-color: #4b5262;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(75, 82, 98, 0.12);
+
+  /* ── Modal / Dialog ── */
+  --color-modal-bg: #1b1e27;
+  --color-modal-border: rgba(236, 238, 244, 0.14);
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.6), 0 2px 12px rgba(0, 0, 0, 0.4);
+  --color-overlay: rgba(0, 0, 0, 0.7);
+
+  /* ── Code ── */
+  --color-code-bg: rgba(236, 238, 244, 0.1);
+  --color-code-text: #ff9d92;
+
+  /* ── Chat bubbles ── */
+  --color-message-user: rgba(107, 142, 242, 0.15);
+  --color-message-ai: #1b1e27;
+  --color-bubble-agent-bg: #222633;
+  --color-bubble-user-bg: #233463;
+  --color-bubble-system-bg: #12141a;
+  --color-bubble-system-text: #eceef4;
+
+  /* ── Glass morphism — legacy ── */
+  --glass-bg: rgba(27, 30, 39, 0.9);
+  --glass-border: rgba(236, 238, 244, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --glass-backdrop-blur: blur(20px);
+}
+
+agentos-shell[data-theme='whoz-oss-dark'],
+:is([data-theme='whoz-oss-dark']) agentos-shell {
+  @include whoz-oss-dark;
+}
+
+/* Same overlay-scope reason as whoz-oss-light (kebab menu panels live under body, outside agentos-shell). */
+[data-theme='whoz-oss-dark'] .ds-kebab-panel {
+  @include whoz-oss-dark;
 }

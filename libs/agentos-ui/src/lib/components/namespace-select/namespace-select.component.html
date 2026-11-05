@@ -1,6 +1,10 @@
 <label class="namespace-select">
   <span class="namespace-select__label">Namespace</span>
-  <select class="namespace-select__control" [value]="value() ?? ''" (change)="onChange($event)">
+  <select
+    class="ds-control ds-control--auto namespace-select__control"
+    [value]="value() ?? ''"
+    (change)="onChange($event)"
+  >
     @if (includeAllOption()) {
       <option value="">All namespaces</option>
     }

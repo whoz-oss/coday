@@ -77,6 +77,33 @@ describe('generateWorkspace', () => {
   it('is deterministic (no timestamp), so an unchanged workspace is never rewritten', () => {
     expect(generateWorkspace(input)).toEqual(files)
   })
+
+  it('leaves the factory target out when it is disabled: no pane, and status no longer depends on it', () => {
+    const without = JSON.parse(generateWorkspace({ ...input, withFactory: false })['project.json'] as string)
+    expect(Object.keys(without.targets).sort()).toEqual(['agentos', 'provision', 'server', 'status'])
+    // server stays first: it is the one pinned next to status in the TUI.
+    expect(without.targets.status.dependsOn).toEqual(['provision', 'server', 'agentos'])
+  })
+
+  it('leaves the agentos target out for an external AgentOS, the factory one staying', () => {
+    const without = JSON.parse(generateWorkspace({ ...input, withAgentos: false })['project.json'] as string)
+    expect(Object.keys(without.targets).sort()).toEqual(['factory', 'provision', 'server', 'status'])
+    expect(without.targets.status.dependsOn).toEqual(['provision', 'server', 'factory'])
+  })
+
+  it('leaves both service targets out when both are external: only server and status remain', () => {
+    const without = JSON.parse(
+      generateWorkspace({ ...input, withAgentos: false, withFactory: false })['project.json'] as string
+    )
+    expect(Object.keys(without.targets).sort()).toEqual(['provision', 'server', 'status'])
+    expect(without.targets.status.dependsOn).toEqual(['provision', 'server'])
+  })
+
+  it('keeps the factory by default', () => {
+    expect(
+      JSON.parse(generateWorkspace({ ...input, withFactory: true })['project.json'] as string).targets.factory
+    ).toBeDefined()
+  })
 })
 
 describe('shellQuote / taskCommand', () => {

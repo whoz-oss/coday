@@ -12,6 +12,7 @@ import {
 } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService, Prompt, PromptParameter } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { catchError, of } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 
@@ -49,9 +50,8 @@ import { PromptStateService } from '../../services/prompt-state.service'
  */
 @Component({
   selector: 'agentos-prompt-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DS_PAGE_KIT],
   templateUrl: './prompt-form.component.html',
-  styleUrl: './prompt-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PromptFormComponent implements OnInit {

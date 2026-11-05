@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -13,6 +14,7 @@ import io.mockk.verify
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.agent.ResolvedAgentDefinition
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -219,6 +221,13 @@ class AgentConfigControllerUnitSpec :
             result.advancedExecution shouldBe true
         }
 
+        "toDto exposes SIMPLE when neither executionMode nor the legacy flag is set" {
+            val result = toDto(config().copy(executionMode = null, advancedExecution = false))
+
+            result.executionMode shouldBe ExecutionMode.SIMPLE
+            result.advancedExecution shouldBe null
+        }
+
         "toDto derives advancedExecution from executionMode, never contradicting it" {
             // Stored inconsistently by a client that only sent executionMode before the derivation existed.
             val advanced = toDto(config().copy(executionMode = ExecutionMode.ADVANCED, advancedExecution = false))
@@ -342,6 +351,20 @@ class AgentConfigControllerUnitSpec :
         "toDomain resolves the legacy advancedExecution flag into executionMode" {
             toDomain(resource().copy(advancedExecution = true)).executionMode shouldBe ExecutionMode.ADVANCED
             toDomain(resource().copy(advancedExecution = null)).executionMode shouldBe ExecutionMode.SIMPLE
+        }
+
+        "toDomain persists SIMPLE explicitly when the client sends neither field" {
+            val result = toDomain(resource().copy(executionMode = null, advancedExecution = null))
+
+            result.executionMode shouldBe ExecutionMode.SIMPLE
+            result.advancedExecution shouldBe false
+        }
+
+        "toDomain treats advancedExecution=false as SIMPLE" {
+            val result = toDomain(resource().copy(executionMode = null, advancedExecution = false))
+
+            result.executionMode shouldBe ExecutionMode.SIMPLE
+            result.advancedExecution shouldBe false
         }
 
         "toDomain derives advancedExecution from executionMode when only executionMode is sent" {
@@ -547,6 +570,64 @@ class AgentConfigControllerUnitSpec :
             verify(exactly = 1) { service.update(any()) }
         }
 
+        // ── subAgents guard, on the two write paths that reach it ──────────────────────
+
+        "create refuses an entity id in subAgents" {
+            val id = UUID.randomUUID().toString()
+            every { userService.getCurrentUser() } returns superAdmin
+
+            val thrown =
+                shouldThrow<BadRequestException> {
+                    controller.create(resource().copy(subAgents = listOf(id)))
+                }
+
+            thrown.message!! shouldContain id
+            verify(exactly = 0) { service.create(any()) }
+        }
+
+        "create accepts names and globs in subAgents" {
+            val payload = resource(id = null).copy(subAgents = listOf("Reviewer", "*Fixer"))
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.create(any()) } returns toDomain(payload)
+
+            controller.create(payload)
+
+            verify(exactly = 1) { service.create(any()) }
+        }
+
+        "update refuses an entity id subAgents did not already hold" {
+            val c = config().copy(subAgents = listOf("Reviewer"))
+            val id = UUID.randomUUID().toString()
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+
+            val thrown =
+                shouldThrow<BadRequestException> {
+                    controller.update(c.id, resource(id = c.id).copy(subAgents = listOf("Reviewer", id)))
+                }
+
+            verify(exactly = 0) { service.update(any()) }
+        }
+
+        "update carries a stored entity id through, so an unrelated edit is not blocked by it" {
+            // A PUT replaces the whole resource, so every caller echoes the stored selectors back.
+            // Refusing them would make an agent that already holds an id impossible to edit at all.
+            val id = UUID.randomUUID().toString()
+            val c = config().copy(subAgents = listOf(id))
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.instructions shouldBe "Rewritten."
+                saved.subAgents shouldBe listOf(id)
+                saved
+            }
+
+            controller.update(c.id, resource(id = c.id).copy(subAgents = listOf(id), instructions = "Rewritten."))
+
+            verify(exactly = 1) { service.update(any()) }
+        }
+
         "update preserves the persisted namespaceId when client sends a different value" {
             val c = config()
             val otherNs = UUID.randomUUID()
@@ -589,6 +670,40 @@ class AgentConfigControllerUnitSpec :
             every { service.update(any()) } answers {
                 val saved = firstArg<AgentConfig>()
                 saved.enabled shouldBe true
+                saved
+            }
+
+            controller.update(c.id, payload)
+
+            verify(exactly = 1) { service.update(any()) }
+        }
+
+        "update persists SIMPLE when the payload sends neither field" {
+            val c = config().copy(executionMode = ExecutionMode.ADVANCED, advancedExecution = true)
+            val payload = resource(id = c.id).copy(executionMode = null, advancedExecution = null)
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.executionMode shouldBe ExecutionMode.SIMPLE
+                saved.advancedExecution shouldBe false
+                saved
+            }
+
+            controller.update(c.id, payload)
+
+            verify(exactly = 1) { service.update(any()) }
+        }
+
+        "update maps the legacy advancedExecution=true to ADVANCED" {
+            val c = config()
+            val payload = resource(id = c.id).copy(executionMode = null, advancedExecution = true)
+            every { userService.getCurrentUser() } returns superAdmin
+            every { service.findById(c.id) } returns c
+            every { service.update(any()) } answers {
+                val saved = firstArg<AgentConfig>()
+                saved.executionMode shouldBe ExecutionMode.ADVANCED
+                saved.advancedExecution shouldBe true
                 saved
             }
 

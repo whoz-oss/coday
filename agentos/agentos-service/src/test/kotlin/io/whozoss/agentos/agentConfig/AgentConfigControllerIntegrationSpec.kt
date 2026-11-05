@@ -47,7 +47,7 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
         "timeout override survives persistence and PUT null or omission restores inheritance" {
             val created = mockMvc.perform(
                 post("/api/agent-configs").contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"namespaceId":"$namespaceId","name":"timeout-agent","delegationTimeoutSeconds":3600}"""),
+                    .content("""{"namespaceId":"$namespaceId","name":"timeout-agent","modelName":"BIG","delegationTimeoutSeconds":3600}"""),
             ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.delegationTimeoutSeconds").value(3600))
                 .andReturn().response.contentAsString
@@ -55,11 +55,11 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
             mockMvc.perform(get("/api/agent-configs/$id"))
                 .andExpect(status().isOk).andExpect(jsonPath("$.delegationTimeoutSeconds").value(3600))
             for (reset in listOf(
-                """{"name":"timeout-agent","delegationTimeoutSeconds":null}""",
-                """{"name":"timeout-agent"}""",
+                """{"name":"timeout-agent","modelName":"BIG","delegationTimeoutSeconds":null}""",
+                """{"name":"timeout-agent","modelName":"BIG"}""",
             )) {
                 mockMvc.perform(put("/api/agent-configs/$id").contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"name":"timeout-agent","delegationTimeoutSeconds":1200}"""))
+                    .content("""{"name":"timeout-agent","modelName":"BIG","delegationTimeoutSeconds":1200}"""))
                     .andExpect(status().isOk).andExpect(jsonPath("$.delegationTimeoutSeconds").value(1200))
                 mockMvc.perform(put("/api/agent-configs/$id").contentType(MediaType.APPLICATION_JSON).content(reset))
                     .andExpect(status().isOk).andExpect(jsonPath("$.delegationTimeoutSeconds").doesNotExist())
@@ -67,10 +67,10 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
             }
             for (invalid in listOf("0", "-1", "2147483648")) {
                 mockMvc.perform(post("/api/agent-configs").contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"namespaceId":"$namespaceId","name":"invalid-timeout","delegationTimeoutSeconds":$invalid}"""))
+                    .content("""{"namespaceId":"$namespaceId","name":"invalid-timeout","modelName":"BIG","delegationTimeoutSeconds":$invalid}"""))
                     .andExpect(status().isBadRequest)
                 mockMvc.perform(put("/api/agent-configs/$id").contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"name":"timeout-agent","delegationTimeoutSeconds":$invalid}"""))
+                    .content("""{"name":"timeout-agent","modelName":"BIG","delegationTimeoutSeconds":$invalid}"""))
                     .andExpect(status().isBadRequest)
             }
         }
@@ -101,8 +101,28 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
                 .perform(
                     post("/api/agent-configs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "namespaceId": "$namespaceId", "name": "my-agent" }"""),
+                        .content("""{ "namespaceId": "$namespaceId", "name": "my-agent", "modelName": "BIG" }"""),
                 ).andExpect(status().isCreated)
+        }
+
+        "POST /api/agent-configs without modelName returns 400" {
+            mockMvc
+                .perform(
+                    post("/api/agent-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "no-model" }"""),
+                ).andExpect(status().isBadRequest)
+        }
+
+        "POST /api/agent-configs with a blank modelName returns 400" {
+            for (blank in listOf("", "   ")) {
+                mockMvc
+                    .perform(
+                        post("/api/agent-configs")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""{ "namespaceId": "$namespaceId", "name": "blank-model", "modelName": "$blank" }"""),
+                    ).andExpect(status().isBadRequest)
+            }
         }
 
         "POST /api/agent-configs with all fields returns 201" {
@@ -129,7 +149,7 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
                 .perform(
                     post("/api/agent-configs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "namespaceId": "$namespaceId", "name": "no-advanced" }"""),
+                        .content("""{ "namespaceId": "$namespaceId", "name": "no-advanced", "modelName": "BIG" }"""),
                 ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.advancedExecution").doesNotExist())
         }
@@ -139,7 +159,7 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
                 .perform(
                     post("/api/agent-configs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "namespaceId": "$namespaceId", "name": "advanced-agent", "advancedExecution": true }"""),
+                        .content("""{ "namespaceId": "$namespaceId", "name": "advanced-agent", "modelName": "BIG", "advancedExecution": true }"""),
                 ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.advancedExecution").value(true))
         }
@@ -149,7 +169,7 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
                 .perform(
                     post("/api/agent-configs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "namespaceId": "$namespaceId", "name": "advanced-by-mode", "executionMode": "ADVANCED" }"""),
+                        .content("""{ "namespaceId": "$namespaceId", "name": "advanced-by-mode", "modelName": "BIG", "executionMode": "ADVANCED" }"""),
                 ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.executionMode").value("ADVANCED"))
                 .andExpect(jsonPath("$.advancedExecution").value(true))
@@ -167,6 +187,27 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
                     put("/api/agent-configs/$id")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""{ "id": "$id", "namespaceId": "$namespaceId", "name": "" }"""),
+                ).andExpect(status().isBadRequest)
+        }
+
+        "PUT /api/agent-configs/{id} without modelName returns 400, even for an agent stored without one" {
+            val legacy =
+                agentConfigService.create(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespaceId,
+                        name = "legacy-without-model",
+                    ),
+                )
+
+            // Still readable as stored: the rule refuses a write, it does not hide old agents.
+            mockMvc.perform(get("/api/agent-configs/${legacy.id}")).andExpect(status().isOk)
+
+            mockMvc
+                .perform(
+                    put("/api/agent-configs/${legacy.id}")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "name": "legacy-without-model" }"""),
                 ).andExpect(status().isBadRequest)
         }
 

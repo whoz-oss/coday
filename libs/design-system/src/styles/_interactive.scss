@@ -14,14 +14,14 @@
 // ── Chip / pill ───────────────────────────────────────────────────────────────
 
 /// Chip — inline tag with border, subtle background, hover state.
-/// → height 28px, square (radius 0), divider border, font-body 11.5px 500
+/// → height 30px, radius var(--radius-pill, 0), divider border, font-body 13px 500
 @mixin chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   height: 30px;
   padding: 0 12px 0 10px;
-  border-radius: 0;
+  border-radius: var(--radius-pill, 0);
   border: 1px solid var(--color-divider);
   background: var(--color-surface);
   color: var(--color-text);
@@ -46,8 +46,8 @@
 /// Compact icon button — square, transparent rest state, bg-hover on hover.
 ///
 /// @param {Length} $size [26px] — width and height of the button
-/// @param {Length} $radius [6px] — border-radius of the button
-@mixin icon-button($size: 26px, $radius: 0px) {
+/// @param {Length} $radius [var(--radius-sm, 0)] — border-radius of the button
+@mixin icon-button($size: 26px, $radius: var(--radius-sm, 0)) {
   @include button-reset;
 
   width: $size;
@@ -89,7 +89,7 @@
   align-items: center;
   width: 100%;
   padding: 8px 10px;
-  border-radius: 0;
+  border-radius: var(--radius-sm, 0);
   font-family: var(--font-body);
   font-size: 14.5px;
   font-weight: 500;
@@ -175,6 +175,7 @@
   display: inline-flex;
   align-items: center;
   border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 0);
   font-size: 9.5px;
   font-family: var(--font-heading);
   font-weight: 600;
@@ -252,7 +253,7 @@
 @mixin focus-ring {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 0;
+  border-radius: var(--radius-sm, 0);
 }
 
 // ── Reset utilities ───────────────────────────────────────────────────────────

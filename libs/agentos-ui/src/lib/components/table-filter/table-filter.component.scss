@@ -42,7 +42,7 @@
   padding: 0 10px;
   background: var(--color-surface);
   border: 1px solid var(--color-divider);
-  border-radius: 0;
+  border-radius: var(--radius-md, 0);
   transition: border-color 150ms;
 
   &:focus-within {

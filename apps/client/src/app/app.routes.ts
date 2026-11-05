@@ -28,6 +28,13 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./welcome/welcome.component').then((m) => m.WelcomeComponent),
   },
   {
+    // The root has no page of its own: the welcome page decides where the user lands (wizard, or straight to their
+    // personal namespace once the services are up).
+    path: '',
+    pathMatch: 'full',
+    redirectTo: 'welcome',
+  },
+  {
     // agentos-ui is lazy — a static import would bloat the eager bundle.
     // setupGuard redirects everything to /welcome until the first-run setup is done.
     path: '',

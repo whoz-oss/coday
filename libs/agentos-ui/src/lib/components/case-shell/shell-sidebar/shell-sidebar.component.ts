@@ -12,7 +12,7 @@ import {
 import { Case, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { CaseDrawerComponent } from '../../case-drawer/case-drawer.component'
 import { ShellUserMenuComponent } from '../shell-user-menu/shell-user-menu.component'
-import { BlueprintDirective } from '@whoz-oss/design-system'
+import { AvatarComponent, BlueprintDirective } from '@whoz-oss/design-system'
 
 /**
  * ShellSidebarComponent — desktop sidebar.
@@ -32,7 +32,7 @@ import { BlueprintDirective } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-shell-sidebar',
-  imports: [CaseDrawerComponent, ShellUserMenuComponent, BlueprintDirective],
+  imports: [CaseDrawerComponent, ShellUserMenuComponent, BlueprintDirective, AvatarComponent],
   templateUrl: './shell-sidebar.component.html',
   styleUrl: './shell-sidebar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -102,6 +102,11 @@ export class ShellSidebarComponent {
     this.namespaceSelected.emit(ns)
   }
 
+  protected onCompactConfigureNamespace(): void {
+    this.compactNsMenuOpen.set(false)
+    this.configureNamespaceRequested.emit()
+  }
+
   protected onCompactUserBtnClick(event: MouseEvent): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
     // Menu opens upward — anchor to the bottom of the avatar button
@@ -138,6 +143,8 @@ export class ShellSidebarComponent {
   readonly namespaces = input.required<NamespaceListItem[]>()
   readonly showNsPicker = input.required<boolean>()
   readonly nsMenuOpen = input.required<boolean>()
+  /** Whether the current user may open the settings of the selected namespace. */
+  readonly canConfigureNamespace = input(false)
 
   // Cases
   readonly workspaces = input<Record<string, WorkspaceView>>({})
@@ -146,10 +153,14 @@ export class ShellSidebarComponent {
 
   // User menu
   readonly userInitials = input.required<string>()
+  /** Gravatar URL of the user; the initials are shown when null or when the image cannot be loaded. */
+  readonly userAvatarUrl = input<string | null>(null)
   readonly userName = input.required<string>()
   readonly menuOpen = input.required<boolean>()
   readonly isAdmin = input.required<boolean>()
   readonly isDark = input.required<boolean>()
+  /** False for a light-only variant: the user menu then hides its light/dark entry. */
+  readonly canToggleMode = input(true)
   readonly themeVariant = input.required<string>()
   readonly showToolCalls = input.required<boolean>()
 
@@ -159,6 +170,7 @@ export class ShellSidebarComponent {
   readonly namespaceSelected = output<NamespaceListItem>()
   readonly nsMenuToggled = output<void>()
   readonly nsMenuClosed = output<Event>()
+  readonly configureNamespaceRequested = output<void>()
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
   readonly subCaseCreateRequested = output<string>()

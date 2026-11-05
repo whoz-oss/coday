@@ -1,0 +1,29 @@
+///
+/// Coday Design System — Type scale
+///
+/// The only place a font size is decided for a settings page (lists, forms, detail pages). Components and the
+/// global primitives use these variables; a local `rem` or `px` size is a drift.
+///
+///   $text-title    25px  page title (h2 of ds-section-header)
+///   $text-heading  15px  title of a card / section inside a page
+///   $text-body     14px  text, labels, inputs, table cells, buttons, filters
+///   $text-small    13px  hints, secondary text, errors
+///   $text-micro    11px  uppercase labels (table headers, legends, group titles), tags
+///
+/// Two families, both tokens of the skin: --font-body for text, --font-heading for buttons and micro labels.
+
+$text-title: 25px;
+$text-title-mobile: 21px;
+$text-heading: 15px;
+$text-body: 14px;
+$text-small: 13px;
+$text-micro: 11px;
+
+/// Small uppercase label (table header, legend, group title, tag).
+@mixin micro-label {
+  font-family: var(--font-heading, monospace);
+  font-size: $text-micro;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

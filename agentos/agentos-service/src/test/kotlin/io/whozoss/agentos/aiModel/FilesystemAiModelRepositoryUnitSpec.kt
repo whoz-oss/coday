@@ -90,7 +90,19 @@ class FilesystemAiModelRepositoryUnitSpec :
                 priority shouldBe 10
                 contextWindow shouldBe 1_000_000L
                 pricing shouldBe ModelPricing(inputMTokens = 2.0, outputMTokens = 10.0, cacheRead = 0.2, cacheWrite = 2.5)
+                supportsAdvancedExecution shouldBe false
             }
+        }
+
+        "reads supportsAdvancedExecution from the file, false when the key is absent" {
+            val advancedYaml = bigYaml.replace("alias: BIG", "alias: ADVANCED") + "\nsupportsAdvancedExecution: true"
+            val models =
+                repo(
+                    configDir("BIG.yaml" to bigYaml, "ADVANCED.yaml" to advancedYaml),
+                    namespaceProviders = listOf(provider("requesty")),
+                ).findAllForNamespace(namespaceId)
+
+            models.associate { it.alias to it.supportsAdvancedExecution } shouldBe mapOf("BIG" to false, "ADVANCED" to true)
         }
 
         "keeps a stable id across reads" {

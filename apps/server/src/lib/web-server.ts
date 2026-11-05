@@ -22,6 +22,7 @@ import { debugLog } from './log'
 import { applyProxyIdentity, decideProxyIdentity } from './proxy-identity'
 import { resolveUsername } from './resolve-username'
 import { createIdentityProvider } from './runtime/identity'
+import { isManagedFactoryDisabled } from './runtime/factory-option'
 import { AGENTOS_DEFAULT_PORT, FACTORY_DEFAULT_PORT } from './runtime/ports'
 import { readState } from './runtime/state'
 import { createSetupRouter } from './setup/routes'
@@ -133,18 +134,22 @@ export function createWebApp({ codayOptions, setupEnabled }: WebAppOptions): exp
   )
   // Factory exposes its API with the /api/factory prefix already, so the complete request path is
   // forwarded unchanged (mounted at the root with a pathFilter, see ./factory-proxy.ts).
-  app.use(
-    createFactoryProxy(factoryTarget, {
-      onProxyReq: (proxyReq, req) => {
-        debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
-        forwardIdentity(proxyReq, req)
-      },
-    })
-  )
+  // CODAY_NO_FACTORY leaves the managed Factory out: with no FACTORY_URL either, there is nothing to proxy to.
+  const factoryDisabled = isManagedFactoryDisabled() && !FACTORY_URL_ENV
+  if (!factoryDisabled) {
+    app.use(
+      createFactoryProxy(factoryTarget, {
+        onProxyReq: (proxyReq, req) => {
+          debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
+          forwardIdentity(proxyReq, req)
+        },
+      })
+    )
+  }
   debugLog(
     'INIT',
     `Proxies: /api/agentos -> ${AGENTOS_URL_ENV ?? 'managed AgentOS (state.json)'}, ` +
-      `/api/factory -> ${FACTORY_URL_ENV ?? 'managed Factory (state.json)'}`
+      `/api/factory -> ${FACTORY_URL_ENV ?? (factoryDisabled ? 'none (CODAY_NO_FACTORY)' : 'managed Factory (state.json)')}`
   )
 
   // 3. Body parsing for everything that follows.

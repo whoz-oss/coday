@@ -1,0 +1,566 @@
+///
+/// Coday Design System — Global primitives
+///
+/// Plain CSS for the primitives that wrap a NATIVE element and so cannot carry component styles:
+///   dsButton          button[dsButton], a[dsButton]            -> .ds-button  (+ --primary --danger --ghost --icon --icon-danger)
+///   dsControl         input / select / textarea [dsControl]    -> .ds-control
+///   dsCheck           label[dsCheck]                           -> .ds-check
+///   dsDefinitionList  dl[dsDefinitionList]                     -> .ds-dl
+///   dsTable           table[dsTable]                           -> .ds-table (+ the .settings-table__* helpers)
+///
+/// The host application includes this file ONCE, after the theme tokens are defined:
+///
+///   @use 'libs/design-system/src/styles/primitives';
+///
+/// It only consumes tokens (var(--token, fallback)), it never defines them. It is not forwarded by the barrel
+/// (_index.scss): a component that @use'd it would ship a copy of all this CSS.
+///
+
+@use 'scale' as t;
+@use 'layout';
+
+// ── Button ────────────────────────────────────────────────────────────────────────────────
+
+.ds-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  box-sizing: border-box;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-pill, 0);
+  background: transparent;
+  color: var(--color-text, #1d1f20);
+  cursor: pointer;
+  font-family: var(--font-heading, monospace);
+  font-size: t.$text-body;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-neutral-500, #98989b);
+    background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent, #5980a6);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.ds-button--primary {
+  border-color: var(--color-accent, #5980a6);
+  background: var(--color-accent, #5980a6);
+  color: var(--color-text-on-accent, var(--color-bg, #fff));
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-accent-700, #416180);
+    background: var(--color-accent-700, #416180);
+  }
+}
+
+.ds-button--danger {
+  border-color: var(--red, #ec3013);
+  color: var(--red, #ec3013);
+
+  &:hover:not(:disabled) {
+    border-color: var(--red, #ec3013);
+    background: color-mix(in srgb, var(--red, #ec3013) 10%, transparent);
+  }
+}
+
+// A text button: back links, "Add…" actions.
+.ds-button--ghost {
+  padding: 0.25rem 0.5rem;
+  border-color: transparent;
+  color: var(--color-accent-700, var(--color-accent, #416180));
+  font-family: var(--font-body, sans-serif);
+  font-weight: 500;
+
+  &:hover:not(:disabled) {
+    border-color: transparent;
+    background: var(--color-accent-100, rgba(89, 128, 166, 0.1));
+  }
+}
+
+// A square icon button: remove, add a row.
+.ds-button--icon,
+.ds-button--icon-danger {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-color: transparent;
+  border-radius: var(--radius-sm, 0);
+  color: var(--color-neutral-500, #98989b);
+  font-family: var(--font-body, sans-serif);
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 1;
+
+  &:hover:not(:disabled) {
+    border-color: transparent;
+    color: var(--color-text, #1d1f20);
+  }
+}
+
+.ds-button--icon-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red, #ec3013) 10%, transparent);
+  color: var(--red, #ec3013);
+}
+
+// Touch target on small screens (text buttons only: icon and ghost buttons are laid out inline).
+@media (max-width: 760px) {
+  .ds-button:not(.ds-button--ghost):not(.ds-button--icon):not(.ds-button--icon-danger) {
+    min-height: 44px;
+  }
+}
+
+// ── Control (input, select, textarea) ───────────────────────────────────────────────────────────────────
+
+.ds-control {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-md, 0);
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1d1f20);
+  font-family: var(--font-body, sans-serif);
+  font-size: t.$text-body;
+  line-height: 1.4;
+  transition: border-color 0.15s ease;
+
+  &:focus {
+    border-color: var(--color-accent, #5980a6);
+    outline: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent, #5980a6);
+    outline-offset: 1px;
+  }
+
+  &::placeholder {
+    color: var(--color-neutral-500, #98989b);
+  }
+
+  // background-color, not the shorthand: it would reset the arrow image of a disabled select.
+  &:disabled,
+  &[readonly] {
+    background-color: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+    color: var(--color-text-secondary, #5c5c5f);
+    cursor: default;
+  }
+
+  // One validation look for every form: a touched control that is invalid, or one flagged by the page.
+  &.ng-invalid.ng-touched,
+  &[aria-invalid='true'] {
+    border-color: var(--color-error, #ec3013);
+  }
+}
+
+textarea.ds-control {
+  min-height: 96px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+// The native arrow sits against the right border and cannot be moved: it is replaced by one drawn with two
+// gradients (a chevron-like triangle), which follows the text token of every skin. The arrow spans 15–25px from
+// the right edge; the padding keeps the text clear of it. A compact select overriding `padding` must keep that
+// right padding (2.25rem).
+select.ds-control {
+  padding-right: 2.25rem;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-text-secondary, #5c5c5f) 50%),
+    linear-gradient(135deg, var(--color-text-secondary, #5c5c5f) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.25rem) 50%,
+    calc(100% - 0.9375rem) 50%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.ds-control--mono,
+input[type='password'].ds-control {
+  font-family: var(--font-code, monospace);
+}
+
+.ds-control--mono {
+  font-size: t.$text-small;
+}
+
+// ── Check / radio row ──────────────────────────────────────────────────────────────────────
+
+.ds-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text, #1d1f20);
+  cursor: pointer;
+  font-size: t.$text-body;
+  user-select: none;
+
+  input {
+    flex-shrink: 0;
+    margin: 0;
+    accent-color: var(--color-accent, #5980a6);
+    cursor: pointer;
+  }
+}
+
+// ── Hint, error, link, mono — used by ds-form-field / ds-fieldset and by anything projected into them ────────────────────────────────────────────
+
+.ds-hint {
+  margin: 0;
+  color: var(--color-text-secondary, #5c5c5f);
+  font-size: t.$text-small;
+  line-height: 1.4;
+
+  a {
+    color: var(--color-accent-700, var(--color-accent, #416180));
+  }
+}
+
+.ds-hint--warning {
+  color: var(--color-warning, #ff9500);
+}
+
+.ds-error {
+  margin: 0;
+  color: var(--color-error, #ec3013);
+  font-size: t.$text-small;
+  line-height: 1.3;
+}
+
+.ds-link {
+  color: var(--color-accent-700, var(--color-accent, #416180));
+  font-size: t.$text-small;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent, #5980a6);
+    outline-offset: 2px;
+  }
+}
+
+.ds-mono {
+  font-family: var(--font-code, monospace);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// ── Definition list (read-only label / value pairs) ─────────────────────────────────────────────────────────────
+
+.ds-dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+
+  dt {
+    align-self: baseline;
+    color: var(--color-text-secondary, #5c5c5f);
+    font-size: t.$text-small;
+    font-weight: 500;
+  }
+
+  dd {
+    align-self: baseline;
+    margin: 0;
+    color: var(--color-text, #1d1f20);
+    font-size: t.$text-body;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+
+    dd {
+      margin-bottom: 0.5rem;
+    }
+  }
+}
+
+// ── Table (dsTable) ───────────────────────────────────────────────────────────────────────
+//
+// Below 760px a table is shown as a stack of cards, with a single DOM and the same @for loop: each <tr> becomes a
+// card, each <td> a "label / value" line. The template provides:
+//   td[data-label="…"]  the column name, rendered on mobile only
+//   td[data-title]        the cell that heads the card (the name; its label is not shown)
+//   td[data-actions]      the footer of the card (row actions / delete confirmation)
+// and ARIA table roles, because changing `display` on table elements makes some browser / screen reader pairs drop
+// the table semantics.
+
+table.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body, sans-serif);
+  font-size: t.$text-body;
+
+  th {
+    padding: 7px;
+    border-bottom: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+    color: var(--color-neutral-600, #7a7a7d);
+    font-family: var(--font-heading, monospace);
+    font-size: t.$text-micro;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  td {
+    padding: 7px;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1d1f20) 8%, transparent);
+  }
+
+  tbody tr:hover {
+    background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+  }
+
+  // A row that opens its entity when clicked. The buttons of its actions cell stop the click.
+  tbody tr.settings-table__row--link {
+    cursor: pointer;
+  }
+}
+
+.settings-table__wrap {
+  overflow-x: auto;
+}
+
+.settings-table__status {
+  margin: 20px 0;
+  color: var(--color-text-secondary, #5c5c5f);
+  font-size: t.$text-body;
+}
+
+.settings-table__error {
+  margin: 0 0 0.75rem;
+  color: var(--color-error, #ec3013);
+  font-size: t.$text-body;
+}
+
+.settings-table__name {
+  font-weight: 500;
+}
+
+.settings-table__secondary {
+  color: var(--color-text-secondary, #5c5c5f);
+}
+
+.settings-table__stacked {
+  display: block;
+}
+
+.settings-table__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.settings-table__confirm-label {
+  color: var(--color-text-secondary, #5c5c5f);
+  font-size: t.$text-small;
+}
+
+.settings-table__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+
+  button {
+    padding: 4px 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-accent, #5980a6);
+    cursor: pointer;
+    font-family: var(--font-body, sans-serif);
+    font-size: t.$text-body;
+
+    &:hover:not(:disabled) {
+      background: var(--color-accent-100, rgba(89, 128, 166, 0.1));
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent, #5980a6);
+      outline-offset: 1px;
+    }
+
+    &:disabled {
+      color: var(--color-neutral-600, #7a7a7d);
+      cursor: default;
+    }
+  }
+
+  .settings-table__delete {
+    color: var(--color-error, #ec3013);
+  }
+}
+
+// Toolbar of a list that sits under a section header (namespace picker + filter + create button).
+.settings-table__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 1rem;
+}
+
+.settings-table__toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .settings-table__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-table__toolbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  table.ds-table {
+    position: relative;
+    display: block;
+    width: 100%;
+
+    // Visually hidden, still exposed to assistive technologies (column headers).
+    thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding-top: 12px;
+    }
+
+    tbody tr,
+    tbody tr:hover {
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      background: var(--color-surface, #fff);
+      border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+    }
+
+    td {
+      display: grid;
+      grid-template-columns: minmax(88px, 30%) minmax(0, 1fr);
+      align-items: baseline;
+      gap: 4px 12px;
+      padding: 5px 0;
+      border-bottom: 0;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
+    td[data-label]::before {
+      // The label is a visual aid only: screen readers already get the column header from the (visually hidden)
+      // <thead>. The second declaration marks the text as decorative where the alt syntax is supported; other
+      // browsers keep the first one. Interpolated so Sass emits the CSS alt-text syntax verbatim.
+      content: attr(data-label);
+      content: #{"attr(data-label) / ''"};
+      color: var(--color-neutral-600, #7a7a7d);
+      font-family: var(--font-heading, monospace);
+      font-size: t.$text-micro;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    td[data-title] {
+      display: block;
+      margin-bottom: 4px;
+      padding: 0 0 6px;
+      border-bottom: 0;
+      font-size: t.$text-heading;
+
+      &::before {
+        display: none;
+      }
+    }
+
+    td[data-actions] {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+      margin-top: 6px;
+      padding: 10px 0 0;
+      border-top: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+      text-align: right;
+
+      &::before {
+        display: none;
+      }
+
+      .settings-table__actions {
+        flex-wrap: wrap;
+        width: 100%;
+        white-space: normal;
+      }
+
+      button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0 12px;
+      }
+    }
+  }
+}
