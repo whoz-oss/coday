@@ -5,8 +5,8 @@
  *   0. identify   a first call as the first-run user: AgentOS creates the user and its personal namespace on the
  *                 first request it sees, whatever else its database already holds
  *   1. providers  platform-scope AI providers, one per chosen catalogue entry
- *   2. models     the 4 aliased chat models of each provider, plus its WHISPER transcription model when it has one
- *                 (OpenAI, Requesty), priority derived from the rank
+ *   2. models     the 4 aliased chat models of each provider, its `default` model (a copy of its SMALL one), plus its
+ *                 WHISPER transcription model when it has one (OpenAI, Requesty), priority derived from the rank
  *   3. namespace  the personal namespace `user:<email>` (created asynchronously by AgentOS),
  *                 its `sharedExchangePath` set to the chosen folder
  *   4. agent      the default agent is deployed and is the namespace default
@@ -19,7 +19,15 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { AgentosClient, AgentosHttpError, AgentosModel, AgentosModelPricing, AgentosNamespace } from './agentos-client'
-import { CatalogueProvider, getCatalogueProvider, MODEL_ALIASES, priorityForRank } from './model-catalogue'
+import {
+  CatalogueModel,
+  CatalogueProvider,
+  DEFAULT_MODEL_ALIAS,
+  defaultModelOf,
+  getCatalogueProvider,
+  MODEL_ALIASES,
+  priorityForRank,
+} from './model-catalogue'
 import { ApplyTracker } from './progress'
 
 /**
@@ -158,8 +166,12 @@ const findByAlias = (models: AgentosModel[], alias: string): AgentosModel | unde
 
 async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, providerId: string, priority: number) {
   const existing = await deps.client.listModelsOfProvider(providerId)
-  for (const alias of MODEL_ALIASES) {
-    const wanted = catalogue.models[alias]
+  // The 4 chat aliases, then `default`: a copy of SMALL, the model AgentOS falls back to when an agent names none.
+  const chatModels: Array<[string, CatalogueModel]> = [
+    ...MODEL_ALIASES.map((alias): [string, CatalogueModel] => [alias, catalogue.models[alias]]),
+    [DEFAULT_MODEL_ALIAS, defaultModelOf(catalogue)],
+  ]
+  for (const [alias, wanted] of chatModels) {
     const body = {
       aiProviderId: providerId,
       apiModelName: wanted.apiModelName,
@@ -202,7 +214,8 @@ async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, provi
   }
 }
 
-const modelCountOf = (catalogue: CatalogueProvider): number => MODEL_ALIASES.length + (catalogue.transcription ? 1 : 0)
+const modelCountOf = (catalogue: CatalogueProvider): number =>
+  MODEL_ALIASES.length + 1 + (catalogue.transcription ? 1 : 0)
 
 async function findPersonalNamespace(deps: ApplyDeps): Promise<AgentosNamespace> {
   const attempts = deps.namespaceAttempts ?? 30

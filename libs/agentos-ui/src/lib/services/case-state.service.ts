@@ -126,6 +126,15 @@ export class CaseStateService {
   }
 
   /**
+   * Stop (kill) a case: the agent and its running sub-cases are terminated, the history and files are kept
+   * and the case can be reopened. The status is patched in the list at once; the case's own event stream
+   * confirms it for an open chat.
+   */
+  killCase(caseId: string): Observable<void> {
+    return this.caseController.killCase(caseId).pipe(tap(() => this.updateCaseStatus(caseId, 'KILLED')))
+  }
+
+  /**
    * Star / unstar a case for the current user. The favorite flag is flipped optimistically
    * in the list (so the drawer reflects it at once) and reverted locally if the request
    * fails. Returns the request so the caller can surface an error.

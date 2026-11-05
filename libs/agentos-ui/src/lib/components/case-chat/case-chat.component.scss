@@ -543,7 +543,20 @@
     &--audio {
       display: flex;
       flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
     }
+  }
+
+  // Transcript of a voice message: plain spoken text, left-aligned with the player, no markdown margins or
+  // indentation, wrapping on words.
+  &__transcript {
+    margin: 0;
+    padding: 0;
+    text-align: left;
+    text-indent: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   // ── Tool calls ─────────────────────────────────────────────────────

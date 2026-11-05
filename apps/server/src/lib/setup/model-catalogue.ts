@@ -27,10 +27,17 @@
  *   - OpenAI     platform.openai.com/docs/guides/speech-to-text (`whisper-1`)
  *   - Requesty   router.eu.requesty.ai/v1/models (`openai/whisper-1`)
  * Model availability and prices change: update this file, nothing else.
+ *
+ * The `default` alias is the one AgentOS falls back to for an agent with no (or an unknown) `modelName`. It is not a
+ * catalogue entry of its own: each provider's `default` is a copy of its SMALL model (see `defaultModelOf`), so the
+ * smallest model of the best-ranked provider wins.
  */
 
 export const MODEL_ALIASES = ['FRONTIER', 'BIGGEST', 'BIG', 'SMALL'] as const
 export type ModelAlias = (typeof MODEL_ALIASES)[number]
+
+/** Alias of the platform model AgentOS uses when an agent names none: the smallest model of each provider. */
+export const DEFAULT_MODEL_ALIAS = 'default' as const
 
 /** Alias of the platform transcription model: the voice capability picks the one of highest priority. */
 export const TRANSCRIPTION_ALIAS = 'WHISPER' as const
@@ -209,6 +216,12 @@ export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
 }
 
 export const CATALOGUE_PROVIDER_IDS = Object.keys(MODEL_CATALOGUE) as CatalogueProviderId[]
+
+/** The `default` model of a provider: its SMALL model, under the `default` alias. */
+export function defaultModelOf(provider: CatalogueProvider): CatalogueModel {
+  const small = provider.models.SMALL
+  return { ...small, description: `Default model, the smallest of ${provider.label}: ${small.description}` }
+}
 
 export function getCatalogueProvider(id: string): CatalogueProvider | undefined {
   return (MODEL_CATALOGUE as Record<string, CatalogueProvider | undefined>)[id]

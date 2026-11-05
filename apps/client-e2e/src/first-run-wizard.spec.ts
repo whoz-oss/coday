@@ -14,7 +14,8 @@ import * as path from 'path'
  * SKIPPED (with a reason) when Java 25 or the locally built JARs are unavailable, so CI without a JVM stays green.
  *
  * It asserts, through the AgentOS REST API (via the Coday proxy, as the first-run user):
- *  - platform-scope providers and their 4 aliased models (plus WHISPER, the transcription model, for requesty),
+ *  - platform-scope providers and their 4 aliased models, `default` (a copy of SMALL), plus WHISPER (the transcription
+ *    model) for requesty,
  *  - the personal namespace `user:<email>` with the ADMIN role,
  *  - the Coday agent deployed and default, with its three integrations (config, case files, namespace files),
  *  - `sharedExchangePath` set to the chosen folder.
@@ -116,9 +117,11 @@ test.describe('first-run wizard', () => {
 
     for (const provider of providers) {
       const models = await agentos<Array<{ alias?: string }>>(`/api/ai-models/by-parentId/${provider.id}`)
-      // Chat aliases everywhere; requesty (like openai) also gets the WHISPER transcription model, anthropic has none.
+      // Chat aliases and `default` (a copy of SMALL) everywhere; requesty (like openai) also gets the WHISPER
+      // transcription model, anthropic has none. Sorted: upper case before lower case.
       const chatAliases = ['BIG', 'BIGGEST', 'FRONTIER', 'SMALL']
-      const expected = provider.name === 'requesty' ? [...chatAliases, 'WHISPER'] : chatAliases
+      const expected =
+        provider.name === 'requesty' ? [...chatAliases, 'WHISPER', 'default'] : [...chatAliases, 'default']
       expect(models.map((m) => m.alias).sort()).toEqual(expected)
     }
 
