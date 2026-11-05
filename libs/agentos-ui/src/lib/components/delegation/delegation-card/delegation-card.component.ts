@@ -1,7 +1,18 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, NgZone, computed, inject, input, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  NgZone,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core'
 import { Router } from '@angular/router'
 import { Configuration, CaseEvent } from '@whoz-oss/agentos-api-client'
 import { DelegationPresentation } from '../models/delegation.models'
+import { describeDelegationActivity } from '../models/delegation-activity.models'
 import { DelegationResultComponent } from '../delegation-result/delegation-result.component'
 @Component({
   selector: 'agentos-delegation-card',
@@ -16,26 +27,50 @@ export class DelegationCardComponent {
   private readonly router = inject(Router)
   private readonly config = inject(Configuration)
   private readonly zone = inject(NgZone)
-  private readonly destroyRef = inject(DestroyRef)
   protected readonly open = signal(false)
   protected readonly activity = signal<string[]>([])
+  private readonly events = signal<CaseEvent[]>([])
+  private readonly eventIds = new Set<string>()
+  private eventsSubCaseId: string | null = null
   private source: EventSource | null = null
   protected readonly statusLabel = computed(() => this.delegation().status.replace('_', ' '))
+  protected readonly lastEventSummary = computed(() => describeDelegationActivity(this.delegation(), this.events()))
+  private readonly streamState = computed(
+    () => ({ subCaseId: this.delegation().subCaseId, status: this.delegation().status }),
+    { equal: (a, b) => a.subCaseId === b.subCaseId && a.status === b.status }
+  )
+
+  constructor() {
+    effect((onCleanup) => {
+      const { subCaseId, status } = this.streamState()
+      untracked(() => {
+        if (this.eventsSubCaseId !== subCaseId) {
+          this.eventsSubCaseId = subCaseId
+          this.events.set([])
+          this.eventIds.clear()
+          this.activity.set([])
+        }
+        if (status === 'WORKING' && subCaseId) this.connect(subCaseId)
+      })
+      onCleanup(() => this.disconnect())
+    })
+  }
+
   protected toggle(): void {
     this.open.update((value) => !value)
-    this.open() ? this.connect() : this.disconnect()
   }
   protected openSubCase(): void {
     this.router.navigate(['/agentos/home'], {
       queryParams: { ns: this.namespaceId(), case: this.delegation().subCaseId },
     })
   }
-  private connect(): void {
-    if (this.source) return
-    this.source = this.zone.runOutsideAngular(
-      () => new EventSource(`${this.config.basePath}/api/cases/${this.delegation().subCaseId}/events`)
+  private connect(subCaseId: string): void {
+    const source = this.zone.runOutsideAngular(
+      () => new EventSource(`${this.config.basePath}/api/cases/${subCaseId}/events`)
     )
-    this.source.addEventListener('case-event', (message: MessageEvent<string>) => {
+    this.source = source
+    source.addEventListener('case-event', (message: MessageEvent<string>) => {
+      if (this.source !== source) return
       try {
         const event = JSON.parse(message.data) as CaseEvent
         this.zone.run(() => this.addActivity(event))
@@ -43,25 +78,16 @@ export class DelegationCardComponent {
         /* child diagnostics remain isolated */
       }
     })
-    this.destroyRef.onDestroy(() => this.disconnect())
   }
   private disconnect(): void {
     this.source?.close()
     this.source = null
   }
   private addActivity(event: CaseEvent): void {
-    const label =
-      event.type === 'MessageEvent'
-        ? 'Agent produced a message'
-        : event.type === 'ToolRequestEvent'
-          ? `Tool started: ${event.toolName}`
-          : event.type === 'ToolResponseEvent'
-            ? `Tool completed: ${event.toolName}`
-            : event.type === 'QuestionEvent'
-              ? 'Waiting for input'
-              : event.type === 'AgentFinishedEvent'
-                ? 'Agent finished'
-                : null
-    if (label) this.activity.update((items) => (items.includes(label) ? items : [...items, label].slice(-6)))
+    if (this.eventIds.has(event.id)) return
+    this.eventIds.add(event.id)
+    this.events.update((events) => [...events, event])
+    const label = this.lastEventSummary()?.label
+    if (label) this.activity.update((items) => (items.at(-1) === label ? items : [...items, label].slice(-6)))
   }
 }
