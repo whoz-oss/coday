@@ -9,7 +9,9 @@ integrations:
   MEMORY:
   GITHUB:
   GIT:
-  JIRA:
+  ATLASSIAN_JIRA:
+  ATLASSIAN_CONFLUENCE:
+  ATLASSIAN_CONFLUENCE_SEARCH:
   DELEGATE:
     - Gradlay
     - Daemonay
