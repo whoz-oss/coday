@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.plugin.filesystem.substituteConfigPath
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -148,7 +149,12 @@ class FilesystemIntegrationConfigRepository(
         return cacheRegistry
             .getAll(directory)
             .filter { it.name.lowercase() !in excludeNames }
-            .map { it.copy(namespaceId = namespaceId) }
+            .map {
+                it.copy(
+                    namespaceId = namespaceId,
+                    metadata = it.metadata.copy(id = filesystemEntityId("integration", namespaceId, it.name)),
+                )
+            }
             .sortedBy { it.name }
     }
 

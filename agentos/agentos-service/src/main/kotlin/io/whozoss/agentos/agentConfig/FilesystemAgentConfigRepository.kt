@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
@@ -61,7 +62,6 @@ class FilesystemAgentConfigRepository(
             fromFilesystem
                 .filter { it.name.lowercase() !in delegateNames }
                 .filter { agentName == null || it.name.startsWith(agentName, ignoreCase = true) }
-                .map { it.copy(namespaceId = namespaceId) }
                 .sortedBy { it.name }
 
         return fromDelegate + filesystemAdditions
@@ -73,7 +73,7 @@ class FilesystemAgentConfigRepository(
             emptyList()
         } else {
             val directory = Path.of(configPath, AGENTS_SUBDIR)
-            cacheRegistry.getAll(directory)
+            cacheRegistry.getAll(directory).map { it.inNamespace(namespaceId) }
         }
     }
 
@@ -148,9 +148,19 @@ class FilesystemAgentConfigRepository(
         return cacheRegistry
             .getAll(directory)
             .filter { it.name.lowercase() !in excludeNames }
-            .map { it.copy(namespaceId = parentId) }
+            .map { it.inNamespace(parentId) }
             .sortedBy { it.name }
     }
+
+    /**
+     * Binds a parsed filesystem agent to [namespaceId], including its id: the same YAML name in
+     * two namespaces must give two different ids.
+     */
+    private fun AgentConfig.inNamespace(namespaceId: UUID): AgentConfig =
+        copy(
+            namespaceId = namespaceId,
+            metadata = metadata.copy(id = filesystemEntityId("agent", namespaceId, name)),
+        )
 
     /**
      * [directory] (the cache's root, i.e. `<configPath>/agents`) is unused here —
