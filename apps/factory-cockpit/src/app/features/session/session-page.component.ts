@@ -227,11 +227,16 @@ export class SessionPageComponent implements OnDestroy {
   protected onReply(intent: ReplyIntent): void {
     const id = this.effectiveRunId()
     if (!id) return
-    this.store.replyInteraction(id, intent.interactionId, {
-      actionId: intent.actionId,
-      text: intent.text,
-      expectedRevision: intent.expectedRevision,
-    })
+    this.store.replyInteraction(
+      id,
+      intent.interactionId,
+      {
+        actionId: intent.actionId,
+        text: intent.text,
+        expectedRevision: intent.expectedRevision,
+      },
+      this.currentNamespaceId()
+    )
   }
 
   protected onAgentQuestionAnswered(intent: AgentQuestionAnswerIntent): void {

@@ -758,8 +758,6 @@ class SessionRunService(
         status: String,
         progress: SessionProgress,
     ) {
-        if (progress.statuses[stepId] == status) return
-        progress.statuses[stepId] = status
         val now = nowIso()
         when (status) {
             WorkflowStatuses.RUNNING -> progress.startedAt.putIfAbsent(stepId, now)
@@ -772,6 +770,8 @@ class SessionRunService(
                 progress.waitingQuestions.remove(stepId)
             }
         }
+        if (progress.statuses[stepId] == status && status != WorkflowStatuses.COMPLETED && status != WorkflowStatuses.FAILED) return
+        progress.statuses[stepId] = status
         repository.upsertStepState(
             scope,
             WorkflowStepStateRecord(
