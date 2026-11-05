@@ -1812,6 +1812,7 @@ class CapabilityExecutionService(
         newTransaction {
             attempts.transition(scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken, AgentAttemptStatus.RUNNING)
         }
+        onAgentObservation(AgentObservationUpdate(status = "running"))
         var waitingQuestion: String? = null
         val observed = try {
             adapter.observeTurnResult(

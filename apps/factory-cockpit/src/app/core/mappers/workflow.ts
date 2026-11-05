@@ -137,7 +137,9 @@ export function mapProjectionToSessionDetail(
   const cancelAttemptAction = mappedAllowedActions.find(
     (action) => action.type === 'cancel_attempt' && action.attemptId !== undefined
   )
-  const runningAttempt = mappedAttempts.find((attempt) => attempt.status === 'running')
+  const runningAttempt = mappedAttempts.find(
+    (attempt) => attempt.status === 'running' || attempt.status === 'starting'
+  )
   const activeAttemptId = cancelAttemptAction?.attemptId ?? runningAttempt?.attemptId
   const activeAttemptRevision = cancelAttemptAction?.expectedRevision ?? runningAttempt?.revision
 
@@ -145,17 +147,35 @@ export function mapProjectionToSessionDetail(
   const controllerCaseId = controllerCaseIdOf(snapshot)
   const projectedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const derivedStatus = mapWorkflowStateToRunStatus(undefined, steps)
-  const hasNeedsResearchAttempt = mappedAttempts.some(
-    (attempt) =>
-      attempt.status.toLowerCase() === 'indeterminate' && attempt.failureCode?.toUpperCase() === 'AGENT_NEEDS_RESEARCH'
+  const latestAttemptByStep = new Map<string, import('../models').AgentAttempt>()
+  for (const attempt of mappedAttempts) {
+    const prev = latestAttemptByStep.get(attempt.stepId)
+    if (!prev || attempt.attemptNumber >= prev.attemptNumber) {
+      latestAttemptByStep.set(attempt.stepId, attempt)
+    }
+  }
+  const latestAttempts = [...latestAttemptByStep.values()]
+  const hasRunningAttempt = latestAttempts.some(
+    (attempt) => attempt.status.toLowerCase() === 'running' || attempt.status.toLowerCase() === 'starting'
   )
+  const hasNeedsResearchAttempt =
+    !hasRunningAttempt &&
+    latestAttempts.some(
+      (attempt) =>
+        attempt.status.toLowerCase() === 'indeterminate' &&
+        attempt.failureCode?.toUpperCase() === 'AGENT_NEEDS_RESEARCH'
+    )
   const stepStates = steps.map(resolveStepState)
+  const isActivelyRunning = stepStates.includes('running') || hasRunningAttempt
   const waitingHuman =
-    stepStates.includes('waiting_human') ||
-    hasNeedsResearchAttempt ||
-    mappedAttempts.some((attempt) => attempt.status === 'waiting_human')
-  const status: RunStatus = waitingHuman ? 'running' : derivedStatus === 'failed' ? 'failed' : projectedStatus
-  const activelyRunning = !waitingHuman && stepStates.includes('running')
+    !isActivelyRunning &&
+    (stepStates.includes('waiting_human') ||
+      hasNeedsResearchAttempt ||
+      latestAttempts.some((attempt) => attempt.status === 'waiting_human') ||
+      (agentQuestions ?? []).some((q) => !q.answered))
+  const status: RunStatus =
+    isActivelyRunning || waitingHuman ? 'running' : derivedStatus === 'failed' ? 'failed' : projectedStatus
+  const activelyRunning = isActivelyRunning
   const executionState: import('../models').TimelineStepStatus = waitingHuman
     ? 'waiting_human'
     : activelyRunning
