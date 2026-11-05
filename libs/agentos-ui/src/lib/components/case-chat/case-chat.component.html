@@ -175,9 +175,11 @@
                     @if (item.event.actor.role === 'USER') {
                       @if (audioOf(item.event); as audio) {
                         <!-- A voice message: the player, then its transcript like a normal user bubble. -->
+                        <!-- The transcript is spoken text, not markdown: shown as plain text so a leading space or an
+                             indented line can never turn into a code block or shift the text. -->
                         <div class="case-chat__bubble case-chat__bubble--audio" dsBlueprint>
                           <agentos-audio-message [caseId]="caseId" [audio]="audio" />
-                          <div class="case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                          <p class="case-chat__transcript">{{ messageText(item).trim() }}</p>
                         </div>
                       } @else {
                         <div

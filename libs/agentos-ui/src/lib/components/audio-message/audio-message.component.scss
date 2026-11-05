@@ -1,9 +1,12 @@
+:host {
+  display: block;
+}
+
 .audio-message {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-height: 40px;
-  margin-bottom: 0.5rem;
 
   &__player {
     width: 100%;
