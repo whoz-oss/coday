@@ -166,23 +166,49 @@ class TranscriptionServiceUnitSpec :
                 .message shouldContain "WHISPER"
         }
 
-        "is unavailable and throws for an Anthropic provider" {
-            val p = provider(apiType = AiApiType.Anthropic)
+        "availability is driven by the alias only: an Anthropic provider with a platform WHISPER model is available" {
+            val p = provider(apiType = AiApiType.Anthropic, headers = mapOf("X-Custom" to "v"))
             val factory = stubbedFactory()
             val service = buildService(listOf(whisperModel(p)), listOf(p), factory)
 
-            service.isAvailable() shouldBe false
-            shouldThrow<TranscriptionUnavailableException> { service.transcribe(audio, "audio/webm", null) }
-                .message shouldContain "Anthropic"
-            verify(exactly = 0) { factory.createTranscriptionModel(any(), any(), any(), any(), any()) }
+            service.isAvailable() shouldBe true
+            service.transcribe(audio, "audio/webm", null) shouldBe "bonjour le monde"
+
+            verify(exactly = 1) {
+                factory.createTranscriptionModel(
+                    baseUrl = "https://whisper.example",
+                    apiKey = "sk-test",
+                    modelName = "whisper-1",
+                    language = null,
+                    headers = mapOf("X-Custom" to "v"),
+                )
+            }
         }
 
-        "is unavailable and throws for a Gemini provider" {
+        "availability is driven by the alias only: a Gemini provider with a platform WHISPER model is available" {
             val p = provider(apiType = AiApiType.Gemini)
             val service = buildService(listOf(whisperModel(p)), listOf(p))
 
-            service.isAvailable() shouldBe false
-            shouldThrow<TranscriptionUnavailableException> { service.transcribe(audio, "audio/webm", null) }
+            service.isAvailable() shouldBe true
+            service.transcribe(audio, "audio/webm", null) shouldBe "bonjour le monde"
+        }
+
+        "the highest priority platform WHISPER model wins" {
+            val low = provider(baseUrl = "https://low.example")
+            val high = provider(baseUrl = "https://high.example")
+            val factory = stubbedFactory()
+            val service =
+                buildService(
+                    models = listOf(whisperModel(low, priority = 1), whisperModel(high, priority = 5)),
+                    providers = listOf(low, high),
+                    factory = factory,
+                )
+
+            service.transcribe(audio, "audio/webm", null)
+
+            verify(exactly = 1) {
+                factory.createTranscriptionModel("https://high.example", any(), any(), any(), any())
+            }
         }
 
         "passes the language through to the factory" {
