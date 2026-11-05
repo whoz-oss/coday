@@ -49,8 +49,15 @@ export class AgentTimelineComponent {
   protected readonly effectiveLanes = computed(() => {
     const now = this.effectiveNowSec()
     const isVisible = (block: TimelineBlock): boolean => block.status !== 'pending' && block.status !== 'ready'
-    const extend = (block: TimelineBlock): TimelineBlock =>
-      block.status === 'running' && now > block.endSec ? { ...block, endSec: now } : block
+    const extend = (block: TimelineBlock): TimelineBlock => {
+      if (block.status !== 'running' || now <= block.endSec) return block
+      const deltaSec = now - block.endSec
+      return {
+        ...block,
+        endSec: now,
+        ...(block.activeDurationSec !== undefined ? { activeDurationSec: block.activeDurationSec + deltaSec } : {}),
+      }
+    }
     return this.lanes().map((lane) => ({
       ...lane,
       request: lane.request && isVisible(lane.request) ? extend(lane.request) : undefined,

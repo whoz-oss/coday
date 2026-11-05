@@ -206,7 +206,20 @@ export class FactoryStore implements OnDestroy {
 
   constructor() {
     this.loadNamespaceOptions()
-    // All-namespace overview uses bounded polling instead of one SSE connection per namespace.
+    // Periodic refresh:
+    // - In all-namespace mode: refresh overview every 15s
+    // - When viewing a session detail that is running or waiting: refresh detail every 4s
+    //   as a safety net in case an SSE frame is missed or arrives before an attempt transition commits.
+    this.subscriptions.add(
+      timer(4000, 4000).subscribe(() => {
+        if (this.selectedWorkflowId) {
+          const current = this.sessions().get(this.selectedWorkflowId)
+          if (current && (current.status === 'running' || current.status === 'queued')) {
+            this.refreshSelectedSession()
+          }
+        }
+      })
+    )
     this.subscriptions.add(
       timer(15000, 15000).subscribe(() => {
         if (this.selectedNamespaceId() === null) this.refresh()
