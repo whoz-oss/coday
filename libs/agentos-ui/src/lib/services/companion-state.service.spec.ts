@@ -83,8 +83,9 @@ describe('CompanionStateService', () => {
     expect(service.groups()).toEqual([])
   })
 
-  it('filters out sub-cases that have a parentCaseId', () => {
+  it('ignores non-blocking notifications from sub-cases', () => {
     casesSignal.set([
+      { id: 'root-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case,
       { id: 'sub-1', namespaceId: 'ns-1', title: 'Sub Case', parentCaseId: 'root-1', status: 'RUNNING' } as Case,
     ])
 
@@ -96,10 +97,68 @@ describe('CompanionStateService', () => {
       agentName: 'Sway',
     } as unknown as CaseEvent)
 
+    events$.next({
+      id: 'e-1',
+      type: 'ErrorEvent',
+      caseId: 'sub-1',
+      namespaceId: 'ns-1',
+      message: 'Sub-case error',
+    } as unknown as CaseEvent)
+
     expect(service.groups()).toEqual([])
   })
 
-  it('buffers notifications while fetching unknown cases from CaseControllerService and drops sub-cases', () => {
+  it('attaches blocking notifications from a sub-case to its parent root case group and clears them when resolved', () => {
+    casesSignal.set([{ id: 'root-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
+    getByIdCase.mockReturnValueOnce(
+      of({ id: 'sub-1', namespaceId: 'ns-1', title: 'Sub Case', parentCaseId: 'root-1', status: 'RUNNING' } as Case)
+    )
+
+    events$.next({
+      id: 'q-sub-1',
+      type: 'QuestionEvent',
+      caseId: 'sub-1',
+      namespaceId: 'ns-1',
+      agentName: 'Sway',
+      question: 'Which branch should I use?',
+      questionType: 'SINGLE_CHOICE',
+      options: ['master', 'workstream/forge/master'],
+    } as unknown as CaseEvent)
+
+    expect(getByIdCase).toHaveBeenCalledWith('sub-1')
+    expect(service.groups()).toEqual([
+      {
+        caseId: 'root-1',
+        namespaceId: 'ns-1',
+        caseTitle: 'Main Case',
+        notifications: [
+          {
+            id: 'q-sub-1',
+            caseId: 'sub-1',
+            namespaceId: 'ns-1',
+            kind: 'question',
+            blocking: true,
+            agentName: 'Sway',
+            question: 'Which branch should I use?',
+            options: ['master', 'workstream/forge/master'],
+          },
+        ],
+      },
+    ])
+
+    // Answering on the sub-case removes the notification from the parent's group
+    events$.next({
+      id: 'a-sub-1',
+      type: 'AnswerEvent',
+      caseId: 'sub-1',
+      namespaceId: 'ns-1',
+      questionId: 'q-sub-1',
+    } as unknown as CaseEvent)
+
+    expect(service.groups()).toEqual([])
+  })
+
+  it('buffers notifications while fetching unknown cases from CaseControllerService', () => {
     getByIdCase.mockReturnValueOnce(
       of({ id: 'remote-1', namespaceId: 'ns-1', title: 'Remote Case', status: 'RUNNING' } as Case)
     )

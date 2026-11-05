@@ -1,6 +1,8 @@
 import { DestroyRef, inject, Injectable, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { CaseControllerService, CaseEvent } from '@whoz-oss/agentos-api-client'
+import { Case, CaseControllerService, CaseEvent } from '@whoz-oss/agentos-api-client'
+import { Observable, of } from 'rxjs'
+import { catchError, map, switchMap } from 'rxjs/operators'
 import { CaseStateService } from './case-state.service'
 import { CompanionPipService } from './companion-pip.service'
 import { GlobalCaseEventSseService } from './global-case-event-sse.service'
@@ -56,9 +58,16 @@ export interface CaseGroup {
   notifications: CompanionNotification[]
 }
 
+interface ResolvedRootTarget {
+  rootCaseId: string
+  rootTitle: string
+  isSubCase: boolean
+}
+
 // ---------------------------------------------------------------------------
 
 const INPUT_PREVIEW_MAX_CHARS = 160
+const MAX_ANCESTOR_HOPS = 10
 
 function truncate(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}\u2026` : text
@@ -70,7 +79,9 @@ function truncate(text: string, maxChars: number): string {
  *
  * Responsibilities:
  * - Subscribe to the global SSE stream
- * - Filter sub-cases, buffer and resolve case titles
+ * - Route sub-case blocking notifications to their root parent case group while
+ *   filtering out non-blocking sub-case notifications
+ * - Buffer and resolve root case titles
  * - Expose `groups` signal consumed by both the main app and the PiP CompanionComponent
  *
  * CompanionComponent becomes a pure renderer — it reads `groups` from this service
@@ -88,11 +99,11 @@ export class CompanionStateService {
   private readonly caseState = inject(CaseStateService)
   private readonly companionPip = inject(CompanionPipService)
 
-  /** Notification groups ordered by first-event arrival, one group per caseId. */
+  /** Notification groups ordered by first-event arrival, one group per root caseId. */
   readonly groups = signal<CaseGroup[]>([])
 
   private readonly dismissTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  private readonly rootCache = new Map<string, string>()
+  private readonly rootCache = new Map<string, ResolvedRootTarget>()
   private readonly pendingByCase = new Map<string, CompanionNotification[]>()
 
   private sseStarted = false
@@ -180,21 +191,22 @@ export class CompanionStateService {
   }
 
   // ---------------------------------------------------------------------------
-  // Sub-case filtering
+  // Sub-case routing (Option B: blocking sub-case events attach to parent group)
   // ---------------------------------------------------------------------------
 
   private routeNotification(n: CompanionNotification): void {
-    if (this.rootCache.has(n.caseId)) {
-      this.pushToGroup(n.caseId, n.namespaceId, this.rootCache.get(n.caseId)!, n)
+    const cached = this.rootCache.get(n.caseId)
+    if (cached) {
+      if (cached.isSubCase && !n.blocking) return
+      this.pushToGroup(cached.rootCaseId, n.namespaceId, cached.rootTitle, n)
       return
     }
 
-    const fromState = this.caseState.cases().find((c) => c.id === n.caseId)
-    if (fromState) {
-      if (fromState.parentCaseId) return
-      const title = fromState.title ?? n.caseId.slice(0, 8)
-      this.rootCache.set(n.caseId, title)
-      this.pushToGroup(n.caseId, n.namespaceId, title, n)
+    const syncTarget = this.tryResolveSync(n.caseId)
+    if (syncTarget) {
+      this.rootCache.set(n.caseId, syncTarget)
+      if (syncTarget.isSubCase && !n.blocking) return
+      this.pushToGroup(syncTarget.rootCaseId, n.namespaceId, syncTarget.rootTitle, n)
       return
     }
 
@@ -203,31 +215,83 @@ export class CompanionStateService {
     this.pendingByCase.set(n.caseId, buf)
 
     if (buf.length === 1) {
-      this.caseController
-        .getByIdCase(n.caseId)
+      this.resolveRootAsync(n.caseId, false, 0)
         .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe({
-          next: (c) => {
-            const pending = this.pendingByCase.get(n.caseId) ?? []
-            this.pendingByCase.delete(n.caseId)
-            if (c.parentCaseId) return
-            const title = c.title ?? n.caseId.slice(0, 8)
-            this.rootCache.set(n.caseId, title)
-            for (const buffered of pending) {
-              this.pushToGroup(n.caseId, n.namespaceId, title, buffered)
-            }
-          },
-          error: () => {
-            const pending = this.pendingByCase.get(n.caseId) ?? []
-            this.pendingByCase.delete(n.caseId)
-            const title = n.caseId.slice(0, 8)
-            this.rootCache.set(n.caseId, title)
-            for (const buffered of pending) {
-              this.pushToGroup(n.caseId, n.namespaceId, title, buffered)
-            }
-          },
+        .subscribe((target) => {
+          const pending = this.pendingByCase.get(n.caseId) ?? []
+          this.pendingByCase.delete(n.caseId)
+          this.rootCache.set(n.caseId, target)
+          for (const buffered of pending) {
+            if (target.isSubCase && !buffered.blocking) continue
+            this.pushToGroup(target.rootCaseId, buffered.namespaceId, target.rootTitle, buffered)
+          }
         })
     }
+  }
+
+  /**
+   * Attempts to resolve the root case synchronously from `CaseStateService.cases()`
+   * and `rootCache`. Returns null if any ancestor in the chain is not yet in memory.
+   */
+  private tryResolveSync(caseId: string): ResolvedRootTarget | null {
+    const cases = this.caseState.cases()
+    let currentId = caseId
+    let isSubCase = false
+
+    for (let depth = 0; depth < MAX_ANCESTOR_HOPS; depth++) {
+      const cached = this.rootCache.get(currentId)
+      if (cached) {
+        return {
+          rootCaseId: cached.rootCaseId,
+          rootTitle: cached.rootTitle,
+          isSubCase: isSubCase || cached.isSubCase,
+        }
+      }
+
+      const found = cases.find((c) => c.id === currentId)
+      if (!found) return null
+
+      if (!found.parentCaseId) {
+        const rootTitle = found.title ?? found.id.slice(0, 8)
+        return { rootCaseId: found.id, rootTitle, isSubCase }
+      }
+
+      isSubCase = true
+      currentId = found.parentCaseId
+    }
+
+    return { rootCaseId: currentId, rootTitle: currentId.slice(0, 8), isSubCase }
+  }
+
+  /**
+   * Walks up the `parentCaseId` chain via `CaseControllerService.getByIdCase` (using
+   * in-memory state/cache whenever available) until it reaches the root case.
+   */
+  private resolveRootAsync(caseId: string, isSubCase: boolean, depth: number): Observable<ResolvedRootTarget> {
+    if (depth >= MAX_ANCESTOR_HOPS) {
+      return of({ rootCaseId: caseId, rootTitle: caseId.slice(0, 8), isSubCase })
+    }
+
+    const sync = this.tryResolveSync(caseId)
+    if (sync) {
+      return of({
+        rootCaseId: sync.rootCaseId,
+        rootTitle: sync.rootTitle,
+        isSubCase: isSubCase || sync.isSubCase,
+      })
+    }
+
+    return this.caseController.getByIdCase(caseId).pipe(
+      switchMap((c: Case) => {
+        if (!c.parentCaseId) {
+          const rootTitle = c.title ?? c.id.slice(0, 8)
+          return of({ rootCaseId: c.id, rootTitle, isSubCase })
+        }
+        return this.resolveRootAsync(c.parentCaseId, true, depth + 1)
+      }),
+      map((target) => ({ ...target, isSubCase: isSubCase || target.isSubCase })),
+      catchError(() => of({ rootCaseId: caseId, rootTitle: caseId.slice(0, 8), isSubCase }))
+    )
   }
 
   // ---------------------------------------------------------------------------
@@ -246,9 +310,18 @@ export class CompanionStateService {
   }
 
   removeNotificationByEvent(eventCaseId: string, notifId: string): void {
-    if (this.rootCache.has(eventCaseId)) {
-      this.removeNotification(eventCaseId, notifId)
+    const pending = this.pendingByCase.get(eventCaseId)
+    if (pending) {
+      const filtered = pending.filter((x) => x.id !== notifId)
+      if (filtered.length > 0) {
+        this.pendingByCase.set(eventCaseId, filtered)
+      } else {
+        this.pendingByCase.delete(eventCaseId)
+      }
     }
+
+    const target = this.rootCache.get(eventCaseId)
+    this.removeNotification(target?.rootCaseId ?? eventCaseId, notifId)
   }
 
   removeNotification(caseId: string, notifId: string): void {
@@ -260,7 +333,9 @@ export class CompanionStateService {
     this.groups.update((prev) =>
       prev
         .map((g) =>
-          g.caseId === caseId ? { ...g, notifications: g.notifications.filter((x) => x.id !== notifId) } : g
+          g.caseId === caseId || g.notifications.some((x) => x.id === notifId)
+            ? { ...g, notifications: g.notifications.filter((x) => x.id !== notifId) }
+            : g
         )
         .filter((g) => g.notifications.length > 0)
     )
