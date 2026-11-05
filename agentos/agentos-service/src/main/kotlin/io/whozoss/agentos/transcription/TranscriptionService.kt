@@ -6,6 +6,7 @@ import io.whozoss.agentos.chat.TranscriptionModelFactory
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import mu.KLogging
 import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt
 import org.springframework.core.io.ByteArrayResource
 import org.springframework.stereotype.Service
@@ -31,8 +32,17 @@ class TranscriptionService(
     private val aiProviderService: AiProviderService,
     private val transcriptionModelFactory: TranscriptionModelFactory,
 ) {
-    /** True when a platform WHISPER model exists on an OpenAI or vLLM provider. */
-    fun isAvailable(): Boolean = findPlatformWhisperModel()?.let { supported(aiProviderService.getById(it.aiProviderId)) } ?: false
+    /**
+     * True when a platform WHISPER model exists on an OpenAI or vLLM provider. A model whose provider can
+     * no longer be loaded makes the capability unavailable rather than failing the caller.
+     */
+    fun isAvailable(): Boolean =
+        try {
+            findPlatformWhisperModel()?.let { supported(aiProviderService.getById(it.aiProviderId)) } ?: false
+        } catch (e: Exception) {
+            logger.warn(e) { "Voice transcription capability could not be resolved, reporting it unavailable" }
+            false
+        }
 
     /**
      * Transcribe [audio] with the platform WHISPER model.
@@ -70,7 +80,7 @@ class TranscriptionService(
             )
         val resource =
             object : ByteArrayResource(audio) {
-                override fun getFilename(): String = "audio.${extensionFor(mimeType)}"
+                override fun getFilename(): String = "audio.${AudioMimeTypes.extensionFor(mimeType) ?: "webm"}"
             }
         return transcriptionModel.call(AudioTranscriptionPrompt(resource)).result.output
     }
@@ -83,18 +93,7 @@ class TranscriptionService(
 
     private fun supported(provider: AiProvider): Boolean = provider.apiType == AiApiType.OpenAI || provider.apiType == AiApiType.vLLM
 
-    private fun extensionFor(mimeType: String): String =
-        when (mimeType.substringBefore(';').trim().lowercase()) {
-            "audio/webm" -> "webm"
-            "audio/ogg" -> "ogg"
-            "audio/mp4", "audio/m4a", "audio/x-m4a" -> "m4a"
-            "audio/mpeg", "audio/mp3" -> "mp3"
-            "audio/wav", "audio/x-wav", "audio/wave" -> "wav"
-            "audio/flac" -> "flac"
-            else -> "webm"
-        }
-
-    companion object {
+    companion object : KLogging() {
         const val WHISPER_ALIAS = "WHISPER"
     }
 }
