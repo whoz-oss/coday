@@ -2,6 +2,7 @@ import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { Case, CaseControllerService, CaseEvent } from '@whoz-oss/agentos-api-client'
 import { Subject, of, throwError } from 'rxjs'
+import { BrowserNotificationService } from './browser-notification.service'
 import { CaseStateService } from './case-state.service'
 import { CompanionPipService } from './companion-pip.service'
 import { CompanionStateService } from './companion-state.service'
@@ -10,15 +11,23 @@ import { GlobalCaseEventSseService } from './global-case-event-sse.service'
 describe('CompanionStateService', () => {
   let events$: Subject<CaseEvent>
   let casesSignal: ReturnType<typeof signal<Case[]>>
+  let isOpenSignal: ReturnType<typeof signal<boolean>>
   let getByIdCase: jest.Mock
   let playAlertBeep: jest.Mock
+  let browserNotify: jest.Mock
+  let browserClose: jest.Mock
+  let browserCloseMany: jest.Mock
   let service: CompanionStateService
 
   beforeEach(() => {
     events$ = new Subject<CaseEvent>()
     casesSignal = signal<Case[]>([])
+    isOpenSignal = signal<boolean>(false)
     getByIdCase = jest.fn()
     playAlertBeep = jest.fn()
+    browserNotify = jest.fn()
+    browserClose = jest.fn()
+    browserCloseMany = jest.fn()
 
     TestBed.configureTestingModule({
       providers: [
@@ -26,7 +35,11 @@ describe('CompanionStateService', () => {
         { provide: GlobalCaseEventSseService, useValue: { connect: jest.fn(() => events$.asObservable()) } },
         { provide: CaseStateService, useValue: { cases: casesSignal } },
         { provide: CaseControllerService, useValue: { getByIdCase } },
-        { provide: CompanionPipService, useValue: { playAlertBeep } },
+        { provide: CompanionPipService, useValue: { playAlertBeep, isOpen: isOpenSignal } },
+        {
+          provide: BrowserNotificationService,
+          useValue: { notify: browserNotify, close: browserClose, closeMany: browserCloseMany },
+        },
       ],
     })
 
@@ -36,7 +49,7 @@ describe('CompanionStateService', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
-  it('groups notifications by root case and resolves titles from CaseStateService', () => {
+  it('groups notifications by root case, triggers browser notification when PiP is closed, and clears on AnswerEvent', () => {
     casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
 
     events$.next({
@@ -51,6 +64,12 @@ describe('CompanionStateService', () => {
     } as unknown as CaseEvent)
 
     expect(playAlertBeep).toHaveBeenCalledTimes(1)
+    expect(browserNotify).toHaveBeenCalledWith(
+      'case-1',
+      'ns-1',
+      'Main Case',
+      expect.objectContaining({ id: 'q-1', kind: 'question', question: 'Proceed?' })
+    )
     expect(service.groups()).toEqual([
       {
         caseId: 'case-1',
@@ -71,7 +90,7 @@ describe('CompanionStateService', () => {
       },
     ])
 
-    // AnswerEvent removes the matching question notification and cleans up the empty group
+    // AnswerEvent removes the matching question notification and closes the browser notification
     events$.next({
       id: 'a-1',
       type: 'AnswerEvent',
@@ -80,7 +99,24 @@ describe('CompanionStateService', () => {
       questionId: 'q-1',
     } as unknown as CaseEvent)
 
+    expect(browserClose).toHaveBeenCalledWith('q-1')
     expect(service.groups()).toEqual([])
+  })
+
+  it('does not trigger browser notification when Companion PiP is open', () => {
+    isOpenSignal.set(true)
+    casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
+
+    events$.next({
+      id: 'f-1',
+      type: 'AgentFinishedEvent',
+      caseId: 'case-1',
+      namespaceId: 'ns-1',
+      agentName: 'Archay',
+    } as unknown as CaseEvent)
+
+    expect(browserNotify).not.toHaveBeenCalled()
+    expect(service.groups()).toHaveLength(1)
   })
 
   it('ignores non-blocking notifications from sub-cases', () => {
@@ -106,6 +142,7 @@ describe('CompanionStateService', () => {
     } as unknown as CaseEvent)
 
     expect(service.groups()).toEqual([])
+    expect(browserNotify).not.toHaveBeenCalled()
   })
 
   it('attaches blocking notifications from a sub-case to its parent root case group and clears them when resolved', () => {
@@ -126,6 +163,12 @@ describe('CompanionStateService', () => {
     } as unknown as CaseEvent)
 
     expect(getByIdCase).toHaveBeenCalledWith('sub-1')
+    expect(browserNotify).toHaveBeenCalledWith(
+      'root-1',
+      'ns-1',
+      'Main Case',
+      expect.objectContaining({ id: 'q-sub-1', caseId: 'sub-1', kind: 'question' })
+    )
     expect(service.groups()).toEqual([
       {
         caseId: 'root-1',
@@ -155,6 +198,7 @@ describe('CompanionStateService', () => {
       questionId: 'q-sub-1',
     } as unknown as CaseEvent)
 
+    expect(browserClose).toHaveBeenCalledWith('q-sub-1')
     expect(service.groups()).toEqual([])
   })
 

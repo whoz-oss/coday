@@ -4,6 +4,7 @@ import { Case, CaseControllerService, CaseEvent } from '@whoz-oss/agentos-api-cl
 import { Observable, of } from 'rxjs'
 import { catchError, map, switchMap } from 'rxjs/operators'
 import { CaseStateService } from './case-state.service'
+import { BrowserNotificationService } from './browser-notification.service'
 import { CompanionPipService } from './companion-pip.service'
 import { GlobalCaseEventSseService } from './global-case-event-sse.service'
 
@@ -98,6 +99,7 @@ export class CompanionStateService {
   private readonly caseController = inject(CaseControllerService)
   private readonly caseState = inject(CaseStateService)
   private readonly companionPip = inject(CompanionPipService)
+  private readonly browserNotifications = inject(BrowserNotificationService)
 
   /** Notification groups ordered by first-event arrival, one group per root caseId. */
   readonly groups = signal<CaseGroup[]>([])
@@ -301,14 +303,22 @@ export class CompanionStateService {
   // ---------------------------------------------------------------------------
 
   private pushToGroup(groupCaseId: string, namespaceId: string, caseTitle: string, n: CompanionNotification): void {
+    let added = false
     this.groups.update((prev) => {
       const existing = prev.find((g) => g.caseId === groupCaseId)
       if (existing) {
         if (existing.notifications.some((x) => x.id === n.id)) return prev
+        added = true
         return prev.map((g) => (g.caseId === groupCaseId ? { ...g, notifications: [...g.notifications, n] } : g))
       }
+      added = true
       return [...prev, { caseId: groupCaseId, namespaceId, caseTitle, notifications: [n] }]
     })
+
+    // When the Companion PiP window is closed, fall back to a native browser notification.
+    if (added && !this.companionPip.isOpen()) {
+      this.browserNotifications.notify(groupCaseId, namespaceId, caseTitle, n)
+    }
   }
 
   removeNotificationByEvent(eventCaseId: string, notifId: string): void {
@@ -327,6 +337,7 @@ export class CompanionStateService {
   }
 
   removeNotification(caseId: string, notifId: string): void {
+    this.browserNotifications.close(notifId)
     const timer = this.dismissTimers.get(notifId)
     if (timer !== undefined) {
       clearTimeout(timer)
@@ -346,6 +357,7 @@ export class CompanionStateService {
   dismissGroup(caseId: string): void {
     const group = this.groups().find((g) => g.caseId === caseId)
     if (group) {
+      this.browserNotifications.closeMany(group.notifications.map((n) => n.id))
       for (const n of group.notifications) {
         const timer = this.dismissTimers.get(n.id)
         if (timer !== undefined) {
