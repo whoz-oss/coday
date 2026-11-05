@@ -38,7 +38,9 @@ class TranscriptionModelFactory {
             OpenAiAudioTranscriptionOptions
                 .builder()
                 .model(modelName)
-                .responseFormat(OpenAiAudioApi.TranscriptResponseFormat.TEXT)
+                // JSON: Spring AI parses the `text` field itself. TEXT returns the raw body, which OpenAI-compatible
+                // routers (e.g. Requesty) may still answer as a JSON document.
+                .responseFormat(OpenAiAudioApi.TranscriptResponseFormat.JSON)
         if (language != null) {
             optionsBuilder.language(language)
         }

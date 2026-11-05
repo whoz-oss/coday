@@ -234,4 +234,42 @@ class TranscriptionServiceUnitSpec :
                 factory.createTranscriptionModel(any(), any(), any(), language = null, headers = any())
             }
         }
+
+        fun transcriptOf(output: String): String {
+            val p = provider()
+            val service = buildService(listOf(whisperModel(p)), listOf(p), stubbedFactory(output))
+            return service.transcribe(audio, "audio/webm", null)
+        }
+
+        "keeps a plain text transcript" {
+            transcriptOf("bonjour tout le monde") shouldBe "bonjour tout le monde"
+        }
+
+        "extracts the text field of a JSON object answer" {
+            transcriptOf("""{"text":"bonjour tout le monde","language":"fr","duration":3.2}""") shouldBe "bonjour tout le monde"
+        }
+
+        "extracts the text field of a pretty-printed JSON answer surrounded by whitespace" {
+            transcriptOf("\n  {\n  \"text\": \" salut \"\n}\n ") shouldBe "salut"
+        }
+
+        "keeps a JSON object without a text field as is" {
+            transcriptOf("""{"result":"bonjour"}""") shouldBe """{"result":"bonjour"}"""
+        }
+
+        "keeps a JSON object whose text field is not a string as is" {
+            transcriptOf("""{"text":42}""") shouldBe """{"text":42}"""
+        }
+
+        "keeps text that merely looks like JSON but does not parse" {
+            transcriptOf("{pas du json") shouldBe "{pas du json"
+        }
+
+        "trims whitespace around a plain transcript" {
+            transcriptOf("  \n bonjour \t\n") shouldBe "bonjour"
+        }
+
+        "a whitespace only transcript becomes blank" {
+            transcriptOf(" \n ") shouldBe ""
+        }
     })
