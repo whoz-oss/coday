@@ -77,8 +77,8 @@ class HttpMcpConnectionUnitSpec :
                 val config =
                     McpServerConfig(
                         url = "http://127.0.0.1:${server.address.port}/mcp",
-                        timeoutSeconds = 2,
-                        toolCallTimeoutSeconds = 2,
+                        timeoutSeconds = HANDSHAKE_TIMEOUT_SECONDS,
+                        toolCallTimeoutSeconds = HANDSHAKE_TIMEOUT_SECONDS,
                     )
                 val ex = shouldThrow<McpConnectionException> { HttpMcpConnection(config).connect(authorization = null) }
                 ex.message shouldContain "list the tools"
@@ -95,8 +95,8 @@ class HttpMcpConnectionUnitSpec :
                 val config =
                     McpServerConfig(
                         url = "http://127.0.0.1:${server.address.port}/mcp",
-                        timeoutSeconds = 2,
-                        toolCallTimeoutSeconds = 2,
+                        timeoutSeconds = HANDSHAKE_TIMEOUT_SECONDS,
+                        toolCallTimeoutSeconds = HANDSHAKE_TIMEOUT_SECONDS,
                     )
                 val connection = HttpMcpConnection(config)
                 val logs = LogCapture.capturing { connection.connect(authorization = null) }
@@ -138,6 +138,13 @@ class HttpMcpConnectionUnitSpec :
     companion object {
         /** Port 1 (tcpmux) is never bound on a developer machine or CI runner: connect is refused at once. */
         private const val UNUSED_PORT = 1
+
+        /**
+         * The local server answers at once, so this bound is never waited for on success. It only has to absorb the
+         * cold start of the first MCP client (Reactor, JSON mapper) on a loaded machine: with 2 s, initialize could
+         * time out under parallel Gradle builds, and the test failed on the handshake instead of tools/list.
+         */
+        private const val HANDSHAKE_TIMEOUT_SECONDS = 10L
 
         private val mapper = jacksonObjectMapper()
 
