@@ -165,8 +165,8 @@ class CompressingChatClientSpec :
                     .chatResponse()
 
             response shouldNotBe null
-            response!!.result.output.text shouldContain REAL_UUID
-            response.result.output.text shouldNotContain alias
+            response!!.result!!.output.text shouldContain REAL_UUID
+            response.result!!.output.text shouldNotContain alias
         }
 
         "prompt(Prompt) call: null content from delegate is returned as null" {
@@ -251,7 +251,7 @@ class CompressingChatClientSpec :
                     .collectList()
                     .block()!!
 
-            val combined = responses.joinToString("") { it.result.output.text ?: "" }
+            val combined = responses.joinToString("") { it.result?.output?.text ?: "" }
             combined shouldContain REAL_UUID
             combined shouldNotContain alias
         }
@@ -290,7 +290,7 @@ class CompressingChatClientSpec :
                     .collectList()
                     .block()!!
 
-            val combined = responses.joinToString("") { it.result.output.text ?: "" }
+            val combined = responses.joinToString("") { it.result?.output?.text ?: "" }
             combined shouldContain REAL_UUID
             combined shouldNotContain alias
         }
@@ -326,7 +326,7 @@ class CompressingChatClientSpec :
                     .collectList()
                     .block()!!
 
-            val combined = responses.joinToString("") { it.result.output.text ?: "" }
+            val combined = responses.joinToString("") { it.result?.output?.text ?: "" }
             combined shouldContain REAL_UUID
         }
 

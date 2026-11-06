@@ -1,12 +1,12 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.core.JsonPointer
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.node.TextNode
+import tools.jackson.core.JsonPointer
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
+import tools.jackson.databind.node.StringNode
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -18,7 +18,7 @@ internal object ConfigJson {
     /** Key of the object standing for the id created by another operation: `{"$op": "<ref>"}`. */
     const val OP_REF_KEY = "\$op"
 
-    private val canonicalMapper = ObjectMapper()
+    private val canonicalMapper = JsonMapper.builder().build()
 
     /** Compact JSON with object fields sorted, so equal values always hash the same. */
     fun canonical(node: JsonNode?): String = canonicalMapper.writeValueAsString(sorted(node ?: absent()))
@@ -51,7 +51,7 @@ internal object ConfigJson {
                     else -> current.putObject(segment)
                 }
         }
-        current.set<JsonNode>(segments.last(), value ?: JsonNodeFactory.instance.nullNode())
+        current.set(segments.last(), value ?: JsonNodeFactory.instance.nullNode())
     }
 
     fun removeAt(
@@ -82,7 +82,7 @@ internal object ConfigJson {
         opRefOf(node)?.let { return setOf(it) }
         return when (node) {
             is ObjectNode -> node.properties().flatMap { opRefs(it.value) }.toSet()
-            is ArrayNode -> node.flatMap { opRefs(it) }.toSet()
+            is ArrayNode -> node.values().flatMap { opRefs(it) }.toSet()
             else -> emptySet()
         }
     }
@@ -94,7 +94,7 @@ internal object ConfigJson {
     ) {
         overrides.properties().forEach { (key, value) ->
             val current = target.get(key)
-            if (current is ObjectNode && value is ObjectNode) merge(current, value) else target.set<JsonNode>(key, value.deepCopy())
+            if (current is ObjectNode && value is ObjectNode) merge(current, value) else target.set(key, value.deepCopy())
         }
     }
 
@@ -106,49 +106,63 @@ internal object ConfigJson {
         if (node == null) return null
         opRefOf(node)?.let { ref ->
             val id = createdIds[ref] ?: throw IllegalStateException("Operation '$ref' has not created an entity yet")
-            return TextNode(id.toString())
+            return StringNode.valueOf(id.toString())
         }
         return when (node) {
-            is ObjectNode ->
+            is ObjectNode -> {
                 JsonNodeFactory.instance.objectNode().also { copy ->
-                    node.properties().forEach { (key, value) -> copy.set<JsonNode>(key, resolveOpRefs(value, createdIds)) }
+                    node.properties().forEach { (key, value) -> copy.set(key, resolveOpRefs(value, createdIds)) }
                 }
-            is ArrayNode -> JsonNodeFactory.instance.arrayNode().also { copy -> node.forEach { copy.add(resolveOpRefs(it, createdIds)) } }
-            else -> node
+            }
+
+            is ArrayNode -> {
+                JsonNodeFactory.instance.arrayNode().also { copy -> node.values().forEach { copy.add(resolveOpRefs(it, createdIds)) } }
+            }
+
+            else -> {
+                node
+            }
         }
     }
 
     fun containsMask(node: JsonNode?): Boolean =
         when (node) {
             null -> false
-            is TextNode -> node.textValue() == MASK
+            is StringNode -> node.stringValue() == MASK
             is ObjectNode -> node.properties().any { containsMask(it.value) }
-            is ArrayNode -> node.any { containsMask(it) }
+            is ArrayNode -> node.values().any { containsMask(it) }
             else -> false
         }
 
     /** The ref [node] names when it is a `{"$op": "<ref>"}` object, else null. */
     fun opRefOf(node: JsonNode): String? =
-        if (node is ObjectNode && node.size() == 1 && node.get(OP_REF_KEY)?.isTextual == true) {
-            node.get(OP_REF_KEY).textValue()
+        if (node is ObjectNode && node.size() == 1 && node.get(OP_REF_KEY)?.isString == true) {
+            node.get(OP_REF_KEY).stringValue()
         } else {
             null
         }
 
-    private fun absent(): JsonNode = TextNode("<absent>")
+    private fun absent(): JsonNode = StringNode.valueOf("<absent>")
 
     /** Sorted fields, null fields dropped: a stored plan may lose its nulls on the way through persistence. */
     private fun sorted(node: JsonNode): JsonNode =
         when (node) {
-            is ObjectNode ->
+            is ObjectNode -> {
                 JsonNodeFactory.instance.objectNode().also { copy ->
                     node
                         .properties()
                         .filterNot { it.value.isNull }
                         .sortedBy { it.key }
-                        .forEach { (key, value) -> copy.set<JsonNode>(key, sorted(value)) }
+                        .forEach { (key, value) -> copy.set(key, sorted(value)) }
                 }
-            is ArrayNode -> JsonNodeFactory.instance.arrayNode().also { copy -> node.forEach { copy.add(sorted(it)) } }
-            else -> node
+            }
+
+            is ArrayNode -> {
+                JsonNodeFactory.instance.arrayNode().also { copy -> node.values().forEach { copy.add(sorted(it)) } }
+            }
+
+            else -> {
+                node
+            }
         }
 }

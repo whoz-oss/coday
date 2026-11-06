@@ -1,6 +1,6 @@
 package io.whozoss.agentos.queryUser
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
@@ -41,13 +41,13 @@ class QueryUserToolPluginSpec : StringSpec({
         schema.shouldNotBeNull()
         schema["type"].asText() shouldBe "object"
         schema["properties"]["allowedQuestionTypes"].shouldNotBeNull()
-        schema["properties"]["allowedQuestionTypes"]["items"]["enum"].map { it.asText() } shouldBe
+        schema["properties"]["allowedQuestionTypes"]["items"]["enum"].values().map { it.asText() } shouldBe
             listOf("FREE_TEXT", "SINGLE_CHOICE", "OPEN_CHOICE")
     }
 
     "configSchema does not expose OAUTH_AUTHORIZE" {
         val schema = QueryUserToolPlugin().configSchema
-        val enumValues = schema["properties"]["allowedQuestionTypes"]["items"]["enum"].map { it.asText() }
+        val enumValues = schema["properties"]["allowedQuestionTypes"]["items"]["enum"].values().map { it.asText() }
         enumValues shouldNotContain "OAUTH_AUTHORIZE"
     }
 

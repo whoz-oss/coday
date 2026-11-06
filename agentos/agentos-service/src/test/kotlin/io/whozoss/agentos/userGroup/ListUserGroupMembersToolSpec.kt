@@ -123,6 +123,6 @@ class ListUserGroupMembersToolSpec : StringSpec({
     "outputSchema is a non-null array schema" {
         val schema = ListUserGroupMembersTool(membersLoader = membersLoader).outputSchema()!!
         schema["type"].asText() shouldBe "array"
-        schema["items"]["required"].map { it.asText() } shouldBe listOf("userId", "externalId", "role")
+        schema["items"]["required"].values().map { it.asText() } shouldBe listOf("userId", "externalId", "role")
     }
 })

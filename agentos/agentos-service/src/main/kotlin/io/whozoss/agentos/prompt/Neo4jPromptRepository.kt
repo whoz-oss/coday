@@ -1,6 +1,6 @@
 package io.whozoss.agentos.prompt
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging

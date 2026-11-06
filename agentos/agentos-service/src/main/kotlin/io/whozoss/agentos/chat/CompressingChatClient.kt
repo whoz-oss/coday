@@ -123,11 +123,8 @@ class CompressingChatClient(
 
         override fun messages(messages: List<Message>): ChatClientRequestSpec = CompressingRequestSpec(delegate.messages(messages), buffer)
 
-        override fun <T : ChatOptions> options(options: T): ChatClientRequestSpec =
-            CompressingRequestSpec(delegate.options(options), buffer)
-
-        override fun toolNames(vararg toolNames: String): ChatClientRequestSpec =
-            CompressingRequestSpec(delegate.toolNames(*toolNames), buffer)
+        override fun <B : ChatOptions.Builder<*>> options(customizer: B): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.options(customizer), buffer)
 
         override fun tools(vararg toolObjects: Any): ChatClientRequestSpec = CompressingRequestSpec(delegate.tools(*toolObjects), buffer)
 
@@ -328,8 +325,14 @@ class CompressingChatClient(
             // mutate() preserves media (image attachments) and metadata: rebuilding with
             // UserMessage(text) would silently strip them. Media byte arrays are never
             // regex-scanned; only the text goes through the compressor.
-            is UserMessage -> this.mutate().text(compressorService.compress(this.text, buffer)).build()
-            is SystemMessage -> SystemMessage(compressorService.compress(this.text, buffer))
+            is UserMessage -> {
+                this.mutate().text(compressorService.compress(this.text ?: return this, buffer)).build()
+            }
+
+            is SystemMessage -> {
+                SystemMessage(compressorService.compress(this.text ?: return this, buffer))
+            }
+
             is AssistantMessage -> {
                 val toolCalls = this.toolCalls
                 if (toolCalls.isEmpty()) {
@@ -349,6 +352,7 @@ class CompressingChatClient(
                     AssistantMessage.builder().toolCalls(compressedCalls).build()
                 }
             }
+
             is ToolResponseMessage -> {
                 // Compress each tool response body
                 val compressedResponses =
@@ -361,7 +365,10 @@ class CompressingChatClient(
                     }
                 ToolResponseMessage.builder().responses(compressedResponses).build()
             }
-            else -> this
+
+            else -> {
+                this
+            }
         }
     }
 
@@ -371,14 +378,7 @@ class CompressingChatClient(
      */
     private fun ChatResponse.withText(text: String): ChatResponse {
         val patched = AssistantMessage(text)
-        return ChatResponse(
-            listOf(
-                Generation(
-                    patched,
-                    this.result.metadata,
-                ),
-            ),
-            this.metadata,
-        )
+        val generation = this.result?.let { Generation(patched, it.metadata) } ?: Generation(patched)
+        return ChatResponse(listOf(generation), this.metadata)
     }
 }

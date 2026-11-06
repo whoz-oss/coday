@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -89,7 +89,7 @@ class OperationCuratorUnitSpec : StringSpec({
         )
         tenants.parameters.map { it.required } shouldBe listOf(true, false, false)
         val schema = json(tenants.inputSchema)
-        schema.path("required").map { it.asText() } shouldBe listOf("X-Tenant")
+        schema.path("required").values().map { it.asText() } shouldBe listOf("X-Tenant")
         schema.path("properties").path("X-Tenant").path("description").asText() shouldBe "HTTP header X-Tenant"
         schema.path("properties").path("X-Trace").path("description").asText() shouldBe "HTTP header X-Trace. Trace id"
         schema.path("properties").path("X-Trace").path("type").asText() shouldBe "string"

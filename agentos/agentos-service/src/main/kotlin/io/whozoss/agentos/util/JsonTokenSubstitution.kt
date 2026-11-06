@@ -1,10 +1,10 @@
 package io.whozoss.agentos.util
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.node.TextNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
+import tools.jackson.databind.node.StringNode
 
 /**
  * Returns a new [JsonNode] with every key of [tokens] replaced by its value in every text node,
@@ -34,10 +34,10 @@ fun substituteJsonTokens(
 ): JsonNode? =
     when {
         node == null || tokens.isEmpty() -> node
-        node is TextNode -> TextNode.valueOf(substituteTokens(node.textValue(), tokens))
+        node is StringNode -> StringNode.valueOf(substituteTokens(node.stringValue(), tokens))
         node is ObjectNode ->
             JsonNodeFactory.instance.objectNode().also { result ->
-                node.properties().forEach { (key, value) -> result.set<JsonNode>(key, substituteJsonTokens(value, tokens)) }
+                node.properties().forEach { (key, value) -> result.set(key, substituteJsonTokens(value, tokens)) }
             }
 
         node is ArrayNode ->
@@ -77,12 +77,12 @@ private fun collectTokens(
 ) {
     when {
         node == null || found.size == candidates.size -> Unit
-        node.isTextual -> {
-            val text = node.textValue()
+        node.isString -> {
+            val text = node.stringValue()
             candidates.forEach { token -> if (text.contains(token)) found.add(token) }
         }
         // Iterating a JsonNode yields an object's values and an array's elements alike.
-        node.isContainerNode -> node.forEach { child -> collectTokens(child, candidates, found) }
+        node.isContainer -> node.forEach { child -> collectTokens(child, candidates, found) }
         else -> Unit
     }
 }

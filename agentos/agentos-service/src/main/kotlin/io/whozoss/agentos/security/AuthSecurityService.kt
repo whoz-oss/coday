@@ -1,6 +1,5 @@
 package io.whozoss.agentos.security
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.security.AuthSecurityService.Companion.CF_ACCESS_JWT_ASSERTION_HEADER
 import io.whozoss.agentos.security.AuthSecurityService.Companion.X_EXTERNAL_USER_ID_HEADER
 import io.whozoss.agentos.security.AuthSecurityService.Companion.X_FORWARDED_EMAIL_HEADER
@@ -9,6 +8,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
 import org.springframework.web.server.ResponseStatusException
+import tools.jackson.databind.ObjectMapper
 import java.util.Base64
 
 /**

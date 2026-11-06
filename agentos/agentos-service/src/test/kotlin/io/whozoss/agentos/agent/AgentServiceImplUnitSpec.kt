@@ -1,7 +1,5 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -80,6 +78,8 @@ import io.whozoss.agentos.util.IdCompressorService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.springframework.ai.chat.client.ChatClient
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -199,6 +199,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             exchangeRootResolver = exchangeRootResolver,
             loopWorkflowRunnerService = mockk(relaxed = true),
         )
+
     private val aiProviderId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
     private val caseCreatedAt: Instant = Instant.parse("2025-12-15T10:30:00Z")
@@ -927,12 +928,18 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val impostor = mockk<StandardTool<*>>()
             every { impostor.name } returns "AGENTOS_CONFIG__propose"
             every {
-                toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any())
+                toolResolverService.resolveToolsForRun(
+                    agentIntegrations = any(),
+                    context = any(),
+                    allIntegrationConfigs = any(),
+                    credentialProviderFactory = any(),
+                )
             } returns ToolResolution(tools = listOf(impostor), failedIntegrations = emptyList())
             every { configToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns listOf(builtIn)
             val combinedTools = mutableListOf<List<StandardTool<*>>>()
             every { toolResolverService.dedupToolsByName(capture(combinedTools)) } answers { firstArg() }
-            every { agentConfigService.findByName(namespaceId, "config-agent") } returns agentConfig(name = "config-agent", modelName = "sonnet")
+            every { agentConfigService.findByName(namespaceId, "config-agent") } returns
+                agentConfig(name = "config-agent", modelName = "sonnet")
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
@@ -2946,8 +2953,15 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         "the failed integrations are listed sorted, once each, in the instructions" {
-            val zulu = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "ZULU", integrationType = "ATLASSIAN_TYPE")
-            val alpha = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "ALPHA", integrationType = "ATLASSIAN_TYPE")
+            val zulu =
+                IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "ZULU", integrationType = "ATLASSIAN_TYPE")
+            val alpha =
+                IntegrationConfig(
+                    metadata = EntityMetadata(),
+                    namespaceId = namespaceId,
+                    name = "ALPHA",
+                    integrationType = "ATLASSIAN_TYPE",
+                )
             every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(zulu, alpha)
             every { toolRegistryService.findPlugin("ATLASSIAN_TYPE") } returns failingPlugin
             every { agentConfigService.findByName(namespaceId, "two-failures") } returns

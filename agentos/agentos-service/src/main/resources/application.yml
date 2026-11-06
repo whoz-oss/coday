@@ -6,8 +6,10 @@ spring:
   jackson:
     mapper:
       sort-properties-alphabetically: true
-    serialization:
-      write-dates-as-timestamps: false
+    # Jackson 3: date/time features moved from SerializationFeature to DateTimeFeature.
+    datatype:
+      datetime:
+        write-dates-as-timestamps: false
   jmx:
     enabled: true
   servlet:

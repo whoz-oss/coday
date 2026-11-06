@@ -1,6 +1,5 @@
 package io.whozoss.agentos.delegation
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -18,8 +17,8 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -27,6 +26,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.util.UUID
 
 /**
@@ -239,19 +239,35 @@ class DelegationTool(
         val delegationId = UUID.randomUUID()
         val agentName = delegation.agentName
         val resumed = delegation.subCaseId != null
-        val subRuntime = runCatching {
-            delegation.subCaseId?.let { subCaseId ->
-                subCaseManager.resumeSubCase(subCaseId, parentCaseId, agentName, delegation.task, userId, allowedAgents)
-            } ?: subCaseManager.startSubCase(parentCaseId, namespaceId, agentName, delegation.task, userId)
-        }.getOrElse { error ->
-            logger.warn(error) { "[DelegationTool] Failed to start sub-case for '$agentName'" }
-            return DelegationResult(agentName, delegation.subCaseId, delegationId, toolRequestId, false,
-                error = "Failed to start sub-case: ${error.message}", errorType = "START_FAILED")
-        }
+        val subRuntime =
+            runCatching {
+                delegation.subCaseId?.let { subCaseId ->
+                    subCaseManager.resumeSubCase(subCaseId, parentCaseId, agentName, delegation.task, userId, allowedAgents)
+                } ?: subCaseManager.startSubCase(parentCaseId, namespaceId, agentName, delegation.task, userId)
+            }.getOrElse { error ->
+                logger.warn(error) { "[DelegationTool] Failed to start sub-case for '$agentName'" }
+                return DelegationResult(
+                    agentName,
+                    delegation.subCaseId,
+                    delegationId,
+                    toolRequestId,
+                    false,
+                    error = "Failed to start sub-case: ${error.message}",
+                    errorType = "START_FAILED",
+                )
+            }
         val subCaseId = subRuntime.id
         subCaseManager.emitParentEvent(
-            SubCaseStartedEvent(namespaceId = namespaceId, caseId = parentCaseId, delegationId = delegationId,
-                toolRequestId = toolRequestId, subCaseId = subCaseId, agentName = agentName, task = delegation.task, resumed = resumed),
+            SubCaseStartedEvent(
+                namespaceId = namespaceId,
+                caseId = parentCaseId,
+                delegationId = delegationId,
+                toolRequestId = toolRequestId,
+                subCaseId = subCaseId,
+                agentName = agentName,
+                task = delegation.task,
+                resumed = resumed,
+            ),
         )
 
         var outcome = SubCaseOutcome.ERROR
@@ -267,50 +283,101 @@ class DelegationTool(
                 val error = stopSilentSubCase(subRuntime)
                 outcome = SubCaseOutcome.TIMEOUT
                 finishErrorType = "TIMEOUT"
-                return DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
-                    error = error, errorType = finishErrorType)
+                return DelegationResult(
+                    agentName,
+                    subCaseId,
+                    delegationId,
+                    toolRequestId,
+                    false,
+                    error = error,
+                    errorType = finishErrorType,
+                )
             }
             if (finalStatus.isTerminal()) {
                 outcome = if (finalStatus == CaseStatus.KILLED) SubCaseOutcome.KILLED else SubCaseOutcome.ERROR
                 finishErrorType = if (outcome == SubCaseOutcome.KILLED) null else "TERMINAL_STATUS"
-                return DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
-                    error = "Sub-case ended with status $finalStatus without producing a result.", errorType = finishErrorType)
+                return DelegationResult(
+                    agentName,
+                    subCaseId,
+                    delegationId,
+                    toolRequestId,
+                    false,
+                    error = "Sub-case ended with status $finalStatus without producing a result.",
+                    errorType = finishErrorType,
+                )
             }
-            val events = try {
-                withTimeout(eventLoadTimeoutMs) { loadCaseEvents(subCaseId) }
-            } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
-                outcome = SubCaseOutcome.ERROR
-                finishErrorType = "EVENT_LOAD_TIMEOUT"
-                return DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
-                    error = "Sub-case completed but its event history could not be loaded in time.", errorType = finishErrorType)
-            }
+            val events =
+                try {
+                    withTimeout(eventLoadTimeoutMs) { loadCaseEvents(subCaseId) }
+                } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+                    outcome = SubCaseOutcome.ERROR
+                    finishErrorType = "EVENT_LOAD_TIMEOUT"
+                    return DelegationResult(
+                        agentName,
+                        subCaseId,
+                        delegationId,
+                        toolRequestId,
+                        false,
+                        error = "Sub-case completed but its event history could not be loaded in time.",
+                        errorType = finishErrorType,
+                    )
+                }
             val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull()
             val lastAgentMessage = events.filterIsInstance<MessageEvent>().lastOrNull { it.actor.role == ActorRole.AGENT }
-            val waiting = lastQuestion != null && (lastAgentMessage == null || events.indexOf(lastQuestion) > events.indexOf(lastAgentMessage))
+            val waiting =
+                lastQuestion != null && (lastAgentMessage == null || events.indexOf(lastQuestion) > events.indexOf(lastAgentMessage))
             if (waiting) {
                 outcome = SubCaseOutcome.WAITING_USER
                 finishErrorType = null
-                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true,
-                    pendingQuestion = lastQuestion.question, options = lastQuestion.options)
+                DelegationResult(
+                    agentName,
+                    subCaseId,
+                    delegationId,
+                    toolRequestId,
+                    true,
+                    pendingQuestion = lastQuestion.question,
+                    options = lastQuestion.options,
+                )
             } else {
                 outcome = SubCaseOutcome.SUCCESS
                 finishErrorType = null
                 val lastRun = events.filterIsInstance<AgentFinishedEvent>().lastOrNull()
-                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true,
-                    result = extractLastAgentMessage(events), maxIterationsReached = lastRun?.maxIterationsReached)
+                DelegationResult(
+                    agentName,
+                    subCaseId,
+                    delegationId,
+                    toolRequestId,
+                    true,
+                    result = extractLastAgentMessage(events),
+                    maxIterationsReached = lastRun?.maxIterationsReached,
+                )
             }
         } catch (error: Exception) {
             outcome = SubCaseOutcome.ERROR
             // The parent run was stopped while waiting: not a delegation failure, keep unwinding.
             finishErrorType = if (currentCoroutineContext().isActive) "DELEGATION_ERROR" else "INTERRUPTED"
             currentCoroutineContext().ensureActive()
-            DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
-                error = "Delegation failed: ${error.message}", errorType = finishErrorType)
+            DelegationResult(
+                agentName,
+                subCaseId,
+                delegationId,
+                toolRequestId,
+                false,
+                error = "Delegation failed: ${error.message}",
+                errorType = finishErrorType,
+            )
         } finally {
             subCaseManager.emitParentEvent(
-                SubCaseFinishedEvent(namespaceId = namespaceId, caseId = parentCaseId, delegationId = delegationId,
-                    toolRequestId = toolRequestId, subCaseId = subCaseId, agentName = agentName,
-                    outcome = outcome, errorType = finishErrorType),
+                SubCaseFinishedEvent(
+                    namespaceId = namespaceId,
+                    caseId = parentCaseId,
+                    delegationId = delegationId,
+                    toolRequestId = toolRequestId,
+                    subCaseId = subCaseId,
+                    agentName = agentName,
+                    outcome = outcome,
+                    errorType = finishErrorType,
+                ),
             )
         }
     }
@@ -330,10 +397,17 @@ class DelegationTool(
         val stoppedStatus = if (stopFailure == null) awaitStopped(subRuntime) else null
         val silent = "Sub-case showed no activity for ${timeoutMs / 1000}s"
         return when {
-            stopFailure != null -> "$silent and could not be stopped."
-            stoppedStatus == CaseStatus.IDLE ->
+            stopFailure != null -> {
+                "$silent and could not be stopped."
+            }
+
+            stoppedStatus == CaseStatus.IDLE -> {
                 "$silent and was stopped. It is idle: delegate again with its subCaseId to resume it."
-            else -> "$silent and was stopped."
+            }
+
+            else -> {
+                "$silent and was stopped."
+            }
         }
     }
 

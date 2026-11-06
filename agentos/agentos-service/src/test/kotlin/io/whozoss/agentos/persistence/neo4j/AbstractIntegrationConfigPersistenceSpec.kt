@@ -78,7 +78,7 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
         description = description,
         parameters =
             parametersJson?.let {
-                com.fasterxml.jackson.databind
+                tools.jackson.databind
                     .ObjectMapper()
                     .readTree(it)
             },

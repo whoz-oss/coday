@@ -1,6 +1,5 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
@@ -59,6 +58,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
+import tools.jackson.databind.ObjectMapper
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
@@ -675,7 +675,7 @@ class AgentServiceImpl(
         resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
         redirectGuideline: String? = null,
-        loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
+        loopConfig: tools.jackson.databind.JsonNode? = null,
         maxToolRounds: Int? = null,
     ): Agent {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
@@ -1153,7 +1153,10 @@ class AgentServiceImpl(
         val canRead =
             root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
         return when {
-            !canRead -> null
+            !canRead -> {
+                null
+            }
+
             else -> {
                 val canWrite =
                     root.ownerCaseId == caseId ||
@@ -1207,7 +1210,10 @@ class AgentServiceImpl(
                 entityId = context.namespaceId.toString(),
             )
         return when {
-            !userCanReadNamespace -> null
+            !userCanReadNamespace -> {
+                null
+            }
+
             else -> {
                 // Read/write for a namespace admin (Namespace WRITE, super-admin included),
                 // read-only for a plain member.

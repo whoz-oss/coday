@@ -1,7 +1,7 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
@@ -24,7 +24,7 @@ class GitWorkspaceBeanConditionSpec :
                 .withBean(ExchangeStorageService::class.java, { mockk<ExchangeStorageService>() })
                 .withBean(GitCommandRunner::class.java, { mockk<GitCommandRunner>() })
                 .withBean(GitServiceAccountResolver::class.java, { mockk<GitServiceAccountResolver>() })
-                .withBean(ObjectMapper::class.java, { jacksonObjectMapper().findAndRegisterModules() })
+                .withBean(ObjectMapper::class.java, { jacksonObjectMapper() })
                 .withBean(Clock::class.java, { Clock.systemUTC() })
                 .withUserConfiguration(GitWorkspaceStatusService::class.java, GitHubPullRequests::class.java)
 

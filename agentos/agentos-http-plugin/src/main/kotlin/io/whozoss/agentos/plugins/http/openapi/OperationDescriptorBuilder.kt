@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 import io.whozoss.agentos.plugins.http.config.HttpApiConfig
 import io.whozoss.agentos.plugins.http.config.OperationOverride
 

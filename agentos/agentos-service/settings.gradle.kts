@@ -13,6 +13,16 @@ dependencyResolutionManagement {
     repositories {
         mavenCentral()
         mavenLocal()
+        // springdoc 3.2.1-SNAPSHOT (swagger-core 3, Jackson 3): restricted to springdoc snapshots.
+        // Remove once springdoc 3.2.1 is released on Maven Central.
+        maven {
+            name = "CentralSnapshots"
+            url = uri("https://central.sonatype.com/repository/maven-snapshots/")
+            mavenContent {
+                snapshotsOnly()
+                includeGroup("org.springdoc")
+            }
+        }
     }
 }
 

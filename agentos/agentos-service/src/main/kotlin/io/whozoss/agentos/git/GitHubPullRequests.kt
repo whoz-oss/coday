@@ -1,7 +1,7 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.git.core.GitHubApi
 import io.whozoss.agentos.git.core.GitHubRepository
 import io.whozoss.agentos.git.core.GitObjectIds

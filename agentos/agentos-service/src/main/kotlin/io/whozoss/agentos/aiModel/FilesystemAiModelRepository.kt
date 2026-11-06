@@ -1,9 +1,6 @@
 package io.whozoss.agentos.aiModel
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.aiProvider.AiProviderRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
@@ -12,6 +9,9 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import java.nio.file.Path
 import java.time.Duration
 import java.util.UUID
@@ -37,7 +37,7 @@ class FilesystemAiModelRepository(
     private val delegate: AiModelRepository,
     private val namespaceRepository: NamespaceRepository,
     private val aiProviderRepository: AiProviderRepository,
-    private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
+    private val yamlMapper: ObjectMapper = YAMLMapper.builder().addModule(KotlinModule.Builder().build()).build(),
     ttl: Duration = Duration.ofMinutes(5),
 ) : AiModelRepository by delegate {
     private val cacheRegistry =
@@ -73,7 +73,9 @@ class FilesystemAiModelRepository(
         return definitions.mapNotNull { definition ->
             val provider = providers[definition.provider.lowercase()]
             if (provider == null) {
-                logger.debug { "[FilesystemAiModelRepository] Skipping ${definition.source}: no provider '${definition.provider}' in namespace $namespaceId" }
+                logger.debug {
+                    "[FilesystemAiModelRepository] Skipping ${definition.source}: no provider '${definition.provider}' in namespace $namespaceId"
+                }
                 return@mapNotNull null
             }
             definition

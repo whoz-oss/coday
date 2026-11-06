@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.file
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.databind.JsonNode
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.image.ImageProcessor
 import io.whozoss.agentos.plugins.file.tools.EditFilesTool
 import io.whozoss.agentos.plugins.file.tools.ListFilesTool
@@ -49,6 +49,7 @@ class FileToolProvider : ToolPlugin {
         val readMaxSizeMb = config.get("readMaxSizeMb")?.asLong() ?: 10
         val extraDenyPatterns = config.get("extraDenyPatterns")
             ?.takeIf { it.isArray }
+            ?.values()
             ?.map { it.asText() }
             ?: emptyList()
 

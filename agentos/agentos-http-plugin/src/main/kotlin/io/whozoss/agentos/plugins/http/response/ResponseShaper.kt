@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.http.response
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.JsonNode
 import io.whozoss.agentos.plugins.http.HttpApiJson
 import io.whozoss.agentos.plugins.http.config.ResponseFormat
 import io.whozoss.agentos.plugins.http.openapi.ResponseShaping
@@ -39,7 +39,7 @@ object ResponseShaper {
         if (firstChar != '{' && firstChar != '[') return null
         return try {
             HttpApiJson.mapper.readTree(text)
-        } catch (e: JsonProcessingException) {
+        } catch (e: JacksonException) {
             null
         }
     }

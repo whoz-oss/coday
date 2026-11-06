@@ -1,6 +1,6 @@
 package io.whozoss.agentos.casePlugin
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult

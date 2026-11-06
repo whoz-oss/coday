@@ -1,7 +1,7 @@
 package io.whozoss.agentos.prompt
 
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.core.type.TypeReference
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy

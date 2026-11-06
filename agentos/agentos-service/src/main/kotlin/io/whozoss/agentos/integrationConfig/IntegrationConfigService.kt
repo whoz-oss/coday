@@ -1,10 +1,10 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.Caller
 import io.whozoss.agentos.reconciliation.ConfigLookup
+import tools.jackson.databind.JsonNode
 import java.util.UUID
 
 /**
@@ -67,7 +67,6 @@ data class IntegrationConfigUpdate(
 interface IntegrationConfigService :
     EntityService<IntegrationConfig, UUID>,
     ConfigLookup<IntegrationConfig> {
-
     /**
      * Explicit override of [ConfigLookup.findByTriple] with a precise return type.
      *
@@ -191,7 +190,12 @@ interface IntegrationConfigService :
      * @param action permission required — use [Action.READ] for a normal read, [Action.WRITE] for export
      * @param withRemoved when true, includes soft-deleted entities (default false)
      */
-    fun getByIdForCaller(caller: Caller, id: UUID, action: Action = Action.READ, withRemoved: Boolean = false): IntegrationConfig
+    fun getByIdForCaller(
+        caller: Caller,
+        id: UUID,
+        action: Action = Action.READ,
+        withRemoved: Boolean = false,
+    ): IntegrationConfig
 
     /**
      * Batch read, permission-filtered. Never throws on denial — inaccessible ids are silently
@@ -202,7 +206,11 @@ interface IntegrationConfigService :
      * @param ids the batch of entity ids to resolve
      * @param withRemoved when true, includes soft-deleted entities
      */
-    fun findByIdsForCaller(caller: Caller, ids: List<UUID>, withRemoved: Boolean): List<IntegrationConfig>
+    fun findByIdsForCaller(
+        caller: Caller,
+        ids: List<UUID>,
+        withRemoved: Boolean,
+    ): List<IntegrationConfig>
 
     /**
      * Scope-aware listing, permission-enforced.
@@ -233,7 +241,10 @@ interface IntegrationConfigService :
      * @param caller the authenticated principal
      * @param entity the entity to create (id will be replaced with a freshly generated UUID)
      */
-    fun createForCaller(caller: Caller, entity: IntegrationConfig): IntegrationConfig
+    fun createForCaller(
+        caller: Caller,
+        entity: IntegrationConfig,
+    ): IntegrationConfig
 
     /**
      * Update an [IntegrationConfig], enforcing authorization.
@@ -250,7 +261,11 @@ interface IntegrationConfigService :
      * @param id the entity to update
      * @param changes the mutable fields to apply
      */
-    fun updateForCaller(caller: Caller, id: UUID, changes: IntegrationConfigUpdate): IntegrationConfig
+    fun updateForCaller(
+        caller: Caller,
+        id: UUID,
+        changes: IntegrationConfigUpdate,
+    ): IntegrationConfig
 
     /**
      * Delete an [IntegrationConfig], enforcing authorization.
@@ -264,7 +279,10 @@ interface IntegrationConfigService :
      * @param caller the authenticated principal
      * @param id the entity to delete
      */
-    fun deleteForCaller(caller: Caller, id: UUID)
+    fun deleteForCaller(
+        caller: Caller,
+        id: UUID,
+    )
 
     // -------------------------------------------------------------------------
     // Unchecked composition surface — unsecured* methods
@@ -298,5 +316,8 @@ interface IntegrationConfigService :
      * under no user identity) will call this instead of the inherited [EntityService.findById],
      * making the unchecked access visible at the call site.
      */
-    fun unsecuredFindById(id: UUID, withRemoved: Boolean = false): IntegrationConfig?
+    fun unsecuredFindById(
+        id: UUID,
+        withRemoved: Boolean = false,
+    ): IntegrationConfig?
 }

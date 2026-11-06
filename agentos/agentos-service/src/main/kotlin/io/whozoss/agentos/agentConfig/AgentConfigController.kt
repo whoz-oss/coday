@@ -1,6 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import org.springframework.beans.factory.annotation.Qualifier
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.agent.AgentService

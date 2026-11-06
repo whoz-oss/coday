@@ -1,12 +1,14 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import io.whozoss.agentos.plugins.http.config.ApiKeyPlacement
-import org.yaml.snakeyaml.LoaderOptions
+import org.snakeyaml.engine.v2.api.LoadSettings
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.dataformat.yaml.YAMLFactory
+import tools.jackson.dataformat.yaml.YAMLMapper
 
 /**
  * Reads an OpenAPI 3.x document (JSON or YAML text) into an [OpenApiDocument].
@@ -20,7 +22,7 @@ import org.yaml.snakeyaml.LoaderOptions
  */
 object OpenApiReader {
 
-    private val jsonMapper = ObjectMapper()
+    private val jsonMapper = JsonMapper()
 
     fun read(text: String, maxBytes: Long): OpenApiDocument {
         val size = text.toByteArray(Charsets.UTF_8).size
@@ -56,7 +58,7 @@ object OpenApiReader {
      */
     private fun apiKeyScheme(root: JsonNode): ApiKeyScheme? {
         val schemes = root.path("components").path("securitySchemes")
-        val required = root.path("security").flatMap { requirement -> requirement.properties().map { it.key } }
+        val required = root.path("security").values().flatMap { requirement -> requirement.properties().map { it.key } }
         val candidates = required.map { schemes.path(it) } + schemes.properties().map { it.value }
         return candidates.firstNotNullOfOrNull(::usableApiKeyScheme)
     }
@@ -73,7 +75,7 @@ object OpenApiReader {
         val mapper = if (firstChar == '{' || firstChar == '[') jsonMapper else yamlMapper(maxBytes)
         val root = try {
             mapper.readTree(text)
-        } catch (e: JsonProcessingException) {
+        } catch (e: JacksonException) {
             throw IllegalArgumentException("OpenAPI document cannot be parsed: ${firstLine(e)}", e)
         }
         require(root != null && root.isObject) { "OpenAPI document must be a JSON/YAML object" }
@@ -84,14 +86,14 @@ object OpenApiReader {
      * The first line of the parser message only: a SnakeYAML mark echoes the offending source lines, which
      * must never reach a log, the failure registry or the agent (the document may sit next to secrets).
      */
-    private fun firstLine(e: JsonProcessingException): String =
+    private fun firstLine(e: JacksonException): String =
         e.originalMessage?.lineSequence()?.firstOrNull()?.trim().orEmpty().ifEmpty { "malformed document" }
 
     private fun yamlMapper(maxBytes: Long): ObjectMapper {
-        val loaderOptions = LoaderOptions().apply {
-            codePointLimit = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        }
-        return ObjectMapper(YAMLFactory.builder().loaderOptions(loaderOptions).build())
+        val loadSettings = LoadSettings.builder()
+            .setCodePointLimit(maxBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+            .build()
+        return YAMLMapper(YAMLFactory.builder().loadSettings(loadSettings).build())
     }
 
     private fun requireOpenApi3(root: JsonNode) {
@@ -165,7 +167,7 @@ object OpenApiReader {
             path = path,
             summary = operation.path("summary").textOrNull(),
             description = operation.path("description").textOrNull(),
-            tags = operation.path("tags").map { it.asText() },
+            tags = operation.path("tags").values().map { it.asText() },
             deprecated = operation.path("deprecated").asBoolean(false),
             parameters = mergeParameters(pathParameters, operationParameters),
             requestBody = body,
@@ -176,7 +178,7 @@ object OpenApiReader {
 
     private fun mergeParameters(pathLevel: JsonNode, operationLevel: JsonNode): List<OpenApiParameter> {
         val byKey = linkedMapOf<Pair<String, ParameterLocation>, OpenApiParameter>()
-        (pathLevel.asSequence() + operationLevel.asSequence())
+        (pathLevel.values().asSequence() + operationLevel.values().asSequence())
             .mapNotNull { readParameter(it) }
             .forEach { byKey[it.name to it.location] = it }
         return byKey.values.toList()

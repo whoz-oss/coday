@@ -1,7 +1,5 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.authSetting.AuthSettingApi
 import io.whozoss.agentos.authSetting.AuthSettingDto
 import io.whozoss.agentos.exception.BadRequestException
@@ -21,6 +19,8 @@ import jakarta.validation.Validator
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.context.request.RequestContextHolder
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.node.ObjectNode
 import java.util.UUID
 
 /**
@@ -85,17 +85,18 @@ class ApiBeanConfigWriter(
         kind: ConfigKind,
         id: UUID,
         change: (ObjectNode) -> Unit,
-    ): Unit = asRequestUser {
-        val current = read(kind, id).also(change)
-        when (kind) {
-            ConfigKind.AGENT -> agentConfigApi.update(id, validated(current, AgentConfigDto::class.java))
-            ConfigKind.SKILL -> skillApi.update(id, validated(current, SkillDto::class.java))
-            ConfigKind.PROMPT -> promptApi.update(id, validated(current, PromptDto::class.java))
-            ConfigKind.INTEGRATION -> integrationConfigApi.update(id, validated(current, IntegrationConfigDto::class.java))
-            ConfigKind.AUTH_SETTING -> authSettingApi.update(id, validated(current, AuthSettingDto::class.java))
-            ConfigKind.NAMESPACE -> namespaceApi.update(id, validated(current, NamespaceDto::class.java))
+    ): Unit =
+        asRequestUser {
+            val current = read(kind, id).also(change)
+            when (kind) {
+                ConfigKind.AGENT -> agentConfigApi.update(id, validated(current, AgentConfigDto::class.java))
+                ConfigKind.SKILL -> skillApi.update(id, validated(current, SkillDto::class.java))
+                ConfigKind.PROMPT -> promptApi.update(id, validated(current, PromptDto::class.java))
+                ConfigKind.INTEGRATION -> integrationConfigApi.update(id, validated(current, IntegrationConfigDto::class.java))
+                ConfigKind.AUTH_SETTING -> authSettingApi.update(id, validated(current, AuthSettingDto::class.java))
+                ConfigKind.NAMESPACE -> namespaceApi.update(id, validated(current, NamespaceDto::class.java))
+            }
         }
-    }
 
     override fun setEnabled(
         agentId: UUID,
@@ -109,14 +110,17 @@ class ApiBeanConfigWriter(
         namespaceId: UUID,
         agentId: UUID,
         deployed: Boolean,
-    ): Unit = asRequestUser {
-        val request = NamespaceAgentDeployRequest(listOf(agentId))
-        if (deployed) namespaceApi.deployAgents(namespaceId, request) else namespaceApi.undeployAgents(namespaceId, request)
-    }
+    ): Unit =
+        asRequestUser {
+            val request = NamespaceAgentDeployRequest(listOf(agentId))
+            if (deployed) namespaceApi.deployAgents(namespaceId, request) else namespaceApi.undeployAgents(namespaceId, request)
+        }
 
     /** Runs [block] once sure to act as the user of the current HTTP request, whose identity the proxies read. */
     private fun <T> asRequestUser(block: () -> T): T {
-        check(RequestContextHolder.getRequestAttributes() != null && SecurityContextHolder.getContext().authentication != null) { NO_REQUEST_USER }
+        check(
+            RequestContextHolder.getRequestAttributes() != null && SecurityContextHolder.getContext().authentication != null,
+        ) { NO_REQUEST_USER }
         return block()
     }
 
@@ -127,7 +131,9 @@ class ApiBeanConfigWriter(
         objectMapper.treeToValue(dto, type).also { value ->
             val violations = validator.validate(value)
             if (violations.isNotEmpty()) {
-                throw BadRequestException(violations.sortedBy { it.propertyPath.toString() }.joinToString("; ") { "${it.propertyPath}: ${it.message}" })
+                throw BadRequestException(
+                    violations.sortedBy { it.propertyPath.toString() }.joinToString("; ") { "${it.propertyPath}: ${it.message}" },
+                )
             }
         }
 

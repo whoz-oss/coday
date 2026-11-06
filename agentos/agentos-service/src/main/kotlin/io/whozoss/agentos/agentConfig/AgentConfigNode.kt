@@ -1,7 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.core.type.TypeReference
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata

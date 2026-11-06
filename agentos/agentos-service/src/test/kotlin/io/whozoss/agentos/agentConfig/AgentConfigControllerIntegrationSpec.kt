@@ -5,7 +5,7 @@ import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
@@ -51,7 +51,7 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
             ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.delegationTimeoutSeconds").value(3600))
                 .andReturn().response.contentAsString
-            val id = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(created)["id"].asText()
+            val id = tools.jackson.module.kotlin.jacksonObjectMapper().readTree(created)["id"].asText()
             mockMvc.perform(get("/api/agent-configs/$id"))
                 .andExpect(status().isOk).andExpect(jsonPath("$.delegationTimeoutSeconds").value(3600))
             for (reset in listOf(

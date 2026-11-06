@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugin.filesystem
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.JsonNodeFactory
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -54,7 +54,7 @@ class ConfigPathSubstitutionUnitSpec :
 
         "substitutes the token inside an array element (MCP args case)" {
             val args = JsonNodeFactory.instance.arrayNode().add("--flag").add("{{NAMESPACE_CONFIG_PATH}}/config.json")
-            val input = JsonNodeFactory.instance.objectNode().set<JsonNode>("args", args)
+            val input = JsonNodeFactory.instance.objectNode().set("args", args)
 
             val result = substituteConfigPath(input, configPath)
 
@@ -68,7 +68,7 @@ class ConfigPathSubstitutionUnitSpec :
                 it.put("command", "{{NAMESPACE_CONFIG_PATH}}/../scripts/build.sh")
             }
             val tools = JsonNodeFactory.instance.arrayNode().add(tool)
-            val input = JsonNodeFactory.instance.objectNode().set<JsonNode>("tools", tools)
+            val input = JsonNodeFactory.instance.objectNode().set("tools", tools)
 
             val result = substituteConfigPath(input, configPath)
 

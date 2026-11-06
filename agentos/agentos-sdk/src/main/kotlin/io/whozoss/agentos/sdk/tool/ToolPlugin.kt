@@ -1,6 +1,6 @@
 package io.whozoss.agentos.sdk.tool
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 import org.pf4j.ExtensionPoint
 
 /**

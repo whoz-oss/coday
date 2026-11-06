@@ -1,9 +1,9 @@
 package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
@@ -30,7 +30,7 @@ import java.util.UUID
 class FilesystemAgentConfigRepository(
     private val delegate: AgentConfigRepository,
     private val namespaceRepository: NamespaceRepository,
-    private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
+    private val yamlMapper: ObjectMapper = YAMLMapper.builder().addModule(KotlinModule.Builder().build()).build(),
     ttl: Duration = Duration.ofMinutes(5),
 ) : AgentConfigRepository by delegate {
     private val cacheRegistry =

@@ -1,6 +1,6 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -15,7 +15,7 @@ import java.net.http.HttpResponse
 import java.util.UUID
 
 class GitHubPullRequestsSpec : StringSpec({
-    val mapper = jacksonObjectMapper().findAndRegisterModules()
+    val mapper = jacksonObjectMapper()
     val headSha = "a".repeat(40)
     val otherSha = "b".repeat(40)
     val settings = GitRepositorySettings(

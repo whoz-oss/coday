@@ -1,11 +1,11 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.sdk.api.configChange.ConfigAction
 import io.whozoss.agentos.sdk.api.configChange.ConfigDeployTarget
 import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import io.whozoss.agentos.sdk.api.configChange.ConfigOperationStatus
 import org.springframework.stereotype.Component
+import tools.jackson.databind.node.ObjectNode
 import java.util.UUID
 
 /**
@@ -45,14 +45,33 @@ class ConfigChangeStatus(
         viewerId: UUID,
         createdIds: Map<String, UUID>,
     ): OperationEvaluation {
-        val name = op.value?.path("name")?.asText().orEmpty()
+        val name =
+            op.value
+                ?.path("name")
+                ?.asText()
+                .orEmpty()
         val existing = findExisting(op, name, plan, viewerId, createdIds)
         return when {
-            existing == null -> OperationEvaluation(ConfigOperationStatus.PENDING)
-            !matches(op.value as? ObjectNode, existing, op.secrets.map { it.path }.toSet(), createdIds) ->
-                OperationEvaluation(ConfigOperationStatus.CONFLICT, existing.id, existing, "an entity named '$name' already exists with other values")
-            awaitsDeployment(op, existing.id, plan, createdIds) -> OperationEvaluation(ConfigOperationStatus.PENDING, existing.id, existing)
-            else -> OperationEvaluation(ConfigOperationStatus.ALREADY_APPLIED, existing.id, existing)
+            existing == null -> {
+                OperationEvaluation(ConfigOperationStatus.PENDING)
+            }
+
+            !matches(op.value as? ObjectNode, existing, op.secrets.map { it.path }.toSet(), createdIds) -> {
+                OperationEvaluation(
+                    ConfigOperationStatus.CONFLICT,
+                    existing.id,
+                    existing,
+                    "an entity named '$name' already exists with other values",
+                )
+            }
+
+            awaitsDeployment(op, existing.id, plan, createdIds) -> {
+                OperationEvaluation(ConfigOperationStatus.PENDING, existing.id, existing)
+            }
+
+            else -> {
+                OperationEvaluation(ConfigOperationStatus.ALREADY_APPLIED, existing.id, existing)
+            }
         }
     }
 
@@ -62,7 +81,9 @@ class ConfigChangeStatus(
         agentId: UUID,
         plan: ConfigChangePlan,
         createdIds: Map<String, UUID>,
-    ): Boolean = op.kind == ConfigKind.AGENT && op.deployTo == ConfigDeployTarget.NAMESPACE && !isDeployed(agentId, plan.deploymentNamespaceOf(op, createdIds))
+    ): Boolean =
+        op.kind == ConfigKind.AGENT && op.deployTo == ConfigDeployTarget.NAMESPACE &&
+            !isDeployed(agentId, plan.deploymentNamespaceOf(op, createdIds))
 
     /** The entity a `CREATE` would duplicate, read within the plan's namespace or within the namespace the plan creates. */
     private fun findExisting(
@@ -75,10 +96,25 @@ class ConfigChangeStatus(
         val scope = op.scope
         val namespaceId = scope?.namespaceIn(createdIds)
         return when {
-            scope?.namespaceRef == null -> configReadService.findByName(op.kind, name, scope?.namespaceId, scope?.userId, viewerId, plan.namespaceId)
+            scope?.namespaceRef == null -> {
+                configReadService.findByName(
+                    op.kind,
+                    name,
+                    scope?.namespaceId,
+                    scope?.userId,
+                    viewerId,
+                    plan.namespaceId,
+                )
+            }
+
             // The namespace it goes into does not exist yet, so neither can the entity.
-            namespaceId == null -> null
-            else -> configReadService.findByName(op.kind, name, namespaceId, scope.userId, viewerId, namespaceId)
+            namespaceId == null -> {
+                null
+            }
+
+            else -> {
+                configReadService.findByName(op.kind, name, namespaceId, scope.userId, viewerId, namespaceId)
+            }
         }
     }
 
@@ -94,7 +130,12 @@ class ConfigChangeStatus(
     ): Boolean =
         value?.properties().orEmpty().all { (field, proposed) ->
             ConfigJson.opRefs(proposed).any { it !in createdIds } ||
-                ConfigValueMatch.holds(existing.dto.get(field), ConfigJson.resolveOpRefs(proposed, createdIds), ConfigJson.pointerOf(listOf(field)), secretPaths)
+                ConfigValueMatch.holds(
+                    existing.dto.get(field),
+                    ConfigJson.resolveOpRefs(proposed, createdIds),
+                    ConfigJson.pointerOf(listOf(field)),
+                    secretPaths,
+                )
         }
 
     private fun evaluateUpdate(
@@ -107,12 +148,32 @@ class ConfigChangeStatus(
         val entity = configReadService.find(op.kind, target.id, viewerId, plan.namespaceId)
         val masked = entity?.let(configReadService::masked)
         val pending = op.changes.filterNot { change -> entity != null && isApplied(entity, change, createdIds) }
-        val conflict = pending.firstOrNull { change -> masked != null && ConfigJson.hash(ConfigJson.valueAt(masked, change.path)) != change.beforeHash }
+        val conflict =
+            pending.firstOrNull { change ->
+                masked != null &&
+                    ConfigJson.hash(ConfigJson.valueAt(masked, change.path)) != change.beforeHash
+            }
         return when {
-            entity == null -> OperationEvaluation(ConfigOperationStatus.NOT_VISIBLE, reason = "'${target.name}' is not visible to you")
-            conflict != null -> OperationEvaluation(ConfigOperationStatus.CONFLICT, entity.id, entity, "${conflict.path} changed since the plan was made")
-            pending.isEmpty() && op.secrets.isEmpty() -> OperationEvaluation(ConfigOperationStatus.APPLIED, entity.id, entity)
-            else -> OperationEvaluation(ConfigOperationStatus.PENDING, entity.id, entity)
+            entity == null -> {
+                OperationEvaluation(ConfigOperationStatus.NOT_VISIBLE, reason = "'${target.name}' is not visible to you")
+            }
+
+            conflict != null -> {
+                OperationEvaluation(
+                    ConfigOperationStatus.CONFLICT,
+                    entity.id,
+                    entity,
+                    "${conflict.path} changed since the plan was made",
+                )
+            }
+
+            pending.isEmpty() && op.secrets.isEmpty() -> {
+                OperationEvaluation(ConfigOperationStatus.APPLIED, entity.id, entity)
+            }
+
+            else -> {
+                OperationEvaluation(ConfigOperationStatus.PENDING, entity.id, entity)
+            }
         }
     }
 
@@ -129,8 +190,13 @@ class ConfigChangeStatus(
         val after = change.after
         return when {
             change.remove -> ConfigValueMatch.isEmpty(current)
+
             after == null || after.isNull -> current?.isNull == true
-            ConfigJson.opRefs(after).all { it in createdIds } -> ConfigValueMatch.holds(current, ConfigJson.resolveOpRefs(after, createdIds), change.path)
+
+            ConfigJson.opRefs(after).all {
+                it in createdIds
+            } -> ConfigValueMatch.holds(current, ConfigJson.resolveOpRefs(after, createdIds), change.path)
+
             else -> false
         }
     }

@@ -1,7 +1,7 @@
 package io.whozoss.agentos.security.declarative
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.ObjectMapper
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import mu.KLogging
@@ -60,7 +60,7 @@ class AccessDeniedExceptionHandler(
 
         val body = try {
             objectMapper.writeValueAsString(mapOf("error" to message, "status" to status.value()))
-        } catch (ex: JsonProcessingException) {
+        } catch (ex: JacksonException) {
             logger.warn(ex) { "[AccessDeniedHandler] Failed to serialise error body, falling back to plain JSON" }
             """{"error":"$message","status":${status.value()}}"""
         }

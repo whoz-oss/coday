@@ -1,8 +1,8 @@
 package io.whozoss.agentos.plugins.git
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import com.sun.net.httpserver.HttpServer
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.style.StringSpec

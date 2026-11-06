@@ -1,9 +1,9 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -234,7 +234,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         val response = controller.export(cfg.metadata.id)
         val body = response.body!!
 
-        val yamlMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
+        val yamlMapper = YAMLMapper.builder().addModule(KotlinModule.Builder().build()).build()
         val tree = yamlMapper.readTree(body)
 
         tree.get("name").asText() shouldBe "BASH_LOCAL"

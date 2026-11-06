@@ -1,10 +1,10 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
 
 /**
  * Builds the JSON Schema of a tool's input from an [OpenApiOperation].
@@ -38,11 +38,11 @@ object JsonSchemaBuilder {
         val properties = root.putObject("properties")
         val required = root.putArray("required")
         exposed.forEach { parameter ->
-            properties.set<JsonNode>(parameter.name, parameterProperty(parameter))
+            properties.set(parameter.name, parameterProperty(parameter))
             if (parameter.required) required.add(parameter.name)
         }
         operation.requestBody?.let { body ->
-            properties.set<JsonNode>(BODY_PROPERTY, OpenApiSchemaConverter.convert(body.schema))
+            properties.set(BODY_PROPERTY, OpenApiSchemaConverter.convert(body.schema))
             if (body.required) required.add(BODY_PROPERTY)
         }
         root.put("additionalProperties", false)
@@ -52,7 +52,7 @@ object JsonSchemaBuilder {
     private fun parameterProperty(parameter: OpenApiParameter): ObjectNode {
         val converted = OpenApiSchemaConverter.convert(parameter.schema)
         val property = JsonNodeFactory.instance.objectNode()
-        PARAMETER_KEYWORDS.forEach { key -> converted.get(key)?.let { property.set<JsonNode>(key, it) } }
+        PARAMETER_KEYWORDS.forEach { key -> converted.get(key)?.let { property.set(key, it) } }
         describe(parameter)?.let { property.put("description", it) }
         return property
     }
@@ -106,7 +106,7 @@ object JsonSchemaBuilder {
                 "properties" -> reduceProperties(value, level, maxLevel)
                 else -> reduce(value, level, name, maxLevel)
             }
-            copy.set<JsonNode>(key, reduced)
+            copy.set(key, reduced)
         }
         return copy
     }
@@ -114,7 +114,7 @@ object JsonSchemaBuilder {
     private fun reduceProperties(properties: JsonNode, level: Int, maxLevel: Int): JsonNode {
         val copy = JsonNodeFactory.instance.objectNode()
         properties.properties().forEach { (name, property) ->
-            copy.set<JsonNode>(name, reduce(property, level + 1, name, maxLevel))
+            copy.set(name, reduce(property, level + 1, name, maxLevel))
         }
         return copy
     }

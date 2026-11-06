@@ -1,7 +1,5 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.StringSpec
@@ -10,6 +8,8 @@ import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import tools.jackson.databind.JsonNode
+import tools.jackson.module.kotlin.jacksonObjectMapper
 
 class JsonSchemaBuilderUnitSpec : StringSpec({
     isolationMode = IsolationMode.InstancePerLeaf
@@ -23,7 +23,10 @@ class JsonSchemaBuilderUnitSpec : StringSpec({
 
     fun schemaOf(operation: OpenApiOperation): JsonNode = mapper.readTree(JsonSchemaBuilder.build(operation).json)
 
-    fun JsonNode.keys(): List<String> = fieldNames().asSequence().toList()
+    fun JsonNode.keys(): List<String> = propertyNames().toList()
+
+    // Jackson 3: JsonNode.map(Function) is a member that maps the node itself, so iterate values() explicitly.
+    fun JsonNode.texts(): List<String> = values().map { it.asText() }
 
     fun bodyOperation(schema: String, required: Boolean = true): OpenApiOperation =
         OpenApiOperation(
@@ -55,7 +58,7 @@ class JsonSchemaBuilderUnitSpec : StringSpec({
 
     "path parameters are required, optional query parameters are not" {
         val schema = schemaOf(operation("petstore-3.0.yaml", HttpMethod.GET, "/pets/{petId}"))
-        schema.get("required").map { it.asText() } shouldBe listOf("petId")
+        schema.get("required").texts() shouldBe listOf("petId")
         schema.path("properties").path("petId").path("description").asText() shouldBe "operation-level description"
         val list = schemaOf(operation("petstore-3.0.yaml", HttpMethod.GET, "/pets"))
         list.get("required").size() shouldBe 0
@@ -64,7 +67,7 @@ class JsonSchemaBuilderUnitSpec : StringSpec({
 
     "explicitly required query parameters are required" {
         val schema = schemaOf(operation("zendesk-excerpt.yaml", HttpMethod.GET, "/api/v2/search"))
-        schema.get("required").map { it.asText() } shouldBe listOf("query")
+        schema.get("required").texts() shouldBe listOf("query")
     }
 
     "carries description, type, format, enum, default, minimum, maximum and items" {
@@ -76,7 +79,7 @@ class JsonSchemaBuilderUnitSpec : StringSpec({
         limit.path("maximum").asInt() shouldBe 100
         limit.path("default").asInt() shouldBe 20
         limit.path("description").asText() shouldBe "How many items to return at one time (max 100)"
-        props.path("status").path("enum").map { it.asText() } shouldBe listOf("available", "pending", "sold")
+        props.path("status").path("enum").texts() shouldBe listOf("available", "pending", "sold")
         props.path("tags").path("items").path("type").asText() shouldBe "string"
     }
 
@@ -92,16 +95,16 @@ class JsonSchemaBuilderUnitSpec : StringSpec({
     "the request body is one required 'body' property, never flattened" {
         val schema = schemaOf(operation("petstore-3.0.yaml", HttpMethod.POST, "/pets"))
         schema.path("properties").keys() shouldBe listOf("body")
-        schema.get("required").map { it.asText() } shouldBe listOf("body")
+        schema.get("required").texts() shouldBe listOf("body")
         val body = schema.path("properties").path("body")
         body.path("type").asText() shouldBe "object"
         body.path("properties").keys() shouldContainExactlyInAnyOrder listOf("name", "tag")
-        body.path("required").map { it.asText() } shouldBe listOf("name")
+        body.path("required").texts() shouldBe listOf("name")
     }
 
     "an optional request body is not required" {
         val schema = schemaOf(operation("petstore-3.0.yaml", HttpMethod.PUT, "/pets/{petId}"))
-        schema.get("required").map { it.asText() } shouldBe listOf("petId")
+        schema.get("required").texts() shouldBe listOf("petId")
         schema.path("properties").keys() shouldContainExactlyInAnyOrder listOf("petId", "body")
     }
 
@@ -113,18 +116,18 @@ class JsonSchemaBuilderUnitSpec : StringSpec({
         body.has("allOf") shouldBe false
         body.path("type").asText() shouldBe "object"
         body.path("properties").keys() shouldContainExactlyInAnyOrder listOf("name", "tag", "owner")
-        body.path("required").map { it.asText() } shouldBe listOf("name")
+        body.path("required").texts() shouldBe listOf("name")
     }
 
     "converts nullable to a type array" {
         val body = bodySchemaOf("petstore-3.0.yaml", HttpMethod.PUT, "/pets/{petId}")
-        body.path("properties").path("tag").path("type").map { it.asText() } shouldBe listOf("string", "null")
+        body.path("properties").path("tag").path("type").texts() shouldBe listOf("string", "null")
         body.path("properties").path("tag").has("nullable") shouldBe false
     }
 
     "keeps 3.1 type arrays and oneOf as-is" {
         val schema = schemaOf(operation("sample-3.1.json", HttpMethod.GET, "/items"))
-        schema.path("properties").path("cursor").path("type").map { it.asText() } shouldBe listOf("string", "null")
+        schema.path("properties").path("cursor").path("type").texts() shouldBe listOf("string", "null")
         val op = bodyOperation("""{ "oneOf": [ { "type": "string" }, { "type": "integer" } ] }""")
         schemaOf(op).path("properties").path("body").path("oneOf").size() shouldBe 2
     }
@@ -149,7 +152,7 @@ class JsonSchemaBuilderUnitSpec : StringSpec({
         body.has("allOf") shouldBe false
         body.path("type").asText() shouldBe "object"
         body.path("properties").keys() shouldContainExactlyInAnyOrder listOf("a", "b")
-        body.path("required").map { it.asText() } shouldBe listOf("a")
+        body.path("required").texts() shouldBe listOf("a")
     }
 
     "reduces deep object schemas when the serialised schema exceeds the size limit" {

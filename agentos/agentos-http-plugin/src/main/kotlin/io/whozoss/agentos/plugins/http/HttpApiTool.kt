@@ -1,8 +1,8 @@
 package io.whozoss.agentos.plugins.http
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.JsonNodeFactory
 import io.whozoss.agentos.plugins.http.auth.AuthHeaderSpec
 import io.whozoss.agentos.plugins.http.net.executeCancellable
 import io.whozoss.agentos.plugins.http.openapi.HttpMethod
@@ -88,7 +88,7 @@ class HttpApiTool(
         if (json.isNullOrBlank()) return JsonNodeFactory.instance.objectNode()
         return try {
             HttpApiJson.mapper.readTree(json).takeIf { it.isObject }
-        } catch (e: JsonProcessingException) {
+        } catch (e: JacksonException) {
             null
         }
     }

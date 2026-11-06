@@ -1,8 +1,8 @@
 package io.whozoss.agentos.skill
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -29,7 +29,7 @@ import kotlin.io.path.writeText
 class FilesystemSkillRepositoryUnitSpec : StringSpec({
 
     val yamlMapper: ObjectMapper =
-        ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
+        YAMLMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     val namespaceId: UUID = UUID.randomUUID()
 

@@ -1,6 +1,6 @@
 package io.whozoss.agentos.queryUser
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigPolicy

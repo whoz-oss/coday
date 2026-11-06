@@ -1,7 +1,7 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.reconciliation.MergeStrategy
 import org.springframework.stereotype.Component
 
@@ -83,8 +83,8 @@ class IntegrationConfigMergeStrategy : MergeStrategy<IntegrationConfig> {
         override: ObjectNode,
     ): ObjectNode {
         val result = base.deepCopy()
-        override.fields().forEachRemaining { (key, overrideValue) ->
-            if (overrideValue.isNull) return@forEachRemaining
+        override.properties().forEach { (key, overrideValue) ->
+            if (overrideValue.isNull) return@forEach
             val baseValue = result.get(key)
             val mergedValue =
                 when {
@@ -92,7 +92,7 @@ class IntegrationConfigMergeStrategy : MergeStrategy<IntegrationConfig> {
                         deepMergeObjectNode(baseValue, overrideValue)
                     else -> overrideValue
                 }
-            result.set<JsonNode>(key, mergedValue)
+            result.set(key, mergedValue)
         }
         return result
     }

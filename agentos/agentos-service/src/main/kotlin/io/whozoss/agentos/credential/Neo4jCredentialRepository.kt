@@ -1,6 +1,6 @@
 package io.whozoss.agentos.credential
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.encryption.FieldEncryptor
 import mu.KLogging

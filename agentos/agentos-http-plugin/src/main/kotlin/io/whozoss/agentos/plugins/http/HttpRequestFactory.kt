@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.http
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 import io.whozoss.agentos.plugins.http.auth.AuthHeaderSpec
 import io.whozoss.agentos.plugins.http.net.UrlCheck
 import io.whozoss.agentos.plugins.http.openapi.HttpMethod

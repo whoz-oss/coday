@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.git
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 import io.whozoss.agentos.git.core.GitCommandResult
 import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitInvocation

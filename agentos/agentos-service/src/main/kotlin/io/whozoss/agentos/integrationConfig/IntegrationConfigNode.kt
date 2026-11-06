@@ -1,6 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -26,7 +26,7 @@ import java.util.UUID
  * On write, [fromDomain] provides a stub [NamespaceNode] carrying only the `@Id`.
  * SDN MERGEs by `@Id` on save and never overwrites existing Namespace properties.
  *
- * [parameters] is a [com.fasterxml.jackson.databind.JsonNode] in the domain model but Neo4j has
+ * [parameters] is a [tools.jackson.databind.JsonNode] in the domain model but Neo4j has
  * no native JSON type, so it is stored as a raw JSON string ([parametersJson]) and round-tripped
  * via [ObjectMapper] in [toDomain] / [fromDomain].
  *

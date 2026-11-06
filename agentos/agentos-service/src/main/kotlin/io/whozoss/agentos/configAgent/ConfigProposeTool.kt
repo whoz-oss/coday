@@ -1,11 +1,11 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.git.GitRepositoryIntegration
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -128,10 +128,21 @@ class ConfigProposeTool(
         context: ToolContext,
     ): ToolExecutionResult =
         when {
-            callerId == null -> ToolExecutionResult.error("Proposing a change needs a user: this run has none.", errorType = "NO_USER")
+            callerId == null -> {
+                ToolExecutionResult.error("Proposing a change needs a user: this run has none.", errorType = "NO_USER")
+            }
+
             // The definition preview resolves the tools without a case: there is nobody to ask there.
-            caseId == null -> ToolExecutionResult.error("Proposing a change needs a conversation (case) to ask the user in.", errorType = "NO_CASE")
-            else -> propose(input ?: ProposeInput(), callerId, caseId)
+            caseId == null -> {
+                ToolExecutionResult.error(
+                    "Proposing a change needs a conversation (case) to ask the user in.",
+                    errorType = "NO_CASE",
+                )
+            }
+
+            else -> {
+                propose(input ?: ProposeInput(), callerId, caseId)
+            }
         }
 
     /** Returns the planner's errors, or suspends the run on the question when the plan is valid. */
@@ -150,19 +161,22 @@ class ConfigProposeTool(
                 now = Instant.now(clock),
             )
         return when (val result = configPlanner.plan(input, proposal)) {
-            is PlanningResult.Invalid ->
+            is PlanningResult.Invalid -> {
                 ToolExecutionResult.error(
                     "The proposal is invalid, nothing was submitted to the user. Fix these points and call again:\n" +
                         result.errors.joinToString("\n") { "- $it" },
                     errorType = "INVALID_PROPOSAL",
                 )
-            is PlanningResult.Planned ->
+            }
+
+            is PlanningResult.Planned -> {
                 throw AgentInterrupt.AwaitAnswer(
                     question = questionText(result.plan),
                     userId = userId,
                     questionId = proposal.questionId,
                     structuredOutput = objectMapper.valueToTree(result.plan),
                 )
+            }
         }
     }
 

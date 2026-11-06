@@ -1,6 +1,6 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
 import io.whozoss.agentos.caseFlow.preferredLanguage
 import io.whozoss.agentos.caseFlow.userDisplayName
@@ -1086,13 +1086,17 @@ class AgentAdvanced(
             .takeWhile { shouldContinue() }
             .collect { response ->
                 val chunk =
-                    response.result.output.text
+                    response.result
+                        ?.output
+                        ?.text
                         ?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
                     contentBuilder.append(chunk)
                     emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
                 }
-                response.result.metadata.finishReason
+                response.result
+                    ?.metadata
+                    ?.finishReason
                     ?.takeIf { it.isNotBlank() }
                     ?.let { lastFinishReason = it }
             }

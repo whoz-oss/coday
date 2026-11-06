@@ -1,8 +1,8 @@
 package io.whozoss.agentos.workflow
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -37,7 +37,7 @@ import java.util.UUID
 class LoopWorkflowRunnerUnitSpec :
     StringSpec({
 
-        val objectMapper = ObjectMapper().registerKotlinModule()
+        val objectMapper = jacksonObjectMapper()
         val namespaceId: UUID = UUID.randomUUID()
         val caseId: UUID = UUID.randomUUID()
         val prompt = "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
@@ -553,7 +553,7 @@ class LoopWorkflowRunnerUnitSpec :
 
             outcome.started shouldBe 1
             val ctx = f.calls.single().context
-            ctx.fieldNames().asSequence().toList() shouldBe listOf("activeContext")
+            ctx.propertyNames().toList() shouldBe listOf("activeContext")
             ctx["activeContext"].single()["type"].asText() shouldBe "TALENT"
             ctx["activeContext"].single()["data"]["id"].asText() shouldBe "task-alice"
         }

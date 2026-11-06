@@ -1,9 +1,9 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.string.shouldContain
 import io.mockk.mockk
+import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 import java.util.UUID
 

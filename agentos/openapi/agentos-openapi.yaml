@@ -288,9 +288,6 @@ paths:
       responses:
         "200":
           content:
-            application/json:
-              schema:
-                type: string
             application/yaml:
               schema:
                 type: string
@@ -2060,9 +2057,6 @@ paths:
       responses:
         "200":
           content:
-            application/json:
-              schema:
-                type: string
             application/yaml:
               schema:
                 type: string
@@ -3132,9 +3126,6 @@ paths:
       responses:
         "200":
           content:
-            application/json:
-              schema:
-                type: string
             application/yaml:
               schema:
                 type: string
@@ -4083,12 +4074,16 @@ components:
       type: object
       properties:
         answerToEventId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         content:
           type: string
         sessionContext:
-          type: object
+          type:
+          - object
+          - "null"
           additionalProperties: {}
       required:
       - content
@@ -4096,28 +4091,43 @@ components:
       type: object
       properties:
         advancedExecution:
-          type: boolean
+          type:
+          - boolean
+          - "null"
           deprecated: true
           description: Use executionMode instead
         createdBy:
-          type: string
+          type:
+          - string
+          - "null"
         createdOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         delegationTimeoutSeconds:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
           description: "Seconds each outgoing delegation waits without any activity\
             \ from its sub-case, nested delegations included, before stopping it.\
             \ Null or omitted inherits the server default; on PUT this clears an existing\
             \ override."
+          exclusiveMinimum: 0
           minimum: 1
         description:
-          type: string
+          type:
+          - string
+          - "null"
         enabled:
-          type: boolean
+          type:
+          - boolean
+          - "null"
         executionMode:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental\
             \ and may change or be removed without notice). Takes precedence over\
             \ advancedExecution on input; always resolved on output."
@@ -4126,36 +4136,52 @@ components:
           - ADVANCED
           - LOOP
         externalMetadata:
-          type: object
+          type:
+          - object
+          - "null"
           additionalProperties: {}
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         instructions:
-          type: string
+          type:
+          - string
+          - "null"
         integrations:
-          type: object
+          type:
+          - object
+          - "null"
           additionalProperties:
             type: array
             items:
               type: string
         loopConfig:
-          $ref: "#/components/schemas/JsonNode"
           description: Default AgentLoopPayload for LOOP-mode agents. Used when the
             triggering message carries no parseable payload. A payload in the first
             user message always takes precedence. Ignored for SIMPLE and ADVANCED
             agents.
+          oneOf:
+          - $ref: "#/components/schemas/JsonNode"
+          - type: "null"
         modelName:
-          type: string
+          type:
+          - string
+          - "null"
           minLength: 1
         name:
           type: string
           minLength: 1
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         skillSelectors:
-          type: array
+          type:
+          - array
+          - "null"
           items:
             type: string
             description: "Selectors controlling which skills are advertised to this\
@@ -4166,7 +4192,9 @@ components:
               \ never match."
             minLength: 1
         subAgents:
-          type: array
+          type:
+          - array
+          - "null"
           items:
             type: string
             description: "Glob patterns controlling which agents this agent may delegate\
@@ -4181,9 +4209,13 @@ components:
               \ BugFixer/StoryFixer, ['Fixer*'] matches FixerHelper/FixerV2."
             minLength: 1
         updatedBy:
-          type: string
+          type:
+          - string
+          - "null"
         updatedOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
       required:
       - modelName
@@ -4206,7 +4238,9 @@ components:
           type: string
           minLength: 1
         userId:
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - namespaceId
       - userExternalId
@@ -4232,7 +4266,9 @@ components:
           - ADVANCED
           - LOOP
         instructions:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Final system instructions sent to the LLM, including injected\
             \ namespace / integration / user context blocks."
         name:
@@ -4257,7 +4293,9 @@ components:
           items:
             $ref: "#/components/schemas/SkillSummary"
         systemPrompt:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Privileged namespace context block sent as a separate system\
             \ message, before instructions. Null when no namespace context is available."
         tools:
@@ -4266,7 +4304,9 @@ components:
           items:
             $ref: "#/components/schemas/AgentDefinitionToolSummary"
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
           description: "The user whose overlay was applied, or null for namespace-only\
             \ resolution."
@@ -4304,13 +4344,21 @@ components:
           agentName:
             type: string
           llmModel:
-            type: string
+            type:
+            - string
+            - "null"
           llmProvider:
-            type: string
+            type:
+            - string
+            - "null"
           llmUsage:
-            $ref: "#/components/schemas/LlmUsage"
+            oneOf:
+            - $ref: "#/components/schemas/LlmUsage"
+            - type: "null"
           maxIterationsReached:
-            type: integer
+            type:
+            - integer
+            - "null"
             format: int32
       required:
       - agentId
@@ -4332,9 +4380,13 @@ components:
           agentName:
             type: string
           llmModel:
-            type: string
+            type:
+            - string
+            - "null"
           llmProvider:
-            type: string
+            type:
+            - string
+            - "null"
       required:
       - agentId
       - agentName
@@ -4355,7 +4407,9 @@ components:
           agentName:
             type: string
           questionId:
-            type: string
+            type:
+            - string
+            - "null"
             format: uuid
       required:
       - agentId
@@ -4370,41 +4424,65 @@ components:
       type: object
       properties:
         aiProviderId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         alias:
-          type: string
+          type:
+          - string
+          - "null"
         apiModelName:
           type: string
           minLength: 1
         contextWindow:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int64
         description:
-          type: string
+          type:
+          - string
+          - "null"
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         maxCompletionTokens:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         pricing:
-          $ref: "#/components/schemas/ModelPricing"
+          oneOf:
+          - $ref: "#/components/schemas/ModelPricing"
+          - type: "null"
         priority:
           type: integer
           format: int32
         reasoningEffort:
-          $ref: "#/components/schemas/ReasoningEffort"
+          oneOf:
+          - $ref: "#/components/schemas/ReasoningEffort"
+          - type: "null"
         supportsAdvancedExecution:
-          type: boolean
+          type:
+          - boolean
+          - "null"
         temperature:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
       required:
       - aiProviderId
@@ -4414,9 +4492,13 @@ components:
       type: object
       properties:
         apiKey:
-          type: string
+          type:
+          - string
+          - "null"
         apiType:
-          type: string
+          type:
+          - string
+          - "null"
           enum:
           - OpenAI
           - Anthropic
@@ -4424,15 +4506,23 @@ components:
           - vLLM
           - Ollama
         baseUrl:
-          type: string
+          type:
+          - string
+          - "null"
         description:
-          type: string
+          type:
+          - string
+          - "null"
         headers:
-          type: object
+          type:
+          - object
+          - "null"
           additionalProperties:
             type: string
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
@@ -4478,7 +4568,30 @@ components:
       - type: object
         properties:
           apiKey:
-            type: string
+            type:
+            - string
+            - "null"
+          authType:
+            type:
+            - string
+            - "null"
+            enum:
+            - OAUTH_DISCOVERABLE
+            - OAUTH_REGISTERED
+            - OAUTH_CUSTOM
+            - API_KEY
+            - BEARER_TOKEN
+            - BASIC_AUTH
+            - OAUTH_MCP_DISCOVERABLE
+          description:
+            type:
+            - string
+            - "null"
+          id:
+            type:
+            - string
+            - "null"
+            format: uuid
           name:
             type: string
             minLength: 1
@@ -4501,7 +4614,9 @@ components:
         propertyName: authType
       properties:
         authType:
-          type: string
+          type:
+          - string
+          - "null"
           enum:
           - OAUTH_DISCOVERABLE
           - OAUTH_REGISTERED
@@ -4511,17 +4626,25 @@ components:
           - BASIC_AUTH
           - OAUTH_MCP_DISCOVERABLE
         description:
-          type: string
+          type:
+          - string
+          - "null"
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
       required:
       - authType
@@ -4531,6 +4654,27 @@ components:
       - $ref: "#/components/schemas/AuthSettingDto"
       - type: object
         properties:
+          authType:
+            type:
+            - string
+            - "null"
+            enum:
+            - OAUTH_DISCOVERABLE
+            - OAUTH_REGISTERED
+            - OAUTH_CUSTOM
+            - API_KEY
+            - BEARER_TOKEN
+            - BASIC_AUTH
+            - OAUTH_MCP_DISCOVERABLE
+          description:
+            type:
+            - string
+            - "null"
+          id:
+            type:
+            - string
+            - "null"
+            format: uuid
           name:
             type: string
             minLength: 1
@@ -4540,14 +4684,18 @@ components:
             - "null"
             format: uuid
           password:
-            type: string
+            type:
+            - string
+            - "null"
           userId:
             type:
             - string
             - "null"
             format: uuid
           username:
-            type: string
+            type:
+            - string
+            - "null"
       required:
       - authType
       - name
@@ -4556,6 +4704,27 @@ components:
       - $ref: "#/components/schemas/AuthSettingDto"
       - type: object
         properties:
+          authType:
+            type:
+            - string
+            - "null"
+            enum:
+            - OAUTH_DISCOVERABLE
+            - OAUTH_REGISTERED
+            - OAUTH_CUSTOM
+            - API_KEY
+            - BEARER_TOKEN
+            - BASIC_AUTH
+            - OAUTH_MCP_DISCOVERABLE
+          description:
+            type:
+            - string
+            - "null"
+          id:
+            type:
+            - string
+            - "null"
+            format: uuid
           name:
             type: string
             minLength: 1
@@ -4565,7 +4734,9 @@ components:
             - "null"
             format: uuid
           token:
-            type: string
+            type:
+            - string
+            - "null"
           userId:
             type:
             - string
@@ -4578,45 +4749,63 @@ components:
       type: object
       properties:
         created:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         favorite:
           type: boolean
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         lastMessageAt:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         modified:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         namespaceId:
           type: string
           format: uuid
         parentCaseId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         readAt:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
           description: Timestamp of the caller's last read. Null = never read (unread).
         reasoningEffort:
-          $ref: "#/components/schemas/ReasoningEffort"
           description: "Per-case override of the reasoning effort of the agents running\
             \ in the case. Null means each agent uses the effort of its model. Replaces\
             \ the model effort of every agent, whatever the model has configured;\
             \ not sent to Anthropic and Gemini providers."
+          oneOf:
+          - $ref: "#/components/schemas/ReasoningEffort"
+          - type: "null"
         removed:
           type: boolean
         role:
-          type: string
+          type:
+          - string
+          - "null"
           description: The caller's direct relation on this case
           enum:
           - ADMIN
           - MEMBER
         runCostThreshold:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
           description: "Per-case override of the run cost threshold, in the platform\
             \ currency unit. Null means inherit from the namespace or platform default\
@@ -4624,7 +4813,9 @@ components:
             \ by the enforcement mechanism on continuation."
           minimum: 0
         scheduledPromptId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         status:
           type: string
@@ -4636,9 +4827,13 @@ components:
           - KILLED
           - ERROR
         title:
-          type: string
+          type:
+          - string
+          - "null"
         worktree:
-          type: boolean
+          type:
+          - boolean
+          - "null"
           description: "Create only. Whether a new top-level case gets the worktree\
             \ its namespace creates for every case. Null leaves it to the namespace's\
             \ settings, false creates an ordinary case, true requires it and refuses\
@@ -4702,7 +4897,9 @@ components:
       type: object
       properties:
         reasoningEffort:
-          $ref: "#/components/schemas/ReasoningEffort"
+          oneOf:
+          - $ref: "#/components/schemas/ReasoningEffort"
+          - type: "null"
     CaseStatusEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4731,7 +4928,9 @@ components:
       - type: object
         properties:
           title:
-            type: string
+            type:
+            - string
+            - "null"
       required:
       - caseId
       - id
@@ -4743,30 +4942,42 @@ components:
       type: object
       properties:
         branchName:
-          type: string
+          type:
+          - string
+          - "null"
           description: Last observed branch of the worktree. Null for a detached HEAD
             or a family that is not equipped
         cleanupReason:
-          type: string
+          type:
+          - string
+          - "null"
           description: Why the workspace of a deleted family is still kept. Never
             a secret
         equipped:
           type: boolean
           description: Whether the case's family owns a Git workspace
         failureReason:
-          type: string
+          type:
+          - string
+          - "null"
           description: Why the last preparation failed. Never a secret
         git:
-          $ref: "#/components/schemas/GitWorkspaceSummary"
           description: Last observed Git and pull request state of the worktree. Null
             until first observed
+          oneOf:
+          - $ref: "#/components/schemas/GitWorkspaceSummary"
+          - type: "null"
         rootCaseId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
           description: Root case that owns the family's workspace. Null when the family
             is not equipped
         status:
-          type: string
+          type:
+          - string
+          - "null"
           description: Lifecycle of the workspace. Null when the family is not equipped
           enum:
           - REQUESTED
@@ -4796,7 +5007,9 @@ components:
       type: object
       properties:
         comment:
-          type: string
+          type:
+          - string
+          - "null"
     ConfigChangeReportDto:
       type: object
       properties:
@@ -4890,11 +5103,15 @@ components:
       type: object
       properties:
         after:
-          $ref: "#/components/schemas/JsonNode"
+          oneOf:
+          - $ref: "#/components/schemas/JsonNode"
+          - type: "null"
         before:
-          $ref: "#/components/schemas/JsonNode"
           description: "Current value, masked; null when absent or not visible to\
             \ the viewer."
+          oneOf:
+          - $ref: "#/components/schemas/JsonNode"
+          - type: "null"
         path:
           type: string
         remove:
@@ -4906,10 +5123,14 @@ components:
       type: object
       properties:
         entityId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         message:
-          type: string
+          type:
+          - string
+          - "null"
         ref:
           type: string
         status:
@@ -4951,11 +5172,15 @@ components:
           items:
             $ref: "#/components/schemas/ConfigFieldChangeDto"
         copyFrom:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Name of the integration this CREATE copies; the server reads\
             \ its fields at apply time, and value only overrides some of them."
         deployTo:
-          type: string
+          type:
+          - string
+          - "null"
           enum:
           - NAMESPACE
           - NONE
@@ -4972,11 +5197,15 @@ components:
           type: string
           description: Name of the entity created or targeted.
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
           description: "Scope of the entity: null namespaceId and userId mean platform."
         namespaceName:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Name of the namespace the operation acts in when it is not\
             \ the case's: one the plan creates or another one the user administers."
         order:
@@ -4997,14 +5226,20 @@ components:
           - CONFLICT
           - NOT_VISIBLE
         targetId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         value:
-          $ref: "#/components/schemas/JsonNode"
           description: "CREATE only: the fields of the new entity, secrets excluded."
+          oneOf:
+          - $ref: "#/components/schemas/JsonNode"
+          - type: "null"
       required:
       - action
       - affects
@@ -5035,7 +5270,9 @@ components:
         configured:
           type: boolean
         description:
-          type: string
+          type:
+          - string
+          - "null"
         key:
           type: string
         sensitive:
@@ -5046,7 +5283,9 @@ components:
           - ENVIRONMENT
           - PROPERTY
         value:
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - configured
       - key
@@ -5086,7 +5325,9 @@ components:
       type: object
       properties:
         enrichmentContent:
-          type: string
+          type:
+          - string
+          - "null"
         llmOutput:
           type: string
         phaseIndex:
@@ -5108,7 +5349,9 @@ components:
           type: string
           format: date-time
         createdBy:
-          type: string
+          type:
+          - string
+          - "null"
         id:
           type: string
           format: uuid
@@ -5116,7 +5359,9 @@ components:
           type: string
           format: date-time
         modifiedBy:
-          type: string
+          type:
+          - string
+          - "null"
         removed:
           type: boolean
       required:
@@ -5156,10 +5401,14 @@ components:
       type: object
       properties:
         additions:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
         deletions:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
         path:
           type: string
@@ -5186,11 +5435,15 @@ components:
           type: boolean
           description: "True for a sub-directory, false for a file."
         lastModified:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
           description: Last modification timestamp.
         mimeType:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Detected MIME type for a file, null otherwise."
         name:
           type: string
@@ -5199,7 +5452,9 @@ components:
           type: string
           description: "Path relative to the exchange root, using forward slashes."
         size:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int64
           description: "File size in bytes; null for a directory, whose size is not\
             \ computed."
@@ -5255,19 +5510,31 @@ components:
       type: object
       properties:
         branch:
-          type: string
+          type:
+          - string
+          - "null"
         changes:
-          $ref: "#/components/schemas/ExchangeGitChanges"
+          oneOf:
+          - $ref: "#/components/schemas/ExchangeGitChanges"
+          - type: "null"
         equipped:
           type: boolean
         error:
-          type: string
+          type:
+          - string
+          - "null"
         git:
-          $ref: "#/components/schemas/GitWorkspaceSummary"
+          oneOf:
+          - $ref: "#/components/schemas/GitWorkspaceSummary"
+          - type: "null"
         path:
-          type: string
+          type:
+          - string
+          - "null"
         status:
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - equipped
     ExchangeFileContent:
@@ -5278,10 +5545,14 @@ components:
           type: string
           description: UTF-8 text content of the file.
         etag:
-          type: string
+          type:
+          - string
+          - "null"
           description: Opaque entity tag derived from size and last-modified time.
         mimeType:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Detected MIME type, or null if it could not be determined."
         size:
           type: integer
@@ -5294,7 +5565,9 @@ components:
       type: object
       properties:
         message:
-          type: string
+          type:
+          - string
+          - "null"
         patch:
           type: string
       required:
@@ -5304,7 +5577,9 @@ components:
       description: Metadata for a single file in an exchange scope.
       properties:
         etag:
-          type: string
+          type:
+          - string
+          - "null"
           description: Opaque entity tag derived from size and last-modified time.
         filename:
           type: string
@@ -5314,7 +5589,9 @@ components:
           format: date-time
           description: Last modification timestamp.
         mimeType:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Detected MIME type, or null if it could not be determined."
         path:
           type: string
@@ -5385,9 +5662,13 @@ components:
           type: string
           format: uuid
         comment:
-          type: string
+          type:
+          - string
+          - "null"
         createdBy:
-          type: string
+          type:
+          - string
+          - "null"
         createdOn:
           type: string
           format: date-time
@@ -5400,9 +5681,13 @@ components:
         positive:
           type: boolean
         type:
-          type: string
+          type:
+          - string
+          - "null"
         updatedBy:
-          type: string
+          type:
+          - string
+          - "null"
         updatedOn:
           type: string
           format: date-time
@@ -5421,12 +5706,16 @@ components:
           type: string
           format: uuid
         comment:
-          type: string
+          type:
+          - string
+          - "null"
           description: Optional free-text note. Ignored (cleared) when positive=true.
         positive:
           type: boolean
         type:
-          type: string
+          type:
+          - string
+          - "null"
           description: Optional category label. Ignored (cleared) when positive=true.
       required:
       - caseEventId
@@ -5457,26 +5746,38 @@ components:
           - UNPUSHED_COMMITS
           - UNKNOWN
         dirty:
-          type: boolean
+          type:
+          - boolean
+          - "null"
           description: "Whether the worktree has local changes, untracked files included.\
             \ Null when it could not be read"
         error:
-          type: string
+          type:
+          - string
+          - "null"
           description: Why the observation failed. Null when it succeeded. Never a
             secret
         headSha:
-          type: string
+          type:
+          - string
+          - "null"
           description: Commit checked out in the workspace. Null when it could not
             be read
         observedAt:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
           description: When this observation started
         prHeadSha:
-          type: string
+          type:
+          - string
+          - "null"
           description: Head commit of the pull request. Null without one
         prNumber:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
           description: Number of the pull request. Null without one
         prState:
@@ -5491,14 +5792,20 @@ components:
           - NONE
           - UNKNOWN
         prUrl:
-          type: string
+          type:
+          - string
+          - "null"
           description: Web address of the pull request. Null without one
         remoteSha:
-          type: string
+          type:
+          - string
+          - "null"
           description: Commit of the remote branch. Null when the branch is not on
             the remote
         unpushedCommits:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
           description: Commits of the workspace branch missing from the remote. Null
             unless the branch is on the remote
@@ -5520,7 +5827,9 @@ components:
           items:
             type: string
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
       required:
       - externalIds
@@ -5547,13 +5856,19 @@ components:
       type: object
       properties:
         authSettingName:
-          type: string
+          type:
+          - string
+          - "null"
         autoGrant:
           type: boolean
         description:
-          type: string
+          type:
+          - string
+          - "null"
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         integrationType:
           type: string
@@ -5567,7 +5882,9 @@ components:
           - "null"
           format: uuid
         parameters:
-          $ref: "#/components/schemas/JsonNode"
+          oneOf:
+          - $ref: "#/components/schemas/JsonNode"
+          - type: "null"
         source:
           type: string
           description: Configuration origin. FILESYSTEM entries are read-only; no
@@ -5598,7 +5915,9 @@ components:
         builtIn:
           type: boolean
         configSchema:
-          $ref: "#/components/schemas/JsonNode"
+          oneOf:
+          - $ref: "#/components/schemas/JsonNode"
+          - type: "null"
         description:
           type: string
         displayName:
@@ -5665,7 +5984,9 @@ components:
           type: integer
           format: int64
         estimatedCostUsd:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         inputTokens:
           type: integer
@@ -5690,12 +6011,16 @@ components:
         externalId:
           type: string
         firstname:
-          type: string
+          type:
+          - string
+          - "null"
         id:
           type: string
           format: uuid
         lastname:
-          type: string
+          type:
+          - string
+          - "null"
         role:
           type: string
           description: The user's direct role on this entity.
@@ -5729,15 +6054,25 @@ components:
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
           llmModel:
-            type: string
+            type:
+            - string
+            - "null"
           llmProvider:
-            type: string
+            type:
+            - string
+            - "null"
           reasoningEffort:
-            $ref: "#/components/schemas/ReasoningEffort"
+            oneOf:
+            - $ref: "#/components/schemas/ReasoningEffort"
+            - type: "null"
           requestedReasoningEffort:
-            $ref: "#/components/schemas/ReasoningEffort"
+            oneOf:
+            - $ref: "#/components/schemas/ReasoningEffort"
+            - type: "null"
           sessionContext:
-            type: object
+            type:
+            - object
+            - "null"
             additionalProperties: {}
       required:
       - actor
@@ -5752,18 +6087,26 @@ components:
       type: object
       properties:
         cacheRead:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         cacheWrite:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         inputMTokens:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         isEmpty:
           type: boolean
         outputMTokens:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
       required:
       - isEmpty
@@ -5771,25 +6114,37 @@ components:
       type: object
       properties:
         configPath:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Optional filesystem path to a directory containing base configuration\
             \ for this namespace (agents, tools, etc.)."
         defaultAgentName:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Logical name of the default agent for this namespace. Resolved\
             \ at runtime against AgentConfig entries (case-insensitive). When null,\
             \ messages without an @mention will produce an explicit error."
         description:
-          type: string
+          type:
+          - string
+          - "null"
         externalId:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Optional external identifier for this namespace, e.g. a federation\
             \ id from an external system"
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         maxToolRounds:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
           description: "Maximum number of tool rounds of one agent run in this namespace.\
             \ Null means inherit from the platform default (agentos.limits.agent-max-iterations).\
@@ -5799,7 +6154,9 @@ components:
           type: string
           minLength: 1
         runCostThreshold:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
           description: "Namespace-level default for the run cost threshold, in the\
             \ platform currency unit. Null means inherit from the platform default.\
@@ -5807,7 +6164,9 @@ components:
             \ threshold."
           minimum: 0
         sharedExchangePath:
-          type: string
+          type:
+          - string
+          - "null"
           description: Optional absolute path of a directory on the server host that
             replaces the default directory of the namespace-shared file exchange.
             Only super-admins may set or change it. Created on first use.
@@ -5831,9 +6190,13 @@ components:
         autoWorktreeForRootCases:
           type: boolean
         checkoutFailureReason:
-          type: string
+          type:
+          - string
+          - "null"
         checkoutStatus:
-          type: string
+          type:
+          - string
+          - "null"
           description: Preparation state of the namespace repository. Null while no
             clone has been attempted
           enum:
@@ -5841,17 +6204,27 @@ components:
           - READY
           - FAILED
         lastFetchedAt:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         mainBranch:
-          type: string
+          type:
+          - string
+          - "null"
         repositoryUrl:
-          type: string
+          type:
+          - string
+          - "null"
         serviceAuthSettingId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         setupCommand:
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - associated
       - autoWorktreeForRootCases
@@ -5861,7 +6234,9 @@ components:
         autoWorktreeForRootCases:
           type: boolean
         mainBranch:
-          type: string
+          type:
+          - string
+          - "null"
         repositoryUrl:
           type: string
           minLength: 1
@@ -5869,7 +6244,9 @@ components:
           type: string
           format: uuid
         setupCommand:
-          type: string
+          type:
+          - string
+          - "null"
       required:
       - autoWorktreeForRootCases
       - repositoryUrl
@@ -5878,13 +6255,21 @@ components:
       type: object
       properties:
         configPath:
-          type: string
+          type:
+          - string
+          - "null"
         defaultAgentName:
-          type: string
+          type:
+          - string
+          - "null"
         description:
-          type: string
+          type:
+          - string
+          - "null"
         externalId:
-          type: string
+          type:
+          - string
+          - "null"
         id:
           type: string
           format: uuid
@@ -5928,12 +6313,39 @@ components:
       - $ref: "#/components/schemas/AuthSettingDto"
       - type: object
         properties:
+          authType:
+            type:
+            - string
+            - "null"
+            enum:
+            - OAUTH_DISCOVERABLE
+            - OAUTH_REGISTERED
+            - OAUTH_CUSTOM
+            - API_KEY
+            - BEARER_TOKEN
+            - BASIC_AUTH
+            - OAUTH_MCP_DISCOVERABLE
           authorizationUrl:
-            type: string
+            type:
+            - string
+            - "null"
           clientId:
-            type: string
+            type:
+            - string
+            - "null"
           clientSecret:
-            type: string
+            type:
+            - string
+            - "null"
+          description:
+            type:
+            - string
+            - "null"
+          id:
+            type:
+            - string
+            - "null"
+            format: uuid
           name:
             type: string
             minLength: 1
@@ -5943,9 +6355,13 @@ components:
             - "null"
             format: uuid
           scopes:
-            type: string
+            type:
+            - string
+            - "null"
           tokenUrl:
-            type: string
+            type:
+            - string
+            - "null"
           userId:
             type:
             - string
@@ -5959,12 +6375,39 @@ components:
       - $ref: "#/components/schemas/AuthSettingDto"
       - type: object
         properties:
+          authType:
+            type:
+            - string
+            - "null"
+            enum:
+            - OAUTH_DISCOVERABLE
+            - OAUTH_REGISTERED
+            - OAUTH_CUSTOM
+            - API_KEY
+            - BEARER_TOKEN
+            - BASIC_AUTH
+            - OAUTH_MCP_DISCOVERABLE
           clientId:
-            type: string
+            type:
+            - string
+            - "null"
           clientSecret:
-            type: string
+            type:
+            - string
+            - "null"
+          description:
+            type:
+            - string
+            - "null"
           discoveryUrl:
-            type: string
+            type:
+            - string
+            - "null"
+          id:
+            type:
+            - string
+            - "null"
+            format: uuid
           name:
             type: string
             minLength: 1
@@ -5974,7 +6417,9 @@ components:
             - "null"
             format: uuid
           scopes:
-            type: string
+            type:
+            - string
+            - "null"
           userId:
             type:
             - string
@@ -5988,10 +6433,35 @@ components:
       - $ref: "#/components/schemas/AuthSettingDto"
       - type: object
         properties:
+          authType:
+            type:
+            - string
+            - "null"
+            enum:
+            - OAUTH_DISCOVERABLE
+            - OAUTH_REGISTERED
+            - OAUTH_CUSTOM
+            - API_KEY
+            - BEARER_TOKEN
+            - BASIC_AUTH
+            - OAUTH_MCP_DISCOVERABLE
           clientId:
-            type: string
+            type:
+            - string
+            - "null"
           clientSecret:
-            type: string
+            type:
+            - string
+            - "null"
+          description:
+            type:
+            - string
+            - "null"
+          id:
+            type:
+            - string
+            - "null"
+            format: uuid
           name:
             type: string
             minLength: 1
@@ -6001,9 +6471,13 @@ components:
             - "null"
             format: uuid
           resourceUrl:
-            type: string
+            type:
+            - string
+            - "null"
           scopes:
-            type: string
+            type:
+            - string
+            - "null"
           userId:
             type:
             - string
@@ -6017,12 +6491,39 @@ components:
       - $ref: "#/components/schemas/AuthSettingDto"
       - type: object
         properties:
+          authType:
+            type:
+            - string
+            - "null"
+            enum:
+            - OAUTH_DISCOVERABLE
+            - OAUTH_REGISTERED
+            - OAUTH_CUSTOM
+            - API_KEY
+            - BEARER_TOKEN
+            - BASIC_AUTH
+            - OAUTH_MCP_DISCOVERABLE
           authorizationUrl:
-            type: string
+            type:
+            - string
+            - "null"
           clientId:
-            type: string
+            type:
+            - string
+            - "null"
           clientSecret:
-            type: string
+            type:
+            - string
+            - "null"
+          description:
+            type:
+            - string
+            - "null"
+          id:
+            type:
+            - string
+            - "null"
+            format: uuid
           name:
             type: string
             minLength: 1
@@ -6032,9 +6533,13 @@ components:
             - "null"
             format: uuid
           scopes:
-            type: string
+            type:
+            - string
+            - "null"
           tokenUrl:
-            type: string
+            type:
+            - string
+            - "null"
           userId:
             type:
             - string
@@ -6093,7 +6598,9 @@ components:
       type: object
       properties:
         endDate:
-          type: string
+          type:
+          - string
+          - "null"
           format: date
         endType:
           type: string
@@ -6102,8 +6609,11 @@ components:
           - ON_DATE
           - OCCURRENCES
         maxOccurrenceCount:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int32
+          exclusiveMinimum: 0
         startDate:
           type: string
           format: date
@@ -6156,7 +6666,9 @@ components:
         message:
           type: string
         pluginId:
-          type: string
+          type:
+          - string
+          - "null"
         success:
           type: boolean
       required:
@@ -6177,17 +6689,27 @@ components:
             minLength: 1
           minItems: 1
         createdBy:
-          type: string
+          type:
+          - string
+          - "null"
         createdOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         description:
-          type: string
+          type:
+          - string
+          - "null"
         externalMetadata:
-          type: object
+          type:
+          - object
+          - "null"
           additionalProperties: {}
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
@@ -6207,14 +6729,20 @@ components:
             to 'en'.
           example: en
         title:
-          type: string
+          type:
+          - string
+          - "null"
           description: "Optional user-facing display label (e.g. starter button text).\
             \ Distinct from content, which is the message sent to the LLM. Null when\
             \ no explicit title has been set."
         updatedBy:
-          type: string
+          type:
+          - string
+          - "null"
         updatedOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         userId:
           type:
@@ -6239,12 +6767,16 @@ components:
           minItems: 1
           minLength: 1
         namespaceExternalId:
-          type: string
+          type:
+          - string
+          - "null"
           description: Namespace external ID for AI model resolution (resolved server-side).
             Required only when the batch contains platform-scoped prompts. Mutually
             exclusive with namespaceId.
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
           description: Namespace UUID for AI model resolution. Required only when
             the batch contains platform-scoped prompts. Mutually exclusive with namespaceExternalId.
@@ -6263,7 +6795,9 @@ components:
           format: uuid
           description: ID of the prompt.
         title:
-          type: string
+          type:
+          - string
+          - "null"
           description: Translated display label. Null when the prompt has no title.
       required:
       - content
@@ -6292,7 +6826,9 @@ components:
           type: string
           minLength: 1
         description:
-          type: string
+          type:
+          - string
+          - "null"
         name:
           type: string
           minLength: 1
@@ -6303,7 +6839,9 @@ components:
       type: object
       properties:
         agentConfigIds:
-          type: array
+          type:
+          - array
+          - "null"
           items:
             type: string
             format: uuid
@@ -6329,11 +6867,15 @@ components:
       type: object
       properties:
         namespaceExternalId:
-          type: string
+          type:
+          - string
+          - "null"
           description: Namespace external ID for AI model resolution (resolved server-side).
             Required only for platform-scoped prompts. Mutually exclusive with namespaceId.
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
           description: Namespace UUID for AI model resolution. Required only for platform-scoped
             prompts. Mutually exclusive with namespaceExternalId.
@@ -6346,7 +6888,9 @@ components:
           items:
             type: string
         title:
-          type: string
+          type:
+          - string
+          - "null"
           description: Translated display label. Null when the prompt has no title.
       required:
       - content
@@ -6361,7 +6905,9 @@ components:
           agentName:
             type: string
           options:
-            type: array
+            type:
+            - array
+            - "null"
             items:
               type: string
           question:
@@ -6374,7 +6920,9 @@ components:
             - OPEN_CHOICE
             - OAUTH_AUTHORIZE
           userId:
-            type: string
+            type:
+            - string
+            - "null"
             format: uuid
       required:
       - agentId
@@ -6413,6 +6961,7 @@ components:
             - SUNDAY
         timeUtc:
           type: string
+          format: time-local
         unit:
           type: string
           enum:
@@ -6443,7 +6992,9 @@ components:
           items:
             $ref: "#/components/schemas/PausedCostDto"
         runCostThreshold:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         since:
           type: string
@@ -6467,22 +7018,34 @@ components:
           type: string
           format: uuid
         createdBy:
-          type: string
+          type:
+          - string
+          - "null"
         createdOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         description:
-          type: string
+          type:
+          - string
+          - "null"
         enabled:
           type: boolean
         externalMetadata:
-          type: object
+          type:
+          - object
+          - "null"
           additionalProperties: {}
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         lastRunAt:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         name:
           type: string
@@ -6493,7 +7056,9 @@ components:
           - "null"
           format: uuid
         nextRunAt:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         planning:
           $ref: "#/components/schemas/Planning"
@@ -6505,9 +7070,13 @@ components:
         removed:
           type: boolean
         updatedBy:
-          type: string
+          type:
+          - string
+          - "null"
         updatedOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         userId:
           type:
@@ -6543,12 +7112,16 @@ components:
       type: object
       properties:
         agentConfigIds:
-          type: array
+          type:
+          - array
+          - "null"
           items:
             type: string
             format: uuid
         modifiedSince:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         namespaceExternalId:
           type:
@@ -6578,15 +7151,21 @@ components:
           type: string
           minLength: 1
         createdBy:
-          type: string
+          type:
+          - string
+          - "null"
         createdOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
         description:
           type: string
           minLength: 1
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
@@ -6597,20 +7176,28 @@ components:
           - "null"
           format: uuid
         readOnly:
-          type: boolean
+          type:
+          - boolean
+          - "null"
           description: "True when this skill is backed by a filesystem SKILL.md file\
             \ and therefore cannot be modified or deleted through the API. Always\
             \ present in responses, ignored on write. Reflects the storage origin,\
             \ NOT the caller's permissions: a false value does not by itself mean\
             \ the caller may write."
         resources:
-          type: object
+          type:
+          - object
+          - "null"
           additionalProperties:
             type: string
         updatedBy:
-          type: string
+          type:
+          - string
+          - "null"
         updatedOn:
-          type: string
+          type:
+          - string
+          - "null"
           format: date-time
       required:
       - body
@@ -6656,7 +7243,9 @@ components:
             type: string
             format: uuid
           errorType:
-            type: string
+            type:
+            - string
+            - "null"
           outcome:
             type: string
             enum:
@@ -6768,11 +7357,15 @@ components:
           type: string
           format: uuid
         payload:
-          type: string
+          type:
+          - string
+          - "null"
         toolName:
           type: string
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
       required:
       - namespaceId
@@ -6781,16 +7374,22 @@ components:
       type: object
       properties:
         errorMessage:
-          type: string
+          type:
+          - string
+          - "null"
         errorType:
-          type: string
+          type:
+          - string
+          - "null"
         metadata:
           type: object
           additionalProperties: {}
         output:
           type: string
         structuredOutput:
-          $ref: "#/components/schemas/JsonNode"
+          oneOf:
+          - $ref: "#/components/schemas/JsonNode"
+          - type: "null"
         success:
           type: boolean
         toolName:
@@ -6806,9 +7405,13 @@ components:
       - type: object
         properties:
           args:
-            type: string
+            type:
+            - string
+            - "null"
           enrichmentPhases:
-            type: array
+            type:
+            - array
+            - "null"
             items:
               $ref: "#/components/schemas/EnrichmentPhaseTrace"
           toolName:
@@ -6830,7 +7433,9 @@ components:
       - type: object
         properties:
           durationMs:
-            type: integer
+            type:
+            - integer
+            - "null"
             format: int64
           images:
             type: array
@@ -6841,7 +7446,9 @@ components:
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
           structuredOutput:
-            $ref: "#/components/schemas/JsonNode"
+            oneOf:
+            - $ref: "#/components/schemas/JsonNode"
+            - type: "null"
           success:
             type: boolean
           toolMetadata:
@@ -6956,7 +7563,9 @@ components:
         enabled:
           type: boolean
         runCostThreshold:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
           description: "Platform default of the run cost threshold, in the platform\
             \ currency unit (agentos.limits.run-cost-threshold). Inherited by a namespace\
@@ -6967,12 +7576,16 @@ components:
       type: object
       properties:
         agentConfigId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         agentName:
           type: string
         apiModelName:
-          type: string
+          type:
+          - string
+          - "null"
         cacheReadTokens:
           type: integer
           format: int64
@@ -7005,7 +7618,9 @@ components:
           type: integer
           format: int64
         providerName:
-          type: string
+          type:
+          - string
+          - "null"
         source:
           type: string
         timestamp:
@@ -7015,7 +7630,9 @@ components:
           type: integer
           format: int64
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
       required:
       - agentName
@@ -7035,22 +7652,37 @@ components:
       type: object
       properties:
         bio:
-          type: string
+          type:
+          - string
+          - "null"
         email:
-          type: string
+          type:
+          - string
+          - "null"
+          format: email
         externalId:
-          type: string
+          type:
+          - string
+          - "null"
         firstname:
-          type: string
+          type:
+          - string
+          - "null"
         id:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         isAdmin:
           type: boolean
         lastname:
-          type: string
+          type:
+          - string
+          - "null"
         preferredLanguage:
-          type: string
+          type:
+          - string
+          - "null"
           pattern: "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
       required:
       - isAdmin
@@ -7098,14 +7730,20 @@ components:
       type: object
       properties:
         email:
-          type: string
+          type:
+          - string
+          - "null"
         externalId:
           type: string
           description: Identity-provider key used to add or remove this member
         firstname:
-          type: string
+          type:
+          - string
+          - "null"
         lastname:
-          type: string
+          type:
+          - string
+          - "null"
         role:
           type: string
           description: The user's relation to the group
@@ -7208,7 +7846,9 @@ components:
       type: object
       properties:
         role:
-          type: string
+          type:
+          - string
+          - "null"
           description: Target role for this user on the entity. Null means revoke
             all relations.
           enum:

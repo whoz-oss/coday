@@ -1,6 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import mu.KLogging

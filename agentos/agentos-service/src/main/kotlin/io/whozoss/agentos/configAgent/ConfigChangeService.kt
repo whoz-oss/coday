@@ -1,8 +1,5 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.node.TextNode
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -27,6 +24,9 @@ import org.springframework.http.HttpStatus
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.node.ObjectNode
+import tools.jackson.databind.node.StringNode
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -101,13 +101,19 @@ class ConfigChangeService(
             val loaded = configPlanReader.load(caseId, questionId)
             val plan = loaded.plan
             requireRecipient(plan, caller)
-            if (request.expectedPlanHash != plan.planHash) throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
+            if (request.expectedPlanHash !=
+                plan.planHash
+            ) {
+                throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
+            }
             requireState(stateOf(loaded, claimedByCaller = true), setOf(ConfigChangeState.OPEN))
             missingSecrets(plan, caller.id, request.secrets).takeIf { it.isNotEmpty() }?.let { missing ->
                 throw UnprocessableEntityException("MISSING_SECRET: ${missing.joinToString()}")
             }
             val report = applyPlan(plan, caller, request.secrets)
-            report.copy(answerPosted = configChangeAnswer.post(caseId, questionId, caller, configChangeAnswer.applied(plan, report, caller)))
+            report.copy(
+                answerPosted = configChangeAnswer.post(caseId, questionId, caller, configChangeAnswer.applied(plan, report, caller)),
+            )
         }
 
     fun reject(
@@ -143,7 +149,8 @@ class ConfigChangeService(
     private fun stateOf(
         loaded: LoadedPlan,
         claimedByCaller: Boolean,
-    ): ConfigChangeState = configPlanReader.state(loaded, Instant.now(clock), claimed = !claimedByCaller && loaded.plan.questionId in claims)
+    ): ConfigChangeState =
+        configPlanReader.state(loaded, Instant.now(clock), claimed = !claimedByCaller && loaded.plan.questionId in claims)
 
     /** Keys of the secrets the operations still to write need and the request does not carry. */
     private fun missingSecrets(
@@ -155,7 +162,8 @@ class ConfigChangeService(
         return plan.order.mapNotNull(plan::operation).flatMap { op ->
             val evaluation = configChangeStatus.evaluate(op, plan, callerId, createdIds)
             evaluation.entityId?.let { createdIds[op.ref] = it }
-            val needsWrite = evaluation.status == ConfigOperationStatus.PENDING && !(op.action == ConfigAction.CREATE && evaluation.entityId != null)
+            val needsWrite =
+                evaluation.status == ConfigOperationStatus.PENDING && !(op.action == ConfigAction.CREATE && evaluation.entityId != null)
             op.secrets.map { secretKey(op, it) }.filter { needsWrite && secrets[it].isNullOrEmpty() }
         }
     }
@@ -177,7 +185,15 @@ class ConfigChangeService(
                     }
             }
         // A CREATE that fails after writing (the deployment of a new agent) still created its entity.
-        val written = results.count { it.status.isSuccess || (it.entityId != null && plan.operation(it.ref)?.action == ConfigAction.CREATE) }
+        val written =
+            results.count {
+                it.status.isSuccess || (
+                    it.entityId != null && plan
+                        .operation(
+                            it.ref,
+                        )?.action == ConfigAction.CREATE
+                )
+            }
         val decision =
             when {
                 results.all { it.status.isSuccess } -> ConfigChangeDecision.APPLIED
@@ -202,12 +218,25 @@ class ConfigChangeService(
         evaluation?.entityId?.let { createdIds[op.ref] = it }
         val result =
             when (evaluation?.status) {
-                null -> ConfigOperationResultDto(op.ref, ConfigResultStatus.FAILED, message = UNEXPECTED_ERROR)
-                ConfigOperationStatus.APPLIED, ConfigOperationStatus.ALREADY_APPLIED ->
+                null -> {
+                    ConfigOperationResultDto(op.ref, ConfigResultStatus.FAILED, message = UNEXPECTED_ERROR)
+                }
+
+                ConfigOperationStatus.APPLIED, ConfigOperationStatus.ALREADY_APPLIED -> {
                     ConfigOperationResultDto(op.ref, ConfigResultStatus.ALREADY_APPLIED, evaluation.entityId)
-                ConfigOperationStatus.CONFLICT -> ConfigOperationResultDto(op.ref, ConfigResultStatus.CONFLICT, evaluation.entityId, evaluation.reason)
-                ConfigOperationStatus.NOT_VISIBLE -> ConfigOperationResultDto(op.ref, ConfigResultStatus.NOT_FOUND, message = evaluation.reason)
-                ConfigOperationStatus.PENDING -> write(op, plan, evaluation, secrets, createdIds)
+                }
+
+                ConfigOperationStatus.CONFLICT -> {
+                    ConfigOperationResultDto(op.ref, ConfigResultStatus.CONFLICT, evaluation.entityId, evaluation.reason)
+                }
+
+                ConfigOperationStatus.NOT_VISIBLE -> {
+                    ConfigOperationResultDto(op.ref, ConfigResultStatus.NOT_FOUND, message = evaluation.reason)
+                }
+
+                ConfigOperationStatus.PENDING -> {
+                    write(op, plan, evaluation, secrets, createdIds)
+                }
             }
         result.entityId?.let { createdIds[op.ref] = it }
         return result
@@ -233,17 +262,25 @@ class ConfigChangeService(
                         }
                         id
                     }
+
                     ConfigAction.UPDATE -> {
                         val target = op.target!!
                         configWriter.update(op.kind, target.id) { dto -> applyChanges(dto, op, secrets, createdIds) }
                         target.id
                     }
+
                     ConfigAction.ENABLE, ConfigAction.DISABLE -> {
                         configWriter.setEnabled(op.target!!.id, enabled = op.action == ConfigAction.ENABLE)
                         op.target.id
                     }
+
                     ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> {
-                        configWriter.setDeployed(deploymentNamespace(op, plan, createdIds), op.target!!.id, deployed = op.action == ConfigAction.DEPLOY)
+                        configWriter.setDeployed(
+                            deploymentNamespace(op, plan, createdIds),
+                            op.target!!.id,
+                            deployed =
+                                op.action == ConfigAction.DEPLOY,
+                        )
                         op.target.id
                     }
                 }
@@ -266,22 +303,46 @@ class ConfigChangeService(
         op: PlannedOperation,
         plan: ConfigChangePlan,
         createdIds: Map<String, UUID>,
-    ): UUID = checkNotNull(plan.deploymentNamespaceOf(op, createdIds)) { "The namespace ${op.scope?.namespaceRef} of ${op.ref} was not created" }
+    ): UUID =
+        checkNotNull(plan.deploymentNamespaceOf(op, createdIds)) {
+            "The namespace ${op.scope?.namespaceRef} of ${op.ref} was not created"
+        }
 
     private fun failureOf(
         op: PlannedOperation,
         e: Exception,
     ): Pair<ConfigResultStatus, String?> =
         when (e) {
-            is AccessDeniedException -> ConfigResultStatus.DENIED to "The user is not allowed to do this."
-            is ResourceNotFoundException -> ConfigResultStatus.NOT_FOUND to e.message
-            is ConflictException -> ConfigResultStatus.CONFLICT to e.message
-            is BadRequestException, is UnprocessableEntityException -> ConfigResultStatus.INVALID to e.message
+            is AccessDeniedException -> {
+                ConfigResultStatus.DENIED to "The user is not allowed to do this."
+            }
+
+            is ResourceNotFoundException -> {
+                ConfigResultStatus.NOT_FOUND to e.message
+            }
+
+            is ConflictException -> {
+                ConfigResultStatus.CONFLICT to e.message
+            }
+
+            is BadRequestException, is UnprocessableEntityException -> {
+                ConfigResultStatus.INVALID to e.message
+            }
+
             // A DTO the REST API cannot even read (missing type, wrong field type) would have been a 400.
-            is JsonProcessingException -> ConfigResultStatus.INVALID to e.originalMessage
-            is ResponseStatusException -> statusOf(e) to (e.reason ?: e.message)
+            is JacksonException -> {
+                ConfigResultStatus.INVALID to e.originalMessage
+            }
+
+            is ResponseStatusException -> {
+                statusOf(e) to (e.reason ?: e.message)
+            }
+
             // A service's own validation, e.g. a duplicate agent name; ConfigJson refuses paths through lists.
-            is IllegalArgumentException -> ConfigResultStatus.INVALID to e.message
+            is IllegalArgumentException -> {
+                ConfigResultStatus.INVALID to e.message
+            }
+
             else -> {
                 logger.warn(e) { "[ConfigChange] ${op.ref} ${op.action} ${op.kind} failed" }
                 ConfigResultStatus.FAILED to UNEXPECTED_ERROR
@@ -306,7 +367,9 @@ class ConfigChangeService(
         val payload = op.copyFrom?.let { source -> copyBase(op.kind, source).also { ConfigJson.merge(it, overrides) } } ?: overrides
         injectSecrets(payload, op, secrets)
         val namespaceId = op.scope?.namespaceIn(createdIds)
-        check(op.scope?.namespaceRef == null || namespaceId != null) { "The namespace ${op.scope?.namespaceRef} of ${op.ref} was not created" }
+        check(
+            op.scope?.namespaceRef == null || namespaceId != null,
+        ) { "The namespace ${op.scope?.namespaceRef} of ${op.ref} was not created" }
         // Last, so nothing in the plan can move the entity away from the scope the card shows.
         payload.put("namespaceId", namespaceId?.toString())
         payload.put("userId", op.scope?.userId?.toString())
@@ -329,9 +392,21 @@ class ConfigChangeService(
             val value = ConfigJson.resolveOpRefs(change.after, createdIds)
             when {
                 // The auth setting API reads a missing or null field as "keep", and an empty one as "clear".
-                op.kind == ConfigKind.AUTH_SETTING && (change.remove || value == null || value.isNull) -> ConfigJson.setAt(dto, change.path, TextNode(""))
-                change.remove -> ConfigJson.removeAt(dto, change.path)
-                else -> ConfigJson.setAt(dto, change.path, value)
+                op.kind == ConfigKind.AUTH_SETTING && (change.remove || value == null || value.isNull) -> {
+                    ConfigJson.setAt(
+                        dto,
+                        change.path,
+                        StringNode.valueOf(""),
+                    )
+                }
+
+                change.remove -> {
+                    ConfigJson.removeAt(dto, change.path)
+                }
+
+                else -> {
+                    ConfigJson.setAt(dto, change.path, value)
+                }
             }
         }
         injectSecrets(dto, op, secrets)
@@ -346,7 +421,7 @@ class ConfigChangeService(
             val value =
                 secrets[secretKey(op, slot)]?.takeIf { it.isNotEmpty() }
                     ?: throw UnprocessableEntityException("MISSING_SECRET: '${slot.label}' (${secretKey(op, slot)}) is required")
-            ConfigJson.setAt(dto, slot.path, TextNode(value))
+            ConfigJson.setAt(dto, slot.path, StringNode.valueOf(value))
         }
     }
 
@@ -364,7 +439,11 @@ class ConfigChangeService(
             order = index + 1,
             kind = op.kind,
             action = op.action,
-            name = op.target?.name ?: op.value?.path("name")?.asText().orEmpty(),
+            name =
+                op.target?.name ?: op.value
+                    ?.path("name")
+                    ?.asText()
+                    .orEmpty(),
             targetId = op.target?.id ?: evaluation.entityId,
             namespaceId = op.target?.namespaceId ?: op.scope?.namespaceIn(createdIds),
             userId = op.target?.userId ?: op.scope?.userId,
@@ -399,11 +478,25 @@ class ConfigChangeService(
         val ref = op.scope?.namespaceRef
         val namespaceId = op.scope?.namespaceId ?: op.target?.namespaceId
         return when {
-            ref != null -> plan.operation(ref)?.value?.path("name")?.asText()
-            op.kind == ConfigKind.NAMESPACE -> op.target?.name
-            namespaceId != null && namespaceId != plan.namespaceId ->
+            ref != null -> {
+                plan
+                    .operation(ref)
+                    ?.value
+                    ?.path("name")
+                    ?.asText()
+            }
+
+            op.kind == ConfigKind.NAMESPACE -> {
+                op.target?.name
+            }
+
+            namespaceId != null && namespaceId != plan.namespaceId -> {
                 configReadService.find(ConfigKind.NAMESPACE, namespaceId, viewerId, plan.namespaceId)?.name
-            else -> null
+            }
+
+            else -> {
+                null
+            }
         }
     }
 
@@ -411,7 +504,11 @@ class ConfigChangeService(
         plan: ConfigChangePlan,
         caller: User,
     ) {
-        if (caller.id != plan.recipientUserId) throw AccessDeniedException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
+        if (caller.id !=
+            plan.recipientUserId
+        ) {
+            throw AccessDeniedException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
+        }
     }
 
     private fun requireState(

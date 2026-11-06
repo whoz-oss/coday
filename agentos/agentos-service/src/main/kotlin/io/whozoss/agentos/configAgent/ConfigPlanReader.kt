@@ -1,6 +1,5 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.api.configChange.ConfigChangeState
@@ -9,6 +8,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import org.springframework.stereotype.Component
+import tools.jackson.databind.ObjectMapper
 import java.time.Instant
 import java.util.UUID
 
@@ -107,9 +107,7 @@ class ConfigPlanReader(
      * not. Only a plan its own question announces counts, so any other tool response carrying the propose
      * tool's name cannot close the plans of a case.
      */
-    private fun hasNewerPlan(
-        loaded: LoadedPlan,
-    ): Boolean =
+    private fun hasNewerPlan(loaded: LoadedPlan): Boolean =
         loaded.events.withIndex().drop(loaded.planIndex + 1).any { (index, event) ->
             proposedQuestionId(event)?.let { trustedPlan(loaded.events, index, loaded.plan.caseId, it) } != null
         }

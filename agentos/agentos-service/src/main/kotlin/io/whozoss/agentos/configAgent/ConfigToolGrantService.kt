@@ -1,10 +1,10 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.tool.ToolResolverService
 import mu.KLogging
 import org.springframework.stereotype.Service
+import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 import java.util.UUID
 

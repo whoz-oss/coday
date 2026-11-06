@@ -1,7 +1,7 @@
 package io.whozoss.agentos.skill
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.util.SensitiveFileDetector
 import io.whozoss.agentos.sdk.util.StringUtils

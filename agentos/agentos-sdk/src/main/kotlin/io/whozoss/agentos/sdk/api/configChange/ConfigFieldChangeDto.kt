@@ -1,7 +1,7 @@
 package io.whozoss.agentos.sdk.api.configChange
 
-import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
+import tools.jackson.databind.JsonNode
 
 data class ConfigFieldChangeDto(
     val path: String,

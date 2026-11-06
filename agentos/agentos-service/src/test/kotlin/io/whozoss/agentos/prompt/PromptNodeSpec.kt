@@ -1,7 +1,7 @@
 package io.whozoss.agentos.prompt
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -20,7 +20,7 @@ import java.util.UUID
  * for optional fields, and metadata mapping.
  */
 class PromptNodeSpec : StringSpec() {
-    private val objectMapper: ObjectMapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
+    private val objectMapper: ObjectMapper = jacksonObjectMapper()
 
     private fun prompt(
         id: UUID = UUID.randomUUID(),

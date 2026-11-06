@@ -17,10 +17,10 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
-import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.model.tool.ToolCallingChatOptions
 import org.springframework.ai.tool.ToolCallback
@@ -174,7 +174,7 @@ class ChatClientProviderUnitSpec :
                     .toolCalls(listOf(AssistantMessage.ToolCall("call-1", "function", "lookup", "{}")))
                     .build()
             val nativeModel = mockk<ChatModel>()
-            every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { nativeModel.options } returns ToolCallingChatOptions.builder().build()
             every { nativeModel.call(any<Prompt>()) } returns ChatResponse(listOf(Generation(toolCall)))
             val factory =
                 mockk<ChatModelFactory> {
@@ -189,7 +189,12 @@ class ChatClientProviderUnitSpec :
                         maxToolRounds = namespaceMaxToolRounds,
                     )
 
-            val response = client.prompt("Hello").toolCallbacks(callback).call().chatResponse()
+            val response =
+                client
+                    .prompt("Hello")
+                    .toolCallbacks(callback)
+                    .call()
+                    .chatResponse()
             response?.metadata?.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe
                 (namespaceMaxToolRounds ?: limits.agentMaxIterations)
             return executed.get()
@@ -203,23 +208,18 @@ class ChatClientProviderUnitSpec :
             toolExecutionsUntilCapped(LimitsConfigProperties(agentMaxIterations = 3), namespaceMaxToolRounds = null) shouldBe 3
         }
 
-        "enabled accounting still preserves native model behavior when no accumulator is supplied" {
+        "enabled accounting still calls the native model directly when no accumulator is supplied" {
             val nativeModel = mockk<ChatModel>()
-            every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder()
-                .internalToolExecutionEnabled(true)
-                .build()
-            every { nativeModel.call(any<Prompt>()) } answers {
-                (firstArg<Prompt>().options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe true
-                ChatResponse(listOf(Generation(AssistantMessage("Done"))))
-            }
-            val factory = mockk<ChatModelFactory> {
-                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
-            }
+            every { nativeModel.options } returns ToolCallingChatOptions.builder().build()
+            every { nativeModel.call(any<Prompt>()) } returns ChatResponse(listOf(Generation(AssistantMessage("Done"))))
+            val factory =
+                mockk<ChatModelFactory> {
+                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                }
             val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
             val client = clientProvider.getChatClient(model(), provider())
 
             client.prompt("Hello").call().content() shouldBe "Done"
             verify(exactly = 1) { nativeModel.call(any<Prompt>()) }
         }
-
     })

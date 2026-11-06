@@ -2,7 +2,7 @@ package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 
 /**
  * SEARCH configuration: which tool to call and what parameters to pass.

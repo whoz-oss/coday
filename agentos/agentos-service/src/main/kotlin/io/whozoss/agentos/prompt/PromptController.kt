@@ -1,6 +1,6 @@
 package io.whozoss.agentos.prompt
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.ExternalIdentifierResolver

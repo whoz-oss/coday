@@ -3,8 +3,8 @@ package io.whozoss.agentos.namespace
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.security.SuperAdminCallerSpec
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
@@ -45,9 +45,13 @@ class NamespaceSharedExchangePathMvcIntegrationSpec : SuperAdminCallerSpec() {
         "a namespace created with an absolute sharedExchangePath returns it" {
             val folder = Files.createTempDirectory("agentos-mvc-shared-")
 
-            val id = createNamespace(""", "sharedExchangePath": "${folder}" """)
+            val id = createNamespace(""", "sharedExchangePath": "$folder" """)
 
-            mockMvc.perform(get("/api/namespaces/$id")).andExpect(status().isOk).andExpect(jsonPath("$.sharedExchangePath").value(folder.toString()))
+            mockMvc
+                .perform(
+                    get("/api/namespaces/$id"),
+                ).andExpect(status().isOk)
+                .andExpect(jsonPath("$.sharedExchangePath").value(folder.toString()))
         }
 
         "a relative sharedExchangePath is refused on create" {
@@ -62,17 +66,18 @@ class NamespaceSharedExchangePathMvcIntegrationSpec : SuperAdminCallerSpec() {
         "an update that omits the field keeps it, and one that sets it replaces it" {
             val first = Files.createTempDirectory("agentos-mvc-shared-")
             val second = Files.createTempDirectory("agentos-mvc-shared-")
-            val id = createNamespace(""", "sharedExchangePath": "${first}" """)
+            val id = createNamespace(""", "sharedExchangePath": "$first" """)
 
             mockMvc
-                .perform(put("/api/namespaces/$id").contentType(MediaType.APPLICATION_JSON).content("""{ "id": "$id", "name": "renamed" }"""))
-                .andExpect(status().isOk)
+                .perform(
+                    put("/api/namespaces/$id").contentType(MediaType.APPLICATION_JSON).content("""{ "id": "$id", "name": "renamed" }"""),
+                ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.sharedExchangePath").value(first.toString()))
             mockMvc
                 .perform(
                     put("/api/namespaces/$id")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "id": "$id", "name": "renamed", "sharedExchangePath": "${second}" }"""),
+                        .content("""{ "id": "$id", "name": "renamed", "sharedExchangePath": "$second" }"""),
                 ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.sharedExchangePath").value(second.toString()))
         }
@@ -80,7 +85,7 @@ class NamespaceSharedExchangePathMvcIntegrationSpec : SuperAdminCallerSpec() {
         "the namespace-shared file endpoints serve the configured folder" {
             val folder = Files.createTempDirectory("agentos-mvc-shared-")
             Files.writeString(folder.resolve("welcome.md"), "hello from the user's folder")
-            val id = createNamespace(""", "sharedExchangePath": "${folder}" """)
+            val id = createNamespace(""", "sharedExchangePath": "$folder" """)
 
             mockMvc
                 .perform(get("/api/namespaces/$id/files/manifest"))

@@ -71,7 +71,7 @@ dependencies {
 
     // Annotation only: the service binds GitExecutionProperties from `agentos.git`, the GIT plugin
     // builds its own instance. Never bundled, like the annotation-only dependencies of the SDK.
-    compileOnly("org.springframework.boot:spring-boot:${libs.versions.springBoot.get()}")
+    compileOnly(libs.spring.boot)
 
     testImplementation(libs.bundles.testing.common)
     testRuntimeOnly(libs.junit.platform.launcher)

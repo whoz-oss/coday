@@ -1,6 +1,6 @@
 package io.whozoss.agentos.config
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.shouldBe
@@ -95,20 +95,20 @@ class ObjectMapperConfigurationSpec : StringSpec() {
             val tree = mapper.readTree(mapper.writeValueAsString(dto))
 
             // planning.startDate — must be string, not array
-            tree.at("/planning/startDate").isTextual shouldBe true
+            tree.at("/planning/startDate").isString shouldBe true
             tree.at("/planning/startDate").asText() shouldBe "2026-08-04"
 
             // nextRunAt — must be string, not number
-            tree.at("/nextRunAt").isTextual shouldBe true
+            tree.at("/nextRunAt").isString shouldBe true
             tree.at("/nextRunAt").asText() shouldBe "2026-08-14T09:00:00Z"
 
             // lastRunAt — must be string, not number
-            tree.at("/lastRunAt").isTextual shouldBe true
+            tree.at("/lastRunAt").isString shouldBe true
             tree.at("/lastRunAt").asText() shouldBe "2026-08-07T09:00:00Z"
 
             // createdOn, updatedOn — must be strings
-            tree.at("/createdOn").isTextual shouldBe true
-            tree.at("/updatedOn").isTextual shouldBe true
+            tree.at("/createdOn").isString shouldBe true
+            tree.at("/updatedOn").isString shouldBe true
 
             // recurrence.timeUtc — must be "11:00" (HH:mm pattern)
             tree.at("/recurrence/timeUtc").asText() shouldBe "11:00"
