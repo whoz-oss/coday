@@ -221,9 +221,10 @@ class MessagingManagedBots(
                 .lowercase()
                 .replace(Regex("[^a-z0-9]+"), "_")
                 .trim('_')
+                .let { if (it.firstOrNull()?.isLetter() == true) it else "agent_$it" }
+                // Cut once prefixed: with the suffix (9 characters), at most 29.
                 .take(MAX_SLUG_LENGTH)
                 .trimEnd('_')
-                .let { if (it.firstOrNull()?.isLetter() == true) it else "agent_$it".trimEnd('_') }
         val suffix = (1..SUFFIX_LENGTH).map { ALPHABET[random.nextInt(ALPHABET.length)] }.joinToString("")
         return "${slug}_${suffix}_bot"
     }

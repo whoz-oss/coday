@@ -92,6 +92,16 @@ class EmbeddedNeo4jMessagingPersistenceSpec : StringSpec() {
             botRepository.findAll().single().url shouldBe "https://t.me/bot_4242"
         }
 
+        "a bot that cannot be read is left out of the list, and the others are listed" {
+            val unreadable = botRepository.save(bot("4242"))
+            val readable = botRepository.save(bot("5151"))
+            driver.session().use {
+                it.run("MATCH (b:MessagingBot {id: \$id}) SET b.platform = 'GONE'", mapOf("id" to unreadable.id.toString())).consume()
+            }
+
+            botRepository.findAll().map { it.id } shouldBe listOf(readable.id)
+        }
+
         "a bot serves one agent, and an agent has one bot per platform and namespace" {
             val bot = botRepository.save(bot("4242"))
 

@@ -43,7 +43,8 @@ From the same section, an admin turns the bot off and on, or removes it, which a
 users.
 
 **Telegram serves one receiver per bot**: two instances running the same bot take turns failing, shown as *Used
-elsewhere*. Bots live in the database of an instance, so each environment has its own.
+elsewhere*. A bot that had a webhook loses it when AgentOS starts it, as polling libraries do: Telegram refuses polling
+to a bot with a webhook. Bots live in the database of an instance, so each environment has its own.
 
 ## The bot manager
 
@@ -68,7 +69,13 @@ that bot only. The agent's page offers the same *Connect my account*.
 
 **Writing.** In the direct chat with the bot, a message goes to the chat's current case; the first one starts a
 case with the bot's agent, in the agent's namespace. Start a message with `@name` to address another agent of the
-namespace, as in the UI. Other `/word` messages go to the case too, so prompt commands work. Slack keeps `/` for
+namespace, as in the UI. Other `/word` messages go to the case too, so prompt commands work, on the first message of a
+case as on the next ones.
+
+The bot hands a message to its agent by naming it, as `@name` does in the UI. A case reads that name as one word of
+unaccented letters, digits, `-` and `_`, and picks the first agent whose name starts with it: an agent named with a
+space or an accent is reached while that first word names no other agent before it. When it does, the bot says so
+instead of handing the message to the other agent; renaming the agent fixes it. Slack keeps `/` for
 its own commands: there, the bot's commands start with `!` (`!new`, `!cases`...). The bot's commands:
 
 | Command | Effect |

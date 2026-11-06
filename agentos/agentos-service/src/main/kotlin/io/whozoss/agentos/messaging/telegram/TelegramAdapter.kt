@@ -140,6 +140,9 @@ class TelegramAdapter(
             }
         } catch (e: TelegramApiException) {
             throw MessagingDeliveryException(e.description, e)
+        } catch (e: IOException) {
+            // Also the fallback of a message refused as HTML, past the catch of the first sending.
+            throw MessagingDeliveryException("Telegram cannot be reached", e)
         }
     }
 

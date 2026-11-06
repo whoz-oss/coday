@@ -56,8 +56,8 @@ class MessagingController(
         val userId = users.getCurrentUser().id
         return bots
             .findAllAgentBots()
-            .filter { it.enabled && bots.usableAgent(userId, it.ref()) != null }
-            .map { views.toDto(it, userId) }
+            .filter { it.enabled }
+            .mapNotNull { bot -> bots.usableAgent(userId, bot.ref())?.let { agent -> views.toDto(bot, userId, agent.name) } }
     }
 
     @PostMapping("/messaging/bots/{botId}/link")

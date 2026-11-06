@@ -89,7 +89,7 @@ class ConfigNamespaceDiagnosis(
         mapOf(
             "botCreationWithoutToken" to MessagingPlatform.entries.filter { messagingBotRegistry.manager(it) != null },
             "bots" to
-                messagingBots.findAllAgentBots().filter { it.namespaceId == namespaceId }.map { bot ->
+                messagingBots.findAgentBots(namespaceId).map { bot ->
                     mapOf(
                         "agentId" to bot.agentId,
                         "agentName" to bot.agentId?.let { agentConfigService.findById(it)?.name },

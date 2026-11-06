@@ -14,16 +14,17 @@ class MessagingBotViews(
     private val registry: MessagingBotRegistry,
     private val identities: MessagingIdentityService,
 ) {
-    /** [bot] as [userId] sees it: whether they have linked an account through it. */
+    /** [bot] as [userId] sees it: whether they have linked an account through it. [agentName] when already read. */
     fun toDto(
         bot: MessagingBot,
         userId: UUID,
+        agentName: String? = null,
     ): MessagingBotDto =
         MessagingBotDto(
             id = bot.id,
             platform = bot.platform,
             agentId = requireNotNull(bot.agentId) { "The bot of an agent has an agent" },
-            agentName = bot.agentId.let { agentConfigService.findById(it)?.name } ?: "",
+            agentName = agentName ?: bot.agentId.let { agentConfigService.findById(it)?.name } ?: "",
             namespaceId = requireNotNull(bot.namespaceId) { "The bot of an agent has a namespace" },
             username = bot.username,
             displayName = bot.displayName,

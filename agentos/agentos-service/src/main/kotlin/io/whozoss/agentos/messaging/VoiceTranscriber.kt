@@ -39,7 +39,8 @@ class TranscriptionException(
  * The audio comes from a chat, so ffmpeg reads it as untrusted input: local files only (no network protocol)
  * and audio containers only, so that a playlist or a concat list posing as audio cannot make it read anything
  * else. The programs run without a shell, with fixed arguments, in a temporary directory removed afterwards.
- * At most `concurrency` transcriptions run at once, each within `timeout-seconds`.
+ * At most `concurrency` transcriptions run at once, each within `timeout-seconds` once it runs; one waits as long
+ * for its turn.
  */
 @Component
 class WhisperCppTranscriber(
@@ -56,11 +57,12 @@ class WhisperCppTranscriber(
 
     override fun transcribe(audio: ByteArray): String {
         if (!available) throw TranscriptionException("No transcription model is set (agentos.messaging.transcription.model)")
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(settings.timeoutSeconds)
         if (!permits.tryAcquire(settings.timeoutSeconds, TimeUnit.SECONDS)) {
             throw TranscriptionException("No transcription slot freed up within ${settings.timeoutSeconds} s")
         }
         try {
+            // From the slot on: the time waited for it is not taken from the transcription's own.
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(settings.timeoutSeconds)
             val dir = Files.createTempDirectory("agentos-voice-")
             try {
                 val input = dir.resolve("voice").also { Files.write(it, audio) }

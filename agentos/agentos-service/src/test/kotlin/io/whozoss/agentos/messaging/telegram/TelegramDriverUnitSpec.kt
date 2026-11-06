@@ -104,13 +104,13 @@ class TelegramDriverUnitSpec :
             }
         }
 
-        "a started bot sets its commands, receives, and stops" {
+        "a started bot removes its webhook, sets its commands, receives, and stops" {
             FakeBotApi().use { api ->
                 val statuses = CopyOnWriteArrayList<MessagingBotStatus>()
                 val connection = driver(api).start(bot(), MessagingSink { _, _ -> }) { statuses.add(it) }
 
                 eventually(5.seconds) { statuses shouldContain MessagingBotStatus.RUNNING }
-                api.methods().first() shouldBe "setMyCommands"
+                api.methods().take(2) shouldBe listOf("deleteWebhook", "setMyCommands")
                 connection.adapter.bot.username shouldBe "helper_bot"
                 connection.stop()
                 // A poll already sent when the bot stops still reaches the server: let it land before counting.
@@ -118,6 +118,21 @@ class TelegramDriverUnitSpec :
                 val polled = api.methods().count { it == "getUpdates" }
                 Thread.sleep(300)
                 api.methods().count { it == "getUpdates" } shouldBe polled
+            }
+        }
+
+        "a bot runs once ready, without waiting for its first long poll to end" {
+            // The poll is held open far longer than the test waits, as Telegram holds it when nothing comes.
+            val heldPoll = FakeBotApi { method, _ ->
+                if (method == "getUpdates") Thread.sleep(3_000)
+                null
+            }
+            heldPoll.use { api ->
+                val statuses = CopyOnWriteArrayList<MessagingBotStatus>()
+                val connection = driver(api).start(bot(MessagingBotRole.MANAGER), MessagingSink { _, _ -> }) { statuses.add(it) }
+
+                eventually(1.seconds) { statuses shouldContain MessagingBotStatus.RUNNING }
+                connection.stop()
             }
         }
 

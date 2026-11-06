@@ -1,6 +1,7 @@
 package io.whozoss.agentos.messaging.slack
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.scheduledPrompt.exponentialBackoffMs
 import io.whozoss.agentos.sdk.api.messaging.MessagingBotStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,6 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.math.min
 
 /**
  * The Socket Mode connection of one Slack app, from [start] to [stop]: the app's events and interactions arrive
@@ -61,25 +61,32 @@ class SlackSocket(
                 val url = web.openConnection(appToken)
                 val socket = httpClient.newWebSocket(Request.Builder().url(url).build(), Listener())
                 current.getAndSet(socket)?.close(NORMAL_CLOSURE, "replaced")
+                // A stop while the connection opened found no socket to close: close this one.
+                if (stopped.get()) current.getAndSet(null)?.close(NORMAL_CLOSURE, "stopped")
                 return
             } catch (e: CancellationException) {
                 throw e
             } catch (e: SlackApiException) {
                 if (e.tokenRejected) {
                     logger.error { "[Slack] $name: app-level token rejected (${e.error}), the bot stops until attached again" }
-                    onStatus(MessagingBotStatus.TOKEN_REJECTED)
+                    report(MessagingBotStatus.TOKEN_REJECTED)
                     stopped.set(true)
                     return
                 }
                 logger.warn { "[Slack] $name: apps.connections.open failed (${e.error}), retrying" }
-                onStatus(MessagingBotStatus.UNREACHABLE)
+                report(MessagingBotStatus.UNREACHABLE)
                 delay(e.retryAfterSeconds?.let { it * 1000L } ?: backoff(failures.incrementAndGet()))
             } catch (e: IOException) {
                 logger.warn { "[Slack] $name: Slack not reachable (${e.javaClass.simpleName}), retrying" }
-                onStatus(MessagingBotStatus.UNREACHABLE)
+                report(MessagingBotStatus.UNREACHABLE)
                 delay(backoff(failures.incrementAndGet()))
             }
         }
+    }
+
+    /** Reports [status] while the socket runs: a call still in flight at the stop reports nothing. */
+    private fun report(status: MessagingBotStatus) {
+        if (!stopped.get()) onStatus(status)
     }
 
     private fun reconnect(afterMillis: Long) {
@@ -100,7 +107,7 @@ class SlackSocket(
                 is SlackEvents.Frame.Hello -> {
                     failures.set(0)
                     logger.info { "[Slack] receiving as $name" }
-                    onStatus(MessagingBotStatus.RUNNING)
+                    report(MessagingBotStatus.RUNNING)
                 }
                 is SlackEvents.Frame.Envelope -> {
                     webSocket.send(frame.ack)
@@ -121,7 +128,7 @@ class SlackSocket(
         ) {
             if (webSocket == current.get() && !stopped.get()) {
                 logger.warn { "[Slack] $name: connection lost (${t.javaClass.simpleName}), reconnecting" }
-                onStatus(MessagingBotStatus.UNREACHABLE)
+                report(MessagingBotStatus.UNREACHABLE)
                 reconnect(backoff(failures.incrementAndGet()))
             }
         }
@@ -135,11 +142,9 @@ class SlackSocket(
         }
     }
 
-    private fun backoff(failures: Int): Long = min(MAX_BACKOFF_MILLIS, BASE_BACKOFF_MILLIS shl min(failures, 5))
+    private fun backoff(failures: Int): Long = exponentialBackoffMs(failures)
 
     companion object : KLogging() {
         private const val NORMAL_CLOSURE = 1000
-        private const val BASE_BACKOFF_MILLIS = 1000L
-        private const val MAX_BACKOFF_MILLIS = 60_000L
     }
 }

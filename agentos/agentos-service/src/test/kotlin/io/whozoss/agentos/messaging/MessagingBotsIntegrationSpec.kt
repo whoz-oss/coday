@@ -229,6 +229,15 @@ class MessagingBotsIntegrationSpec : StringSpec() {
             shouldThrow<ConflictException> { bots.attach(namespace.id, helper.id, MessagingPlatform.TELEGRAM, MANAGER_TOKEN) }
         }
 
+        "the username suggested for an agent whose name starts with a digit stays within Telegram's 32 characters" {
+            val manager = setManager()
+            val reporting = agentIn(namespace, "2024 quarterly reporting assistant")
+
+            startFrom(manager, managedBots.requestCreation(ada.id, namespace.id, reporting.id, MessagingPlatform.TELEGRAM).url)
+
+            manager.offers.single().second.suggestedUsername shouldMatch Regex("^agent_2024_quarterly_[a-z0-9]{4}_bot$")
+        }
+
         "creating a bot through the manager attaches it to the agent and links its creator" {
             val manager = setManager()
             val link = managedBots.requestCreation(ada.id, namespace.id, helper.id, MessagingPlatform.TELEGRAM)

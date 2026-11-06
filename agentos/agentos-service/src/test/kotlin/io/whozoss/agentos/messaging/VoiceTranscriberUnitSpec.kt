@@ -5,6 +5,10 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainInOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.io.File
 import java.nio.file.Files
 
@@ -70,6 +74,20 @@ class VoiceTranscriberUnitSpec :
 
             val input = argsOf("ffmpeg").let { it[it.indexOf("-i") + 1] }
             File(input).parentFile.exists() shouldBe false
+        }
+
+        "the time a transcription waits for its turn is not taken from its own" {
+            // Each run takes 1.2 s of the 2 s allowed: the second waits 1.2 s for the first, then gets its 2 s.
+            val slowWhisper = script("slow-whisper-ok", "sleep 1.2\ncat \"\$(sed -n '/^-f\$/{n;p;}' '${dir.absolutePath}/slow-whisper-ok.args')\"")
+            val transcriber = transcriber(whisperCommand = slowWhisper, timeoutSeconds = 2)
+
+            val words =
+                coroutineScope {
+                    listOf(async(Dispatchers.IO) { transcriber.transcribe("one".toByteArray()) }, async(Dispatchers.IO) { transcriber.transcribe("two".toByteArray()) })
+                        .awaitAll()
+                }
+
+            words.sorted() shouldBe listOf("one", "two")
         }
 
         "a program that fails, cannot be found or takes too long is a transcription failure" {

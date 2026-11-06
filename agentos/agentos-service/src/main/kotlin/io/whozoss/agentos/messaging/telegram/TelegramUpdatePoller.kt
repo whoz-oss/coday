@@ -7,6 +7,7 @@ import io.whozoss.agentos.messaging.MessagingSender
 import io.whozoss.agentos.messaging.MessagingAudio
 import io.whozoss.agentos.messaging.MessagingSink
 import io.whozoss.agentos.messaging.SerialLanes
+import io.whozoss.agentos.scheduledPrompt.exponentialBackoffMs
 import io.whozoss.agentos.sdk.api.messaging.MessagingBotStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
 import java.io.IOException
-import kotlin.math.min
 
 /**
  * Receives the updates of one Telegram bot by long polling (`getUpdates`) and hands them to [sink], from
@@ -58,7 +58,7 @@ class TelegramUpdatePoller(
     }
 
     private suspend fun poll() {
-        prepare()
+        if (prepare()) onStatus(MessagingBotStatus.RUNNING)
         var offset: Long? = null
         var failures = 0
         while (currentCoroutineContext().isActive) {
@@ -101,14 +101,19 @@ class TelegramUpdatePoller(
         }
     }
 
-    /** Sets the bot's command menu, retrying until Telegram answers; a rejected token stops the bot. */
-    private suspend fun prepare() {
+    /**
+     * Readies the bot for polling, retrying until Telegram answers: removes its webhook, as polling libraries do
+     * (grammY's `bot.start()`, python-telegram-bot's `run_polling`), and sets its command menu. A rejected token
+     * stops the bot. True once ready: the bot runs from then on, without waiting for the first long poll to end.
+     */
+    private suspend fun prepare(): Boolean {
         var failures = 0
-        var prepared = commands.isEmpty()
+        var prepared = false
         while (!prepared && currentCoroutineContext().isActive) {
             prepared =
                 try {
-                    client.setMyCommands(commands)
+                    client.deleteWebhook()
+                    if (commands.isNotEmpty()) client.setMyCommands(commands)
                     true
                 } catch (e: CancellationException) {
                     throw e
@@ -121,7 +126,7 @@ class TelegramUpdatePoller(
                             currentCoroutineContext().cancel()
                         }
                         else -> {
-                            logger.warn { "[Telegram] $name: setMyCommands failed (${e.errorCode} ${e.description}), retrying" }
+                            logger.warn { "[Telegram] $name: could not get ready (${e.errorCode} ${e.description}), retrying" }
                             onStatus(MessagingBotStatus.UNREACHABLE)
                             delay(backoff(failures))
                         }
@@ -136,6 +141,7 @@ class TelegramUpdatePoller(
                 }
         }
         if (prepared) logger.info { "[Telegram] polling as $name" }
+        return prepared
     }
 
     private fun toInbound(update: TelegramUpdate): MessagingInbound? {
@@ -195,13 +201,11 @@ class TelegramUpdatePoller(
     private fun sender(user: TelegramUser): MessagingSender =
         MessagingSender(externalUserId = user.id.toString(), displayName = user.displayName, bot = user.bot)
 
-    private fun backoff(failures: Int): Long = min(MAX_BACKOFF_MILLIS, BASE_BACKOFF_MILLIS shl min(failures, 5))
+    private fun backoff(failures: Int): Long = exponentialBackoffMs(failures)
 
     companion object : KLogging() {
         private const val UNAUTHORIZED = 401
         private const val CONFLICT = 409
-        private const val BASE_BACKOFF_MILLIS = 1000L
-        private const val MAX_BACKOFF_MILLIS = 60_000L
         private const val CONFLICT_WAIT_MILLIS = 30_000L
     }
 }

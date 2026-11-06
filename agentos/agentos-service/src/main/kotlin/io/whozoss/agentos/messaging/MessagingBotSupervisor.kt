@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
  * effect at once: there is no restart and no setting outside the database.
  *
  * The bot of an agent hands what it receives to [MessagingGateway], a bot manager to [MessagingManagedBots].
- * A bot that fails to start is logged and left off; the others run.
+ * A bot that fails to start, or cannot be read, is logged and left off; the others run, and so does the application.
  */
 @Component
 class MessagingBotSupervisor(
@@ -28,9 +28,20 @@ class MessagingBotSupervisor(
 ) {
     private val connections = ConcurrentHashMap<UUID, MessagingConnection>()
 
+    /** For each bot, the run whose statuses count: a connection stopped or replaced may still report one. */
+    private val runs = ConcurrentHashMap<UUID, Any>()
+
+    /** Never throws: a failure here would stop the application, not just its bots. */
     @EventListener(ApplicationReadyEvent::class)
     fun startAll() {
-        repository.findAll().forEach { start(it) }
+        val bots =
+            try {
+                repository.findAll()
+            } catch (e: Exception) {
+                logger.error(e) { "[Messaging] the bots could not be read: none runs until it is saved again or the application restarts" }
+                return
+            }
+        bots.forEach { start(it) }
     }
 
     @TransactionalEventListener(fallbackExecution = true)
@@ -50,6 +61,7 @@ class MessagingBotSupervisor(
     @Synchronized
     private fun start(bot: MessagingBot) {
         connections.remove(bot.id)?.stop()
+        val run = Any().also { runs[bot.id] = it }
         when {
             !bot.enabled -> registry.put(bot.ref(), MessagingBotStatus.DISABLED)
             else -> {
@@ -57,7 +69,7 @@ class MessagingBotSupervisor(
                 try {
                     val connection =
                         drivers.get(bot.platform).start(bot, sinkOf(bot)) { status ->
-                            registry.setStatus(bot.id, status)
+                            if (runs[bot.id] === run) registry.setStatus(bot.id, status)
                         }
                     connections[bot.id] = connection
                     registry.setAdapter(bot.id, connection.adapter)
@@ -72,6 +84,7 @@ class MessagingBotSupervisor(
 
     @Synchronized
     private fun stop(botId: UUID) {
+        runs.remove(botId)
         connections.remove(botId)?.stop()
         registry.remove(botId)
     }

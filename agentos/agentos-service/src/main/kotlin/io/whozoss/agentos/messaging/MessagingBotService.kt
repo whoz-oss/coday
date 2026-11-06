@@ -44,6 +44,9 @@ class MessagingBotService(
     /** Every bot of an agent, in every namespace. */
     fun findAllAgentBots(): List<MessagingBot> = repository.findByRole(MessagingBotRole.AGENT)
 
+    /** The bots of the agents of [namespaceId]. */
+    fun findAgentBots(namespaceId: UUID): List<MessagingBot> = repository.findAgentBotsByNamespace(namespaceId)
+
     fun findManagers(): List<MessagingBot> = repository.findByRole(MessagingBotRole.MANAGER)
 
     /**

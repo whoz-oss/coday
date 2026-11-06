@@ -135,6 +135,14 @@ class TelegramBotClient(
     fun getManagedBotToken(botUserId: Long): String =
         call("getManagedBotToken", mapOf("user_id" to botUserId), type(String::class.java))
 
+    /**
+     * Removes the bot's webhook, if one is set: Telegram refuses `getUpdates` to a bot with a webhook. Pending
+     * updates are kept.
+     */
+    fun deleteWebhook() {
+        call<JsonNode>(method = "deleteWebhook", payload = mapOf("drop_pending_updates" to false), resultType = type(JsonNode::class.java))
+    }
+
     /** Sets the command menu Telegram shows in the chat with the bot. */
     fun setMyCommands(commands: Map<String, String>) {
         call<JsonNode>(

@@ -20,12 +20,14 @@ import io.whozoss.agentos.sdk.api.configChange.ConfigChangeState
 import io.whozoss.agentos.sdk.api.configChange.ConfigChangeViewDto
 import io.whozoss.agentos.sdk.api.messaging.MessagingBotStatus
 import io.whozoss.agentos.sdk.api.messaging.MessagingPlatform
+import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import io.whozoss.agentos.user.User
@@ -59,11 +61,26 @@ class MessagingDeliveryUnitSpec :
             owner: UUID = ada.id,
         ) = MessagingConversation(platform = MessagingPlatform.TELEGRAM, accountId = "4242", chatId = "11", userId = owner, caseId = caseIdOfChat)
 
+        /** The identities of a user who has linked the account of [chat]'s chat. */
+        fun linkedAccountOf(chat: MessagingConversation): MessagingIdentityService =
+            mockk {
+                every { findByUser(chat.userId, chat.platform, chat.accountId) } returns
+                    MessagingIdentity(
+                        platform = chat.platform,
+                        accountId = chat.accountId,
+                        externalUserId = chat.chatId,
+                        directChatId = chat.chatId,
+                        displayName = "Ada",
+                        userId = chat.userId,
+                    )
+            }
+
         fun delivery(
             adapter: FakeMessagingAdapter?,
             chat: MessagingConversation,
             caseService: CaseService = mockk(),
             configChanges: ConfigChangeApi = mockk(),
+            identities: MessagingIdentityService = linkedAccountOf(chat),
         ): MessagingDelivery {
             val conversations = mockk<MessagingConversationService>()
             every { conversations.findById(chat.id) } returns chat
@@ -77,6 +94,7 @@ class MessagingDeliveryUnitSpec :
                 configChanges = configChanges,
                 links = MessagingLinks(MessagingProperties(publicUrl = "https://agentos.example.com")),
                 clock = Clock.fixed(now, ZoneOffset.UTC),
+                identities = identities,
             )
         }
 
@@ -159,6 +177,35 @@ class MessagingDeliveryUnitSpec :
 
             delay(300)
             adapter.sent.shouldBeEmpty()
+            delivery.stop()
+        }
+
+        "a chat whose account its user has unlinked receives nothing more of the case" {
+            val adapter = FakeMessagingAdapter()
+            val chat = conversation()
+            val unlinked = mockk<MessagingIdentityService> { every { findByUser(any(), any(), any()) } returns null }
+            val delivery = delivery(adapter, chat, identities = unlinked)
+
+            delivery.receive(userMessage(chat.id), agentMessage("the answer"))
+
+            delay(300)
+            adapter.sent.shouldBeEmpty()
+            delivery.stop()
+        }
+
+        "a chat stops showing the case typing once the case answers elsewhere" {
+            val adapter = FakeMessagingAdapter()
+            val chat = conversation()
+            val delivery = delivery(adapter, chat)
+            fun status(status: CaseStatus) = CaseStatusEvent(metadata = EntityMetadata(), namespaceId = namespaceId, caseId = caseId, status = status)
+
+            delivery.receive(userMessage(chat.id), status(CaseStatus.RUNNING))
+            eventually(2.seconds) { adapter.typing shouldBe listOf("11") }
+            // A message typed in the UI while the case runs: the answer goes there, the chat stops typing.
+            delivery.receive(userMessage(conversationId = null))
+
+            delay(4_500)
+            adapter.typing shouldBe listOf("11")
             delivery.stop()
         }
 
@@ -246,7 +293,7 @@ class MessagingDeliveryUnitSpec :
         "a case no chat follows costs no lookup" {
             val conversations = mockk<MessagingConversationService>()
             val delivery =
-                MessagingDelivery(MessagingBotRegistry(), conversations, mockk(), mockk(), mockk(), MessagingLinks(MessagingProperties()), Clock.systemUTC())
+                MessagingDelivery(MessagingBotRegistry(), conversations, mockk(), mockk(), mockk(), MessagingLinks(MessagingProperties()), Clock.systemUTC(), mockk())
 
             delivery.receive(userMessage(null), agentMessage("the answer"))
 
@@ -260,7 +307,7 @@ class MessagingDeliveryUnitSpec :
             val conversations = mockk<MessagingConversationService>()
             every { conversations.findById(chat.id) } returns chat
             val delivery =
-                MessagingDelivery(MessagingBotRegistry(), conversations, mockk(), mockk(), mockk(), MessagingLinks(MessagingProperties()), Clock.systemUTC())
+                MessagingDelivery(MessagingBotRegistry(), conversations, mockk(), mockk(), mockk(), MessagingLinks(MessagingProperties()), Clock.systemUTC(), mockk())
 
             delivery.receive(userMessage(chat.id), agentMessage("the answer"))
 

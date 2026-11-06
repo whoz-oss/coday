@@ -46,7 +46,11 @@ class MessagingIdentityService(
     /**
      * Links the account that sent [token] to [bot] to the user who asked for it. Null when the token is unknown,
      * expired, already used, or was issued for another bot.
+     *
+     * Transactional itself: the link it delegates to is called on this instance, past the proxy, and replacing
+     * the previous links must not happen without the new one.
      */
+    @Transactional
     fun link(
         token: String,
         bot: MessagingBotRef,

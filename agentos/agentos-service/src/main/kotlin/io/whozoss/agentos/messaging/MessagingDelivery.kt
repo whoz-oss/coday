@@ -43,7 +43,8 @@ import java.util.concurrent.ConcurrentHashMap
  * typed in the UI says nothing, and its answer stays in the UI. "Continue on Telegram", a `/cases` choice or a
  * button answer point the case at their chat with [redirect]. A message can only point its case at a chat of
  * its own author: the session context of a message comes from its client, which could name any conversation,
- * so a chat that belongs to someone else receives nothing.
+ * so a chat that belongs to someone else receives nothing. Nor does a chat whose account its user has unlinked
+ * since: what the case says next stays in AgentOS.
  *
  * Only what a person reads is sent: the agent's messages and questions, warnings and errors (no default agent,
  * an unknown `@name`, a run stopped at its iteration limit...), and a typing indicator while the case runs. A
@@ -67,12 +68,14 @@ class MessagingDelivery(
     private val configChanges: ConfigChangeApi,
     private val links: MessagingLinks,
     private val clock: Clock,
+    private val identities: MessagingIdentityService,
 ) {
     /** For each case, the conversation its current turn came from. */
     private val turnOrigins = ConcurrentHashMap<UUID, TurnOrigin>()
 
     /** For each case a chat follows, the question of the configuration plan its agent just proposed. */
     private val proposedPlans = ConcurrentHashMap<UUID, UUID>()
+    /** For each running case a chat follows, the typing indicator shown in that chat. */
     private val typing = ConcurrentHashMap<UUID, Job>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lanes = SerialLanes<UUID>(scope, name = "MessagingDelivery")
@@ -94,6 +97,8 @@ class MessagingDelivery(
                     ?.takeIf { isDelivered(event) }
                     ?.let { origin -> lanes.submit(origin.conversationId) { deliver(event, origin) } }
         }
+        // Whichever chat the case answers now: the one that showed it typing stops when the run does.
+        if (event is CaseStatusEvent && event.status != CaseStatus.RUNNING) typing.remove(event.caseId)?.cancel()
         if (event is CaseStatusEvent && event.status.isTerminal()) {
             turnOrigins.remove(event.caseId)
             proposedPlans.remove(event.caseId)
@@ -105,14 +110,20 @@ class MessagingDelivery(
         caseId: UUID,
         conversationId: UUID,
     ) {
-        turnOrigins[caseId] = TurnOrigin(conversationId, authorId = null)
+        moveTurn(caseId, TurnOrigin(conversationId, authorId = null))
     }
 
     private fun trackOrigin(message: MessageEvent) {
-        when (val origin = message.sessionContext?.messagingConversationId()) {
-            null -> turnOrigins.remove(message.caseId)
-            else -> turnOrigins[message.caseId] = TurnOrigin(origin, authorId = message.actor.id)
-        }
+        moveTurn(message.caseId, message.sessionContext?.messagingConversationId()?.let { TurnOrigin(it, authorId = message.actor.id) })
+    }
+
+    /** Points [caseId] at [origin], or at no chat; a chat the case leaves stops showing it typing. */
+    private fun moveTurn(
+        caseId: UUID,
+        origin: TurnOrigin?,
+    ) {
+        val previous = if (origin == null) turnOrigins.remove(caseId) else turnOrigins.put(caseId, origin)
+        if (previous != null && previous.conversationId != origin?.conversationId) typing.remove(caseId)?.cancel()
     }
 
     /** Remembers the question a plan announces, so that the question goes out as the plan's card. */
@@ -147,20 +158,30 @@ class MessagingDelivery(
                     "[MessagingDelivery] a message of ${origin.authorId} named the conversation ${conversation.id} of another user, " +
                         "${event.caseId} not delivered there"
                 }
+            !isLinked(conversation) -> {
+                turnOrigins.remove(event.caseId, origin)
+                typing.remove(event.caseId)?.cancel()
+                logger.info { "[MessagingDelivery] the account of conversation ${conversation.id} is no longer linked, ${event.caseId} not delivered" }
+            }
             event is CaseStatusEvent -> deliverStatus(event, conversation, adapter)
             else ->
                 render(event, conversation)?.let { message -> adapter.send(conversation.chatId, inCaseOf(conversation, event.caseId, message)) }
         }
     }
 
+    /** True while the conversation's chat is the one its user has linked through the bot. */
+    private fun isLinked(conversation: MessagingConversation): Boolean =
+        identities.findByUser(conversation.userId, conversation.platform, conversation.accountId)?.directChatId == conversation.chatId
+
     private fun deliverStatus(
         event: CaseStatusEvent,
         conversation: MessagingConversation,
         adapter: MessagingAdapter,
     ) {
+        // In the order of the chat's lane too: an end of run handled before its start leaves no indicator behind.
         when (event.status) {
-            CaseStatus.RUNNING -> startTyping(conversation, adapter)
-            else -> typing.remove(conversation.id)?.cancel()
+            CaseStatus.RUNNING -> startTyping(event.caseId, conversation, adapter)
+            else -> typing.remove(event.caseId)?.cancel()
         }
         if (event.status == CaseStatus.ERROR) {
             adapter.send(
@@ -247,14 +268,16 @@ class MessagingDelivery(
 
     /** Keeps the indicator on while the case runs: platforms clear it after a few seconds. */
     private fun startTyping(
+        caseId: UUID,
         conversation: MessagingConversation,
         adapter: MessagingAdapter,
     ) {
         val until = Instant.now().plus(MAX_TYPING)
         typing.put(
-            conversation.id,
+            caseId,
             scope.launch {
-                while (isActive && Instant.now().isBefore(until)) {
+                // Only while the case still answers this chat: one it left stops showing it typing.
+                while (isActive && Instant.now().isBefore(until) && turnOrigins[caseId]?.conversationId == conversation.id) {
                     adapter.showTyping(conversation.chatId)
                     delay(TYPING_REFRESH.toMillis())
                 }

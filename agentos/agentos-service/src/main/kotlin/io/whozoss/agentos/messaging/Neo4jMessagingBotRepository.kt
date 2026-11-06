@@ -24,8 +24,14 @@ open class Neo4jMessagingBotRepository(
     @Transactional(readOnly = true)
     open override fun findById(id: UUID): MessagingBot? = neo4jRepository.findByIdOrNull(id.toString())?.toDomain()
 
+    /** Every bot that can be read: one that cannot (a token encrypted with another key, a platform gone) is left out and logged. */
     @Transactional(readOnly = true)
-    open override fun findAll(): List<MessagingBot> = neo4jRepository.findAll().map { it.toDomain() }
+    open override fun findAll(): List<MessagingBot> =
+        neo4jRepository.findAll().mapNotNull { node ->
+            runCatching { node.toDomain() }
+                .onFailure { logger.error(it) { "[Neo4jMessagingBotRepository] bot ${node.id} (@${node.username}) cannot be read, left out" } }
+                .getOrNull()
+        }
 
     @Transactional(readOnly = true)
     open override fun findByRole(role: MessagingBotRole): List<MessagingBot> =
@@ -36,6 +42,10 @@ open class Neo4jMessagingBotRepository(
 
     @Transactional(readOnly = true)
     open override fun findBySlotKey(slotKey: String): MessagingBot? = neo4jRepository.findBySlotKey(slotKey)?.toDomain()
+
+    @Transactional(readOnly = true)
+    open override fun findAgentBotsByNamespace(namespaceId: UUID): List<MessagingBot> =
+        neo4jRepository.findAgentBotsByNamespaceId(namespaceId.toString()).map { it.toDomain() }
 
     @Transactional(readOnly = true)
     open override fun findByAgentId(agentId: UUID): List<MessagingBot> =

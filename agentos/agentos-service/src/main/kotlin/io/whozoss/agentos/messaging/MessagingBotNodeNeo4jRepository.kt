@@ -20,4 +20,7 @@ interface MessagingBotNodeNeo4jRepository : Neo4jRepository<MessagingBotNode, St
 
     @Query($$"MATCH (b:MessagingBot) WHERE b.role = $role RETURN b ORDER BY b.created ASC")
     fun findByRole(role: String): List<MessagingBotNode>
+
+    @Query($$"MATCH (b:MessagingBot) WHERE b.role = 'AGENT' AND b.namespaceId = $namespaceId RETURN b ORDER BY b.created ASC")
+    fun findAgentBotsByNamespaceId(namespaceId: String): List<MessagingBotNode>
 }

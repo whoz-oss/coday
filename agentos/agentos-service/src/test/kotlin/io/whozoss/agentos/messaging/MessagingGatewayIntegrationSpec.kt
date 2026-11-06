@@ -32,6 +32,8 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.persistence.neo4j.Neo4jContainerSupport
+import io.whozoss.agentos.prompt.Prompt
+import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.messaging.MessagingPlatform
@@ -81,6 +83,7 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
     @Autowired lateinit var delivery: MessagingDelivery
     @Autowired lateinit var configToolGrantService: ConfigToolGrantService
     @Autowired lateinit var transcriber: FakeVoiceTranscriber
+    @Autowired lateinit var promptService: PromptService
 
     private val chatId = "1001"
     private var nextMessageId = 1L
@@ -127,7 +130,8 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         namespace: Namespace,
         name: String,
     ): AgentConfig =
-        agentConfigService.create(AgentConfig(namespaceId = namespace.id, name = name, enabled = true)).also {
+        // A model, as an agent needs one to be saved through its endpoint: a plan's update goes through it.
+        agentConfigService.create(AgentConfig(namespaceId = namespace.id, name = name, enabled = true, modelName = "BIG")).also {
             namespaceService.deployAgents(namespace.id, listOf(it.id))
         }
 
@@ -280,6 +284,41 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             eventually(5.seconds) {
                 caseEventService.findByParent(caseId).filterIsInstance<AgentSelectedEvent>().first().agentName shouldBe agent.name
             }
+        }
+
+        "an agent whose name has a space is addressed by the word the case reads, when that word names it" {
+            agentConfigService.update(agent.copy(name = "Sales Ops"))
+            linkAda()
+
+            text("hello")
+
+            val caseId = conversation().caseId.shouldNotBeNull()
+            messagesOf(caseId).first().content shouldBe listOf(MessageContent.Text("@Sales hello"))
+            eventually(5.seconds) {
+                caseEventService.findByParent(caseId).filterIsInstance<AgentSelectedEvent>().first().agentName shouldBe "Sales Ops"
+            }
+        }
+
+        "a message is not handed to another agent that the bot's agent's name would name" {
+            agentConfigService.update(agent.copy(name = "Sales Ops"))
+            agentIn(namespace, "Sales Assistant")
+            linkAda()
+
+            text("hello")
+
+            bot.textsTo(chatId).single() shouldContain "I cannot hand your message to **Sales Ops**"
+            conversation().caseId shouldBe null
+            cases.findConcerningUser(ada.id) shouldHaveSize 0
+        }
+
+        "a prompt command runs on the first message of a case, with the bot's agent" {
+            promptService.create(Prompt(namespaceId = namespace.id, name = "tidy", content = listOf("Tidy up {{ARGUMENTS}}")))
+            linkAda()
+
+            text("/tidy the descriptions")
+
+            val caseId = conversation().caseId.shouldNotBeNull()
+            messagesOf(caseId).first().content shouldBe listOf(MessageContent.Text("@Helper Tidy up the descriptions"))
         }
 
         "a voice message is transcribed, shown to the chat, and posted as the text it says" {
@@ -439,6 +478,29 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             bot.acknowledged.single().second shouldBe "This question is for someone else."
         }
 
+        "a button naming a question of another namespace's case answers nothing" {
+            linkAda()
+            val elsewhere = caseService.create(Case(namespaceId = namespaceService.create(Namespace(name = "Other")).id))
+            permissionService.grantPermission(ada.id.toString(), EntityType.CASE, elsewhere.id.toString(), PermissionRelation.ADMIN)
+            val question =
+                caseEventService.create(
+                    QuestionEvent(
+                        namespaceId = elsewhere.namespaceId,
+                        caseId = elsewhere.id,
+                        agentId = agent.id,
+                        agentName = agent.name,
+                        question = "Which one?",
+                        options = listOf("A"),
+                        questionType = QuestionType.SINGLE_CHOICE,
+                    ),
+                )
+
+            click(MessagingAction.AnswerQuestion(question.id, 0))
+
+            caseEventService.findByParent(elsewhere.id).filterIsInstance<AnswerEvent>() shouldHaveSize 0
+            bot.acknowledged.single().second shouldBe "You can no longer answer in this case."
+        }
+
         "/cases offers the user's cases of the bot's namespace, and a choice moves the chat to it" {
             linkAda()
             val case = caseService.create(Case(namespaceId = namespace.id, title = "Refactoring"))
@@ -558,6 +620,7 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         }
 
         "a user who cannot read the case cannot apply its plan, even with the button" {
+            linkAda()
             permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
             val case = caseFollowedByTheChat()
             val questionId = proposeToAda(case, description = "Applied by someone else")
@@ -574,6 +637,7 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
         }
 
         "someone who may write to the case but was not proposed the plan can neither apply it nor take the case's answers" {
+            linkAda()
             permissionService.grantPermission(ada.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
             val case = caseFollowedByTheChat()
             val questionId = proposeToAda(case, description = "Applied by a co-admin")
