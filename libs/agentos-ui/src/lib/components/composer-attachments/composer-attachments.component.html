@@ -8,12 +8,16 @@
             [class.composer-attachments__chip--error]="attachment.status === 'error'"
             [class.composer-attachments__chip--uploaded]="attachment.status === 'uploaded'"
           >
-            <span
-              class="composer-attachments__icon material-icons"
-              [class.composer-attachments__icon--spinning]="attachment.status === 'uploading'"
-              aria-hidden="true"
-              >{{ chipIcon(attachment) }}</span
-            >
+            @if (thumbnail(attachment); as thumbnailUrl) {
+              <img class="composer-attachments__thumbnail" [src]="thumbnailUrl" alt="" aria-hidden="true" />
+            } @else {
+              <span
+                class="composer-attachments__icon material-icons"
+                [class.composer-attachments__icon--spinning]="attachment.status === 'uploading'"
+                aria-hidden="true"
+                >{{ chipIcon(attachment) }}</span
+              >
+            }
             <span class="composer-attachments__name" [title]="attachment.file.name">{{
               middleTruncate(attachment.file.name)
             }}</span>

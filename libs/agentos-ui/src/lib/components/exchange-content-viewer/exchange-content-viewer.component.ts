@@ -3,14 +3,17 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   ElementRef,
   input,
   output,
+  signal,
   viewChild,
 } from '@angular/core'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
 import { detectFormat, reindentJson } from '../../services/exchange-content.utils'
+import { injectCopyFeedback } from '../../services/clipboard.utils'
 import { ExchangeFileRef } from '../../services/exchange-state.service'
 
 /**
@@ -18,7 +21,9 @@ import { ExchangeFileRef } from '../../services/exchange-state.service'
  *
  * Renders markdown via the `agentosMarkdown` pipe, JSON re-indented, YAML/text in a <pre>,
  * and HTML in a sandboxed <iframe> (with a title — fixing the legacy a11y gap). Non-viewable
- * files (binary or > 20 MB) and load errors show a "Download instead" CTA.
+ * files (binary or > 20 MB) and load errors show a "Download instead" CTA. Images are shown from an
+ * object URL prepared by the parent (`imageUrl`), scaled to fit the pane; if the browser cannot decode
+ * one, the same "Preview not available" state is shown rather than a broken-image icon.
  *
  * I/O in signals (decision #8). The smart parent owns content loading + the canView decision.
  */
@@ -33,6 +38,8 @@ import { ExchangeFileRef } from '../../services/exchange-state.service'
 export class ExchangeContentViewerComponent {
   readonly file = input.required<ExchangeFileRef>()
   readonly content = input<string | null>(null)
+  /** Object URL of the image to display when the file is an image. */
+  readonly imageUrl = input<string | null>(null)
   readonly status = input<'loading' | 'ready' | 'error'>('loading')
   /** False when the file is binary or too large to preview — only a download is offered. */
   readonly canView = input<boolean>(true)
@@ -44,6 +51,13 @@ export class ExchangeContentViewerComponent {
   private readonly backButton = viewChild('backButton', { read: ElementRef })
 
   constructor() {
+    // A new image (or a new file) gets a fresh chance to decode.
+    effect(() => {
+      this.imageUrl()
+      this.file()
+      this.imageFailed.set(false)
+    })
+
     // a11y: move focus into the preview when it opens so keyboard users land on the
     // back control rather than losing focus to <body>.
     afterNextRender(() => {
@@ -59,6 +73,13 @@ export class ExchangeContentViewerComponent {
 
   protected readonly format = computed(() => detectFormat(this.filename()))
 
+  /** Set when the browser could not decode the image, to fall back to the download CTA. */
+  protected readonly imageFailed = signal(false)
+
+  protected onImageError(): void {
+    this.imageFailed.set(true)
+  }
+
   /** JSON is re-indented for readability; other text formats render as-is. */
   protected readonly displayContent = computed(() => {
     const raw = this.content()
@@ -72,5 +93,13 @@ export class ExchangeContentViewerComponent {
 
   protected onDownload(): void {
     this.downloadRequested.emit(this.file())
+  }
+
+  private readonly copyFeedback = injectCopyFeedback()
+  protected readonly copyState = this.copyFeedback.state
+
+  /** Copies the path relative to the scope root, as a file reference to paste elsewhere. */
+  protected onCopyPath(): void {
+    void this.copyFeedback.copy(this.file().path)
   }
 }

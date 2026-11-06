@@ -120,6 +120,67 @@ describe('ComposerAttachmentsComponent', () => {
   })
 })
 
+describe('ComposerAttachmentsComponent — image thumbnails', () => {
+  const originalCreate = URL.createObjectURL
+  const originalRevoke = URL.revokeObjectURL
+  let create: jest.Mock
+  let revoke: jest.Mock
+
+  beforeEach(() => {
+    let counter = 0
+    create = jest.fn(() => `blob:preview-${counter++}`)
+    revoke = jest.fn()
+    URL.createObjectURL = create
+    URL.revokeObjectURL = revoke
+  })
+
+  afterEach(() => {
+    // Destroy the components while the mocks are still installed (their destroy hook revokes).
+    TestBed.resetTestingModule()
+    URL.createObjectURL = originalCreate
+    URL.revokeObjectURL = originalRevoke
+  })
+
+  function image(id: string, status: PendingAttachment['status'] = 'pending'): PendingAttachment {
+    return { id, file: new File(['x'], `${id}.png`, { type: 'image/png' }), status }
+  }
+
+  it('renders a thumbnail instead of the kind icon for an image attachment', () => {
+    const ref = makeComponent([image('shot'), attachment('doc.pdf')])
+    const host = ref.location.nativeElement as HTMLElement
+
+    const thumbnails = host.querySelectorAll<HTMLImageElement>('.composer-attachments__thumbnail')
+    expect(thumbnails).toHaveLength(1)
+    expect(thumbnails[0]!.getAttribute('src')).toBe('blob:preview-0')
+    // The non-image chip keeps its kind icon.
+    expect(host.querySelectorAll('.composer-attachments__icon')).toHaveLength(1)
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
+  it('revokes the object URL once the attachment disappears, and the rest on destroy', () => {
+    const ref = makeComponent([image('one'), image('two')])
+    expect(create).toHaveBeenCalledTimes(2)
+
+    ref.setInput('attachments', [image('two')])
+    ref.changeDetectorRef.detectChanges()
+    expect(revoke).toHaveBeenCalledTimes(1)
+    expect(revoke).toHaveBeenCalledWith('blob:preview-0')
+    // The surviving image keeps its URL: no re-creation.
+    expect(create).toHaveBeenCalledTimes(2)
+
+    ref.destroy()
+    expect(revoke).toHaveBeenCalledWith('blob:preview-1')
+  })
+
+  it('shows the spinner instead of the thumbnail while uploading', () => {
+    const ref = makeComponent([image('shot', 'uploading')])
+    const host = ref.location.nativeElement as HTMLElement
+
+    expect(host.querySelector('.composer-attachments__thumbnail')).toBeNull()
+    expect(host.querySelector('.composer-attachments__icon')?.textContent).toContain('progress_activity')
+  })
+})
+
 describe('ComposerAttachmentsComponent — status rendering', () => {
   afterEach(() => TestBed.resetTestingModule())
 

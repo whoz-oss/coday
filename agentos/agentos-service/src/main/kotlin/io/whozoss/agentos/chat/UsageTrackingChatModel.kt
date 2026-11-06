@@ -1,6 +1,7 @@
 package io.whozoss.agentos.chat
 
 import io.whozoss.agentos.agent.AgentInterrupt
+import io.whozoss.agentos.agent.ToolImagesProduced
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -255,7 +256,7 @@ class UsageTrackingChatModel(
     private fun markFailure(error: Throwable) {
         val interrupted =
             generateSequence(error) { it.cause }.any {
-                it is AgentInterrupt || it is CostRunStopped || it is CancellationException
+                it is AgentInterrupt || it is ToolImagesProduced || it is CostRunStopped || it is CancellationException
             }
         if (!interrupted) accumulator.failed = true
     }

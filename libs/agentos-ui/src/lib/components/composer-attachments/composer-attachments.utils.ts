@@ -59,6 +59,33 @@ export function buildAttachmentMention(attachments: PendingAttachment[]): string
   return lines.join('\n')
 }
 
+const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+}
+
+/**
+ * Name given to an image pasted from the clipboard. Browsers name every clipboard screenshot
+ * `image.png`, and uploading the same name twice is a 409 conflict, so the name carries the
+ * local paste time: `pasted-image-YYYYMMDD-HHmmss.png`. [index] is the 0-based position of the
+ * image inside one paste; the first keeps the bare name, the next ones get `-2`, `-3`…
+ */
+export function pastedImageName(date: Date, index: number, mime: string): string {
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  const day = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+  const time = `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+  const suffix = index > 0 ? `-${index + 1}` : ''
+  const extension = PASTED_IMAGE_EXTENSIONS[mime.toLowerCase()] ?? 'png'
+  return `pasted-image-${day}-${time}${suffix}.${extension}`
+}
+
+/** True for an image file (drives the chip thumbnail). */
+export function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/')
+}
+
 /** "a-very-long-file-name.pdf" cut in the middle with an ellipsis when above [max] characters. */
 export function middleTruncate(name: string, max = 32): string {
   if (name.length <= max) return name

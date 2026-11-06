@@ -1,5 +1,9 @@
 import { TestBed } from '@angular/core/testing'
-import { NamespaceControllerService, UserControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AiProviderControllerService,
+  NamespaceControllerService,
+  UserControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { SetupApiService } from './setup-api.service'
 import { parseWelcomePreview, SetupStateService } from './setup-state.service'
@@ -28,6 +32,9 @@ describe('SetupStateService', () => {
   let api: { getStatus: jest.Mock; saveIdentity: jest.Mock; apply: jest.Mock; browse: jest.Mock; mkdir: jest.Mock }
   let getMeUser: jest.Mock
   let listByExternalIdsNamespace: jest.Mock
+  let listAiProvider: jest.Mock
+  let createAiProvider: jest.Mock
+  let updateAiProvider: jest.Mock
   let state: SetupStateService
 
   beforeEach(() => {
@@ -40,11 +47,15 @@ describe('SetupStateService', () => {
     }
     getMeUser = jest.fn().mockReturnValue(of({ externalId: 'me@acme.com', isAdmin: true }))
     listByExternalIdsNamespace = jest.fn().mockReturnValue(of([{ id: 'ns-personal', externalId: 'user:me@acme.com' }]))
+    listAiProvider = jest.fn().mockReturnValue(of([]))
+    createAiProvider = jest.fn().mockReturnValue(of({}))
+    updateAiProvider = jest.fn().mockReturnValue(of({}))
     TestBed.configureTestingModule({
       providers: [
         { provide: SetupApiService, useValue: api },
         { provide: UserControllerService, useValue: { getMeUser } },
         { provide: NamespaceControllerService, useValue: { listByExternalIdsNamespace } },
+        { provide: AiProviderControllerService, useValue: { listAiProvider, createAiProvider, updateAiProvider } },
       ],
     })
     state = TestBed.inject(SetupStateService)
@@ -374,6 +385,155 @@ describe('SetupStateService', () => {
 
       getMeUser.mockReturnValue(throwError(() => new Error('boom')))
       expect(await state.loadingTarget()).toEqual({ path: '/home', queryParams: {} })
+    })
+  })
+
+  describe('user keys (managed mode)', () => {
+    const managed = (agentos: 'running' | 'done' = 'done') =>
+      baseStatus({
+        mode: 'managed',
+        setupEnabled: false,
+        setupDone: false,
+        steps: { ...baseStatus().steps, agentos: { state: agentos } },
+      })
+    const platformProviders = [
+      { id: 'p-anthropic', name: 'anthropic', apiType: 'Anthropic' },
+      { id: 'p-openai', name: 'openai', apiType: 'OpenAI' },
+    ]
+    const providers = (platform: unknown[], mine: unknown[]) =>
+      listAiProvider.mockImplementation((_ns: string, user?: string) => of(user ? mine : platform))
+
+    it('waits for AgentOS before looking at the providers', async () => {
+      api.getStatus.mockReturnValue(of(managed('running')))
+      await state.init()
+      expect(listAiProvider).not.toHaveBeenCalled()
+      expect(state.userKeysChecked()).toBe(false)
+    })
+
+    it('asks for the keys of the platform providers the user has no global key for', async () => {
+      providers(platformProviders, [{ id: 'u-1', name: 'anthropic', apiKey: 'sk-a****cdef' }])
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      expect(listAiProvider).toHaveBeenCalledWith('none')
+      expect(listAiProvider).toHaveBeenCalledWith('none', 'me')
+      expect(state.userKeys().map((k) => k.name)).toEqual(['openai'])
+      expect(state.needsUserKeys()).toBe(true)
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('updates a keyless global provider of the user instead of creating a duplicate', async () => {
+      providers(platformProviders, [{ id: 'u-2', name: 'openai', apiType: 'OpenAI' }])
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.userKeys().find((k) => k.name === 'openai')?.existingId).toBe('u-2')
+    })
+
+    it('hands over at once when the user already has a key for every platform provider', async () => {
+      providers(platformProviders, [
+        { id: 'u-1', name: 'anthropic', apiKey: 'sk-a****cdef' },
+        { id: 'u-2', name: 'openai', apiKey: 'sk-o****cdef' },
+      ])
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsUserKeys()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('hands over when there is no platform provider at all', async () => {
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('does not hold the user back when the check fails', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+      listAiProvider.mockReturnValue(throwError(() => new Error('boom')))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsUserKeys()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('never asks outside the managed loading page (laptop install, wizard, preview)', async () => {
+      providers(platformProviders, [])
+      api.getStatus.mockReturnValue(
+        of(
+          baseStatus({
+            setupDone: true,
+            apply: { status: 'done' },
+            steps: { ...baseStatus().steps, agentos: { state: 'done' } },
+          })
+        )
+      )
+      await state.init()
+      expect(listAiProvider).not.toHaveBeenCalled()
+
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init('nofresh')
+      expect(listAiProvider).not.toHaveBeenCalled()
+    })
+
+    it('saves the typed keys as user-global providers and lets the user through', async () => {
+      providers(platformProviders, [{ id: 'u-2', name: 'openai', apiType: 'OpenAI' }])
+      getMeUser.mockReturnValue(of({ id: 'user-1', externalId: 'me@acme.com', isAdmin: false }))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      expect(state.userKeysValid()).toBe(false)
+      state.setUserKey('anthropic', ' sk-ant-long-enough ')
+      state.setUserKey('openai', 'sk-openai-long-enough')
+      expect(state.userKeysValid()).toBe(true)
+      await state.submitUserKeys()
+
+      expect(createAiProvider).toHaveBeenCalledWith({
+        name: 'anthropic',
+        apiType: 'Anthropic',
+        apiKey: 'sk-ant-long-enough',
+        userId: 'user-1',
+      })
+      expect(updateAiProvider).toHaveBeenCalledWith('u-2', {
+        name: 'openai',
+        apiType: 'OpenAI',
+        apiKey: 'sk-openai-long-enough',
+        userId: 'user-1',
+      })
+      expect(state.needsUserKeys()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('leaves empty keys unset and keeps the failed ones with a message', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+      providers(platformProviders, [])
+      getMeUser.mockReturnValue(of({ id: 'user-1', externalId: 'me@acme.com', isAdmin: false }))
+      createAiProvider.mockReturnValue(throwError(() => ({ status: 409 })))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      state.setUserKey('anthropic', 'sk-ant-long-enough')
+      await state.submitUserKeys()
+
+      expect(createAiProvider).toHaveBeenCalledTimes(1)
+      expect(state.userKeys().map((k) => k.name)).toEqual(['anthropic'])
+      expect(state.error()).toMatch(/anthropic/)
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('can be skipped', async () => {
+      providers(platformProviders, [])
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      state.skipUserKeys()
+      expect(createAiProvider).not.toHaveBeenCalled()
+      expect(state.loadingReady()).toBe(true)
     })
   })
 
