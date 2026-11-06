@@ -4635,6 +4635,11 @@ components:
           - IDLE
           - KILLED
           - ERROR
+        summary:
+          type: string
+          description: "Short server-generated summary of the case, refreshed after\
+            \ agent turns and matched by the case search. Null until the first one.\
+            \ Read-only: ignored on create and update."
         title:
           type: string
         worktree:
