@@ -67,6 +67,7 @@
         [disabled]="isCreating()"
         (input)="onInput($event)"
         (keydown)="onKeydown($event)"
+        (paste)="!isCreating() && attachments.onPaste($event)"
       ></textarea>
       <div class="case-home__composer-footer">
         <div class="case-home__footer-left">
