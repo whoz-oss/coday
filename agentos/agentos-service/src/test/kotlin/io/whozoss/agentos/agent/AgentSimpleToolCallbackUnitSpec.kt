@@ -409,10 +409,10 @@ class AgentSimpleToolCallbackUnitSpec :
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
 
-        "image-producing tool: images are kept on the event and the callback returns plain text (images go via history)" {
-            // AgentSimple now supports image delivery via the conversation history.
-            // The ToolCallback.call() return value must be plain text only — images reach
-            // the LLM on subsequent turns via convertEventsToMessages() injecting UserMessage+Media.
+        "image-producing tool: images are kept on the event and the callback ends the Spring AI call (images go via history)" {
+            // ToolCallback.call() can only return text, so a tool that produced images throws
+            // ToolImagesProduced once its ToolResponseEvent is queued: AgentSimple then rebuilds the
+            // conversation (convertEventsToMessages injects UserMessage+Media) and starts a new call.
             // The images must still be preserved on the ToolResponseEvent (persistence, SSE).
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -435,13 +435,19 @@ class AgentSimpleToolCallbackUnitSpec :
                     ): ToolExecutionResult = ToolExecutionResult.successWithImages("Rendered PDF cv.pdf: page(s) 1 of 1", images)
                 }
 
-            var callbackReturn: String? = null
+            var thrown: Throwable? = null
+            var streams = 0
             val toolCallbackSlot = slot<List<ToolCallback>>()
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
-                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__readAsImage" }
-                callbackReturn = cb.call("{}")
+                // Only the first call reaches the tool: the continuation call answers directly.
+                if (streams++ == 0) {
+                    val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__readAsImage" }
+                    thrown = runCatching { cb.call("{}") }.exceptionOrNull()
+                    // Like Spring AI does: the signal escapes the streamed call
+                    thrown?.let { throw it }
+                }
                 mockStreamSpec
             }
             every { mockStreamSpec.chatResponse() } returns chatResponseFlux("done")
@@ -453,10 +459,10 @@ class AgentSimpleToolCallbackUnitSpec :
             toolResponse.images shouldBe images
             (toolResponse.output as MessageContent.Text).content shouldBe "Rendered PDF cv.pdf: page(s) 1 of 1"
 
-            // The callback returns only the text output — no "not supported" note
-            callbackReturn shouldNotBe null
-            callbackReturn!! shouldBe "Rendered PDF cv.pdf: page(s) 1 of 1"
-            callbackReturn!! shouldNotContain "does not support image attachments"
+            // The callback ended the first call, and the run continued with a second one.
+            thrown.shouldBeInstanceOf<ToolImagesProduced>()
+            streams shouldBe 2
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
         "history replay injects UserMessage with Media for image tool responses, never base64 in ToolResponseMessage" {
