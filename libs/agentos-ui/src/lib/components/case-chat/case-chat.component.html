@@ -496,6 +496,15 @@
             />
           </div>
         }
+        @if (autocomplete.fileSuggestions().length > 0) {
+          <div class="case-chat__autocomplete">
+            <agentos-file-autocomplete
+              [files]="autocomplete.fileSuggestions()"
+              (selected)="onFileSelected($event)"
+              (dismissed)="closeFileAutocomplete()"
+            />
+          </div>
+        }
         @if (autocomplete.effortSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-effort-autocomplete
