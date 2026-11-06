@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.util.coRunCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mu.KLogging
@@ -52,38 +53,67 @@ class CaseSummaryService(
         events: List<CaseEvent>,
     ) {
         val transcript = buildTranscript(case.summary, events)
-        if (transcript == null) {
-            logger.debug { "[CaseSummary] No text messages for case ${case.id}, skipping" }
-            return
+        when (transcript) {
+            null -> logger.debug { "[CaseSummary] No text messages for case ${case.id}, skipping" }
+            else -> summarize(case, events, transcript)
         }
+    }
 
+    private suspend fun summarize(
+        case: Case,
+        events: List<CaseEvent>,
+        transcript: String,
+    ) {
+        // The lookups hit the database: keep them off the caller's thread.
+        val target = withContext(Dispatchers.IO) { findModelAndProvider(case) }
+        val summary = target?.let { (model, provider) -> generateSummary(transcript, case.id, model, provider) }
+        if (summary != null) {
+            store(case, summary, countUserMessages(events))
+        }
+    }
+
+    /** The default model of the case namespace and its provider, or null (logged) when either is missing. */
+    private fun findModelAndProvider(case: Case): Pair<AiModel, AiProvider>? {
         val model = aiModelService.findAiModel(case.namespaceId)
-        if (model == null) {
-            logger.debug { "[CaseSummary] No default model in namespace ${case.namespaceId}, skipping case ${case.id}" }
-            return
-        }
-        val provider = runCatching { aiProviderService.getById(model.aiProviderId) }.getOrNull()
-        if (provider == null) {
-            logger.warn { "[CaseSummary] Provider ${model.aiProviderId} not found, skipping case ${case.id}" }
-            return
-        }
-
-        val summary = generateSummary(transcript, case.id, model, provider) ?: return
-        val userMessageCount = countUserMessages(events)
-
-        // Reload right before saving so that fields changed while the LLM call was in flight (status,
-        // title, a deletion) are not overwritten. A case that no longer exists is not brought back.
-        val fresh = caseRepository.findByIds(setOf(case.id)).firstOrNull()
-        if (fresh == null) {
-            logger.debug { "[CaseSummary] Case ${case.id} no longer exists, summary dropped" }
-            return
-        }
-        val updated =
-            caseRepository.saveChange(fresh) {
-                it.copy(summary = summary, summaryMessageCount = userMessageCount)
+        val provider = model?.let { coRunCatching { aiProviderService.getById(it.aiProviderId) }.getOrNull() }
+        return when {
+            model == null -> {
+                logger.debug { "[CaseSummary] No default model in namespace ${case.namespaceId}, skipping case ${case.id}" }
+                null
             }
-        logger.info { "[CaseSummary] Case ${case.id} summarized (${summary.length} chars, $userMessageCount user messages)" }
-        caseListUpdateBroadcaster.publishCaseUpdated(updated.namespaceId)
+
+            provider == null -> {
+                logger.warn { "[CaseSummary] Provider ${model.aiProviderId} not found, skipping case ${case.id}" }
+                null
+            }
+
+            else -> model to provider
+        }
+    }
+
+    private suspend fun store(
+        case: Case,
+        summary: String,
+        userMessageCount: Int,
+    ) {
+        withContext(Dispatchers.IO) {
+            // Reload right before saving so that fields changed while the LLM call was in flight (status,
+            // title, a deletion) are not overwritten. A case that no longer exists is not brought back.
+            val fresh = caseRepository.findByIds(setOf(case.id)).firstOrNull()
+            when (fresh) {
+                null -> logger.debug { "[CaseSummary] Case ${case.id} no longer exists, summary dropped" }
+                else -> {
+                    val updated =
+                        caseRepository.saveChange(fresh) {
+                            it.copy(summary = summary, summaryMessageCount = userMessageCount)
+                        }
+                    logger.info {
+                        "[CaseSummary] Case ${case.id} summarized (${summary.length} chars, $userMessageCount user messages)"
+                    }
+                    caseListUpdateBroadcaster.publishCaseUpdated(updated.namespaceId)
+                }
+            }
+        }
     }
 
     private suspend fun generateSummary(
@@ -107,10 +137,10 @@ class CaseSummaryService(
             Summary:
             """.trimIndent()
 
-        return runCatching {
-            val chatClient = chatClientProvider.getChatClient(model.forUtilityCall(), provider, caseId.toString())
+        return coRunCatching {
             withContext(Dispatchers.IO) {
-                chatClient
+                chatClientProvider
+                    .getChatClient(model.forUtilityCall(), provider, caseId.toString())
                     .prompt(Prompt(UserMessage(prompt)))
                     .call()
                     .content()

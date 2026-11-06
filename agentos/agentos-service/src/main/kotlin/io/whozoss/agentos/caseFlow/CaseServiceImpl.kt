@@ -48,6 +48,7 @@ import io.whozoss.agentos.usage.UsageOutcome
 import io.whozoss.agentos.usage.UsageRecord
 import io.whozoss.agentos.usage.UsageRecordService
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.util.coRunCatching
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
@@ -1334,22 +1335,32 @@ class CaseServiceImpl(
         case: Case,
         events: List<CaseEvent>,
     ) {
-        val summaryService = caseSummaryService ?: return
-        if (!caseConfig.summaryEnabled || case.parentCaseId != null) return
-        if (events.none { it is AgentFinishedEvent }) return
-        val newUserMessages = CaseSummaryService.countUserMessages(events) - (case.summaryMessageCount ?: 0)
-        if (case.summary != null && newUserMessages < SUMMARY_REFRESH_USER_MESSAGES) return
-        if (!summariesInFlight.add(case.id)) return
-
-        scope.launch(LogContext.mdcContext(LogContext.CASE_ID to case.id, LogContext.NAMESPACE_ID to case.namespaceId)) {
-            try {
-                runCatching { summaryService.summarizeCase(case, events) }
-                    .onFailure { e -> logger.error(e) { "[CaseSummary] Failed for case ${case.id}" } }
-            } finally {
-                summariesInFlight.remove(case.id)
+        val summaryService = caseSummaryService
+        // The in-flight claim comes last: it must only be taken when a generation is really launched.
+        if (summaryService != null && isSummaryDue(case, events) && summariesInFlight.add(case.id)) {
+            scope.launch(LogContext.mdcContext(LogContext.CASE_ID to case.id, LogContext.NAMESPACE_ID to case.namespaceId)) {
+                try {
+                    coRunCatching { summaryService.summarizeCase(case, events) }
+                        .onFailure { e -> logger.error(e) { "[CaseSummary] Failed for case ${case.id}" } }
+                } finally {
+                    summariesInFlight.remove(case.id)
+                }
             }
         }
     }
+
+    private fun isSummaryDue(
+        case: Case,
+        events: List<CaseEvent>,
+    ): Boolean =
+        when {
+            !caseConfig.summaryEnabled || case.parentCaseId != null -> false
+            events.none { it is AgentFinishedEvent } -> false
+            case.summary == null -> true
+            else ->
+                CaseSummaryService.countUserMessages(events) - (case.summaryMessageCount ?: 0) >=
+                    SUMMARY_REFRESH_USER_MESSAGES
+        }
 
     companion object : KLogging() {
         /** User messages after which an existing case summary is refreshed. */
