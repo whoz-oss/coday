@@ -4,7 +4,6 @@ import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.stereotype.Component
 
@@ -31,14 +30,10 @@ import org.springframework.stereotype.Component
  * was never effective for the NULL-arm lookups (Neo4j indexes do not seek on `IS NULL`)
  * and is now superseded by the `tripleKey` index.
  *
- * Active for both `neo4j` and `embedded-neo4j` persistence modes — exactly the modes
- * for which a Neo4j Driver bean is provisioned (`{@code Neo4jPersistenceConfiguration}`).
+ * Always registered: every supported persistence mode (`embedded-neo4j`, `neo4j`) runs on a
+ * Neo4j engine, so a Driver bean is always provisioned.
  */
 @Component
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
-)
 class IntegrationConfigSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {

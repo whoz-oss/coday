@@ -8,16 +8,27 @@ Selected via `agentos.persistence.mode` / `AGENTOS_PERSISTENCE_MODE`:
 |---|---|---|
 | `embedded-neo4j` | Local single-user. **Default.** | No — in-process engine, Bolt on `localhost:7688` |
 | `neo4j` | Multi-user server deployment | Yes — standalone server on `localhost:7687` |
-| `in-memory` | Ephemeral / testing only (deprecated) | No |
+
+These are the only two modes. The value is bound to the `PersistenceMode` enum, so an unknown
+value fails the Spring binding at startup rather than silently disabling beans. The legacy
+`in-memory` mode was removed together with the `InMemory*Repository` Spring beans.
 
 `embedded-neo4j` stores data under `<agentos.persistence.data-dir>/neo4j/` (default: `data/neo4j/`).
 Port is configurable via `agentos.persistence.embedded-bolt-port`; `application-embedded-neo4j.yml` sets `spring.neo4j.uri` automatically.
 
 ## Spring Configuration Wiring
 
-`Neo4jPersistenceConfiguration` is active for both `neo4j` and `embedded-neo4j` modes. It enables
+`Neo4jPersistenceConfiguration` is always active: both modes run on a live Neo4j engine and need
+exactly the same beans, so the configuration carries no condition. It enables
 `@EnableNeo4jRepositories` scanning on `io.whozoss.agentos.persistence.neo4j` and declares one `@Bean`
 per entity type, wrapping the Spring Data `Neo4jRepository` in a domain-facing `EntityRepository`.
+The same applies to the schema initialisers and to the Neo4j-backed services
+(`Neo4jChildLinkService`, `PermissionServiceImpl`, `CaseReadServiceImpl`, ...).
+
+The only mode-dependent decision is whether to start the in-process engine: that is carried by the
+single `@ConditionalOnProperty(havingValue = "embedded-neo4j")` on `EmbeddedNeo4jConfiguration`,
+which provisions the `Driver` bean. In `neo4j` mode the `Driver` comes from Spring Boot
+auto-configuration instead.
 
 ## Node / Domain Mapping Pattern
 
