@@ -225,7 +225,7 @@ class AgentSimpleUnitSpec :
             // so the current agent's LLM knows who said what in a multi-agent conversation.
             val promptMessages = capturedPrompt.captured.instructions
             val userMessages = promptMessages.filterIsInstance<UserMessage>()
-            val otherAgentMsg = userMessages.firstOrNull { it.text.contains("""<agent name="OtherAgent">""") }
+            val otherAgentMsg = userMessages.firstOrNull { it.text.orEmpty().contains("""<agent name="OtherAgent">""") }
             otherAgentMsg shouldNotBe null
             otherAgentMsg!!.text shouldContain "Other agent's response"
             otherAgentMsg.text shouldContain "</agent>"
@@ -346,7 +346,7 @@ class AgentSimpleUnitSpec :
             val userMessages = promptMessages.filterIsInstance<UserMessage>()
             // Expect at least 2 UserMessages: the context injection + the actual message
             (userMessages.size >= 2) shouldBe true
-            val contextMsg = userMessages.firstOrNull { it.text.contains("<session-context>") }
+            val contextMsg = userMessages.firstOrNull { it.text.orEmpty().contains("<session-context>") }
             contextMsg shouldNotBe null
             contextMsg!!.text shouldContain "pageType: project"
             contextMsg.text shouldContain "entityId: 42"
@@ -354,7 +354,7 @@ class AgentSimpleUnitSpec :
             // The context message must immediately precede the user message
             val contextIndex = promptMessages.indexOf(contextMsg)
             val userMsgIndex = promptMessages.indexOfFirst {
-                it is UserMessage && it.text.contains("<user name=\"User One\">") && it.text.contains("help me")
+                it is UserMessage && it.text.orEmpty().contains("<user name=\"User One\">") && it.text.orEmpty().contains("help me")
             }
             (contextIndex + 1) shouldBe userMsgIndex
         }
@@ -398,7 +398,7 @@ class AgentSimpleUnitSpec :
 
             val promptMessages = capturedPrompt.captured.instructions
             val contextMsg = promptMessages.filterIsInstance<UserMessage>()
-                .firstOrNull { it.text.contains("<session-context>") }
+                .firstOrNull { it.text.orEmpty().contains("<session-context>") }
             // No context injection: the last user message has no sessionContext
             contextMsg.shouldBeNull()
         }
@@ -420,7 +420,7 @@ class AgentSimpleUnitSpec :
 
             val promptMessages = capturedPrompt.captured.instructions
             val contextMsg = promptMessages.filterIsInstance<UserMessage>()
-                .firstOrNull { it.text.contains("<session-context>") }
+                .firstOrNull { it.text.orEmpty().contains("<session-context>") }
             contextMsg.shouldBeNull()
         }
 

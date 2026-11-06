@@ -1,7 +1,7 @@
 package io.whozoss.agentos.exchange
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -226,7 +226,7 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             val patterns = captureConfig(service(properties)).get("extraDenyPatterns")
 
             patterns.isArray shouldBe true
-            patterns.map { it.asText() } shouldBe listOf(".git", "*.bak", "internal-*")
+            patterns.values().map { it.asText() } shouldBe listOf(".git", "*.bak", "internal-*")
         }
 
         "extraDenyPatterns denies git metadata by default" {
@@ -237,14 +237,14 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             val patterns = captureConfig(service()).get("extraDenyPatterns")
 
             patterns.isArray shouldBe true
-            patterns.map { it.asText() } shouldBe listOf(".git")
+            patterns.values().map { it.asText() } shouldBe listOf(".git")
         }
 
         "a configured deny-list adds to the built-in git protection rather than replacing it" {
             // An instance hardening the list for its own conventions must not silently reopen `.git`.
             val properties = ExchangeToolsConfigProperties(extraDenyPatterns = listOf("*.bak"))
 
-            val patterns = captureConfig(service(properties)).get("extraDenyPatterns").map { it.asText() }
+            val patterns = captureConfig(service(properties)).get("extraDenyPatterns").values().map { it.asText() }
 
             patterns shouldContain ".git"
         }
@@ -254,7 +254,7 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             val properties = ExchangeToolsConfigProperties(extraDenyPatterns = listOf(".git", "*.bak"))
 
             val patterns =
-                captureConfig(service(properties, reservedEntries = reserved)).get("extraDenyPatterns").map { it.asText() }
+                captureConfig(service(properties, reservedEntries = reserved)).get("extraDenyPatterns").values().map { it.asText() }
 
             patterns shouldBe listOf(".cache-owned", ".git", "*.bak")
         }

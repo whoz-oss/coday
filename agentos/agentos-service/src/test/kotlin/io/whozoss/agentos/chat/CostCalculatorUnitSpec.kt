@@ -10,26 +10,89 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.usage.LlmUsage
-import org.springframework.ai.anthropic.api.AnthropicApi
+import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.metadata.ChatResponseMetadata
+import org.springframework.ai.chat.metadata.DefaultUsage
 import org.springframework.ai.chat.metadata.Usage
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
-import org.springframework.ai.openai.api.OpenAiApi
 import java.util.UUID
+
+/** Provider prompt-cache counts, as carried by Spring AI's [DefaultUsage]. */
+private data class Cache(
+    val read: Long? = null,
+    val write: Long? = null,
+)
+
+/** Anthropic: `input_tokens` excludes the cache; reads and writes are reported separately. */
+private fun anthropicCache(
+    read: Long = 0,
+    write: Long = 0,
+) = Cache(read = read, write = write)
+
+/** OpenAI: `prompt_tokens` includes the cached tokens; there is no cache-write count. */
+private fun openAiCache(cached: Long = 0) = Cache(read = cached.takeIf { it > 0 })
+
+/**
+ * Wraps the counts in the Spring AI [Usage] + [ChatResponse] structure that [CostCalculator.extract]
+ * expects. A `null` [cache] means "no provider usage" (no native usage object).
+ */
+private fun chatResponse(
+    promptTokens: Int,
+    completionTokens: Int,
+    cache: Cache? = null,
+): ChatResponse =
+    chatResponse(
+        DefaultUsage(
+            promptTokens,
+            completionTokens,
+            promptTokens + completionTokens,
+            cache?.let {
+                Any()
+            },
+            cache?.read,
+            cache?.write,
+        ),
+    )
+
+private fun chatResponse(usage: Usage?): ChatResponse {
+    val metadata = ChatResponseMetadata.builder().apply { usage?.let { usage(it) } }.build()
+    return ChatResponse(listOf(Generation(AssistantMessage(""))), metadata)
+}
+
+private fun modelWithPricing(
+    inputRate: Double? = null,
+    outputRate: Double? = null,
+    cacheReadRate: Double? = null,
+    cacheWriteRate: Double? = null,
+): AiModel {
+    val pricing =
+        if (inputRate != null || outputRate != null || cacheReadRate != null || cacheWriteRate != null) {
+            ModelPricing(
+                inputMTokens = inputRate,
+                outputMTokens = outputRate,
+                cacheRead = cacheReadRate,
+                cacheWrite = cacheWriteRate,
+            )
+        } else {
+            null
+        }
+    return AiModel(
+        metadata = EntityMetadata(id = UUID.randomUUID()),
+        aiProviderId = UUID.randomUUID(),
+        apiModelName = "test-model",
+        pricing = pricing,
+    )
+}
 
 /**
  * Unit tests for [CostCalculator].
  *
- * Provider-native usage objects use the real [AnthropicApi.Usage] and [OpenAiApi.Usage]
- * classes (available on the test classpath as transitive dependencies of
- * spring-ai-starter-model-anthropic / spring-ai-starter-model-openai). This verifies
- * the actual method names and return types used by [CostCalculator] via reflection,
- * making the tests sensitive to any API change in the Spring AI provider JARs.
+ * Usages are built as Spring AI [DefaultUsage] instances carrying the prompt-cache counts,
+ * exactly as `AnthropicChatModel` and `OpenAiChatModel` (Spring AI 2.x) emit them.
  *
  * An anti-fallback assertion is included for each provider: cache-token values are
- * asserted to be non-zero when the native object carries them. These assertions fail
- * if reflection silently falls back to the zero-triple.
+ * asserted to be non-zero when the usage carries them.
  *
  * Key invariants verified:
  * - Anthropic: inputTokens already excludes cache — no subtraction.
@@ -40,158 +103,32 @@ import java.util.UUID
 class CostCalculatorUnitSpec :
     StringSpec({
 
-        beforeEach { CostCalculator.resetWarnings() }
-
-        // -------------------------------------------------------------------------
-        // Helpers
-        // -------------------------------------------------------------------------
-
-        fun modelWithPricing(
-            inputRate: Double? = null,
-            outputRate: Double? = null,
-            cacheReadRate: Double? = null,
-            cacheWriteRate: Double? = null,
-        ): AiModel {
-            val pricing =
-                if (inputRate != null || outputRate != null || cacheReadRate != null || cacheWriteRate != null) {
-                    ModelPricing(
-                        inputMTokens = inputRate,
-                        outputMTokens = outputRate,
-                        cacheRead = cacheReadRate,
-                        cacheWrite = cacheWriteRate,
-                    )
-                } else {
-                    null
-                }
-            return AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                aiProviderId = UUID.randomUUID(),
-                apiModelName = "test-model",
-                pricing = pricing,
-            )
-        }
-
-        /**
-         * Wraps a provider-native usage object in the Spring AI [Usage] + [ChatResponse]
-         * structure that [CostCalculator.extract] expects.
-         */
-        fun makeChatResponse(
-            promptTokens: Int,
-            completionTokens: Int,
-            totalTokens: Int = promptTokens + completionTokens,
-            nativeUsage: Any? = null,
-        ): ChatResponse {
-            val usage =
-                object : Usage {
-                    override fun getPromptTokens() = promptTokens
-
-                    override fun getCompletionTokens() = completionTokens
-
-                    override fun getTotalTokens() = totalTokens
-
-                    override fun getNativeUsage(): Any? = nativeUsage
-                }
-            val metadata = ChatResponseMetadata.builder().usage(usage).build()
-            return ChatResponse(
-                listOf(
-                    Generation(
-                        org.springframework.ai.chat.messages
-                            .AssistantMessage(""),
-                    ),
-                ),
-                metadata,
-            )
-        }
-
-        /**
-         * Builds a real [AnthropicApi.Usage] instance.
-         * Using the actual class verifies that [CostCalculator]'s reflection calls
-         * match the true method names on the resolved JAR.
-         */
-        fun anthropicNative(
-            inputTokens: Int,
-            outputTokens: Int = 0,
-            cacheCreationInputTokens: Int = 0,
-            cacheReadInputTokens: Int = 0,
-        ): AnthropicApi.Usage =
-            AnthropicApi.Usage(
-                inputTokens,
-                outputTokens,
-                cacheCreationInputTokens,
-                cacheReadInputTokens,
-            )
-
-        /**
-         * Builds a real [OpenAiApi.Usage] instance.
-         * Using the actual class verifies that [CostCalculator]'s reflection calls
-         * match the true method names on the resolved JAR.
-         *
-         * IMPORTANT — Java record component order (Kotlin does not support named args on Java records):
-         *   OpenAiApi.Usage(completionTokens, promptTokens, totalTokens, promptTokensDetails, completionTokenDetails)
-         *   OpenAiApi.Usage.PromptTokensDetails(audioTokens, cachedTokens)
-         *
-         * Verified from Spring AI source: models/spring-ai-openai/.../OpenAiApi.java, branch 1.1.x.
-         */
-        fun openAiNative(
-            promptTokens: Int,
-            completionTokens: Int = 0,
-            cachedTokens: Int = 0,
-        ): OpenAiApi.Usage {
-            val details =
-                if (cachedTokens > 0) {
-                    // PromptTokensDetails(audioTokens, cachedTokens) — audio first, cached second
-                    OpenAiApi.Usage.PromptTokensDetails(0, cachedTokens)
-                } else {
-                    null
-                }
-            // Usage(completionTokens, promptTokens, totalTokens, promptTokensDetails, completionTokenDetails)
-            return OpenAiApi.Usage(
-                completionTokens,
-                promptTokens,
-                promptTokens + completionTokens,
-                details,
-                null,
-            )
-        }
-
-        // -------------------------------------------------------------------------
         "cache-only Anthropic metadata is retained when generic counters are zero" {
-            val native = anthropicNative(inputTokens = 0, cacheReadInputTokens = 100, cacheCreationInputTokens = 0)
-            val response = makeChatResponse(promptTokens = 0, completionTokens = 0, nativeUsage = native)
+            val response = chatResponse(promptTokens = 0, completionTokens = 0, cache = anthropicCache(read = 100))
             val usage = CostCalculator.extract(response, AiApiType.Anthropic, modelWithPricing())
             usage.cacheReadTokens shouldBe 100L
         }
 
+        // -------------------------------------------------------------------------
         // Anti-fallback guards
         // -------------------------------------------------------------------------
 
-        "Anthropic anti-fallback: cache tokens are non-zero when native object carries them" {
-            // If reflection falls back to Triple(0,0,0), cacheReadTokens and cacheWriteTokens
-            // would both be 0 even though the native object carries real values.
-            // This test fails on fallback, making the silent-fallback problem visible.
-            val native = anthropicNative(inputTokens = 800, cacheReadInputTokens = 200, cacheCreationInputTokens = 100)
-            val response = makeChatResponse(promptTokens = 800, completionTokens = 150, nativeUsage = native)
-            val model = modelWithPricing(inputRate = 3.0)
+        "Anthropic anti-fallback: cache tokens are non-zero when the usage carries them" {
+            val response = chatResponse(promptTokens = 800, completionTokens = 150, cache = anthropicCache(read = 200, write = 100))
 
-            val usage = CostCalculator.extract(response, AiApiType.Anthropic, model)
+            val usage = CostCalculator.extract(response, AiApiType.Anthropic, modelWithPricing(inputRate = 3.0))
 
             usage.cacheReadTokens shouldBe 200L
             usage.cacheWriteTokens shouldBe 100L
         }
 
         "OpenAI anti-fallback: inputTokens is subtracted and cacheReadTokens is non-zero" {
-            // If reflection falls back to Triple(0,0,0):
-            //   - inputTokens would equal promptTokens (1000, no subtraction)
-            //   - cacheReadTokens would be 0
-            // Both assertions below fail on fallback.
-            val native = openAiNative(promptTokens = 1000, completionTokens = 200, cachedTokens = 300)
-            val response = makeChatResponse(promptTokens = 1000, completionTokens = 200, nativeUsage = native)
-            val model = modelWithPricing(inputRate = 2.5)
+            val response = chatResponse(promptTokens = 1000, completionTokens = 200, cache = openAiCache(cached = 300))
 
-            val usage = CostCalculator.extract(response, AiApiType.OpenAI, model)
+            val usage = CostCalculator.extract(response, AiApiType.OpenAI, modelWithPricing(inputRate = 2.5))
 
-            usage.inputTokens shouldBe 700L // 1000 - 300: fails if fallback returns 1000
-            usage.cacheReadTokens shouldBe 300L // fails if fallback returns 0
+            usage.inputTokens shouldBe 700L // 1000 - 300
+            usage.cacheReadTokens shouldBe 300L
         }
 
         // -------------------------------------------------------------------------
@@ -199,8 +136,7 @@ class CostCalculatorUnitSpec :
         // -------------------------------------------------------------------------
 
         "Anthropic: inputTokens excludes cache — no subtraction applied" {
-            val native = anthropicNative(inputTokens = 800, cacheReadInputTokens = 200, cacheCreationInputTokens = 100)
-            val response = makeChatResponse(promptTokens = 800, completionTokens = 150, nativeUsage = native)
+            val response = chatResponse(promptTokens = 800, completionTokens = 150, cache = anthropicCache(read = 200, write = 100))
             val model = modelWithPricing(inputRate = 3.0, outputRate = 15.0, cacheReadRate = 0.3, cacheWriteRate = 3.75)
 
             val usage = CostCalculator.extract(response, AiApiType.Anthropic, model)
@@ -213,15 +149,8 @@ class CostCalculatorUnitSpec :
         }
 
         "Anthropic with cache read and write: cost is correct" {
-            val native = anthropicNative(inputTokens = 800, cacheReadInputTokens = 200, cacheCreationInputTokens = 100)
-            val response = makeChatResponse(promptTokens = 800, completionTokens = 150, nativeUsage = native)
-            val model =
-                modelWithPricing(
-                    inputRate = 3.0,
-                    outputRate = 15.0,
-                    cacheReadRate = 0.3,
-                    cacheWriteRate = 3.75,
-                )
+            val response = chatResponse(promptTokens = 800, completionTokens = 150, cache = anthropicCache(read = 200, write = 100))
+            val model = modelWithPricing(inputRate = 3.0, outputRate = 15.0, cacheReadRate = 0.3, cacheWriteRate = 3.75)
 
             val usage = CostCalculator.extract(response, AiApiType.Anthropic, model)
 
@@ -234,11 +163,9 @@ class CostCalculatorUnitSpec :
         }
 
         "Anthropic without cache: cache tokens are zero" {
-            val native = anthropicNative(inputTokens = 500)
-            val response = makeChatResponse(promptTokens = 500, completionTokens = 100, nativeUsage = native)
-            val model = modelWithPricing(inputRate = 3.0, outputRate = 15.0)
+            val response = chatResponse(promptTokens = 500, completionTokens = 100, cache = anthropicCache())
 
-            val usage = CostCalculator.extract(response, AiApiType.Anthropic, model)
+            val usage = CostCalculator.extract(response, AiApiType.Anthropic, modelWithPricing(inputRate = 3.0, outputRate = 15.0))
 
             usage.cacheReadTokens shouldBe 0L
             usage.cacheWriteTokens shouldBe 0L
@@ -249,8 +176,7 @@ class CostCalculatorUnitSpec :
         // -------------------------------------------------------------------------
 
         "OpenAI: inputTokens is promptTokens minus cachedTokens (no double-counting)" {
-            val native = openAiNative(promptTokens = 1000, completionTokens = 200, cachedTokens = 300)
-            val response = makeChatResponse(promptTokens = 1000, completionTokens = 200, nativeUsage = native)
+            val response = chatResponse(promptTokens = 1000, completionTokens = 200, cache = openAiCache(cached = 300))
             val model = modelWithPricing(inputRate = 2.5, outputRate = 10.0, cacheReadRate = 1.25)
 
             val usage = CostCalculator.extract(response, AiApiType.OpenAI, model)
@@ -262,14 +188,8 @@ class CostCalculatorUnitSpec :
         }
 
         "OpenAI with cached tokens: cost does not double-count cached tokens" {
-            val native = openAiNative(promptTokens = 1000, completionTokens = 200, cachedTokens = 300)
-            val response = makeChatResponse(promptTokens = 1000, completionTokens = 200, nativeUsage = native)
-            val model =
-                modelWithPricing(
-                    inputRate = 2.5,
-                    outputRate = 10.0,
-                    cacheReadRate = 1.25,
-                )
+            val response = chatResponse(promptTokens = 1000, completionTokens = 200, cache = openAiCache(cached = 300))
+            val model = modelWithPricing(inputRate = 2.5, outputRate = 10.0, cacheReadRate = 1.25)
 
             val usage = CostCalculator.extract(response, AiApiType.OpenAI, model)
 
@@ -288,24 +208,29 @@ class CostCalculatorUnitSpec :
         }
 
         "OpenAI without cached tokens: inputTokens equals promptTokens" {
-            val native = openAiNative(promptTokens = 500, completionTokens = 100)
-            val response = makeChatResponse(promptTokens = 500, completionTokens = 100, nativeUsage = native)
-            val model = modelWithPricing(inputRate = 2.5, outputRate = 10.0)
+            val response = chatResponse(promptTokens = 500, completionTokens = 100, cache = openAiCache())
 
-            val usage = CostCalculator.extract(response, AiApiType.OpenAI, model)
+            val usage = CostCalculator.extract(response, AiApiType.OpenAI, modelWithPricing(inputRate = 2.5, outputRate = 10.0))
 
             usage.inputTokens shouldBe 500L
             usage.cacheReadTokens shouldBe 0L
         }
 
         "OpenAI: max(0, promptTokens - cachedTokens) guards against negative inputTokens" {
-            val native = openAiNative(promptTokens = 100, completionTokens = 50, cachedTokens = 200)
-            val response = makeChatResponse(promptTokens = 100, completionTokens = 50, nativeUsage = native)
-            val model = modelWithPricing(inputRate = 2.5)
+            val response = chatResponse(promptTokens = 100, completionTokens = 50, cache = openAiCache(cached = 200))
 
-            val usage = CostCalculator.extract(response, AiApiType.OpenAI, model)
+            val usage = CostCalculator.extract(response, AiApiType.OpenAI, modelWithPricing(inputRate = 2.5))
 
             usage.inputTokens shouldBe 0L // floored at 0, not -100
+        }
+
+        "vLLM follows the OpenAI convention" {
+            val response = chatResponse(promptTokens = 1000, completionTokens = 200, cache = openAiCache(cached = 300))
+
+            val usage = CostCalculator.extract(response, AiApiType.vLLM, modelWithPricing(inputRate = 2.5))
+
+            usage.inputTokens shouldBe 700L
+            usage.cacheReadTokens shouldBe 300L
         }
 
         // -------------------------------------------------------------------------
@@ -313,11 +238,9 @@ class CostCalculatorUnitSpec :
         // -------------------------------------------------------------------------
 
         "model without any pricing: estimatedCostUsd is null" {
-            val native = anthropicNative(inputTokens = 500)
-            val response = makeChatResponse(promptTokens = 500, completionTokens = 100, nativeUsage = native)
-            val model = modelWithPricing() // all rates null
+            val response = chatResponse(promptTokens = 500, completionTokens = 100, cache = anthropicCache())
 
-            val usage = CostCalculator.extract(response, AiApiType.Anthropic, model)
+            val usage = CostCalculator.extract(response, AiApiType.Anthropic, modelWithPricing())
 
             usage.estimatedCostUsd.shouldBeNull()
             usage.inputTokens shouldBe 500L
@@ -325,11 +248,9 @@ class CostCalculatorUnitSpec :
         }
 
         "model without pricing: estimatedCostUsd is null not 0.0 — null means pricing unknown" {
-            val native = openAiNative(promptTokens = 300, completionTokens = 60)
-            val response = makeChatResponse(promptTokens = 300, completionTokens = 60, nativeUsage = native)
-            val model = modelWithPricing()
+            val response = chatResponse(promptTokens = 300, completionTokens = 60, cache = openAiCache())
 
-            val usage = CostCalculator.extract(response, AiApiType.OpenAI, model)
+            val usage = CostCalculator.extract(response, AiApiType.OpenAI, modelWithPricing())
 
             usage.estimatedCostUsd shouldBe null
         }
@@ -339,68 +260,35 @@ class CostCalculatorUnitSpec :
         // -------------------------------------------------------------------------
 
         "response with no usage metadata returns LlmUsage.ZERO" {
-            // ChatResponseMetadata.builder().build() returns null for usage.
-            // No pricing configured to keep the ZERO comparison unambiguous.
-            val metadata = ChatResponseMetadata.builder().build()
-            val response =
-                ChatResponse(
-                    listOf(
-                        Generation(
-                            org.springframework.ai.chat.messages
-                                .AssistantMessage(""),
-                        ),
-                    ),
-                    metadata,
-                )
-            val model = modelWithPricing()
-
-            val usage = CostCalculator.extract(response, AiApiType.Anthropic, model)
+            val usage = CostCalculator.extract(chatResponse(usage = null), AiApiType.Anthropic, modelWithPricing())
 
             usage shouldBe LlmUsage.ZERO
         }
 
-        "response with all-null token counts returns LlmUsage.ZERO" {
-            val zeroUsage =
-                object : Usage {
-                    override fun getPromptTokens(): Int? = null
-
-                    override fun getCompletionTokens(): Int? = null
-
-                    override fun getTotalTokens(): Int? = null
-
-                    override fun getNativeUsage(): Any? = null
-                }
-            val metadata = ChatResponseMetadata.builder().usage(zeroUsage).build()
-            val response =
-                ChatResponse(
-                    listOf(
-                        Generation(
-                            org.springframework.ai.chat.messages
-                                .AssistantMessage(""),
-                        ),
-                    ),
-                    metadata,
-                )
-            val model = modelWithPricing()
-
-            val result = CostCalculator.extract(response, AiApiType.Anthropic, model)
+        "response with all-zero token counts and no provider usage returns LlmUsage.ZERO" {
+            val result = CostCalculator.extract(chatResponse(DefaultUsage(0, 0, 0)), AiApiType.Anthropic, modelWithPricing())
 
             result shouldBe LlmUsage.ZERO
+        }
+
+        "usage without a provider usage object is unknown cost, not a zero-input estimate" {
+            val response = chatResponse(promptTokens = 500, completionTokens = 100, cache = null)
+
+            val usage = CostCalculator.extract(response, AiApiType.OpenAI, modelWithPricing(inputRate = 2.5, outputRate = 10.0))
+
+            usage.estimatedCostUsd shouldBe null
+            usage.outputTokens shouldBe 100L
         }
 
         // -------------------------------------------------------------------------
         // Unsupported providers (Gemini, Ollama) — cost must be null even with pricing
         // -------------------------------------------------------------------------
 
-        "Gemini with pricing configured: estimatedCostUsd is null (input tokens not extractable)" {
-            // Gemini does not expose cache-token details via reflection.
-            // The generic Usage fields give us outputTokens and totalTokens, but input
-            // is unavailable. A partial cost (input = 0) would be a silent undercount,
-            // so we return null instead.
-            val response = makeChatResponse(promptTokens = 500, completionTokens = 200, nativeUsage = null)
-            val model = modelWithPricing(inputRate = 0.075, outputRate = 0.30)
+        "Gemini with pricing configured: estimatedCostUsd is null (input tokens not normalisable)" {
+            // A partial cost (input = 0) would be a silent undercount, so null is returned instead.
+            val response = chatResponse(promptTokens = 500, completionTokens = 200, cache = Cache())
 
-            val usage = CostCalculator.extract(response, AiApiType.Gemini, model)
+            val usage = CostCalculator.extract(response, AiApiType.Gemini, modelWithPricing(inputRate = 0.075, outputRate = 0.30))
 
             usage.estimatedCostUsd shouldBe null
             // Token counts available from generic Usage fields are still recorded
@@ -408,11 +296,10 @@ class CostCalculatorUnitSpec :
             usage.totalTokens shouldBe 700L
         }
 
-        "Ollama with pricing configured: estimatedCostUsd is null (input tokens not extractable)" {
-            val response = makeChatResponse(promptTokens = 300, completionTokens = 100, nativeUsage = null)
-            val model = modelWithPricing(inputRate = 0.1, outputRate = 0.2)
+        "Ollama with pricing configured: estimatedCostUsd is null (input tokens not normalisable)" {
+            val response = chatResponse(promptTokens = 300, completionTokens = 100, cache = Cache())
 
-            val usage = CostCalculator.extract(response, AiApiType.Ollama, model)
+            val usage = CostCalculator.extract(response, AiApiType.Ollama, modelWithPricing(inputRate = 0.1, outputRate = 0.2))
 
             usage.estimatedCostUsd shouldBe null
             usage.outputTokens shouldBe 100L
@@ -420,10 +307,9 @@ class CostCalculatorUnitSpec :
         }
 
         "Gemini without pricing: estimatedCostUsd is null" {
-            val response = makeChatResponse(promptTokens = 100, completionTokens = 50, nativeUsage = null)
-            val model = modelWithPricing() // all rates null
+            val response = chatResponse(promptTokens = 100, completionTokens = 50)
 
-            val usage = CostCalculator.extract(response, AiApiType.Gemini, model)
+            val usage = CostCalculator.extract(response, AiApiType.Gemini, modelWithPricing())
 
             usage.estimatedCostUsd shouldBe null
         }

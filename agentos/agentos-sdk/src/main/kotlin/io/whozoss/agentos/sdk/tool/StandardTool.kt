@@ -1,8 +1,10 @@
 package io.whozoss.agentos.sdk.tool
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool.Companion.objectMapper
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.module.kotlin.KotlinModule
 
 interface StandardTool<T> {
     val name: String
@@ -185,6 +187,15 @@ interface StandardTool<T> {
     ): EnrichmentResult = EnrichmentResult(success = true)
 
     companion object {
-        private val objectMapper = jacksonObjectMapper()
+        /**
+         * Tool arguments come from the LLM: an unknown (misnamed) property must be rejected so the error goes
+         * back to the model, not silently dropped. Jackson 3 turned FAIL_ON_UNKNOWN_PROPERTIES off by default.
+         */
+        private val objectMapper: JsonMapper =
+            JsonMapper
+                .builder()
+                .addModule(KotlinModule.Builder().build())
+                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .build()
     }
 }

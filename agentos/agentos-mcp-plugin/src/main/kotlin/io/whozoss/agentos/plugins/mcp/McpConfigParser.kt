@@ -1,14 +1,14 @@
 package io.whozoss.agentos.plugins.mcp
 
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.cfg.CoercionAction
-import com.fasterxml.jackson.databind.cfg.CoercionInputShape
-import com.fasterxml.jackson.databind.type.LogicalType
-import com.fasterxml.jackson.module.kotlin.KotlinFeature
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import mu.KotlinLogging
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.cfg.CoercionAction
+import tools.jackson.databind.cfg.CoercionInputShape
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.type.LogicalType
+import tools.jackson.module.kotlin.KotlinFeature
+import tools.jackson.module.kotlin.KotlinModule
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -60,8 +60,8 @@ object McpConfigParser {
     private const val SHARED_ADDRESS_SECOND_BYTE_MASK = 0xC0
     private const val SHARED_ADDRESS_SECOND_BYTE_PREFIX = 0x40
 
-    private val mapper = ObjectMapper()
-        .registerModule(
+    private val mapper = JsonMapper.builder()
+        .addModule(
             KotlinModule.Builder()
                 // When Jackson coerces an empty string to null for a Map/Collection field,
                 // the Kotlin module would normally throw MissingKotlinParameterException
@@ -71,16 +71,17 @@ object McpConfigParser {
                 .enable(KotlinFeature.NullToEmptyMap)
                 .build()
         )
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
         // Treat empty strings as null for Maps and Collections so that a frontend
         // sending env="" or args="" degrades gracefully to the default empty value
         // rather than throwing InvalidFormatException.
-        .apply {
-            coercionConfigFor(LogicalType.Map)
-                .setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull)
-            coercionConfigFor(LogicalType.Collection)
-                .setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull)
+        .withCoercionConfig(LogicalType.Map) {
+            it.setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull)
         }
+        .withCoercionConfig(LogicalType.Collection) {
+            it.setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull)
+        }
+        .build()
 
     fun parse(config: JsonNode): McpServerConfig {
         val raw = mapper.treeToValue(config, McpServerConfig::class.java)

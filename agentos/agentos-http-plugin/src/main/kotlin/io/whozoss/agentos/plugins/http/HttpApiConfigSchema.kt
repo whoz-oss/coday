@@ -1,13 +1,13 @@
 package io.whozoss.agentos.plugins.http
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.plugins.http.config.ApiKeyPlacement
 import io.whozoss.agentos.plugins.http.config.AuthConfig
 import io.whozoss.agentos.plugins.http.config.HttpApiConfig
 import io.whozoss.agentos.plugins.http.config.ResponseFormat
 import io.whozoss.agentos.plugins.http.config.SpecConfig
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
 
 /**
  * JSON Schema of the `HTTP_API` integration config, rendered as a form by the admin UI.
@@ -29,8 +29,8 @@ object HttpApiConfigSchema {
         required = listOf("spec"),
         additionalProperties = false,
     ) {
-        set<JsonNode>("spec", specSchema())
-        set<JsonNode>(
+        set("spec", specSchema())
+        set(
             "baseUrl",
             property(
                 "string",
@@ -40,7 +40,7 @@ object HttpApiConfigSchema {
                     "defaults), which it overrides. Private and local addresses are refused.",
             ).put("format", "uri"),
         )
-        set<JsonNode>(
+        set(
             "includeTags",
             stringList(
                 title = "Include tags",
@@ -48,7 +48,7 @@ object HttpApiConfigSchema {
                     "Empty keeps every operation.",
             ),
         )
-        set<JsonNode>(
+        set(
             "includePathPrefixes",
             stringList(
                 title = "Include path prefixes",
@@ -56,7 +56,7 @@ object HttpApiConfigSchema {
                     "e.g. /api/v2/tickets. Empty keeps every operation.",
             ),
         )
-        set<JsonNode>(
+        set(
             "includeOperations",
             stringList(
                 title = "Include operations",
@@ -64,7 +64,7 @@ object HttpApiConfigSchema {
                     "(* and ? wildcards). Empty keeps every operation.",
             ),
         )
-        set<JsonNode>(
+        set(
             "excludeOperations",
             stringList(
                 title = "Exclude operations",
@@ -72,7 +72,7 @@ object HttpApiConfigSchema {
                     "(* and ? wildcards), e.g. *Bulk*.",
             ),
         )
-        set<JsonNode>(
+        set(
             "maxTools",
             property(
                 "integer",
@@ -84,9 +84,9 @@ object HttpApiConfigSchema {
                 .put("minimum", 1)
                 .put("maximum", HttpApiConfig.MAX_TOOLS_UPPER_BOUND),
         )
-        set<JsonNode>("operations", operationsSchema())
-        set<JsonNode>("auth", authSchema())
-        set<JsonNode>(
+        set("operations", operationsSchema())
+        set("auth", authSchema())
+        set(
             "defaultHeaders",
             property(
                 "object",
@@ -96,21 +96,21 @@ object HttpApiConfigSchema {
                     "header fails the document load). The agent cannot change them.",
             ).apply { putObject("additionalProperties").put("type", "string") },
         )
-        set<JsonNode>(
+        set(
             "responseFormat",
             responseFormat(
                 description = "How responses are rendered for the agent: compact JSON or YAML " +
                     "(more readable, fewer tokens).",
             ).put("default", HttpApiConfig.DEFAULT_RESPONSE_FORMAT.name.lowercase()),
         )
-        set<JsonNode>(
+        set(
             "maxResponseChars",
             maxResponseChars(
                 description = "Responses longer than this are cut with a marker telling the agent to narrow " +
                     "the request.",
             ).put("default", HttpApiConfig.DEFAULT_MAX_RESPONSE_CHARS),
         )
-        set<JsonNode>(
+        set(
             "timeoutSeconds",
             property(
                 "integer",
@@ -121,7 +121,7 @@ object HttpApiConfigSchema {
                 .put("default", HttpApiConfig.DEFAULT_TIMEOUT_SECONDS)
                 .put("minimum", 1),
         )
-        set<JsonNode>(
+        set(
             "maxConcurrentCalls",
             property(
                 "integer",
@@ -132,7 +132,7 @@ object HttpApiConfigSchema {
                 .put("default", HttpApiConfig.DEFAULT_MAX_CONCURRENT_CALLS)
                 .put("minimum", 1),
         )
-        set<JsonNode>(
+        set(
             "allowMutations",
             property(
                 "boolean",
@@ -151,7 +151,7 @@ object HttpApiConfigSchema {
                 "itself, or a file on the service host. Set exactly one of URL, inline and file.",
             additionalProperties = false,
         ) {
-            set<JsonNode>(
+            set(
                 "url",
                 property(
                     "string",
@@ -160,7 +160,7 @@ object HttpApiConfigSchema {
                         "authentication.",
                 ).put("format", "uri"),
             )
-            set<JsonNode>(
+            set(
                 "inline",
                 property(
                     "string",
@@ -169,7 +169,7 @@ object HttpApiConfigSchema {
                         "document.",
                 ).put(UI_WIDGET, TEXTAREA),
             )
-            set<JsonNode>(
+            set(
                 "file",
                 property(
                     "string",
@@ -179,7 +179,7 @@ object HttpApiConfigSchema {
                         "integration config (the service substitutes the token). Reloaded when the file changes.",
                 ),
             )
-            set<JsonNode>(
+            set(
                 "refreshMinutes",
                 property(
                     "integer",
@@ -190,7 +190,7 @@ object HttpApiConfigSchema {
                     .put("default", SpecConfig.DEFAULT_REFRESH_MINUTES)
                     .put("minimum", 0),
             )
-            set<JsonNode>(
+            set(
                 "maxBytes",
                 property(
                     "integer",
@@ -208,7 +208,7 @@ object HttpApiConfigSchema {
             title = "Per-operation settings",
             description = "Overrides for individual operations, identified by their operationId.",
         ).apply {
-            set<JsonNode>(
+            set(
                 "items",
                 objectSchema(
                     title = "Operation",
@@ -216,7 +216,7 @@ object HttpApiConfigSchema {
                     required = listOf("operationId"),
                     additionalProperties = false,
                 ) {
-                    set<JsonNode>(
+                    set(
                         "operationId",
                         property(
                             "string",
@@ -224,7 +224,7 @@ object HttpApiConfigSchema {
                             description = "The operationId of the OpenAPI operation these settings apply to.",
                         ),
                     )
-                    set<JsonNode>(
+                    set(
                         "description",
                         property(
                             "string",
@@ -233,7 +233,7 @@ object HttpApiConfigSchema {
                                 "when to use this operation.",
                         ).put(UI_WIDGET, TEXTAREA),
                     )
-                    set<JsonNode>(
+                    set(
                         "keepPaths",
                         stringList(
                             title = "Keep paths",
@@ -241,21 +241,21 @@ object HttpApiConfigSchema {
                                 "else is dropped. Takes precedence over ignore paths.",
                         ),
                     )
-                    set<JsonNode>(
+                    set(
                         "ignorePaths",
                         stringList(
                             title = "Ignore paths",
                             description = "Dot-notation paths removed from the response, e.g. ticket.custom_fields.",
                         ),
                     )
-                    set<JsonNode>(
+                    set(
                         "responseFormat",
                         responseFormat(
                             description = "How this operation's responses are rendered for the agent; defaults to " +
                                 "the integration setting.",
                         ),
                     )
-                    set<JsonNode>(
+                    set(
                         "maxResponseChars",
                         maxResponseChars(
                             description = "Cap on this operation's rendered response; defaults to the integration " +
@@ -275,7 +275,7 @@ object HttpApiConfigSchema {
                 "decides the placement and the name.",
             additionalProperties = false,
         ) {
-            set<JsonNode>(
+            set(
                 "apiKeyIn",
                 property(
                     "string",
@@ -285,7 +285,7 @@ object HttpApiConfigSchema {
                     .enumOf(ApiKeyPlacement.entries)
                     .put("default", AuthConfig.DEFAULT_API_KEY_PLACEMENT.name.lowercase()),
             )
-            set<JsonNode>(
+            set(
                 "apiKeyName",
                 property(
                     "string",

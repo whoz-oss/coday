@@ -1,6 +1,6 @@
 package io.whozoss.agentos.casePlugin
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -76,7 +76,7 @@ class CaseToolPluginUnitSpec :
         "the configSchema declares the read and the start parameters, and refuses anything else" {
             val schema = plugin().configSchema
 
-            schema["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder
+            schema["properties"].propertyNames().asSequence().toList() shouldContainExactlyInAnyOrder
                 listOf("includesTechnicalEvents", "agents", "deniedAgents")
             schema["additionalProperties"].asBoolean() shouldBe false
         }

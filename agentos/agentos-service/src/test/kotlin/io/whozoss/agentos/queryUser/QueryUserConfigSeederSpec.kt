@@ -62,7 +62,7 @@ class QueryUserConfigSeederSpec : StringSpec({
         created.captured.integrationType shouldBe QueryUserToolPlugin.INTEGRATION_TYPE
         created.captured.autoGrant shouldBe true
         created.captured.parameters.shouldNotBeNull()
-        created.captured.parameters!!["allowedQuestionTypes"].map { it.asText() } shouldBe
+        created.captured.parameters!!["allowedQuestionTypes"].values().map { it.asText() } shouldBe
             listOf("FREE_TEXT", "SINGLE_CHOICE", "OPEN_CHOICE")
     }
 

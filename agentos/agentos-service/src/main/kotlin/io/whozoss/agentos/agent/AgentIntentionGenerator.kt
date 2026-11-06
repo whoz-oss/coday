@@ -1,9 +1,6 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.core.json.JsonReadFeature
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.json.JsonMapper
+import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -12,7 +9,6 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptSuccess
 import io.whozoss.agentos.util.retryWithFallback
@@ -20,6 +16,11 @@ import io.whozoss.agentos.util.trimmedTextOrNull
 import mu.KLogging
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
+import tools.jackson.core.JacksonException
+import tools.jackson.core.json.JsonReadFeature
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
 @Service
@@ -35,23 +36,26 @@ class AgentIntentionGenerator {
         val toolNames = context.tools.map { it.name } + ANSWER_TOOL
         val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
 
-        val redirectableAgentNames: List<String> = context.tools
-            .filterIsInstance<RedirectTool>()
-            .flatMap { it.eligibleAgents }
-            .map { it.name }
-            .filter { it != agentName }
-            .distinct()
-        val redirectableAgents: String = redirectableAgentNames
-            .takeIf { it.isNotEmpty() }
-            ?.joinToString("\n") { "  - $it" }
-            ?: "  No other agent is available. Do not attempt a handoff — handle the request yourself or inform the user directly with `${ANSWER_TOOL}`."
+        val redirectableAgentNames: List<String> =
+            context.tools
+                .filterIsInstance<RedirectTool>()
+                .flatMap { it.eligibleAgents }
+                .map { it.name }
+                .filter { it != agentName }
+                .distinct()
+        val redirectableAgents: String =
+            redirectableAgentNames
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString("\n") { "  - $it" }
+                ?: "  No other agent is available. Do not attempt a handoff — handle the request yourself or inform the user directly with `${ANSWER_TOOL}`."
 
         val isFirstIteration = events.none { it is ToolRequestEvent }
         val lastToolResponse = events.filterIsInstance<ToolResponseEvent>().lastOrNull()
         val lastToolRequestIndex = events.indexOfLast { it is ToolRequestEvent }
-        val lastUserInteractionAfterLastToolCall = events
-            .drop(lastToolRequestIndex + 1)
-            .lastOrNull { event -> event is AnswerEvent || (event is MessageEvent && event.actor.role == ActorRole.USER) }
+        val lastUserInteractionAfterLastToolCall =
+            events
+                .drop(lastToolRequestIndex + 1)
+                .lastOrNull { event -> event is AnswerEvent || (event is MessageEvent && event.actor.role == ActorRole.USER) }
         val executionState =
             when {
                 isFirstIteration -> "No tools have been called yet. This is the first iteration."
@@ -143,7 +147,7 @@ $outputTemplate
 
 The field names `$INTENTION_FIELD` and `$TOOL_FIELD` are fixed, and the object must contain these two fields and no other. Do not reorder intention and tool name.
 Do not wrap in code blocks. Do not add any text before or after the JSON.
-        """.trimIndent()
+            """.trimIndent()
 
         logger.debug { "Intention generation: building messages for LLM" }
         logger.trace { "Intention prompt:\n$prompt" }
@@ -162,34 +166,44 @@ Do not wrap in code blocks. Do not add any text before or after the JSON.
                 )
             },
         ) { previousFailure ->
-            val retryHint = previousFailure?.let { (previousResponse, e) ->
-                buildString {
-                    if (previousResponse != null) {
-                        appendLine("You previously generated:")
-                        appendLine(previousResponse)
+            val retryHint =
+                previousFailure?.let { (previousResponse, e) ->
+                    buildString {
+                        if (previousResponse != null) {
+                            appendLine("You previously generated:")
+                            appendLine(previousResponse)
+                            appendLine()
+                        }
+                        when (e) {
+                            is AgentIntentionGenerationException.InvalidFormat -> {
+                                append(
+                                    """
+                                    This does not match the expected JSON output (${e.message}) that should correspond to the following:
+                                    $outputTemplate
+                                    """.trimIndent(),
+                                )
+                            }
+
+                            is AgentIntentionGenerationException.UnknownTool -> {
+                                append(
+                                    "This does not match the expected JSON output because the tool '${e.toolName}' does not exist. Valid tools are: ${toolNames.joinToString()}",
+                                )
+                            }
+                        }
                         appendLine()
-                    }
-                    when (e) {
-                        is AgentIntentionGenerationException.InvalidFormat ->
-                            append(
-                                """
-                                This does not match the expected JSON output (${e.message}) that should correspond to the following:
-                                $outputTemplate
-                                """.trimIndent()
-                            )
-                        is AgentIntentionGenerationException.UnknownTool ->
-                            append("This does not match the expected JSON output because the tool '${e.toolName}' does not exist. Valid tools are: ${toolNames.joinToString()}")
-                    }
-                    appendLine()
-                    append("Correct the error and output only the valid JSON object described above.")
-                }.trim()
-            }
+                        append("Correct the error and output only the valid JSON object described above.")
+                    }.trim()
+                }
             val fullPrompt = listOfNotNull(prompt, retryHint).joinToString("\n\n")
 
             try {
                 val messages = context.buildMessages(events, fullPrompt)
-                val response = context.chatClient.prompt(Prompt(messages)).call().content()
-                    ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
+                val response =
+                    context.chatClient
+                        .prompt(Prompt(messages))
+                        .call()
+                        .content()
+                        ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
 
                 logger.trace { "Intention generation response:\n$response" }
 
@@ -201,7 +215,7 @@ Do not wrap in code blocks. Do not add any text before or after the JSON.
                         agentId = context.agentId,
                         intention = intention,
                         toolName = toolName,
-                    )
+                    ),
                 )
             } catch (e: AgentIntentionGenerationException) {
                 logger.warn { "Intention generation attempt failed: ${e.message}" }
@@ -219,11 +233,13 @@ Do not wrap in code blocks. Do not add any text before or after the JSON.
         response: String,
         validToolNames: List<String>,
     ): Pair<String, String> {
-        val (intention, tool) = findLastDecision(response)
-            ?: throw AgentIntentionGenerationException.InvalidFormat(EXPECTED_FORMAT_MESSAGE, response)
+        val (intention, tool) =
+            findLastDecision(response)
+                ?: throw AgentIntentionGenerationException.InvalidFormat(EXPECTED_FORMAT_MESSAGE, response)
 
-        val toolName = validToolNames.firstOrNull { it.equals(tool, ignoreCase = true) }
-            ?: throw AgentIntentionGenerationException.UnknownTool(tool, response)
+        val toolName =
+            validToolNames.firstOrNull { it.equals(tool, ignoreCase = true) }
+                ?: throw AgentIntentionGenerationException.UnknownTool(tool, response)
 
         return intention to toolName
     }
@@ -241,8 +257,8 @@ Do not wrap in code blocks. Do not add any text before or after the JSON.
             val parser = MAPPER.createParser(response.substring(start))
             val node: JsonNode? =
                 try {
-                    MAPPER.readTree<JsonNode>(parser)
-                } catch (_: JsonProcessingException) {
+                    MAPPER.readTree(parser)
+                } catch (_: JacksonException) {
                     null
                 }
             val intention = node?.trimmedTextOrNull(INTENTION_FIELD)
@@ -250,7 +266,7 @@ Do not wrap in code blocks. Do not add any text before or after the JSON.
             start =
                 if (intention != null && tool != null) {
                     last = intention to tool
-                    response.indexOf('{', start + parser.currentLocation.charOffset.toInt())
+                    response.indexOf('{', start + parser.currentLocation().charOffset.toInt())
                 } else {
                     response.indexOf('{', start + 1)
                 }
@@ -267,7 +283,13 @@ Do not wrap in code blocks. Do not add any text before or after the JSON.
             "Expected a JSON object with string fields \"$INTENTION_FIELD\" and \"$TOOL_FIELD\""
 
         // The intention is a multi-line rationale, and raw line breaks inside a JSON string are invalid
-        // strict JSON: accept them.
-        private val MAPPER = JsonMapper.builder().enable(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS).build()
+        // strict JSON: accept them. The decision is read out of free text, so the prose that follows the
+        // object must not fail the read (Jackson 3 turned FAIL_ON_TRAILING_TOKENS on by default).
+        private val MAPPER =
+            JsonMapper
+                .builder()
+                .enable(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS)
+                .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .build()
     }
 }

@@ -1,9 +1,9 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
 
 /**
  * Converts a ref-inlined OpenAPI schema object into plain JSON Schema for an LLM tool.
@@ -31,7 +31,7 @@ object OpenApiSchemaConverter {
         val result = JsonNodeFactory.instance.objectNode()
         merged.properties()
             .filter { (key, _) -> key !in OAS_ONLY_KEYWORDS && key != NULLABLE }
-            .forEach { (key, value) -> result.set<JsonNode>(key, convertMember(key, value)) }
+            .forEach { (key, value) -> result.set(key, convertMember(key, value)) }
         removeReadOnlyProperties(result, merged.path("properties"))
         if (merged.path(NULLABLE).asBoolean(false)) applyNullable(result)
         return result
@@ -46,7 +46,7 @@ object OpenApiSchemaConverter {
 
     private fun convertProperties(properties: ObjectNode): ObjectNode {
         val result = JsonNodeFactory.instance.objectNode()
-        properties.properties().forEach { (name, property) -> result.set<JsonNode>(name, convert(property)) }
+        properties.properties().forEach { (name, property) -> result.set(name, convert(property)) }
         return result
     }
 
@@ -58,17 +58,17 @@ object OpenApiSchemaConverter {
         if (readOnly.isEmpty()) return
         (result.get("properties") as? ObjectNode)?.remove(readOnly)
         (result.get("required") as? ArrayNode)?.let { required ->
-            val kept = required.filter { it.asText() !in readOnly }
+            val kept = required.values().filter { it.asText() !in readOnly }
             required.removeAll()
-            required.addAll(kept)
+            kept.forEach { required.add(it) }
         }
     }
 
     private fun applyNullable(result: ObjectNode) {
         val type = result.get("type") ?: return
-        val types = if (type.isArray) type.map { it.asText() } else listOf(type.asText())
+        val types = if (type.isArray) type.values().map { it.asText() } else listOf(type.asText())
         val withNull = if (NULL in types) types else types + NULL
-        result.set<JsonNode>("type", JsonNodeFactory.instance.arrayNode().apply { withNull.forEach { add(it) } })
+        result.set("type", JsonNodeFactory.instance.arrayNode().apply { withNull.forEach { add(it) } })
     }
 
     /**
@@ -85,16 +85,16 @@ object OpenApiSchemaConverter {
         merged.put("type", "object")
         val properties = merged.withObject("properties")
         val required = linkedSetOf<String>()
-        members.map { mergeAllOf(it as ObjectNode) }.forEach { member ->
+        members.values().map { mergeAllOf(it as ObjectNode) }.forEach { member ->
             member.path("properties").properties().forEach { (name, property) ->
-                properties.set<JsonNode>(name, property)
+                properties.set(name, property)
             }
             member.path("required").forEach { required.add(it.asText()) }
         }
         merged.path("required").forEach { required.add(it.asText()) }
         if (required.isNotEmpty()) {
             val requiredNode = JsonNodeFactory.instance.arrayNode().apply { required.forEach { add(it) } }
-            merged.set<JsonNode>("required", requiredNode)
+            merged.set("required", requiredNode)
         }
         return merged
     }

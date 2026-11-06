@@ -1,7 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -25,7 +24,7 @@ import java.util.UUID
  * Each test builds its own service instance to guarantee full isolation.
  */
 class IntegrationConfigServiceImplSpec : StringSpec() {
-    private val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
+    private val mapper = jacksonObjectMapper()
 
     private fun newService(): IntegrationConfigServiceImpl =
         IntegrationConfigServiceImpl(

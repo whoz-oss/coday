@@ -1,7 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -18,7 +17,7 @@ import java.util.UUID
  */
 class IntegrationConfigMergeStrategySpec : StringSpec({
 
-    val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
+    val mapper = jacksonObjectMapper()
     val strategy = IntegrationConfigMergeStrategy()
     val nsId = UUID.randomUUID()
     val userId = UUID.randomUUID()
@@ -100,7 +99,7 @@ class IntegrationConfigMergeStrategySpec : StringSpec({
         val base = config("""{"a":1}""")
         val override = config("\"plain string\"")
         val result = strategy.merge(base, override)
-        result.parameters?.isTextual shouldBe true
+        result.parameters?.isString shouldBe true
         result.parameters?.asText() shouldBe "plain string"
     }
 

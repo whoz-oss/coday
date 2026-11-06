@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.spring)
     alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.springdoc.openapi)
     `maven-publish`
 }
@@ -75,6 +74,12 @@ publishing {
 }
 
 dependencies {
+    // BOMs as Gradle-native platforms. Spring AI and Spring Cloud come after Spring Boot;
+    // Gradle picks the highest version on conflicts across platforms.
+    implementation(platform(libs.spring.boot.platform))
+    implementation(platform(libs.spring.ai.bom))
+    implementation(platform(libs.spring.cloud.bom))
+
     // AgentOS SDK - Contains plugin interfaces
     // Coordinates are substituted by composite build (see settings.gradle.kts)
     api("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
@@ -99,7 +104,7 @@ dependencies {
     implementation(libs.jolokia.spring)
 
     // Spring Boot dependencies
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.security)
 
@@ -110,11 +115,6 @@ dependencies {
     // spring-cloud-starter-eureka-client registers the service on Eureka.
     // All three are always on the classpath but disabled by default via
     // application-test.yml (tests) and absent of 'whoz' profile (standalone).
-    // Spring Cloud BOM (Northfields 2025.0.x) — imported via platform() so Gradle's native
-    // dependency resolution picks up the managed versions. The spring-dependency-management
-    // plugin's dependencyManagement {} block does not reliably propagate BOM versions for
-    // artifacts without an explicit version in composite builds.
-    implementation(platform(libs.spring.cloud.bom))
     implementation(libs.spring.cloud.starter.config)
     // Eureka client.
     implementation(libs.spring.cloud.starter.eureka.client)
@@ -149,34 +149,14 @@ dependencies {
     // Neo4j persistence (Bolt-based, for server/container deployments)
     implementation(libs.spring.boot.starter.data.neo4j)
 
-    // Netty 4.2.x — explicit direct dependency to override Spring Boot BOM's 4.1.x pin.
-    // Neo4j 2026.x BoltServer requires MultiThreadIoEventLoopGroup and KQueueIoHandler
-    // which were introduced in Netty 4.2.x. Spring Boot BOM pins 4.1.x; without an
-    // explicit direct dependency IntelliJ's run configuration classpath uses 4.1.x
-    // regardless of resolutionStrategy rules (which only apply to Gradle's own resolution).
-    // Declaring these as direct runtime dependencies ensures IntelliJ picks up 4.2.x
-    // after a Gradle sync, with no VM option workarounds needed.
-    runtimeOnly("io.netty:netty-transport-classes-epoll:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-transport-classes-kqueue:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-common:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-buffer:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-transport:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-handler:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-codec:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-resolver:${libs.versions.netty.get()}")
-
     // Neo4j embedded engine (Community Edition)
     // Included as optional runtime — only activated when agentos.persistence.mode=embedded-neo4j.
     // The embedded engine starts an in-process Neo4j instance and exposes a Bolt port;
     // Spring Data Neo4j connects to it identically to a standalone server.
     // This eliminates the Docker prerequisite for local single-user deployments.
     //
-    // Exclusions:
-    // - slf4j-nop: Neo4j 2026.x pulls in a competing SLF4J binding that shadows Logback,
-    //   causing Spring Boot's LogbackLoggingSystem to fail with NOPLoggerFactory.
-    //   Spring Boot's own Logback binding (via spring-boot-starter-logging) must win.
-    // - neo4j-java-driver: Neo4j 2026.x requests driver 6.x; Spring Boot BOM pins 5.28.9.
-    //   We let Spring Boot win to avoid two versions of the driver on the classpath.
+    // Netty 4.2.x and neo4j-java-driver 6.x required by Neo4j 2026.x are both managed by
+    // the Spring Boot 4 BOM: no version override needed anymore.
     implementation(libs.neo4j.embedded) {
         // ── Logging ─────────────────────────────────────────────────────────────
         // Neo4j 2026.x ships two competing logging artifacts:
@@ -194,14 +174,12 @@ dependencies {
         // Also exclude any log4j→SLF4J bridges Neo4j may pull in transitively.
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j-impl")
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
-        // ── Driver ──────────────────────────────────────────────────────────────
-        // Neo4j 2026.x requests driver 6.x; Spring Boot BOM pins 5.28.9.
-        // Exclude to let Spring Boot's version win and avoid two driver versions.
-        exclude(group = "org.neo4j.driver", module = "neo4j-java-driver")
     }
 
     // Test dependencies
     testImplementation(libs.spring.boot.starter.test)
+    // Boot 4: MockMvc test auto-configuration (@AutoConfigureMockMvc) lives in its own starter.
+    testImplementation(libs.spring.boot.starter.webmvc.test)
     testImplementation(libs.spring.security.test)
     testImplementation(libs.mockk.spring)
     testImplementation(libs.kotlin.test.junit5)
@@ -210,14 +188,9 @@ dependencies {
     testImplementation(libs.testcontainers.neo4j)
     testImplementation(libs.testcontainers.junit)
     // kotlinx-coroutines-test — UnconfinedTestDispatcher / runTest for coroutine loop tests.
-    // The resolutionStrategy below pins it to kotlinCoroutines version (same as production coroutines).
     testImplementation(libs.kotlinx.coroutines.test)
 
     // Neo4j test harness: starts an embedded Neo4j in-process for testing.
-    // neo4j-harness 2026.x requires Netty 4.2.x (BoltServer uses 4.2 APIs).
-    // Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict resolution selects
-    // by default, causing NoClassDefFoundError at BoltServer startup.
-    // We force Netty 4.2.x on the testRuntimeClasspath via a constraint below.
     testImplementation(libs.neo4j.harness) {
         exclude(group = "org.slf4j")
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j-impl")
@@ -226,25 +199,6 @@ dependencies {
 
     // DevTools causes classloader issues with PF4J plugins - DISABLED
     // developmentOnly("org.springframework.boot:spring-boot-devtools")
-}
-
-dependencyManagement {
-    imports {
-        mavenBom(
-            libs.spring.ai.bom
-                .get()
-                .toString(),
-        )
-        // Spring Cloud BOM (Northfields / 2025.0.x) — manages all spring-cloud-* dependency versions.
-        // Northfields is the release train compatible with Spring Boot 3.5.x.
-        // Must come after spring-ai-bom so that Spring Cloud wins for shared
-        // artifacts (e.g. spring-cloud-commons) over any Spring AI transitive pulls.
-        mavenBom(
-            libs.spring.cloud.bom
-                .get()
-                .toString(),
-        )
-    }
 }
 
 kotlin {
@@ -283,59 +237,6 @@ tasks.withType<Test> {
 // classpath is assembled.
 configurations.all {
     exclude(group = "org.neo4j", module = "neo4j-slf4j-provider")
-}
-
-// Neo4j 2026.x (embedded engine) requires Netty 4.2.x for BoltServer.
-// Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict resolution selects by
-// default (lower version wins). Force the core Netty transport modules to 4.2.x
-// across ALL configurations — runtime, test, and IntelliJ's module classpath.
-//
-// Excluded from forcing:
-// - netty-tcnative-* : native TLS helper — only published for specific 4.1.x builds;
-//   forcing 4.2.x causes a resolution failure (artifact does not exist on Maven Central).
-//
-// Spring Boot's HTTP stack uses spring-boot-starter-web (Tomcat), NOT Reactor Netty.
-// Reactor Netty is not on this module's runtime classpath, so this upgrade is safe.
-val nettyCoreModules =
-    setOf(
-        "netty-common",
-        "netty-buffer",
-        "netty-transport",
-        "netty-transport-native-epoll",
-        "netty-transport-native-kqueue",
-        "netty-transport-native-unix-common",
-        // netty-transport-classes-* contain the platform-specific IoHandler classes
-        // (e.g. KQueueIoHandler, EpollIoHandler, MultiThreadIoEventLoopGroup)
-        // introduced in Netty 4.2.x. BoltServer references these at init time.
-        "netty-transport-classes-epoll",
-        "netty-transport-classes-kqueue",
-        "netty-handler",
-        "netty-handler-proxy",
-        "netty-codec",
-        "netty-codec-http",
-        "netty-codec-http2",
-        "netty-codec-socks",
-        "netty-resolver",
-        "netty-resolver-dns",
-    )
-configurations.all {
-    resolutionStrategy.eachDependency {
-        if (requested.group == "io.netty" && requested.name in nettyCoreModules) {
-            useVersion(libs.versions.netty.get())
-            because("neo4j-embedded 2026.x requires Netty 4.2.x; Spring Boot BOM pins 4.1.x")
-        }
-        // The file plugin's ReadAsImageTool compiles against kotlinx-coroutines from the version
-        // catalog, whose CoroutineDispatcher.limitedParallelism(parallelism, name) overload only
-        // exists since 1.9. Spring Boot's BOM downgrades coroutines to 1.8.x at runtime, so the
-        // compiled call resolves to a method missing at runtime -> NoSuchMethodError when the
-        // plugin is loaded under PF4J. Pin coroutines to the compiled-against version.
-        if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
-            useVersion(libs.versions.kotlinCoroutines.get())
-            because(
-                "code compiles against coroutines ${libs.versions.kotlinCoroutines.get()}; Spring Boot BOM downgrades it to 1.8.x at runtime",
-            )
-        }
-    }
 }
 
 // Configure the bootJar task

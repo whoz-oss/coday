@@ -132,8 +132,9 @@ private class NullSafeSpringExtensionFactory(
                 "Extension ${extensionClass.name} has no initialised plugin wrapper; " +
                     "instantiating via root ApplicationContext"
             }
-            manager.applicationContext.autowireCapableBeanFactory
-                .createBean(extensionClass)
+            // Spring 7 bounds createBean's type parameter to non-null; PF4J's create() leaves it unbounded.
+            @Suppress("UNCHECKED_CAST")
+            (manager.applicationContext.autowireCapableBeanFactory.createBean(extensionClass as Class<Any>) as T)
         } else {
             super.create(extensionClass)
         }

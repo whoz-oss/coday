@@ -1,19 +1,19 @@
 package io.whozoss.agentos.plugins.http.config
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.JsonMappingException
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.MapperFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.exc.InvalidNullException
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
-import com.fasterxml.jackson.databind.json.JsonMapper
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.module.kotlin.KotlinFeature
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.plugins.http.net.OutboundUrlPolicy
 import io.whozoss.agentos.plugins.http.net.UrlCheck
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.DatabindException
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.MapperFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.exc.InvalidNullException
+import tools.jackson.databind.exc.UnrecognizedPropertyException
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.module.kotlin.KotlinFeature
+import tools.jackson.module.kotlin.KotlinModule
 import java.net.URI
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -65,7 +65,7 @@ object HttpApiConfigParser {
             throw IllegalArgumentException("$PREFIX '${fieldPath(e)}' is required", e)
         } catch (e: UnrecognizedPropertyException) {
             throw IllegalArgumentException("$PREFIX unknown key '${fieldPath(e)}'", e)
-        } catch (e: JsonProcessingException) {
+        } catch (e: JacksonException) {
             throw IllegalArgumentException("$PREFIX ${e.originalMessage}", e)
         }
         return validate(raw, urlPolicy)
@@ -77,18 +77,20 @@ object HttpApiConfigParser {
             node.isObject -> JsonNodeFactory.instance.objectNode().apply {
                 node.properties()
                     .filterNot { (_, value) -> value.isBlankText() }
-                    .forEach { (key, value) -> set<JsonNode>(key, withoutBlankFields(value)) }
+                    .forEach { (key, value) -> set(key, withoutBlankFields(value)) }
             }
-            node.isArray -> JsonNodeFactory.instance.arrayNode().apply { node.forEach { add(withoutBlankFields(it)) } }
+            node.isArray -> JsonNodeFactory.instance.arrayNode().apply {
+                node.values().forEach { add(withoutBlankFields(it)) }
+            }
             else -> node
         }
 
     private fun JsonNode.isBlankText(): Boolean = isTextual && asText().isBlank()
 
     /** `operations[0].operationId` style path of the field a mapping error points at. */
-    private fun fieldPath(e: JsonMappingException): String =
+    private fun fieldPath(e: DatabindException): String =
         e.path
-            .joinToString("") { reference -> reference.fieldName?.let { ".$it" } ?: "[${reference.index}]" }
+            .joinToString("") { reference -> reference.propertyName?.let { ".$it" } ?: "[${reference.index}]" }
             .removePrefix(".")
 
     private fun validate(config: HttpApiConfig, urlPolicy: OutboundUrlPolicy): HttpApiConfig {

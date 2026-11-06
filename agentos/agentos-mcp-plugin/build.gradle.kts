@@ -80,7 +80,7 @@ dependencies {
 
     // MCP Java SDK - for connecting to local MCP servers via stdio
     implementation(libs.mcp.core)
-    implementation(libs.mcp.json.jackson2)
+    implementation(libs.mcp.json.jackson3)
 
     // Testing
     testImplementation("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")

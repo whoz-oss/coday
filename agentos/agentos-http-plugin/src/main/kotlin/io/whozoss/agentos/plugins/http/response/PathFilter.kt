@@ -1,9 +1,9 @@
 package io.whozoss.agentos.plugins.http.response
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
 
 /**
  * Filters a JSON response with dot-notation paths carrying `*` wildcards, the model of the Coday TypeScript
@@ -45,7 +45,7 @@ object PathFilter {
         val result = JsonNodeFactory.instance.objectNode()
         tailsByKey.forEach { (key, tails) ->
             val value = node.get(key) ?: return@forEach
-            result.set<JsonNode>(key, if (tails.any { it.isEmpty() }) value.deepCopy() else keep(value, tails))
+            result.set(key, if (tails.any { it.isEmpty() }) value.deepCopy() else keep(value, tails))
         }
         return result
     }
@@ -64,7 +64,7 @@ object PathFilter {
             val tail = path.drop(1)
             keysFor(head, result).forEach { key ->
                 val value = result.get(key) ?: return@forEach
-                if (tail.isEmpty()) result.remove(key) else result.set<JsonNode>(key, ignore(value, listOf(tail)))
+                if (tail.isEmpty()) result.remove(key) else result.set(key, ignore(value, listOf(tail)))
             }
         }
         return result

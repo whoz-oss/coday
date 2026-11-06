@@ -1,6 +1,6 @@
 package io.whozoss.agentos.workflow
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.casePlugin.CaseStarterOutput
 import io.whozoss.agentos.casePlugin.CaseStarterRefusal
 import io.whozoss.agentos.casePlugin.FreeCaseStarterForUserTool

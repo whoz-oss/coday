@@ -493,7 +493,7 @@ class AgentAdvancedContextSpec :
             val contextMsg =
                 messages
                     .filterIsInstance<UserMessage>()
-                    .firstOrNull { it.text.contains("<session-context>") }
+                    .firstOrNull { it.text.orEmpty().contains("<session-context>") }
             contextMsg.shouldBeNull()
         }
 
@@ -504,7 +504,7 @@ class AgentAdvancedContextSpec :
             val contextMsg =
                 messages
                     .filterIsInstance<UserMessage>()
-                    .firstOrNull { it.text.contains("<session-context>") }
+                    .firstOrNull { it.text.orEmpty().contains("<session-context>") }
             contextMsg.shouldBeNull()
         }
 

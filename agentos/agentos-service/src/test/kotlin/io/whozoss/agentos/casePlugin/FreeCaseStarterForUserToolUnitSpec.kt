@@ -1,7 +1,7 @@
 package io.whozoss.agentos.casePlugin
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.databind.JsonNode
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -173,11 +173,11 @@ class FreeCaseStarterForUserToolUnitSpec :
 
         "the input schema declares exactly the fields of Input, and requires the userId" {
             val everyField = FreeCaseStarterForUserTool.Input("agent", "prompt", "user", "title", emptyMap())
-            val inputFields = mapper.valueToTree<JsonNode>(everyField).fieldNames().asSequence().toList()
+            val inputFields = mapper.valueToTree<JsonNode>(everyField).propertyNames().asSequence().toList()
             val schema = mapper.readTree(tool().inputSchema)
 
-            schema["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder inputFields
-            schema["required"].map { it.asText() } shouldContainExactlyInAnyOrder listOf("agentName", "prompt", "userId")
+            schema["properties"].propertyNames().asSequence().toList() shouldContainExactlyInAnyOrder inputFields
+            schema["required"].values().map { it.asText() } shouldContainExactlyInAnyOrder listOf("agentName", "prompt", "userId")
         }
 
         "the schema is the same whatever the configuration: it is fixed by the tool" {

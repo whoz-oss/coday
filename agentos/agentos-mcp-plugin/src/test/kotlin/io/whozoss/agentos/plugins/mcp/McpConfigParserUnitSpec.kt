@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.mcp
 
 import ch.qos.logback.classic.Level
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty

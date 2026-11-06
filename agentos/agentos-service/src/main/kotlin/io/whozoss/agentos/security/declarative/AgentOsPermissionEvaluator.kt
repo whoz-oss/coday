@@ -5,7 +5,6 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import mu.KLogging
-import org.springframework.security.access.PermissionEvaluator
 import org.springframework.security.core.Authentication
 import org.springframework.stereotype.Component
 import java.io.Serializable
@@ -41,9 +40,9 @@ import java.util.UUID
 class AgentOsPermissionEvaluator(
     private val permissionService: PermissionService,
     private val ownershipResolver: OwnershipResolver,
-) : PermissionEvaluator {
+) : NullTolerantPermissionEvaluator() {
 
-    override fun hasPermission(
+    override fun checkPermission(
         authentication: Authentication?,
         targetId: Serializable?,
         targetType: String?,
@@ -106,14 +105,14 @@ class AgentOsPermissionEvaluator(
         return false
     }
 
-    override fun hasPermission(
+    override fun checkDomainObjectPermission(
         authentication: Authentication?,
         targetDomainObject: Any?,
         permission: Any?,
     ): Boolean {
         if (targetDomainObject !is Entity) return false
         val type = targetDomainObject::class.simpleName ?: return false
-        return hasPermission(authentication, targetDomainObject.id, type, permission)
+        return checkPermission(authentication, targetDomainObject.id, type, permission)
     }
 
     companion object : KLogging()

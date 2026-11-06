@@ -1,7 +1,7 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.RunIntegrationCustomizer
 import io.whozoss.agentos.agent.RunIntegrationCustomizerOrder

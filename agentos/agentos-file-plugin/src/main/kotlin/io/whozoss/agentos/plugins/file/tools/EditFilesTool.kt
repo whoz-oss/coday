@@ -2,7 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.EnrichmentResult
@@ -169,7 +169,7 @@ class EditFilesTool(
     ): EnrichmentResult {
         return try {
             val input = objectMapper.readTree(phaseParametersJson)
-            val paths = input.get("filePaths")?.map { it.asText() } ?: emptyList()
+            val paths = input.get("filePaths")?.values()?.map { it.asText() } ?: emptyList()
             if (paths.isEmpty()) {
                 return EnrichmentResult(success = false, errorMessage = "No file paths provided")
             }

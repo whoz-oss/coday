@@ -295,7 +295,7 @@ class OpenApiReaderUnitSpec : StringSpec({
         val doc = read("sample-3.1.json")
         val cursor = doc.operation(HttpMethod.GET, "/items").parameters.single()
         cursor.schema.get("type").isArray shouldBe true
-        cursor.schema.get("type").map { it.asText() } shouldBe listOf("string", "null")
+        cursor.schema.get("type").values().map { it.asText() } shouldBe listOf("string", "null")
     }
 
     "captures a JSON request body with its required flag" {
@@ -303,7 +303,7 @@ class OpenApiReaderUnitSpec : StringSpec({
         val create = doc.operation(HttpMethod.POST, "/pets").requestBody.shouldNotBeNull()
         create.mediaType shouldBe "application/json"
         create.required shouldBe true
-        create.schema.path("required").map { it.asText() } shouldBe listOf("name")
+        create.schema.path("required").values().map { it.asText() } shouldBe listOf("name")
         doc.operation(HttpMethod.PUT, "/pets/{petId}").requestBody.shouldNotBeNull().required shouldBe false
         doc.operation(HttpMethod.GET, "/pets").requestBody shouldBe null
     }

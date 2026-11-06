@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugin.filesystem
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 import io.whozoss.agentos.util.substituteJsonTokens
 
 /**

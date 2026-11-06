@@ -1,6 +1,6 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
@@ -96,7 +96,7 @@ class NamespaceGitController(
         val existing = integrationConfigService.findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE)
 
         val parameters =
-            objectMapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(
+            objectMapper.valueToTree<tools.jackson.databind.JsonNode>(
                 buildMap {
                     put(GitRepositoryIntegration.PARAM_REPOSITORY_URL, request.repositoryUrl.trim())
                     put(

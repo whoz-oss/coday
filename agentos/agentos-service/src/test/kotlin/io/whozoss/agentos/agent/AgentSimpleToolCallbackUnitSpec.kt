@@ -520,7 +520,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val imageUserMsg = promptMessages
                 .drop(toolResponseIdx + 1)
                 .filterIsInstance<UserMessage>()
-                .firstOrNull { it.text.contains("FILES__readAsImage") }
+                .firstOrNull { it.text.orEmpty().contains("FILES__readAsImage") }
             imageUserMsg shouldNotBe null
             imageUserMsg!!.text shouldContain "Attached"
             imageUserMsg.media shouldHaveSize 1
@@ -638,7 +638,9 @@ class AgentSimpleToolCallbackUnitSpec :
             val returned = returnedToLlm
             returned shouldNotBe null
             returned shouldContain "Error executing tool"
-            returned shouldContain "'kt'"
+            // The faulty field is what the model needs to fix its call. Jackson 3 no longer echoes the
+            // offending value (source redacted by default), so the field path is asserted instead.
+            returned shouldContain "fileTypes"
 
             // Request and response are paired and both reach the stream — master lost both.
             val toolRequest = events.filterIsInstance<ToolRequestEvent>().single()

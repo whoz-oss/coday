@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.http
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.NullNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.NullNode
 import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempfile

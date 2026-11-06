@@ -1,7 +1,6 @@
 package io.whozoss.agentos.caseEvent
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
@@ -12,7 +11,7 @@ import java.time.Instant
 import java.util.UUID
 
 class CaseEventNodeMapperDelegationSpec : StringSpec({
-    val mapper = CaseEventNodeMapper(MessageContentSerializer(jacksonObjectMapper().registerKotlinModule()))
+    val mapper = CaseEventNodeMapper(MessageContentSerializer(jacksonObjectMapper()))
     val namespaceId = UUID.randomUUID()
     val parentCaseId = UUID.randomUUID()
     val subCaseId = UUID.randomUUID()

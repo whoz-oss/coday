@@ -1,7 +1,6 @@
 package io.whozoss.agentos.security
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import org.springframework.http.HttpStatus
@@ -14,7 +13,7 @@ import java.util.Base64
 class AuthSecurityServiceUnitSpec : StringSpec({
     timeout = 5000
 
-    val objectMapper = ObjectMapper().registerKotlinModule()
+    val objectMapper = jacksonObjectMapper()
     val service = AuthSecurityService(objectMapper)
 
     afterEach {

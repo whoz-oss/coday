@@ -1,8 +1,8 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
 
 /** Generators of body schemas large enough to trip the [JsonSchemaBuilder] size guard. */
 object DeepSchemas {
@@ -11,7 +11,7 @@ object DeepSchemas {
     fun deepProperties(count: Int): ObjectNode {
         val root = JsonNodeFactory.instance.objectNode().put("type", "object")
         val props = root.putObject("properties")
-        repeat(count) { i -> props.set<JsonNode>("p$i", deepMember(i)) }
+        repeat(count) { i -> props.set("p$i", deepMember(i)) }
         return root
     }
 
@@ -27,9 +27,9 @@ object DeepSchemas {
         val level4 = JsonNodeFactory.instance.objectNode().put("type", "object").put("title", "Leaf$index")
         level4.putObject("properties").putObject("value").put("type", "string").put("description", "x".repeat(100))
         val level3 = JsonNodeFactory.instance.objectNode().put("type", "object")
-        level3.putObject("properties").set<JsonNode>("l4", level4)
+        level3.putObject("properties").set("l4", level4)
         val level2 = JsonNodeFactory.instance.objectNode().put("type", "object")
-        level2.putObject("properties").set<JsonNode>("l3", level3)
+        level2.putObject("properties").set("l3", level3)
         return level2
     }
 }

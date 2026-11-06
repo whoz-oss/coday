@@ -1,8 +1,8 @@
 package io.whozoss.agentos.prompt
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
@@ -46,7 +46,7 @@ class PromptControllerExportSpec : StringSpec({
     /** A YAML mapper mirroring the structural shape read by FilesystemPromptRepository's
      *  private PromptYamlModel — used only to assert the round-trip in this spec, without
      *  degrading the visibility of the production model. */
-    val readerMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
+    val readerMapper: ObjectMapper = YAMLMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     data class ParamRoundTrip(
         val name: String = "",

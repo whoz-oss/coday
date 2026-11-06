@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.http
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.BooleanNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.BooleanNode
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.StringSpec
@@ -47,13 +47,13 @@ class HttpApiConfigSchemaUnitSpec : StringSpec({
     }
 
     "requires only spec and refuses undeclared keys" {
-        schema.path("required").map { it.asText() } shouldBe listOf("spec")
+        schema.path("required").values().map { it.asText() } shouldBe listOf("spec")
         schema.path("additionalProperties") shouldBe BooleanNode.FALSE
         schema.path("properties").path("spec").path("additionalProperties") shouldBe BooleanNode.FALSE
         schema.path("properties").path("auth").path("additionalProperties") shouldBe BooleanNode.FALSE
         val operation = schema.path("properties").path("operations").path("items")
         operation.path("additionalProperties") shouldBe BooleanNode.FALSE
-        operation.path("required").map { it.asText() } shouldBe listOf("operationId")
+        operation.path("required").values().map { it.asText() } shouldBe listOf("operationId")
     }
 
     "schema defaults equal the Kotlin defaults" {

@@ -1,9 +1,9 @@
 package io.whozoss.agentos.plugins.http.openapi
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.JsonNodeFactory
+import tools.jackson.databind.node.ObjectNode
 
 /**
  * Inlines local `#/...` references of an OpenAPI document into a self-contained copy of a node.
@@ -47,13 +47,13 @@ class RefResolver(private val root: JsonNode) {
         val siblings = refNode.properties().filter { it.key != REF }
         if (siblings.isEmpty() || !resolved.isObject) return resolved
         val merged = (resolved as ObjectNode).deepCopy()
-        siblings.forEach { (key, value) -> merged.set<JsonNode>(key, inline(value, activeRefs)) }
+        siblings.forEach { (key, value) -> merged.set(key, inline(value, activeRefs)) }
         return merged
     }
 
     private fun copyObject(node: ObjectNode, activeRefs: List<String>): ObjectNode {
         val copy = JsonNodeFactory.instance.objectNode()
-        node.properties().forEach { (key, value) -> copy.set<JsonNode>(key, inline(value, activeRefs)) }
+        node.properties().forEach { (key, value) -> copy.set(key, inline(value, activeRefs)) }
         return copy
     }
 

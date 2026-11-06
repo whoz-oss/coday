@@ -1,6 +1,6 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -894,6 +894,7 @@ class AgentAdvancedSpec :
                 promptSlot.captured.instructions
                     .first()
                     .text
+                    .orEmpty()
             promptText shouldContain "Angular developers"
             // The old message must NOT appear: threshold was reached after the newest message alone
             (promptText.contains("old message from the start")) shouldBe false

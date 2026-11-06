@@ -1,6 +1,6 @@
 package io.whozoss.agentos.config
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository

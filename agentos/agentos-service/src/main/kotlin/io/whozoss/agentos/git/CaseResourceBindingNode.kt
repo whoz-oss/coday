@@ -1,8 +1,8 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.core.JacksonException
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.cfg.DateTimeFeature
+import tools.jackson.module.kotlin.jacksonMapperBuilder
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.data.annotation.CreatedBy
@@ -86,7 +86,7 @@ data class CaseResourceBindingNode(
 
     companion object : KLogging() {
         /** Settings and summaries are written and read here only. Dates as ISO-8601 text. */
-        private val MAPPER = jacksonObjectMapper().findAndRegisterModules().disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+        private val MAPPER = jacksonMapperBuilder().disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS).build()
 
         private inline fun <reified T> read(
             id: String,

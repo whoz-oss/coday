@@ -20,7 +20,7 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
@@ -95,7 +95,7 @@ class AiProviderApiKeyLogScanSpec : StringSpec() {
                 ).andExpect(status().isCreated)
                     .andReturn()
 
-                val createdId = com.fasterxml.jackson.databind.ObjectMapper()
+                val createdId = tools.jackson.databind.ObjectMapper()
                     .readTree(postResult.response.contentAsString)
                     .get("id")?.asText() ?: error("No id in response")
 

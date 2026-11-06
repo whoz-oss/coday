@@ -1,7 +1,6 @@
 package io.whozoss.agentos.reconciliation
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -25,7 +24,7 @@ import java.util.UUID
  */
 class ConfigMergeServiceSpec : StringSpec({
 
-    val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
+    val mapper = jacksonObjectMapper()
     val mergeStrategy = IntegrationConfigMergeStrategy()
 
     val NAMESPACE_ID = UUID.randomUUID()

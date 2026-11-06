@@ -1,8 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.actor.Actor
@@ -17,7 +16,7 @@ import java.util.UUID
 class CaseEventNodeMapperMessageSpec :
     StringSpec({
 
-        val mapper: ObjectMapper = jacksonObjectMapper().registerKotlinModule()
+        val mapper: ObjectMapper = jacksonObjectMapper()
         val nodeMapper = CaseEventNodeMapper(MessageContentSerializer(mapper))
 
         val userActor = Actor(id = "user-1", displayName = "Alice", role = ActorRole.USER)
