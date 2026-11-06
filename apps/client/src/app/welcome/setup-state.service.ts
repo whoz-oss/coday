@@ -1,6 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http'
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
-import { NamespaceControllerService, UserControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AiProvider,
+  AiProviderControllerService,
+  NamespaceControllerService,
+  UserControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { catchError, firstValueFrom, of, Subscription, timer } from 'rxjs'
 import { exhaustMap } from 'rxjs/operators'
 import { SetupApiService } from './setup-api.service'
@@ -22,6 +27,18 @@ export interface ProviderDraft {
   id: ProviderId
   enabled: boolean
   apiKey: string
+}
+
+/**
+ * A platform-level AI provider the user has no global key for (managed mode). The key is saved as a user-global provider of
+ * the same name, which AgentOS overlays on the platform one. `existingId` is set when the user already has a user-global
+ * provider of that name without a key: it is then updated instead of created.
+ */
+export interface UserKeyDraft {
+  name: string
+  apiType: AiProvider['apiType']
+  apiKey: string
+  existingId?: string
 }
 
 /**
@@ -91,6 +108,7 @@ export class SetupStateService {
   private readonly api = inject(SetupApiService)
   private readonly users = inject(UserControllerService)
   private readonly namespaces = inject(NamespaceControllerService)
+  private readonly aiProviders = inject(AiProviderControllerService)
   private readonly destroyRef = inject(DestroyRef)
 
   // --- server facts -------------------------------------------------------------------------------
@@ -117,12 +135,24 @@ export class SetupStateService {
   readonly busy = signal(false)
   readonly error = signal<string | null>(null)
 
+  // --- managed mode: the user's own keys for the platform providers -------------------------------
+  /** Platform providers the user has no global key for yet. Emptied once the keys are saved or skipped. */
+  readonly userKeys = signal<UserKeyDraft[]>([])
+  readonly userKeysChecked = signal(false)
+  private userKeysCheck: Promise<void> | null = null
+
   // --- derived ------------------------------------------------------------------------------------
   readonly emailValid = computed(() => EMAIL_PATTERN.test(this.email().trim()))
   readonly enabledProviders = computed(() => this.providers().filter((p) => p.enabled))
   readonly providersValid = computed(() => {
     const enabled = this.enabledProviders()
     return enabled.length > 0 && enabled.every((p) => p.apiKey.trim().length >= MIN_KEY_LENGTH)
+  })
+  readonly needsUserKeys = computed(() => this.userKeys().length > 0)
+  /** At least one key typed, and every typed key plausible: the ones left empty are simply not set. */
+  readonly userKeysValid = computed(() => {
+    const typed = this.userKeys().filter((k) => k.apiKey.trim().length > 0)
+    return typed.length > 0 && typed.every((k) => k.apiKey.trim().length >= MIN_KEY_LENGTH)
   })
   readonly folderValid = computed(() => this.folder().startsWith('/') || /^[A-Za-z]:[\\/]/.test(this.folder()))
   readonly stepIndex = computed(() => WIZARD_STEPS.indexOf(this.step()))
@@ -162,6 +192,8 @@ export class SetupStateService {
   readonly loadingReady = computed(() => {
     const s = this.status()?.steps
     if (!s || s.agentos.state !== 'done') return false
+    // Managed mode: the user is not handed over before the check of their own provider keys is done and settled.
+    if (this.status()?.mode === 'managed' && (!this.userKeysChecked() || this.needsUserKeys())) return false
     if (!s.factory) return true
     return s.factory.state === 'done' || s.factory.state === 'error' || this.factoryGraceElapsed()
   })
@@ -187,6 +219,7 @@ export class SetupStateService {
     if (this.mode() === 'loading' && status.steps.agentos.state === 'done' && !this.factoryGraceTimer) {
       this.factoryGraceTimer = setTimeout(() => this.factoryGraceElapsed.set(true), FACTORY_GRACE_MS)
     }
+    this.maybeCheckUserKeys()
   }
 
   // --- status -------------------------------------------------------------------------------------
@@ -237,6 +270,7 @@ export class SetupStateService {
       // loading page, which hands over to the app once AgentOS is up.
       this.mode.set('loading')
       this.step.set('progress')
+      this.maybeCheckUserKeys()
       return
     }
     // A preview of the wizard always starts at the first step, whatever an earlier apply did.
@@ -397,6 +431,86 @@ export class SetupStateService {
       return
     }
     await this.submitFolderAndApply()
+  }
+
+  // --- user keys (managed mode) ---------------------------------------------------------------------
+
+  /** Once AgentOS is up, on the loading page of a managed install (no wizard, so providers are the platform's). */
+  private maybeCheckUserKeys(): void {
+    const status = this.status()
+    if (this.mode() !== 'loading' || this.preview() || status?.mode !== 'managed') return
+    if (status.steps.agentos.state !== 'done') return
+    void this.checkUserKeys()
+  }
+
+  /** Idempotent: looks once for the platform providers the user has no global key for. Never blocks on a failure. */
+  checkUserKeys(): Promise<void> {
+    this.userKeysCheck ??= this.loadMissingUserKeys()
+    return this.userKeysCheck
+  }
+
+  private async loadMissingUserKeys(): Promise<void> {
+    try {
+      const [platform, mine] = await Promise.all([
+        firstValueFrom(this.aiProviders.listAiProvider('none')),
+        firstValueFrom(this.aiProviders.listAiProvider('none', 'me')),
+      ])
+      const owned = new Map(mine.map((p) => [p.name, p]))
+      this.userKeys.set(
+        platform
+          .filter((p) => !owned.get(p.name)?.apiKey)
+          .map((p) => ({ name: p.name, apiType: p.apiType, apiKey: '', existingId: owned.get(p.name)?.id }))
+      )
+    } catch (err) {
+      // The app stays usable: the keys can still be added from the AI providers page.
+      console.warn('Could not check the user keys of the platform providers', err)
+    } finally {
+      this.userKeysChecked.set(true)
+    }
+  }
+
+  setUserKey(name: string, apiKey: string): void {
+    this.userKeys.update((list) => list.map((k) => (k.name === name ? { ...k, apiKey } : k)))
+  }
+
+  skipUserKeys(): void {
+    this.error.set(null)
+    this.userKeys.set([])
+  }
+
+  /** Saves the typed keys as user-global providers. The ones that fail stay in the list with a message. */
+  async submitUserKeys(): Promise<void> {
+    if (!this.userKeysValid() || this.busy()) return
+    this.error.set(null)
+    this.busy.set(true)
+    try {
+      const me = await firstValueFrom(this.users.getMeUser())
+      if (!me.id) throw new Error('The current user has no id')
+      const failed: UserKeyDraft[] = []
+      for (const draft of this.userKeys()) {
+        const apiKey = draft.apiKey.trim()
+        if (!apiKey) continue
+        const provider: AiProvider = { name: draft.name, apiType: draft.apiType, apiKey, userId: me.id }
+        try {
+          await firstValueFrom(
+            draft.existingId
+              ? this.aiProviders.updateAiProvider(draft.existingId, provider)
+              : this.aiProviders.createAiProvider(provider)
+          )
+        } catch (err) {
+          console.warn(`Could not save the key of ${draft.name}`, err)
+          failed.push(draft)
+        }
+      }
+      this.userKeys.set(failed)
+      if (failed.length > 0) {
+        this.error.set(`Could not save the key of ${failed.map((k) => k.name).join(', ')}. Check it and try again.`)
+      }
+    } catch (err) {
+      this.error.set(errorMessage(err, 'Could not save your keys.'))
+    } finally {
+      this.busy.set(false)
+    }
   }
 
   private applyProviders(): ApplyProviderRequest[] {

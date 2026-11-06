@@ -1,0 +1,54 @@
+<section class="step">
+  <h2 class="step__title">Add your API keys</h2>
+  <p class="step__lead">
+    Your platform offers these AI providers and you have no key of your own for them yet. Paste a key for the ones you
+    want to use, the others can wait.
+  </p>
+
+  <ul class="keys" role="list" data-testid="user-keys">
+    @for (key of state.userKeys(); track key.name) {
+      <li>
+        <label class="field">
+          <span class="field__label">{{ key.name }}</span>
+          <input
+            class="field__input"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Paste your key"
+            [attr.data-testid]="'user-key-' + key.name"
+            [value]="key.apiKey"
+            [attr.aria-invalid]="keyTooShort(key.apiKey) ? 'true' : null"
+            (input)="onKey(key.name, $event)"
+          />
+          <span class="field__hint">Saved in your personal settings, used for you only.</span>
+        </label>
+      </li>
+    }
+  </ul>
+
+  @if (state.error()) {
+    <p class="step__error" role="alert">{{ state.error() }}</p>
+  }
+
+  <div class="step__actions">
+    <button
+      class="btn btn--ghost"
+      type="button"
+      data-testid="user-keys-skip"
+      [disabled]="state.busy()"
+      (click)="state.skipUserKeys()"
+    >
+      Skip for now
+    </button>
+    <button
+      class="btn btn--primary"
+      type="button"
+      data-testid="user-keys-save"
+      [disabled]="!state.userKeysValid() || state.busy()"
+      (click)="state.submitUserKeys()"
+    >
+      Save and continue
+    </button>
+  </div>
+</section>
