@@ -5,6 +5,7 @@ import { EmailStepComponent } from './steps/email-step.component'
 import { FolderStepComponent } from './steps/folder-step.component'
 import { ProgressStepComponent } from './steps/progress-step.component'
 import { ProvidersStepComponent } from './steps/providers-step.component'
+import { UserKeysStepComponent } from './steps/user-keys-step.component'
 
 const STEP_LABELS: Record<WizardStep, string> = {
   email: 'You',
@@ -19,7 +20,13 @@ const STEP_LABELS: Record<WizardStep, string> = {
  */
 @Component({
   selector: 'app-welcome',
-  imports: [EmailStepComponent, ProvidersStepComponent, FolderStepComponent, ProgressStepComponent],
+  imports: [
+    EmailStepComponent,
+    ProvidersStepComponent,
+    FolderStepComponent,
+    ProgressStepComponent,
+    UserKeysStepComponent,
+  ],
   templateUrl: './welcome.component.html',
   styleUrl: './welcome.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
