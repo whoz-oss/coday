@@ -102,7 +102,7 @@ class ConfigChangeService(
             val loaded = configPlanReader.load(caseId, questionId)
             val plan = loaded.plan
             requireRecipient(plan, caller)
-            if (request.expectedPlanHash != plan.planHash) throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
+            if (request.expectedPlanHash != plan.planHash) throw ConfigChangeConflictException(null, "PLAN_HASH_MISMATCH: the plan changed since it was displayed")
             requireState(stateOf(loaded, claimedByCaller = true), setOf(ConfigChangeState.OPEN))
             missingSecrets(plan, caller.id, request.secrets).takeIf { it.isNotEmpty() }?.let { missing ->
                 throw UnprocessableEntityException("MISSING_SECRET: ${missing.joinToString()}")
@@ -133,7 +133,7 @@ class ConfigChangeService(
         questionId: UUID,
         block: () -> T,
     ): T {
-        if (!claims.add(questionId)) throw ConflictException("IN_PROGRESS: this plan is already being applied or rejected")
+        if (!claims.add(questionId)) throw ConfigChangeConflictException(ConfigChangeState.IN_PROGRESS, "IN_PROGRESS: this plan is already being applied or rejected")
         return try {
             block()
         } finally {
@@ -412,14 +412,14 @@ class ConfigChangeService(
         plan: ConfigChangePlan,
         caller: User,
     ) {
-        if (caller.id != plan.recipientUserId) throw AccessDeniedException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
+        if (caller.id != plan.recipientUserId) throw ConfigChangeRecipientException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
     }
 
     private fun requireState(
         state: ConfigChangeState,
         allowed: Set<ConfigChangeState>,
     ) {
-        if (state !in allowed) throw ConflictException("${state.name}: this plan can no longer be applied or rejected")
+        if (state !in allowed) throw ConfigChangeConflictException(state, "${state.name}: this plan can no longer be applied or rejected")
     }
 
     private fun secretKey(
