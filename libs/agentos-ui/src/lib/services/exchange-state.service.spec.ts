@@ -7,7 +7,7 @@ import {
   ExchangeDirectoryListingCapabilityEnum,
   ExchangeFileEntryScopeEnum,
 } from '@whoz-oss/agentos-api-client'
-import { of, Subject, throwError } from 'rxjs'
+import { firstValueFrom, of, Subject, throwError } from 'rxjs'
 import { ExchangeStateService } from './exchange-state.service'
 import { CaseWorkspaceService } from './case-workspace.service'
 
@@ -90,6 +90,29 @@ describe('ExchangeStateService', () => {
 
       expect(result.success).toBe(false)
       expect(result.error).toBe('network down')
+    })
+  })
+
+  describe('getBlob (image preview)', () => {
+    it.each([
+      [ExchangeFileEntryScopeEnum.CASE, 'c-1'],
+      [ExchangeFileEntryScopeEnum.NAMESPACE, 'ns-1'],
+    ])('reads the bytes of a %s file through the download endpoint', async (scope, id) => {
+      init()
+      const blob = new Blob(['x'], { type: 'image/png' })
+      controller.downloadCaseFileExchange.mockReturnValue(of(blob))
+      controller.downloadNamespaceFileExchange.mockReturnValue(of(blob))
+      const result = await firstValueFrom(service.getBlob(scope, 'img/a.png'))
+      expect(result).toBe(blob)
+      const download =
+        scope === ExchangeFileEntryScopeEnum.CASE
+          ? controller.downloadCaseFileExchange
+          : controller.downloadNamespaceFileExchange
+      expect(download).toHaveBeenCalledWith(id, 'img/a.png')
+    })
+
+    it('fails without an active scope', async () => {
+      await expect(firstValueFrom(service.getBlob(ExchangeFileEntryScopeEnum.CASE, 'a.png'))).rejects.toThrow()
     })
   })
 

@@ -13,7 +13,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
-import { canViewFile } from '../../services/exchange-content.utils'
+import { canViewFile, ensureImageBlob, isImageFile } from '../../services/exchange-content.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerComponent } from '../exchange-drawer/exchange-drawer.component'
 
@@ -46,6 +46,8 @@ export class ExchangeShellComponent {
   // ── Current selection / viewer content ────────────────────────────────────────
   protected readonly selectedFile = signal<ExchangeFileRef | null>(null)
   protected readonly selectedContent = signal<string | null>(null)
+  /** Object URL of the previewed image; owned here so it can be revoked when the selection changes. */
+  protected readonly selectedImageUrl = signal<string | null>(null)
   protected readonly contentStatus = signal<'loading' | 'ready' | 'error'>('loading')
   protected readonly canViewSelected = signal<boolean>(true)
   protected readonly actionError = signal<string | null>(null)
@@ -66,6 +68,8 @@ export class ExchangeShellComponent {
   protected readonly environmentCaseId = signal<string | null>(null)
 
   constructor() {
+    // An object URL keeps its blob in memory until revoked.
+    this.destroyRef.onDestroy(() => this.revokeImageUrl())
     // The case view is rendered directly by the case-shell (not through a router-outlet with
     // `:namespaceId/cases/:caseId` path params), so the active case/namespace come through query
     // params (`?ns=..&case=..`), mirroring case-chat. Subscribing (not reading the snapshot once)
@@ -104,6 +108,7 @@ export class ExchangeShellComponent {
   protected onFileSelected(ref: ExchangeFileRef): void {
     this.selectedFile.set(ref)
     this.selectedContent.set(null)
+    this.revokeImageUrl()
     const file = this.findFile(ref)
     const viewable = file ? canViewFile(file) : false
     this.canViewSelected.set(viewable)
@@ -112,6 +117,10 @@ export class ExchangeShellComponent {
       return
     }
     this.contentStatus.set('loading')
+    if (isImageFile(ref.path)) {
+      this.loadImage(ref)
+      return
+    }
     this.state
       .getContent(ref.scope, ref.path)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -202,9 +211,39 @@ export class ExchangeShellComponent {
     this.clearSelection()
   }
 
+  /**
+   * Images cannot go through the text endpoint: fetch the raw bytes via the download endpoint and
+   * preview them from an object URL.
+   */
+  private loadImage(ref: ExchangeFileRef): void {
+    this.state
+      .getBlob(ref.scope, ref.path)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (blob) => {
+          if (!this.isStillSelected(ref)) return
+          const typed = ensureImageBlob(blob instanceof Blob ? blob : new Blob([blob]), ref.path)
+          this.revokeImageUrl()
+          this.selectedImageUrl.set(URL.createObjectURL(typed))
+          this.contentStatus.set('ready')
+        },
+        error: () => {
+          if (!this.isStillSelected(ref)) return
+          this.contentStatus.set('error')
+        },
+      })
+  }
+
+  private revokeImageUrl(): void {
+    const url = this.selectedImageUrl()
+    if (url) URL.revokeObjectURL(url)
+    this.selectedImageUrl.set(null)
+  }
+
   private clearSelection(): void {
     this.selectedFile.set(null)
     this.selectedContent.set(null)
+    this.revokeImageUrl()
     this.contentStatus.set('loading')
     this.canViewSelected.set(true)
   }

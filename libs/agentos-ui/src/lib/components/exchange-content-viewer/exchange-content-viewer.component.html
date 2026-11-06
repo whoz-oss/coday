@@ -22,6 +22,38 @@
       <ds-empty-state icon="error_outline" title="Couldn't load this file" hint="The content could not be retrieved.">
         <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
       </ds-empty-state>
+    } @else if (format() === 'image') {
+      @if (imageUrl(); as url) {
+        @if (imageFailed()) {
+          <ds-empty-state
+            icon="broken_image"
+            title="Preview not available"
+            hint="This image could not be displayed. Download it to view it."
+          >
+            <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
+          </ds-empty-state>
+        } @else {
+          <a
+            class="exchange-content-viewer__image-link"
+            [href]="url"
+            target="_blank"
+            rel="noopener"
+            title="Open original size"
+          >
+            <img
+              class="exchange-content-viewer__image"
+              [src]="url"
+              [alt]="filename()"
+              decoding="async"
+              (error)="onImageError()"
+            />
+          </a>
+        }
+      } @else {
+        <div class="exchange-content-viewer__center">
+          <ds-spinner size="md" label="Loading image" />
+        </div>
+      }
     } @else if (format() === 'markdown') {
       <div class="exchange-content-viewer__markdown" [innerHTML]="content() | agentosMarkdown"></div>
     } @else if (format() === 'html') {

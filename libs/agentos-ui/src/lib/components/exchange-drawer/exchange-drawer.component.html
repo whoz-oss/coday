@@ -3,6 +3,7 @@
     <agentos-exchange-content-viewer
       [file]="ref"
       [content]="selectedContent()"
+      [imageUrl]="imageUrl()"
       [status]="contentStatus()"
       [canView]="canViewSelected()"
       (closeRequested)="onViewerClose()"

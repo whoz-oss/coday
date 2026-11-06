@@ -79,6 +79,8 @@ export class ExchangeDrawerComponent {
   // ── Current selection / viewer ────────────────────────────────────────────────
   readonly activeFile = input<ExchangeFileRef | null>(null)
   readonly selectedContent = input<string | null>(null)
+  /** Object URL of the previewed image, when the selected file is one. */
+  readonly imageUrl = input<string | null>(null)
   readonly contentStatus = input<'loading' | 'ready' | 'error'>('loading')
   readonly canViewSelected = input<boolean>(true)
 
