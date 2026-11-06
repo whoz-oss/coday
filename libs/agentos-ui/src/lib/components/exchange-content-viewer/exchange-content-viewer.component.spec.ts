@@ -1,6 +1,36 @@
-import { TestBed } from '@angular/core/testing'
+import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { COPY_FEEDBACK_MS } from '../../services/clipboard.utils'
 import { ExchangeContentViewerComponent } from './exchange-content-viewer.component'
+
+describe('ExchangeContentViewerComponent copy relative path', () => {
+  afterEach(() => Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }))
+
+  it('copies the file path from the header, next to download, with feedback', fakeAsync(() => {
+    const writeText = jest.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    TestBed.configureTestingModule({ imports: [ExchangeContentViewerComponent] })
+    const fixture = TestBed.createComponent(ExchangeContentViewerComponent)
+    fixture.componentRef.setInput('file', { scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/api/guide.md' })
+    fixture.componentRef.setInput('status', 'ready')
+    fixture.componentRef.setInput('content', 'hi')
+    fixture.detectChanges()
+    const el = fixture.nativeElement as HTMLElement
+    const header = () => Array.from(el.querySelectorAll<HTMLButtonElement>('.exchange-content-viewer__header button'))
+    const copy = () => header().find((b) => b.title === 'Copy relative path' || b.title === 'Copied')!
+    expect(header().map((b) => b.title)).toEqual(['Back to files', 'Copy relative path', 'Download guide.md'])
+
+    copy().click()
+    tick(0)
+    fixture.detectChanges()
+    expect(writeText).toHaveBeenCalledWith('docs/api/guide.md')
+    expect(copy().title).toBe('Copied')
+    expect(el.querySelector('[aria-live="polite"]')?.textContent?.trim()).toBe('Path copied')
+    tick(COPY_FEEDBACK_MS)
+    fixture.detectChanges()
+    expect(copy().title).toBe('Copy relative path')
+  }))
+})
 
 describe('ExchangeContentViewerComponent images', () => {
   function setup(path: string, imageUrl: string | null) {

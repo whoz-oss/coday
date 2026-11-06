@@ -7,6 +7,7 @@
 }
 
 .exchange-content-viewer__header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -24,6 +25,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+// Announced by screen readers (aria-live) but never painted.
+.exchange-content-viewer__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .exchange-content-viewer__body {

@@ -113,6 +113,20 @@ describe('ExchangeDrawerComponent namespace filter', () => {
     expect(remove).toHaveBeenCalledWith({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/api/spec.yaml' })
   }))
 
+  it('offers copy relative path on filtered rows, copying the full path', fakeAsync(() => {
+    const writeText = jest.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { fixture, el, type } = setup()
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('spec')
+    el.querySelector<HTMLButtonElement>('agentos-exchange-item button[title="Copy relative path"]')!.click()
+    tick(0)
+    expect(writeText).toHaveBeenCalledWith('docs/api/spec.yaml')
+    tick(1500)
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+  }))
+
   it('says so when no file matches', fakeAsync(() => {
     const { fixture, el, type } = setup()
     fixture.componentRef.setInput('namespaceManifest', manifest)

@@ -13,6 +13,7 @@ import {
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
 import { detectFormat, reindentJson } from '../../services/exchange-content.utils'
+import { injectCopyFeedback } from '../../services/clipboard.utils'
 import { ExchangeFileRef } from '../../services/exchange-state.service'
 
 /**
@@ -92,5 +93,13 @@ export class ExchangeContentViewerComponent {
 
   protected onDownload(): void {
     this.downloadRequested.emit(this.file())
+  }
+
+  private readonly copyFeedback = injectCopyFeedback()
+  protected readonly copyState = this.copyFeedback.state
+
+  /** Copies the path relative to the scope root, as a file reference to paste elsewhere. */
+  protected onCopyPath(): void {
+    void this.copyFeedback.copy(this.file().path)
   }
 }

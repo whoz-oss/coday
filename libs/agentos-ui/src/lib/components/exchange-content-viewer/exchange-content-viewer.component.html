@@ -2,6 +2,15 @@
   <header class="exchange-content-viewer__header">
     <ds-icon-button #backButton icon="chevron_left" variant="default" title="Back to files" (action)="onClose()" />
     <span class="exchange-content-viewer__filename" [title]="filename()">{{ filename() }}</span>
+    <ds-icon-button
+      [icon]="copyState() === 'copied' ? 'check' : 'content_copy'"
+      variant="default"
+      [title]="copyState() === 'copied' ? 'Copied' : copyState() === 'failed' ? 'Copy failed' : 'Copy relative path'"
+      (action)="onCopyPath()"
+    />
+    <span class="exchange-content-viewer__sr-only" aria-live="polite">{{
+      copyState() === 'copied' ? 'Path copied' : ''
+    }}</span>
     <ds-icon-button icon="download" variant="default" [title]="'Download ' + filename()" (action)="onDownload()" />
   </header>
 
