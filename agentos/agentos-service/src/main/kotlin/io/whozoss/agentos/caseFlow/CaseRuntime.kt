@@ -659,6 +659,22 @@ class CaseRuntime(
             }
         }
         logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
+        // Name the cause for the user: without this event, the case only turns ERROR. Storing can fail,
+        // and that must not change the outcome.
+        runCatching {
+            storeAndEmitEvent(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = id,
+                    message =
+                        "The case stopped after reaching the maximum number of steps for one message " +
+                            "($maxIterations, agentos.limits.case-max-iterations).",
+                ),
+            )
+        }.onFailure { err ->
+            if (err is CancellationException) throw err
+            logger.error(err) { "[CaseRuntime $id] Could not store the maximum iterations warning" }
+        }
         return CaseStatus.ERROR
     }
 

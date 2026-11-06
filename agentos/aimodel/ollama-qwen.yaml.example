@@ -3,3 +3,6 @@ providerName: ollama
 description: "Qwen 3.5 9B via Ollama"
 alias: local
 temperature: 0.7
+# Recommended: the context window actually served (Ollama's num_ctx, not the model's architectural maximum).
+# Left unset here: without it the model gets no proactive context budget.
+# contextWindow: <tokens>

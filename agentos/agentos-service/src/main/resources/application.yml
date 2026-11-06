@@ -293,6 +293,14 @@ agentos:
     # confirmation on the first request, it does not disable the check.
     # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
     run-cost-threshold: ${AGENTOS_LIMITS_RUN_COST_THRESHOLD:2}
+    # Context budget of an agent invocation, as fractions of the usable window of its model
+    # (contextWindow - maxCompletionTokens; a model without contextWindow has no budget).
+    # threshold: the share at which the prompt counts as having reached its budget. target: the share
+    # the history is reduced to when it is compacted (ADR 002, not used yet).
+    # Must satisfy 0 < target < threshold <= 1.
+    # Override with env vars: AGENTOS_LIMITS_CONTEXT_COMPACTION_THRESHOLD / AGENTOS_LIMITS_CONTEXT_COMPACTION_TARGET
+    context-compaction-threshold: ${AGENTOS_LIMITS_CONTEXT_COMPACTION_THRESHOLD:0.8}
+    context-compaction-target: ${AGENTOS_LIMITS_CONTEXT_COMPACTION_TARGET:0.5}
   defaults:
     # Seconds a delegation waits without activity from its sub-case before stopping it.
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.

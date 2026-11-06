@@ -94,6 +94,24 @@ class CaseEventNodeMapperAgentLifecycleSpec :
             roundTripped.llmProvider shouldBe "anthropic"
             roundTripped.llmModel shouldBe "claude-sonnet-4-20250514"
             roundTripped.maxIterationsReached shouldBe null
+            roundTripped.contextWindowExceeded shouldBe null
+        }
+
+        "AgentFinishedEvent keeps the context window overflow flag, also through a soft delete" {
+            val original =
+                AgentFinishedEvent(
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    agentId = UUID.randomUUID(),
+                    agentName = "WorkerAgent",
+                    contextWindowExceeded = true,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+
+            (nodeMapper.toDomain(node) as AgentFinishedEvent).contextWindowExceeded shouldBe true
+            (nodeMapper.toDomain(nodeMapper.withRemoved(node, true)) as AgentFinishedEvent).contextWindowExceeded shouldBe true
+            (nodeMapper.toDomain(node) as AgentFinishedEvent).maxIterationsReached shouldBe null
         }
 
         "AgentFinishedEvent keeps the iteration limit it reached, also through a soft delete" {
