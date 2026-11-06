@@ -36,10 +36,11 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Shows, applies and rejects the configuration plans frozen by `AGENTOS_CONFIG__propose`.
  *
- * Every method runs inside the HTTP request of the user who called the endpoint. Reads go through
- * [ConfigReadService] with that user's rights; writes go through [ConfigWriter], i.e. through the
- * REST controllers with the same request identity. After an apply or a reject the server posts the
- * answer to the question ([ConfigChangeAnswer]), which closes the plan and resumes the agent.
+ * Every method runs with the user who called the endpoint authenticated on the thread: the user of
+ * the HTTP request, or the user a messaging chat acts for. Reads go through [ConfigReadService] with
+ * that user's rights; writes go through [ConfigWriter], i.e. through the REST controllers with the
+ * same identity. After an apply or a reject the server posts the answer to the question
+ * ([ConfigChangeAnswer]), which closes the plan and resumes the agent.
  *
  * The plan comes from [ConfigPlanReader], and each operation's status from [ConfigChangeStatus].
  */
@@ -54,7 +55,7 @@ class ConfigChangeService(
 ) {
     /**
      * Questions whose plan is being applied or rejected. Entries live only for the duration of one
-     * request (removed in a `finally`). Single instance, like the case runtime registry.
+     * call (removed in a `finally`). Single instance, like the case runtime registry.
      */
     private val claims = ConcurrentHashMap.newKeySet<UUID>()
 
@@ -101,7 +102,7 @@ class ConfigChangeService(
             val loaded = configPlanReader.load(caseId, questionId)
             val plan = loaded.plan
             requireRecipient(plan, caller)
-            if (request.expectedPlanHash != plan.planHash) throw ConflictException("PLAN_HASH_MISMATCH: the plan changed since it was displayed")
+            if (request.expectedPlanHash != plan.planHash) throw ConfigChangeConflictException(null, "PLAN_HASH_MISMATCH: the plan changed since it was displayed")
             requireState(stateOf(loaded, claimedByCaller = true), setOf(ConfigChangeState.OPEN))
             missingSecrets(plan, caller.id, request.secrets).takeIf { it.isNotEmpty() }?.let { missing ->
                 throw UnprocessableEntityException("MISSING_SECRET: ${missing.joinToString()}")
@@ -132,7 +133,7 @@ class ConfigChangeService(
         questionId: UUID,
         block: () -> T,
     ): T {
-        if (!claims.add(questionId)) throw ConflictException("IN_PROGRESS: this plan is already being applied or rejected")
+        if (!claims.add(questionId)) throw ConfigChangeConflictException(ConfigChangeState.IN_PROGRESS, "IN_PROGRESS: this plan is already being applied or rejected")
         return try {
             block()
         } finally {
@@ -411,14 +412,14 @@ class ConfigChangeService(
         plan: ConfigChangePlan,
         caller: User,
     ) {
-        if (caller.id != plan.recipientUserId) throw AccessDeniedException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
+        if (caller.id != plan.recipientUserId) throw ConfigChangeRecipientException("NOT_RECIPIENT: only the user this plan was proposed to can apply or reject it")
     }
 
     private fun requireState(
         state: ConfigChangeState,
         allowed: Set<ConfigChangeState>,
     ) {
-        if (state !in allowed) throw ConflictException("${state.name}: this plan can no longer be applied or rejected")
+        if (state !in allowed) throw ConfigChangeConflictException(state, "${state.name}: this plan can no longer be applied or rejected")
     }
 
     private fun secretKey(

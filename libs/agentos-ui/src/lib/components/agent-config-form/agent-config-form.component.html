@@ -416,5 +416,9 @@
         <button dsButton type="button" (click)="cancel()">Cancel</button>
       </ds-form-actions>
     </form>
+
+    @if (isEditMode() && namespaceId) {
+      <agentos-agent-messaging [namespaceId]="namespaceId" [agentId]="agentConfigId" />
+    }
   }
 </ds-page>

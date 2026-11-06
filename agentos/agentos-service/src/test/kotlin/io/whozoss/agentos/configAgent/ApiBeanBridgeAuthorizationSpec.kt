@@ -57,8 +57,9 @@ import java.util.UUID
  *   in-process call.
  * - The identity checked is the one of the current request, both by `@PreAuthorize` and by the
  *   inline guards that read [UserService.getCurrentUser] (`requireSuperAdmin`).
- * - Outside a request (an agent tool runs in a detached coroutine), the same call is refused before
- *   the controller runs.
+ * - With nobody authenticated (an agent tool runs in a detached coroutine), the same call is refused
+ *   before the controller runs. With a user authenticated outside any request, as a messaging chat
+ *   does, it is authorized for that user: [AuthenticatedUserBridgeIntegrationSpec].
  *
  * The full chain is real: [io.whozoss.agentos.security.declarative.AgentOsAuthenticationFilter] →
  * [io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator] → [PermissionService] →
@@ -191,7 +192,7 @@ class ApiBeanBridgeAuthorizationSpec : StringSpec() {
                 ).andExpect(status().isCreated)
         }
 
-        "outside an HTTP request, the Api bean refuses before the controller runs" {
+        "with nobody authenticated, the Api bean refuses before the controller runs" {
             SecurityContextHolder.clearContext()
             actAs(alice)
 
@@ -202,13 +203,13 @@ class ApiBeanBridgeAuthorizationSpec : StringSpec() {
             agentConfigService.findById(agent.id)!!.name shouldBe agent.name
         }
 
-        "outside an HTTP request, the writer refuses with a clear message before reaching any Api bean" {
+        "with nobody authenticated, the writer refuses with a clear message before reaching any Api bean" {
             SecurityContextHolder.clearContext()
             actAs(alice)
 
             val refused = shouldThrow<IllegalStateException> { configWriter.setEnabled(agent.id, enabled = false) }
 
-            refused.message shouldBe "ConfigWriter must run inside the HTTP request of the user who applies the plan"
+            refused.message shouldBe "ConfigWriter must run with the user who applies the plan authenticated"
             agentConfigService.findById(agent.id)!!.enabled shouldBe true
         }
     }

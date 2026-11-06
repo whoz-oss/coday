@@ -58,6 +58,9 @@
       </ds-form-field>
     </ds-group>
 
+    <!-- Messaging accounts are linked outside the profile form, in both modes. Hidden when no bot runs. -->
+    <agentos-messaging-accounts />
+
     @if (isEditing()) {
       <form class="ds-form" [formGroup]="form" (ngSubmit)="save()">
         <ds-group heading="Identity">

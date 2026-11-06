@@ -23,11 +23,12 @@ import java.util.UUID
 /**
  * The card's side of the config agent (#1477): shows a frozen plan, and applies or rejects it.
  *
- * Applying runs the plan's writes inside this request, through the REST controllers, so every write
- * is authorized with the identity of the user who clicked, exactly like the same calls made by the
- * browser. These handlers are neither `suspend` nor `@Transactional` on purpose: the identity must
- * stay on this thread, and each controller commits its own writes before the answer resumes the
- * agent.
+ * Applying runs the plan's writes in this call, through the REST controllers, so every write is
+ * authorized with the identity of the user who clicked, exactly like the same calls made by the
+ * browser. The card calls these endpoints over HTTP; a messaging chat calls them in process, with the
+ * linked user authenticated ([io.whozoss.agentos.messaging.MessagingGateway]). These handlers are
+ * neither `suspend` nor `@Transactional` on purpose: the identity must stay on this thread, and each
+ * controller commits its own writes before the answer resumes the agent.
  *
  * Only the user the plan was proposed to may apply or reject it (403 otherwise); anyone who can read
  * the case may view it, with the current values shown according to their own rights.

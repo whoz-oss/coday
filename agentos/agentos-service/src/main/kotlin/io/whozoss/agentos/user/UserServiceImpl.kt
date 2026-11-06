@@ -2,10 +2,14 @@ package io.whozoss.agentos.user
 
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
+import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import mu.KLogging
 import org.springframework.context.ApplicationEventPublisher
+import org.springframework.http.HttpStatus
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -15,7 +19,7 @@ import kotlin.concurrent.withLock
  *
  * Delegates all persistence operations to [UserRepository].
  * Holds a reference to [SecurityService] solely for [getCurrentUser] — the one
- * request-scoped operation that needs to know the caller's identity.
+ * operation that needs to know the caller's identity.
  *
  * [create] publishes a [UserCreatedEvent] once the user is saved. Every creation path goes through it
  * (first access, bulk import, the bootstrap admin), which is what lets
@@ -84,7 +88,18 @@ class UserServiceImpl(
         }
     }
 
-    override fun getCurrentUser(): User = resolveOrCreateByExternalId(securityService.resolveCurrentIdentity())
+    override fun getCurrentUser(): User = authenticatedUser() ?: resolveOrCreateByExternalId(securityService.resolveCurrentIdentity())
+
+    /**
+     * The user authenticated on this thread, read again so that a change made since shows: the one
+     * [io.whozoss.agentos.security.declarative.AgentOsAuthenticationFilter] resolved for the request, or
+     * the one a messaging chat acts for. Null when nobody is.
+     */
+    private fun authenticatedUser(): User? =
+        (SecurityContextHolder.getContext().authentication as? AgentOsAuthentication)?.let { authentication ->
+            val id = (authentication.principal as User).id
+            userRepository.findById(id) ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "The authenticated user $id no longer exists")
+        }
 
     @Transactional
     override fun delete(id: UUID): Boolean = userRepository.delete(id)

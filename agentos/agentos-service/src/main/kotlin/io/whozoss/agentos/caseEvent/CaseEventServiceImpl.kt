@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
@@ -16,12 +17,17 @@ import java.util.UUID
  * - Delegation to repository for persistence
  *
  * This layer separates business logic from pure persistence concerns.
+ *
+ * [create] publishes a [CaseEventCreatedEvent] for every event it persists. Spring always injects
+ * [eventPublisher]; the no-op default only serves the unit tests that build this service by hand.
  */
 @Service
 class CaseEventServiceImpl(
     private val repository: CaseEventRepository,
+    private val eventPublisher: ApplicationEventPublisher = ApplicationEventPublisher {},
 ) : CaseEventService {
-    override fun create(entity: CaseEvent): CaseEvent = repository.save(entity)
+    override fun create(entity: CaseEvent): CaseEvent =
+        repository.save(entity).also { eventPublisher.publishEvent(CaseEventCreatedEvent(it)) }
 
     override fun update(entity: CaseEvent): CaseEvent = repository.save(entity)
 

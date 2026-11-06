@@ -1,0 +1,3 @@
+@for (bot of bots(); track bot.id) {
+  <ds-icon-button [icon]="icon(bot)" variant="default" [title]="title(bot)" (action)="continueWith(bot)" />
+}

@@ -1,0 +1,69 @@
+<div class="admin-messaging">
+  <h1 class="admin-messaging__title">Messaging</h1>
+
+  <section class="admin-messaging__section">
+    <h2 class="admin-messaging__section-title">{{ platformName }} bot manager</h2>
+    <p class="admin-messaging__hint">
+      The bot manager creates the {{ platformName }} bots of agents for the admins of their namespace: on an agent's
+      page, Create a bot opens {{ platformName }}, the admin confirms, and the bot answers as the agent. Nobody copies a
+      token. Without a bot manager, an agent can still get a bot created with &#64;BotFather, from its token.
+    </p>
+
+    @if (manager(); as manager) {
+      <div class="admin-messaging__row">
+        <span class="admin-messaging__bot">&#64;{{ manager.username }}</span>
+        <span class="admin-messaging__status">{{ statusLabel(manager.status) }}</span>
+        <span class="admin-messaging__note">since {{ manager.createdAt | date: 'mediumDate' }}</span>
+        <span class="admin-messaging__spacer"></span>
+        <button type="button" class="admin-messaging__btn" (click)="replacing.set(!replacing())">Replace</button>
+        @if (confirmingRemove()) {
+          <span class="admin-messaging__note">Remove it? The bots it created stay.</span>
+          <button
+            type="button"
+            class="admin-messaging__btn admin-messaging__btn--danger"
+            [disabled]="busy()"
+            (click)="remove()"
+          >
+            Remove
+          </button>
+          <button type="button" class="admin-messaging__btn" (click)="confirmingRemove.set(false)">Cancel</button>
+        } @else {
+          <button type="button" class="admin-messaging__btn" (click)="confirmingRemove.set(true)">Remove</button>
+        }
+      </div>
+    } @else {
+      <ol class="admin-messaging__steps">
+        <li>In {{ platformName }}, create a bot with &#64;BotFather (/newbot), for example "AgentOS".</li>
+        <li>In BotFather's Mini App, open the bot's settings and turn Bot Management Mode on.</li>
+        <li>Paste the bot's token below. It is stored encrypted and never shown again.</li>
+      </ol>
+    }
+
+    @if (!manager() || replacing()) {
+      <form class="admin-messaging__token" (submit)="$event.preventDefault(); save()">
+        <label class="admin-messaging__label" for="admin-messaging-token">Bot manager token</label>
+        <input
+          id="admin-messaging-token"
+          class="admin-messaging__input"
+          type="password"
+          name="token"
+          autocomplete="off"
+          placeholder="123456789:AA…"
+          [value]="token()"
+          (input)="token.set($any($event.target).value)"
+        />
+        <button
+          type="submit"
+          class="admin-messaging__btn admin-messaging__btn--primary"
+          [disabled]="busy() || !token().trim()"
+        >
+          {{ manager() ? 'Replace' : 'Set' }}
+        </button>
+      </form>
+    }
+
+    @if (error(); as message) {
+      <p class="admin-messaging__error" role="alert">{{ message }}</p>
+    }
+  </section>
+</div>

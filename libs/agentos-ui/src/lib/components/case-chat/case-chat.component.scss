@@ -378,7 +378,8 @@
       color: var(--color-neutral-700);
     }
 
-    & .case-chat__role-model {
+    & .case-chat__role-model,
+    & .case-chat__role-via {
       margin-left: 0.25rem;
       font-size: 0.7rem;
       font-weight: 400;

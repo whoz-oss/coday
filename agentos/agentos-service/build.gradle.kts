@@ -212,6 +212,8 @@ dependencies {
     // kotlinx-coroutines-test — UnconfinedTestDispatcher / runTest for coroutine loop tests.
     // The resolutionStrategy below pins it to kotlinCoroutines version (same as production coroutines).
     testImplementation(libs.kotlinx.coroutines.test)
+    // MockWebServer — a local HTTP and WebSocket server, for the Slack Socket Mode connection.
+    testImplementation(libs.okhttp.mockwebserver)
 
     // Neo4j test harness: starts an embedded Neo4j in-process for testing.
     // neo4j-harness 2026.x requires Netty 4.2.x (BoltServer uses 4.2 APIs).

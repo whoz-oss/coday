@@ -336,4 +336,25 @@ class PromptCommandParserUnitSpec : StringSpec({
             ResolvedCommand("after", parentId),
         )
     }
+
+    // --- A command after a leading @mention ---
+
+    "a command after a leading mention is resolved, each line keeping the mention" {
+        resolve("@helper /greet", prompt("greet", listOf("Hello!", "How are you?"))) shouldBe
+            listOf(ResolvedCommand("@helper Hello!", null), ResolvedCommand("@helper How are you?", null))
+    }
+
+    "a line whose prompt names its own agent goes to that agent, not to the one mentioned" {
+        val agentId = UUID.randomUUID()
+        resolve("@helper /greet", prompt("greet", listOf("Hello!"), agentConfigId = agentId)) shouldBe
+            listOf(ResolvedCommand("Hello!", agentId))
+    }
+
+    "a mention before no command, or before an unknown one, leaves the text unchanged" {
+        var loaded = false
+        PromptCommandParser.resolve("@helper hello /greet") { emptyList<Prompt>().also { loaded = true } } shouldBe
+            listOf(ResolvedCommand("@helper hello /greet", null))
+        loaded shouldBe false
+        resolve("@helper  /unknown", prompt("greet", listOf("Hello!"))) shouldBe listOf(ResolvedCommand("@helper  /unknown", null))
+    }
 })
