@@ -1,5 +1,6 @@
 package io.whozoss.agentos.chat
 
+import com.openai.models.completions.CompletionUsage
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -16,10 +17,9 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.CostRunStopped
+import org.springframework.ai.anthropic.AnthropicCacheOptions
+import org.springframework.ai.anthropic.AnthropicCacheStrategy
 import org.springframework.ai.anthropic.AnthropicChatOptions
-import org.springframework.ai.anthropic.api.AnthropicCacheOptions
-import org.springframework.ai.anthropic.api.AnthropicCacheStrategy
-import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
@@ -32,7 +32,6 @@ import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.model.tool.ToolCallingChatOptions
-import org.springframework.ai.openai.api.OpenAiApi
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.ToolDefinition
 import reactor.core.publisher.Flux
@@ -66,7 +65,16 @@ class UsageTrackingChatModelSpec :
                     .toolCalls(if (tool) listOf(AssistantMessage.ToolCall("call-1", "function", "testTool", "{}")) else emptyList())
                     .build()
             val metadata = ChatResponseMetadata.builder()
-            if (withUsage) metadata.usage(DefaultUsage(10, 5, 15, OpenAiApi.Usage(5, 10, 15, null, null)))
+            if (withUsage) {
+                val native =
+                    CompletionUsage
+                        .builder()
+                        .promptTokens(10)
+                        .completionTokens(5)
+                        .totalTokens(15)
+                        .build()
+                metadata.usage(DefaultUsage(10, 5, 15, native))
+            }
             return ChatResponse(listOf(Generation(message)), metadata.build())
         }
 
@@ -85,10 +93,10 @@ class UsageTrackingChatModelSpec :
 
         "real ChatClient content terminal counts a synchronous response" {
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.call(any<Prompt>()) } returns response()
             val accumulator = UsageAccumulator()
-            val client = ChatClient.builder(UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model)).build()
+            val client = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model).chatClient()
             client.prompt("Hello").call().content() shouldBe "Done"
             accumulator.total.totalTokens shouldBe 15L
             accumulator.total.estimatedCostUsd shouldBe 15.0
@@ -104,10 +112,10 @@ class UsageTrackingChatModelSpec :
                 }
             val raw = mockk<ChatModel>()
             val options = ToolCallingChatOptions.builder().toolCallbacks(callback).build()
-            every { raw.defaultOptions } returns options
+            every { raw.options } returns options
             every { raw.stream(any<Prompt>()) } answers {
                 val prompt = firstArg<Prompt>()
-                (prompt.options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe false
+                (prompt.options as ToolCallingChatOptions).toolCallbacks shouldBe listOf(callback)
                 Flux.just(response(tool = requests.getAndIncrement() == 0))
             }
             val accumulator = UsageAccumulator()
@@ -122,9 +130,10 @@ class UsageTrackingChatModelSpec :
             result.isDone shouldBe false
             permission.complete(null)
             result
-                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)!!
                 .last()
-                .result.output.text shouldBe "Done"
+                .result!!
+                .output.text shouldBe "Done"
             toolsExecuted.get() shouldBe 1
             requests.get() shouldBe 2
             accumulator.total.totalTokens shouldBe 30L
@@ -133,7 +142,7 @@ class UsageTrackingChatModelSpec :
 
         "empty trailing chunk does not erase the native usage" {
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns Flux.just(response(), response(withUsage = false))
             val accumulator = UsageAccumulator()
             UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model).stream(Prompt("Hello")).blockLast(Duration.ofSeconds(2))
@@ -143,7 +152,7 @@ class UsageTrackingChatModelSpec :
 
         "stream error retains received usage and marks the invocation failed" {
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns
                 Flux.concat(Flux.just(response()), Flux.error(IllegalStateException("provider failure")))
             val accumulator = UsageAccumulator()
@@ -157,7 +166,7 @@ class UsageTrackingChatModelSpec :
         listOf(false, true).forEach { streaming ->
             "unknown tool in ${if (streaming) "stream" else "call"} retains usage and marks the invocation failed" {
                 val raw = mockk<ChatModel>()
-                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                every { raw.options } returns ToolCallingChatOptions.builder().build()
                 every { raw.call(any<Prompt>()) } returns response(tool = true)
                 every { raw.stream(any<Prompt>()) } returns Flux.just(response(tool = true))
                 val accumulator = UsageAccumulator()
@@ -182,7 +191,7 @@ class UsageTrackingChatModelSpec :
             val interruption = CompletionException(AgentInterrupt.AwaitAnswer("Continue?"))
             val options = ToolCallingChatOptions.builder().toolCallbacks(toolCallback { throw interruption }).build()
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns options
+            every { raw.options } returns options
             every { raw.call(any<Prompt>()) } returns response(tool = true)
             val accumulator = UsageAccumulator()
 
@@ -197,7 +206,7 @@ class UsageTrackingChatModelSpec :
 
         "wrapped cost stop before a streaming tool retains usage without marking a failure" {
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns Flux.just(response(tool = true))
             val accumulator = UsageAccumulator()
             accumulator.beforeCall = {
@@ -220,7 +229,7 @@ class UsageTrackingChatModelSpec :
         "wrapped stream cancellation retains received usage without marking a failure" {
             val cancellation = CompletionException(CancellationException("cancelled"))
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns Flux.concat(Flux.just(response()), Flux.error(cancellation))
             val accumulator = UsageAccumulator()
 
@@ -241,7 +250,7 @@ class UsageTrackingChatModelSpec :
                     "Error executing tool: boom"
                 }
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().toolCallbacks(callback).build()
+            every { raw.options } returns ToolCallingChatOptions.builder().toolCallbacks(callback).build()
             val requests = AtomicInteger()
             every { raw.stream(any<Prompt>()) } answers { Flux.just(response(tool = requests.getAndIncrement() == 0)) }
             val accumulator = UsageAccumulator()
@@ -262,7 +271,7 @@ class UsageTrackingChatModelSpec :
 
         "cancellation records the last usage exactly once" {
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns Flux.concat(Flux.just(response()), Flux.never())
             val accumulator = UsageAccumulator()
             UsageTrackingChatModel(
@@ -293,8 +302,14 @@ class UsageTrackingChatModelSpec :
                 reply: (index: Int, summaryRequested: Boolean) -> ChatResponse,
             ): LoopingRun {
                 val toolsExecuted = AtomicInteger()
-                val options = ToolCallingChatOptions.builder().toolCallbacks(toolCallback { "ok".also { toolsExecuted.incrementAndGet() } }).build()
+                val options =
+                    ToolCallingChatOptions
+                        .builder()
+                        .toolCallbacks(
+                            toolCallback { "ok".also { toolsExecuted.incrementAndGet() } },
+                        ).build()
                 val prompts = CopyOnWriteArrayList<Prompt>()
+
                 fun answer(prompt: Prompt): ChatResponse {
                     val index = prompts.size
                     prompts.add(prompt)
@@ -303,7 +318,7 @@ class UsageTrackingChatModelSpec :
                     return reply(index, summaryRequested)
                 }
                 val raw = mockk<ChatModel>()
-                every { raw.defaultOptions } returns options
+                every { raw.options } returns options
                 every { raw.call(any<Prompt>()) } answers { answer(firstArg()) }
                 every { raw.stream(any<Prompt>()) } answers { Flux.just(answer(firstArg())) }
                 val accumulator = UsageAccumulator()
@@ -318,12 +333,24 @@ class UsageTrackingChatModelSpec :
                 return LoopingRun(responses, prompts, toolsExecuted.get(), accumulator)
             }
 
-            fun LoopingRun.text() = responses.joinToString("") { it.result?.output?.text.orEmpty() }
+            fun LoopingRun.text() =
+                responses.joinToString("") {
+                    it.result
+                        ?.output
+                        ?.text
+                        .orEmpty()
+                }
 
             fun LoopingRun.limitMarker() = responses.last().metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED)
 
             "$mode: tool calls requested past the limit are dropped and the model is asked to summarize" {
-                val result = limitedRun { _, summaryRequested -> if (summaryRequested) response(text = "Summary") else response(tool = true) }
+                val result =
+                    limitedRun {
+                        _,
+                        summaryRequested,
+                        ->
+                        if (summaryRequested) response(text = "Summary") else response(tool = true)
+                    }
 
                 result.text() shouldBe "Summary"
                 result.limitMarker() shouldBe 2
@@ -334,7 +361,11 @@ class UsageTrackingChatModelSpec :
                 result.prompts[3].instructions.dropLast(1) shouldBe result.prompts[2].instructions
                 result.accumulator.snapshot().calls shouldBe 4L
                 result.accumulator.failed shouldBe false
-                if (!streaming) result.responses.single().metadata.usage.totalTokens shouldBe 15
+                if (!streaming) {
+                    result.responses
+                        .single()
+                        .metadata.usage.totalTokens shouldBe 15
+                }
             }
 
             "$mode: an answer right after the last allowed tool round completes the run normally" {
@@ -372,20 +403,28 @@ class UsageTrackingChatModelSpec :
 
                 result.text() shouldBe "Done"
                 result.limitMarker() shouldBe null
-                result.prompts.single().instructions.single().text shouldBe "Hello"
+                result.prompts
+                    .single()
+                    .instructions
+                    .single()
+                    .text shouldBe "Hello"
             }
         }
 
         "a run that answers before the limit carries no limit marker" {
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns Flux.just(response())
             val responses =
                 UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, maxToolRounds = 2)
                     .stream(Prompt("Hello"))
                     .collectList()
                     .block(Duration.ofSeconds(2))!!
-            responses.single().result.output.text shouldBe "Done"
+            responses
+                .single()
+                .result
+                ?.output
+                ?.text shouldBe "Done"
             responses.single().metadata.containsKey(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe false
         }
 
@@ -395,29 +434,43 @@ class UsageTrackingChatModelSpec :
         // tracked call(prompt)/stream(prompt), never through the raw delegate's same-named methods.
         // -----------------------------------------------------------------------------------------
 
-        fun Flux<String?>?.text() = this!!.collectList().block(Duration.ofSeconds(2))!!.joinToString("") { it.orEmpty() }
+        fun Flux<String>.text() = collectList().block(Duration.ofSeconds(2))!!.joinToString("")
 
         val systemAndUser = listOf<Message>(SystemMessage("Be brief"), UserMessage("Hello"))
         val convenienceCalls =
             listOf(
-                ConvenienceCall("call(String)", streaming = false, messages = listOf(UserMessage("Hello")), invoke = { it.call("Hello")!! }) {
+                ConvenienceCall(
+                    "call(String)",
+                    streaming = false,
+                    messages = listOf(UserMessage("Hello")),
+                    invoke = { it.call("Hello")!! },
+                ) {
                     verify(exactly = 0) { it.call(any<String>()) }
                 },
-                ConvenienceCall("call(vararg Message)", streaming = false, messages = systemAndUser, invoke = { it.call(*systemAndUser.toTypedArray())!! }) {
+                ConvenienceCall("call(vararg Message)", streaming = false, messages = systemAndUser, invoke = {
+                    it.call(*systemAndUser.toTypedArray())!!
+                }) {
                     verify(exactly = 0) { it.call(*anyVararg<Message>()) }
                 },
-                ConvenienceCall("stream(String)", streaming = true, messages = listOf(UserMessage("Hello")), invoke = { it.stream("Hello").text() }) {
+                ConvenienceCall(
+                    "stream(String)",
+                    streaming = true,
+                    messages = listOf(UserMessage("Hello")),
+                    invoke = { it.stream("Hello").text() },
+                ) {
                     verify(exactly = 0) { it.stream(any<String>()) }
                 },
-                ConvenienceCall("stream(vararg Message)", streaming = true, messages = systemAndUser, invoke = { it.stream(*systemAndUser.toTypedArray()).text() }) {
+                ConvenienceCall("stream(vararg Message)", streaming = true, messages = systemAndUser, invoke = {
+                    it.stream(*systemAndUser.toTypedArray()).text()
+                }) {
                     verify(exactly = 0) { it.stream(*anyVararg<Message>()) }
                 },
             )
 
         convenienceCalls.forEach { convenience ->
-            "${convenience.name} goes through the tracked prompt call: answer, usage, external tool execution, given messages" {
+            "${convenience.name} goes through the tracked prompt call: answer, usage, given messages" {
                 val raw = mockk<ChatModel>()
-                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                every { raw.options } returns ToolCallingChatOptions.builder().build()
                 val received = slot<Prompt>()
                 every { raw.call(capture(received)) } returns response()
                 every { raw.stream(capture(received)) } returns Flux.just(response())
@@ -430,7 +483,6 @@ class UsageTrackingChatModelSpec :
                 accumulator.snapshot().calls shouldBe 1L
                 verify(exactly = if (convenience.streaming) 0 else 1) { raw.call(any<Prompt>()) }
                 verify(exactly = if (convenience.streaming) 1 else 0) { raw.stream(any<Prompt>()) }
-                (received.captured.options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe false
                 received.captured.instructions.map { it.messageType to it.text } shouldBe
                     convenience.messages.map { it.messageType to it.text }
                 convenience.verifyNeverOnDelegate(raw)
@@ -438,7 +490,7 @@ class UsageTrackingChatModelSpec :
 
             "${convenience.name} honours the cost gate: CostRunStopped is thrown and the raw model is never called" {
                 val raw = mockk<ChatModel>()
-                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                every { raw.options } returns ToolCallingChatOptions.builder().build()
                 every { raw.call(any<Prompt>()) } returns response()
                 every { raw.stream(any<Prompt>()) } returns Flux.just(response())
                 val accumulator = UsageAccumulator()
@@ -466,7 +518,7 @@ class UsageTrackingChatModelSpec :
                         .toolCallbacks(toolCallback { "ok".also { toolsExecuted.incrementAndGet() } })
                         .build()
                 val raw = mockk<ChatModel>()
-                every { raw.defaultOptions } returns options
+                every { raw.options } returns options
                 every { raw.call(any<Prompt>()) } answers { response(tool = requests.getAndIncrement() == 0) }
                 every { raw.stream(any<Prompt>()) } answers { Flux.just(response(tool = requests.getAndIncrement() == 0)) }
                 val accumulator = UsageAccumulator()
@@ -482,8 +534,8 @@ class UsageTrackingChatModelSpec :
             }
         }
 
-        // Issue #1538: ChatClient reads the model's default options; the Java default method would return generic ones.
-        "getDefaultOptions returns the delegate's own options instance, and a ChatClient on the tracked model sends them" {
+        // Issue #1538: ChatClient reads the model's options; the Java default method would return generic ones.
+        "getOptions returns the delegate's own options instance, and a ChatClient on the tracked model sends them" {
             val providerOptions =
                 AnthropicChatOptions
                     .builder()
@@ -491,19 +543,22 @@ class UsageTrackingChatModelSpec :
                     .cacheOptions(AnthropicCacheOptions.builder().strategy(AnthropicCacheStrategy.CONVERSATION_HISTORY).build())
                     .build()
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns providerOptions
+            every { raw.options } returns providerOptions
             val received = slot<Prompt>()
             every { raw.call(capture(received)) } returns response()
             val accumulator = UsageAccumulator()
             val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.Anthropic, model)
 
-            tracked.defaultOptions shouldBeSameInstanceAs providerOptions
+            tracked.options shouldBeSameInstanceAs providerOptions
 
-            ChatClient.builder(tracked).build().prompt("Hello").call().content() shouldBe "Done"
+            tracked
+                .chatClient()
+                .prompt("Hello")
+                .call()
+                .content() shouldBe "Done"
 
             val sent = received.captured.options as AnthropicChatOptions
             sent.cacheOptions.strategy shouldBe AnthropicCacheStrategy.CONVERSATION_HISTORY
-            sent.internalToolExecutionEnabled shouldBe false
         }
     })
 

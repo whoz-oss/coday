@@ -1,6 +1,5 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -15,13 +14,20 @@ import io.whozoss.agentos.sdk.api.configChange.ConfigOperationResultDto
 import io.whozoss.agentos.sdk.api.configChange.ConfigResultStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Instant
 import java.util.UUID
 
 class ConfigChangeAnswerUnitSpec :
     StringSpec({
         val answer = ConfigChangeAnswer(caseService = mockk(relaxed = true))
-        val caller = User(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "a@example.com", email = "a@example.com", firstname = "Ada")
+        val caller =
+            User(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                externalId = "a@example.com",
+                email = "a@example.com",
+                firstname = "Ada",
+            )
 
         fun operation(ref: String) =
             PlannedOperation(
@@ -55,7 +61,12 @@ class ConfigChangeAnswerUnitSpec :
                     appliedBy = caller.id,
                     results =
                         listOf(
-                            ConfigOperationResultDto("ok", ConfigResultStatus.APPLIED, UUID.randomUUID(), message = "not shown when applied"),
+                            ConfigOperationResultDto(
+                                "ok",
+                                ConfigResultStatus.APPLIED,
+                                UUID.randomUUID(),
+                                message = "not shown when applied",
+                            ),
                             ConfigOperationResultDto("bad", ConfigResultStatus.INVALID, message = longMessage),
                             ConfigOperationResultDto("skipped", ConfigResultStatus.NOT_RUN, message = "not shown when not run"),
                         ),

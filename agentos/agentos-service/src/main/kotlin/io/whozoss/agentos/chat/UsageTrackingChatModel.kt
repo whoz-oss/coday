@@ -1,11 +1,14 @@
 package io.whozoss.agentos.chat
 
+import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.CostRunStopped
+import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
@@ -18,7 +21,6 @@ import org.springframework.ai.chat.model.MessageAggregator
 import org.springframework.ai.chat.prompt.ChatOptions
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.model.tool.DefaultToolCallingManager
-import org.springframework.ai.model.tool.ToolCallingChatOptions
 import org.springframework.ai.model.tool.ToolCallingManager
 import org.springframework.ai.model.tool.ToolExecutionResult
 import reactor.core.publisher.Flux
@@ -29,9 +31,9 @@ import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Tracks each provider request, including AgentSimple's tool rounds. Spring AI's internal
- * tool loop is disabled: its cumulative Usage loses native cache counts. The same tool
- * callbacks are executed here, after accounting and the user's cost confirmation.
+ * Tracks each provider request, including AgentSimple's tool rounds. Since Spring AI 2.0,
+ * chat models no longer execute tools internally: they return the tool calls to the caller.
+ * The tool callbacks are executed here, after accounting and the user's cost confirmation.
  * Native chunks are inspected BEFORE MessageAggregator discards their native metadata.
  *
  * After [maxToolRounds] tool rounds, a response that still asks for tools is not executed:
@@ -50,32 +52,44 @@ class UsageTrackingChatModel(
 ) : ChatModel by delegate {
     /**
      * Kotlin `by delegate` does not forward Java interface default methods: without this override,
-     * ChatClient would see generic DefaultChatOptions instead of the provider's options, and
-     * provider-specific settings such as Anthropic cacheOptions would be lost (issue #1538).
+     * ChatClient would build the request options from a plain [ChatOptions] builder, silently dropping
+     * the tool callbacks and provider-specific settings such as Anthropic cacheOptions (issue #1538).
      */
-    override fun getDefaultOptions(): ChatOptions = delegate.defaultOptions
+    override fun getOptions(): ChatOptions = delegate.options
+
+    /**
+     * Builds the [ChatClient] for this model. Since Spring AI 2.0, `ChatClient` installs a `ToolCallingAdvisor`
+     * that runs its own tool loop; this model already owns the loop (per-round accounting, cost gate before each
+     * tool, summary at the round limit). The advisor is therefore configured to never execute tools, otherwise
+     * streamed tool-call chunks would make it run every tool a second time.
+     */
+    fun chatClient(): ChatClient =
+        ChatClient
+            .builder(
+                this,
+                ObservationRegistry.NOOP,
+                null,
+                null,
+                ToolCallingAdvisor.builder().toolExecutionEligibilityChecker { false },
+            ).build()
 
     /**
      * Needed because of limitation of Kotlin `by delegate`
      * Here default implementation provided by ChatModel is enough
      * because it already delegates to `call(prompt)`
      */
-    override fun call(message: String?): String? {
-        return super.call(message)
-    }
+    override fun call(message: String): String? = super.call(message)
 
     /**
      * Needed because of limitation of Kotlin `by delegate`
      * Here default implementation provided by ChatModel is enough
      * because it already delegates to `call(prompt)`
      */
-    override fun call(vararg messages: Message?): String? {
-        return super.call(*messages)
-    }
+    override fun call(vararg messages: Message): String? = super.call(*messages)
 
     override fun call(prompt: Prompt): ChatResponse =
         try {
-            callRound(externalTools(prompt), 0)
+            callRound(withResolvedOptions(prompt), 0)
         } catch (e: Exception) {
             markFailure(e)
             throw e
@@ -115,7 +129,11 @@ class UsageTrackingChatModel(
     /** Keeps the provider's metadata (usage, id, model) and its generation unless the text must be completed. */
     private fun callSummary(prompt: Prompt): ChatResponse {
         val summary = trackedCall(summaryPrompt(prompt))
-        val text = summary.result?.output?.text.orEmpty()
+        val text =
+            summary.result
+                ?.output
+                ?.text
+                .orEmpty()
         val completed = completeSummary(text, droppedCall = summary.hasToolCalls())
         val generations =
             if (completed == text) {
@@ -137,20 +155,16 @@ class UsageTrackingChatModel(
      * Here default implementation provided by StreamingChatModel is enough
      * because it already delegates to `stream(prompt)`
      */
-    override fun stream(message: String?): Flux<String?>? {
-        return super.stream(message)
-    }
+    override fun stream(message: String): Flux<String> = super.stream(message)
 
     /**
      * Needed because of limitation of Kotlin `by delegate`
      * Here default implementation provided by StreamingChatModel is enough
      * because it already delegates to `stream(prompt)`
      */
-    override fun stream(vararg messages: Message?): Flux<String?>? {
-        return super.stream(*messages)
-    }
+    override fun stream(vararg messages: Message): Flux<String> = super.stream(*messages)
 
-    override fun stream(prompt: Prompt): Flux<ChatResponse> = streamRound(externalTools(prompt), 0).doOnError(::markFailure)
+    override fun stream(prompt: Prompt): Flux<ChatResponse> = streamRound(withResolvedOptions(prompt), 0).doOnError(::markFailure)
 
     private fun streamRound(
         prompt: Prompt,
@@ -212,7 +226,12 @@ class UsageTrackingChatModel(
             MessageAggregator().aggregate(trackedStream(summaryPrompt(prompt)), aggregated::set).concatWith(
                 Flux.defer {
                     val summary = aggregated.get()
-                    val streamed = summary?.result?.output?.text.orEmpty()
+                    val streamed =
+                        summary
+                            ?.result
+                            ?.output
+                            ?.text
+                            .orEmpty()
                     val completed = completeSummary(streamed, droppedCall = summary?.hasToolCalls() == true)
                     Flux.just(limitReached(completed.removePrefix(streamed)))
                 },
@@ -243,8 +262,7 @@ class UsageTrackingChatModel(
             else -> text
         }
 
-    private fun fallbackSummary() =
-        "I reached the maximum number of tool rounds ($maxToolRounds) before finishing. Ask me to continue."
+    private fun fallbackSummary() = "I reached the maximum number of tool rounds ($maxToolRounds) before finishing. Ask me to continue."
 
     private fun limitReached(text: String) =
         ChatResponse(
@@ -260,12 +278,15 @@ class UsageTrackingChatModel(
         if (!interrupted) accumulator.failed = true
     }
 
-    private fun externalTools(prompt: Prompt): Prompt {
-        val copied: ChatOptions = (prompt.options ?: delegate.defaultOptions).copy()
-        val options = copied as? ToolCallingChatOptions ?: ToolCallingChatOptions.builder().build()
-        options.internalToolExecutionEnabled = false
-        return Prompt(prompt.instructions, options)
-    }
+    /** The tool manager reads the tool callbacks from the prompt options: fall back to the model defaults. */
+    private fun withResolvedOptions(prompt: Prompt): Prompt =
+        if (prompt.options !=
+            null
+        ) {
+            prompt
+        } else {
+            Prompt(prompt.instructions, delegate.options)
+        }
 
     private fun awaitPermission() {
         try {

@@ -1,6 +1,6 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 
 /**
  * [namespaceId] is [CURRENT_NAMESPACE], a namespace id, or `{"$op": "<ref>"}` for a namespace created by the

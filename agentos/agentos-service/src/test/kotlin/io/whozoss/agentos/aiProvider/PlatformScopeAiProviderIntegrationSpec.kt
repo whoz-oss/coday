@@ -13,8 +13,8 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
@@ -40,19 +40,27 @@ class PlatformScopeAiProviderIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
+
     @Autowired lateinit var userRepository: UserRepository
+
     @Autowired lateinit var aiProviderService: AiProviderService
+
     @Autowired lateinit var aiModelService: AiModelService
 
-    @MockkBean(relaxed = true) lateinit var userService: UserService
+    @MockkBean(relaxed = true)
+    lateinit var userService: UserService
 
     private fun user(isAdmin: Boolean): User {
         val id = UUID.randomUUID()
-        return User(metadata = EntityMetadata(id = id), externalId = "plat-$id@example.com", email = "plat-$id@example.com", isAdmin = isAdmin)
-            .also {
-                userRepository.save(it)
-                every { userService.findById(it.id) } returns it
-            }
+        return User(
+            metadata = EntityMetadata(id = id),
+            externalId = "plat-$id@example.com",
+            email = "plat-$id@example.com",
+            isAdmin = isAdmin,
+        ).also {
+            userRepository.save(it)
+            every { userService.findById(it.id) } returns it
+        }
     }
 
     private fun actAs(user: User) {
@@ -105,8 +113,10 @@ class PlatformScopeAiProviderIntegrationSpec : StringSpec() {
                     .let { Regex("\"id\":\"([^\"]+)\"").find(it)!!.groupValues[1] }
 
             aiModelService.findPlatformLevel().single { it.alias == alias }.priority shouldBe 2
-            json(put("/api/ai-models/$modelId"), """{ "aiProviderId": "$providerId", "apiModelName": "claude-y", "alias": "$alias", "priority": 5 }""")
-                .andExpect(status().isOk)
+            json(
+                put("/api/ai-models/$modelId"),
+                """{ "aiProviderId": "$providerId", "apiModelName": "claude-y", "alias": "$alias", "priority": 5 }""",
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.priority").value(5))
             mockMvc.perform(delete("/api/ai-models/$modelId")).andExpect(status().isNoContent)
             aiModelService.findPlatformLevel().none { it.alias == alias } shouldBe true
@@ -117,15 +127,23 @@ class PlatformScopeAiProviderIntegrationSpec : StringSpec() {
             val name = "platform-${UUID.randomUUID()}"
             val providerId = createProvider(name)
             val modelId =
-                json(post("/api/ai-models"), """{ "aiProviderId": "$providerId", "apiModelName": "claude-x", "alias": "SMALL-${UUID.randomUUID()}" }""")
-                    .andExpect(status().isCreated)
+                json(
+                    post("/api/ai-models"),
+                    """{ "aiProviderId": "$providerId", "apiModelName": "claude-x", "alias": "SMALL-${UUID.randomUUID()}" }""",
+                ).andExpect(status().isCreated)
                     .andReturn()
                     .response.contentAsString
                     .let { Regex("\"id\":\"([^\"]+)\"").find(it)!!.groupValues[1] }
             actAs(user(isAdmin = false))
 
-            json(post("/api/ai-providers"), """{ "name": "mine-${UUID.randomUUID()}", "apiType": "Anthropic" }""").andExpect(status().isForbidden)
-            json(post("/api/ai-models"), """{ "aiProviderId": "$providerId", "apiModelName": "claude-z", "alias": "X" }""").andExpect(status().isForbidden)
+            json(
+                post("/api/ai-providers"),
+                """{ "name": "mine-${UUID.randomUUID()}", "apiType": "Anthropic" }""",
+            ).andExpect(status().isForbidden)
+            json(
+                post("/api/ai-models"),
+                """{ "aiProviderId": "$providerId", "apiModelName": "claude-z", "alias": "X" }""",
+            ).andExpect(status().isForbidden)
             json(put("/api/ai-providers/$providerId"), """{ "name": "$name", "apiType": "Anthropic", "description": "hijacked" }""")
                 .andExpect(status().is4xxClientError)
             mockMvc.perform(delete("/api/ai-providers/$providerId")).andExpect(status().is4xxClientError)
@@ -140,8 +158,10 @@ class PlatformScopeAiProviderIntegrationSpec : StringSpec() {
             actAs(user(isAdmin = true))
             val id = createProvider("platform-${UUID.randomUUID()}")
             mockMvc
-                .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/ai-providers/$id"))
-                .andExpect(status().isOk)
+                .perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/ai-providers/$id"),
+                ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.apiKey").value(maskApiKey("sk-ant-platformkey123456")))
             aiProviderService.getById(UUID.fromString(id)).apiType shouldBe AiApiType.Anthropic
         }

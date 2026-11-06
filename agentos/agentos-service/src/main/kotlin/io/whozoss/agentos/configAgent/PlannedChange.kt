@@ -1,6 +1,6 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 
 /**
  * One field of an `UPDATE`. [beforeHash] is the hash of the masked value the server read at

@@ -1,7 +1,7 @@
 package io.whozoss.agentos.sdk.api.configChange
 
-import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
+import tools.jackson.databind.JsonNode
 import java.util.UUID
 
 data class ConfigOperationViewDto(
@@ -15,11 +15,15 @@ data class ConfigOperationViewDto(
     @field:Schema(description = "Scope of the entity: null namespaceId and userId mean platform.")
     val namespaceId: UUID?,
     val userId: UUID?,
-    @field:Schema(description = "Name of the namespace the operation acts in when it is not the case's: one the plan creates or another one the user administers.")
+    @field:Schema(
+        description = "Name of the namespace the operation acts in when it is not the case's: one the plan creates or another one the user administers.",
+    )
     val namespaceName: String? = null,
     val affects: ConfigAffects,
     val deployTo: ConfigDeployTarget?,
-    @field:Schema(description = "Name of the integration this CREATE copies; the server reads its fields at apply time, and value only overrides some of them.")
+    @field:Schema(
+        description = "Name of the integration this CREATE copies; the server reads its fields at apply time, and value only overrides some of them.",
+    )
     val copyFrom: String? = null,
     @field:Schema(description = "CREATE only: the fields of the new entity, secrets excluded.")
     val value: JsonNode?,

@@ -1,7 +1,7 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import tools.jackson.databind.JsonNode
 import java.util.UUID
 
 /**

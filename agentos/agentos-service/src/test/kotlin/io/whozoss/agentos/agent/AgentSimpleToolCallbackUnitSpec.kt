@@ -1,19 +1,17 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.collections.shouldHaveSize as mediaHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.slot
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.redirect.RedirectTool
@@ -40,7 +38,9 @@ import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import reactor.core.publisher.Flux
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.util.UUID
+import io.kotest.matchers.collections.shouldHaveSize as mediaHaveSize
 
 /**
  * Tests for the ToolCallback registration fix.
@@ -417,9 +417,10 @@ class AgentSimpleToolCallbackUnitSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            val images = listOf(
-                MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 791, height = 1024),
-            )
+            val images =
+                listOf(
+                    MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 791, height = 1024),
+                )
 
             val fakeTool =
                 object : StandardTool<Nothing> {
@@ -493,9 +494,10 @@ class AgentSimpleToolCallbackUnitSpec :
                         toolRequestId = "req-img-1",
                         toolName = "FILES__readAsImage",
                         output = MessageContent.Text("Rendered PDF cv.pdf: page(s) 1 of 1"),
-                        images = listOf(
-                            MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 10, height = 10),
-                        ),
+                        images =
+                            listOf(
+                                MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 10, height = 10),
+                            ),
                     ),
                     userMessage(namespaceId, caseId, "so what does it say?"),
                 )
@@ -517,10 +519,11 @@ class AgentSimpleToolCallbackUnitSpec :
 
             // A follow-up UserMessage with Media must have been injected after the ToolResponseMessage
             val toolResponseIdx = promptMessages.indexOf(toolResponseMessage)
-            val imageUserMsg = promptMessages
-                .drop(toolResponseIdx + 1)
-                .filterIsInstance<UserMessage>()
-                .firstOrNull { it.text.orEmpty().contains("FILES__readAsImage") }
+            val imageUserMsg =
+                promptMessages
+                    .drop(toolResponseIdx + 1)
+                    .filterIsInstance<UserMessage>()
+                    .firstOrNull { it.text.orEmpty().contains("FILES__readAsImage") }
             imageUserMsg shouldNotBe null
             imageUserMsg!!.text shouldContain "Attached"
             imageUserMsg.media shouldHaveSize 1

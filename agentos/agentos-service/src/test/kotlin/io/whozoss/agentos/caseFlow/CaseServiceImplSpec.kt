@@ -1,6 +1,5 @@
 package io.whozoss.agentos.caseFlow
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
@@ -96,6 +95,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.springframework.dao.OptimisticLockingFailureException
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -2792,9 +2792,9 @@ class CaseServiceImplSpec :
                 object : CaseLaunchGate {
                     override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Admit
 
-                    override fun requireReopenable(caseId: UUID) {
-                        throw io.whozoss.agentos.exception.ConflictException("The workspace is being removed or has been removed")
-                    }
+                    override fun requireReopenable(caseId: UUID): Unit =
+                        throw io.whozoss.agentos.exception
+                            .ConflictException("The workspace is being removed or has been removed")
                 }
             val service = buildService(caseEventService = caseEventService, caseLaunchGate = blockingGate)
             val case = service.create(Case(namespaceId = namespaceId))
@@ -3198,8 +3198,7 @@ class CaseServiceImplSpec :
             timeoutMs = timeoutMs,
         )
 
-        fun delegateTo(subCaseId: UUID? = null) =
-            DelegationTool.Args(listOf(DelegationTool.Delegation(agentName, "work", subCaseId)))
+        fun delegateTo(subCaseId: UUID? = null) = DelegationTool.Args(listOf(DelegationTool.Delegation(agentName, "work", subCaseId)))
 
         val delegationContext = ToolContext(namespaceId, userId, null, emptyList(), toolRequestId = "delegate-request")
 
@@ -3463,7 +3462,7 @@ class CaseServiceImplSpec :
             val throwingPromptService =
                 mockk<PromptService>(relaxed = true) {
                     every { findEffective(any(), any()) } throws
-                            PromptResolutionException("cycle detected")
+                        PromptResolutionException("cycle detected")
                 }
 
             val namespace =
@@ -3942,8 +3941,12 @@ class CaseServiceImplSpec :
 
         "interruptCase cancels the running turns of the parent and its sub-cases" {
             runTest {
-                val started = java.util.concurrent.atomic.AtomicInteger()
-                val cancelled = java.util.concurrent.atomic.AtomicInteger()
+                val started =
+                    java.util.concurrent.atomic
+                        .AtomicInteger()
+                val cancelled =
+                    java.util.concurrent.atomic
+                        .AtomicInteger()
                 val agent =
                     mockk<Agent> {
                         every { metadata } returns EntityMetadata(id = agentId)
@@ -3992,7 +3995,9 @@ class CaseServiceImplSpec :
                         every { resolveAgentName(any(), any(), any()) } returns agentName
                         // The LLM was called before the Stop: the accumulator has data to record.
                         coEvery { findAgentByName(agentName, any(), any()) } answers {
-                            secondArg<AgentExecutionContext>().usageAccumulator.shouldNotBeNull()
+                            secondArg<AgentExecutionContext>()
+                                .usageAccumulator
+                                .shouldNotBeNull()
                                 .record(LlmUsage(totalTokens = 80L, estimatedCostUsd = 0.002))
                             agent
                         }
@@ -4056,7 +4061,9 @@ class CaseServiceImplSpec :
                         every { resolveAgentName(any(), any(), any()) } returns agentName
                         // The LLM was called before the Kill: the accumulator has data to record.
                         coEvery { findAgentByName(agentName, any(), any()) } answers {
-                            secondArg<AgentExecutionContext>().usageAccumulator.shouldNotBeNull()
+                            secondArg<AgentExecutionContext>()
+                                .usageAccumulator
+                                .shouldNotBeNull()
                                 .record(LlmUsage(totalTokens = 80L, estimatedCostUsd = 0.002))
                             agent
                         }

@@ -1,7 +1,5 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.authSetting.AuthSetting
@@ -24,6 +22,8 @@ import io.whozoss.agentos.skill.SkillAuthorizationService
 import io.whozoss.agentos.skill.SkillService
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 import io.whozoss.agentos.agentConfig.toDto as agentToDto
 import io.whozoss.agentos.authSetting.toDto as authSettingToDto
@@ -85,7 +85,11 @@ class ConfigReadService(
                 if (scope.includesNamespace && namespaceReadable) addAll(loadScope(kind, namespaceId = namespaceId, userId = null))
                 if (scope.includesMine) addAll(loadOwned(kind, callerId, namespaceId))
             }
-        return candidates.distinctBy { it.id }.filter { inBounds(it, callerId, namespaceId) && canReadListed(it, callerId, namespaceId) }.sortedBy { it.name.lowercase() }
+        return candidates
+            .distinctBy {
+                it.id
+            }.filter { inBounds(it, callerId, namespaceId) && canReadListed(it, callerId, namespaceId) }
+            .sortedBy { it.name.lowercase() }
     }
 
     /**
@@ -158,13 +162,16 @@ class ConfigReadService(
         callerId: UUID,
     ): Boolean =
         when (entity.kind) {
-            ConfigKind.INTEGRATION ->
+            ConfigKind.INTEGRATION -> {
                 integrationConfigService.findById(entity.id)?.let { config ->
                     scopedAccessPolicy.canAccess(callerOf(callerId), EntityType.INTEGRATION_CONFIG, config, Action.READ)
                 } == true
-            else ->
+            }
+
+            else -> {
                 permissionEvaluator.hasPermission(callerId.toString(), entityTypeOf(entity.kind), entity.id.toString(), Action.READ) ||
                     (entity.kind == ConfigKind.SKILL && skillAuthorizationService.canRead(callerId.toString(), entity.id))
+            }
         }
 
     private fun callerOf(callerId: UUID): Caller = Caller.Human(callerId, isAdmin = userService.findById(callerId)?.isAdmin == true)
@@ -198,27 +205,47 @@ class ConfigReadService(
         userId: UUID?,
     ): List<ConfigEntity> =
         when (kind) {
-            ConfigKind.AGENT -> if (userId == null) agentConfigService.findByNamespace(namespaceId).map(::fromAgent) else emptyList()
-            ConfigKind.SKILL ->
+            ConfigKind.AGENT -> {
+                if (userId == null) agentConfigService.findByNamespace(namespaceId).map(::fromAgent) else emptyList()
+            }
+
+            ConfigKind.SKILL -> {
                 when {
                     userId != null -> emptyList()
                     namespaceId == null -> skillService.findPlatform().map(::fromSkill)
                     else -> skillService.findByParent(namespaceId).map(::fromSkill)
                 }
-            ConfigKind.PROMPT -> promptService.findByScope(namespaceId, userId, null).map(::fromPrompt)
-            ConfigKind.INTEGRATION ->
+            }
+
+            ConfigKind.PROMPT -> {
+                promptService.findByScope(namespaceId, userId, null).map(::fromPrompt)
+            }
+
+            ConfigKind.INTEGRATION -> {
                 when {
                     namespaceId == null && userId == null -> integrationConfigService.findPlatform()
                     userId == null -> integrationConfigService.findByNamespaceShared(namespaceId!!)
                     else -> integrationConfigService.findByUserId(userId).filter { it.namespaceId == namespaceId }
                 }.map(::fromIntegration)
-            ConfigKind.AUTH_SETTING ->
+            }
+
+            ConfigKind.AUTH_SETTING -> {
                 when {
                     namespaceId == null && userId == null -> authSettingService.findPlatformLevel()
                     userId == null -> authSettingService.findByNamespaceId(namespaceId!!).filter { it.userId == null }
                     else -> authSettingService.findByUserId(userId).filter { it.namespaceId == namespaceId }
                 }.map(::fromAuthSetting)
-            ConfigKind.NAMESPACE -> if (namespaceId == null && userId == null) namespaceService.findAll().map(::fromNamespace) else emptyList()
+            }
+
+            ConfigKind.NAMESPACE -> {
+                if (namespaceId == null &&
+                    userId == null
+                ) {
+                    namespaceService.findAll().map(::fromNamespace)
+                } else {
+                    emptyList()
+                }
+            }
         }
 
     /** The caller's own overlays of [kind]: user-global and user x current namespace. */

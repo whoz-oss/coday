@@ -1,14 +1,14 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.agentConfig.SubAgentSelectorValidation
 import io.whozoss.agentos.sdk.api.configChange.ConfigAction
 import io.whozoss.agentos.sdk.api.configChange.ConfigAffects
 import io.whozoss.agentos.sdk.api.configChange.ConfigDeployTarget
 import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import org.springframework.stereotype.Service
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.node.ObjectNode
 import java.util.UUID
 
 /**
@@ -38,10 +38,19 @@ class ConfigPlanner(
     ): PlanningResult {
         val rawOperations = input.operations.orEmpty()
         return when {
-            rawOperations.isEmpty() -> PlanningResult.Invalid(listOf("operations: at least one operation is required."))
-            rawOperations.size > ConfigAgentLimits.MAX_OPERATIONS ->
-                PlanningResult.Invalid(listOf("operations: at most ${ConfigAgentLimits.MAX_OPERATIONS} operations per proposal, got ${rawOperations.size}."))
-            else -> planOperations(rawOperations, input.summary, context)
+            rawOperations.isEmpty() -> {
+                PlanningResult.Invalid(listOf("operations: at least one operation is required."))
+            }
+
+            rawOperations.size > ConfigAgentLimits.MAX_OPERATIONS -> {
+                PlanningResult.Invalid(
+                    listOf("operations: at most ${ConfigAgentLimits.MAX_OPERATIONS} operations per proposal, got ${rawOperations.size}."),
+                )
+            }
+
+            else -> {
+                planOperations(rawOperations, input.summary, context)
+            }
         }
     }
 
@@ -51,9 +60,24 @@ class ConfigPlanner(
         context: ProposalContext,
     ): PlanningResult {
         val refs = rawOperations.mapIndexed { index, op -> op.ref?.trim()?.takeIf { it.isNotEmpty() } ?: "op${index + 1}" }
-        val planRefs = PlanRefs(all = refs.toSet(), namespaces = refs.filterIndexed { index, _ -> isNamespaceCreate(rawOperations[index]) }.toSet())
+        val planRefs =
+            PlanRefs(
+                all = refs.toSet(),
+                namespaces =
+                    refs
+                        .filterIndexed {
+                            index,
+                            _,
+                            ->
+                            isNamespaceCreate(rawOperations[index])
+                        }.toSet(),
+            )
         val errors = mutableListOf<String>()
-        refs.groupBy { it }.filterValues { it.size > 1 }.keys.forEach { errors += "ref '$it': refs must be unique." }
+        refs
+            .groupBy { it }
+            .filterValues { it.size > 1 }
+            .keys
+            .forEach { errors += "ref '$it': refs must be unique." }
         val planned =
             rawOperations.mapIndexedNotNull { index, op ->
                 val ref = refs[index]
@@ -95,7 +119,7 @@ class ConfigPlanner(
     fun planHash(plan: ConfigChangePlan): String = planHash(objectMapper.valueToTree<JsonNode>(plan))
 
     fun planHash(planJson: JsonNode): String {
-        val copy = planJson.deepCopy<JsonNode>()
+        val copy = planJson.deepCopy()
         (copy as? ObjectNode)?.remove("planHash")
         return ConfigJson.hash(copy)
     }
@@ -112,12 +136,18 @@ class ConfigPlanner(
         if (kind == null) errors += "kind must be one of ${ConfigKind.entries.joinToString()}."
         if (action == null) errors += "action must be one of ${ConfigAction.entries.joinToString()}."
         return when {
-            kind == null || action == null -> null
+            kind == null || action == null -> {
+                null
+            }
+
             action !in allowedActions(kind) -> {
                 errors += "$action is not supported for $kind (allowed: ${allowedActions(kind).joinToString()})."
                 null
             }
-            else -> planSupported(ref, kind, action, op, refs, context, errors)
+
+            else -> {
+                planSupported(ref, kind, action, op, refs, context, errors)
+            }
         }
     }
 
@@ -151,7 +181,10 @@ class ConfigPlanner(
         errors: MutableList<String>,
     ): PlannedOperation? =
         when (val value = op.value) {
-            is ObjectNode -> planCreateOf(ref, kind, value, op, secrets, refs, context, errors)
+            is ObjectNode -> {
+                planCreateOf(ref, kind, value, op, secrets, refs, context, errors)
+            }
+
             else -> {
                 errors += "CREATE needs 'value', an object with the fields of the new $kind."
                 null
@@ -180,7 +213,8 @@ class ConfigPlanner(
             if (effective.get("enabled")?.isBoolean != true) {
                 errors += "creating an agent needs 'value.enabled': true (it can run) or false (it stays a draft nobody can use)."
             }
-            SubAgentSelectorValidation.idSelectors(selectorsOf(effective.get(SUB_AGENTS_FIELD)))
+            SubAgentSelectorValidation
+                .idSelectors(selectorsOf(effective.get(SUB_AGENTS_FIELD)))
                 .takeIf { it.isNotEmpty() }
                 ?.let { errors += SubAgentSelectorValidation.correction(it) }
         }
@@ -235,12 +269,18 @@ class ConfigPlanner(
         val current = targetEntity(kind, op.id, context, errors)
         val changes = op.changes.orEmpty()
         return when {
-            current == null -> null
+            current == null -> {
+                null
+            }
+
             changes.isEmpty() && secrets.isEmpty() -> {
                 errors += "UPDATE needs 'changes' (or 'secrets')."
                 null
             }
-            else -> planUpdateOf(ref, kind, current, changes, secrets, refs, errors)
+
+            else -> {
+                planUpdateOf(ref, kind, current, changes, secrets, refs, errors)
+            }
         }
     }
 
@@ -261,28 +301,34 @@ class ConfigPlanner(
         errors +=
             changes
                 .filter { it.remove != true }
-                .flatMap { change -> ConfigSecretPolicy.clearTextSecrets(kind, authType, change.value, path = change.path?.trim().orEmpty()) }
-                .map(ConfigSecretPolicy::clearTextSecretError)
+                .flatMap { change ->
+                    ConfigSecretPolicy.clearTextSecrets(kind, authType, change.value, path = change.path?.trim().orEmpty())
+                }.map(ConfigSecretPolicy::clearTextSecretError)
         val planned =
             changes.mapNotNull { change ->
                 val path = change.path?.trim().orEmpty()
                 when {
                     !isValidPath(path) -> {
-                        errors += "change path '$path' must be a JSON Pointer of 1 to $MAX_PATH_DEPTH segments, like '/instructions' or '/integrations/MY_API'."
+                        errors +=
+                            "change path '$path' must be a JSON Pointer of 1 to $MAX_PATH_DEPTH segments, like '/instructions' or '/integrations/MY_API'."
                         null
                     }
+
                     ConfigJson.segments(path).first() in immutableFields(kind) -> {
                         errors += "'$path' cannot be changed after creation${immutableHint(kind, path)}."
                         null
                     }
+
                     path in secretPaths -> {
                         errors += "'$path' is declared as a secret: remove it from 'changes'."
                         null
                     }
+
                     listPrefix(current.dto, path) != null -> {
                         errors += "'$path' goes through a list: replace the whole list with path '${listPrefix(current.dto, path)}'."
                         null
                     }
+
                     else -> {
                         // Last, and only here: the path is known valid and not refused for another
                         // reason, so the selectors are read once instead of for every change.
@@ -365,7 +411,8 @@ class ConfigPlanner(
     ): PlannedScope =
         scopeFrom(kind, scope, refs, context, errors).also {
             if (it.namespaceId == null && it.namespaceRef == null) {
-                errors += "a deployment needs a namespace: omit 'scope' for this one, or use {\"\$op\": \"<ref>\"} of a namespace this plan creates."
+                errors +=
+                    "a deployment needs a namespace: omit 'scope' for this one, or use {\"\$op\": \"<ref>\"} of a namespace this plan creates."
             }
         }
 
@@ -377,7 +424,8 @@ class ConfigPlanner(
     ): ConfigEntity? {
         val uuid = id?.let { runCatching { UUID.fromString(it.trim()) }.getOrNull() }
         return if (uuid == null) {
-            errors += "'id' must be the id of an existing ${kind.name.lowercase()}, as returned by ${ConfigAgentIntegration.READ_TOOL_NAME}."
+            errors +=
+                "'id' must be the id of an existing ${kind.name.lowercase()}, as returned by ${ConfigAgentIntegration.READ_TOOL_NAME}."
             null
         } else {
             configReadService.find(kind, uuid, context.callerId, context.namespaceId).also {
@@ -398,16 +446,24 @@ class ConfigPlanner(
     ): PlannedScope? =
         when {
             kind == ConfigKind.NAMESPACE -> {
-                if (scope != null && (namespaceNodeOf(scope) != null || !scope.userId.isNullOrBlank())) errors += "a namespace has no scope: omit 'scope'."
+                if (scope != null &&
+                    (namespaceNodeOf(scope) != null || !scope.userId.isNullOrBlank())
+                ) {
+                    errors += "a namespace has no scope: omit 'scope'."
+                }
                 PlannedScope(namespaceId = null, userId = null)
             }
+
             scope == null -> {
                 errors +=
                     "CREATE needs 'scope': {\"namespaceId\": \"${ScopeInput.CURRENT_NAMESPACE}\", {\"\$op\": \"<ref>\"} of a namespace this plan creates or null for platform, " +
                     "\"userId\": \"${ScopeInput.CALLER}\" or null}."
                 null
             }
-            else -> scopeFrom(kind, scope, refs, context, errors)
+
+            else -> {
+                scopeFrom(kind, scope, refs, context, errors)
+            }
         }
 
     private fun scopeFrom(
@@ -421,14 +477,19 @@ class ConfigPlanner(
         val namespaceRef = namespaceNode?.let(ConfigJson::opRefOf)
         val namespaceId =
             when {
-                namespaceNode == null -> null
+                namespaceNode == null -> {
+                    null
+                }
+
                 namespaceRef != null -> {
                     if (namespaceRef !in refs.namespaces) {
-                        errors += "scope.namespaceId {\"\$op\": \"$namespaceRef\"} must name an operation of this plan that creates a NAMESPACE."
+                        errors +=
+                            "scope.namespaceId {\"\$op\": \"$namespaceRef\"} must name an operation of this plan that creates a NAMESPACE."
                     }
                     null
                 }
-                else ->
+
+                else -> {
                     namespaceIdOf(namespaceNode, context).also { id ->
                         if (id == null || (id != context.namespaceId && !configReadService.canAdminister(context.callerId, id))) {
                             errors +=
@@ -436,13 +497,15 @@ class ConfigPlanner(
                                 "the user administers, {\"\$op\": \"<ref>\"} of a namespace this plan creates, or null for platform."
                         }
                     }
+                }
             }
         val userId =
             scope.userId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { raw ->
                 if (raw.equals(ScopeInput.CALLER, ignoreCase = true) || raw == context.callerId.toString()) {
                     context.callerId
                 } else {
-                    errors += "scope.userId must be \"${ScopeInput.CALLER}\" or null: an entity can only be created for the user who applies the plan."
+                    errors +=
+                        "scope.userId must be \"${ScopeInput.CALLER}\" or null: an entity can only be created for the user who applies the plan."
                     null
                 }
             }
@@ -454,14 +517,23 @@ class ConfigPlanner(
 
     /** The namespace part of [scope], or null when it means the platform (absent, JSON null, blank or `"null"`). */
     private fun namespaceNodeOf(scope: ScopeInput): JsonNode? =
-        scope.namespaceId?.takeUnless { node -> node.isNull || (node.isTextual && node.textValue().trim().let { it.isEmpty() || it == "null" }) }
+        scope.namespaceId?.takeUnless { node ->
+            node.isNull ||
+                (node.isString && node.stringValue().trim().let { it.isEmpty() || it == "null" })
+        }
 
     private fun namespaceIdOf(
         node: JsonNode,
         context: ProposalContext,
     ): UUID? {
-        val raw = node.takeIf { it.isTextual }?.textValue()?.trim()
-        return if (raw.equals(ScopeInput.CURRENT_NAMESPACE, ignoreCase = true)) context.namespaceId else raw?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        val raw = node.takeIf { it.isString }?.stringValue()?.trim()
+        return if (raw.equals(ScopeInput.CURRENT_NAMESPACE, ignoreCase = true)) {
+            context.namespaceId
+        } else {
+            raw?.let {
+                runCatching { UUID.fromString(it) }.getOrNull()
+            }
+        }
     }
 
     private fun isNamespaceCreate(op: OperationInput): Boolean =
@@ -484,11 +556,15 @@ class ConfigPlanner(
                     errors += "secret path '$path' must be a JSON Pointer like '/apiKey' or '/parameters/token'."
                     null
                 }
+
                 !ConfigSecretPolicy.canHoldSecret(kind, path) -> {
                     errors += "'$path' cannot hold a secret for a ${kind.name.lowercase()}: ${ConfigSecretPolicy.secretFieldsHint(kind)}."
                     null
                 }
-                else -> SecretSlot(path = path, label = secret.label?.trim()?.takeIf { it.isNotEmpty() } ?: path.removePrefix("/"))
+
+                else -> {
+                    SecretSlot(path = path, label = secret.label?.trim()?.takeIf { it.isNotEmpty() } ?: path.removePrefix("/"))
+                }
             }
         }
 
@@ -509,16 +585,24 @@ class ConfigPlanner(
     ): List<String> =
         operations.mapNotNull { op ->
             when {
-                op.kind == ConfigKind.AGENT && op.action == ConfigAction.CREATE && op.deployTo == ConfigDeployTarget.NONE ->
+                op.kind == ConfigKind.AGENT && op.action == ConfigAction.CREATE && op.deployTo == ConfigDeployTarget.NONE -> {
                     "${op.ref}: the new agent is not deployed, so members of the namespace will not see it."
+                }
+
                 op.kind == ConfigKind.AGENT &&
                     op.action == ConfigAction.ENABLE &&
                     op.target != null &&
-                    op.target.id !in configReadService.deployedAgentIds(op.target.namespaceId ?: context.namespaceId) ->
+                    op.target.id !in configReadService.deployedAgentIds(op.target.namespaceId ?: context.namespaceId) -> {
                     "${op.ref}: '${op.target.name}' is not deployed on its namespace, so members will not see it."
-                op.kind == ConfigKind.NAMESPACE && op.action == ConfigAction.CREATE && op.value?.hasNonNull("defaultAgentName") != true ->
+                }
+
+                op.kind == ConfigKind.NAMESPACE && op.action == ConfigAction.CREATE && op.value?.hasNonNull("defaultAgentName") != true -> {
                     "${op.ref}: the new namespace has no default agent, so a message without @mention gets no answer there."
-                else -> null
+                }
+
+                else -> {
+                    null
+                }
             }
         }
 
@@ -541,18 +625,34 @@ class ConfigPlanner(
     private fun rank(op: PlannedOperation): Int =
         when (op.kind) {
             // A namespace is created first; its update comes last, e.g. to name a default agent the plan creates.
-            ConfigKind.NAMESPACE -> if (op.action == ConfigAction.CREATE) 0 else 9
-            ConfigKind.AUTH_SETTING -> 1
-            ConfigKind.INTEGRATION -> 2
-            ConfigKind.SKILL -> 3
-            ConfigKind.AGENT ->
+            ConfigKind.NAMESPACE -> {
+                if (op.action == ConfigAction.CREATE) 0 else 9
+            }
+
+            ConfigKind.AUTH_SETTING -> {
+                1
+            }
+
+            ConfigKind.INTEGRATION -> {
+                2
+            }
+
+            ConfigKind.SKILL -> {
+                3
+            }
+
+            ConfigKind.AGENT -> {
                 when (op.action) {
                     ConfigAction.CREATE -> 4
                     ConfigAction.UPDATE -> 5
                     ConfigAction.ENABLE, ConfigAction.DISABLE -> 7
                     ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> 8
                 }
-            ConfigKind.PROMPT -> 6
+            }
+
+            ConfigKind.PROMPT -> {
+                6
+            }
         }
 
     private fun allowedActions(kind: ConfigKind): Set<ConfigAction> =
@@ -566,10 +666,14 @@ class ConfigPlanner(
         setOf("id", "namespaceId", "userId") +
             when (kind) {
                 ConfigKind.PROMPT -> setOf("agentConfigId")
+
                 ConfigKind.INTEGRATION -> setOf("integrationType")
+
                 ConfigKind.AUTH_SETTING -> setOf(ConfigAuthSettingTypes.TYPE_FIELD)
+
                 // The REST API keeps a namespace's externalId as created.
                 ConfigKind.NAMESPACE -> setOf("externalId")
+
                 else -> emptySet()
             }
 
@@ -613,7 +717,7 @@ class ConfigPlanner(
 
     /** A `subAgents` node as the selector list it is meant to be, or null when it is not a list. */
     private fun selectorsOf(node: JsonNode?): List<String>? =
-        node?.takeIf { it.isArray }?.mapNotNull { it.takeIf(JsonNode::isTextual)?.asText() }
+        node?.takeIf { it.isArray }?.values()?.mapNotNull { it.takeIf(JsonNode::isString)?.stringValue() }
 
     private fun isValidPath(path: String): Boolean =
         path.startsWith("/") && path.length > 1 && runCatching { ConfigJson.segments(path) }.getOrNull()?.let { segments ->
@@ -631,7 +735,11 @@ class ConfigPlanner(
         }
 
     private inline fun <reified E : Enum<E>> enumOrNull(raw: String?): E? =
-        raw?.trim()?.uppercase()?.replace('-', '_')?.let { value -> enumValues<E>().firstOrNull { it.name == value } }
+        raw
+            ?.trim()
+            ?.uppercase()
+            ?.replace('-', '_')
+            ?.let { value -> enumValues<E>().firstOrNull { it.name == value } }
 
     companion object {
         const val MAX_PATH_DEPTH = 3

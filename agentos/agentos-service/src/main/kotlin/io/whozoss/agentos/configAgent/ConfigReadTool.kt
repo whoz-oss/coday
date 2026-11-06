@@ -1,10 +1,10 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
 /**
@@ -81,18 +81,26 @@ class ConfigReadTool(
         val kind = ReadKind.fromWire(input?.kind)
         val target = callerId?.let { targetNamespace(input?.namespaceId, it) }
         return when {
-            callerId == null -> ToolExecutionResult.error("Reading the configuration needs a user: this run has none.", errorType = "NO_USER")
-            kind == null ->
+            callerId == null -> {
+                ToolExecutionResult.error("Reading the configuration needs a user: this run has none.", errorType = "NO_USER")
+            }
+
+            kind == null -> {
                 ToolExecutionResult.error("Unknown kind '${input?.kind}'. Use one of: ${ReadKind.wireNames}.", errorType = "INVALID_INPUT")
-            target == null ->
+            }
+
+            target == null -> {
                 ToolExecutionResult.error(
                     "namespaceId '${input?.namespaceId}' is not a namespace the user administers: use \"current\" or the id of one listed by kind 'namespace'.",
                     errorType = "INVALID_INPUT",
                 )
-            else ->
+            }
+
+            else -> {
                 read(kind, input?.id?.trim()?.takeIf { it.isNotEmpty() }, scopeOf(input?.scope), callerId, target)
                     ?.let { ToolExecutionResult.success(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(it)) }
                     ?: ToolExecutionResult.error("No ${kind.wireName} '${input?.id}' visible to the user.", errorType = "NOT_FOUND")
+            }
         }
     }
 
@@ -177,6 +185,6 @@ class ConfigReadTool(
             if (entity.fromFilesystem) put("origin", "FILESYSTEM (read-only)")
         }
 
-    private fun scopeOf(raw: String?): ReadScope = raw?.trim()?.uppercase()?.let { value -> ReadScope.entries.firstOrNull { it.name == value } } ?: ReadScope.ALL
-
+    private fun scopeOf(raw: String?): ReadScope =
+        raw?.trim()?.uppercase()?.let { value -> ReadScope.entries.firstOrNull { it.name == value } } ?: ReadScope.ALL
 }

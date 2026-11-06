@@ -1,8 +1,8 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.ObjectNode
 
 /**
  * Whether what the server stores already holds a value a plan proposes, the way the REST layer stores it:
@@ -22,18 +22,39 @@ internal object ConfigValueMatch {
         skip: Set<String> = emptySet(),
     ): Boolean =
         when {
-            path in skip -> true
-            proposed == null || isEmpty(proposed) -> isEmpty(stored)
-            proposed is ObjectNode ->
-                stored is ObjectNode && proposed.properties().all { (key, value) -> holdsMember(stored, key, value, childPath(path, key), skip) }
-            proposed is ArrayNode ->
-                stored is ArrayNode && stored.size() == proposed.size() && (0 until proposed.size()).all { holds(stored[it], proposed[it], "$path/$it", skip) }
-            proposed.isNumber -> stored?.isNumber == true && stored.decimalValue().compareTo(proposed.decimalValue()) == 0
-            proposed.isTextual -> stored?.isTextual == true && stored.textValue().trim() == proposed.textValue().trim()
-            else -> stored == proposed
+            path in skip -> {
+                true
+            }
+
+            proposed == null || isEmpty(proposed) -> {
+                isEmpty(stored)
+            }
+
+            proposed is ObjectNode -> {
+                stored is ObjectNode &&
+                    proposed.properties().all { (key, value) -> holdsMember(stored, key, value, childPath(path, key), skip) }
+            }
+
+            proposed is ArrayNode -> {
+                stored is ArrayNode && stored.size() == proposed.size() &&
+                    (0 until proposed.size()).all { holds(stored[it], proposed[it], "$path/$it", skip) }
+            }
+
+            proposed.isNumber -> {
+                stored?.isNumber == true && stored.decimalValue().compareTo(proposed.decimalValue()) == 0
+            }
+
+            proposed.isString -> {
+                stored?.isString == true && stored.stringValue().trim() == proposed.stringValue().trim()
+            }
+
+            else -> {
+                stored == proposed
+            }
         }
 
-    fun isEmpty(node: JsonNode?): Boolean = node == null || node.isNull || node.isMissingNode || (node.isTextual && node.textValue().isBlank())
+    fun isEmpty(node: JsonNode?): Boolean =
+        node == null || node.isNull || node.isMissingNode || (node.isString && node.stringValue().isBlank())
 
     private fun holdsMember(
         stored: ObjectNode,

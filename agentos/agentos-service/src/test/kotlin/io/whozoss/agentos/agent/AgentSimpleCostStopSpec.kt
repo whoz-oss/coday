@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.openai.models.completions.CompletionUsage
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -33,7 +34,6 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withTimeout
-import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.metadata.ChatResponseMetadata
 import org.springframework.ai.chat.metadata.DefaultUsage
@@ -42,7 +42,6 @@ import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.model.tool.ToolCallingChatOptions
-import org.springframework.ai.openai.api.OpenAiApi
 import reactor.core.publisher.Flux
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -83,7 +82,7 @@ class AgentSimpleCostStopSpec :
                             }
                         }
                     val raw = mockk<ChatModel>()
-                    every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                    every { raw.options } returns ToolCallingChatOptions.builder().build()
                     every { raw.stream(any<Prompt>()) } answers {
                         val round = calls.incrementAndGet()
                         val tokens = if (round == 2) 10 else 1
@@ -103,8 +102,19 @@ class AgentSimpleCostStopSpec :
                                 listOf(Generation(message)),
                                 ChatResponseMetadata
                                     .builder()
-                                    .usage(DefaultUsage(tokens, 0, tokens, OpenAiApi.Usage(0, tokens, tokens, null, null)))
-                                    .build(),
+                                    .usage(
+                                        DefaultUsage(
+                                            tokens,
+                                            0,
+                                            tokens,
+                                            CompletionUsage
+                                                .builder()
+                                                .promptTokens(tokens.toLong())
+                                                .completionTokens(0)
+                                                .totalTokens(tokens.toLong())
+                                                .build(),
+                                        ),
+                                    ).build(),
                             ),
                         )
                     }
@@ -117,7 +127,7 @@ class AgentSimpleCostStopSpec :
                     val agent =
                         AgentSimple(
                             name = "test",
-                            chatClient = ChatClient.builder(UsageTrackingChatModel(raw, usage, AiApiType.OpenAI, model)).build(),
+                            chatClient = UsageTrackingChatModel(raw, usage, AiApiType.OpenAI, model).chatClient(),
                             tools = listOf(tool),
                             llmProvider = "test",
                             llmModel = "test",

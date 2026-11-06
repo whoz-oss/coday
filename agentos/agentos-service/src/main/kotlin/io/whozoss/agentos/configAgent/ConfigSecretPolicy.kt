@@ -1,7 +1,7 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.configChange.ConfigKind
+import tools.jackson.databind.JsonNode
 
 /**
  * Where the config agent's secrets may live, in one place for the planner (what a plan may declare
@@ -67,12 +67,14 @@ internal object ConfigSecretPolicy {
         authType: String?,
         secrets: List<SecretSlot>,
     ): List<String> =
-        ConfigAuthSettingTypes.secretFieldsOf(authType)?.let { allowed ->
-            secrets.filter { ConfigJson.segments(it.path).first() !in allowed }.map {
-                "'${it.path}' is not a secret field of a $authType auth setting: " +
-                    if (allowed.isEmpty()) "it has none." else "use ${allowed.joinToString { field -> "/$field" }}."
-            }
-        }.orEmpty()
+        ConfigAuthSettingTypes
+            .secretFieldsOf(authType)
+            ?.let { allowed ->
+                secrets.filter { ConfigJson.segments(it.path).first() !in allowed }.map {
+                    "'${it.path}' is not a secret field of a $authType auth setting: " +
+                        if (allowed.isEmpty()) "it has none." else "use ${allowed.joinToString { field -> "/$field" }}."
+                }
+            }.orEmpty()
 
     /**
      * Pointers, under [path], where [node] writes a secret in clear: a secret field of an auth setting
@@ -90,14 +92,23 @@ internal object ConfigSecretPolicy {
                 val fields = ConfigAuthSettingTypes.secretFieldsOf(authType) ?: AUTH_SETTING_SECRET_FIELDS
                 secretLeaves(node, path) { pointer -> ConfigJson.segments(pointer).let { it.size == 1 && it.single() in fields } }
             }
-            ConfigKind.INTEGRATION ->
+
+            ConfigKind.INTEGRATION -> {
                 secretLeaves(node, path) { pointer ->
-                    ConfigJson.segments(pointer).let { it.size > 1 && it.first() == PARAMETERS && it.last().lowercase() in SECRET_PARAMETER_KEYS }
+                    ConfigJson.segments(pointer).let {
+                        it.size > 1 && it.first() == PARAMETERS &&
+                            it.last().lowercase() in SECRET_PARAMETER_KEYS
+                    }
                 }
-            else -> emptyList()
+            }
+
+            else -> {
+                emptyList()
+            }
         }
 
-    fun clearTextSecretError(pointer: String): String = "'$pointer' holds a secret: never write it, declare it in 'secrets' so the user types it in the card."
+    fun clearTextSecretError(pointer: String): String =
+        "'$pointer' holds a secret: never write it, declare it in 'secrets' so the user types it in the card."
 
     /** Pointers of the non-blank text leaves of [node], rooted at [path], that [isSecret] flags. */
     private fun secretLeaves(
@@ -106,10 +117,26 @@ internal object ConfigSecretPolicy {
         isSecret: (String) -> Boolean,
     ): List<String> =
         when {
-            node == null -> emptyList()
-            node.isObject -> node.properties().flatMap { (key, value) -> secretLeaves(value, path + ConfigJson.pointerOf(listOf(key)), isSecret) }
-            node.isArray -> node.flatMapIndexed { index, value -> secretLeaves(value, "$path/$index", isSecret) }
-            node.isTextual && node.textValue().isNotBlank() && path.isNotEmpty() && isSecret(path) -> listOf(path)
-            else -> emptyList()
+            node == null -> {
+                emptyList()
+            }
+
+            node.isObject -> {
+                node.properties().flatMap { (key, value) ->
+                    secretLeaves(value, path + ConfigJson.pointerOf(listOf(key)), isSecret)
+                }
+            }
+
+            node.isArray -> {
+                node.values().flatMapIndexed { index, value -> secretLeaves(value, "$path/$index", isSecret) }
+            }
+
+            node.isString && node.stringValue().isNotBlank() && path.isNotEmpty() && isSecret(path) -> {
+                listOf(path)
+            }
+
+            else -> {
+                emptyList()
+            }
         }
 }

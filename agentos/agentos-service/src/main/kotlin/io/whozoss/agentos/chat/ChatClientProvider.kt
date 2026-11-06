@@ -19,9 +19,10 @@ import org.springframework.stereotype.Service
  * Resolution of which model/provider pair to use is the responsibility of the caller
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
  *
- * When usage is enabled, tracking is applied to the model so every call/stream terminal and internal tool
- * round goes through accounting and the cost gate. Clients outside agent execution
- * (no accumulator) retain their existing behaviour.
+ * When usage is enabled, tracking is applied to the model so every call/stream terminal and tool
+ * round goes through accounting and the cost gate; the tracked model then owns the tool loop.
+ * Otherwise (usage disabled, or clients outside agent execution without accumulator) tools are executed
+ * by the `ToolCallingAdvisor` that Spring AI 2.x `ChatClient` installs by default.
  *
  * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
  * when given, else the platform's `agentos.limits.agent-max-iterations`.
@@ -50,19 +51,17 @@ class ChatClientProvider(
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
                 reasoningEffort = modelConfig.reasoningEffort,
             )
-        val trackedModel =
-            if (usageConfig.enabled && accumulator != null) {
-                UsageTrackingChatModel(
-                    chatModel,
-                    accumulator,
-                    providerConfig.apiType,
-                    modelConfig,
-                    maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
-                )
-            } else {
-                chatModel
-            }
-        return ChatClient.builder(trackedModel).build()
+        return if (usageConfig.enabled && accumulator != null) {
+            UsageTrackingChatModel(
+                chatModel,
+                accumulator,
+                providerConfig.apiType,
+                modelConfig,
+                maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
+            ).chatClient()
+        } else {
+            ChatClient.builder(chatModel).build()
+        }
     }
 
     companion object {

@@ -27,8 +27,8 @@ import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
 import org.springframework.aop.support.AopUtils
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -73,16 +73,25 @@ class ApiBeanBridgeAuthorizationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var configWriter: ConfigWriter
+
     @Autowired lateinit var mockMvc: MockMvc
+
     @Autowired lateinit var agentConfigApi: AgentConfigApi
+
     @Autowired lateinit var agentConfigService: AgentConfigService
+
     @Autowired lateinit var agentConfigRepository: AgentConfigRepository
+
     @Autowired lateinit var integrationConfigService: IntegrationConfigService
+
     @Autowired lateinit var namespaceService: NamespaceService
+
     @Autowired lateinit var permissionService: PermissionService
+
     @Autowired lateinit var userRepository: UserRepository
 
-    @MockkBean(relaxed = true) lateinit var userService: UserService
+    @MockkBean(relaxed = true)
+    lateinit var userService: UserService
 
     private lateinit var alice: User // non-admin, ADMIN of the namespace
     private lateinit var bob: User // non-admin, no permission

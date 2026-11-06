@@ -1,6 +1,6 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 
 data class OperationInput(
     val ref: String? = null,

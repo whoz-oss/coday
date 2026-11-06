@@ -22,7 +22,6 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.toList
-import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -72,14 +71,14 @@ class AgentSimpleToolRoundLimitSpec :
         suspend fun run(reply: (Prompt, Int) -> ChatResponse): List<CaseEvent> {
             val requests = AtomicInteger()
             val raw = mockk<ChatModel>()
-            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.options } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } answers { Flux.just(reply(firstArg(), requests.getAndIncrement())) }
             val model = AiModel(aiProviderId = UUID.randomUUID(), apiModelName = "test")
             val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, maxToolRounds = 2)
             val agent =
                 AgentSimple(
                     name = "test",
-                    chatClient = ChatClient.builder(tracked).build(),
+                    chatClient = tracked.chatClient(),
                     tools = listOf(tool),
                     llmProvider = "test",
                     llmModel = "test",
@@ -114,7 +113,13 @@ class AgentSimpleToolRoundLimitSpec :
 
             events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 2
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
-            (events.filterIsInstance<MessageEvent>().single().content.single() as MessageContent.Text).content shouldBe "Finished."
+            (
+                events
+                    .filterIsInstance<MessageEvent>()
+                    .single()
+                    .content
+                    .single() as MessageContent.Text
+            ).content shouldBe "Finished."
             (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe null
         }
     })

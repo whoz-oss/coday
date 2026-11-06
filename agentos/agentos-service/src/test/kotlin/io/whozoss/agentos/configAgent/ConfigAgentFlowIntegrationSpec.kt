@@ -1,7 +1,5 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import com.ninjasquad.springmockk.SpykBean
 import io.kotest.assertions.fail
@@ -50,9 +48,9 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
@@ -63,6 +61,8 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -87,22 +87,36 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
+
     @Autowired lateinit var objectMapper: ObjectMapper
+
     @Autowired lateinit var configToolGrantService: ConfigToolGrantService
+
     @Autowired lateinit var caseEventService: CaseEventService
+
     @Autowired lateinit var caseRepository: CaseRepository
+
     @Autowired lateinit var namespaceService: NamespaceService
+
     @Autowired lateinit var permissionService: PermissionService
+
     @Autowired lateinit var userRepository: UserRepository
+
     @Autowired lateinit var agentConfigRepository: AgentConfigRepository
+
     @Autowired lateinit var agentConfigService: AgentConfigService
+
     @Autowired lateinit var integrationConfigService: IntegrationConfigService
+
     @Autowired lateinit var promptService: PromptService
+
     @Autowired lateinit var authSettingService: AuthSettingService
 
-    @MockkBean(relaxed = true) lateinit var userService: UserService
+    @MockkBean(relaxed = true)
+    lateinit var userService: UserService
 
-    @MockkBean(relaxed = true) lateinit var caseService: CaseService
+    @MockkBean(relaxed = true)
+    lateinit var caseService: CaseService
 
     /** The real writer, stubbed by a test that needs one write to be refused. */
     @SpykBean lateinit var configWriter: ConfigWriter
@@ -120,7 +134,12 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
     private fun user(isAdmin: Boolean = false): User {
         val id = UUID.randomUUID()
-        return User(metadata = EntityMetadata(id = id), externalId = "cfg-$id@example.com", email = "cfg-$id@example.com", isAdmin = isAdmin)
+        return User(
+            metadata = EntityMetadata(id = id),
+            externalId = "cfg-$id@example.com",
+            email = "cfg-$id@example.com",
+            isAdmin = isAdmin,
+        )
     }
 
     private fun superAdmin(): User =
@@ -158,14 +177,27 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         return objectMapper.readTree(result.output)
     }
 
-    private fun toolContext(caller: User) = ToolContext(namespaceId = namespace.id, userId = caller.id, userExternalId = null, caseEvents = emptyList())
+    private fun toolContext(caller: User) =
+        ToolContext(namespaceId = namespace.id, userId = caller.id, userExternalId = null, caseEvents = emptyList())
 
     /** Another namespace, administered by [admin] when given. */
     private fun otherNamespace(admin: User?): Namespace =
         namespaceService
-            .create(Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "cfg-other-${UUID.randomUUID()}", name = "Other $suffix"))
-            .also { other ->
-                admin?.let { permissionService.grantPermission(it.id.toString(), EntityType.NAMESPACE, other.id.toString(), PermissionRelation.ADMIN) }
+            .create(
+                Namespace(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    externalId = "cfg-other-${UUID.randomUUID()}",
+                    name = "Other $suffix",
+                ),
+            ).also { other ->
+                admin?.let {
+                    permissionService.grantPermission(
+                        it.id.toString(),
+                        EntityType.NAMESPACE,
+                        other.id.toString(),
+                        PermissionRelation.ADMIN,
+                    )
+                }
             }
 
     /** Runs the propose tool as [caller] and records what an agent run would have persisted. */
@@ -209,18 +241,18 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
     private val samePlan: String
         get() =
             """
-                    { "summary": "Plug Acme into the dev agent",
-                      "operations": [
-                        { "ref": "p1", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "triage-$suffix", "content": ["Triage this"], "agentConfigId": { "${'$'}op": "sup" } } },
-                        { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
-                          "changes": [ { "path": "/integrations/ACME_$suffix", "value": null } ] },
-                        { "ref": "sup", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "support-$suffix", "instructions": "Help the user", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" },
-                        { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current", "userId": null },
-                          "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
-                      ] }
-                    """.trimIndent()
+            { "summary": "Plug Acme into the dev agent",
+              "operations": [
+                { "ref": "p1", "kind": "PROMPT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                  "value": { "name": "triage-$suffix", "content": ["Triage this"], "agentConfigId": { "${'$'}op": "sup" } } },
+                { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
+                  "changes": [ { "path": "/integrations/ACME_$suffix", "value": null } ] },
+                { "ref": "sup", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                  "value": { "name": "support-$suffix", "instructions": "Help the user", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" },
+                { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current", "userId": null },
+                  "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
+              ] }
+            """.trimIndent()
 
     /** A new namespace with an integration and an agent in it, and a platform agent deployed on it. */
     private fun namespacePlan(platformAgent: AgentConfig) =
@@ -237,7 +269,9 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         """.trimIndent()
 
     private fun platformAgent(): AgentConfig =
-        agentConfigRepository.save(AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, name = "shared-$suffix", enabled = true))
+        agentConfigRepository.save(
+            AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, name = "shared-$suffix", enabled = true),
+        )
 
     private fun promptPlan(name: String) =
         """
@@ -268,7 +302,13 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         questionId: UUID,
         planHash: String,
         secrets: Map<String, String> = emptyMap(),
-    ): JsonNode = objectMapper.readTree(apply(questionId, planHash, secrets).andExpect(status().isOk).andReturn().response.contentAsString)
+    ): JsonNode =
+        objectMapper.readTree(
+            apply(questionId, planHash, secrets)
+                .andExpect(status().isOk)
+                .andReturn()
+                .response.contentAsString,
+        )
 
     init {
         beforeEach {
@@ -280,7 +320,10 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                 every { userService.findById(u.id) } returns u
             }
             suffix = UUID.randomUUID().toString().take(8)
-            namespace = namespaceService.create(Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "cfg-ns-$suffix", name = "Config $suffix"))
+            namespace =
+                namespaceService.create(
+                    Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "cfg-ns-$suffix", name = "Config $suffix"),
+                )
             case = caseRepository.save(Case(namespaceId = namespace.id))
             permissionService.grantPermission(alice.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.ADMIN)
             permissionService.grantPermission(carol.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), PermissionRelation.MEMBER)
@@ -321,8 +364,8 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             val shown = view(proposal.questionId)
             shown["state"].asText() shouldBe "OPEN"
             shown["canApply"].asBoolean() shouldBe true
-            shown["operations"].map { it["ref"].asText() } shouldContainExactly listOf("acme", "sup", "dev", "p1")
-            shown["operations"].map { it["status"].asText() }.toSet() shouldBe setOf("PENDING")
+            shown["operations"].values().map { it["ref"].asText() } shouldContainExactly listOf("acme", "sup", "dev", "p1")
+            shown["operations"].values().map { it["status"].asText() }.toSet() shouldBe setOf("PENDING")
 
             actAs(bob)
             view(proposal.questionId)["canApply"].asBoolean() shouldBe false
@@ -333,7 +376,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
             val report = applied(proposal.questionId, shown["planHash"].asText())
             report["decision"].asText() shouldBe "APPLIED"
-            report["results"].map { it["status"].asText() }.toSet() shouldBe setOf("APPLIED")
+            report["results"].values().map { it["status"].asText() }.toSet() shouldBe setOf("APPLIED")
 
             val support = agentConfigService.findByNamespace(namespace.id).single { it.name == "support-$suffix" }
             namespaceService.findDeployedAgentIds(namespace.id) shouldContain support.id
@@ -350,13 +393,13 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             val after = view(proposal.questionId)
             after["state"].asText() shouldBe "ANSWERED"
             after["canApply"].asBoolean() shouldBe false
-            after["operations"].map { it["status"].asText() }.toSet() shouldBe setOf("APPLIED", "ALREADY_APPLIED")
+            after["operations"].values().map { it["status"].asText() }.toSet() shouldBe setOf("APPLIED", "ALREADY_APPLIED")
             apply(proposal.questionId, shown["planHash"].asText()).andExpect(status().isConflict)
 
             val again = propose(alice, samePlan)
             view(proposal.questionId)["state"].asText() shouldBe "ANSWERED"
             val reapplied = applied(again.questionId, view(again.questionId)["planHash"].asText())
-            reapplied["results"].map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
+            reapplied["results"].values().map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
         }
 
         "a super-admin's plan creates a namespace and configures it, not the case's namespace; proposing it again converges" {
@@ -366,8 +409,8 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             val proposal = propose(root, namespacePlan(shared))
 
             val shown = view(proposal.questionId)
-            shown["operations"].map { it["ref"].asText() } shouldContainExactly listOf("ns", "acme", "dev", "shared")
-            shown["operations"].map { it["status"].asText() }.toSet() shouldBe setOf("PENDING")
+            shown["operations"].values().map { it["ref"].asText() } shouldContainExactly listOf("ns", "acme", "dev", "shared")
+            shown["operations"].values().map { it["status"].asText() }.toSet() shouldBe setOf("PENDING")
             shown["operations"].drop(1).map { it["namespaceName"].asText() }.toSet() shouldBe setOf("Copy $suffix")
 
             val report = applied(proposal.questionId, shown["planHash"].asText())
@@ -383,7 +426,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
             val again = propose(root, namespacePlan(shared))
             val reapplied = applied(again.questionId, view(again.questionId)["planHash"].asText())
-            reapplied["results"].map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
+            reapplied["results"].values().map { it["status"].asText() }.toSet() shouldBe setOf("ALREADY_APPLIED")
             namespaceService.findAll().count { it.name == "Copy $suffix" } shouldBe 1
         }
 
@@ -416,7 +459,8 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
             result.errorType shouldBe "INVALID_PROPOSAL"
             result.output shouldContain "ns: a namespace has no scope"
-            result.output shouldContain "p: scope.namespaceId {\"${'$'}op\": \"q\"} must name an operation of this plan that creates a NAMESPACE"
+            result.output shouldContain
+                "p: scope.namespaceId {\"${'$'}op\": \"q\"} must name an operation of this plan that creates a NAMESPACE"
             result.output shouldContain "d: a deployment needs a namespace"
             result.output shouldContain "u: ENABLE is not supported for NAMESPACE"
         }
@@ -425,12 +469,19 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             val other = otherNamespace(admin = alice)
             val helper =
                 agentConfigRepository.save(
-                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "helper-$suffix", enabled = false),
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = other.id,
+                        name = "helper-$suffix",
+                        enabled = false,
+                    ),
                 )
             namespaceService.deployAgents(other.id, listOf(helper.id))
 
             read(alice, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText() shouldBe "NOT_SET"
-            read(alice, """{ "kind": "agent", "namespaceId": "${other.id}", "scope": "namespace" }""").map { it["name"].asText() } shouldContain
+            read(alice, """{ "kind": "agent", "namespaceId": "${other.id}", "scope": "namespace" }""").values().map {
+                it["name"].asText()
+            } shouldContain
                 "helper-$suffix"
 
             val proposal =
@@ -444,8 +495,8 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                     """.trimIndent(),
                 )
             val shown = view(proposal.questionId)
-            shown["operations"].map { it["ref"].asText() } shouldContainExactly listOf("enable", "default")
-            shown["operations"].map { it["namespaceName"].asText() }.toSet() shouldBe setOf("Other $suffix")
+            shown["operations"].values().map { it["ref"].asText() } shouldContainExactly listOf("enable", "default")
+            shown["operations"].values().map { it["namespaceName"].asText() }.toSet() shouldBe setOf("Other $suffix")
 
             applied(proposal.questionId, shown["planHash"].asText())["decision"].asText() shouldBe "APPLIED"
 
@@ -457,13 +508,20 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
         "the readiness of a namespace names the condition that keeps a message from reaching its default agent" {
             val other = otherNamespace(admin = alice)
-            suspend fun status(): String = read(alice, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText()
+
+            suspend fun status(): String =
+                read(alice, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText()
             namespaceService.update(other.copy(defaultAgentName = "ghost-$suffix"))
             status() shouldBe "NOT_FOUND"
 
             val helper =
                 agentConfigRepository.save(
-                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "ghost-$suffix", enabled = false),
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = other.id,
+                        name = "ghost-$suffix",
+                        enabled = false,
+                    ),
                 )
             status() shouldBe "DISABLED"
 
@@ -479,7 +537,12 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             permissionService.grantPermission(alice.id.toString(), EntityType.NAMESPACE, other.id.toString(), PermissionRelation.MEMBER)
             val stranger =
                 agentConfigRepository.save(
-                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "stranger-$suffix", enabled = true),
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = other.id,
+                        name = "stranger-$suffix",
+                        enabled = true,
+                    ),
                 )
 
             configTool(alice, ConfigAgentIntegration.READ_TOOL_NAME)
@@ -533,7 +596,8 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
             view(proposal.questionId)["operations"].single()["status"].asText() shouldBe "ALREADY_APPLIED"
             val again = propose(alice, proposalJson)
-            applied(again.questionId, view(again.questionId)["planHash"].asText())["results"].single()["status"].asText() shouldBe "ALREADY_APPLIED"
+            applied(again.questionId, view(again.questionId)["planHash"].asText())["results"].single()["status"].asText() shouldBe
+                "ALREADY_APPLIED"
             val copy = integrationConfigService.findByNamespaceShared(other.id).single { it.name == "SRC_$suffix" }
             copy.integrationType shouldBe "JIRA"
             copy.description shouldBe "Source"
@@ -606,9 +670,16 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             namespaceService.update(other.copy(defaultAgentName = "assist"))
             val candidate =
                 agentConfigRepository.save(
-                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = other.id, name = "assistant-$suffix", enabled = false),
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = other.id,
+                        name = "assistant-$suffix",
+                        enabled = false,
+                    ),
                 )
-            suspend fun status(): String = read(root, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText()
+
+            suspend fun status(): String =
+                read(root, """{ "kind": "namespace", "id": "${other.id}" }""")["readiness"]["defaultAgentStatus"].asText()
 
             status() shouldBe "DISABLED"
             agentConfigService.enable(candidate.id)
@@ -672,7 +743,11 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                     """.trimIndent(),
                 )
             val settingId =
-                applied(creation.questionId, view(creation.questionId)["planHash"].asText(), mapOf("oauth./clientSecret" to "s3cret"))["results"]
+                applied(
+                    creation.questionId,
+                    view(creation.questionId)["planHash"].asText(),
+                    mapOf("oauth./clientSecret" to "s3cret"),
+                )["results"]
                     .single()["entityId"]
                     .asText()
             val proposal =
@@ -724,10 +799,15 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
         "an integration configuration cannot take the config agent's built-in name, on the real save path" {
             shouldThrow<UnprocessableEntityException> {
-                integrationConfigService.create(IntegrationConfig(namespaceId = namespace.id, name = "agentos_config", integrationType = "JIRA"))
+                integrationConfigService.create(
+                    IntegrationConfig(namespaceId = namespace.id, name = "agentos_config", integrationType = "JIRA"),
+                )
             }
 
-            integrationConfigService.findByNamespaceShared(namespace.id).none { it.name.equals(ConfigAgentIntegration.TYPE, ignoreCase = true) } shouldBe true
+            integrationConfigService.findByNamespaceShared(namespace.id).none {
+                it.name.equals(ConfigAgentIntegration.TYPE, ignoreCase = true)
+            } shouldBe
+                true
         }
 
         "capabilities tell the user's role in this namespace and in one they administer" {
@@ -759,7 +839,10 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         }
 
         "creating an agent needs a model name, which the REST API would refuse the agent without" {
-            for (value in listOf("""{ "name": "nomodel-$suffix", "enabled": true }""", """{ "name": "nomodel-$suffix", "modelName": "  ", "enabled": true }""")) {
+            for (value in listOf(
+                """{ "name": "nomodel-$suffix", "enabled": true }""",
+                """{ "name": "nomodel-$suffix", "modelName": "  ", "enabled": true }""",
+            )) {
                 val result =
                     proposeTool(alice).executeWithJson(
                         """
@@ -857,7 +940,11 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
         "a tool response named like the propose tool, without a question of its own, does not supersede an open plan" {
             val proposal = propose(alice, promptPlan("kept"))
-            val impostor = (proposal.structuredOutput!!.deepCopy<JsonNode>() as com.fasterxml.jackson.databind.node.ObjectNode).put("questionId", UUID.randomUUID().toString())
+            val impostor =
+                (proposal.structuredOutput!!.deepCopy() as tools.jackson.databind.node.ObjectNode).put(
+                    "questionId",
+                    UUID.randomUUID().toString(),
+                )
             caseEventService.create(
                 ToolResponseEvent(
                     namespaceId = namespace.id,
@@ -985,7 +1072,11 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             val report = applied(proposal.questionId, shown["planHash"].asText(), mapOf("oauth./clientSecret" to "client-s3cr3t-$suffix"))
 
             report["decision"].asText() shouldBe "APPLIED"
-            val stored = authSettingService.findByNamespaceId(namespace.id).single { it.name == "ACME_OAUTH_$suffix" } as OAuthRegisteredAuthSetting
+            val stored =
+                authSettingService
+                    .findByNamespaceId(
+                        namespace.id,
+                    ).single { it.name == "ACME_OAUTH_$suffix" } as OAuthRegisteredAuthSetting
             stored.clientId shouldBe "acme-client"
             stored.clientSecret shouldBe "client-s3cr3t-$suffix"
             stored.tokenUrl shouldBe "https://acme.example.com/token"

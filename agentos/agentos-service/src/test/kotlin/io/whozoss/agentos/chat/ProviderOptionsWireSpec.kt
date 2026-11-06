@@ -1,8 +1,5 @@
 package io.whozoss.agentos.chat
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.kotest.assertions.withClue
@@ -23,6 +20,9 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.ToolDefinition
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.node.ObjectNode
 import java.net.InetSocketAddress
 import java.time.Duration
 import java.util.UUID
@@ -150,11 +150,9 @@ class ProviderOptionsWireSpec :
         fun JsonNode?.preview(): String = this?.toString()?.take(160) ?: "<absent>"
 
         /** The request without its (huge) prompt content: what is left are the options actually sent. */
-        fun JsonNode.options(): String =
-            (deepCopy<JsonNode>() as ObjectNode).apply { remove(listOf("messages", "system", "tools")) }.toString()
+        fun JsonNode.options(): String = (deepCopy() as ObjectNode).apply { remove(listOf("messages", "system", "tools")) }.toString()
 
-        fun JsonNode.hasCacheControlAnywhere(): Boolean =
-            has("cache_control") || elements().asSequence().any { it.hasCacheControlAnywhere() }
+        fun JsonNode.hasCacheControlAnywhere(): Boolean = has("cache_control") || values().any { it.hasCacheControlAnywhere() }
 
         // ---------------------------------------------------------------------------------------------
         // Anthropic: prompt caching
@@ -175,23 +173,23 @@ class ProviderOptionsWireSpec :
             withClue("system must be sent as an array of blocks to carry cache_control, got: ${system.preview()}") {
                 system?.isArray shouldBe true
             }
-            assertEphemeral(system.last(), "last system block")
+            assertEphemeral(system.values().last(), "last system block")
         }
 
         fun assertLastToolCached(request: JsonNode) {
             val tools = request.get("tools")
             withClue("tools must be sent as an array, got: ${tools.preview()}") { tools?.isArray shouldBe true }
             tools.size() shouldBe 2
-            assertEphemeral(tools.last(), "last tool")
+            assertEphemeral(tools.values().last(), "last tool")
         }
 
         fun assertLastUserBlockCached(request: JsonNode) {
-            val lastUser = request.get("messages").last { it.get("role").asText() == "user" }
+            val lastUser = request.get("messages").values().last { it.get("role").asText() == "user" }
             val content = lastUser.get("content")
             withClue("user content must be sent as an array of blocks to carry cache_control, got: ${content.preview()}") {
                 content.isArray shouldBe true
             }
-            assertEphemeral(content.last(), "last user content block")
+            assertEphemeral(content.values().last(), "last user content block")
         }
 
         "caching enabled, with tools, usage tracking enabled: cache_control reaches the wire" {

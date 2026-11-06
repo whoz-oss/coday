@@ -1,12 +1,12 @@
 package io.whozoss.agentos.configAgent
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.tool.ToolResolverService
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Clock
 import java.util.UUID
 
@@ -25,7 +25,16 @@ class ConfigToolGrantServiceUnitSpec :
             )
 
         fun granted(integrations: Map<String, List<String>?>?) =
-            service.grantTools(integrations, agentName = "agent", namespaceId = UUID.randomUUID(), userId = UUID.randomUUID(), caseId = null).map { it.name }
+            service
+                .grantTools(
+                    integrations,
+                    agentName = "agent",
+                    namespaceId = UUID.randomUUID(),
+                    userId = UUID.randomUUID(),
+                    caseId = null,
+                ).map {
+                    it.name
+                }
 
         "an agent without an integrations map, which elsewhere means all integrations, gets no config tool" {
             granted(null).shouldBeEmpty()
