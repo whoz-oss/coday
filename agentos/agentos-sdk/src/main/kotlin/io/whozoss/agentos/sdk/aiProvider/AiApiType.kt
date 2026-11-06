@@ -5,6 +5,10 @@ package io.whozoss.agentos.sdk.aiProvider
  *   False for [Anthropic]: Spring AI 1.1.2 cannot send `output_config.effort`, and current
  *   Claude models reject a thinking budget. False for [Gemini] until verified: `thinkingLevel`
  *   only exists on Gemini 3, and models that always think reject a zero thinking budget.
+ *
+ * [ClaudeCode] is not an HTTP API: agents run on the official `claude` CLI, signed in by the user with
+ * their own Claude subscription, and its providers carry neither a base URL nor an API key. Its models
+ * are Claude Code model names (`sonnet`, `opus`, `haiku`) and the effort is passed as `--effort`.
  */
 enum class AiApiType(
     val supportsReasoningEffort: Boolean = true,
@@ -14,4 +18,5 @@ enum class AiApiType(
     Gemini(supportsReasoningEffort = false),
     vLLM,
     Ollama,
+    ClaudeCode,
 }

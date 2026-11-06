@@ -119,6 +119,14 @@ class ChatModelFactory(
                     reasoningEffort = reasoningEffort,
                 )
             }
+
+            // Its agents run on the claude CLI (AgentClaudeCode), which holds the user's login: there is
+            // no HTTP endpoint to build a chat model on, for agents or for utility calls such as case titles.
+            AiApiType.ClaudeCode -> {
+                throw UnsupportedOperationException(
+                    "Model '$modelName' runs on the Claude Code CLI and cannot serve as a chat model",
+                )
+            }
         }
     }
 

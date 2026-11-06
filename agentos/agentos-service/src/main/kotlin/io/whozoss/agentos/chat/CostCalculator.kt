@@ -48,6 +48,29 @@ object CostCalculator : KLogging() {
         )
     }
 
+    /**
+     * Usage reported as plain counts by a runtime that is not a Spring AI chat model (the Claude Code
+     * CLI), already normalised: [inputTokens] excludes the cache reads and writes.
+     */
+    fun fromCounts(
+        inputTokens: Long,
+        outputTokens: Long,
+        cacheReadTokens: Long,
+        cacheWriteTokens: Long,
+        modelConfig: AiModel,
+    ): LlmUsage {
+        val input = Input(inputTokens.coerceAtLeast(0), cacheReadTokens.coerceAtLeast(0), cacheWriteTokens.coerceAtLeast(0))
+        val output = outputTokens.coerceAtLeast(0)
+        return LlmUsage(
+            inputTokens = input.tokens,
+            outputTokens = output,
+            cacheReadTokens = input.read,
+            cacheWriteTokens = input.write,
+            totalTokens = input.tokens + input.read + input.write + output,
+            estimatedCostUsd = estimate(modelConfig.pricing, input, output),
+        )
+    }
+
     private fun nativeInput(
         native: Any?,
         apiType: AiApiType,

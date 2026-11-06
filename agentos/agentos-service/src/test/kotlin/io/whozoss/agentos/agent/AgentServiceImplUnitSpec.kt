@@ -7,6 +7,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.coEvery
@@ -2798,6 +2799,61 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 stubAgentOnModel(config, modelFlag = flag)
                 (agentService.findAgentByName("loop-any-model", context) is AgentLoop) shouldBe true
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // Claude Code models run on AgentClaudeCode
+        // -------------------------------------------------------------------------
+
+        /** Stubs [config] for [user] on a model of a Claude Code provider; returns that provider. */
+        fun stubClaudeCodeAgent(
+            config: AgentConfig,
+            user: UUID,
+        ): AiProvider {
+            val model = modelConfig(apiName = "sonnet", alias = "cc-sonnet", supportsAdvancedExecution = true)
+            val provider = providerConfig(apiKey = null, apiType = AiApiType.ClaudeCode).copy(name = "claude-code", baseUrl = null)
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, user, config.name) } returns listOf(config)
+            every { agentConfigService.findByName(namespaceId, config.name) } returns config
+            every { aiModelService.findAiModel(namespaceId, "cc-sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderService.resolveProvider(namespaceId, user, "claude-code") } returns provider
+            every { userService.findById(user) } returns null
+            return provider
+        }
+
+        "a SIMPLE agent on a Claude Code model runs as AgentClaudeCode for the user of the run, without a chat client" {
+            val user = UUID.randomUUID()
+            val config = agentConfig(name = "cc-simple", modelName = "cc-sonnet").copy(executionMode = ExecutionMode.SIMPLE)
+            stubClaudeCodeAgent(config, user)
+
+            val agent = agentService.findAgentByName("cc-simple", context.copy(userId = user))
+
+            agent.shouldBeInstanceOf<AgentClaudeCode>()
+            agent.llmProvider shouldBe "claude-code"
+            agent.llmModel shouldBe "sonnet"
+            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any(), any()) }
+        }
+
+        "an ADVANCED agent on a Claude Code model fails, even when the model supports advanced execution" {
+            val user = UUID.randomUUID()
+            val config = agentConfig(name = "cc-advanced", modelName = "cc-sonnet").copy(executionMode = ExecutionMode.ADVANCED)
+            stubClaudeCodeAgent(config, user)
+
+            val error =
+                shouldThrow<AdvancedExecutionNotSupportedException> {
+                    agentService.findAgentByName("cc-advanced", context.copy(userId = user))
+                }
+
+            error.message shouldContain "Agent 'cc-advanced'"
+            error.message shouldContain "runs on Claude Code, which only runs agents in SIMPLE mode"
+        }
+
+        "a Claude Code agent without a user to run for fails" {
+            val config = agentConfig(name = "cc-anonymous", modelName = "cc-sonnet").copy(executionMode = ExecutionMode.SIMPLE)
+            stubClaudeCodeAgent(config, UUID.randomUUID())
+
+            shouldThrow<IllegalStateException> { agentService.findAgentByName("cc-anonymous", context) }
+                .message shouldContain "needs the user of the run"
         }
 
         "resolveDefinition still returns the definition of an ADVANCED agent on a model without support" {

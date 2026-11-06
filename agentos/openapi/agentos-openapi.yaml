@@ -4312,6 +4312,8 @@ components:
           maxIterationsReached:
             type: integer
             format: int32
+          runtimeSessionId:
+            type: string
       required:
       - agentId
       - agentName
@@ -4423,6 +4425,7 @@ components:
           - Gemini
           - vLLM
           - Ollama
+          - ClaudeCode
         baseUrl:
           type: string
         description:

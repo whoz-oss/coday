@@ -15,6 +15,8 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.chat.sentTo
+import io.whozoss.agentos.claudeCode.ClaudeCodeProcessLauncher
+import io.whozoss.agentos.claudeCode.ClaudeCodeProperties
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.configAgent.ConfigToolGrantService
 import io.whozoss.agentos.delegation.DelegationTool
@@ -35,6 +37,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.RedirectToolPlugin
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
@@ -101,6 +104,8 @@ class AgentServiceImpl(
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
+    private val claudeCodeProperties: ClaudeCodeProperties = ClaudeCodeProperties(),
+    private val claudeCodeLauncher: ClaudeCodeProcessLauncher = ClaudeCodeProcessLauncher(claudeCodeProperties),
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -488,6 +493,13 @@ class AgentServiceImpl(
      */
     private fun requireModelSupportsExecutionMode(definition: ResolvedAgentDefinition) {
         val model = definition.resolvedModel
+        if (definition.executionMode == ExecutionMode.ADVANCED && definition.resolvedProvider.apiType == AiApiType.ClaudeCode) {
+            throw AdvancedExecutionNotSupportedException(
+                "Agent '${definition.name}' is configured in ADVANCED execution mode but its model " +
+                    "'${model.alias ?: model.apiModelName}' runs on Claude Code, which only runs agents in SIMPLE mode. " +
+                    "Ask an administrator to switch the agent to SIMPLE.",
+            )
+        }
         if (definition.executionMode == ExecutionMode.ADVANCED && !model.supportsAdvancedExecution) {
             throw AdvancedExecutionNotSupportedException(
                 "Agent '${definition.name}' is configured in ADVANCED execution mode but its model " +
@@ -737,6 +749,20 @@ class AgentServiceImpl(
             }
 
             ExecutionMode.SIMPLE -> {
+                if (providerConfig.apiType == AiApiType.ClaudeCode) {
+                    return createClaudeCodeAgent(
+                        agentName = agentName,
+                        agentId = agentId,
+                        resolvedInstructions = resolvedInstructions,
+                        resolvedSystemPrompt = resolvedSystemPrompt,
+                        modelConfig = modelConfig,
+                        providerConfig = providerConfig,
+                        context = context,
+                        resolvedUser = resolvedUser,
+                        redirectGuideline = redirectGuideline,
+                        maxToolRounds = maxToolRounds,
+                    )
+                }
                 val chatClient =
                     chatClientProvider.getChatClient(
                         modelConfig,
@@ -765,6 +791,41 @@ class AgentServiceImpl(
             }
         }
     }
+
+    /**
+     * An [AgentClaudeCode] for a model whose provider is [AiApiType.ClaudeCode]. Tools are not handed to it
+     * yet: the run gets the agent's instructions and the conversation, and answers without tools.
+     */
+    private fun createClaudeCodeAgent(
+        agentName: String,
+        agentId: UUID,
+        resolvedInstructions: String?,
+        resolvedSystemPrompt: String?,
+        modelConfig: AiModel,
+        providerConfig: AiProvider,
+        context: AgentExecutionContext,
+        resolvedUser: User?,
+        redirectGuideline: String?,
+        maxToolRounds: Int?,
+    ): Agent =
+        AgentClaudeCode(
+            metadata = EntityMetadata(id = agentId),
+            name = agentName,
+            launcher = claudeCodeLauncher,
+            properties = claudeCodeProperties,
+            // Each user runs on their own Claude login: a run without a user has none to use.
+            userId =
+                resolvedUser?.metadata?.id ?: context.userId
+                    ?: throw IllegalStateException("Agent '$agentName' runs on Claude Code, which needs the user of the run"),
+            systemPrompt = resolvedSystemPrompt,
+            instructions = withRedirectGuideline(resolvedInstructions, redirectGuideline),
+            modelConfig = modelConfig,
+            llmProvider = providerConfig.name,
+            reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
+            requestedReasoningEffort = modelConfig.reasoningEffort,
+            usageAccumulator = context.usageAccumulator,
+            maxTurns = maxToolRounds,
+        )
 
     /**
      * Build the namespace context block to be used as a system prompt, separate from
