@@ -240,6 +240,28 @@ abstract class AbstractAiModelPersistenceSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // supportsAdvancedExecution
+        // -------------------------------------------------------------------------
+
+        "supportsAdvancedExecution round-trips through persistence" {
+            val provider = providerRepo.save(aiProvider())
+            val saved = repo.save(aiModel(aiProviderId = provider.id).copy(supportsAdvancedExecution = true))
+            val plain = repo.save(aiModel(aiProviderId = provider.id, apiName = "gpt-4o"))
+
+            repo.findByIds(listOf(saved.id)).single().supportsAdvancedExecution.shouldBeTrue()
+            repo.findByIds(listOf(plain.id)).single().supportsAdvancedExecution.shouldBeFalse()
+        }
+
+        "a node persisted without the supportsAdvancedExecution property reads as false" {
+            val provider = providerRepo.save(aiProvider())
+            val saved = repo.save(aiModel(aiProviderId = provider.id))
+            neo4jClient.query("MATCH (m:AiModel {id: \$id}) REMOVE m.supportsAdvancedExecution")
+                .bind(saved.id.toString()).to("id").run()
+
+            repo.findByIds(listOf(saved.id)).single().supportsAdvancedExecution.shouldBeFalse()
+        }
+
+        // -------------------------------------------------------------------------
         // Soft delete
         // -------------------------------------------------------------------------
 

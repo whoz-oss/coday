@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
   AiProviderConfigStateService,
@@ -26,9 +26,15 @@ interface AiProviderRow {
 
 @Component({
   selector: 'agentos-ai-providers-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './ai-providers-all-scopes.component.html',
-  styleUrl: './ai-providers-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiProvidersAllScopesComponent implements OnInit {

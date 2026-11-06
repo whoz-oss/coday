@@ -5,8 +5,9 @@
  *   package.json   minimal (Nx only needs it to recognise a workspace root)
  *   project.json   one project `coday`:
  *                    provision  normal task, fast, local only (profile, secrets, Java, ports)
- *                    agentos    continuous, dependsOn provision, waits for the wizard's identity
- *                    factory    continuous, dependsOn provision, waits for AgentOS health
+ *                    agentos    continuous, dependsOn provision, waits for the wizard's identity (left out with AGENTOS_URL)
+ *                    factory    continuous, dependsOn provision, waits for AgentOS health (left out with FACTORY_URL
+ *                               or CODAY_NO_FACTORY)
  *                    server     continuous, dependsOn provision, the Express server (opens the browser)
  *                    status     continuous, dependsOn provision + server, agentos, factory: the ENTRY task, a small
  *                               pane: download %, Java, health, URL
@@ -46,6 +47,10 @@ export interface WorkspaceInput {
   serverJs: string
   /** Arguments forwarded to every task (`--configDir ...`, `--host ...`, `--auth`). */
   forwardArgs: string[]
+  /** False leaves the `agentos` target out (external AgentOS, `AGENTOS_URL`): no pane, `status` does not depend on it. Default true. */
+  withAgentos?: boolean
+  /** False leaves the `factory` target out (external Factory or CODAY_NO_FACTORY): same. Default true. */
+  withFactory?: boolean
   platform?: NodeJS.Platform
 }
 
@@ -63,6 +68,10 @@ export function taskCommand(input: WorkspaceInput, command: TaskName): string {
 }
 
 export function generateWorkspace(input: WorkspaceInput): WorkspaceFiles {
+  // A service Coday has nothing to run for (external, or left out) gets no target, hence no pane.
+  const enabled = (name: (typeof NX_SERVICES)[number]): boolean =>
+    name === 'agentos' ? input.withAgentos !== false : name === 'factory' ? input.withFactory !== false : true
+  const services = NX_SERVICES.filter(enabled)
   const target = (command: TaskName, continuous: boolean, dependsOn: string[] = ['provision']) => ({
     executor: 'nx:run-commands',
     cache: false,
@@ -87,10 +96,10 @@ export function generateWorkspace(input: WorkspaceInput): WorkspaceFiles {
     targets: {
       provision: target('provision', false),
       server: target('server', true),
-      agentos: target('agentos', true),
-      factory: target('factory', true),
+      ...(enabled('agentos') ? { agentos: target('agentos', true) } : {}),
+      ...(enabled('factory') ? { factory: target('factory', true) } : {}),
       // The entry task: waits for provision and starts the services (in this order, see NX_SERVICES).
-      status: target('status', true, ['provision', ...NX_SERVICES]),
+      status: target('status', true, ['provision', ...services]),
     },
   }
   return {

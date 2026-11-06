@@ -45,106 +45,107 @@
             </div>
           </div>
 
-          @if (environmentActive() && caseId(); as id) {
-            <agentos-exchange-environment
-              [scope]="{ id: id }"
-              [canWrite]="canWriteCase()"
-              (environmentChanged)="onEnvironmentChanged($event)"
-            />
-          }
-          @if (caseUploading()) {
-            <p class="exchange-drawer__inflight">Uploading…</p>
-          }
+          <div class="exchange-drawer__section-body">
+            @if (environmentActive() && caseId(); as id) {
+              <agentos-exchange-environment
+                [scope]="{ id: id }"
+                [canWrite]="canWriteCase()"
+                (environmentChanged)="onEnvironmentChanged($event)"
+              />
+            }
+            @if (caseUploading()) {
+              <p class="exchange-drawer__inflight">Uploading…</p>
+            }
 
-          @switch (caseStatus()) {
-            @case ('loading') {
-              <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading case files" /></div>
-            }
-            @case ('preparing') {
-              <div class="exchange-drawer__preparing" role="status" aria-live="polite">
-                <ds-spinner size="sm" label="Preparing workspace" />
-                <p>Preparing workspace…</p>
-                <p class="exchange-drawer__preparing-hint">
-                  Files will appear automatically when the workspace is ready.
-                </p>
-              </div>
-            }
-            @case ('error') {
-              <div class="exchange-drawer__error" role="alert">
-                <span>Couldn't load case files.</span>
-                <button type="button" class="exchange-drawer__retry" (click)="retryRequested.emit()">Retry</button>
-              </div>
-            }
-            @default {
-              @if (caseBreadcrumb().length > 0 || caseFolders().length > 0) {
-                <nav class="exchange-drawer__breadcrumb" aria-label="Folder path">
-                  <button type="button" class="exchange-drawer__crumb" (click)="onFolderOpen(CASE, '')">root</button>
-                  @for (segment of caseBreadcrumb(); track segment.path) {
-                    <span class="exchange-drawer__crumb-sep" aria-hidden="true">/</span>
-                    <button type="button" class="exchange-drawer__crumb" (click)="onFolderOpen(CASE, segment.path)">
-                      {{ segment.label }}
+            @switch (caseStatus()) {
+              @case ('loading') {
+                <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading case files" /></div>
+              }
+              @case ('preparing') {
+                <div class="exchange-drawer__preparing" role="status" aria-live="polite">
+                  <ds-spinner size="sm" label="Preparing workspace" />
+                  <p>Preparing workspace…</p>
+                  <p class="exchange-drawer__preparing-hint">
+                    Files will appear automatically when the workspace is ready.
+                  </p>
+                </div>
+              }
+              @case ('error') {
+                <div class="exchange-drawer__error" role="alert">
+                  <span>Couldn't load case files.</span>
+                  <button type="button" class="exchange-drawer__retry" (click)="retryRequested.emit()">Retry</button>
+                </div>
+              }
+              @default {
+                @if (caseBreadcrumb().length > 0 || caseFolders().length > 0) {
+                  <agentos-exchange-folder-nav
+                    [breadcrumb]="caseBreadcrumb()"
+                    (navigated)="onFolderOpen(CASE, $event)"
+                  />
+                }
+
+                @if (caseFolders().length > 0) {
+                  <ul class="exchange-drawer__folders" role="list">
+                    @for (folder of caseFolders(); track folder.path) {
+                      <li role="listitem">
+                        <button type="button" class="exchange-drawer__folder" (click)="onFolderOpen(CASE, folder.path)">
+                          <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
+                            >folder_open</span
+                          >
+                          <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
+                          @if (gitTree().folders.get(folder.path); as count) {
+                            <span
+                              class="exchange-drawer__git-dot"
+                              role="img"
+                              [attr.aria-label]="count + (count === 1 ? ' changed file' : ' changed files')"
+                              [title]="
+                                count +
+                                (count === 1 ? ' changed file' : ' changed files') +
+                                ' · branch and local changes'
+                              "
+                              >●</span
+                            >
+                          }
+                          <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
+                            >chevron_right</span
+                          >
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+
+                @if (caseRows().length === 0 && caseFolders().length === 0) {
+                  <ds-empty-state
+                    icon="folder_open"
+                    title="No case files"
+                    [hint]="canWriteCase() ? 'Upload a file to share it with this case.' : undefined"
+                  />
+                } @else {
+                  <agentos-exchange-file-list
+                    [rows]="caseRows()"
+                    [scope]="CASE"
+                    [canWrite]="canWriteCase()"
+                    [activeFile]="activeFile()"
+                    (fileSelected)="onFileSelected($event)"
+                    (diffRequested)="openFileDiff($event)"
+                    (downloadRequested)="downloadRequested.emit($event)"
+                    (deleteRequested)="deleteRequested.emit($event)"
+                  />
+                  @if (caseHasMore()) {
+                    <button
+                      type="button"
+                      class="exchange-drawer__retry"
+                      [disabled]="caseLoadingMore()"
+                      (click)="loadMoreRequested.emit(CASE)"
+                    >
+                      {{ caseLoadingMore() ? 'Loading…' : 'Load more files' }}
                     </button>
                   }
-                </nav>
-              }
-
-              @if (caseFolders().length > 0) {
-                <ul class="exchange-drawer__folders" role="list">
-                  @for (folder of caseFolders(); track folder.path) {
-                    <li role="listitem">
-                      <button type="button" class="exchange-drawer__folder" (click)="onFolderOpen(CASE, folder.path)">
-                        <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true">folder_open</span>
-                        <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
-                        @if (gitTree().folders.get(folder.path); as count) {
-                          <span
-                            class="exchange-drawer__git-dot"
-                            role="img"
-                            [attr.aria-label]="count + (count === 1 ? ' changed file' : ' changed files')"
-                            [title]="
-                              count + (count === 1 ? ' changed file' : ' changed files') + ' · branch and local changes'
-                            "
-                            >●</span
-                          >
-                        }
-                        <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
-                          >chevron_right</span
-                        >
-                      </button>
-                    </li>
-                  }
-                </ul>
-              }
-
-              @if (caseRows().length === 0 && caseFolders().length === 0) {
-                <ds-empty-state
-                  icon="folder_open"
-                  title="No case files"
-                  [hint]="canWriteCase() ? 'Upload a file to share it with this case.' : undefined"
-                />
-              } @else {
-                <agentos-exchange-file-list
-                  [rows]="caseRows()"
-                  [scope]="CASE"
-                  [canWrite]="canWriteCase()"
-                  [activeFile]="activeFile()"
-                  (fileSelected)="onFileSelected($event)"
-                  (diffRequested)="openFileDiff($event)"
-                  (downloadRequested)="downloadRequested.emit($event)"
-                  (deleteRequested)="deleteRequested.emit($event)"
-                />
-                @if (caseHasMore()) {
-                  <button
-                    type="button"
-                    class="exchange-drawer__retry"
-                    [disabled]="caseLoadingMore()"
-                    (click)="loadMoreRequested.emit(CASE)"
-                  >
-                    {{ caseLoadingMore() ? 'Loading…' : 'Load more files' }}
-                  </button>
                 }
               }
             }
-          }
+          </div>
         </section>
       }
 
@@ -175,84 +176,77 @@
             </div>
           </div>
 
-          @switch (namespaceStatus()) {
-            @case ('loading') {
-              <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading namespace files" /></div>
-            }
-            @case ('error') {
-              <div class="exchange-drawer__error" role="alert">
-                <span>Couldn't load namespace files.</span>
-                <button type="button" class="exchange-drawer__retry" (click)="retryRequested.emit()">Retry</button>
-              </div>
-            }
-            @default {
-              @if (namespaceBreadcrumb().length > 0 || namespaceFolders().length > 0) {
-                <nav class="exchange-drawer__breadcrumb" aria-label="Folder path">
-                  <button type="button" class="exchange-drawer__crumb" (click)="onFolderOpen(NAMESPACE, '')">
-                    root
-                  </button>
-                  @for (segment of namespaceBreadcrumb(); track segment.path) {
-                    <span class="exchange-drawer__crumb-sep" aria-hidden="true">/</span>
+          <div class="exchange-drawer__section-body">
+            @switch (namespaceStatus()) {
+              @case ('loading') {
+                <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading namespace files" /></div>
+              }
+              @case ('error') {
+                <div class="exchange-drawer__error" role="alert">
+                  <span>Couldn't load namespace files.</span>
+                  <button type="button" class="exchange-drawer__retry" (click)="retryRequested.emit()">Retry</button>
+                </div>
+              }
+              @default {
+                @if (namespaceBreadcrumb().length > 0 || namespaceFolders().length > 0) {
+                  <agentos-exchange-folder-nav
+                    [breadcrumb]="namespaceBreadcrumb()"
+                    (navigated)="onFolderOpen(NAMESPACE, $event)"
+                  />
+                }
+
+                @if (namespaceFolders().length > 0) {
+                  <ul class="exchange-drawer__folders" role="list">
+                    @for (folder of namespaceFolders(); track folder.path) {
+                      <li role="listitem">
+                        <button
+                          type="button"
+                          class="exchange-drawer__folder"
+                          (click)="onFolderOpen(NAMESPACE, folder.path)"
+                        >
+                          <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
+                            >folder_open</span
+                          >
+                          <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
+                          <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
+                            >chevron_right</span
+                          >
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+
+                @if (namespaceFiles().length === 0 && namespaceFolders().length === 0) {
+                  <ds-empty-state
+                    icon="folder_shared"
+                    title="No namespace files"
+                    [hint]="canWriteNamespace() ? 'Upload a file to share it across this namespace.' : undefined"
+                  />
+                } @else {
+                  <agentos-exchange-file-list
+                    [rows]="namespaceRows()"
+                    [scope]="NAMESPACE"
+                    [canWrite]="canWriteNamespace()"
+                    [activeFile]="activeFile()"
+                    (fileSelected)="onFileSelected($event)"
+                    (downloadRequested)="downloadRequested.emit($event)"
+                    (deleteRequested)="deleteRequested.emit($event)"
+                  />
+                  @if (namespaceHasMore()) {
                     <button
                       type="button"
-                      class="exchange-drawer__crumb"
-                      (click)="onFolderOpen(NAMESPACE, segment.path)"
+                      class="exchange-drawer__retry"
+                      [disabled]="namespaceLoadingMore()"
+                      (click)="loadMoreRequested.emit(NAMESPACE)"
                     >
-                      {{ segment.label }}
+                      {{ namespaceLoadingMore() ? 'Loading…' : 'Load more files' }}
                     </button>
                   }
-                </nav>
-              }
-
-              @if (namespaceFolders().length > 0) {
-                <ul class="exchange-drawer__folders" role="list">
-                  @for (folder of namespaceFolders(); track folder.path) {
-                    <li role="listitem">
-                      <button
-                        type="button"
-                        class="exchange-drawer__folder"
-                        (click)="onFolderOpen(NAMESPACE, folder.path)"
-                      >
-                        <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true">folder_open</span>
-                        <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
-                        <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
-                          >chevron_right</span
-                        >
-                      </button>
-                    </li>
-                  }
-                </ul>
-              }
-
-              @if (namespaceFiles().length === 0 && namespaceFolders().length === 0) {
-                <ds-empty-state
-                  icon="folder_shared"
-                  title="No namespace files"
-                  [hint]="canWriteNamespace() ? 'Upload a file to share it across this namespace.' : undefined"
-                />
-              } @else {
-                <agentos-exchange-file-list
-                  [rows]="namespaceRows()"
-                  [scope]="NAMESPACE"
-                  [canWrite]="canWriteNamespace()"
-                  [activeFile]="activeFile()"
-                  (fileSelected)="onFileSelected($event)"
-                  (downloadRequested)="downloadRequested.emit($event)"
-                  (deleteRequested)="deleteRequested.emit($event)"
-                />
-                @if (namespaceHasMore()) {
-                  <button
-                    type="button"
-                    class="exchange-drawer__retry"
-                    [disabled]="namespaceLoadingMore()"
-                    (click)="loadMoreRequested.emit(NAMESPACE)"
-                  >
-                    {{ namespaceLoadingMore() ? 'Loading…' : 'Load more files' }}
-                  </button>
                 }
               }
             }
-          }
+          </div>
         </section>
       }
 

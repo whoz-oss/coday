@@ -1,26 +1,20 @@
-<div class="tool-invoke">
-  <header class="tool-invoke__header">
-    <h1 class="tool-invoke__title">Tool invoke</h1>
-    <p class="tool-invoke__subtitle">
-      @if (isPlatformMode) {
-        Execute any registered tool directly &mdash; bypasses the normal agent-run pipeline. Restricted to super-admins.
-      } @else {
-        Execute a registered tool directly in this namespace &mdash; bypasses the normal agent-run pipeline.
-      }
-    </p>
-  </header>
+<ds-page>
+  <ds-section-header
+    title="Tool invoke"
+    [description]="
+      isPlatformMode
+        ? 'Execute any registered tool directly — bypasses the normal agent-run pipeline. Restricted to super-admins.'
+        : 'Execute a registered tool directly in this namespace — bypasses the normal agent-run pipeline.'
+    "
+  />
 
-  <form class="tool-invoke__form" [formGroup]="form" (ngSubmit)="submit()">
-    <!-- Namespace -->
-    <div class="tool-invoke__field">
-      <label class="tool-invoke__label" for="ti-namespace"
-        >Namespace <span class="tool-invoke__required">*</span></label
-      >
+  <form class="ds-form" [formGroup]="form" (ngSubmit)="submit()">
+    <ds-form-field label="Namespace" controlId="ti-namespace" required>
       @if (isPlatformMode) {
         @if (namespacesLoading()) {
-          <p class="tool-invoke__hint">Loading namespaces&hellip;</p>
+          <p class="ds-hint">Loading namespaces&hellip;</p>
         } @else {
-          <select class="tool-invoke__select" id="ti-namespace" formControlName="namespaceId">
+          <select dsControl id="ti-namespace" formControlName="namespaceId">
             <option value="" disabled>Select a namespace</option>
             @for (ns of namespaces(); track ns.id) {
               <option [value]="ns.id">{{ ns.name }}</option>
@@ -28,33 +22,31 @@
           </select>
         }
       } @else {
-        <!-- Namespace mode: render as static read-only context, no <select>. -->
-        <p class="tool-invoke__namespace-static" id="ti-namespace">
-          {{ namespaceName() ?? namespaceId }}
-        </p>
+        <!-- Namespace mode: static read-only context, no <select>. -->
+        <input dsControl id="ti-namespace" type="text" [value]="namespaceName() ?? namespaceId" readonly />
       }
-    </div>
+    </ds-form-field>
 
-    <!-- User ID (optional) -->
-    <div class="tool-invoke__field">
-      <label class="tool-invoke__label" for="ti-user"
-        >User ID <span class="tool-invoke__optional">(optional)</span></label
-      >
+    <ds-form-field label="User ID" labelHint="optional" controlId="ti-user">
       <input
-        class="tool-invoke__input"
+        dsControl
         id="ti-user"
         type="text"
         formControlName="userId"
-        placeholder="UUID of the user &mdash; adds user-scoped overlay layers"
+        placeholder="UUID of the user — adds user-scoped overlay layers"
         autocomplete="off"
       />
-    </div>
+    </ds-form-field>
 
-    <!-- Tool name -->
-    <div class="tool-invoke__field">
-      <label class="tool-invoke__label" for="ti-tool">Tool name <span class="tool-invoke__required">*</span></label>
+    <ds-form-field
+      label="Tool name"
+      controlId="ti-tool"
+      required
+      hint="Exact tool name as returned by the agent definition inspect page. When not found, the error response lists all available tools for the selected namespace."
+    >
       <input
-        class="tool-invoke__input tool-invoke__input--mono"
+        dsControl
+        mono
         id="ti-tool"
         type="text"
         formControlName="toolName"
@@ -62,87 +54,66 @@
         autocomplete="off"
         spellcheck="false"
       />
-      <p class="tool-invoke__hint">
-        Exact tool name as returned by the agent definition inspect page. When not found, the error response lists all
-        available tools for the selected namespace.
-      </p>
-    </div>
+    </ds-form-field>
 
-    <!-- Payload -->
-    <div class="tool-invoke__field">
-      <label class="tool-invoke__label" for="ti-payload"
-        >Payload <span class="tool-invoke__optional">(optional)</span></label
-      >
+    <ds-form-field label="Payload" labelHint="optional" controlId="ti-payload">
       <textarea
-        class="tool-invoke__textarea tool-invoke__input--mono"
+        dsControl
+        mono
         id="ti-payload"
         formControlName="payload"
         rows="6"
-        placeholder='JSON arguments for the tool, e.g. {"path": "/some/dir"}\nLeave empty for tools with no input.'
+        placeholder='JSON arguments for the tool, e.g. {"path": "/some/dir"}  — leave empty for tools with no input.'
         spellcheck="false"
       ></textarea>
-    </div>
+    </ds-form-field>
 
-    <div class="tool-invoke__actions">
-      <button class="tool-invoke__submit" type="submit" [disabled]="form.invalid || state.isLoading()">
-        @if (state.isLoading()) {
-          Running&hellip;
-        } @else {
-          Run tool
-        }
+    <ds-form-actions>
+      <button dsButton variant="primary" type="submit" [disabled]="form.invalid || state.isLoading()">
+        {{ state.isLoading() ? 'Running…' : 'Run tool' }}
       </button>
-
       @if (state.result() || state.errorMessage()) {
-        <button class="tool-invoke__reset" type="button" (click)="reset()">Clear result</button>
+        <button dsButton type="button" (click)="reset()">Clear result</button>
       }
-    </div>
+    </ds-form-actions>
   </form>
 
-  <!-- Result panel -->
   @if (state.errorMessage(); as errMsg) {
-    <section class="tool-invoke__result tool-invoke__result--error">
-      <h2 class="tool-invoke__result-title">Error</h2>
-      <pre class="tool-invoke__output">{{ errMsg }}</pre>
-    </section>
+    <ds-card heading="Error">
+      <pre class="ds-pre">{{ errMsg }}</pre>
+    </ds-card>
   }
 
   @if (state.result(); as res) {
-    <section class="tool-invoke__result" [class.tool-invoke__result--failure]="!res.success">
-      <header class="tool-invoke__result-header">
-        <h2 class="tool-invoke__result-title">Result &mdash; {{ res.toolName }}</h2>
-        <span
-          class="tool-invoke__badge"
-          [class.tool-invoke__badge--success]="res.success"
-          [class.tool-invoke__badge--failure]="!res.success"
-        >
-          {{ res.success ? 'Success' : 'Tool error' }}
-        </span>
-      </header>
+    <ds-card [heading]="'Result — ' + res.toolName">
+      <div>
+        <ds-tag [variant]="res.success ? 'accent' : 'outline'">{{ res.success ? 'Success' : 'Tool error' }}</ds-tag>
+      </div>
 
-      <h3 class="tool-invoke__section-label">Output</h3>
-      <pre class="tool-invoke__output">{{ res.output }}</pre>
+      <span class="ds-micro">Output</span>
+      <pre class="ds-pre">{{ res.output }}</pre>
 
       @if (formatMetadata(res.metadata); as meta) {
-        <h3 class="tool-invoke__section-label">Metadata</h3>
-        <pre class="tool-invoke__output">{{ meta }}</pre>
+        <span class="ds-micro">Metadata</span>
+        <pre class="ds-pre">{{ meta }}</pre>
       }
 
-      <h3 class="tool-invoke__section-label">Structured output</h3>
-      <pre class="tool-invoke__output">{{ formatStructuredOutput(res.structuredOutput) ?? 'null' }}</pre>
+      <span class="ds-micro">Structured output</span>
+      <pre class="ds-pre">{{ formatStructuredOutput(res.structuredOutput) ?? 'null' }}</pre>
 
       @if (res.errorType || res.errorMessage) {
-        <h3 class="tool-invoke__section-label">Tool error details</h3>
-        <dl class="tool-invoke__dl">
+        <span class="ds-micro">Tool error details</span>
+        <dl dsDefinitionList>
           @if (res.errorType) {
-            <dt class="tool-invoke__dt">Type</dt>
-            <dd class="tool-invoke__dd tool-invoke__dd--mono">{{ res.errorType }}</dd>
+            <dt>Type</dt>
+            <dd class="ds-mono">{{ res.errorType }}</dd>
           }
           @if (res.errorMessage) {
-            <dt class="tool-invoke__dt">Message</dt>
-            <dd class="tool-invoke__dd">{{ res.errorMessage }}</dd>
+            <dt>Message</dt>
+            <dd>{{ res.errorMessage }}</dd>
           }
         </dl>
       }
-    </section>
+    </ds-card>
   }
-</div>
+</ds-page>

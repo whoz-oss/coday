@@ -47,6 +47,17 @@
     margin-bottom: 24px;
   }
 
+  // `?preview=fresh|nofresh`: reminds that the page is forced and does not leave for the app.
+  &__preview {
+    margin: 0 0 16px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 560;
+    color: var(--color-text-secondary);
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  }
+
   &__logo {
     display: grid;
     place-items: center;
@@ -86,8 +97,15 @@
   }
 
   &__step {
+    // Keeps the wizard card from jumping in height between its steps.
     min-height: 280px;
     animation: fade 240ms ease both;
+
+    // The loading page is one short list (AgentOS, and a Factory only when one is configured): no reserved space,
+    // or a missing Factory row would leave an empty gap at the bottom of the card.
+    &--loading {
+      min-height: 0;
+    }
   }
 }
 

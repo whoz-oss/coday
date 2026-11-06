@@ -24,7 +24,10 @@ export class MarkdownRendererService {
     const renderer = new Renderer()
     const link = renderer.link.bind(renderer)
     const code = renderer.code.bind(renderer)
+    const table = renderer.table.bind(renderer)
     renderer.code = (token): string => code(token).replace('<pre>', '<pre class="agentos-chat-code-block">')
+    // The wrapper scrolls a wide table sideways instead of squeezing its columns or clipping it (styled by .ds-md-table).
+    renderer.table = (token): string => `<div class="ds-md-table">${table(token)}</div>`
     renderer.link = (token): string => {
       let html = link(token)
       if (this.isExternal(token.href))

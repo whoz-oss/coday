@@ -128,9 +128,9 @@
 
 .case-members__member-role {
   flex-shrink: 0;
-  padding: 0.2rem 0.4rem;
+  padding: 0.2rem 2.25rem 0.2rem 0.4rem; // right padding clears the arrow of select.ds-control
   border: 1px solid var(--color-divider);
-  background: transparent;
+  background-color: transparent; // not the shorthand: it would reset the arrow image
   color: var(--color-text);
   font-size: 0.8rem;
   font-family: inherit;

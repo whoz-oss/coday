@@ -1,95 +1,123 @@
-<div class="agent-config-form">
-  <header class="agent-config-form__header">
-    <button class="agent-config-form__back" type="button" (click)="cancel()" title="Back to agent configs">
-      <span class="agent-config-form__back-icon">&#8592;</span>
-      Agent Configs
+<ds-page>
+  <ds-section-header [title]="isEditMode() ? 'Edit agent config' : 'New agent config'">
+    <button dsButton variant="ghost" type="button" title="Back to agent configs" (click)="cancel()">
+      &larr; Agent configs
     </button>
-    <h1 class="agent-config-form__title">{{ isEditMode() ? 'Edit agent config' : 'New agent config' }}</h1>
     @if (isEditMode()) {
-      <a class="agent-config-form__sibling-link" [routerLink]="inspectRoute()">View resolved definition &rarr;</a>
+      <a headerMeta class="ds-link" [routerLink]="inspectRoute()">View resolved definition &rarr;</a>
     }
     @if (isPlatformMode) {
-      <span class="agent-config-form__platform-badge">Platform level</span>
+      <ds-tag headerMeta variant="outline">Platform level</ds-tag>
     }
-  </header>
+  </ds-section-header>
 
   @if (isLoading()) {
-    <p class="agent-config-form__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <form class="agent-config-form__form" [formGroup]="form" (ngSubmit)="submit()">
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__label" for="agent-config-name">Name <span aria-hidden="true">*</span></label>
-        <input
-          id="agent-config-name"
-          class="agent-config-form__input"
-          type="text"
-          placeholder="e.g. Support agent"
-          [formControl]="nameControl"
-          autocomplete="off"
-        />
-      </div>
+    <form class="ds-form" [formGroup]="form" (ngSubmit)="submit()">
+      <ds-fieldset legend="Agent">
+        <ds-form-field label="Name" controlId="agent-config-name" required>
+          <input
+            dsControl
+            id="agent-config-name"
+            type="text"
+            placeholder="e.g. Support agent"
+            [formControl]="nameControl"
+            autocomplete="off"
+          />
+        </ds-form-field>
 
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__label" for="agent-config-description">Description</label>
-        <input
-          id="agent-config-description"
-          class="agent-config-form__input"
-          type="text"
-          placeholder="Optional — short description of this agent"
-          [formControl]="descriptionControl"
-          autocomplete="off"
-        />
-      </div>
+        <div class="ds-stack ds-stack--sm">
+          <label dsCheck>
+            <input type="checkbox" [formControl]="enabledControl" />
+            Enabled
+          </label>
+          <p class="ds-hint ds-indent">Disabled agents are excluded from namespace resolution.</p>
+        </div>
 
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__label" for="agent-config-model-name">Model name</label>
-        <input
-          id="agent-config-model-name"
-          class="agent-config-form__input"
-          type="text"
-          placeholder="Optional — model alias or name to use"
-          [formControl]="modelNameControl"
-          autocomplete="off"
-        />
-      </div>
+        <ds-form-field label="Description" controlId="agent-config-description">
+          <input
+            dsControl
+            id="agent-config-description"
+            type="text"
+            placeholder="Optional — short description of this agent"
+            [formControl]="descriptionControl"
+            autocomplete="off"
+          />
+        </ds-form-field>
 
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__label" for="agent-config-instructions">Instructions</label>
-        <textarea
-          id="agent-config-instructions"
-          class="agent-config-form__textarea"
-          rows="6"
-          placeholder="Optional — system instructions for this agent"
-          [formControl]="instructionsControl"
-        ></textarea>
-      </div>
+        <ds-form-field
+          label="Model"
+          controlId="agent-config-model-name"
+          required
+          hint="Aliases are matched first, then API model names. Resolved when the agent runs."
+        >
+          @if (modelAsFreeText()) {
+            <input
+              dsControl
+              id="agent-config-model-name"
+              type="text"
+              placeholder="Model alias or name to use, e.g. BIG"
+              [formControl]="modelNameControl"
+              autocomplete="off"
+            />
+          } @else {
+            <select dsControl id="agent-config-model-name" [formControl]="modelNameControl">
+              <option [ngValue]="null" disabled>Select a model</option>
+              @if (modelOptions().current; as current) {
+                <option [ngValue]="current.value">{{ current.label }}</option>
+              }
+              @if (modelOptions().aliases.length > 0) {
+                <optgroup label="Aliases">
+                  @for (option of modelOptions().aliases; track option.value) {
+                    <option [ngValue]="option.value">{{ option.label }}</option>
+                  }
+                </optgroup>
+              }
+              @if (modelOptions().apiNames.length > 0) {
+                <optgroup label="API model names">
+                  @for (option of modelOptions().apiNames; track option.value) {
+                    <option [ngValue]="option.value">{{ option.label }}</option>
+                  }
+                </optgroup>
+              }
+            </select>
+          }
+        </ds-form-field>
+
+        <ds-form-field label="Instructions" controlId="agent-config-instructions">
+          <textarea
+            dsControl
+            id="agent-config-instructions"
+            rows="6"
+            placeholder="Optional — system instructions for this agent"
+            [formControl]="instructionsControl"
+          ></textarea>
+        </ds-form-field>
+      </ds-fieldset>
 
       <!-- Integrations section: shown when the namespace has integration configs or built-ins -->
       @if (integrationRows().length > 0 || builtInRows().length > 0) {
-        <fieldset class="agent-config-form__integrations">
-          <legend class="agent-config-form__label">Integrations</legend>
-          <p class="agent-config-form__integrations-hint">
-            Select which integrations this agent can use. Leave tool names empty to allow all tools from an integration.
-          </p>
+        <ds-fieldset
+          legend="Integrations"
+          hint="Select which integrations this agent can use. Leave tool names empty to allow all tools from an integration."
+        >
           @for (row of integrationRows(); track row.config.id) {
-            <div class="agent-config-form__integration-row">
-              <label class="agent-config-form__integration-toggle">
-                <input
-                  class="agent-config-form__integration-checkbox"
-                  type="checkbox"
-                  [checked]="row.enabled()"
-                  (change)="toggleIntegration(row)"
-                />
-                <span class="agent-config-form__integration-name">{{ row.config.name }}</span>
+            <div class="ds-stack ds-stack--sm">
+              <label dsCheck>
+                <input type="checkbox" [checked]="row.enabled()" (change)="toggleIntegration(row)" />
+                <span class="ds-strong">{{ row.config.name }}</span>
                 @if (row.config.integrationType) {
-                  <span class="agent-config-form__integration-type">{{ row.config.integrationType }}</span>
+                  <span class="ds-meta">{{ row.config.integrationType }}</span>
                 }
               </label>
               @if (row.enabled()) {
                 <input
-                  class="agent-config-form__input agent-config-form__integration-tools"
+                  dsControl
+                  class="ds-indent"
                   type="text"
                   placeholder="Tool names, comma-separated (empty = all tools)"
+                  [attr.aria-label]="'Tools of ' + row.config.name"
                   [formControl]="row.toolsControl"
                   autocomplete="off"
                 />
@@ -98,15 +126,15 @@
           }
 
           @if (builtInRows().length > 0) {
-            <p class="agent-config-form__integrations-separator">Built-in integrations</p>
+            <span class="ds-micro">Built-in integrations</span>
             @for (row of builtInRows(); track row.type) {
-              <div class="agent-config-form__integration-row">
-                <label class="agent-config-form__integration-toggle" [attr.for]="'built-in-' + row.type">
-                  <span class="agent-config-form__integration-name">{{ row.displayName }}</span>
-                  <span class="agent-config-form__integration-type">built-in</span>
+              <div class="ds-stack ds-stack--sm">
+                <label class="ds-strong" [attr.for]="'built-in-' + row.type">
+                  {{ row.displayName }} <span class="ds-meta">built-in</span>
                 </label>
                 <select
-                  class="agent-config-form__integration-state"
+                  dsControl
+                  class="ds-indent ds-control--auto"
                   [id]="'built-in-' + row.type"
                   [value]="row.state()"
                   (change)="setBuiltInState(row, $any($event.target).value)"
@@ -116,252 +144,281 @@
                   <option value="off">Disabled</option>
                 </select>
                 @if (row.state() === 'on' && row.restrictedTools) {
-                  <p class="agent-config-form__integration-restriction">
+                  <p class="ds-hint ds-indent">
                     Restricted to: {{ row.restrictedTools.join(', ') }} (set outside this form, preserved on save)
                   </p>
                 }
-                <p class="agent-config-form__integration-builtin-desc">{{ row.description }}</p>
+                <p class="ds-hint ds-indent">{{ row.description }}</p>
               </div>
             }
           }
           @if (configAgentExposureWarning()) {
-            <p class="agent-config-form__integration-warning" role="note">
+            <ds-notice tone="warning">
               This agent can read the AgentOS configuration and also has a network integration or sub-agents: what it
               reads could be sent outside without any confirmation. Prefer a dedicated configuration agent without them.
-            </p>
+            </ds-notice>
           }
-        </fieldset>
+        </ds-fieldset>
       }
 
       <!-- Skills section: writes AgentConfig.skillSelectors -->
-      <fieldset class="agent-config-form__skills">
-        <legend class="agent-config-form__label">Skills</legend>
-        <p class="agent-config-form__skills-hint">
+      <ds-fieldset legend="Skills">
+        <p class="ds-hint">
           Instruction bundles this agent can read on demand. Selecting at least one grants it the
-          <code class="agent-config-form__code">readSkill</code> and
-          <code class="agent-config-form__code">readSkillResource</code> tools; selecting none grants neither.
+          <code>readSkill</code> and <code>readSkillResource</code> tools; selecting none grants neither.
           @if (isPlatformMode) {
             A platform config can only list platform skills here: namespace skills are resolved per namespace when the
             agent runs.
           }
         </p>
 
-        <label class="agent-config-form__skill-all">
-          <input
-            class="agent-config-form__skill-checkbox"
-            type="checkbox"
-            [checked]="allSkillsSelected()"
-            (change)="toggleAllSkills()"
-          />
-          <span class="agent-config-form__skill-name">
-            Every skill in the catalogue (<code class="agent-config-form__code">*</code>)
-          </span>
+        <label dsCheck>
+          <input type="checkbox" [checked]="allSkillsSelected()" (change)="toggleAllSkills()" />
+          <span class="ds-strong">Every skill in the catalogue (<code class="ds-code">*</code>)</span>
         </label>
-        <p class="agent-config-form__field-hint">
+        <p class="ds-hint ds-indent">
           Resolved at run time, so skills added later are granted too, without editing this agent.
         </p>
 
         @if (namedSkillSelectionDropped()) {
-          <p class="agent-config-form__skills-warning" role="alert">
-            Saving with this on replaces the selection below with
-            <code class="agent-config-form__code">*</code>.
-          </p>
+          <ds-notice tone="warning">
+            Saving with this on replaces the selection below with <code class="ds-code">*</code>.
+          </ds-notice>
         }
 
         @if (skillCatalogueUnavailable()) {
-          <p class="agent-config-form__skills-warning" role="alert">
+          <ds-notice>
             The skill catalogue could not be loaded. What this agent already declares is listed below and preserved on
             save.
-          </p>
+          </ds-notice>
         }
 
         @if (skillRows().length === 0) {
-          <p class="agent-config-form__skills-empty">No skill available in this scope yet.</p>
+          <p class="ds-hint">No skill available in this scope yet.</p>
         } @else {
           @for (row of skillRows(); track row.selector) {
-            <div class="agent-config-form__skill-row">
-              <label class="agent-config-form__skill-toggle">
+            <div class="ds-stack ds-stack--sm">
+              <label dsCheck>
                 <input
-                  class="agent-config-form__skill-checkbox"
                   type="checkbox"
                   [checked]="row.selected()"
                   [disabled]="allSkillsSelected()"
                   (change)="toggleSkill(row)"
                 />
-                <span class="agent-config-form__skill-name">{{ row.name }}</span>
+                <span class="ds-strong">{{ row.name }}</span>
                 @if (row.platform) {
-                  <span class="agent-config-form__skill-badge">platform</span>
+                  <span class="ds-meta">platform</span>
                 }
                 @if (row.unresolved) {
-                  <span class="agent-config-form__skill-badge agent-config-form__skill-badge--unresolved">
+                  <span class="ds-meta">
                     {{ skillCatalogueUnavailable() ? 'not verified' : 'no matching skill' }}
                   </span>
                 }
               </label>
               @if (row.description) {
-                <p class="agent-config-form__skill-desc">{{ row.description }}</p>
+                <p class="ds-hint ds-indent">{{ row.description }}</p>
               }
             </div>
           }
         }
-      </fieldset>
+      </ds-fieldset>
 
-      <!-- Execution mode — replaces the old advancedExecution checkbox -->
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__label" for="agent-config-execution-mode">Execution mode</label>
-        <select id="agent-config-execution-mode" class="agent-config-form__select" [formControl]="executionModeControl">
+      <ds-form-field
+        label="Execution mode"
+        controlId="agent-config-execution-mode"
+        hint='SIMPLE runs a single LLM pass. ADVANCED uses an intention loop for complex tasks and requires a model that supports advanced execution, otherwise the agent fails to run. LOOP (experimental) starts one case per result of a tool, without an LLM — run it with "Launch loop" in the agent list menu.'
+      >
+        <select dsControl id="agent-config-execution-mode" [formControl]="executionModeControl">
           <option [value]="ExecutionMode.SIMPLE">SIMPLE — Standard agent (single LLM call)</option>
           <option [value]="ExecutionMode.ADVANCED">ADVANCED — Multi-step reasoning loop</option>
           <option [value]="ExecutionMode.LOOP">LOOP — Bulk loop agent (no LLM, experimental)</option>
         </select>
-        <p class="agent-config-form__field-hint">
-          SIMPLE runs a single LLM pass. ADVANCED uses an intention loop for complex tasks. LOOP (experimental) starts
-          one case per result of a tool, without an LLM — run it with "Launch loop" in the agent list menu.
-        </p>
-      </div>
+      </ds-form-field>
 
       @if (isLoopMode()) {
-        <div class="agent-config-form__field">
-          <label class="agent-config-form__label" for="agent-config-loop-config">Loop configuration (JSON)</label>
+        <ds-form-field
+          label="Loop configuration (JSON)"
+          controlId="agent-config-loop-config"
+          [error]="
+            loopConfigControl.invalid && loopConfigControl.touched ? 'Invalid JSON — please fix the syntax.' : null
+          "
+        >
           <textarea
+            dsControl
+            mono
             id="agent-config-loop-config"
-            class="agent-config-form__textarea agent-config-form__textarea--mono"
             rows="10"
             [placeholder]="loopConfigPlaceholder"
             [formControl]="loopConfigControl"
             spellcheck="false"
             autocomplete="off"
           ></textarea>
-          @if (loopConfigControl.invalid && loopConfigControl.touched) {
-            <p class="agent-config-form__field-error" role="alert">Invalid JSON — please fix the syntax.</p>
-          }
-          <p class="agent-config-form__field-hint">
+          <p class="ds-hint">
             Default payload for this loop agent. Overridden at launch time if the first message contains a valid
-            <code class="agent-config-form__code">AgentLoopPayload</code>. Leave empty if you always provide the payload
-            at launch.
+            <code>AgentLoopPayload</code>. Leave empty if you always provide the payload at launch.
           </p>
-        </div>
+        </ds-form-field>
       }
 
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__toggle-label">
-          <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="enabledControl" />
-          <span class="agent-config-form__toggle-text">Enabled</span>
-        </label>
-        <p class="agent-config-form__toggle-hint">Disabled agents are excluded from namespace resolution.</p>
-      </div>
-
-      <div class="agent-config-form__field">
-        <span class="agent-config-form__label">Sub-agents</span>
-        <p class="agent-config-form__field-hint">
-          Glob patterns for agents this agent may delegate to. <code class="agent-config-form__code">*</code> matches
-          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
-          <code class="agent-config-form__code">*</code> for all). Leave empty to disable delegation.
+      <!-- Sub-agents section: writes AgentConfig.subAgents -->
+      <ds-fieldset legend="Sub-agents">
+        <p class="ds-hint">
+          The agents this one may delegate to. Selecting at least one grants it the
+          <code>DELEGATE__delegate</code> tool; selecting none grants it no way to delegate. Entries are matched against
+          agent names, never ids.
+          @if (isPlatformMode) {
+            A platform config can only list platform agents here: a namespace's agents are resolved per namespace when
+            the agent runs.
+          }
         </p>
 
-        @if (subAgentRows().length > 0) {
-          <ul class="agent-config-form__sub-agent-list">
-            @for (row of subAgentRows(); track $index) {
-              <li class="agent-config-form__sub-agent-row">
-                <input
-                  class="agent-config-form__input agent-config-form__sub-agent-input"
-                  type="text"
-                  autocomplete="off"
-                  [formControl]="row.control"
-                />
-                <button
-                  class="agent-config-form__sub-agent-btn agent-config-form__sub-agent-btn--danger"
-                  type="button"
-                  title="Remove"
-                  (click)="removeSubAgent(row)"
-                >
-                  &#128465;
-                </button>
-              </li>
+        <label dsCheck>
+          <input type="checkbox" [checked]="allSubAgentsSelected()" (change)="toggleAllSubAgents()" />
+          <span class="ds-strong">Every agent it can reach (<code class="ds-code">*</code>)</span>
+        </label>
+        <p class="ds-hint ds-indent">
+          Resolved at run time, so agents added later can be delegated to as well, without editing this agent.
+        </p>
+
+        @if (namedSubAgentSelectionDropped()) {
+          <ds-notice tone="warning">
+            Saving with this on replaces the selection below with <code class="ds-code">*</code>.
+            @if (droppedUnresolvedSubAgents() > 0) {
+              That deletes {{ droppedUnresolvedSubAgents() }} flagged
+              {{ droppedUnresolvedSubAgents() === 1 ? 'selector' : 'selectors' }} nothing matched, which this form
+              cannot restore.
             }
-          </ul>
+          </ds-notice>
         }
 
-        <div class="agent-config-form__sub-agent-add">
+        @if (subAgentCandidatesUnavailable()) {
+          <ds-notice>
+            The list of agents could not be loaded. What this agent already declares is listed below and preserved on
+            save.
+          </ds-notice>
+        }
+
+        @if (subAgentRows().length === 0) {
+          <p class="ds-hint">No other agent is available in this scope yet.</p>
+        } @else {
+          @for (row of subAgentRows(); track row.selector) {
+            <div class="ds-inline">
+              <label dsCheck class="ds-grow">
+                <input
+                  type="checkbox"
+                  [checked]="row.selected()"
+                  [disabled]="allSubAgentsSelected()"
+                  (change)="toggleSubAgent(row)"
+                />
+                <span class="ds-strong">{{ row.name }}</span>
+                @if (row.pattern) {
+                  <span class="ds-meta">pattern</span>
+                } @else if (row.grantedByPattern) {
+                  <!-- Reached by a glob below: the box is not ticked, yet the run grants it. -->
+                  <span class="ds-meta">via pattern</span>
+                } @else if (row.unresolved) {
+                  <span class="ds-meta">
+                    {{ subAgentCandidatesUnavailable() ? 'not verified' : 'no matching agent' }}
+                  </span>
+                }
+              </label>
+              <!-- Outside the label: a button is labelable, so nesting it here would make its glyph part
+                   of the checkbox's accessible name. -->
+              @if (row.unresolved) {
+                <button
+                  dsButton
+                  variant="icon-danger"
+                  type="button"
+                  title="Remove"
+                  [attr.aria-label]="'Remove ' + row.selector"
+                  (click)="removeSubAgent(row)"
+                >
+                  &times;
+                </button>
+              }
+            </div>
+          }
+        }
+
+        <p class="ds-hint">
+          Advanced — add a glob instead of picking a name, for example <code>*Fixer</code> to cover BugFixer and
+          StoryFixer.
+        </p>
+        <div class="ds-inline">
           <input
-            class="agent-config-form__input agent-config-form__sub-agent-input"
+            dsControl
             type="text"
-            placeholder="e.g. *Fixer or *"
+            aria-label="New sub-agent pattern"
+            placeholder="e.g. *Fixer"
             autocomplete="off"
             [formControl]="newSubAgentControl"
             (keydown.enter)="addSubAgent()"
           />
           <button
-            class="agent-config-form__sub-agent-btn agent-config-form__sub-agent-btn--add"
+            dsButton
+            variant="icon"
             type="button"
             title="Add pattern"
+            aria-label="Add pattern"
             [disabled]="!newSubAgentControl.value.trim()"
             (click)="addSubAgent()"
           >
             +
           </button>
         </div>
-      </div>
 
-      <div class="agent-config-form__field">
-        <label class="agent-config-form__label" for="delegation-timeout">Delegation timeout (seconds)</label>
-        <p class="agent-config-form__field-hint" id="delegation-timeout-hint">
-          How long each delegation launched by this agent waits without activity from the sub-agent, including its own
-          delegations. When it runs out, the sub-agent and its active descendants are stopped and can be resumed. Leave
-          empty to use the server default
-          @if (defaultDelegationTimeoutSeconds() !== null) {
-            : {{ defaultDelegationTimeoutSeconds() }} s ({{ defaultDelegationTimeoutSeconds()! / 60 }} min)
-          }
-          .
-        </p>
-        <input
-          id="delegation-timeout"
-          class="agent-config-form__input"
-          type="number"
-          min="1"
-          max="2147483647"
-          step="1"
-          placeholder="Server default"
-          aria-describedby="delegation-timeout-hint delegation-timeout-error"
-          [attr.aria-invalid]="delegationTimeoutControl.invalid"
-          [formControl]="delegationTimeoutControl"
-        />
-        @if (delegationTimeoutControl.invalid) {
-          <p id="delegation-timeout-error" class="agent-config-form__field-hint" role="alert">
-            Enter a valid positive whole number of seconds, or leave empty to inherit the server default.
-          </p>
-        }
-        @if (delegationTimeoutControl.value !== null) {
-          <button class="agent-config-form__sub-agent-btn" type="button" (click)="useDefaultDelegationTimeout()">
-            Use server default
-          </button>
-        }
-      </div>
-
-      <div class="agent-config-form__actions">
-        <button
-          class="agent-config-form__btn agent-config-form__btn--primary"
-          type="submit"
-          [disabled]="form.invalid || isSubmitting()"
+        <ds-form-field
+          label="Delegation timeout (seconds)"
+          controlId="delegation-timeout"
+          [hint]="delegationTimeoutHint()"
+          hintId="delegation-timeout-hint"
+          errorId="delegation-timeout-error"
+          [error]="
+            delegationTimeoutControl.invalid
+              ? 'Enter a valid positive whole number of seconds, or leave empty to inherit the server default.'
+              : null
+          "
         >
+          <input
+            dsControl
+            id="delegation-timeout"
+            type="number"
+            min="1"
+            max="2147483647"
+            step="1"
+            placeholder="Server default"
+            aria-describedby="delegation-timeout-hint delegation-timeout-error"
+            [attr.aria-invalid]="delegationTimeoutControl.invalid"
+            [formControl]="delegationTimeoutControl"
+          />
+          @if (delegationTimeoutControl.value !== null) {
+            <div>
+              <button dsButton variant="ghost" type="button" (click)="useDefaultDelegationTimeout()">
+                Use server default
+              </button>
+            </div>
+          }
+        </ds-form-field>
+      </ds-fieldset>
+      @if (submitError(); as message) {
+        <ds-notice>{{ message }}</ds-notice>
+      }
+
+      <ds-form-actions>
+        <button dsButton variant="primary" type="submit" [disabled]="form.invalid || isSubmitting()">
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
         @if (isEditMode()) {
-          <button
-            class="agent-config-form__btn agent-config-form__btn--export"
-            type="button"
-            [disabled]="isExporting()"
-            (click)="exportYaml()"
-          >
+          <button dsButton type="button" [disabled]="isExporting()" (click)="exportYaml()">
             {{ isExporting() ? 'Exporting…' : 'Export as YAML' }}
           </button>
         }
-        <button class="agent-config-form__btn" type="button" (click)="cancel()">Cancel</button>
-      </div>
+        <button dsButton type="button" (click)="cancel()">Cancel</button>
+      </ds-form-actions>
     </form>
 
     @if (isEditMode() && namespaceId) {
       <agentos-agent-messaging [namespaceId]="namespaceId" [agentId]="agentConfigId" />
     }
   }
-</div>
+</ds-page>

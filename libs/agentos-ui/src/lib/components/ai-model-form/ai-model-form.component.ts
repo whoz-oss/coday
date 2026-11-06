@@ -12,6 +12,7 @@ import {
   ModelPricing,
   ReasoningEffort,
 } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 
 /**
  * AiModelFormComponent — full-page create / edit form for an AI model.
@@ -34,9 +35,8 @@ const NO_REASONING_EFFORT_API_TYPES: readonly AiProviderApiTypeEnum[] = [
 
 @Component({
   selector: 'agentos-ai-model-form',
-  imports: [ReactiveFormsModule],
+  imports: [DS_PAGE_KIT, ReactiveFormsModule],
   templateUrl: './ai-model-form.component.html',
-  styleUrl: './ai-model-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiModelFormComponent implements OnInit {
@@ -92,6 +92,7 @@ export class AiModelFormComponent implements OnInit {
     contextWindow: new FormControl<number | null>(null),
     maxCompletionTokens: new FormControl<number | null>(null),
     reasoningEffort: new FormControl<ReasoningEffort | null>(null),
+    supportsAdvancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),
@@ -134,6 +135,10 @@ export class AiModelFormComponent implements OnInit {
 
   protected get reasoningEffortControl() {
     return this.form.controls.reasoningEffort
+  }
+
+  protected get supportsAdvancedExecutionControl() {
+    return this.form.controls.supportsAdvancedExecution
   }
 
   protected get pricingGroup() {
@@ -226,6 +231,7 @@ export class AiModelFormComponent implements OnInit {
           this.contextWindowControl.setValue(model.contextWindow ?? null)
           this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
           this.reasoningEffortControl.setValue(model.reasoningEffort ?? null)
+          this.supportsAdvancedExecutionControl.setValue(model.supportsAdvancedExecution ?? false)
           this.pricingGroup.setValue({
             inputMTokens: model.pricing?.inputMTokens ?? null,
             outputMTokens: model.pricing?.outputMTokens ?? null,
@@ -280,6 +286,7 @@ export class AiModelFormComponent implements OnInit {
       contextWindow: raw.contextWindow ?? undefined,
       maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
       reasoningEffort: raw.reasoningEffort ?? undefined,
+      supportsAdvancedExecution: raw.supportsAdvancedExecution,
       pricing,
     }
 

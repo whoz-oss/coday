@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AuthSettingDto } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
   AuthSettingConfigStateService,
@@ -26,9 +26,15 @@ interface AuthSettingRow {
 
 @Component({
   selector: 'agentos-auth-settings-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent, RowDeleteActionComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './auth-settings-all-scopes.component.html',
-  styleUrl: './auth-settings-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AuthSettingsAllScopesComponent implements OnInit {

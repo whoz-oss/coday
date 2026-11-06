@@ -1,8 +1,11 @@
 package io.whozoss.factory.config
 
+import io.whozoss.factory.sdk.spi.FactoryCallerIdentity
 import io.whozoss.factory.sdk.spi.FactoryRoute
 import io.whozoss.factory.sdk.spi.FactoryRouteContributor
 import io.whozoss.factory.sdk.spi.FactoryRouteRequest
+import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.web.AuthenticationFilter
 import mu.KLogging
 import org.pf4j.PluginManager
 import org.springframework.context.annotation.Bean
@@ -67,16 +70,25 @@ class FactoryPluginRouteConfig {
             pluginResponse.body?.let { responseBuilder.body(it) } ?: responseBuilder.build()
         }
 
-    private fun ServerRequest.toFactoryRequest(): FactoryRouteRequest =
-        FactoryRouteRequest(
+    private fun ServerRequest.toFactoryRequest(): FactoryRouteRequest {
+        val attrs = attributes()
+        val authUser = attrs[AuthenticationFilter.ATTRIBUTE] as? AuthenticatedUser
+        return FactoryRouteRequest(
             method = method().name(),
             path = path(),
             pathVariables = pathVariables(),
             queryParams = params(),
             headers = headers().asHttpHeaders().mapValues { it.value },
             body = runCatching { body(String::class.java) }.getOrNull(),
-            attributes = attributes(),
+            attributes = attrs,
+            caller = authUser?.let {
+                FactoryCallerIdentity(
+                    userId = it.userId,
+                    organizationId = it.organizationId,
+                )
+            },
         )
+    }
 
     companion object : KLogging()
 }

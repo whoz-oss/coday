@@ -24,7 +24,7 @@ data class WorkEnvironment(
     val parentCaseId: String? = null,
     val repoRoot: String,
     val integrationBranch: String,
-    val branch: String,
+    val branch: String?,
     val worktreePath: String,
     val baseCommit: String? = null,
     val lifecycleState: WorkEnvironmentState = WorkEnvironmentState.PROVISIONING,

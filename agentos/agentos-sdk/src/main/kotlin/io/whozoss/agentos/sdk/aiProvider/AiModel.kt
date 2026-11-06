@@ -74,4 +74,14 @@ data class AiModel(
      * saved under an API type without [AiApiType.supportsReasoningEffort] (Anthropic, Gemini).
      */
     val reasoningEffort: ReasoningEffort? = null,
+    /**
+     * Capability flag: whether this model can run agents in ADVANCED execution mode (the multi-step
+     * intention loop). It never changes an agent's mode, the agent decides that: an agent configured
+     * ADVANCED that runs on a model without this flag fails with an error. SIMPLE and LOOP agents are
+     * unaffected.
+     *
+     * Models persisted before this property existed were migrated once at startup: true when an
+     * ADVANCED agent used them, false otherwise. The value is an ordinary setting afterwards.
+     */
+    val supportsAdvancedExecution: Boolean = false,
 ) : Entity

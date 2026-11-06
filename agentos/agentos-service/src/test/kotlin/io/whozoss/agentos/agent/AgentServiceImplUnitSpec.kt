@@ -57,6 +57,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -229,6 +230,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         temperature: Double? = null,
         maxCompletionTokens: Int? = null,
         reasoningEffort: ReasoningEffort? = null,
+        supportsAdvancedExecution: Boolean = false,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -239,6 +241,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         temperature = temperature,
         maxCompletionTokens = maxCompletionTokens,
         reasoningEffort = reasoningEffort,
+        supportsAdvancedExecution = supportsAdvancedExecution,
     )
 
     private fun agentConfig(
@@ -900,7 +903,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // confirmation flow throw IllegalStateException at runtime.
         "findAgentByName with advancedExecution=true wires confirmationManager into AgentAdvancedContext" {
             val config = agentConfig(name = "advanced-agent", modelName = "sonnet").copy(advancedExecution = true)
-            val model = modelConfig(alias = "sonnet")
+            val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
@@ -1104,7 +1107,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { namespaceService.findById(namespaceId) } returns namespace.copy(maxToolRounds = 250)
             every { agentConfigService.findByName(namespaceId, "rounds-advanced") } returns
                 agentConfig(name = "rounds-advanced", modelName = "sonnet").copy(advancedExecution = true)
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
 
@@ -1154,7 +1158,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 )
             every { agentConfigService.findByName(namespaceId, "rounds-fallback") } returns
                 agentConfig(name = "rounds-fallback", modelName = "sonnet").copy(advancedExecution = true)
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
 
@@ -2672,7 +2677,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 agentConfig(name = "advanced-no-dup-agent", modelName = "sonnet")
                     .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
             every { agentConfigService.findByName(namespaceId, "advanced-no-dup-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
             every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
@@ -2701,6 +2707,109 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // redirectGuideline wiring seam — findAgentByName → AgentAdvancedContext
         // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // Execution mode: the agent decides, the model only constrains ADVANCED
+        // -------------------------------------------------------------------------
+
+        /** Stubs [config] running on a model whose supportsAdvancedExecution is [modelFlag]; returns that model. */
+        fun stubAgentOnModel(
+            config: AgentConfig,
+            modelFlag: Boolean,
+        ): AiModel {
+            val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = modelFlag)
+            val provider = providerConfig()
+            every { agentConfigService.findByName(namespaceId, config.name) } returns config
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns mockk<ChatClient>(relaxed = true)
+            return model
+        }
+
+        "a SIMPLE agent runs as AgentSimple on a model that does not support advanced execution" {
+            val config = agentConfig(name = "simple-no-support").copy(executionMode = ExecutionMode.SIMPLE)
+            stubAgentOnModel(config, modelFlag = false)
+
+            (agentService.findAgentByName("simple-no-support", context) is AgentSimple) shouldBe true
+        }
+
+        "a SIMPLE agent stays AgentSimple on a model that supports advanced execution: the model never upgrades the agent" {
+            val config = agentConfig(name = "simple-with-support").copy(executionMode = ExecutionMode.SIMPLE)
+            stubAgentOnModel(config, modelFlag = true)
+
+            (agentService.findAgentByName("simple-with-support", context) is AgentSimple) shouldBe true
+        }
+
+        "an agent with no execution mode set is SIMPLE, even on a model that supports advanced execution" {
+            // executionMode = null and advancedExecution = false: nothing is set on the agent.
+            val config = agentConfig(name = "no-mode-with-support")
+            stubAgentOnModel(config, modelFlag = true)
+
+            (agentService.findAgentByName("no-mode-with-support", context) is AgentSimple) shouldBe true
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null).executionMode shouldBe
+                ExecutionMode.SIMPLE
+        }
+
+        "an ADVANCED agent runs as AgentAdvanced on a model that supports advanced execution" {
+            val config = agentConfig(name = "advanced-with-support").copy(executionMode = ExecutionMode.ADVANCED)
+            stubAgentOnModel(config, modelFlag = true)
+
+            (agentService.findAgentByName("advanced-with-support", context) is AgentAdvanced) shouldBe true
+        }
+
+        "an ADVANCED agent on a model that does not support advanced execution fails, naming the agent, the model and the fix" {
+            val config = agentConfig(name = "big-advanced").copy(executionMode = ExecutionMode.ADVANCED)
+            stubAgentOnModel(config, modelFlag = false)
+
+            val error =
+                shouldThrow<AdvancedExecutionNotSupportedException> {
+                    agentService.findAgentByName("big-advanced", context)
+                }
+
+            error.message shouldContain "Agent 'big-advanced'"
+            error.message shouldContain "ADVANCED"
+            error.message shouldContain "'sonnet'"
+            // The message is shown to case participants: no provider nor API model name.
+            error.message shouldNotContain "anthropic-prod"
+            error.message shouldNotContain "claude-sonnet-4-5"
+            error.message shouldContain "Ask an administrator to enable supportsAdvancedExecution on the model"
+            error.message shouldContain "switch the agent to SIMPLE"
+            // No silent downgrade: no chat client is built for the agent.
+            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any(), any()) }
+        }
+
+        "the legacy advancedExecution=true flag on a model that does not support it fails the same way" {
+            val config = agentConfig(name = "legacy-advanced").copy(advancedExecution = true)
+            stubAgentOnModel(config, modelFlag = false)
+
+            val error =
+                shouldThrow<AdvancedExecutionNotSupportedException> {
+                    agentService.findAgentByName("legacy-advanced", context)
+                }
+
+            error.message shouldContain "Agent 'legacy-advanced'"
+        }
+
+        "a LOOP agent is unaffected by the model's advanced execution support" {
+            val config = agentConfig(name = "loop-any-model").copy(executionMode = ExecutionMode.LOOP)
+
+            for (flag in listOf(true, false)) {
+                stubAgentOnModel(config, modelFlag = flag)
+                (agentService.findAgentByName("loop-any-model", context) is AgentLoop) shouldBe true
+            }
+        }
+
+        "resolveDefinition still returns the definition of an ADVANCED agent on a model without support" {
+            // The /definition inspection endpoint must keep working so an admin can see the misconfiguration.
+            val config = agentConfig(name = "inspectable-advanced").copy(executionMode = ExecutionMode.ADVANCED)
+            stubAgentOnModel(config, modelFlag = false)
+
+            val definition = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            definition.executionMode shouldBe ExecutionMode.ADVANCED
+            definition.resolvedModel.supportsAdvancedExecution shouldBe false
+        }
 
         // -------------------------------------------------------------------------
         // ExecutionMode.LOOP wiring — AgentLoop instantiation
@@ -2738,7 +2847,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 agentConfig(name = "advanced-redirect-agent", modelName = "sonnet")
                     .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
             every { agentConfigService.findByName(namespaceId, "advanced-redirect-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
             every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)

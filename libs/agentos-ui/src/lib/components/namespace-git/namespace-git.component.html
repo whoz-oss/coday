@@ -1,146 +1,155 @@
-<div class="namespace-git">
-  <header class="namespace-git__header">
-    <h1 class="namespace-git__title">Git repository</h1>
-  </header>
+<ds-page>
+  <ds-section-header
+    title="Git repository"
+    description="Associating a repository enables Git workspaces for this namespace. When worktree creation is enabled, the new-case form offers a worktree, and a case created with one gets a repo/ directory shared by its sub-cases. Namespace files remain shared documents outside Git. Agents create branches and pull requests in their workflows."
+  />
 
   @if (isLoading()) {
-    <p class="namespace-git__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <div class="namespace-git__body">
-      <p class="namespace-git__hint">
-        Associating a repository enables Git workspaces for this namespace. When worktree creation is enabled, the
-        new-case form offers a worktree, and a case created with one gets a repo/ directory shared by its sub-cases.
-        Namespace files remain shared documents outside Git. Agents create branches and pull requests in their
-        workflows.
-      </p>
+    @if (errorMessage()) {
+      <ds-notice>{{ errorMessage() }}</ds-notice>
+    }
 
-      @if (errorMessage()) {
-        <p class="namespace-git__error" role="alert">{{ errorMessage() }}</p>
-      }
+    @if (!associationLoaded()) {
+      <div>
+        <button id="git-retry" dsButton type="button" (click)="retryLoad()">Retry loading</button>
+      </div>
+    }
 
-      @if (!associationLoaded()) {
-        <button class="namespace-git__retry" type="button" (click)="retryLoad()">Retry loading</button>
-      }
+    @if (isAssociated() && checkoutStatus()) {
+      <ds-notice
+        [tone]="
+          checkoutStatus() === CheckoutStatus.FAILED
+            ? 'error'
+            : checkoutStatus() === CheckoutStatus.READY
+              ? 'success'
+              : 'neutral'
+        "
+      >
+        Repository: {{ checkoutStatus() }}
+        @if (association()?.checkoutFailureReason) {
+          <br />{{ association()?.checkoutFailureReason }}
+        }
+      </ds-notice>
+    }
 
-      @if (isAssociated() && checkoutStatus()) {
-        <p
-          class="namespace-git__status"
-          [class.namespace-git__status--failed]="checkoutStatus() === CheckoutStatus.FAILED"
-          [class.namespace-git__status--ready]="checkoutStatus() === CheckoutStatus.READY"
+    <ds-fieldset legend="Repository" [disabled]="!associationLoaded() || isSaving()">
+      <ds-form-field label="Repository URL" controlId="git-url" hint="HTTPS only, without credentials in the URL.">
+        <input
+          dsControl
+          id="git-url"
+          type="url"
+          placeholder="https://forge.example/org/project.git"
+          [ngModel]="repositoryUrl()"
+          (ngModelChange)="repositoryUrl.set($event)"
+          name="repositoryUrl"
+        />
+      </ds-form-field>
+
+      <ds-form-field
+        label="Main branch"
+        controlId="git-branch"
+        hint="New worktrees start at this branch’s commit, without creating a branch."
+      >
+        <input
+          dsControl
+          id="git-branch"
+          type="text"
+          placeholder="main"
+          [ngModel]="mainBranch()"
+          (ngModelChange)="mainBranch.set($event)"
+          name="mainBranch"
+        />
+      </ds-form-field>
+
+      <ds-form-field
+        label="Service account"
+        controlId="git-auth"
+        hint="Shared by the namespace. Every Git operation uses this identity, never the identity of whoever opened the case."
+      >
+        <select
+          dsControl
+          id="git-auth"
+          [ngModel]="serviceAuthSettingId()"
+          (ngModelChange)="serviceAuthSettingId.set($event)"
+          name="serviceAuthSettingId"
         >
-          Repository: {{ checkoutStatus() }}
-          @if (association()?.checkoutFailureReason) {
-            <span class="namespace-git__status-reason">{{ association()?.checkoutFailureReason }}</span>
+          <option value="">Select an auth setting&hellip;</option>
+          @for (setting of eligibleAuthSettings(); track setting.id) {
+            <option [value]="setting.id">{{ setting.name }} ({{ authTypeLabel(setting.authType) }})</option>
           }
-        </p>
-      }
+        </select>
+        @if (eligibleAuthSettings().length === 0) {
+          <p class="ds-hint ds-hint--warning">
+            No usable auth setting in this namespace. Create a BEARER_TOKEN one first.
+          </p>
+        }
+      </ds-form-field>
+    </ds-fieldset>
 
-      <fieldset class="namespace-git__section" [disabled]="!associationLoaded() || isSaving()">
-        <legend class="namespace-git__label">Repository</legend>
-
-        <label class="namespace-git__field">
-          <span class="namespace-git__field-label">Repository URL</span>
-          <input
-            class="namespace-git__input"
-            type="url"
-            placeholder="https://forge.example/org/project.git"
-            [ngModel]="repositoryUrl()"
-            (ngModelChange)="repositoryUrl.set($event)"
-            name="repositoryUrl"
-          />
-          <span class="namespace-git__field-hint">HTTPS only, without credentials in the URL.</span>
-        </label>
-
-        <label class="namespace-git__field">
-          <span class="namespace-git__field-label">Main branch</span>
-          <input
-            class="namespace-git__input"
-            type="text"
-            placeholder="main"
-            [ngModel]="mainBranch()"
-            (ngModelChange)="mainBranch.set($event)"
-            name="mainBranch"
-          />
-          <span class="namespace-git__field-hint"
-            >New worktrees start at this branch’s commit, without creating a branch.</span
-          >
-        </label>
-
-        <label class="namespace-git__field">
-          <span class="namespace-git__field-label">Service account</span>
-          <select
-            class="namespace-git__input"
-            [ngModel]="serviceAuthSettingId()"
-            (ngModelChange)="serviceAuthSettingId.set($event)"
-            name="serviceAuthSettingId"
-          >
-            <option value="">Select an auth setting&hellip;</option>
-            @for (setting of eligibleAuthSettings(); track setting.id) {
-              <option [value]="setting.id">{{ setting.name }} ({{ authTypeLabel(setting.authType) }})</option>
-            }
-          </select>
-          <span class="namespace-git__field-hint">
-            Shared by the namespace. Every Git operation uses this identity, never the identity of whoever opened the
-            case.
-          </span>
-          @if (eligibleAuthSettings().length === 0) {
-            <span class="namespace-git__field-hint namespace-git__field-hint--warn">
-              No usable auth setting in this namespace. Create a BEARER_TOKEN one first.
-            </span>
-          }
-        </label>
-      </fieldset>
-
-      <fieldset class="namespace-git__section" [disabled]="!associationLoaded() || isSaving()">
-        <legend class="namespace-git__label">Automation</legend>
-
-        <label class="namespace-git__checkbox">
+    <ds-fieldset legend="Automation" [disabled]="!associationLoaded() || isSaving()">
+      <div class="ds-stack ds-stack--sm">
+        <label dsCheck>
           <input
             type="checkbox"
             [ngModel]="autoWorktree()"
             (ngModelChange)="autoWorktree.set($event)"
             name="autoWorktree"
           />
-          <span>Offer a worktree to every new top-level case</span>
+          Offer a worktree to every new top-level case
         </label>
-        <span class="namespace-git__field-hint">
+        <p class="ds-hint ds-indent">
           The creator checks the box when creating the case; it is unchecked by default, and a case created without it
           has no Git. Applies to cases created from now on: turning this on later never equips existing cases, and
           turning it off never removes a worktree already created.
-        </span>
-
-        <label class="namespace-git__field">
-          <span class="namespace-git__field-label">Setup command (optional)</span>
-          <input
-            class="namespace-git__input"
-            type="text"
-            placeholder="pnpm install --ignore-scripts"
-            [ngModel]="setupCommand()"
-            (ngModelChange)="setupCommand.set($event)"
-            name="setupCommand"
-          />
-          <span class="namespace-git__field-hint namespace-git__field-hint--warn">
-            Runs on the server, as the service user, in each new worktree. It executes code from the branch — prefer a
-            command that disables lifecycle scripts.
-          </span>
-        </label>
-      </fieldset>
-
-      <div class="namespace-git__actions">
-        <button class="namespace-git__save" type="button" [disabled]="!canSave()" (click)="save()">
-          {{ isSaving() ? 'Saving…' : isAssociated() ? 'Update' : 'Associate' }}
-        </button>
-        @if (isAssociated()) {
-          <button
-            class="namespace-git__remove"
-            type="button"
-            [disabled]="!associationLoaded() || isSaving()"
-            (click)="remove()"
-          >
-            Remove association
-          </button>
-        }
+        </p>
       </div>
-    </div>
+
+      <ds-form-field label="Setup command (optional)" controlId="git-setup">
+        <input
+          dsControl
+          mono
+          id="git-setup"
+          type="text"
+          placeholder="pnpm install --ignore-scripts"
+          [ngModel]="setupCommand()"
+          (ngModelChange)="setupCommand.set($event)"
+          name="setupCommand"
+        />
+        <p class="ds-hint ds-hint--warning">
+          Runs on the server, as the service user, in each new worktree. It executes code from the branch — prefer a
+          command that disables lifecycle scripts.
+        </p>
+      </ds-form-field>
+    </ds-fieldset>
+
+    <ds-form-actions>
+      <button id="git-save" dsButton variant="primary" type="button" [disabled]="!canSave()" (click)="save()">
+        {{ isSaving() ? 'Saving…' : isAssociated() ? 'Update' : 'Associate' }}
+      </button>
+      @if (isAssociated()) {
+        <button
+          id="git-remove"
+          dsButton
+          variant="danger"
+          type="button"
+          [disabled]="!associationLoaded() || isSaving()"
+          (click)="remove()"
+        >
+          Remove association
+        </button>
+      }
+    </ds-form-actions>
   }
-</div>
+</ds-page>
+
+<ds-confirm-dialog
+  [open]="confirmingRemove()"
+  title="Remove the repository association?"
+  message="Existing workspaces keep their worktree."
+  confirmLabel="Remove"
+  cancelLabel="Cancel"
+  (confirmed)="confirmRemove()"
+  (cancelled)="confirmingRemove.set(false)"
+/>

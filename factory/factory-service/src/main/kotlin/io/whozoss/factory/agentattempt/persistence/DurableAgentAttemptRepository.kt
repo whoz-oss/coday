@@ -84,6 +84,12 @@ interface DurableAgentAttemptRepository {
      */
     fun findNonTerminal(limit: Int): List<ScopedDurableAgentAttempt>
 
+    /** Terminal attempts whose durable occupation may still need post-commit release. */
+    fun findTerminalWithOccupancy(limit: Int): List<ScopedDurableAgentAttempt>
+
+    /** Stable keyset page ordered by the persisted composite attempt id. */
+    fun findTerminalWithOccupancyAfter(afterId: String?, limit: Int): List<ScopedDurableAgentAttempt>
+
     /**
      * The next attempt number of a workflow step: `MAX(attemptNumber) + 1`
      * across every attempt of `(namespaceId, workflowId, stepId)`, or 1 when
@@ -146,6 +152,17 @@ interface DurableAgentAttemptRepository {
     ): DurableAgentAttempt
 
     /** Fenced replacement of the server-side clear result capability token. */
+    /** Persists the exact acquired physical-worktree fencing handle on the attempt. */
+    fun bindOccupancy(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        resourceIdentity: String,
+        ownerKind: String,
+        ownerId: String,
+        generation: Long,
+        now: Instant,
+    ): DurableAgentAttempt
+
     fun replaceCapability(
         scope: TenantScope,
         attempt: DurableAgentAttempt,

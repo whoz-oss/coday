@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
-import { TagComponent } from '@whoz-oss/design-system'
+import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
 import { IntegrationConfigSource, sourceOf } from '../../utils/integration-config-source'
 
@@ -14,9 +14,8 @@ const SENSITIVE_KEY =
 
 @Component({
   selector: 'agentos-integration-config-view',
-  imports: [TagComponent],
+  imports: [DS_PAGE_KIT, TagComponent],
   templateUrl: './integration-config-view.component.html',
-  styleUrl: './integration-config-view.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IntegrationConfigViewComponent implements OnInit {

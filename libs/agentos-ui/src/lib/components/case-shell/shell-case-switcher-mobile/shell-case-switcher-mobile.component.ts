@@ -3,6 +3,7 @@ import { WorkspaceView } from '../../../services/case-workspace.service'
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
 import { Case } from '@whoz-oss/agentos-api-client'
 import { CaseStatusGlyphComponent } from '../../case-status-glyph/case-status-glyph.component'
+import { AvatarComponent } from '@whoz-oss/design-system'
 
 interface CaseGroup {
   label: string
@@ -15,7 +16,7 @@ interface CaseGroup {
  */
 @Component({
   selector: 'agentos-shell-case-switcher-mobile',
-  imports: [CaseStatusGlyphComponent, CaseGitBadgeComponent],
+  imports: [CaseStatusGlyphComponent, CaseGitBadgeComponent, AvatarComponent],
   templateUrl: './shell-case-switcher-mobile.component.html',
   styleUrl: './shell-case-switcher-mobile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,6 +29,8 @@ export class ShellCaseSwitcherMobileComponent {
   readonly cases = input.required<(Case & { starred?: boolean })[]>()
   readonly activeCaseId = input.required<string | null>()
   readonly userInitials = input.required<string>()
+  /** Gravatar URL of the user; the initials are shown when null or when the image cannot be loaded. */
+  readonly userAvatarUrl = input<string | null>(null)
   readonly userName = input.required<string>()
   readonly isAdmin = input.required<boolean>()
   readonly isDark = input.required<boolean>()

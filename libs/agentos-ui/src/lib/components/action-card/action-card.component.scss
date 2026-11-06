@@ -1,12 +1,17 @@
 @use '../../../../../design-system/src/styles' as ds;
 
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   height: var(--ac-height, auto);
 }
 
 .ac {
   @include ds.surface-card;
+  // Column layout so the actions slot can be pinned to the bottom of a stretched card
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   height: 100%;
   background: var(--color-bg);
   border-color: var(--color-divider);
@@ -27,6 +32,8 @@
     background: var(--color-bg);
     box-shadow: none;
     overflow: visible;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
     text-align: left;
@@ -142,6 +149,8 @@
     display: flex;
     gap: 8px;
     padding: 0 18px 18px;
+    // Pushed to the bottom when the card is taller than its content
+    margin-top: auto;
   }
 }
 

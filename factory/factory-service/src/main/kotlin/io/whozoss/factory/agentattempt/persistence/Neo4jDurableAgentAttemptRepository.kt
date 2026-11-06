@@ -148,6 +148,16 @@ class Neo4jDurableAgentAttemptRepository(
             ScopedDurableAgentAttempt(TenantScope(node.organizationId, node.workstreamId), node.toDomain())
         }
 
+    override fun findTerminalWithOccupancy(limit: Int): List<ScopedDurableAgentAttempt> =
+        attempts.findTerminalWithOccupancy(limit.toLong()).map { node ->
+            ScopedDurableAgentAttempt(TenantScope(node.organizationId, node.workstreamId), node.toDomain())
+        }
+
+    override fun findTerminalWithOccupancyAfter(afterId: String?, limit: Int): List<ScopedDurableAgentAttempt> =
+        attempts.findTerminalWithOccupancyAfter(afterId, limit.toLong()).map { node ->
+            ScopedDurableAgentAttempt(TenantScope(node.organizationId, node.workstreamId), node.toDomain())
+        }
+
     override fun findByAttemptId(
         scope: TenantScope,
         namespaceId: String,
@@ -283,6 +293,35 @@ class Neo4jDurableAgentAttemptRepository(
             return after.toDomain()
         }
         return disambiguateFailedCas(scope, namespaceId, workflowId, stepId, attemptId, ownerToken, target)
+    }
+
+    @Transactional
+    override fun bindOccupancy(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        resourceIdentity: String,
+        ownerKind: String,
+        ownerId: String,
+        generation: Long,
+        now: Instant,
+    ): DurableAgentAttempt {
+        val id = DurableAgentAttemptNode.compositeId(
+            scope.organizationId, scope.workstreamId, attempt.namespaceId,
+            attempt.workflowId, attempt.stepId, attempt.attemptId,
+        )
+        val updated = attempts.bindOccupancy(
+            id, attempt.revision, resourceIdentity, ownerKind, ownerId, generation, now,
+        )
+        if (updated == 0L) {
+            val current = requireNode(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId).toDomain()
+            if (current.occupancyResourceIdentity != resourceIdentity || current.occupancyOwnerKind != ownerKind ||
+                current.occupancyOwnerId != ownerId || current.occupancyGeneration != generation
+            ) {
+                throw AttemptLeaseFencingException("Attempt '${attempt.attemptId}' could not persist its worktree occupation")
+            }
+            return current
+        }
+        return requireNode(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId).toDomain()
     }
 
     @Transactional

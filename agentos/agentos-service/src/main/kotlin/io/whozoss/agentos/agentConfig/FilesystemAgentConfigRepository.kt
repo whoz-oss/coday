@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
@@ -51,7 +53,7 @@ class FilesystemAgentConfigRepository(
                 withDisabled = withDisabled,
             )
 
-        val fromFilesystem = namespaceId?.let { retrieveFilesystemAgentConfigs(namespaceId) } ?: emptyList()
+        val fromFilesystem = namespaceId?.let { filesystemAgents(it) } ?: emptyList()
 
         // Filesystem agents are implicitly deployed on the namespace — include them
         // in the available set, applying the same merge rules as findByParent:
@@ -61,20 +63,9 @@ class FilesystemAgentConfigRepository(
             fromFilesystem
                 .filter { it.name.lowercase() !in delegateNames }
                 .filter { agentName == null || it.name.startsWith(agentName, ignoreCase = true) }
-                .map { it.copy(namespaceId = namespaceId) }
                 .sortedBy { it.name }
 
         return fromDelegate + filesystemAdditions
-    }
-
-    private fun retrieveFilesystemAgentConfigs(namespaceId: UUID): List<AgentConfig> {
-        val configPath = namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
-        return if (configPath == null) {
-            emptyList()
-        } else {
-            val directory = Path.of(configPath, AGENTS_SUBDIR)
-            cacheRegistry.getAll(directory)
-        }
     }
 
     /**
@@ -148,9 +139,23 @@ class FilesystemAgentConfigRepository(
         return cacheRegistry
             .getAll(directory)
             .filter { it.name.lowercase() !in excludeNames }
-            .map { it.copy(namespaceId = parentId) }
+            .map { it.inNamespace(parentId) }
             .sortedBy { it.name }
     }
+
+    /**
+     * Binds a parsed filesystem agent to [namespaceId], including its id (see [filesystemEntityId]).
+     *
+     * This happens at read time, not in [parseYamlFile], because the YAML cache is keyed by
+     * directory and several namespaces can share the same `configPath`: the parser must not know
+     * the namespace. The cached object is shared between those namespaces, so it is never mutated,
+     * only [copy]-ed.
+     */
+    private fun AgentConfig.inNamespace(namespaceId: UUID): AgentConfig =
+        copy(
+            namespaceId = namespaceId,
+            metadata = metadata.copy(id = filesystemEntityId(FilesystemEntityKind.AGENT, namespaceId, name)),
+        )
 
     /**
      * [directory] (the cache's root, i.e. `<configPath>/agents`) is unused here —
@@ -173,8 +178,7 @@ class FilesystemAgentConfigRepository(
         }
         @Suppress("DEPRECATION")
         return AgentConfig(
-            // Stable UUID derived from the name so identity survives restarts.
-            // namespaceId is null here; it is overwritten in findByParent.
+            // Provisional id, never exposed: replaced by filesystemEntityId(...) in inNamespace() when the entity is bound to its namespace.
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-agent:${model.name}".toByteArray())),
             namespaceId = null,
             name = model.name,

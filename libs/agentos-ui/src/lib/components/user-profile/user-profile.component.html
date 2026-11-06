@@ -1,357 +1,185 @@
-<div class="user-profile">
-  <header class="user-profile__header">
-    <ds-icon-button icon="arrow_back" title="Back" (action)="goBack()" />
-    <h1 class="user-profile__title">My profile</h1>
-  </header>
+<ds-page framed>
+  <ds-section-header title="My profile" />
 
   @if (isLoading()) {
-    <p class="user-profile__loading">Loading…</p>
+    <p class="ds-hint">Loading…</p>
   } @else if (currentUser(); as user) {
-    <!-- Appearance is mode-independent: the theme selector stays at a stable position above the
-         profile content, visible and editable in both read and edit modes (it is not part of the
+    <!-- Appearance is mode-independent: visible and editable in both read and edit modes (it is not part of the
          profile form). -->
-    <div class="user-profile__section">
-      <h2 class="user-profile__section-title">Appearance</h2>
+    <ds-group heading="Appearance">
+      <ds-form-field label="Skin" [hint]="activeVariantDescription()">
+        <ds-segmented
+          label="Skin"
+          [options]="themeVariantOptions"
+          [value]="themeVariant()"
+          (valueChange)="setThemeVariant($event)"
+        />
+      </ds-form-field>
 
-      <!-- Skin / variant -->
-      <div class="user-profile__field">
-        <span class="user-profile__label">Skin</span>
-        <div class="user-profile__theme-variants">
-          @for (option of themeVariantOptions; track option.value) {
-            <button
-              type="button"
-              class="user-profile__theme-variant"
-              [class.user-profile__theme-variant--active]="themeVariant() === option.value"
-              [attr.aria-pressed]="themeVariant() === option.value"
-              (click)="setThemeVariant(option.value)"
-            >
-              <span class="user-profile__theme-variant-name">{{ option.label }}</span>
-              <span class="user-profile__theme-variant-desc">{{ option.description }}</span>
-            </button>
-          }
-        </div>
-      </div>
+      <ds-form-field
+        label="Mode"
+        [hint]="
+          modeOverridden()
+            ? activeVariantLabel() + ' does not support this mode; your choice is kept for other skins.'
+            : null
+        "
+      >
+        <ds-segmented
+          label="Color mode"
+          [options]="modeOptions()"
+          [value]="shownMode()"
+          (valueChange)="setTheme($event)"
+        />
+      </ds-form-field>
+    </ds-group>
 
-      <!-- Light / Dark / System -->
-      <div class="user-profile__field">
-        <span class="user-profile__label">Mode</span>
-        <div class="user-profile__field-control">
-          <div class="user-profile__segmented" role="group" aria-label="Color mode">
-            @for (option of themeOptions; track option.value) {
-              <button
-                type="button"
-                class="user-profile__segmented-option"
-                [class.user-profile__segmented-option--active]="shownMode() === option.value"
-                [attr.aria-pressed]="shownMode() === option.value"
-                [disabled]="isModeDisabled(option.value)"
-                (click)="setTheme(option.value)"
-              >
-                {{ option.label }}
-              </button>
-            }
-          </div>
-          @if (modeOverridden()) {
-            <p class="user-profile__hint">
-              {{ activeVariantLabel() }} does not support this mode; your choice is kept for other skins.
-            </p>
-          }
-        </div>
-      </div>
-    </div>
+    <ds-group heading="Composer">
+      <ds-form-field label="Enter key" hint='In "New line" mode, press Ctrl or Cmd + Enter to send.'>
+        <ds-segmented
+          label="Enter key behavior"
+          [options]="enterKeyOptions"
+          [value]="enterKeyBehavior()"
+          (valueChange)="setEnterKeyBehavior($event)"
+        />
+      </ds-form-field>
+    </ds-group>
 
-    <!-- Composer behavior is a front-only user preference, independent of read/edit mode. -->
-    <div class="user-profile__section">
-      <h2 class="user-profile__section-title">Composer</h2>
-
-      <div class="user-profile__field">
-        <span class="user-profile__label">Enter key</span>
-        <div class="user-profile__field-control">
-          <div class="user-profile__segmented" role="group" aria-label="Enter key behavior">
-            @for (option of enterKeyOptions; track option.value) {
-              <button
-                type="button"
-                class="user-profile__segmented-option"
-                [class.user-profile__segmented-option--active]="enterKeyBehavior() === option.value"
-                [attr.aria-pressed]="enterKeyBehavior() === option.value"
-                (click)="setEnterKeyBehavior(option.value)"
-              >
-                {{ option.label }}
-              </button>
-            }
-          </div>
-          <p class="user-profile__hint">In "New line" mode, press Ctrl or Cmd + Enter to send.</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Case chat display is a front-only user preference, independent of read/edit mode. -->
-    <div class="user-profile__section">
-      <h2 class="user-profile__section-title">Case chat</h2>
-
-      <div class="user-profile__field">
-        <span class="user-profile__label">Technical logs</span>
-        <div class="user-profile__field-control">
-          <div class="user-profile__segmented" role="group" aria-label="Technical logs">
-            @for (option of showTechnicalOptions; track option.label) {
-              <button
-                type="button"
-                class="user-profile__segmented-option"
-                [class.user-profile__segmented-option--active]="showTechnical() === option.value"
-                [attr.aria-pressed]="showTechnical() === option.value"
-                (click)="setShowTechnical(option.value)"
-              >
-                {{ option.label }}
-              </button>
-            }
-          </div>
-          <p class="user-profile__hint">Show system log lines (agent status, tool selection...) in the case chat.</p>
-        </div>
-      </div>
-    </div>
+    <ds-group heading="Case chat">
+      <ds-form-field
+        label="Technical logs"
+        hint="Show system log lines (agent status, tool selection...) in the case chat."
+      >
+        <ds-segmented
+          label="Technical logs"
+          [options]="showTechnicalOptions"
+          [value]="showTechnical()"
+          (valueChange)="setShowTechnical($event)"
+        />
+      </ds-form-field>
+    </ds-group>
 
     <!-- Messaging accounts are linked outside the profile form, in both modes. Hidden when no bot runs. -->
     <agentos-messaging-accounts />
 
     @if (isEditing()) {
-      <!-- Edit mode -->
-      <form class="user-profile__form" [formGroup]="form" (ngSubmit)="save()">
-        <div class="user-profile__section">
-          <h2 class="user-profile__section-title">Identity</h2>
+      <form class="ds-form" [formGroup]="form" (ngSubmit)="save()">
+        <ds-group heading="Identity">
+          <dl dsDefinitionList>
+            <dt>Email</dt>
+            <dd>{{ user.email }}</dd>
+            <dt>External ID</dt>
+            <dd>{{ user.externalId }}</dd>
+          </dl>
+        </ds-group>
 
-          <div class="user-profile__field">
-            <span class="user-profile__label">Email</span>
-            <span class="user-profile__value user-profile__value--readonly">{{ user.email }}</span>
-          </div>
-
-          <div class="user-profile__field">
-            <span class="user-profile__label">External ID</span>
-            <span class="user-profile__value user-profile__value--readonly">{{ user.externalId }}</span>
-          </div>
-        </div>
-
-        <div class="user-profile__section">
-          <h2 class="user-profile__section-title">Profile</h2>
-
-          <div class="user-profile__field">
-            <label class="user-profile__label" for="up-firstname">First name</label>
+        <ds-group heading="Profile">
+          <ds-form-field label="First name" controlId="up-firstname">
             <input
+              dsControl
               id="up-firstname"
-              class="user-profile__input"
               type="text"
               placeholder="Your first name"
               formControlName="firstname"
               autocomplete="given-name"
             />
-          </div>
-
-          <div class="user-profile__field">
-            <label class="user-profile__label" for="up-lastname">Last name</label>
+          </ds-form-field>
+          <ds-form-field label="Last name" controlId="up-lastname">
             <input
+              dsControl
               id="up-lastname"
-              class="user-profile__input"
               type="text"
               placeholder="Your last name"
               formControlName="lastname"
               autocomplete="family-name"
             />
-          </div>
-
-          <div class="user-profile__field">
-            <label class="user-profile__label" for="up-bio">Bio</label>
+          </ds-form-field>
+          <ds-form-field label="Bio" controlId="up-bio">
             <textarea
+              dsControl
               id="up-bio"
-              class="user-profile__input user-profile__input--textarea"
               placeholder="A short description about yourself"
               formControlName="bio"
               rows="4"
             ></textarea>
-          </div>
-
-          <div class="user-profile__field">
-            <label class="user-profile__label" for="up-preferredLanguage">Language</label>
-            <select
-              id="up-preferredLanguage"
-              class="user-profile__input user-profile__select"
-              formControlName="preferredLanguage"
-            >
+          </ds-form-field>
+          <ds-form-field label="Language" controlId="up-preferredLanguage">
+            <select dsControl id="up-preferredLanguage" formControlName="preferredLanguage">
               @for (option of languageOptions; track option.value) {
                 <option [value]="option.value">{{ option.label }}</option>
               }
             </select>
-          </div>
-        </div>
+          </ds-form-field>
+        </ds-group>
 
-        <div class="user-profile__actions">
-          <button class="user-profile__btn user-profile__btn--primary" type="submit" [disabled]="isSaving()">
+        <ds-form-actions>
+          <button dsButton variant="primary" type="submit" [disabled]="isSaving()">
             {{ isSaving() ? 'Saving…' : 'Save changes' }}
           </button>
-          <button class="user-profile__btn" type="button" (click)="cancelEditing()">Cancel</button>
-        </div>
+          <button dsButton type="button" (click)="cancelEditing()">Cancel</button>
+        </ds-form-actions>
       </form>
     } @else {
-      <!-- Read mode -->
-      <div class="user-profile__view">
-        <div class="user-profile__section">
-          <h2 class="user-profile__section-title">Identity</h2>
+      <ds-group heading="Identity">
+        <dl dsDefinitionList>
+          <dt>Email</dt>
+          <dd>{{ user.email }}</dd>
+          <dt>External ID</dt>
+          <dd>{{ user.externalId }}</dd>
+        </dl>
+      </ds-group>
 
-          <div class="user-profile__field">
-            <span class="user-profile__label">Email</span>
-            <span class="user-profile__value">{{ user.email }}</span>
-          </div>
+      <ds-group heading="Profile">
+        <dl dsDefinitionList>
+          <dt>First name</dt>
+          <dd>{{ user.firstname || '—' }}</dd>
+          <dt>Last name</dt>
+          <dd>{{ user.lastname || '—' }}</dd>
+          <dt>Bio</dt>
+          <dd>{{ user.bio || '—' }}</dd>
+          <dt>Language</dt>
+          <dd>{{ user.preferredLanguage || '—' }}</dd>
+        </dl>
+      </ds-group>
 
-          <div class="user-profile__field">
-            <span class="user-profile__label">External ID</span>
-            <span class="user-profile__value">{{ user.externalId }}</span>
-          </div>
-        </div>
+      <ds-form-actions>
+        <button dsButton variant="primary" type="button" (click)="startEditing()">Edit profile</button>
+      </ds-form-actions>
 
-        <div class="user-profile__section">
-          <h2 class="user-profile__section-title">Profile</h2>
-
-          <div class="user-profile__field">
-            <span class="user-profile__label">First name</span>
-            <span class="user-profile__value">{{ user.firstname || '—' }}</span>
-          </div>
-
-          <div class="user-profile__field">
-            <span class="user-profile__label">Last name</span>
-            <span class="user-profile__value">{{ user.lastname || '—' }}</span>
-          </div>
-
-          <div class="user-profile__field user-profile__field--bio">
-            <span class="user-profile__label">Bio</span>
-            <span class="user-profile__value">{{ user.bio || '—' }}</span>
-          </div>
-
-          <div class="user-profile__field">
-            <span class="user-profile__label">Language</span>
-            <span class="user-profile__value">{{ user.preferredLanguage || '—' }}</span>
-          </div>
-        </div>
-
-        <div class="user-profile__actions">
-          <button class="user-profile__btn user-profile__btn--primary" type="button" (click)="startEditing()">
-            Edit profile
-          </button>
-        </div>
-
-        <!-- Story 6.6 — recap of user-global overrides (namespaceId IS NULL) across the 3 ressources.
-             Section is collapsable and discreet. Edit goes through the namespace pages. -->
-        <div class="user-profile__overrides">
-          <button
-            class="user-profile__overrides-toggle"
-            type="button"
-            (click)="toggleOverrides()"
-            [attr.aria-expanded]="isOverridesExpanded()"
-          >
-            <span
-              class="user-profile__overrides-arrow"
-              [class.user-profile__overrides-arrow--open]="isOverridesExpanded()"
-              >▶</span
-            >
-            My global user configurations
-            <span class="user-profile__overrides-count">({{ recap().total }})</span>
-          </button>
-
-          @if (isOverridesExpanded()) {
-            @if (recap().total === 0) {
-              <p class="user-profile__overrides-empty">
-                No global configuration yet. Create one from the Integrations / AI Providers / Auth Settings pages of
-                your namespaces.
-              </p>
-            } @else {
-              @if (recap().integrations.length > 0) {
-                <h3 class="user-profile__overrides-subtitle">Integrations</h3>
-                <ul class="user-profile__overrides-list">
-                  @for (entry of recap().integrations; track trackEntry($index, entry)) {
-                    <li class="user-profile__overrides-row">
-                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
-                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
-                      @if (isPendingDelete(entry)) {
-                        <span class="user-profile__overrides-confirm-label">Delete?</span>
-                        <button
-                          class="user-profile__overrides-delete user-profile__overrides-delete--confirm"
-                          type="button"
-                          (click)="confirmDelete(entry)"
-                        >
-                          Confirm
-                        </button>
-                        <button class="user-profile__overrides-delete" type="button" (click)="cancelDelete()">
-                          Cancel
-                        </button>
-                      } @else {
-                        <button class="user-profile__overrides-delete" type="button" (click)="armDelete(entry)">
-                          Delete
-                        </button>
-                      }
-                    </li>
+      <!-- Recap of user-global overrides (namespaceId IS NULL) across the 3 resources. Edit goes through the
+           namespace pages. -->
+      <ds-disclosure
+        [heading]="'My global user configurations (' + recap().total + ')'"
+        [open]="isOverridesExpanded()"
+        (toggled)="toggleOverrides()"
+      >
+        @if (recap().total === 0) {
+          <p class="ds-hint">
+            No global configuration yet. Create one from the Integrations / AI Providers / Auth Settings pages of your
+            namespaces.
+          </p>
+        } @else {
+          @for (section of recapSections(); track section.title) {
+            <span class="ds-micro">{{ section.title }}</span>
+            <ul class="ds-list">
+              @for (entry of section.entries; track trackEntry($index, entry)) {
+                <li class="ds-row">
+                  <span class="ds-strong ds-row__grow">{{ entry.name }}</span>
+                  <span class="ds-meta">{{ entry.subtitle }}</span>
+                  @if (isPendingDelete(entry)) {
+                    <span class="ds-error">Delete?</span>
+                    <button dsButton variant="danger" type="button" (click)="confirmDelete(entry)">Confirm</button>
+                    <button dsButton variant="ghost" type="button" (click)="cancelDelete()">Cancel</button>
+                  } @else {
+                    <button dsButton variant="ghost" type="button" (click)="armDelete(entry)">Delete</button>
                   }
-                </ul>
+                </li>
               }
-
-              @if (recap().aiProviders.length > 0) {
-                <h3 class="user-profile__overrides-subtitle">AI Providers</h3>
-                <ul class="user-profile__overrides-list">
-                  @for (entry of recap().aiProviders; track trackEntry($index, entry)) {
-                    <li class="user-profile__overrides-row">
-                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
-                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
-                      @if (isPendingDelete(entry)) {
-                        <span class="user-profile__overrides-confirm-label">Delete?</span>
-                        <button
-                          class="user-profile__overrides-delete user-profile__overrides-delete--confirm"
-                          type="button"
-                          (click)="confirmDelete(entry)"
-                        >
-                          Confirm
-                        </button>
-                        <button class="user-profile__overrides-delete" type="button" (click)="cancelDelete()">
-                          Cancel
-                        </button>
-                      } @else {
-                        <button class="user-profile__overrides-delete" type="button" (click)="armDelete(entry)">
-                          Delete
-                        </button>
-                      }
-                    </li>
-                  }
-                </ul>
-              }
-
-              @if (recap().authSettings.length > 0) {
-                <h3 class="user-profile__overrides-subtitle">My global auth settings</h3>
-                <ul class="user-profile__overrides-list">
-                  @for (entry of recap().authSettings; track trackEntry($index, entry)) {
-                    <li class="user-profile__overrides-row">
-                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
-                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
-                      @if (isPendingDelete(entry)) {
-                        <span class="user-profile__overrides-confirm-label">Delete?</span>
-                        <button
-                          class="user-profile__overrides-delete user-profile__overrides-delete--confirm"
-                          type="button"
-                          (click)="confirmDelete(entry)"
-                        >
-                          Confirm
-                        </button>
-                        <button class="user-profile__overrides-delete" type="button" (click)="cancelDelete()">
-                          Cancel
-                        </button>
-                      } @else {
-                        <button class="user-profile__overrides-delete" type="button" (click)="armDelete(entry)">
-                          Delete
-                        </button>
-                      }
-                    </li>
-                  }
-                </ul>
-              }
-            }
+            </ul>
           }
-        </div>
-      </div>
+        }
+      </ds-disclosure>
     }
   } @else {
-    <p class="user-profile__loading">Unable to load profile.</p>
+    <p class="ds-hint">Unable to load profile.</p>
   }
-</div>
+</ds-page>

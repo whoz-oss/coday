@@ -5,14 +5,13 @@ rootProject.name = "factory-forge-plugin"
 // internal RootProjectAccessor base class (Gradle 9.4+). None of the factory
 // modules reference `projects.*`, so the preview is unused.
 
-// The Forge plugin compiles against the host Factory Service (and, transitively,
-// the Factory SDK it exposes via `api`). Both are `compileOnly`: at runtime the
-// plugin is loaded by PF4J into the service JVM and reuses the host
-// classloader for Spring, Jackson, PF4J, the SDK and the core error/persistence
-// types (the host uses the APD class-loading strategy).
-includeBuild("../factory-service") {
+// The Forge plugin compiles exclusively against the Factory SDK (`factory-sdk`),
+// never against `factory-service` internal classes. At runtime the plugin is
+// loaded by PF4J into the service JVM and reuses the host classloader for
+// Spring, Jackson, PF4J and the SDK (the host uses the APD class-loading strategy).
+includeBuild("../factory-sdk") {
     dependencySubstitution {
-        substitute(module("whoz-oss.factory:factory-service")).using(project(":"))
+        substitute(module("whoz-oss.factory:factory-sdk")).using(project(":"))
     }
 }
 

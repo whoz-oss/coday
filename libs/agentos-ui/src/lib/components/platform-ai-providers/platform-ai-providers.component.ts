@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AiProvider, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
 import { createRowDeletionState } from '../../utils/row-deletion-state'
@@ -20,9 +20,8 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-platform-ai-providers',
-  imports: [SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
+  imports: [ButtonDirective, SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-ai-providers.component.html',
-  styleUrl: './platform-ai-providers.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformAiProvidersComponent {

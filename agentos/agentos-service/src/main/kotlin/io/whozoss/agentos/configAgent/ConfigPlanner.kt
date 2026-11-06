@@ -3,6 +3,7 @@ package io.whozoss.agentos.configAgent
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.whozoss.agentos.agentConfig.SubAgentSelectorValidation
 import io.whozoss.agentos.sdk.api.configChange.ConfigAction
 import io.whozoss.agentos.sdk.api.configChange.ConfigAffects
 import io.whozoss.agentos.sdk.api.configChange.ConfigDeployTarget
@@ -172,8 +173,16 @@ class ConfigPlanner(
         val effective = source?.takeUnless { value.has("name") }?.let { value.deepCopy().put("name", it.name) } ?: value
         val name = effective.path("name").asText("").trim()
         if (name.isEmpty()) errors += "CREATE needs 'value.name'."
-        if (kind == ConfigKind.AGENT && effective.get("enabled")?.isBoolean != true) {
-            errors += "creating an agent needs 'value.enabled': true (it can run) or false (it stays a draft nobody can use)."
+        if (kind == ConfigKind.AGENT) {
+            if (effective.path("modelName").asText("").isBlank()) {
+                errors += "creating an agent needs 'value.modelName': the model alias or name it runs on, e.g. BIG."
+            }
+            if (effective.get("enabled")?.isBoolean != true) {
+                errors += "creating an agent needs 'value.enabled': true (it can run) or false (it stays a draft nobody can use)."
+            }
+            SubAgentSelectorValidation.idSelectors(selectorsOf(effective.get(SUB_AGENTS_FIELD)))
+                .takeIf { it.isNotEmpty() }
+                ?.let { errors += SubAgentSelectorValidation.correction(it) }
         }
         listOf("id", "namespaceId", "userId").filter { effective.has(it) }.forEach {
             errors += "'value.$it' is not allowed: the scope goes in 'scope' and the id is assigned by the server."
@@ -274,13 +283,22 @@ class ConfigPlanner(
                         errors += "'$path' goes through a list: replace the whole list with path '${listPrefix(current.dto, path)}'."
                         null
                     }
-                    else ->
-                        PlannedChange(
-                            path = path,
-                            after = if (change.remove == true) null else change.value ?: objectMapper.nullNode(),
-                            remove = change.remove == true,
-                            beforeHash = ConfigJson.hash(ConfigJson.valueAt(masked, path)),
-                        )
+                    else -> {
+                        // Last, and only here: the path is known valid and not refused for another
+                        // reason, so the selectors are read once instead of for every change.
+                        val newIds = newSubAgentIds(kind, path, change, current.dto)
+                        if (newIds.isNotEmpty()) {
+                            errors += SubAgentSelectorValidation.correction(newIds)
+                            null
+                        } else {
+                            PlannedChange(
+                                path = path,
+                                after = if (change.remove == true) null else change.value ?: objectMapper.nullNode(),
+                                remove = change.remove == true,
+                                beforeHash = ConfigJson.hash(ConfigJson.valueAt(masked, path)),
+                            )
+                        }
+                    }
                 }
             }
         if (current.fromFilesystem) errors += "${kind.name.lowercase()} '${current.name}' is defined in a file and cannot be changed here."
@@ -565,6 +583,38 @@ class ConfigPlanner(
             ""
         }
 
+    /**
+     * The entity ids a `/subAgents` change would add to [current], or nothing when it adds none.
+     *
+     * Refused here rather than only by the REST layer so the agent is told while it can still fix
+     * its own call: a frozen plan is applied long after, by the user, and the first failing
+     * operation stops the rest of theirs. Carried-over ids are left alone for the reason
+     * [SubAgentSelectorValidation.requireNoNewIdSelectors] gives: an agent whose stored selectors
+     * already hold one must stay editable.
+     *
+     * Only a whole-list replacement at `/subAgents` is read. A deeper path is refused anyway by the
+     * list check above, and reading [ChangeInput.value] as the new list there would be wrong.
+     *
+     * Called from the last branch of the `when`, so [path] is already a valid pointer.
+     */
+    private fun newSubAgentIds(
+        kind: ConfigKind,
+        path: String,
+        change: ChangeInput,
+        current: JsonNode,
+    ): List<String> {
+        if (kind != ConfigKind.AGENT || change.remove == true) return emptyList()
+        if (ConfigJson.segments(path) != listOf(SUB_AGENTS_FIELD)) return emptyList()
+        return SubAgentSelectorValidation.newIdSelectors(
+            subAgents = selectorsOf(change.value),
+            stored = selectorsOf(current.get(SUB_AGENTS_FIELD)),
+        )
+    }
+
+    /** A `subAgents` node as the selector list it is meant to be, or null when it is not a list. */
+    private fun selectorsOf(node: JsonNode?): List<String>? =
+        node?.takeIf { it.isArray }?.mapNotNull { it.takeIf(JsonNode::isTextual)?.asText() }
+
     private fun isValidPath(path: String): Boolean =
         path.startsWith("/") && path.length > 1 && runCatching { ConfigJson.segments(path) }.getOrNull()?.let { segments ->
             segments.size in 1..MAX_PATH_DEPTH && segments.none { it.isEmpty() }
@@ -585,6 +635,9 @@ class ConfigPlanner(
 
     companion object {
         const val MAX_PATH_DEPTH = 3
+
+        /** The one agent field keyed by name, so the one an id silently breaks. */
+        private const val SUB_AGENTS_FIELD = "subAgents"
 
         private const val DEFAULT_SUMMARY = "Configuration change"
 

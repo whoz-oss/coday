@@ -275,7 +275,7 @@ class DeliveryService(
             owner = configuration.owner,
             repo = configuration.repo,
             baseBranch = configuration.baseBranch,
-            headBranch = resolved.environment.branch,
+            headBranch = requireNotNull(resolved.environment.branch) { "Delivery requires a named branch, not detached HEAD" },
             title = input["title"] as? String,
             body = input["body"] as? String,
             idempotencyKey = input["idempotencyKey"] as? String,
@@ -446,7 +446,7 @@ class DeliveryService(
     private fun binding(resolved: DeliveryResolution, expectedHead: String): DeliveryGitWorktreeBinding =
         DeliveryGitWorktreeBinding(
             worktreePath = resolved.environment.worktreePath,
-            branch = resolved.environment.branch,
+            branch = requireNotNull(resolved.environment.branch) { "Delivery requires a named branch, not detached HEAD" },
             baseCommit = resolved.environment.baseCommit ?: expectedHead,
             expectedHead = expectedHead,
         )

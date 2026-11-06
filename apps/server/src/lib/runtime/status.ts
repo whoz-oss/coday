@@ -22,6 +22,8 @@ export interface StatusFacts {
   healthy: Record<ServiceKind, boolean>
   /** `AGENTOS_URL` / `FACTORY_URL` when the service is not managed by this runtime. */
   external: Partial<Record<ServiceKind, string>>
+  /** `CODAY_NO_FACTORY`: the managed Factory is left out, so there is nothing to report about it. */
+  factoryDisabled?: boolean
 }
 
 const SERVICES: ServiceKind[] = ['agentos', 'factory']
@@ -50,7 +52,7 @@ export function createStatusReporter(): (facts: StatusFacts) => string[] {
   const misses: Record<ServiceKind, number> = { agentos: 0, factory: 0 }
   const wasHealthy: Record<ServiceKind, boolean> = { agentos: false, factory: false }
 
-  return ({ state, setup, healthy, external }) => {
+  return ({ state, setup, healthy, external, factoryDisabled }) => {
     const lines: string[] = []
     const emit = (id: string, key: string, line: string): void => {
       if (last.get(id) === key) return
@@ -73,6 +75,7 @@ export function createStatusReporter(): (facts: StatusFacts) => string[] {
         if (healthy[name]) wasHealthy[name] = true
         continue
       }
+      if (name === 'factory' && factoryDisabled) continue
       if (healthy[name]) {
         misses[name] = 0
         wasHealthy[name] = true

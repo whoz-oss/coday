@@ -31,12 +31,14 @@ import { createLogSink, isHealthy, RunningService } from './process'
 import { LOOPBACK } from './services'
 import { buildForwardArgs, writeWorkspace } from './workspace'
 import { agentosHealthUrl, openBrowser, planBrowserOpen } from './open-browser'
+import { isManagedFactoryDisabled } from './factory-option'
 import { createStatusReporter } from './status'
 import { readWebSetup } from './web-setup'
 import { Command } from './command-names'
 import { hideBin } from 'yargs/helpers'
 import { decideProfile } from './profile'
 import { provision } from './provision'
+import { parsePreferredPorts } from './ports'
 import { readState } from './state'
 
 export { COMMANDS, parseCommand } from './command-names'
@@ -81,6 +83,7 @@ function profileInput(options: CodayOptions) {
     agentosUrl: process.env.AGENTOS_URL,
     factoryUrl: process.env.FACTORY_URL,
     externalUserId: process.env.AGENTOS_EXTERNAL_USERID,
+    forcedProfile: options.profile,
     configDir: options.configDir,
   }
 }
@@ -96,6 +99,7 @@ export async function runProvision(): Promise<number> {
     ...profileInput(options),
     orchestrator: 'nx',
     expressPort,
+    preferredPorts: parsePreferredPorts(),
     log: (m) => console.log(`[provision] ${m}`),
   })
   console.log('[provision] done')
@@ -263,6 +267,7 @@ export async function runStatusTask(): Promise<number> {
     ...(process.env.AGENTOS_URL ? { agentos: process.env.AGENTOS_URL } : {}),
     ...(process.env.FACTORY_URL ? { factory: process.env.FACTORY_URL } : {}),
   }
+  const noManagedFactory = isManagedFactoryDisabled()
   const probe = async (port: number | undefined, path: string): Promise<boolean> =>
     port ? isHealthy(`http://${LOOPBACK}:${port}${path}`) : false
 
@@ -271,13 +276,14 @@ export async function runStatusTask(): Promise<number> {
     const agentosUrl = agentosHealthUrl(external.agentos, state)
     const [agentos, factory] = await Promise.all([
       agentosUrl ? isHealthy(agentosUrl) : false, // external: its own URL (what the proxy uses), else the managed port
-      external.factory ? false : probe(state?.ports.factory, '/actuator/health'),
+      external.factory || noManagedFactory ? false : probe(state?.ports.factory, '/actuator/health'),
     ])
     const lines = report({
       state,
       setup: readWebSetup(options.configDir),
       healthy: { agentos, factory },
       external,
+      factoryDisabled: noManagedFactory,
     })
     for (const line of lines) console.log(line)
     await Promise.race([new Promise((r) => setTimeout(r, STATUS_POLL_MS)), stopped])
@@ -299,6 +305,7 @@ export async function runManaged(): Promise<number> {
     ...profileInput(options),
     orchestrator: 'in-process',
     expressPort,
+    preferredPorts: parsePreferredPorts(),
     log: (m) => debugLog('PROVISION', m),
   })
   const app = createWebApp({ codayOptions: options, setupEnabled: decision.setupEnabled })
@@ -330,14 +337,16 @@ export async function runManaged(): Promise<number> {
     const agentosCtx: OrchestratorContext = { ...base, sink: sinkFor('agentos') }
     const factoryCtx: OrchestratorContext = { ...base, sink: sinkFor('factory') }
 
-    const factoryDownload = process.env.FACTORY_URL ? undefined : provisionJars(factoryCtx, 'factory')
+    // An external Factory (FACTORY_URL) or CODAY_NO_FACTORY: nothing to download nor to start.
+    const skipFactory = !!process.env.FACTORY_URL || isManagedFactoryDisabled()
+    const factoryDownload = skipFactory ? undefined : provisionJars(factoryCtx, 'factory')
     let agentosUrl = process.env.AGENTOS_URL
     if (!agentosUrl) {
       const agentos = await startAgentosService(agentosCtx)
       if (!agentos) return
       agentosUrl = `http://127.0.0.1:${agentos.port}`
     }
-    if (process.env.FACTORY_URL) return
+    if (skipFactory) return
     await startFactoryService(factoryCtx, agentosUrl, factoryDownload)
   })().catch((error) => debugLog('RUNTIME', 'Unexpected error while starting the services (non-fatal):', error))
 
@@ -354,6 +363,10 @@ export function runWorkspace(): number {
     nodePath: process.execPath,
     serverJs: process.argv[1] ?? '',
     forwardArgs: buildForwardArgs(raw, options.configDir),
+    // No pane for a service Coday does not run (external URL, or the Factory left out): the launcher's Nx run then
+    // never starts it, and `status` does not wait for it. The `status` pane still reports the external ones.
+    withAgentos: !process.env.AGENTOS_URL,
+    withFactory: !process.env.FACTORY_URL && !isManagedFactoryDisabled(),
   })
   // Marker line: the launcher picks it out of whatever else the process prints on stdout.
   process.stdout.write(`CODAY_RUNTIME_WORKSPACE=${dir}\n`)

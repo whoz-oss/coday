@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, injec
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { AgentConfig, Skill } from '@whoz-oss/agentos-api-client'
+import { DisclosureComponent, DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { catchError, forkJoin, of } from 'rxjs'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
 import { AgentStateService } from '../../services/agent-state.service'
@@ -34,9 +35,8 @@ interface SkillConsumer {
  */
 @Component({
   selector: 'agentos-skill-inspect',
-  imports: [RouterLink, MarkdownPipe],
+  imports: [RouterLink, MarkdownPipe, DS_PAGE_KIT, TagComponent, DisclosureComponent],
   templateUrl: './skill-inspect.component.html',
-  styleUrl: './skill-inspect.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SkillInspectComponent implements OnInit {

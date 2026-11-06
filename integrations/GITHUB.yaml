@@ -1,30 +1,42 @@
-# This file was exported from a persisted IntegrationConfig. Paths under `parameters`
-# (e.g. workingDirectory, rootPath, cwd, args) are absolute and specific to the machine
-# that entered them.
+# GitHub access through the gh CLI, scoped by default to whoz-oss/coday
+# (replaces the former Docker-based github-mcp-server).
+# Requires `gh` on the PATH of the AgentOS process, authenticated either via `gh auth login`
+# or via GH_TOKEN / GITHUB_PERSONAL_ACCESS_TOKEN in the server environment.
 #
-# To make this file portable across developer machines, replace the part of each path
-# that matches the namespace's configPath with the token {{NAMESPACE_CONFIG_PATH}}.
-# It is resolved automatically at load time, only for files placed in
-# {configPath}/integrations/ (configs created through the API are not affected).
+# The default repository is set with GH_REPO, so no git worktree is needed for gh to know
+# which repository to use. The -R owner/repo flag still overrides it.
 #
-# Example: workingDirectory: /home/alice/repos/myproject
-#       -> workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
-#
-# Relative path segments following the token are kept as-is, not normalised:
-# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
+# {{NAMESPACE_CONFIG_PATH}} is resolved automatically at load time for files placed in
+# {configPath}/integrations/.
 name: "GITHUB"
-integrationType: "MCP_STDIO"
+integrationType: "BASH"
+description: "GitHub access to whoz-oss/coday through the gh CLI (no Docker / MCP server needed)."
 parameters:
-  command: "docker"
-  args:
-  - "run"
-  - "-i"
-  - "--rm"
-  - "-e"
-  - "GITHUB_PERSONAL_ACCESS_TOKEN"
-  - "ghcr.io/github/github-mcp-server"
-  env: {}
-  cwd: null
-  timeoutSeconds: 30
-  toolCallTimeoutSeconds: 60
-  idleTimeoutMinutes: 10
+  workingDirectory: "{{NAMESPACE_CONFIG_PATH}}"
+  defaultTimeoutSeconds: 60
+  tools:
+  - name: "gh"
+    description: |
+      Runs the GitHub CLI (gh) on the whoz-oss/coday repository. All commands target
+      whoz-oss/coday by default; pass -R owner/repo only to target another repository.
+
+      Common commands:
+      - pull requests: pr list / view / diff / checks / create / edit / review / comment / merge
+      - issues: issue list / view / create / edit / comment
+      - CI: run list, run view <id> --log-failed, workflow list
+      - repo and code: repo view, search code / issues / prs (add --repo whoz-oss/coday)
+      - raw REST and GraphQL: api repos/whoz-oss/coday/pulls/123/comments
+
+      Prefer --json <fields> with --jq '<filter>' for compact, structured output.
+      Never run interactive commands: always pass --title and --body (or --body-file)
+      to create and edit commands.
+    command: "GH_REPO=whoz-oss/coday GH_PROMPT_DISABLED=1 GH_PAGER=cat GH_TOKEN=\"${GH_TOKEN:-$GITHUB_PERSONAL_ACCESS_TOKEN}\" gh PARAMETERS"
+    parametersDescription: |
+      The arguments to pass to gh, without the leading 'gh'. Examples:
+      - pr view 123 --json title,body,state,reviews
+      - pr diff 123
+      - issue create --title "Bug: ..." --body "..."
+      - api repos/whoz-oss/coday/pulls/123/comments
+      - search issues "label:bug is:open" --repo whoz-oss/coday
+    path: null
+    timeoutSeconds: 120

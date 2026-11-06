@@ -8,6 +8,11 @@ package io.whozoss.factory.proxy
  */
 interface AgentOsProxyClient {
 
+    /** Exact root-case provisioning; never posts a message or retries workspace setup. */
+    fun ensureRunRootCase(caseId: String, namespaceId: String, title: String, externalUserId: String) {
+        error("AgentOS root workspace provisioning is not implemented by this transport")
+    }
+
     /** List agent configs for a namespace. */
     fun fetchAgents(namespaceId: String, externalUserId: String?): Any?
 
@@ -30,6 +35,20 @@ interface AgentOsProxyClient {
 
     /** Fetch all events for a case. */
     fun fetchCaseEvents(caseId: String, externalUserId: String?): Any?
+
+    /**
+     * Read the Git workspace environment and change list of a case
+     * (`GET /api/cases/{caseId}/workspace/changes`, Lot 2 §6.1).
+     * Returns null when the endpoint or workspace is not found (404).
+     */
+    fun fetchWorkspaceChanges(caseId: String, externalUserId: String? = null): Map<String, Any?>? = null
+
+    /**
+     * Read the cumulative Git patch of a single file in a case's workspace
+     * (`GET /api/cases/{caseId}/workspace/diff?path=...`, Lot 2 §6.1).
+     * Returns null when the file is not in the current diff (400/404).
+     */
+    fun fetchWorkspaceDiff(caseId: String, path: String, externalUserId: String? = null): Map<String, Any?>? = null
 
     /**
      * Read the aggregated run cost of a case tree

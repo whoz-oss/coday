@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { Skill } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { SkillStateService } from '../../services/skill-state.service'
 
 /** One editable resource file: a relative path and its text content. */
@@ -24,9 +25,8 @@ interface ResourceRow {
  */
 @Component({
   selector: 'agentos-skill-form',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
   templateUrl: './skill-form.component.html',
-  styleUrl: './skill-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SkillFormComponent implements OnInit {

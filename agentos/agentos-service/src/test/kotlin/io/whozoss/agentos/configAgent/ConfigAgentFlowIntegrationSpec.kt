@@ -220,7 +220,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                         { "ref": "dev", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
                           "changes": [ { "path": "/integrations/ACME_$suffix", "value": null } ] },
                         { "ref": "sup", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "support-$suffix", "instructions": "Help the user", "enabled": true }, "deployTo": "NAMESPACE" },
+                          "value": { "name": "support-$suffix", "instructions": "Help the user", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" },
                         { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": "current", "userId": null },
                           "value": { "name": "ACME_$suffix", "integrationType": "JIRA", "description": "Acme" } }
                       ] }
@@ -232,7 +232,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         { "summary": "Copy the setup into a new namespace",
           "operations": [
             { "ref": "dev", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
-              "value": { "name": "dev-copy-$suffix", "instructions": "Help the user", "enabled": true }, "deployTo": "NAMESPACE" },
+              "value": { "name": "dev-copy-$suffix", "instructions": "Help the user", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" },
             { "ref": "shared", "kind": "AGENT", "action": "DEPLOY", "id": "${platformAgent.id}", "scope": { "namespaceId": { "${'$'}op": "ns" } } },
             { "ref": "acme", "kind": "INTEGRATION", "action": "CREATE", "scope": { "namespaceId": { "${'$'}op": "ns" } },
               "value": { "name": "ACME_$suffix", "integrationType": "JIRA" } },
@@ -296,6 +296,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                         metadata = EntityMetadata(id = UUID.randomUUID()),
                         namespaceId = namespace.id,
                         name = "dev-$suffix",
+                        modelName = "BIG",
                         enabled = true,
                         subAgents = listOf("helper-$suffix"),
                     ),
@@ -702,7 +703,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                     """
                     { "operations": [
                         { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
-                          "value": { "name": "lonely-$suffix", "enabled": true }, "deployTo": "NAMESPACE" } ] }
+                          "value": { "name": "lonely-$suffix", "modelName": "BIG", "enabled": true }, "deployTo": "NAMESPACE" } ] }
                     """.trimIndent(),
                 )
 
@@ -795,6 +796,23 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
                 .errorType shouldBe "NOT_FOUND"
         }
 
+        "creating an agent needs a model name, which the REST API would refuse the agent without" {
+            for (value in listOf("""{ "name": "nomodel-$suffix", "enabled": true }""", """{ "name": "nomodel-$suffix", "modelName": "  ", "enabled": true }""")) {
+                val result =
+                    proposeTool(alice).executeWithJson(
+                        """
+                        { "operations": [
+                            { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                              "value": $value, "deployTo": "NAMESPACE" } ] }
+                        """.trimIndent(),
+                        toolContext(alice),
+                    )
+
+                result.errorType shouldBe "INVALID_PROPOSAL"
+                result.output shouldContain "a: creating an agent needs 'value.modelName'"
+            }
+        }
+
         "creating an agent needs an explicit enabled flag" {
             val result =
                 proposeTool(alice).executeWithJson(
@@ -808,6 +826,71 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
 
             result.errorType shouldBe "INVALID_PROPOSAL"
             result.output shouldContain "a: creating an agent needs 'value.enabled'"
+        }
+
+        // subAgents is the one agent field keyed by name while every reference around it in the
+        // propose description is an id, so an id here is the expected mistake. Refused at plan time
+        // rather than only by the REST layer: the agent is still running and can fix its own call,
+        // whereas a frozen plan is applied later, by the user, and its first failure stops the rest.
+        "creating an agent with an id in subAgents is refused before the plan is frozen" {
+            val id = UUID.randomUUID()
+
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "a", "kind": "AGENT", "action": "CREATE", "scope": { "namespaceId": "current" },
+                          "value": { "name": "boss-$suffix", "modelName": "BIG", "enabled": true, "subAgents": ["$id"] }, "deployTo": "NONE" } ] }
+                    """.trimIndent(),
+                    toolContext(alice),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "a: subAgents takes glob patterns matched against the name of each agent, never its id"
+            result.output shouldContain id.toString()
+        }
+
+        "replacing subAgents with an id the agent does not already hold is refused" {
+            val id = UUID.randomUUID()
+
+            val result =
+                proposeTool(alice).executeWithJson(
+                    """
+                    { "operations": [
+                        { "ref": "d", "kind": "AGENT", "action": "UPDATE", "id": "${devAgent.id}",
+                          "changes": [ { "path": "/subAgents", "value": ["$id"] } ] } ] }
+                    """.trimIndent(),
+                    toolContext(alice),
+                )
+
+            result.errorType shouldBe "INVALID_PROPOSAL"
+            result.output shouldContain "d: subAgents takes glob patterns"
+        }
+
+        "an id the agent already stores is carried over, so a broken agent stays editable" {
+            val stored = UUID.randomUUID().toString()
+            val broken =
+                agentConfigRepository.save(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespace.id,
+                        name = "broken-$suffix",
+                        enabled = true,
+                        subAgents = listOf(stored),
+                    ),
+                )
+
+            val proposal =
+                propose(
+                    alice,
+                    """
+                    { "operations": [
+                        { "ref": "d", "kind": "AGENT", "action": "UPDATE", "id": "${broken.id}",
+                          "changes": [ { "path": "/subAgents", "value": ["$stored", "Reviewer"] } ] } ] }
+                    """.trimIndent(),
+                )
+
+            proposal.structuredOutput!!.toString() shouldContain stored
         }
 
         "a tool response named like the propose tool, without a question of its own, does not supersede an open plan" {

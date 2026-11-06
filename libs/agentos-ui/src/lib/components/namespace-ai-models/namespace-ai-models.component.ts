@@ -7,9 +7,11 @@ import {
   AiProviderControllerService,
   AiModelControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, Observable, of, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface AiModelRow {
@@ -20,9 +22,15 @@ interface AiModelRow {
 }
 @Component({
   selector: 'agentos-namespace-ai-models',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './namespace-ai-models.component.html',
-  styleUrl: './namespace-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceAiModelsComponent {
@@ -34,6 +42,7 @@ export class NamespaceAiModelsComponent {
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   protected readonly isLoading = signal(true)
+  protected readonly deletion = createRowDeletionState()
   protected readonly rows = signal<AiModelRow[]>([])
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.model.alias, row.model.apiModelName, row.providerName, row.scope].filter(Boolean).join(' ')
@@ -97,16 +106,15 @@ export class NamespaceAiModelsComponent {
     if (row.scope === 'platform' || !row.model.id) return
     void this.router.navigate(['/agentos', this.namespaceId, 'ai-models', row.model.id, 'edit'])
   }
-  protected delete(row: AiModelRow): void {
-    if (
-      row.scope === 'platform' ||
-      !row.model.id ||
-      !confirm(`Delete AI model “${row.model.alias ?? row.model.apiModelName}”?`)
-    )
-      return
-    this.aiModelController
-      .deleteAiModel(row.model.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+  protected title(row: AiModelRow): string {
+    return row.model.alias ?? row.model.apiModelName
+  }
+  protected confirmDelete(row: AiModelRow): void {
+    if (row.scope === 'platform' || !row.model.id) return
+    this.deletion.execute(row.key, {
+      request$: this.aiModelController.deleteAiModel(row.model.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${this.title(row)}" failed. Try again.`,
+    })
   }
 }

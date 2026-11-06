@@ -70,6 +70,29 @@ describe('status reporter', () => {
     expect(lines).toContain('factory download 5%')
   })
 
+  it('says nothing about the Factory when it is left out (CODAY_NO_FACTORY)', () => {
+    const report = createStatusReporter()
+    const lines = report(
+      facts({
+        state: state({
+          downloads: { agentos: { state: 'running', percent: 42 }, factory: { state: 'running', percent: 5 } },
+        }),
+        factoryDisabled: true,
+      })
+    )
+    expect(lines).toContain('agentos download 42%')
+    expect(lines.join('\n')).not.toContain('factory')
+    expect(report(facts({ healthy: { agentos: true, factory: true }, factoryDisabled: true }))).toEqual([
+      'agentos healthy :8224',
+    ])
+  })
+
+  it('still reports an external Factory when the managed one is left out', () => {
+    const report = createStatusReporter()
+    const lines = report(facts({ external: { factory: 'http://localhost:8141' }, factoryDisabled: true }))
+    expect(lines).toContain('factory external http://localhost:8141')
+  })
+
   it('reports a failed download with its reason, once', () => {
     const report = createStatusReporter()
     const failed = facts({ state: state({ downloads: { factory: { state: 'error', message: 'Manifest HTTP 404' } } }) })

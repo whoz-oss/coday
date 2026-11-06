@@ -30,6 +30,7 @@ class ObservationEscalationPolicy(
     data class Escalation(
         val verdict: AgentOsExecutionVerdict,
         val steps: List<String>,
+        val runtimeProof: VerdictDeriver.RuntimeCaseTerminationProof? = null,
     )
 
     /**
@@ -55,17 +56,21 @@ class ObservationEscalationPolicy(
 
         // (1) REST snapshot: the durable case state is authoritative and cheap.
         steps += STEP_SNAPSHOT
-        runCatching { adapter.reconcile(caseId) }.getOrNull()?.let { reconciled ->
-            if (reconciled is AgentOsExecutionVerdict.WaitingHuman) return Escalation(reconciled, steps)
-            reconciled.terminalOrNull()?.let { return Escalation(it, steps) }
+        runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, attemptId)) }.getOrNull()?.let { result ->
+            val reconciled = result.verdict
+            if (reconciled is AgentOsExecutionVerdict.WaitingHuman) return Escalation(reconciled, steps, result.runtimeProof)
+            reconciled.terminalOrNull()?.let { return Escalation(it, steps, result.runtimeProof) }
         }
 
         // (2) Bounded SSE reconnection: may observe the terminal event the lost
         // stream missed, with checkpoint deduplication.
         steps += STEP_RECONNECT
-        runCatching { adapter.observeTurn(caseId, attemptId, reconnectBudgetMs) }.getOrNull()?.let { observed ->
-            if (observed is AgentOsExecutionVerdict.WaitingHuman) return Escalation(observed, steps)
-            observed.terminalOrNull()?.let { return Escalation(it, steps) }
+        runCatching {
+            adapter.observeTurnResult(TurnToken.unbaselined(caseId, attemptId), reconnectBudgetMs)
+        }.getOrNull()?.let { result ->
+            val observed = result.verdict
+            if (observed is AgentOsExecutionVerdict.WaitingHuman) return Escalation(observed, steps, result.runtimeProof)
+            observed.terminalOrNull()?.let { return Escalation(it, steps, result.runtimeProof) }
         }
 
         // (3) Explicit kill, only when the timeout policy allows it.
@@ -78,7 +83,9 @@ class ObservationEscalationPolicy(
         // (4) Post-kill reconciliation: only a proof derived from AgentOS state
         // can terminalize the attempt.
         steps += STEP_POST_KILL_RECONCILE
-        runCatching { adapter.reconcile(caseId) }.getOrNull()?.terminalOrNull()?.let { return Escalation(it, steps) }
+        runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, attemptId)) }.getOrNull()?.let { result ->
+            result.verdict.terminalOrNull()?.let { return Escalation(it, steps, result.runtimeProof) }
+        }
 
         // (5) Insufficient proof: stay indeterminate, never a silent success.
         return Escalation(indeterminateAfter(initial, steps), steps)

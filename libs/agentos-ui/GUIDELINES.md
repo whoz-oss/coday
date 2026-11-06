@@ -38,6 +38,19 @@ A theme (variant) only changes the skin: colors, font, radii, shadows. Four plac
 3. **Overlay scope** — CDK overlay panels (`.ds-kebab-panel`, rendered under `body`) are outside `agentos-shell` and do not inherit its tokens. Apply the same tokens on `[data-theme='<id>-<mode>'] .ds-kebab-panel`, otherwise the panel keeps the Industry fallbacks. Dialogs and snackbars still use the legacy `:root` palette (not themed yet).
 4. **Font, color-scheme and legacy alias** — add the Google Fonts link to `apps/client/src/index.html`. A `<id>-dark` mode needs nothing in `styles.scss` (`color-scheme` and the snackbar styles already match `[data-theme$='-dark']`), but it must be added to the legacy dark alias block of `colors.scss` (next to `terminal-dark` and `whoz-oss-dark`), otherwise dialogs, snackbars and legacy components stay on the light `:root` palette.
 
+## Page patterns
+
+Every page of the settings shells is built from the design-system kit (`libs/design-system`), never from local CSS: a page component has **no stylesheet**. Import `DS_PAGE_KIT` and add what the page needs (`TableDirective`, `TagComponent`, `SegmentedComponent`, `DisclosureComponent`, `MemberRowComponent`).
+
+- **Frame**: `<ds-page>` wraps the page. The `ds-section-header` takes the whole content column; everything under it stops at 720px and aligns left (`full` lifts that for a table, `framed` is for a page rendered outside a settings shell: profile, new namespace, namespaces list). The back link of a form is a `dsButton variant="ghost"` projected in the header, so a form title sits at the same height as a list title.
+- **List page**: `ds-section-header` (title, description, then the `agentos-table-filter` and a `dsButton variant="primary"` "New …"), then the `dsTable` markup with the `settings-table__*` helpers (global, `libs/design-system/src/styles/_primitives.scss`). Loading, empty, no-match and error states use `settings-table__status` / `settings-table__error`. Row actions are plain buttons in `settings-table__actions`; deleting always goes through `agentos-row-delete-action` with a `createRowDeletionState()` (never `window.confirm()`, which cannot show a server error). A scope column uses `ds-tag` (`neutral` platform, `accent` namespace, `outline` personal / read-only).
+- **Form page**: `<form class="ds-form">` of `ds-form-field` (label, required mark, hint, error) wrapping a `dsControl`, grouped in `ds-fieldset` / `ds-group`, closed by `ds-form-actions` with the primary `dsButton` first. A form-level failure is a `ds-notice`. A validation message is the `error` input of the field, never a local `<span>`; a touched invalid `dsControl` already shows the error border.
+- **Detail page** (inspect, view): `ds-card` blocks holding a `dl dsDefinitionList`, a `ds-disclosure` or a `<pre class="ds-pre">`.
+
+Tokens and sizes: components never write a font size or a colour, they use the kit. The type scale (`libs/design-system/src/styles/_scale.scss`) is 25 / 15 / 14 / 13 / 11px; a new primitive belongs in the design system, not in a page.
+
+Messages are in English.
+
 ## Adding a New Component
 
 1. Create `src/lib/components/<name>/`

@@ -7,6 +7,9 @@ import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.DurableAgentAttemptRepository
 import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
+import io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStaleRelease
+import io.whozoss.factory.worktree.persistence.Neo4jWorktreeExecutionOccupancyRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -23,6 +26,7 @@ import java.time.Instant
 @Service
 class DurableAgentAttemptService(
     private val repository: DurableAgentAttemptRepository,
+    private val occupations: Neo4jWorktreeExecutionOccupancyRepository? = null,
 ) {
 
     /**
@@ -91,6 +95,87 @@ class DurableAgentAttemptService(
     }
 
     /**
+     * Registers an answer successor and, when N owns a worktree, transfers that exact active
+     * handle to N+1 without a RELEASED intermediate state. The caller owns the surrounding answer
+     * transaction, so interaction close, supersession, registration and transfer roll back together.
+     */
+    @Transactional
+    fun supersedeAndRegisterSuccessor(
+        scope: TenantScope,
+        predecessor: DurableAgentAttempt,
+        successor: DurableAgentAttempt,
+        now: Instant = Instant.now(),
+        afterTransferAndBind: (() -> Unit)? = null,
+    ): DurableAgentAttempt {
+        val handleParts = listOf(
+            predecessor.occupancyResourceIdentity,
+            predecessor.occupancyOwnerKind,
+            predecessor.occupancyOwnerId,
+            predecessor.occupancyGeneration,
+        )
+        val hasAnyHandle = handleParts.any { it != null }
+        val hasFullHandle = handleParts.all { it != null }
+        if (hasAnyHandle && !hasFullHandle) {
+            throw WorktreeExecutionOccupancyStaleRelease("Attempt '${predecessor.attemptId}' has a partial worktree occupancy handle")
+        }
+        val parentRun = predecessor.environmentRef != null || predecessor.parentCaseId != null
+        if (parentRun && !hasFullHandle) {
+            throw WorktreeExecutionOccupancyStaleRelease(
+                "Parent-run attempt '${predecessor.attemptId}' has no complete worktree occupancy handle",
+            )
+        }
+        if (hasFullHandle) {
+            val expectedPredecessorOwner = WorktreeExecutionOccupancyService.agentOwnerId(
+                predecessor.namespaceId, predecessor.workflowId, predecessor.stepId, predecessor.attemptId,
+            )
+            if (predecessor.environmentRef == null || predecessor.occupancyOwnerKind != AGENT_OWNER_KIND ||
+                predecessor.occupancyOwnerId != expectedPredecessorOwner
+            ) {
+                throw WorktreeExecutionOccupancyStaleRelease(
+                    "Attempt '${predecessor.attemptId}' has an incoherent parent-run worktree occupancy handle",
+                )
+            }
+        }
+        if (successor.attemptId == predecessor.attemptId ||
+            successor.namespaceId != predecessor.namespaceId || successor.workflowId != predecessor.workflowId ||
+            successor.stepId != predecessor.stepId || successor.environmentRef != predecessor.environmentRef ||
+            successor.expectedEnvironmentRevision != predecessor.expectedEnvironmentRevision ||
+            successor.rootCaseId != predecessor.rootCaseId || successor.parentCaseId != predecessor.parentCaseId ||
+            successor.caseId != predecessor.caseId
+        ) {
+            throw WorktreeExecutionOccupancyStaleRelease("Successor does not preserve predecessor execution identity")
+        }
+        repository.supersede(
+            scope, predecessor.namespaceId, predecessor.workflowId, predecessor.stepId,
+            predecessor.attemptId, predecessor.revision, now,
+        )
+        var registered = registerRetry(scope, successor, now)
+        if (hasFullHandle) {
+            val occupationRepository = occupations
+                ?: throw WorktreeExecutionOccupancyStaleRelease("Worktree occupancy transfer repository is unavailable")
+            val successorOwnerKind = AGENT_OWNER_KIND
+            val successorOwnerId = WorktreeExecutionOccupancyService.agentOwnerId(
+                successor.namespaceId, successor.workflowId, successor.stepId, successor.attemptId,
+            )
+            val transferred = occupationRepository.transfer(
+                scope = scope,
+                resourceIdentity = predecessor.occupancyResourceIdentity!!,
+                predecessorOwnerKind = predecessor.occupancyOwnerKind!!,
+                predecessorOwnerId = predecessor.occupancyOwnerId!!,
+                predecessorGeneration = predecessor.occupancyGeneration!!,
+                successorOwnerKind = successorOwnerKind,
+                successorOwnerId = successorOwnerId,
+            )
+            registered = repository.bindOccupancy(
+                scope, registered, transferred.resourceIdentity, successorOwnerKind,
+                successorOwnerId, transferred.generation, now,
+            )
+            afterTransferAndBind?.invoke()
+        }
+        return registered
+    }
+
+    /**
      * Atomically claim the attempt for [ownerToken]. Exactly one concurrent
      * claim wins; the losers are rejected with `ATTEMPT_CLAIM_CONFLICT`. A
      * repeated claim by the same owner is idempotent.
@@ -146,6 +231,18 @@ class DurableAgentAttemptService(
      * null; terminal, cancelled or superseded attempts are never reactivated.
      */
     @Transactional
+    fun bindOccupancy(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        resourceIdentity: String,
+        ownerKind: String,
+        ownerId: String,
+        generation: Long,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.bindOccupancy(
+        scope, attempt, resourceIdentity, ownerKind, ownerId, generation, now,
+    )
+
     fun replaceCapability(
         scope: TenantScope,
         attempt: DurableAgentAttempt,
@@ -274,6 +371,14 @@ class DurableAgentAttemptService(
     fun findNonTerminal(limit: Int = DEFAULT_RECOVERY_LIMIT): List<ScopedDurableAgentAttempt> =
         repository.findNonTerminal(limit)
 
+    @Transactional(readOnly = true)
+    fun findTerminalWithOccupancy(limit: Int = DEFAULT_RECOVERY_LIMIT): List<ScopedDurableAgentAttempt> =
+        repository.findTerminalWithOccupancy(limit)
+
+    @Transactional(readOnly = true)
+    fun findTerminalWithOccupancyAfter(afterId: String?, limit: Int): List<ScopedDurableAgentAttempt> =
+        repository.findTerminalWithOccupancyAfter(afterId, limit)
+
     /**
      * Resolve the unique live attempt controlled by one trusted AgentOS case.
      * The graph-wide repository sweep is narrowed immediately to the caller's
@@ -347,6 +452,7 @@ class DurableAgentAttemptService(
     )
 
     companion object {
+        private const val AGENT_OWNER_KIND = "agent"
         /** Default bound of the startup recovery sweep. */
         const val DEFAULT_RECOVERY_LIMIT = 100
         const val ACTIVE_CASE_LOOKUP_LIMIT = 1_000

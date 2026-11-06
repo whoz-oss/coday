@@ -5,6 +5,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository
 import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
+import io.whozoss.agentos.aiModel.AiModelAdvancedExecutionMigration
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
 import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiModel.FilesystemAiModelRepository
@@ -486,6 +487,20 @@ class Neo4jPersistenceConfiguration {
                 logger.debug { "[Migration] No AiModel nodes needed maxTokens → maxCompletionTokens migration" }
             }
         }
+
+    /**
+     * One-time migration: sets `supportsAdvancedExecution` on AiModel nodes persisted before the
+     * property existed. A model used by at least one persisted ADVANCED agent gets `true`, every other
+     * one `false` (see [AiModelAdvancedExecutionMigration] for the linking rules).
+     *
+     * The missing property is the marker: each migrated node gets an explicit boolean, and nodes saved
+     * by the current code always carry one, so a restart never overrides an admin's choice. The linking
+     * rule (alias then apiName, scope then priority, per agent namespace) is too involved for a single
+     * Cypher statement, hence a Kotlin runner reading nodes through [Neo4jClient].
+     */
+    @Bean
+    fun migrateAiModelSupportsAdvancedExecution(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner { AiModelAdvancedExecutionMigration(neo4jClient).run() }
 
     /**
      * One-time migration: converts legacy `[:STARRED]` plain edges to

@@ -1,0 +1,26 @@
+# Confluence Cloud (whoz.atlassian.net) through the REST API v2, replacing the former ATLASSIAN MCP server.
+# Search is not part of v2: see ATLASSIAN_CONFLUENCE_SEARCH.
+# Auth: ATLASSIAN_API_TOKEN auth setting (BASIC_AUTH: account email + Atlassian API token).
+name: ATLASSIAN_CONFLUENCE
+integrationType: HTTP_API
+authSettingName: ATLASSIAN_API_TOKEN
+description: "Confluence Cloud REST API v2 on whoz.atlassian.net (spaces, pages, footer and inline comments; create and update pages)"
+parameters:
+  spec:
+    url: https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json
+    refreshMinutes: 1440
+  baseUrl: https://whoz.atlassian.net/wiki/api/v2
+  allowMutations: true
+  includeOperations:
+    - getSpaces
+    - getPages
+    - getPagesInSpace
+    - getPageById
+    - createPage
+    - updatePage
+    - getPageFooterComments
+    - getPageInlineComments
+    - createFooterComment
+    - createInlineComment
+  maxTools: 32
+  responseFormat: yaml

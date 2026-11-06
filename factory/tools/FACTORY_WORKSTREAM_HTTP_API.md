@@ -72,24 +72,24 @@ The OpenAPI document is `factory/factory-service/openapi/factory-workstream-http
 
 ## Behaviour
 
-- **Namespace is owned by the registered workstream.** Factory resolves the single AgentOS namespace from
-  `WorkstreamNode.namespaceId` of the caller's tenant; the model neither sees nor chooses it. A missing, inactive
-  or invalid mapping fails closed with `WORKSTREAM_NAMESPACE_MAPPING_INVALID`.
+- **Every operation requires an explicit `namespaceId` UUID query parameter** from the assignment. Factory resolves its existing workstream inside the authenticated organization; reads never initialize a mapping. A missing mapping returns `WORKFLOW_NOT_FOUND`; an inactive mapping is refused. `get_workstream` additionally checks that the path workstream matches this mapping.
 - **`start_workflow`** creates a normal Factory run. It is not attributed to an AgentOS case. The caller supplies
   an `Idempotency-Key`; Factory namespaces it by the user.
 - **`request_agent_retry`** opens at most one retry request per step: a repeated call returns the existing one
   (`200`, `idempotent: true`).
 - **`get_required_human_actions`** is information only (`answerableFromThisChannel: false`). Human validations
   stay in Factory.
-- All users of a deployment share one tenant (`factory.tenant.*` / the `MembershipResolver`), so every agent the
-  integration is attached to can read, start and retry on that workstream. Attach it only to agents you trust.
+- Membership resolves the authenticated organization, not an implicit workstream. Agents select the assignment's namespace explicitly; resolution never crosses organizations. Attach this integration only to trusted steering agents.
 - The tool output is the Factory payload (bounded, secret-free), not the bridge's reshaped output.
 
 ## AgentOS
 
-AgentOS allows plain HTTP and loopback destinations for `HTTP_API` by default, so the `http://127.0.0.1:8141`
-URLs below need no environment variable. They will not work if AgentOS runs with
-`AGENTOS_HTTP_API_DISALLOW_UNSECURE=true` (strict HTTPS-only policy): unset it for a local trial.
+Restart AgentOS with its generic HTTP_API unsecure-HTTP opt-in enabled:
+
+```bash
+export AGENTOS_HTTP_API_ALLOW_UNSECURE=true
+# start AgentOS with your usual command
+```
 
 Factory exposes these two read-only spec URLs without a bearer (they are on the authentication filter's public
 allow-list):
@@ -128,4 +128,5 @@ In the AgentOS UI:
   `nx run factory-service:generate-openapi-spec` (needs a forked boot, so it is not part of the unit tests).
 - A non-assigned integration exposing no tools is AgentOS agent-binding behaviour; verify it with one agent that
   has the integration and one that does not.
-- Direct local HTTP works by default in AgentOS; it is refused when `AGENTOS_HTTP_API_DISALLOW_UNSECURE=true`.
+- Plain HTTP must be explicitly enabled in AgentOS with `AGENTOS_HTTP_API_ALLOW_UNSECURE=true`.
+  This setting permits HTTP to any host, not only loopback; keep it disabled unless the deployment requires it.

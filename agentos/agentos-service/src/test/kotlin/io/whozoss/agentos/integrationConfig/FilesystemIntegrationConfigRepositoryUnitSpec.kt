@@ -1,15 +1,17 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
@@ -176,7 +178,7 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             result.parameters?.get("baseUrl")?.textValue() shouldBe "https://company.atlassian.net"
         }
 
-        "findByNamespaceId uses stable UUID derived from integration name" {
+        "findByNamespaceId uses stable UUID derived from namespace and integration name" {
             val root = tempDir()
             writeYaml(integrationsDir(root), "jira.yaml", integrationYaml("JIRA", "JIRA"))
 
@@ -193,6 +195,7 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             val id2 = repo2.findByNamespaceId(namespaceId).single().id
 
             id1 shouldBe id2
+            id1 shouldBe filesystemEntityId(FilesystemEntityKind.INTEGRATION, namespaceId, "JIRA")
         }
 
         // -------------------------------------------------------------------------
@@ -634,7 +637,7 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
         "findByIds resolves a synthetic filesystem integration id" {
             val root = tempDir()
             writeYaml(integrationsDir(root), "jira.yaml", integrationYaml("JIRA", "JIRA"))
-            val fsId = UUID.nameUUIDFromBytes("filesystem-integration:JIRA".toByteArray())
+            val fsId = filesystemEntityId(FilesystemEntityKind.INTEGRATION, namespaceId, "JIRA")
             val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString())
             val delegate = mockk<IntegrationConfigRepository>()
             val nsRepo = mockk<NamespaceRepository>()
@@ -647,6 +650,63 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             result.single().id shouldBe fsId
             result.single().namespaceId shouldBe namespaceId
             result.single().source shouldBe IntegrationConfigSource.FILESYSTEM
+        }
+
+        "two namespaces defining an integration with the same name get distinct ids, each resolving to its own definition" {
+            val root1 = tempDir()
+            val root2 = tempDir()
+            writeYaml(
+                integrationsDir(root1),
+                "jira.yaml",
+                integrationYaml("JIRA", "JIRA", parameters = "  baseUrl: https://ns1.atlassian.net\n  path: \"{{NAMESPACE_CONFIG_PATH}}/x\""),
+            )
+            writeYaml(
+                integrationsDir(root2),
+                "jira.yaml",
+                integrationYaml("JIRA", "JIRA", parameters = "  baseUrl: https://ns2.atlassian.net\n  path: \"{{NAMESPACE_CONFIG_PATH}}/x\""),
+            )
+
+            val nsId1 = UUID.randomUUID()
+            val nsId2 = UUID.randomUUID()
+            val ns1 = Namespace(metadata = EntityMetadata(id = nsId1), name = "ns1", configPath = root1.toString())
+            val ns2 = Namespace(metadata = EntityMetadata(id = nsId2), name = "ns2", configPath = root2.toString())
+            val id1 = filesystemEntityId(FilesystemEntityKind.INTEGRATION, nsId1, "JIRA")
+            val id2 = filesystemEntityId(FilesystemEntityKind.INTEGRATION, nsId2, "JIRA")
+
+            id1 shouldNotBe id2
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            every { delegate.findByIds(listOf(id1), false) } returns emptyList()
+            every { delegate.findByIds(listOf(id2), false) } returns emptyList()
+            every { delegate.findByIds(listOf(id1, id2), false) } returns emptyList()
+            every { delegate.findByNamespaceId(nsId1) } returns emptyList()
+            every { delegate.findByNamespaceId(nsId2) } returns emptyList()
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns listOf(ns1, ns2)
+            every { nsRepo.findByIds(listOf(nsId1)) } returns listOf(ns1)
+            every { nsRepo.findByIds(listOf(nsId2)) } returns listOf(ns2)
+
+            val repo = buildRepo(delegate, nsRepo)
+
+            // Listings expose the namespace-scoped id
+            repo.findByNamespaceId(nsId1).single().id shouldBe id1
+            repo.findByNamespaceId(nsId2).single().id shouldBe id2
+
+            // findByIds returns only the integration of the matching namespace, with its own parameters
+            val found1 = repo.findByIds(listOf(id1), false)
+            found1 shouldHaveSize 1
+            found1.single().namespaceId shouldBe nsId1
+            found1.single().parameters?.get("baseUrl")?.textValue() shouldBe "https://ns1.atlassian.net"
+            found1.single().parameters?.get("path")?.textValue() shouldBe "$root1/x"
+
+            val found2 = repo.findByIds(listOf(id2), false)
+            found2 shouldHaveSize 1
+            found2.single().namespaceId shouldBe nsId2
+            found2.single().parameters?.get("baseUrl")?.textValue() shouldBe "https://ns2.atlassian.net"
+            found2.single().parameters?.get("path")?.textValue() shouldBe "$root2/x"
+
+            repo.findByIds(listOf(id1, id2), false).map { it.id to it.parameters?.get("baseUrl")?.textValue() } shouldContainExactlyInAnyOrder
+                listOf(id1 to "https://ns1.atlassian.net", id2 to "https://ns2.atlassian.net")
         }
 
         // -------------------------------------------------------------------------

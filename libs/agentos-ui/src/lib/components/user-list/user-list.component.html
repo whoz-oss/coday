@@ -14,7 +14,7 @@
       [query]="rowFilter.query()"
       (queryChange)="rowFilter.query.set($event)"
     />
-    <button class="settings-table__new" type="button" (click)="navigateToCreate()">New user</button>
+    <button dsButton variant="primary" type="button" (click)="navigateToCreate()">New user</button>
   </div>
 </div>
 @if (deletion.error()) {

@@ -438,6 +438,63 @@ export interface GetActionsResponse {
   blockers: WorkflowBlocker[]
 }
 
+/* ───── Parent Run (Lot 5) ───── */
+
+export interface ParentRunFinding {
+  id: string
+  code: string
+  severity: 'CRITICAL' | 'MAJOR' | 'MINOR' | 'INFO' | string
+  status: 'OPEN' | 'RESOLVED' | 'SUPERSEDED' | 'WONT_FIX' | string
+  message: string
+  sourceFragmentId?: string
+  stepId?: string
+  filePath?: string
+  openedAtRevision?: number
+  resolutionReason?: string
+}
+
+export interface ParentRunFragment {
+  fragmentId: string
+  ordinal: number
+  flowType: string
+  status: string
+  inputs?: Record<string, unknown>
+  decisionReason?: string
+  loopKey?: string
+  createdAt?: string
+  completedAt?: string
+}
+
+export interface ParentRunEscalation {
+  escalationId: string
+  question: string
+  options: string[]
+  reason: string
+  status: string
+  selectedOption?: string
+  responseText?: string
+  actorId?: string
+}
+
+export interface ParentRunDetail {
+  runId: string
+  namespaceId: string
+  runType: string
+  selectorVersion?: string
+  title: string
+  ticket?: string
+  status: string
+  revision: number
+  rootCaseId?: string
+  domainRevision: number
+  amendmentSeq?: number
+  domainState: Record<string, unknown>
+  findings: ParentRunFinding[]
+  fragments: ParentRunFragment[]
+  loopCounts: Record<string, number>
+  activeEscalation?: ParentRunEscalation | null
+}
+
 export interface SessionDetail {
   id: string
   sandbox: string

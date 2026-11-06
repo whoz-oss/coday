@@ -10,6 +10,22 @@ tags:
 - description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
   name: sse
 paths:
+  /api/admin/configuration:
+    get:
+      operationId: listEffectiveConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigurationEntry"
+          description: OK
+      summary: List the effective configuration (environment variables and Spring
+        properties) of the service
+      tags:
+      - effective-configuration-controller
   /api/agent-configs:
     post:
       operationId: createAgentConfig
@@ -4448,6 +4464,7 @@ components:
             agents.
         modelName:
           type: string
+          minLength: 1
         name:
           type: string
           minLength: 1
@@ -4470,10 +4487,15 @@ components:
           items:
             type: string
             description: "Glob patterns controlling which agents this agent may delegate\
-              \ to. When null or empty, no delegation capability is provided. '*'\
-              \ matches any sequence of characters (anchored, case-insensitive). Examples:\
-              \ ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
-              \ matches FixerHelper/FixerV2."
+              \ to, matched against each agent's name — never its id. An id matches\
+              \ no agent and silently leaves this agent with no way to delegate, so\
+              \ writing one is refused: on create, and on update for an id the stored\
+              \ value did not already hold. An id already stored is carried through\
+              \ unchanged, so an agent in that state stays editable. When null or\
+              \ empty, no delegation capability is provided. '*' matches any sequence\
+              \ of characters (anchored, case-insensitive). Examples: ['*'] allows\
+              \ all agents, ['Reviewer', 'Fixer'] names two of them, ['*Fixer'] matches\
+              \ BugFixer/StoryFixer, ['Fixer*'] matches FixerHelper/FixerV2."
             minLength: 1
         updatedBy:
           type: string
@@ -4481,6 +4503,7 @@ components:
           type: string
           format: date-time
       required:
+      - modelName
       - name
     AgentConfigDefaultsDto:
       type: object
@@ -4692,6 +4715,8 @@ components:
           format: int32
         reasoningEffort:
           $ref: "#/components/schemas/ReasoningEffort"
+        supportsAdvancedExecution:
+          type: boolean
         temperature:
           type: number
           format: double
@@ -5321,6 +5346,29 @@ components:
       - key
       - label
       - path
+    ConfigurationEntry:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        description:
+          type: string
+        key:
+          type: string
+        sensitive:
+          type: boolean
+        source:
+          type: string
+          enum:
+          - ENVIRONMENT
+          - PROPERTY
+        value:
+          type: string
+      required:
+      - configured
+      - key
+      - sensitive
+      - source
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

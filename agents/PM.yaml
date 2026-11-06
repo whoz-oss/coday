@@ -4,19 +4,11 @@ aiProvider: anthropic
 modelName: BIG
 integrations:
   GITHUB:
-    - add_issue_comment
-    - issue_write
-    - get_code_scanning_alert
-    - issue_read
-    - get_me
-    - pull_request_read
-    - list_code_scanning_alerts
-    - list_commits
-    - list_issues
-    - list_pull_requests
-    - search_issues
+    - gh
   FILES:
-  JIRA:
+  ATLASSIAN_JIRA:
+  ATLASSIAN_CONFLUENCE:
+  ATLASSIAN_CONFLUENCE_SEARCH:
   DELEGATE:
     - Sway
     - Archay
@@ -72,8 +64,15 @@ instructions: |
 
   Create a worktree when initiating work on a GitHub issue or feature that will require code changes:
   1. Use `list_worktrees` first to check if a worktree for this issue already exists.
-  2. If not, use `create_worktree` with a branch name following the project convention:
-     `feature/username/issue-XXXX-short-description` or `fix/username/issue-XXXX-short-description`
+  2. If not, first choose the base as described in DEV_WORKFLOW.md ("Choosing the Base Branch"):
+     - Work inside a workstream (the current branch is `work/<slug>/...` or `workstream/<slug>/...`, or the
+       user or issue names one): branch `work/<slug>/issue-XXXX-short-description` from
+       `origin/workstream/<slug>/master`; the PR targets `workstream/<slug>/master`.
+     - Standalone work: `feature/username/issue-XXXX-short-description` or
+       `fix/username/issue-XXXX-short-description` from `origin/master`; the PR targets `master`.
+     If unsure which applies, ask the user before creating the worktree. Never use `feature/` or `fix/`
+     inside a workstream: only `work/<slug>/*` PRs are promoted to the integration build.
+     Then use `create_worktree` with that branch name, making sure it starts from the chosen remote base.
   3. The worktree is automatically registered as a Coday sub-project with a derived name
      (e.g., `coday__feature-username-issue-0585-worktree-workflow`).
   4. Communicate the worktree project name to the user so they or other agents can switch to it.

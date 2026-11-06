@@ -112,13 +112,19 @@
     flex-direction: column;
     gap: 8px;
 
+    // Side by side: the button keeps its natural width, the filter takes all the remaining space.
     &--wide {
       flex-direction: row;
 
-      .shell-sidebar__new-case-btn,
+      .shell-sidebar__new-case-btn {
+        flex: none;
+        width: auto;
+      }
+
       .shell-sidebar__search {
-        flex: 1;
+        flex: 1 1 0;
         min-width: 0;
+        width: auto;
       }
     }
   }
@@ -282,6 +288,56 @@
     text-overflow: ellipsis;
   }
 
+  &__ns-menu-separator {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--color-divider);
+  }
+
+  &__ns-item--config {
+    color: var(--color-neutral-600);
+
+    &:hover {
+      color: var(--color-accent);
+    }
+  }
+
+  &__ns-config-icon {
+    width: 18px;
+    flex: none;
+    font-size: 16px;
+    text-align: center;
+  }
+
+  // Direct shortcut to the settings of the selected namespace, next to the picker
+  &__ns-config-btn {
+    @include ds.button-reset;
+
+    width: 32px;
+    height: 32px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
+    background: var(--color-surface);
+    color: var(--color-neutral-600);
+    cursor: pointer;
+    transition:
+      border-color 140ms,
+      color 140ms;
+
+    .material-icons {
+      font-size: 18px;
+    }
+
+    &:hover {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+  }
+
   &__ns-item-check {
     color: var(--color-accent);
     font-size: 0.75rem;
@@ -376,6 +432,7 @@
     font-weight: 600;
     font-size: 12px;
     color: var(--color-accent-700);
+    overflow: hidden;
   }
 
   // Name/role text block
@@ -414,6 +471,7 @@
     font-weight: 600;
     font-size: 12px;
     color: var(--color-accent-700);
+    overflow: hidden;
     cursor: pointer;
     transition: border-color 140ms;
 
