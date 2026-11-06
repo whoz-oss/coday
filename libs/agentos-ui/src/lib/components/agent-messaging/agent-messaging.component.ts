@@ -192,10 +192,7 @@ export class AgentMessagingComponent implements OnInit {
       this.botConfig.remove(bot.id),
       () => {
         this.bots.update((bots) => bots.filter((other) => other.id !== bot.id))
-        this.messagingState
-          .load()
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe({ error: () => undefined })
+        this.reloadMessagingState()
       },
       'Could not remove the bot.'
     )
@@ -210,12 +207,18 @@ export class AgentMessagingComponent implements OnInit {
   }
 
   private refresh(): void {
+    const pending = this.creationLink() !== null || Object.keys(this.connectLinks()).length > 0
     this.botConfig
       .agentBots(this.namespaceId(), this.agentId())
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (bots) => {
+          const newlyLinked = bots.some(
+            (bot) => bot.linked && !this.bots().some((before) => before.id === bot.id && before.linked)
+          )
           this.bots.set(bots)
+          // A link made from here (Connect, or a creation, which links its creator) shows in the case header too.
+          if (pending && newlyLinked) this.reloadMessagingState()
           if (bots.some((bot) => bot.platform === MessagingPlatform.TELEGRAM)) this.creationLink.set(null)
           this.connectLinks.update((links) =>
             Object.fromEntries(
@@ -225,6 +228,14 @@ export class AgentMessagingComponent implements OnInit {
         },
         error: (err) => console.error('[AgentMessaging] Could not load the bots of the agent:', err),
       })
+  }
+
+  /** Reloads the bots and accounts the rest of the UI reads, such as the "Continue on" buttons of a case. */
+  private reloadMessagingState(): void {
+    this.messagingState
+      .load()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => undefined })
   }
 
   private replace(bot: MessagingBotDto): void {

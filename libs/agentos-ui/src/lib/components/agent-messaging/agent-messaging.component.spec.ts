@@ -147,6 +147,17 @@ describe('AgentMessagingComponent', () => {
     expect(element.querySelector('a[href="https://t.me/helper_bot?start=y"]')).not.toBeNull()
   })
 
+  it('reloads the lists the case header reads once an account is linked from here', () => {
+    const element = render({ admin: false, canCreate: false, bots: [bot] })
+    button(element, 'Connect my account').click()
+    fixture.detectChanges()
+
+    botConfig.agentBots.mockReturnValue(of([{ ...bot, linked: true }]))
+    window.dispatchEvent(new Event('focus'))
+
+    expect(messagingState.load).toHaveBeenCalled()
+  })
+
   it('walks an admin through the Slack app: its manifest, then its two tokens', () => {
     const slackBot = { ...bot, id: 'bot-2', platform: MessagingPlatform.SLACK, username: 'helper' }
     botConfig.attach.mockReturnValue(of(slackBot))
