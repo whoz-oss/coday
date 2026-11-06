@@ -8,6 +8,7 @@ import {
   ExchangeDirectoryEntry,
   ExchangeDirectoryListing,
   ExchangeDirectoryListingCapabilityEnum,
+  ExchangeFileEntry,
 } from '@whoz-oss/agentos-api-client'
 import {
   BehaviorSubject,
@@ -113,6 +114,12 @@ export class ExchangeStateService {
   private namespacePage = 0
   readonly caseLoadingMore = signal(false)
   readonly namespaceLoadingMore = signal(false)
+
+  // Recursive namespace manifest backing the file filter. Fetched lazily (only once the user types a
+  // filter) and kept per namespace; any change to the namespace scope drops it, and the version lets a
+  // consumer that is showing it know it must ask again.
+  private namespaceManifestCache: { id: string; files$: Observable<ExchangeFileEntry[]> } | null = null
+  readonly namespaceManifestVersion = signal(0)
 
   private readonly caseView = this.buildScopeView(
     this.caseRefresh$,
@@ -331,6 +338,7 @@ export class ExchangeStateService {
     this.casePath = ''
     this.casePage = 0
     this.namespacePage = 0
+    this.invalidateNamespaceManifest()
     this.caseRefresh$.next()
     this.namespaceRefresh$.next()
   }
@@ -365,6 +373,7 @@ export class ExchangeStateService {
   refreshManifest(): void {
     this.casePage = 0
     this.namespacePage = 0
+    this.invalidateNamespaceManifest()
     this.caseRefresh$.next()
     this.namespaceRefresh$.next()
   }
@@ -376,7 +385,13 @@ export class ExchangeStateService {
 
   /** Refresh only the namespace manifest — used when the agent mutates the namespace scope. */
   refreshNamespace(): void {
+    this.invalidateNamespaceManifest()
     this.namespaceRefresh$.next()
+  }
+
+  private invalidateNamespaceManifest(): void {
+    this.namespaceManifestCache = null
+    this.namespaceManifestVersion.update((version) => version + 1)
   }
 
   loadMore(scope: ExchangeScope): void {
@@ -395,6 +410,24 @@ export class ExchangeStateService {
   }
 
   // ── Reads ───────────────────────────────────────────────────────────────────
+  /**
+   * Every file of the namespace, at any depth (the recursive manifest, not the directory being browsed).
+   *
+   * Shared and replayed per namespace until the namespace scope changes, so repeated filtering costs one
+   * request. A failure is not cached: shareReplay resets on error, so the next subscription asks again.
+   */
+  namespaceManifest(): Observable<ExchangeFileEntry[]> {
+    const id = this.namespaceId
+    if (!id) return throwError(() => new Error('No active namespace for manifest request'))
+    if (this.namespaceManifestCache?.id === id) return this.namespaceManifestCache.files$
+    const files$ = this.controller.getNamespaceFilesManifestExchange(id).pipe(
+      map((manifest) => manifest.files ?? []),
+      shareReplay({ bufferSize: 1, refCount: false })
+    )
+    this.namespaceManifestCache = { id, files$ }
+    return files$
+  }
+
   getContent(scope: ExchangeScope, path: string): Observable<ExchangeFileContent> {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const id = isCase ? this.caseId : this.namespaceId

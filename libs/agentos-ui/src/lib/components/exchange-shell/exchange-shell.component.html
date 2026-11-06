@@ -25,6 +25,8 @@
     [namespaceSectionVisible]="state.namespaceSectionVisible()"
     [canWriteNamespace]="state.canWriteNamespace()"
     [namespaceUploading]="state.namespaceUploading()"
+    [namespaceManifest]="namespaceManifest()"
+    [namespaceManifestStatus]="namespaceManifestStatus()"
     [activeFile]="selectedFile()"
     [selectedContent]="selectedContent()"
     [imageUrl]="selectedImageUrl()"
@@ -38,6 +40,8 @@
     (downloadAllRequested)="onDownloadAll($event)"
     (deleteRequested)="onDeleteRequest($event)"
     (retryRequested)="onRetry()"
+    (namespaceFilterChanged)="onNamespaceFilterChanged($event)"
+    (namespaceFilterRetry)="onNamespaceFilterRetry()"
     (viewerClosed)="onViewerClosed()"
     (closeRequested)="onClose()"
   />

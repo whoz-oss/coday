@@ -93,6 +93,77 @@ describe('ExchangeStateService', () => {
     })
   })
 
+  describe('namespaceManifest (file filter)', () => {
+    const entry = (path: string) => ({
+      path,
+      filename: path.split('/').pop() as string,
+      size: 1,
+      lastModified: '2026-01-01T00:00:00Z',
+      scope: ExchangeFileEntryScopeEnum.NAMESPACE,
+    })
+    const manifest = (...paths: string[]) => ({ capability: 'READ', files: paths.map(entry) })
+
+    it('is lazy: nothing is fetched until it is asked for', () => {
+      init()
+      expect(controller.getNamespaceFilesManifestExchange).not.toHaveBeenCalled()
+    })
+
+    it('fetches the recursive manifest once and replays it to later callers', async () => {
+      init()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(of(manifest('a/b.md', 'c.md')))
+      const first = await firstValueFrom(service.namespaceManifest())
+      const second = await firstValueFrom(service.namespaceManifest())
+      expect(first.map((f) => f.path)).toEqual(['a/b.md', 'c.md'])
+      expect(second).toBe(first)
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledWith('ns-1')
+    })
+
+    it.each([
+      ['refreshManifest', () => service.refreshManifest()],
+      ['refreshNamespace', () => service.refreshNamespace()],
+      ['initializeForNamespace', () => service.initializeForNamespace('ns-1')],
+      ['initializeForCase', () => service.initializeForCase('ns-1', 'c-2')],
+      ['clear', () => service.clear()],
+    ])('drops the cache on %s and bumps the version', async (_name, act) => {
+      init()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(of(manifest('a.md')))
+      await firstValueFrom(service.namespaceManifest())
+      const version = service.namespaceManifestVersion()
+      act()
+      expect(service.namespaceManifestVersion()).toBeGreaterThan(version)
+      if (_name === 'clear') {
+        await expect(firstValueFrom(service.namespaceManifest())).rejects.toThrow()
+        return
+      }
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(of(manifest('a.md', 'new.md')))
+      expect((await firstValueFrom(service.namespaceManifest())).map((f) => f.path)).toEqual(['a.md', 'new.md'])
+    })
+
+    it('is not dropped by a case-only refresh or by browsing', async () => {
+      init()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(of(manifest('a.md')))
+      await firstValueFrom(service.namespaceManifest())
+      service.refreshCase()
+      service.browseNamespace('docs')
+      await firstValueFrom(service.namespaceManifest())
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not cache a failure: the next call asks again', async () => {
+      init()
+      controller.getNamespaceFilesManifestExchange.mockReturnValueOnce(throwError(() => ({ status: 500 })))
+      await expect(firstValueFrom(service.namespaceManifest())).rejects.toEqual({ status: 500 })
+      service.refreshNamespace()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(of(manifest('a.md')))
+      expect(await firstValueFrom(service.namespaceManifest())).toHaveLength(1)
+    })
+
+    it('fails without an active namespace', async () => {
+      await expect(firstValueFrom(service.namespaceManifest())).rejects.toThrow()
+    })
+  })
+
   describe('getBlob (image preview)', () => {
     it.each([
       [ExchangeFileEntryScopeEnum.CASE, 'c-1'],

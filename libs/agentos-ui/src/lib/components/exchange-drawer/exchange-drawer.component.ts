@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
   inject,
   input,
@@ -12,14 +13,26 @@ import {
 import { deletedFilesInDirectory, indexGitChanges } from '../../services/exchange-git-tree.utils'
 import { EnvironmentScope, ExchangeEnvironment } from '../../services/exchange-environment.service'
 import { ExchangeEnvironmentComponent } from '../exchange-environment/exchange-environment.component'
-import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeDirectoryEntry, ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { filterFileTree, FileTreeRow, MAX_FILTER_MATCHES } from '../../services/exchange-file-filter.utils'
 import { ExchangePathSegment } from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
-import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
+import { ExchangeItemComponent, ExchangeFileRow } from '../exchange-item/exchange-item.component'
+
+/** Pause after the last keystroke before the filter is applied, so typing does not re-render the tree each time. */
+const FILTER_DEBOUNCE_MS = 150
+
+/** Load status of the recursive namespace manifest that feeds the filter. `idle` while no filter is set. */
+export type ExchangeManifestStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+/** One line of the filtered namespace tree; files carry the row view-model of `agentos-exchange-item`. */
+export interface FilteredTreeRow extends FileTreeRow {
+  row?: ExchangeFileRow
+}
 
 /**
  * ExchangeDrawerComponent — presentational panel content for the file-exchange drawer.
@@ -34,6 +47,11 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
  * (empty-state) / ready (list).
  *
  * Kept presentational, OnPush, I/O in signals (decision #8).
+ *
+ * The namespace section can be filtered by name or path. Browsing lists one directory at a time, so the
+ * filter works on the recursive manifest, which the parent loads on demand (`namespaceManifest`) when
+ * `namespaceFilterChanged` reports a non-empty query. The query lives here, not in the parent, so it
+ * survives opening the viewer (same component, swapped by @if) and coming back.
  */
 @Component({
   selector: 'agentos-exchange-drawer',
@@ -46,6 +64,7 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
     ExchangeFileListComponent,
     ExchangeFolderNavComponent,
     ExchangeContentViewerComponent,
+    ExchangeItemComponent,
   ],
   templateUrl: './exchange-drawer.component.html',
   styleUrl: './exchange-drawer.component.scss',
@@ -75,6 +94,9 @@ export class ExchangeDrawerComponent {
   readonly namespaceSectionVisible = input<boolean>(false)
   readonly canWriteNamespace = input<boolean>(false)
   readonly namespaceUploading = input<boolean>(false)
+  /** Every namespace file at any depth, once loaded for the filter; null until then. */
+  readonly namespaceManifest = input<ExchangeFileEntry[] | null>(null)
+  readonly namespaceManifestStatus = input<ExchangeManifestStatus>('idle')
 
   // ── Current selection / viewer ────────────────────────────────────────────────
   readonly activeFile = input<ExchangeFileRef | null>(null)
@@ -93,12 +115,21 @@ export class ExchangeDrawerComponent {
   readonly downloadAllRequested = output<ExchangeScope>()
   readonly deleteRequested = output<ExchangeFileRef>()
   readonly retryRequested = output<void>()
+  /** The debounced namespace filter query changed (trimmed; empty when cleared). */
+  readonly namespaceFilterChanged = output<string>()
+  /** Loading the manifest for the filter failed and the user asked to try again. */
+  readonly namespaceFilterRetry = output<void>()
   readonly closeRequested = output<void>()
   /** Emitted when the viewer's back button is pressed; the parent clears the active file. */
   readonly viewerClosed = output<void>()
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput')
+  private filterTimer: ReturnType<typeof setTimeout> | undefined
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.filterTimer))
+  }
 
   /** Scope enums exposed to the template. */
   protected readonly CASE = ExchangeFileEntryScopeEnum.CASE
@@ -149,6 +180,88 @@ export class ExchangeDrawerComponent {
     this.folderOpened.emit({ scope, path })
   }
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))
+
+  // ── Namespace filter ────────────────────────────────────────────────────────────────────────────────
+  /** What the input shows right now. */
+  protected readonly filterInput = signal('')
+  /** Debounced, trimmed query that actually drives the tree; empty means "browse". */
+  protected readonly filterQuery = signal('')
+  protected readonly filterActive = computed(() => this.filterQuery() !== '')
+  protected readonly maxFilterMatches = MAX_FILTER_MATCHES
+
+  /** Shown while the section has something to filter, and as long as a query is set (never trap the user in it). */
+  protected readonly showNamespaceFilter = computed(
+    () =>
+      this.filterInput() !== '' ||
+      this.namespaceFiles().length > 0 ||
+      this.namespaceFolders().length > 0 ||
+      this.namespaceBreadcrumb().length > 0
+  )
+
+  private readonly filteredTree = computed(() =>
+    filterFileTree(
+      (this.namespaceManifest() ?? []).map((file) => file.path),
+      this.filterQuery()
+    )
+  )
+  protected readonly filteredTruncated = computed(() => this.filteredTree().truncated)
+  protected readonly noMatchTitle = computed(() => `No files match "${this.filterQuery()}"`)
+  protected readonly filteredRows = computed<FilteredTreeRow[]>(() => {
+    const byPath = new Map((this.namespaceManifest() ?? []).map((file) => [file.path, file]))
+    return this.filteredTree().rows.map((node) => {
+      if (node.kind === 'folder') return node
+      const entry = byPath.get(node.path)
+      return {
+        ...node,
+        row: ExchangeItemComponent.toRow({
+          path: node.path,
+          name: node.name,
+          directory: false,
+          size: entry?.size,
+          lastModified: entry?.lastModified,
+        }),
+      }
+    })
+  })
+
+  protected onFilterInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value
+    this.filterInput.set(value)
+    clearTimeout(this.filterTimer)
+    this.filterTimer = setTimeout(() => this.applyFilter(value), FILTER_DEBOUNCE_MS)
+  }
+
+  protected onFilterKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || this.filterInput() === '') return
+    // Escape first clears the filter; it must not also close the panel behind it.
+    event.stopPropagation()
+    this.clearFilter()
+  }
+
+  /** Clearing is immediate (no debounce) and leaves the browse state exactly as it was. */
+  protected clearFilter(): void {
+    clearTimeout(this.filterTimer)
+    this.filterInput.set('')
+    this.applyFilter('')
+  }
+
+  /** A folder of the filtered tree was chosen: leave the filter and browse into it. */
+  protected onFilteredFolderOpen(path: string): void {
+    this.clearFilter()
+    this.onFolderOpen(this.NAMESPACE, path)
+  }
+
+  protected isNamespaceFileActive(path: string): boolean {
+    const active = this.activeFile()
+    return active !== null && active.scope === this.NAMESPACE && active.path === path
+  }
+
+  private applyFilter(value: string): void {
+    const query = value.trim()
+    if (query === this.filterQuery()) return
+    this.filterQuery.set(query)
+    this.namespaceFilterChanged.emit(query)
+  }
 
   /** Path of the row that opened the viewer — focus returns to it on back (a11y). */
   private lastSelectedPath: string | null = null

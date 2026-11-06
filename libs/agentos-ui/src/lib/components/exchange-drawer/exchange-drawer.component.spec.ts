@@ -6,6 +6,203 @@ import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangeDrawerComponent } from './exchange-drawer.component'
 
+describe('ExchangeDrawerComponent namespace filter', () => {
+  const manifestFile = (path: string) => ({
+    path,
+    filename: path.split('/').pop() as string,
+    size: 10,
+    lastModified: '2026-01-01T00:00:00Z',
+    scope: ExchangeFileEntryScopeEnum.NAMESPACE,
+  })
+  const manifest = ['README.md', 'docs/api/guide.md', 'docs/api/spec.yaml', 'notes/todo.txt'].map(manifestFile)
+
+  function setup() {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    fixture.componentRef.setInput('namespaceStatus', 'ready')
+    fixture.componentRef.setInput('namespaceSectionVisible', true)
+    fixture.componentRef.setInput('caseStatus', 'ready')
+    fixture.componentRef.setInput('namespaceFiles', [
+      { path: 'README.md', name: 'README.md', directory: false, size: 10 },
+    ])
+    fixture.componentRef.setInput('namespaceFolders', [{ path: 'docs', name: 'docs', directory: true }])
+    const changed = jest.fn()
+    const folderOpened = jest.fn()
+    const fileSelected = jest.fn()
+    fixture.componentInstance.namespaceFilterChanged.subscribe(changed)
+    fixture.componentInstance.folderOpened.subscribe(folderOpened)
+    fixture.componentInstance.fileSelected.subscribe(fileSelected)
+    fixture.detectChanges()
+    const el = fixture.nativeElement as HTMLElement
+    const type = (value: string) => {
+      const input = el.querySelector<HTMLInputElement>('input[type="search"]')!
+      input.value = value
+      input.dispatchEvent(new Event('input'))
+      tick(150)
+      fixture.detectChanges()
+    }
+    return { fixture, el, changed, folderOpened, fileSelected, type }
+  }
+  const text = (el: HTMLElement) => el.textContent?.replace(/\s+/g, ' ') ?? ''
+
+  it('offers a filter field with a label once the section has content', () => {
+    const { el } = setup()
+    const input = el.querySelector<HTMLInputElement>('input[type="search"]')!
+    expect(input.placeholder).toBe('Filter files…')
+    expect(input.getAttribute('aria-label')).toBeTruthy()
+  })
+
+  it('does not offer the filter on an empty namespace', () => {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    fixture.componentRef.setInput('namespaceStatus', 'ready')
+    fixture.componentRef.setInput('namespaceSectionVisible', true)
+    fixture.componentRef.setInput('caseStatus', 'ready')
+    fixture.detectChanges()
+    expect(fixture.nativeElement.querySelector('input[type="search"]')).toBeNull()
+  })
+
+  it('debounces the query, then hides the browse view behind a spinner until the manifest arrives', fakeAsync(() => {
+    const { fixture, el, changed } = setup()
+    const input = el.querySelector<HTMLInputElement>('input[type="search"]')!
+    input.value = 'gu'
+    input.dispatchEvent(new Event('input'))
+    tick(100)
+    expect(changed).not.toHaveBeenCalled()
+    tick(60)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'loading')
+    fixture.detectChanges()
+    expect(changed).toHaveBeenCalledWith('gu')
+    expect(el.querySelector('ds-spinner')).not.toBeNull()
+    expect(el.querySelector('agentos-exchange-file-list')).toBeNull()
+    expect(el.querySelector('agentos-exchange-folder-nav')).toBeNull()
+  }))
+
+  it('shows matching files with their ancestor folders, indented', fakeAsync(() => {
+    const { fixture, el, type } = setup()
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('guide')
+    const rows = Array.from(el.querySelectorAll('.exchange-drawer__tree > li'))
+    expect(rows).toHaveLength(3)
+    expect(rows[0]!.textContent).toContain('docs')
+    expect(rows[1]!.textContent).toContain('api')
+    expect(rows[2]!.querySelector('agentos-exchange-item')?.textContent).toContain('guide.md')
+    expect((rows[2] as HTMLElement).style.paddingLeft).toBe('1.75rem')
+    expect(el.querySelector('agentos-exchange-file-list')).toBeNull()
+  }))
+
+  it('previews, downloads and deletes a filtered file with its full path', fakeAsync(() => {
+    const { fixture, el, fileSelected, type } = setup()
+    fixture.componentRef.setInput('canWriteNamespace', true)
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    const download = jest.fn()
+    const remove = jest.fn()
+    fixture.componentInstance.downloadRequested.subscribe(download)
+    fixture.componentInstance.deleteRequested.subscribe(remove)
+    type('spec')
+    el.querySelector<HTMLButtonElement>('agentos-exchange-item .exchange-item__main')!.click()
+    expect(fileSelected).toHaveBeenCalledWith({
+      scope: ExchangeFileEntryScopeEnum.NAMESPACE,
+      path: 'docs/api/spec.yaml',
+    })
+    el.querySelector<HTMLButtonElement>('agentos-exchange-item ds-icon-button[icon="download"] button')!.click()
+    expect(download).toHaveBeenCalledWith({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/api/spec.yaml' })
+    el.querySelector<HTMLButtonElement>('agentos-exchange-item ds-icon-button[icon="delete"] button')!.click()
+    expect(remove).toHaveBeenCalledWith({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/api/spec.yaml' })
+  }))
+
+  it('says so when no file matches', fakeAsync(() => {
+    const { fixture, el, type } = setup()
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('zzz')
+    expect(text(el)).toContain('No files match "zzz"')
+    expect(el.querySelector('.exchange-drawer__tree')).toBeNull()
+  }))
+
+  it('reports a manifest failure with a retry', fakeAsync(() => {
+    const { fixture, el, type } = setup()
+    fixture.componentRef.setInput('namespaceManifestStatus', 'error')
+    const retry = jest.fn()
+    fixture.componentInstance.namespaceFilterRetry.subscribe(retry)
+    type('x')
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain("Couldn't search namespace files")
+    el.querySelector<HTMLButtonElement>('[role="alert"] button')!.click()
+    expect(retry).toHaveBeenCalled()
+  }))
+
+  it('hints when the matches were cut', fakeAsync(() => {
+    const { fixture, el, type } = setup()
+    const many = Array.from({ length: 520 }, (_, i) => manifestFile(`bulk/file-${i}.txt`))
+    fixture.componentRef.setInput('namespaceManifest', many)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('file-')
+    expect(text(el)).toContain('Showing first 500 matches')
+    expect(el.querySelectorAll('agentos-exchange-item')).toHaveLength(500)
+  }))
+
+  it('clears through the button and restores the browse view untouched', fakeAsync(() => {
+    const { fixture, el, changed, folderOpened, type } = setup()
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('guide')
+    expect(el.querySelector('agentos-exchange-file-list')).toBeNull()
+    el.querySelector<HTMLButtonElement>('.exchange-drawer__filter-clear')!.click()
+    fixture.detectChanges()
+    expect(changed).toHaveBeenLastCalledWith('')
+    expect(el.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe('')
+    expect(el.querySelector('agentos-exchange-file-list')).not.toBeNull()
+    expect(el.querySelector('agentos-exchange-folder-nav')).not.toBeNull()
+    expect(el.querySelector('.exchange-drawer__tree')).toBeNull()
+    expect(folderOpened).not.toHaveBeenCalled()
+  }))
+
+  it('clears on Escape without letting the key reach the panel', fakeAsync(() => {
+    const { fixture, el, changed, type } = setup()
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('guide')
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    const stop = jest.spyOn(event, 'stopPropagation')
+    el.querySelector('input[type="search"]')!.dispatchEvent(event)
+    fixture.detectChanges()
+    expect(stop).toHaveBeenCalled()
+    expect(changed).toHaveBeenLastCalledWith('')
+    expect(el.querySelector('agentos-exchange-file-list')).not.toBeNull()
+  }))
+
+  it('opening a folder of the tree clears the filter and browses into it', fakeAsync(() => {
+    const { fixture, el, changed, folderOpened, type } = setup()
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('guide')
+    el.querySelector<HTMLButtonElement>('.exchange-drawer__tree .exchange-drawer__folder')!.click()
+    fixture.detectChanges()
+    expect(folderOpened).toHaveBeenCalledWith({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs' })
+    expect(changed).toHaveBeenLastCalledWith('')
+    expect(el.querySelector('agentos-exchange-file-list')).not.toBeNull()
+  }))
+
+  it('keeps the query when the viewer opens and closes', fakeAsync(() => {
+    const { fixture, el, type } = setup()
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    type('guide')
+    fixture.componentRef.setInput('activeFile', {
+      scope: ExchangeFileEntryScopeEnum.NAMESPACE,
+      path: 'docs/api/guide.md',
+    })
+    fixture.detectChanges()
+    expect(el.querySelector('input[type="search"]')).toBeNull()
+    fixture.componentRef.setInput('activeFile', null)
+    fixture.detectChanges()
+    expect(el.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe('guide')
+    expect(el.querySelectorAll('.exchange-drawer__tree > li')).toHaveLength(3)
+  }))
+})
+
 describe('ExchangeDrawerComponent directory controls', () => {
   it('distinguishes workspace preparation from file loading errors', () => {
     TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
