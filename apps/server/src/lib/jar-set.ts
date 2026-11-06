@@ -27,6 +27,9 @@
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
+import { Readable, Transform } from 'stream'
+import { pipeline } from 'stream/promises'
+import type { ReadableStream as NodeReadableStream } from 'stream/web'
 import { debugLog } from './log'
 import { releaseBaseUrl } from './release-url'
 
@@ -202,20 +205,39 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Re
   }
 }
 
-/** Read a response body, reporting the cumulative byte count when a listener is given. */
-async function readBody(res: Response, onBytes?: (received: number) => void): Promise<Buffer> {
-  if (!onBytes || !res.body) return Buffer.from(await res.arrayBuffer())
-  const reader = res.body.getReader()
-  const chunks: Buffer[] = []
+/**
+ * Stream a response body to `<dest>.tmp`, hashing it on the way, then rename it to `dest` once the checksum matches.
+ * The JARs are hundreds of MB: nothing is held in memory (a few KB at a time) and the event loop is never blocked by a
+ * single big hash or write. The temp file is removed on any failure. Returns the number of bytes written.
+ */
+async function downloadVerified(
+  res: Response,
+  dest: string,
+  expectedHash: string,
+  filename: string,
+  onBytes?: (received: number) => void
+): Promise<number> {
+  const tmp = `${dest}.tmp`
+  const hash = crypto.createHash('sha256')
   let received = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(Buffer.from(value))
-    received += value.byteLength
-    onBytes(received)
+  try {
+    if (!res.body) throw new Error(`Empty response body for '${filename}'`)
+    const meter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        hash.update(chunk)
+        received += chunk.length
+        onBytes?.(received)
+        callback(null, chunk)
+      },
+    })
+    await pipeline(Readable.fromWeb(res.body as unknown as NodeReadableStream), meter, fs.createWriteStream(tmp))
+    if (hash.digest('hex') !== expectedHash) throw new Error(`Checksum mismatch for '${filename}'`)
+    fs.renameSync(tmp, dest)
+    return received
+  } catch (err) {
+    fs.rmSync(tmp, { force: true })
+    throw err
   }
-  return Buffer.concat(chunks)
 }
 
 /** Best-effort artifact sizes (Content-Length of a HEAD request); unknown sizes are left out. */
@@ -341,18 +363,22 @@ export async function ensureJarSet(
       if (!jarRes.ok) throw new Error(`JAR HTTP ${jarRes.status} for '${entry.filename}'`)
       const announced = Number(jarRes.headers.get('content-length'))
       const totalBytes = Number.isFinite(announced) && announced > 0 ? announced : sizes.get(entry.filename)
-      const buffer = await readBody(jarRes, onProgress ? (received) => report(received, totalBytes) : undefined)
-      if (sha256hex(buffer) !== entry.hash) throw new Error(`Checksum mismatch for '${entry.filename}'`)
       const dest = jarPathIn(baseDir, kind, artifactId, version)
-      writeAtomically(dest, buffer)
-      debugLog(ctx, `[DOWNLOAD]   written ${dest} (${buffer.length} bytes)`)
+      const writtenBytes = await downloadVerified(
+        jarRes,
+        dest,
+        entry.hash,
+        entry.filename,
+        onProgress ? (received) => report(received, totalBytes) : undefined
+      )
+      debugLog(ctx, `[DOWNLOAD]   written ${dest} (${writtenBytes} bytes)`)
       onProgress?.({
         kind,
         artifactId,
         index,
         count: artifacts.length,
-        receivedBytes: buffer.length,
-        totalBytes: buffer.length,
+        receivedBytes: writtenBytes,
+        totalBytes: writtenBytes,
         overallPercent: overallPercent(weights, index + 1, 0),
       })
     }
