@@ -78,6 +78,99 @@ describe('ComposerAttachmentsService', () => {
     })
   })
 
+  describe('clipboard paste', () => {
+    function pasteEvent(options: {
+      items?: Array<{ type: string; file: File | null }>
+      text?: boolean
+      files?: File[]
+    }): ClipboardEvent {
+      const items = (options.items ?? []).map((item) => ({
+        kind: 'file',
+        type: item.type,
+        getAsFile: () => item.file,
+      }))
+      if (options.text) items.push({ kind: 'string', type: 'text/plain', getAsFile: () => null })
+      const types = [...(items.length > 0 ? ['Files'] : []), ...(options.text ? ['text/plain'] : [])]
+      return {
+        preventDefault: jest.fn(),
+        clipboardData: { items, types, files: options.files ?? [] },
+      } as unknown as ClipboardEvent
+    }
+
+    it('attaches an image-only clipboard under a unique name and prevents the default paste', () => {
+      const screenshot = new File(['png'], 'image.png', { type: 'image/png' })
+      const event = pasteEvent({ items: [{ type: 'image/png', file: screenshot }] })
+
+      service.onPaste(event)
+
+      expect(event.preventDefault).toHaveBeenCalled()
+      const [attached] = service.attachments()
+      expect(service.attachments()).toHaveLength(1)
+      expect(attached!.file.name).toMatch(/^pasted-image-\d{8}-\d{6}\.png$/)
+      expect(attached!.file.type).toBe('image/png')
+      expect(attached!.status).toBe('pending')
+    })
+
+    it('names several pasted images distinctly and ignores non-image files', () => {
+      const event = pasteEvent({
+        items: [
+          { type: 'image/png', file: new File(['a'], 'image.png', { type: 'image/png' }) },
+          { type: 'application/pdf', file: new File(['b'], 'doc.pdf', { type: 'application/pdf' }) },
+          { type: 'image/jpeg', file: new File(['c'], 'image.jpg', { type: 'image/jpeg' }) },
+        ],
+      })
+
+      service.onPaste(event)
+
+      const names = service.attachments().map((a) => a.file.name)
+      expect(names).toHaveLength(2)
+      expect(names[0]).toMatch(/\.png$/)
+      expect(names[1]).toMatch(/-2\.jpg$/)
+    })
+
+    it('falls back to clipboardData.files when items carry no image', () => {
+      const screenshot = new File(['png'], 'image.png', { type: 'image/png' })
+      const event = pasteEvent({ files: [screenshot] })
+
+      service.onPaste(event)
+
+      expect(event.preventDefault).toHaveBeenCalled()
+      expect(service.attachments()).toHaveLength(1)
+    })
+
+    it('leaves a plain text paste untouched', () => {
+      const event = pasteEvent({ text: true })
+
+      service.onPaste(event)
+
+      expect(event.preventDefault).not.toHaveBeenCalled()
+      expect(service.attachments()).toEqual([])
+    })
+
+    it('keeps the text paste when the clipboard carries both an image and text', () => {
+      const event = pasteEvent({
+        items: [{ type: 'image/png', file: new File(['png'], 'image.png', { type: 'image/png' }) }],
+        text: true,
+      })
+
+      service.onPaste(event)
+
+      expect(event.preventDefault).not.toHaveBeenCalled()
+      expect(service.attachments()).toEqual([])
+    })
+
+    it('does not stage while an upload batch is in flight', () => {
+      service.isUploading.set(true)
+      const event = pasteEvent({
+        items: [{ type: 'image/png', file: new File(['png'], 'image.png', { type: 'image/png' }) }],
+      })
+
+      service.onPaste(event)
+
+      expect(service.attachments()).toEqual([])
+    })
+  })
+
   describe('drag & drop', () => {
     it('dragenter with files sets the highlight', () => {
       const event = dragEvent()

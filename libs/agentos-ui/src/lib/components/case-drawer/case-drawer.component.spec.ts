@@ -264,6 +264,73 @@ describe('CaseDrawerComponent', () => {
     expect(component['isExpanded']('p')).toBe(true)
   })
 
+  describe('case summary', () => {
+    const CASES = [
+      {
+        id: 'a',
+        namespaceId: 'ns',
+        title: 'Billing',
+        summary: 'Migration of the invoicing service to Kotlin.',
+      } as Case,
+      { id: 'b', namespaceId: 'ns', title: 'Holidays', summary: '  ' } as Case,
+      { id: 'c', namespaceId: 'ns', title: 'Plain' } as Case,
+    ]
+
+    it('carries the summary onto the tree nodes, blank summaries becoming undefined', () => {
+      const component = makeComponent(CASES)
+
+      const byId = (id: string) => component['rootItems']().find((i) => i.id === id)!
+      expect(byId('a').summary).toBe('Migration of the invoicing service to Kotlin.')
+      expect(byId('b').summary).toBeUndefined()
+      expect(byId('c').summary).toBeUndefined()
+    })
+
+    it('matches a search on the summary, case-insensitively, as well as on the title and id', () => {
+      const ref = makeComponentRef(CASES)
+
+      ref.setInput('filterQuery', 'INVOICING')
+      expect(ref.instance['flatFilteredItems']().map((i) => i.id)).toEqual(['a'])
+
+      ref.setInput('filterQuery', 'holi')
+      expect(ref.instance['flatFilteredItems']().map((i) => i.id)).toEqual(['b'])
+
+      ref.setInput('filterQuery', 'c')
+      expect(ref.instance['flatFilteredItems']().map((i) => i.id)).toContain('c')
+    })
+
+    it('matches the summary of a sub-case at any depth', () => {
+      const ref = makeComponentRef([
+        { id: 'p', namespaceId: 'ns', title: 'Parent' } as Case,
+        { id: 'k', namespaceId: 'ns', title: 'Child', parentCaseId: 'p', summary: 'Rollback of the deploy' } as Case,
+      ])
+
+      ref.setInput('filterQuery', 'rollback')
+
+      expect(ref.instance['flatFilteredItems']().map((i) => i.id)).toEqual(['k'])
+    })
+
+    it('shows the summary as the row tooltip, and only a row that has one', () => {
+      const ref = makeComponentRef(CASES)
+
+      const rows = host(ref).querySelectorAll<HTMLElement>('.case-tree-node__row')
+      const titles = Array.from(rows).map((row) => row.getAttribute('title'))
+
+      expect(titles.filter((t) => t !== null)).toEqual(['Migration of the invoicing service to Kotlin.'])
+    })
+
+    it('shows the summary under the title in search results only', () => {
+      const ref = makeComponentRef(CASES)
+      render(ref)
+      expect(host(ref).querySelector('.case-tree-node__summary')).toBeNull()
+
+      ref.setInput('filterQuery', 'invoicing')
+      render(ref)
+
+      const summary = host(ref).querySelector('.case-tree-node__summary')
+      expect(summary?.textContent).toContain('Migration of the invoicing service')
+    })
+  })
+
   describe('inline rename', () => {
     const CASE_A = { id: 'a', namespaceId: 'ns', title: 'Old name', role: CaseRoleEnum.ADMIN } as unknown as Case
     const editedNode = (name = 'Old name') => adminNode({ id: 'a', name })

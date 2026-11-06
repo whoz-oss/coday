@@ -38,6 +38,12 @@
 
   <div class="exchange-item__actions" [class.exchange-item__actions--hidden]="row().missing">
     <ds-icon-button
+      [icon]="copyState() === 'copied' ? 'check' : 'content_copy'"
+      variant="default"
+      [title]="copyState() === 'copied' ? 'Copied' : copyState() === 'failed' ? 'Copy failed' : 'Copy relative path'"
+      (action)="copyPath()"
+    />
+    <ds-icon-button
       icon="download"
       variant="default"
       [title]="'Download ' + row().filename"
@@ -52,4 +58,6 @@
       />
     }
   </div>
+
+  <span class="exchange-item__sr-only" aria-live="polite">{{ copyState() === 'copied' ? 'Path copied' : '' }}</span>
 </div>

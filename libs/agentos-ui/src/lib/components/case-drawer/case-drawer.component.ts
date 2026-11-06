@@ -40,7 +40,7 @@ export interface CaseTreeItem extends CaseListItem {
  * - **Tree mode** (no active search): root cases with expandable sub-cases; favorited
  *   cases are promoted to a "Favorites" group at the top.
  * - **Flat mode** (search active): all matching cases at every depth level are shown as a
- *   flat list. Matching is done on title AND case ID.
+ *   flat list. Matching is done on title, case ID AND summary.
  *
  * Compact mode (compact input = true):
  * - Hides the ds-entity-list chrome entirely
@@ -546,13 +546,16 @@ function liftFavoriteSubtrees(node: CaseTreeItem, favorites: CaseTreeItem[]): Ca
 }
 
 /**
- * Recursively collect all tree nodes (at any depth) whose name or id
+ * Recursively collect all tree nodes (at any depth) whose name, id or summary
  * contains the given query string (case-insensitive).
  * Returns a flat list — hierarchy is not preserved in search results.
  */
 function collectMatching(nodes: CaseTreeItem[], query: string): CaseTreeItem[] {
   return nodes.reduce<CaseTreeItem[]>((acc, node) => {
-    const matches = node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)
+    const matches =
+      node.name.toLowerCase().includes(query) ||
+      node.id.toLowerCase().includes(query) ||
+      (node.summary?.toLowerCase().includes(query) ?? false)
     if (matches) acc.push(node)
     if (node.children.length) acc.push(...collectMatching(node.children, query))
     return acc

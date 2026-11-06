@@ -72,6 +72,19 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             found.getValue(withoutEffort.id).reasoningEffort.shouldBeNull()
         }
 
+        "save and findByIds round-trips summary and summaryMessageCount, absent by default" {
+            val ns = namespaceRepo.save(namespace())
+            val summarized = repo.save(case(ns.id).copy(summary = "Billing migration, in progress.", summaryMessageCount = 4))
+            val plain = repo.save(case(ns.id))
+
+            val found = repo.findByIds(listOf(summarized.id, plain.id)).associateBy { it.id }
+
+            found.getValue(summarized.id).summary shouldBe "Billing migration, in progress."
+            found.getValue(summarized.id).summaryMessageCount shouldBe 4
+            found.getValue(plain.id).summary.shouldBeNull()
+            found.getValue(plain.id).summaryMessageCount.shouldBeNull()
+        }
+
         "findByParent returns cases for that namespace only" {
             val ns1 = namespaceRepo.save(namespace())
             val ns2 = namespaceRepo.save(namespace())

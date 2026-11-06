@@ -32,6 +32,8 @@ data class CaseNode(
     val originCaseId: String? = null,
     val runCostThreshold: Double? = null,
     val reasoningEffort: String? = null,
+    val summary: String? = null,
+    val summaryMessageCount: Int? = null,
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
@@ -61,6 +63,8 @@ data class CaseNode(
             originCaseId = originCaseId?.let { UUID.fromString(it) },
             runCostThreshold = runCostThreshold,
             reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
+            summary = summary,
+            summaryMessageCount = summaryMessageCount,
         )
 
     companion object {
@@ -75,6 +79,8 @@ data class CaseNode(
                 originCaseId = case.originCaseId?.toString(),
                 runCostThreshold = case.runCostThreshold,
                 reasoningEffort = case.reasoningEffort?.name,
+                summary = case.summary,
+                summaryMessageCount = case.summaryMessageCount,
                 created = case.metadata.created,
                 createdBy = case.metadata.createdBy,
                 modified = case.metadata.modified,

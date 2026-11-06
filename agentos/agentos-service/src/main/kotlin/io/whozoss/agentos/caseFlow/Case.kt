@@ -65,4 +65,16 @@ data class Case(
      * decides what is sent (nothing for Anthropic and Gemini). Sub-cases do not inherit it.
      */
     val reasoningEffort: ReasoningEffort? = null,
+    /**
+     * Short LLM-written summary of what the case is about and where it stands, kept up to date by
+     * [CaseSummaryService] and used by the case search. Null until the first summary is generated.
+     *
+     * Written by the service only: REST clients cannot set it (create and update ignore it).
+     */
+    val summary: String? = null,
+    /**
+     * Number of user messages the case had when [summary] was last generated. Drives the refresh
+     * rule (a new summary once enough user messages have followed). Null when there is no summary yet.
+     */
+    val summaryMessageCount: Int? = null,
 ) : Entity
