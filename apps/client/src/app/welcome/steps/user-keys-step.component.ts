@@ -4,9 +4,10 @@ import { SetupStateService } from '../setup-state.service'
 const MIN_KEY_LENGTH = 8
 
 /**
- * Managed mode only: shown on `/welcome` instead of the loading page when the platform offers AI providers the user has no
- * global key for. Each key typed is saved as a user-global provider of the same name (it overlays the platform one);
- * the ones left empty are not set. Skippable: the keys can be added later from the AI providers page.
+ * Managed mode only: shown on `/welcome` instead of the loading page when the platform offers AI providers and the user's
+ * profile is not complete: no email yet, and/or no personal key for any of those providers. Coday cannot start without
+ * them, so the step is mandatory (no way to skip it). Each key typed is saved as a user-global provider of the same name
+ * (it overlays the platform one); one key is enough, the ones left empty are not set.
  */
 @Component({
   selector: 'app-user-keys-step',
@@ -16,6 +17,10 @@ const MIN_KEY_LENGTH = 8
 })
 export class UserKeysStepComponent {
   protected readonly state = inject(SetupStateService)
+
+  protected onEmail(event: Event): void {
+    this.state.setProfileEmail((event.target as HTMLInputElement).value)
+  }
 
   protected onKey(name: string, event: Event): void {
     this.state.setUserKey(name, (event.target as HTMLInputElement).value)
