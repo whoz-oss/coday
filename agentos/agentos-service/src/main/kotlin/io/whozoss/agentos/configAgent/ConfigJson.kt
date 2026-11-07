@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.databind.node.TextNode
 import java.security.MessageDigest
 import java.util.UUID
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 
 /** JSON helpers shared by the planner, the reader and the writer of the config agent. */
 internal object ConfigJson {
@@ -19,6 +20,18 @@ internal object ConfigJson {
     const val OP_REF_KEY = "\$op"
 
     private val canonicalMapper = ObjectMapper()
+
+    /**
+     * The name a `CREATE` [value] gives its entity: `name`, except for an AI model, which has none and is
+     * named by its alias, else its API model name.
+     */
+    fun nameOf(
+        kind: ConfigKind,
+        value: JsonNode?,
+    ): String {
+        fun text(field: String) = value?.get(field)?.takeIf { it.isTextual }?.textValue()?.trim().orEmpty()
+        return if (kind == ConfigKind.AI_MODEL) text("alias").ifEmpty { text("apiModelName") } else text("name")
+    }
 
     /** Compact JSON with object fields sorted, so equal values always hash the same. */
     fun canonical(node: JsonNode?): String = canonicalMapper.writeValueAsString(sorted(node ?: absent()))
