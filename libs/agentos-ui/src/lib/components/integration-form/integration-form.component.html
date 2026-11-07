@@ -53,11 +53,15 @@
         ></textarea>
       </ds-form-field>
 
-      <ds-form-field label="Auth Setting" controlId="integration-auth-setting">
+      <ds-form-field
+        label="Auth Setting"
+        controlId="integration-auth-setting"
+        hint="Only the name is saved. It is resolved at run time for the user running the case, the most specific layer winning (user on this namespace > namespace > user > platform), so a shared integration can rely on each user's own auth setting of that name."
+      >
         <select dsControl id="integration-auth-setting" [formControl]="authSettingNameControl">
           <option [ngValue]="null">None</option>
-          @for (name of availableAuthSettings(); track name) {
-            <option [value]="name">{{ name }}</option>
+          @for (option of authSettingOptions(); track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
           }
         </select>
       </ds-form-field>
