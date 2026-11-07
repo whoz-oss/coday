@@ -11,7 +11,7 @@ From any directory:
 ```
 
 This will:
-1. Start the Coday server on an available port (typically 3000-3010)
+1. Start the Coday server, usually on `http://localhost:3000`. If a port is already taken by another program, Coday moves to a free address by itself and prints it: nothing needs to be stopped
 2. Display the URL in your terminal
 3. Use the current directory as the default project
 
@@ -33,7 +33,7 @@ Open your browser and navigate to the displayed URL (usually `http://localhost:3
 
 ### Server Options
 
-- `--port <number>` - Specify server port (default: 3000, auto-increments if occupied)
+- `--port <number>` - Choose the address port yourself (default: Coday picks 3000, or the next free address). When you choose it, it is strict: if it is taken, Coday stops and names the program holding it. `PORT=<number>` does the same
 - `--auth` - Enable authentication. Supports two identity sources (tried in order):
   1. **Cloudflare Access** — decodes the `Cf-Access-Jwt-Assertion` header JWT and uses its `email` claim.
   2. **Reverse-proxy header** — falls back to the `x-forwarded-email` header set by an upstream auth proxy.
@@ -65,7 +65,7 @@ npx --yes @whoz-oss/coday-web --local
 npx --yes @whoz-oss/coday-web --multi
 
 # Debug mode with custom port
-npx --yes @whoz-oss/coday-web --debug --port 3005
+npx --yes @whoz-oss/coday-web --debug --port 3100
 
 # Execute a prompt immediately
 npx --yes @whoz-oss/coday-web --prompt "Explain this project"

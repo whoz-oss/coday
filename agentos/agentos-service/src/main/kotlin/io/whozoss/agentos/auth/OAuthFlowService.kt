@@ -14,7 +14,13 @@ import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import jakarta.annotation.PreDestroy
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mu.KLogging
 import okhttp3.FormBody
@@ -42,6 +48,9 @@ class OAuthFlowService(
     private val config: OAuthConfigProperties,
 ) {
     private val redirectUri: String get() = config.redirectUri
+
+    /** Runs the flows started without a case (see [startInteractiveConnection]); they outlive the request that started them. */
+    private val connectScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun resolveOAuthCredential(
         userId: UUID,
@@ -99,6 +108,58 @@ class OAuthFlowService(
         return runInteractiveFlow(userId, authSetting, namespaceId, caseId, agentId, agentName, emitEvent)
     }
 
+    /** Whether an interactive authorization can run at all: it needs the redirect URI the provider calls back. */
+    fun isInteractiveAvailable(): Boolean = redirectUri.isNotBlank()
+
+    /**
+     * The user's stored connection to [authSettingId] when it can still serve a run: its access token is
+     * valid, or expired but refreshable. Null otherwise, which is where a run would ask for an authorization.
+     */
+    fun findUsableCredential(
+        userId: UUID,
+        authSettingId: UUID,
+    ): Credential? =
+        credentialService
+            .resolve(userId, authSettingId)
+            ?.takeIf { !isExpired(it) || !it.data["refreshToken"].isNullOrBlank() }
+
+    /**
+     * Starts an authorization for [userId] outside any case and returns the URL the user must open.
+     *
+     * The flow then goes on in the background exactly as one started by an agent: the popup hands the code
+     * to `/api/oauth/callback`, which unblocks the flow, which exchanges it and stores the credential
+     * (replacing the previous one, so an abandoned reconnection leaves the existing connection untouched).
+     * The caller learns the outcome by reading the connection state, not from this call.
+     *
+     * @return the authorization URL, or null when the flow could not start (endpoints not resolvable, dynamic
+     *   registration refused...): the cause is in the logs.
+     */
+    suspend fun startInteractiveConnection(
+        userId: UUID,
+        authSetting: AuthSetting,
+    ): String? {
+        val authorizationUrl = CompletableDeferred<String?>()
+        connectScope.launch {
+            try {
+                runInteractiveFlowCore(userId, authSetting) { authorizationUrl.complete(it) }
+                // A flow that ended before announcing any URL failed to start: release the caller.
+                authorizationUrl.complete(null)
+            } catch (e: CancellationException) {
+                authorizationUrl.complete(null)
+                throw e
+            } catch (e: Exception) {
+                logger.error("[OAuth] Connection flow failed for ${authSetting.name}", e)
+                authorizationUrl.complete(null)
+            }
+        }
+        return authorizationUrl.await()
+    }
+
+    @PreDestroy
+    fun shutdown() {
+        connectScope.cancel()
+    }
+
     private suspend fun runInteractiveFlow(
         userId: UUID,
         authSetting: AuthSetting,
@@ -107,6 +168,30 @@ class OAuthFlowService(
         agentId: UUID,
         agentName: String,
         emitEvent: (CaseEvent) -> CaseEvent,
+    ): Credential? =
+        runInteractiveFlowCore(userId, authSetting) { authorizationUrl ->
+            emitEvent(
+                QuestionEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                    question = authorizationUrl,
+                    options = null,
+                    questionType = QuestionType.OAUTH_AUTHORIZE,
+                ),
+            )
+        }
+
+    /**
+     * The interactive authorization itself, whoever started it. [announce] is handed the authorization URL
+     * once the flow is registered and waiting for the code: an agent run puts it in a [QuestionEvent], a
+     * direct connection returns it to the caller.
+     */
+    private suspend fun runInteractiveFlowCore(
+        userId: UUID,
+        authSetting: AuthSetting,
+        announce: (String) -> Unit,
     ): Credential? {
         logger.debug { "[OAuth] runInteractiveFlow: starting for ${authSetting.name}, userId=$userId" }
 
@@ -171,17 +256,7 @@ class OAuthFlowService(
                 resource = endpoints.resource,
             )
         val future = pendingRegistry.register(state, userId)
-        emitEvent(
-            QuestionEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                agentId = agentId,
-                agentName = agentName,
-                question = authorizationUrl,
-                options = null,
-                questionType = QuestionType.OAUTH_AUTHORIZE,
-            ),
-        )
+        announce(authorizationUrl)
         logger.info { "[OAuth] Interactive flow started for user=$userId state=$state" }
 
         val code: String? =

@@ -51,7 +51,7 @@
           <app-folder-step />
         }
         @case ('progress') {
-          @if (state.mode() === 'loading' && state.needsUserKeys()) {
+          @if (state.mode() === 'loading' && state.needsProfile()) {
             <app-user-keys-step />
           } @else {
             <app-progress-step />

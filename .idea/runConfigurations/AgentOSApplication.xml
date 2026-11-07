@@ -1,6 +1,12 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="AgentOSApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
     <option name="ACTIVE_PROFILES" value="development" />
+    <envs>
+      <!-- DEV block of the Coday port scheme (apps/server/src/lib/runtime/port-scheme.json): AgentOS +5, embedded Neo4j Bolt +7. Guarded by port-scheme-consistency.spec.ts -->
+      <env name="SERVER_PORT" value="4005" />
+      <env name="AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT" value="4007" />
+      <env name="SPRING_NEO4J_URI" value="bolt://localhost:4007" />
+    </envs>
     <module name="coday.agentos-service.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/agentos" />

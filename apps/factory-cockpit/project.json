@@ -1,6 +1,7 @@
 {
   "name": "factory-cockpit",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "// serve port": "4002 = dev base + factoryCockpit offset of apps/server/src/lib/runtime/port-scheme.json. Angular cannot compute it: guarded by apps/server/src/lib/runtime/port-scheme-consistency.spec.ts.",
   "projectType": "application",
   "prefix": "sf",
   "sourceRoot": "apps/factory-cockpit/src",
@@ -69,7 +70,7 @@
       "executor": "@angular/build:dev-server",
       "defaultConfiguration": "development",
       "options": {
-        "port": 4300,
+        "port": 4002,
         "host": "localhost"
       },
       "configurations": {

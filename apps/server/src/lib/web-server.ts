@@ -23,7 +23,7 @@ import { applyProxyIdentity, decideProxyIdentity } from './proxy-identity'
 import { resolveUsername } from './resolve-username'
 import { createIdentityProvider } from './runtime/identity'
 import { isManagedFactoryDisabled } from './runtime/factory-option'
-import { AGENTOS_DEFAULT_PORT, FACTORY_DEFAULT_PORT } from './runtime/ports'
+import { portsFor, profileBase } from './runtime/port-scheme'
 import { readState } from './runtime/state'
 import { createSetupRouter } from './setup/routes'
 import { validateAgentOsUrl } from './validate-agentos-url'
@@ -75,9 +75,10 @@ export function createWebApp({ codayOptions, setupEnabled }: WebAppOptions): exp
 
   const managedUrl = (key: 'agentos' | 'factory', fallbackPort: number): string =>
     `http://127.0.0.1:${readState(configDir)?.ports[key] ?? fallbackPort}`
-  // Before provisioning wrote state.json, aim at the packaged-mode ports (never the dev ones, 8124/8141).
-  const agentosTarget = (): string => AGENTOS_URL_ENV ?? managedUrl('agentos', AGENTOS_DEFAULT_PORT)
-  const factoryTarget = (): string => FACTORY_URL_ENV ?? managedUrl('factory', FACTORY_DEFAULT_PORT)
+  // Before provisioning wrote state.json, aim at the ports of the profile block (see runtime/port-scheme.ts).
+  const profilePorts = portsFor(profileBase())
+  const agentosTarget = (): string => AGENTOS_URL_ENV ?? managedUrl('agentos', profilePorts.agentos)
+  const factoryTarget = (): string => FACTORY_URL_ENV ?? managedUrl('factory', profilePorts.factory)
 
   // Identity of proxied requests when `--auth` is off: env var, else the first-run identity (read per request).
   const currentIdentity = createIdentityProvider(configDir)
@@ -166,8 +167,10 @@ export function createWebApp({ codayOptions, setupEnabled }: WebAppOptions): exp
     //    (baseHref), so the full path must be preserved.
     //  - With `ws: true` each proxy also subscribes to the server's WebSocket `upgrade` events, where
     //    only `pathFilter` applies. Disjoint filters keep each app's HMR socket routed to its dev server.
-    const ANGULAR_DEV_SERVER = `http://localhost:${process.env.ANGULAR_CLIENT_PORT ?? '4200'}`
-    const FACTORY_COCKPIT_DEV_SERVER = `http://localhost:${process.env.FACTORY_COCKPIT_PORT ?? '4300'}`
+    // Dev ports: client base+offsets.client, cockpit base+offsets.factoryCockpit (port-scheme.json): INTERNAL dev servers,
+    // reached only through this Express.
+    const ANGULAR_DEV_SERVER = `http://localhost:${process.env.ANGULAR_CLIENT_PORT ?? profilePorts.client}`
+    const FACTORY_COCKPIT_DEV_SERVER = `http://localhost:${process.env.FACTORY_COCKPIT_PORT ?? profilePorts.factoryCockpit}`
     const isFactoryPath = (p: string) => p === '/factory' || p.startsWith('/factory/')
     const isBackendPath = (p: string) => p.startsWith('/api') || p.startsWith('/events')
 

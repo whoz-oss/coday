@@ -16,6 +16,10 @@ import { Observable } from 'rxjs'
 // @ts-ignore
 import { ApiKeyAuthSetting } from '../model/api-key-auth-setting'
 // @ts-ignore
+import { AuthSettingConnectResponse } from '../model/auth-setting-connect-response'
+// @ts-ignore
+import { AuthSettingConnection } from '../model/auth-setting-connection'
+// @ts-ignore
 import { BasicAuthAuthSetting } from '../model/basic-auth-auth-setting'
 // @ts-ignore
 import { BearerTokenAuthSetting } from '../model/bearer-token-auth-setting'
@@ -47,6 +51,86 @@ export class AuthSettingControllerService extends BaseService {
     @Optional() configuration?: Configuration
   ) {
     super(basePath, configuration)
+  }
+
+  /**
+   * Connect my account to an AuthSetting
+   * Starts an OAuth authorization for the caller and returns the URL to open. Only OAuth settings can be connected (400 otherwise); 422 when the instance has no OAuth redirect URI configured or the authorization could not start. A new authorization replaces an existing connection only once it completes.
+   * @param id
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public connectAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<AuthSettingConnectResponse>
+  public connectAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<AuthSettingConnectResponse>>
+  public connectAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<AuthSettingConnectResponse>>
+  public connectAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling connectAuthSetting.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/auth-settings/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/connect`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<AuthSettingConnectResponse>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
   }
 
   /**
@@ -379,6 +463,86 @@ export class AuthSettingControllerService extends BaseService {
   }
 
   /**
+   * Get my connection state for an AuthSetting
+   * Tells whether the caller holds a stored connection that can still serve a run. Pass the namespaceId the setting is used from: a connection belongs to the layer the runtime resolves the setting name to, which depends on the namespace.
+   * @param id
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getConnectionAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<AuthSettingConnection>
+  public getConnectionAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<AuthSettingConnection>>
+  public getConnectionAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<AuthSettingConnection>>
+  public getConnectionAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling getConnectionAuthSetting.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/auth-settings/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/connection`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<AuthSettingConnection>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
    * List AuthSettings by scope
    * Scope is inferred from the query params:  | query                            | mode             | required permission                            | |----------------------------------|------------------|------------------------------------------------| | (no params)                      | all caller\&#39;s     | authenticated                                  | | &#x60;?namespaceId&#x3D;none&#x60; (no userId)  | platform         | authenticated                                  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&#x60;            | NS-shared        | READ on the namespace (empty list if missing)  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&amp;userId&#x3D;me&#x60;  | user × namespace | authenticated                                  | | &#x60;?namespaceId&#x3D;none&amp;userId&#x3D;me&#x60;    | user-global      | authenticated                                  | | &#x60;?userId&#x3D;me&#x60; (no namespace)      | all caller\&#39;s     | authenticated                                  |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400. &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;.
    * @param namespaceId
@@ -444,6 +608,86 @@ export class AuthSettingControllerService extends BaseService {
     let localVarPath = `/api/auth-settings`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<ListAuthSetting200ResponseInner>>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Reset my connection to an AuthSetting
+   * Deletes the caller\&#39;s own stored credential for this AuthSetting (OAuth tokens), so the next use of an integration bound to it asks for a new authorization. Other users\&#39; credentials are never touched. Requires READ on the AuthSetting; idempotent (204 even when the caller had no credential).
+   * @param id
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public resetMyCredentialAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public resetMyCredentialAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public resetMyCredentialAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public resetMyCredentialAuthSetting(
+    id: string,
+    namespaceId?: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling resetMyCredentialAuthSetting.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/auth-settings/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/credential`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       params: localVarQueryParameters,
       responseType: <any>responseType_,
