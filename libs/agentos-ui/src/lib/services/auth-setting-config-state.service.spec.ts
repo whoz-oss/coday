@@ -1,8 +1,12 @@
-import { TestBed } from '@angular/core/testing'
+import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { AuthSettingControllerService } from '@whoz-oss/agentos-api-client'
-import { of } from 'rxjs'
+import { of, throwError } from 'rxjs'
 import { UserStateService } from './user-state.service'
-import { AuthSettingConfigStateService } from './auth-setting-config-state.service'
+import {
+  AuthSettingConfigStateService,
+  CONNECTION_POLL_MS,
+  CONNECTION_WAIT_MS,
+} from './auth-setting-config-state.service'
 
 /**
  * Unit tests for the authType discriminant translation layer in AuthSettingConfigStateService.
@@ -21,6 +25,9 @@ describe('AuthSettingConfigStateService — authType translation', () => {
     getByIdAuthSetting: jest.Mock
     listAuthSetting: jest.Mock
     deleteAuthSetting: jest.Mock
+    resetMyCredentialAuthSetting: jest.Mock
+    getConnectionAuthSetting: jest.Mock
+    connectAuthSetting: jest.Mock
   }
   let userState: { currentUser: jest.Mock }
 
@@ -31,6 +38,9 @@ describe('AuthSettingConfigStateService — authType translation', () => {
       getByIdAuthSetting: jest.fn().mockReturnValue(of({ authType: 'BEARER_TOKEN', name: 'loaded' })),
       listAuthSetting: jest.fn().mockReturnValue(of([])),
       deleteAuthSetting: jest.fn().mockReturnValue(of(undefined)),
+      resetMyCredentialAuthSetting: jest.fn().mockReturnValue(of(undefined)),
+      getConnectionAuthSetting: jest.fn().mockReturnValue(of({ connected: false })),
+      connectAuthSetting: jest.fn().mockReturnValue(of({ authorizationUrl: 'https://provider.example.com/auth' })),
     }
     userState = {
       currentUser: jest.fn().mockReturnValue({ id: 'user-1' }),
@@ -196,6 +206,143 @@ describe('AuthSettingConfigStateService — authType translation', () => {
       service.loadNamespaceSettings('ns-1').subscribe((r) => (result = r))
 
       expect(result![0].authType).toBe('OAuthCustomAuthSetting')
+    })
+  })
+
+  // ── Connection reset ────────────────────────────────────────────────────
+
+  describe('resetCredential()', () => {
+    it('calls the reset endpoint for the given auth setting and namespace, without refreshing the lists', () => {
+      let done = false
+
+      service.resetCredential('as-1', 'ns-1').subscribe(() => (done = true))
+
+      expect(controller.resetMyCredentialAuthSetting).toHaveBeenCalledWith('as-1', 'ns-1')
+      expect(done).toBe(true)
+      expect(controller.listAuthSetting).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── Direct connection ────────────────────────────────────────────────────
+
+  describe('getConnection()', () => {
+    it('reads the connection state of the setting from the namespace it is used in', () => {
+      controller.getConnectionAuthSetting.mockReturnValue(of({ connected: true, connectedAt: '2026-01-01T00:00:00Z' }))
+      let result: any
+
+      service.getConnection('as-1', 'ns-1').subscribe((r) => (result = r))
+
+      expect(controller.getConnectionAuthSetting).toHaveBeenCalledWith('as-1', 'ns-1')
+      expect(result).toEqual({ connected: true, connectedAt: '2026-01-01T00:00:00Z' })
+    })
+  })
+
+  describe('connect()', () => {
+    const T0 = '2026-01-01T00:00:00Z'
+    const T1 = '2026-01-01T00:05:00Z'
+    let outcome: string | undefined
+    let authorize: jest.Mock
+
+    beforeEach(() => {
+      outcome = undefined
+      authorize = jest.fn()
+    })
+
+    it('hands the authorization URL over, then reports connected once a newer connection is stored', fakeAsync(() => {
+      controller.getConnectionAuthSetting
+        .mockReturnValueOnce(of({ connected: true, connectedAt: T0 })) // state before the flow
+        .mockReturnValueOnce(of({ connected: true, connectedAt: T0 })) // first poll: still the old one
+        .mockReturnValue(of({ connected: true, connectedAt: T1 })) // second poll: the new one
+
+      service.connect('as-1', 'ns-1', authorize, () => false).subscribe((o) => (outcome = o))
+
+      expect(controller.connectAuthSetting).toHaveBeenCalledWith('as-1', 'ns-1')
+      expect(authorize).toHaveBeenCalledWith('https://provider.example.com/auth')
+      tick(CONNECTION_POLL_MS)
+      expect(outcome).toBeUndefined()
+      tick(CONNECTION_POLL_MS)
+      expect(outcome).toBe('connected')
+    }))
+
+    it('counts any connection as new when there was none before', fakeAsync(() => {
+      controller.getConnectionAuthSetting
+        .mockReturnValueOnce(of({ connected: false }))
+        .mockReturnValue(of({ connected: true, connectedAt: T0 }))
+
+      service.connect('as-1', 'ns-1', authorize, () => false).subscribe((o) => (outcome = o))
+      tick(CONNECTION_POLL_MS)
+
+      expect(outcome).toBe('connected')
+    }))
+
+    it('does not start a flow when the state before it cannot be read', () => {
+      controller.getConnectionAuthSetting.mockReturnValue(throwError(() => ({ status: 500 })))
+      let failed = false
+
+      service.connect('as-1', 'ns-1', authorize, () => false).subscribe({ error: () => (failed = true) })
+
+      // Without it a reconnection cannot be told from the connection it replaces, and a flow started anyway
+      // would stay pending with nobody to finish it.
+      expect(failed).toBe(true)
+      expect(controller.connectAuthSetting).not.toHaveBeenCalled()
+      expect(authorize).not.toHaveBeenCalled()
+    })
+
+    it('keeps waiting through a failed poll instead of reporting a failure', fakeAsync(() => {
+      controller.getConnectionAuthSetting
+        .mockReturnValueOnce(of({ connected: false }))
+        .mockReturnValueOnce(throwError(() => ({ status: 502 })))
+        .mockReturnValue(of({ connected: true, connectedAt: T1 }))
+
+      service.connect('as-1', 'ns-1', authorize, () => false).subscribe((o) => (outcome = o))
+      tick(CONNECTION_POLL_MS)
+      expect(outcome).toBeUndefined()
+      tick(CONNECTION_POLL_MS)
+      expect(outcome).toBe('connected')
+    }))
+
+    it('reports abandoned once the popup stays closed without a new connection, after a grace period', fakeAsync(() => {
+      controller.getConnectionAuthSetting.mockReturnValue(of({ connected: true, connectedAt: T0 }))
+
+      service.connect('as-1', 'ns-1', authorize, () => true).subscribe((o) => (outcome = o))
+      tick(CONNECTION_POLL_MS * 2)
+      // Closing the popup is not failing: the backend may still be exchanging the code.
+      expect(outcome).toBeUndefined()
+      tick(CONNECTION_POLL_MS)
+
+      expect(outcome).toBe('abandoned')
+    }))
+
+    it('prefers a new connection over a closed popup', fakeAsync(() => {
+      controller.getConnectionAuthSetting
+        .mockReturnValueOnce(of({ connected: true, connectedAt: T0 }))
+        .mockReturnValue(of({ connected: true, connectedAt: T1 }))
+
+      service.connect('as-1', 'ns-1', authorize, () => true).subscribe((o) => (outcome = o))
+      tick(CONNECTION_POLL_MS)
+
+      expect(outcome).toBe('connected')
+    }))
+
+    it('gives up after the wait the backend allows', fakeAsync(() => {
+      controller.getConnectionAuthSetting.mockReturnValue(of({ connected: true, connectedAt: T0 }))
+
+      service.connect('as-1', 'ns-1', authorize, () => false).subscribe((o) => (outcome = o))
+      tick(CONNECTION_WAIT_MS - CONNECTION_POLL_MS)
+      expect(outcome).toBeUndefined()
+      tick(CONNECTION_POLL_MS)
+
+      expect(outcome).toBe('timeout')
+    }))
+
+    it('does not poll nor hand any URL over when the authorization cannot start', () => {
+      controller.connectAuthSetting.mockReturnValue(throwError(() => ({ status: 422 })))
+      let failed = false
+
+      service.connect('as-1', 'ns-1', authorize, () => false).subscribe({ error: () => (failed = true) })
+
+      expect(failed).toBe(true)
+      expect(authorize).not.toHaveBeenCalled()
     })
   })
 })
