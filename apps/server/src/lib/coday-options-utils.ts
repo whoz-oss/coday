@@ -9,6 +9,8 @@ export interface Argv {
   configDir?: string
   coday_config_dir?: string
   host?: string
+  /** `--port`: an explicit Express port, strict. */
+  port?: number
   /** yargs boolean negation: `--no-open` gives `open: false`. */
   open?: boolean
   profile?: string
@@ -34,6 +36,8 @@ export interface CodayOptions {
    * interfaces as they always did.
    */
   host: string
+  /** `--port`: explicit Express port (strict: taken, the start fails). Unset: the port scheme decides. */
+  port?: number
   /** False with `--no-open` (the Nx `server` task then does not open the browser). Env: CODAY_NO_OPEN. */
   noOpen: boolean
   /** `--profile laptop|managed` / `CODAY_PROFILE`: forces the runtime profile (see runtime/profile.ts). Unset: derived. */
@@ -66,6 +70,10 @@ export function parseCodayOptions(
       type: 'string',
       description: 'Interface to listen on (default 127.0.0.1; 0.0.0.0 with --auth). Env: CODAY_HOST',
     })
+    .option('port', {
+      type: 'number',
+      description: 'Express port, strict (default: the port scheme of the profile, with block fallback). Env: PORT',
+    })
     .option('open', {
       type: 'boolean',
       description: 'Open the browser when the server is up (Nx mode); --no-open disables it. Env: CODAY_NO_OPEN',
@@ -88,6 +96,7 @@ export function parseCodayOptions(
     configDir,
     auth,
     host,
+    ...(Number.isInteger(argv.port) ? { port: argv.port } : {}),
     noOpen: argv.open === false,
     ...(profile ? { profile } : {}),
   }

@@ -1,6 +1,8 @@
 /**
  * Fast, local-only provisioning shared by the Nx `provision` task and the in-process orchestrator:
- * decide the profile, generate secrets, inspect Java, choose the ports, write state.json.
+ * decide the profile, generate secrets, inspect Java, record the ports, write state.json.
+ *
+ * The ports are CHOSEN by the caller (`chooseStackPorts`, ports.ts: one block for the whole stack) and recorded here.
  *
  * It deliberately does NOT download the JARs: the server (and its first-run wizard) must come up
  * immediately, and the wizard shows the download progress. The JAR sets are fetched by the
@@ -8,7 +10,7 @@
  */
 
 import { getAgentosVersion, getFactoryVersion } from '../version'
-import { pickPorts, PreferredPorts } from './ports'
+import { PickedPorts } from './ports'
 import { inspectJava } from './java'
 import { borrowsRuntime, decideProfile, parseForcedProfile, ProfileDecision, ProfileInput } from './profile'
 import { ensureSecrets } from './secrets'
@@ -16,10 +18,10 @@ import { initialState, RuntimeState, StatePatch, updateState, readState } from '
 
 export interface ProvisionInput extends ProfileInput {
   orchestrator: RuntimeState['orchestrator']
-  /** Port the Express server will listen on (already free). */
-  expressPort: number
-  /** Preferred ports of the services (see `parsePreferredPorts`); the packaged defaults when absent. */
-  preferredPorts?: PreferredPorts
+  /** The ports of the stack (already chosen, see `chooseStackPorts`). */
+  ports: PickedPorts
+  /** Block the ports were chosen in, remembered for the next start (undefined: the OS assigned them). */
+  portBlock?: number
   log?: (message: string) => void
 }
 
@@ -53,7 +55,7 @@ export async function provision(input: ProvisionInput): Promise<ProvisionResult>
   if (java.state !== 'ok') log(`Java: ${java.state} - ${java.hint}`)
   else log(`Java: ${java.version}`)
 
-  const ports = await pickPorts(input.expressPort, undefined, input.preferredPorts)
+  const ports = input.ports
   const patch: StatePatch = {
     orchestrator: input.orchestrator,
     profile: decision.profile,
@@ -63,6 +65,7 @@ export async function provision(input: ProvisionInput): Promise<ProvisionResult>
       agentosBolt: ports.agentosBolt,
       factory: ports.factory,
     },
+    portBlock: input.portBlock,
     versions: { agentos: getAgentosVersion(), factory: getFactoryVersion() },
     java,
     provisioned: true,

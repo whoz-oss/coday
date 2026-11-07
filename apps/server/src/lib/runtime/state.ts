@@ -26,6 +26,8 @@ export interface RuntimeState {
   orchestrator: 'nx' | 'in-process'
   profile: RuntimeProfile
   ports: { express?: number; agentos?: number; agentosBolt?: number; factory?: number }
+  /** Block base the stack ran on at its last start (see ports.ts): tried first at the next start when still free. */
+  portBlock?: number
   versions?: { agentos: string; factory: string }
   java?: JavaStatus
   /** Written by the task that owns the service (agentos task -> agentos, factory task -> factory). */

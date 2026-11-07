@@ -4,7 +4,6 @@ import * as path from 'path'
 import { inspectJava, javaInstallHint, parseJavaVersionOutput } from './java'
 import { agentosDataDir } from './paths'
 import { borrowsRuntime, decideProfile, parseForcedProfile } from './profile'
-import { parsePreferredPorts, pickPorts } from './ports'
 import { initialState, mergeState, overallDownload, readState, updateState } from './state'
 import {
   agentosDatabaseExists,
@@ -118,6 +117,12 @@ describe('state', () => {
     })
   })
 
+  it('remembers the port block of the last start next to the ports', () => {
+    updateState(configDir, { ports: { express: 3020 }, portBlock: 3020 }, initialState('nx', 'laptop'))
+    updateState(configDir, { downloads: { agentos: { state: 'running' } } })
+    expect(readState(configDir)).toMatchObject({ ports: { express: 3020 }, portBlock: 3020 })
+  })
+
   it('combines downloads: done only when all done, error wins', () => {
     expect(overallDownload({})).toEqual({ state: 'idle' })
     expect(overallDownload({ agentos: { state: 'done' }, factory: { state: 'done' } })).toEqual({
@@ -195,105 +200,6 @@ describe('java', () => {
 
   it('has a hint per platform', () => {
     expect(javaInstallHint('win32')).toContain('winget')
-  })
-})
-
-describe('pickPorts', () => {
-  const identityFind = async (start: number) => start
-
-  it('prefers the packaged-mode ports: AgentOS 8224, Bolt 7788, Factory 8241', async () => {
-    expect(await pickPorts(3000, identityFind)).toEqual({
-      express: 3000,
-      agentos: 8224,
-      agentosBolt: 7788,
-      factory: 8241,
-    })
-  })
-
-  it('never prefers the dev ports (AgentOS 8124, Factory 8141, Bolt 7688), reserved for dev mode', async () => {
-    const ports = await pickPorts(3000, identityFind)
-    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(8124)
-    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(8141)
-    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(7688)
-  })
-
-  it('leaves the dev ports alone: a dev stack on 8124/8141/7688 changes nothing', async () => {
-    const busy = new Set([8124, 8141, 7688])
-    const find = async (start: number) => {
-      let port = start
-      while (busy.has(port)) port++
-      return port
-    }
-    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8224, agentosBolt: 7788, factory: 8241 })
-  })
-
-  it('falls back to the next free port when the preferred one is taken', async () => {
-    const busy = new Set([8224, 7788])
-    const find = async (start: number) => {
-      let port = start
-      while (busy.has(port)) port++
-      return port
-    }
-    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8225, agentosBolt: 7789, factory: 8241 })
-  })
-
-  it('never gives two services the same port (Express on the AgentOS default)', async () => {
-    const ports = await pickPorts(8224, identityFind)
-    expect(ports).toEqual({ express: 8224, agentos: 8225, agentosBolt: 7788, factory: 8241 })
-    expect(new Set(Object.values(ports)).size).toBe(4)
-  })
-
-  it('never gives two services the same port (Express on the Factory default)', async () => {
-    const ports = await pickPorts(8241, identityFind)
-    expect(ports).toEqual({ express: 8241, agentos: 8224, agentosBolt: 7788, factory: 8242 })
-    expect(new Set(Object.values(ports)).size).toBe(4)
-  })
-
-  it('bumps past a port already assigned to another service', async () => {
-    // Express on 7788: Bolt cannot take it; AgentOS on 8224 and Factory on 8241 are unaffected.
-    const ports = await pickPorts(7788, identityFind)
-    expect(ports).toEqual({ express: 7788, agentos: 8224, agentosBolt: 7789, factory: 8241 })
-    expect(new Set(Object.values(ports)).size).toBe(4)
-  })
-})
-
-describe('preferred ports (web:local next to coday-web)', () => {
-  const identityFind = async (start: number) => start
-
-  it('parses the env vars and ignores invalid values', () => {
-    expect(parsePreferredPorts({ CODAY_AGENTOS_PORT: '8324', CODAY_FACTORY_PORT: '8341' })).toEqual({
-      agentos: 8324,
-      factory: 8341,
-    })
-    expect(parsePreferredPorts({ CODAY_AGENTOS_BOLT_PORT: '7888' })).toEqual({ agentosBolt: 7888 })
-    expect(
-      parsePreferredPorts({ CODAY_AGENTOS_PORT: 'abc', CODAY_FACTORY_PORT: '0', CODAY_AGENTOS_BOLT_PORT: '70000' })
-    ).toEqual({})
-    expect(parsePreferredPorts({})).toEqual({})
-  })
-
-  it('replaces the packaged defaults', async () => {
-    expect(await pickPorts(3001, identityFind, { agentos: 8324, agentosBolt: 7888, factory: 8341 })).toEqual({
-      express: 3001,
-      agentos: 8324,
-      agentosBolt: 7888,
-      factory: 8341,
-    })
-  })
-
-  it('keeps the default for a service without preference, and still falls back when a preferred port is taken', async () => {
-    const busy = new Set([8324])
-    const find = async (start: number) => {
-      let port = start
-      while (busy.has(port)) port++
-      return port
-    }
-    expect(await pickPorts(3001, find, { agentos: 8324 })).toEqual({
-      express: 3001,
-      agentos: 8325,
-      agentosBolt: 7788,
-      factory: 8241,
-    })
   })
 })
 
