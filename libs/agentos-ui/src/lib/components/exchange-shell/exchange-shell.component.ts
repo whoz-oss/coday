@@ -8,14 +8,15 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
-import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
 import { canViewFile } from '../../services/exchange-content.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { ExchangeDrawerComponent } from '../exchange-drawer/exchange-drawer.component'
+import { ExchangeDrawerComponent, ExchangeManifestStatus } from '../exchange-drawer/exchange-drawer.component'
 
 /**
  * ExchangeShellComponent — smart container for the file-exchange drawer panel.
@@ -49,6 +50,14 @@ export class ExchangeShellComponent {
   protected readonly contentStatus = signal<'loading' | 'ready' | 'error'>('loading')
   protected readonly canViewSelected = signal<boolean>(true)
   protected readonly actionError = signal<string | null>(null)
+  protected readonly caseManifest = signal<ExchangeFileEntry[] | null>(null)
+  protected readonly namespaceManifest = signal<ExchangeFileEntry[] | null>(null)
+  protected readonly caseManifestStatus = signal<ExchangeManifestStatus>('idle')
+  protected readonly namespaceManifestStatus = signal<ExchangeManifestStatus>('idle')
+  private readonly caseQuery = signal('')
+  private readonly namespaceQuery = signal('')
+  private readonly caseRetry = signal(0)
+  private readonly namespaceRetry = signal(0)
 
   // ── Delete confirmation ─────────────────────────────────────────────────────
   protected readonly pendingDelete = signal<ExchangeFileRef | null>(null)
@@ -62,6 +71,8 @@ export class ExchangeShellComponent {
 
   /** The case currently initialised, so an unrelated query-param change does not re-init. */
   private activeCaseId: string | null = null
+  private activeNamespaceId: string | null = null
+  private selectionGeneration = 0
 
   protected readonly environmentCaseId = signal<string | null>(null)
 
@@ -78,17 +89,70 @@ export class ExchangeShellComponent {
       if (namespaceId && caseId) {
         // Guard on the case actually changing (like case-chat): a re-emission for some other query
         // param must not wipe the open file and double-refetch both manifests.
-        if (caseId === this.activeCaseId) return
+        if (caseId === this.activeCaseId && namespaceId === this.activeNamespaceId) return
+        if (namespaceId !== this.activeNamespaceId) {
+          this.namespaceManifest.set(null)
+          this.namespaceManifestStatus.set(this.namespaceQuery() ? 'loading' : 'idle')
+        }
         this.activeCaseId = caseId
+        this.activeNamespaceId = namespaceId
         this.resetSelection()
+        this.caseManifest.set(null)
+        this.caseManifestStatus.set(this.caseQuery() ? 'loading' : 'idle')
         this.state.initializeForCase(namespaceId, caseId)
       } else if (this.activeCaseId !== null) {
         this.activeCaseId = null
+        this.activeNamespaceId = null
+        this.resetSelection()
+        this.caseManifest.set(null)
+        this.namespaceManifest.set(null)
         this.state.clear()
       }
     })
     // Release the shared exchange state when this shell is torn down.
     effect((onCleanup) => onCleanup(() => this.state.clear()))
+    // Revoke only the selected scope; the other scope and its filter remain untouched.
+    effect(() => {
+      const ref = this.selectedFile()
+      if (ref && this.scopeForbidden(ref.scope)) this.clearSelection()
+    })
+    for (const scope of [ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE]) {
+      const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+      const query = isCase ? this.caseQuery : this.namespaceQuery
+      const retry = isCase ? this.caseRetry : this.namespaceRetry
+      const version = isCase ? this.state.caseManifestVersion : this.state.namespaceManifestVersion
+      const files = isCase ? this.caseManifest : this.namespaceManifest
+      const status = isCase ? this.caseManifestStatus : this.namespaceManifestStatus
+      effect((onCleanup) => {
+        const active = query()
+        const generation = version()
+        retry()
+        if (!active) { files.set(null); status.set('idle'); return }
+        files.set(null)
+        status.set('loading')
+        const subscription = untracked(() => this.state.fileManifest(scope)).subscribe({
+          next: (result) => {
+            if (version() !== generation || !query()) return
+            files.set(result)
+            status.set('ready')
+          },
+          error: () => {
+            if (version() !== generation || !query()) return
+            files.set(null)
+            status.set('error')
+          },
+        })
+        onCleanup(() => subscription.unsubscribe())
+      })
+    }
+  }
+
+  protected onFilterChanged(event: { scope: ExchangeScope; query: string }): void {
+    ;(event.scope === ExchangeFileEntryScopeEnum.CASE ? this.caseQuery : this.namespaceQuery).set(event.query)
+  }
+
+  protected onFilterRetry(scope: ExchangeScope): void {
+    ;(scope === ExchangeFileEntryScopeEnum.CASE ? this.caseRetry : this.namespaceRetry).update((n) => n + 1)
   }
 
   // ── View ──────────────────────────────────────────────────────────────────────
@@ -102,6 +166,8 @@ export class ExchangeShellComponent {
   }
 
   protected onFileSelected(ref: ExchangeFileRef): void {
+    if (this.scopeForbidden(ref.scope)) return
+    const generation = ++this.selectionGeneration
     this.selectedFile.set(ref)
     this.selectedContent.set(null)
     const file = this.findFile(ref)
@@ -117,12 +183,14 @@ export class ExchangeShellComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (content) => {
-          if (!this.isStillSelected(ref)) return
+          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope))
+            return
           this.selectedContent.set(content.content)
           this.contentStatus.set('ready')
         },
         error: () => {
-          if (!this.isStillSelected(ref)) return
+          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope))
+            return
           this.contentStatus.set('error')
         },
       })
@@ -203,6 +271,7 @@ export class ExchangeShellComponent {
   }
 
   private clearSelection(): void {
+    this.selectionGeneration++
     this.selectedFile.set(null)
     this.selectedContent.set(null)
     this.contentStatus.set('loading')
@@ -214,9 +283,16 @@ export class ExchangeShellComponent {
     this.actionError.set(null)
   }
 
-  private findFile(ref: ExchangeFileRef): ExchangeDirectoryEntry | undefined {
-    const files = ref.scope === ExchangeFileEntryScopeEnum.CASE ? this.state.caseFiles() : this.state.namespaceFiles()
-    return files.find((f) => f.path === ref.path)
+  private findFile(ref: ExchangeFileRef): { name?: string; filename?: string; size?: number } | undefined {
+    const isCase = ref.scope === ExchangeFileEntryScopeEnum.CASE
+    const files = isCase ? this.state.caseFiles() : this.state.namespaceFiles()
+    const manifest = isCase ? this.caseManifest() : this.namespaceManifest()
+    return files.find((f) => f.path === ref.path) ?? manifest?.find((f) => f.path === ref.path)
+  }
+
+  private scopeForbidden(scope: ExchangeScope): boolean {
+    const status = scope === ExchangeFileEntryScopeEnum.CASE ? this.state.caseStatus() : this.state.namespaceStatus()
+    return status === 'forbidden'
   }
 
   private isStillSelected(ref: ExchangeFileRef): boolean {

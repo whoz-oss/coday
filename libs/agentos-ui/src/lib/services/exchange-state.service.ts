@@ -8,10 +8,13 @@ import {
   ExchangeDirectoryEntry,
   ExchangeDirectoryListing,
   ExchangeDirectoryListingCapabilityEnum,
+  ExchangeFileEntry,
+  ExchangeManifestCapabilityEnum,
 } from '@whoz-oss/agentos-api-client'
 import {
   BehaviorSubject,
   catchError,
+  defer,
   EMPTY,
   expand,
   filter,
@@ -113,6 +116,11 @@ export class ExchangeStateService {
   private namespacePage = 0
   readonly caseLoadingMore = signal(false)
   readonly namespaceLoadingMore = signal(false)
+
+  private caseManifestCache: { id: string; files$: Observable<ExchangeFileEntry[]> } | null = null
+  private namespaceManifestCache: { id: string; files$: Observable<ExchangeFileEntry[]> } | null = null
+  readonly caseManifestVersion = signal(0)
+  readonly namespaceManifestVersion = signal(0)
 
   private readonly caseView = this.buildScopeView(
     this.caseRefresh$,
@@ -313,11 +321,17 @@ export class ExchangeStateService {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────────
   initializeForCase(namespaceId: string, caseId: string): void {
-    if (this.namespaceId !== namespaceId) this.namespacePath = ''
+    const namespaceChanged = this.namespaceId !== namespaceId
+    if (namespaceChanged) this.namespacePath = ''
     if (this.caseId !== caseId) this.casePath = ''
     this.namespaceId = namespaceId
     this.caseId = caseId
-    this.refreshManifest()
+    this.casePage = 0
+    if (namespaceChanged) this.namespacePage = 0
+    this.invalidateManifest(ExchangeFileEntryScopeEnum.CASE)
+    if (namespaceChanged) this.invalidateManifest(ExchangeFileEntryScopeEnum.NAMESPACE)
+    this.caseRefresh$.next()
+    this.namespaceRefresh$.next()
   }
 
   /**
@@ -331,6 +345,8 @@ export class ExchangeStateService {
     this.casePath = ''
     this.casePage = 0
     this.namespacePage = 0
+    this.invalidateManifest(ExchangeFileEntryScopeEnum.CASE)
+    this.invalidateManifest(ExchangeFileEntryScopeEnum.NAMESPACE)
     this.caseRefresh$.next()
     this.namespaceRefresh$.next()
   }
@@ -365,18 +381,50 @@ export class ExchangeStateService {
   refreshManifest(): void {
     this.casePage = 0
     this.namespacePage = 0
+    this.invalidateManifest(ExchangeFileEntryScopeEnum.CASE)
+    this.invalidateManifest(ExchangeFileEntryScopeEnum.NAMESPACE)
     this.caseRefresh$.next()
     this.namespaceRefresh$.next()
   }
 
   /** Refresh only the case manifest — used when the agent mutates the case scope. */
   refreshCase(): void {
+    this.invalidateManifest(ExchangeFileEntryScopeEnum.CASE)
     this.caseRefresh$.next()
   }
 
   /** Refresh only the namespace manifest — used when the agent mutates the namespace scope. */
   refreshNamespace(): void {
+    this.invalidateManifest(ExchangeFileEntryScopeEnum.NAMESPACE)
     this.namespaceRefresh$.next()
+  }
+
+  private invalidateManifest(scope: ExchangeScope): void {
+    if (scope === ExchangeFileEntryScopeEnum.CASE) {
+      this.caseManifestCache = null
+      this.caseManifestVersion.update((version) => version + 1)
+    } else {
+      this.namespaceManifestCache = null
+      this.namespaceManifestVersion.update((version) => version + 1)
+    }
+  }
+
+  /** Lazily share the recursive manifest independently for each scope. */
+  fileManifest(scope: ExchangeScope): Observable<ExchangeFileEntry[]> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return throwError(() => new Error('No active scope for manifest request'))
+    const cache = isCase ? this.caseManifestCache : this.namespaceManifestCache
+    if (cache?.id === id) return cache.files$
+    const files$ = defer(() =>
+      isCase ? this.controller.getCaseFilesManifestExchange(id) : this.controller.getNamespaceFilesManifestExchange(id)
+    ).pipe(
+      map((manifest) => (manifest.capability === ExchangeManifestCapabilityEnum.NONE ? [] : (manifest.files ?? []))),
+      shareReplay({ bufferSize: 1, refCount: false })
+    )
+    if (isCase) this.caseManifestCache = { id, files$ }
+    else this.namespaceManifestCache = { id, files$ }
+    return files$
   }
 
   loadMore(scope: ExchangeScope): void {
@@ -418,7 +466,10 @@ export class ExchangeStateService {
       upload$.subscribe({
         next: () => {
           uploading.set(false)
-          this.refreshManifest()
+          if (id === (isCase ? this.caseId : this.namespaceId)) {
+            if (isCase) this.refreshCase()
+            else this.refreshNamespace()
+          }
           resolve({ success: true })
         },
         error: (err: { status?: number; message?: string; error?: { message?: string } }) => {
@@ -451,7 +502,10 @@ export class ExchangeStateService {
     return new Promise((resolve) => {
       delete$.subscribe({
         next: () => {
-          this.refreshManifest()
+          if (id === (isCase ? this.caseId : this.namespaceId)) {
+            if (isCase) this.refreshCase()
+            else this.refreshNamespace()
+          }
           resolve({ success: true })
         },
         error: (err: { message?: string }) => resolve({ success: false, error: err?.message ?? 'Delete failed' }),

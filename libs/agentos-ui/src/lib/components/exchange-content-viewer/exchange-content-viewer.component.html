@@ -1,6 +1,6 @@
 <div class="exchange-content-viewer">
   <header class="exchange-content-viewer__header">
-    <ds-icon-button #backButton icon="chevron_left" variant="default" title="Back to files" (action)="onClose()" />
+    <ds-icon-button #backButton icon="chevron_left" variant="default" title="Back to files" inputTrack="ExchangeContentViewer-back" (action)="onClose()" />
     <span class="exchange-content-viewer__filename" [title]="filename()">{{ filename() }}</span>
     <ds-icon-button icon="download" variant="default" [title]="'Download ' + filename()" (action)="onDownload()" />
   </header>

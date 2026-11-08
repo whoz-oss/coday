@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
   inject,
   input,
@@ -9,17 +10,22 @@ import {
   signal,
   viewChild,
 } from '@angular/core'
+import { NgTemplateOutlet } from '@angular/common'
+import { filterFileTree, MAX_FILTER_MATCHES } from '../../services/exchange-file-filter.utils'
 import { deletedFilesInDirectory, indexGitChanges } from '../../services/exchange-git-tree.utils'
 import { EnvironmentScope, ExchangeEnvironment } from '../../services/exchange-environment.service'
 import { ExchangeEnvironmentComponent } from '../exchange-environment/exchange-environment.component'
-import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeDirectoryEntry, ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangePathSegment } from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
-import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
+import { ExchangeFileRow, ExchangeItemComponent } from '../exchange-item/exchange-item.component'
+import { FilteredFileTree } from '../../services/exchange-file-filter.utils'
+
+export type ExchangeManifestStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 /**
  * ExchangeDrawerComponent — presentational panel content for the file-exchange drawer.
@@ -46,6 +52,8 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
     ExchangeFileListComponent,
     ExchangeFolderNavComponent,
     ExchangeContentViewerComponent,
+    ExchangeItemComponent,
+    NgTemplateOutlet,
   ],
   templateUrl: './exchange-drawer.component.html',
   styleUrl: './exchange-drawer.component.scss',
@@ -75,6 +83,10 @@ export class ExchangeDrawerComponent {
   readonly namespaceSectionVisible = input<boolean>(false)
   readonly canWriteNamespace = input<boolean>(false)
   readonly namespaceUploading = input<boolean>(false)
+  readonly caseManifest = input<ExchangeFileEntry[] | null>(null)
+  readonly namespaceManifest = input<ExchangeFileEntry[] | null>(null)
+  readonly caseManifestStatus = input<ExchangeManifestStatus>('idle')
+  readonly namespaceManifestStatus = input<ExchangeManifestStatus>('idle')
 
   // ── Current selection / viewer ────────────────────────────────────────────────
   readonly activeFile = input<ExchangeFileRef | null>(null)
@@ -91,12 +103,93 @@ export class ExchangeDrawerComponent {
   readonly downloadAllRequested = output<ExchangeScope>()
   readonly deleteRequested = output<ExchangeFileRef>()
   readonly retryRequested = output<void>()
+  readonly filterChanged = output<{ scope: ExchangeScope; query: string }>()
+  readonly filterRetry = output<ExchangeScope>()
   readonly closeRequested = output<void>()
   /** Emitted when the viewer's back button is pressed; the parent clears the active file. */
   readonly viewerClosed = output<void>()
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput')
+  private readonly timers = new Map<ExchangeScope, ReturnType<typeof setTimeout>>()
+  protected readonly caseInput = signal('')
+  protected readonly namespaceInput = signal('')
+  protected readonly caseQuery = signal('')
+  protected readonly namespaceQuery = signal('')
+  protected readonly maxFilterMatches = MAX_FILTER_MATCHES
+  protected readonly caseTree = computed(() => this.tree(this.caseManifest(), this.caseQuery(), true))
+  protected readonly namespaceTree = computed(() => this.tree(this.namespaceManifest(), this.namespaceQuery(), false))
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.timers.forEach((timer) => clearTimeout(timer)))
+  }
+
+  private tree(
+    files: ExchangeFileEntry[] | null,
+    query: string,
+    isCase: boolean
+  ): Omit<FilteredFileTree, 'rows'> & { rows: Array<FilteredFileTree['rows'][number] & { row?: ExchangeFileRow }> } {
+    const byPath = new Map((files ?? []).map((file) => [file.path.replace(/^\/+/, ''), file]))
+    const tree = filterFileTree([...byPath.keys()], query)
+    return {
+      ...tree,
+      rows: tree.rows.map((node) => {
+        if (node.kind === 'folder') return { ...node, row: undefined }
+        const file = byPath.get(node.path)
+        return {
+          ...node,
+          row: {
+            ...ExchangeItemComponent.toRow({
+              path: node.path,
+              name: node.name,
+              directory: false,
+              size: file?.size,
+              lastModified: file?.lastModified,
+            }),
+            gitStatus: isCase ? this.gitTree().files.get(node.path)?.status : undefined,
+          },
+        }
+      }),
+    }
+  }
+
+  protected onFilterInput(scope: ExchangeScope, event: Event): void {
+    const value = (event.target as HTMLInputElement).value
+    const current = scope === this.CASE ? this.caseInput : this.namespaceInput
+    current.set(value)
+    clearTimeout(this.timers.get(scope))
+    if (!value.trim()) {
+      this.clearFilter(scope)
+      return
+    }
+    this.timers.set(scope, setTimeout(() => this.applyFilter(scope, value), 150))
+  }
+
+  protected onFilterKeydown(scope: ExchangeScope, event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !(scope === this.CASE ? this.caseInput() : this.namespaceInput())) return
+    event.stopPropagation()
+    event.preventDefault()
+    this.clearFilter(scope)
+  }
+
+  protected clearFilter(scope: ExchangeScope): void {
+    clearTimeout(this.timers.get(scope))
+    ;(scope === this.CASE ? this.caseInput : this.namespaceInput).set('')
+    this.applyFilter(scope, '')
+  }
+
+  private applyFilter(scope: ExchangeScope, value: string): void {
+    const query = value.trim()
+    const current = scope === this.CASE ? this.caseQuery : this.namespaceQuery
+    if (query === current()) return
+    current.set(query)
+    this.filterChanged.emit({ scope, query })
+  }
+
+  protected openFilteredFolder(scope: ExchangeScope, path: string): void {
+    this.clearFilter(scope)
+    this.onFolderOpen(scope, path)
+  }
 
   /** Scope enums exposed to the template. */
   protected readonly CASE = ExchangeFileEntryScopeEnum.CASE

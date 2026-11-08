@@ -7,7 +7,7 @@ import {
   ExchangeDirectoryListingCapabilityEnum,
   ExchangeFileEntryScopeEnum,
 } from '@whoz-oss/agentos-api-client'
-import { of, Subject, throwError } from 'rxjs'
+import { firstValueFrom, of, Subject, throwError } from 'rxjs'
 import { ExchangeStateService } from './exchange-state.service'
 import { CaseWorkspaceService } from './case-workspace.service'
 
@@ -79,6 +79,101 @@ describe('ExchangeStateService', () => {
       ],
     })
     service = TestBed.inject(ExchangeStateService)
+  })
+
+  describe('recursive filter manifests', () => {
+    it('loads lazily, caches independently, and invalidates only the refreshed scope', async () => {
+      init()
+      controller.getCaseFilesManifestExchange.mockReturnValue(of({ files: [{ path: 'deep/a.txt' }] }))
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(of({ files: [{ path: 'deep/b.txt' }] }))
+      expect(controller.getCaseFilesManifestExchange).not.toHaveBeenCalled()
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE))
+      service.refreshCase()
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE))
+      expect(controller.getCaseFilesManifestExchange).toHaveBeenCalledTimes(2)
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+      service.initializeForCase('ns-1', 'c-2')
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE))
+      expect(controller.getCaseFilesManifestExchange).toHaveBeenLastCalledWith('c-2')
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE])(
+      'shares a pending %s manifest and never replaces the refreshed cache with the old response',
+      async (scope) => {
+        init()
+        const old = new Subject<{ capability: string; files: { path: string }[] }>()
+        const fresh = new Subject<{ capability: string; files: { path: string }[] }>()
+        const get = scope === ExchangeFileEntryScopeEnum.CASE
+          ? controller.getCaseFilesManifestExchange
+          : controller.getNamespaceFilesManifestExchange
+        get.mockReturnValueOnce(old).mockReturnValueOnce(fresh)
+        const first = firstValueFrom(service.fileManifest(scope))
+        const second = firstValueFrom(service.fileManifest(scope))
+        expect(get).toHaveBeenCalledTimes(1)
+        if (scope === ExchangeFileEntryScopeEnum.CASE) service.refreshCase()
+        else service.refreshNamespace()
+        const afterRefresh = firstValueFrom(service.fileManifest(scope))
+        fresh.next({ capability: 'READ', files: [{ path: 'new.txt' }] })
+        fresh.complete()
+        expect((await afterRefresh).map((item) => item.path)).toEqual(['new.txt'])
+        old.next({ capability: 'READ', files: [{ path: 'old.txt' }] })
+        old.complete()
+        expect((await first).map((item) => item.path)).toEqual(['old.txt'])
+        expect((await second).map((item) => item.path)).toEqual(['old.txt'])
+        expect((await firstValueFrom(service.fileManifest(scope))).map((item) => item.path)).toEqual(['new.txt'])
+        expect(get).toHaveBeenCalledTimes(2)
+      }
+    )
+
+    it('invalidates only the scope changed by upload or delete', async () => {
+      init()
+      controller.getCaseFilesManifestExchange.mockReturnValue(of({ files: [] }))
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(of({ files: [] }))
+      controller.uploadCaseFileExchange.mockReturnValue(of(caseFile))
+      controller.deleteNamespaceFileExchange.mockReturnValue(of({ success: true }))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE))
+      await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE))
+      expect(controller.getCaseFilesManifestExchange).toHaveBeenCalledTimes(2)
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+      await service.deleteFile(ExchangeFileEntryScopeEnum.NAMESPACE, 'shared.md')
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))
+      await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE))
+      expect(controller.getCaseFilesManifestExchange).toHaveBeenCalledTimes(2)
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not invalidate the new case when an old case mutation completes', async () => {
+      init()
+      const pending = new Subject<ExchangeDirectoryEntry>()
+      controller.uploadCaseFileExchange.mockReturnValue(pending)
+      const upload = service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
+      service.initializeForCase('ns-1', 'c-2')
+      const generation = service.caseManifestVersion()
+      pending.next(caseFile)
+      await upload
+      expect(service.caseManifestVersion()).toBe(generation)
+    })
+
+    it('fails closed when the recursive manifest has no capability', async () => {
+      init()
+      controller.getCaseFilesManifestExchange.mockReturnValue(of({ capability: 'NONE', files: [{ path: 'private.txt' }] }))
+      expect(await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))).toEqual([])
+    })
+
+    it('retries a failed manifest', async () => {
+      init()
+      controller.getCaseFilesManifestExchange.mockReturnValueOnce(throwError(() => new Error('failure')))
+        .mockReturnValueOnce(of({ files: [] }))
+      await expect(firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))).rejects.toThrow('failure')
+      expect(await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))).toEqual([])
+    })
   })
 
   describe('download', () => {

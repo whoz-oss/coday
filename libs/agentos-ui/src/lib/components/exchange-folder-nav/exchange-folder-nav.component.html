@@ -3,6 +3,7 @@
     <button
       type="button"
       class="folder-nav__back"
+      data-track="ExchangeFolderNav-back"
       [title]="'Back to ' + up.label"
       [attr.aria-label]="'Back to ' + up.label"
       (click)="navigated.emit(up.path)"
@@ -14,17 +15,17 @@
 
   <div class="folder-nav__trail">
     @if (current(); as here) {
-      <button type="button" class="folder-nav__crumb" (click)="navigated.emit('')">root</button>
+      <button type="button" class="folder-nav__crumb" data-track="ExchangeFolderNav-root" (click)="navigated.emit('')">root</button>
       @for (segment of ancestors(); track segment.path) {
         <span class="folder-nav__sep" aria-hidden="true">/</span>
-        <button type="button" class="folder-nav__crumb" (click)="navigated.emit(segment.path)">
+        <button type="button" class="folder-nav__crumb" [attr.data-track]="'ExchangeFolderNav-ancestor_' + segment.path" (click)="navigated.emit(segment.path)">
           {{ segment.label }}
         </button>
       }
       <span class="folder-nav__sep" aria-hidden="true">/</span>
-      <span class="folder-nav__crumb folder-nav__crumb--current" aria-current="location">{{ here.label }}</span>
+      <span class="folder-nav__crumb folder-nav__crumb--current" data-track="ExchangeFolderNav-current" aria-current="location">{{ here.label }}</span>
     } @else {
-      <span class="folder-nav__crumb folder-nav__crumb--current" aria-current="location">root</span>
+      <span class="folder-nav__crumb folder-nav__crumb--current" data-track="ExchangeFolderNav-current" aria-current="location">root</span>
     }
   </div>
 </nav>

@@ -5,6 +5,18 @@
   "sourceRoot": "apps/client-e2e/src",
   "// targets": "to see all targets run: nx show project client-e2e --web",
   "targets": {
+    "real-e2e": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        { "target": "build", "projects": ["client", "factory-cockpit", "server"] },
+        { "target": "build-first-run-jars", "projects": ["web"] }
+      ],
+      "options": {
+        "command": "playwright test -c playwright.real.config.ts",
+        "cwd": "{projectRoot}"
+      }
+    },
     "first-run-e2e": {
       "executor": "nx:run-commands",
       "cache": false,
