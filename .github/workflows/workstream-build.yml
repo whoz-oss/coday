@@ -675,7 +675,13 @@ jobs:
       contents: read
       id-token: write   # npm OIDC trusted publishing
     steps:
+      # fetch-depth: 0 is MANDATORY here too. nx releaseVersion resolves each project's
+      # current version from the release/* git tags BEFORE applying the exact specifier
+      # (READ ONLY: this workflow still never writes a release/* tag). A shallow clone has
+      # no tags and fails with 'No git tags matching pattern "release/{version}"'.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
         with:
