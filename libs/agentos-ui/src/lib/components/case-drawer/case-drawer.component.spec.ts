@@ -2,6 +2,11 @@ import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector } fr
 import { fakeAsync, flush, TestBed } from '@angular/core/testing'
 import { Case, CaseRoleEnum } from '@whoz-oss/agentos-api-client'
 import { CaseDrawerComponent, CaseTreeItem } from './case-drawer.component'
+import {
+  CaseListPreferencesService,
+  COLLAPSED_GROUPS_STORAGE_KEY_PREFIX,
+  GROUP_BY_AGENT_STORAGE_KEY,
+} from '../../services/case-list-preferences.service'
 
 const adminNode = (overrides: Partial<CaseTreeItem> = {}): CaseTreeItem => ({
   id: 'x',
@@ -71,9 +76,195 @@ function host(ref: ComponentRef<CaseDrawerComponent>): HTMLElement {
 }
 
 describe('CaseDrawerComponent', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   afterEach(() => {
     cleanupHosts()
     TestBed.resetTestingModule()
+  })
+
+  // Optional display: root cases grouped under the agent they were created with. The grouping rules themselves
+  // are covered by case-agent-grouping.utils.spec; this covers the wiring, the persistence and the ARIA contract.
+  describe('group by agent', () => {
+    const NS = 'ns-1'
+    const CASES = [
+      { id: 'dev-new', namespaceId: NS, title: 'Dev new', originAgentName: 'Dev', modified: '2026-03-01' },
+      { id: 'dev-old', namespaceId: NS, title: 'Dev old', originAgentName: 'dev', modified: '2026-01-01' },
+      { id: 'writer', namespaceId: NS, title: 'Writer one', originAgentName: 'Writer', modified: '2026-02-01' },
+      { id: 'gone', namespaceId: NS, title: 'Gone one', originAgentName: 'Deleted', modified: '2026-04-01' },
+      { id: 'child', namespaceId: NS, title: 'Child', originAgentName: 'Dev', parentCaseId: 'dev-new' },
+    ] as unknown as Case[]
+
+    function makeGrouped(on: boolean, known: string[] | null = ['Dev', 'Writer']): ComponentRef<CaseDrawerComponent> {
+      if (on) {
+        localStorage.setItem(GROUP_BY_AGENT_STORAGE_KEY, 'true')
+      }
+      const ref = makeComponentRef(CASES)
+      ref.setInput('namespaceId', NS)
+      ref.setInput('knownAgentNames', known)
+      render(ref)
+      return ref
+    }
+
+    const headers = (ref: ComponentRef<CaseDrawerComponent>): HTMLButtonElement[] =>
+      Array.from(host(ref).querySelectorAll<HTMLButtonElement>('.case-agent-group__header'))
+    /** The header at [index], failing loudly when it is not rendered (keeps the assertions free of `undefined`). */
+    const headerAt = (ref: ComponentRef<CaseDrawerComponent>, index: number): HTMLButtonElement => {
+      const header = headers(ref)[index]
+      if (!header) {
+        throw new Error(`No agent group header at index ${index}`)
+      }
+      return header
+    }
+    const headerText = (header: HTMLElement, part: 'label' | 'count'): string =>
+      header.querySelector(`.case-agent-group__${part}`)?.textContent?.trim() ?? ''
+    const rowNames = (ref: ComponentRef<CaseDrawerComponent>): string[] =>
+      Array.from(host(ref).querySelectorAll('.case-tree-node__name')).map((el) => el.textContent?.trim() ?? '')
+
+    it('renders the usual list, without any agent group, while the option is off', () => {
+      const ref = makeGrouped(false)
+
+      expect(headers(ref)).toHaveLength(0)
+      // Same tree as before the option existed: sub-cases stay nested, so only roots are rows until expanded.
+      expect(ref.instance['rootItems']().map((i) => i.id)).toEqual(['gone', 'dev-new', 'writer', 'dev-old'])
+      expect(host(ref).querySelector('.case-drawer-list__group-label')).not.toBeNull()
+    })
+
+    it('renders one header per agent, by activity with Others last, each with its case count', () => {
+      const ref = makeGrouped(true)
+
+      expect(headers(ref).map((h) => [headerText(h, 'label'), headerText(h, 'count')])).toEqual([
+        ['Dev', '2'],
+        ['Writer', '1'],
+        ['Others', '1'],
+      ])
+    })
+
+    it('lists only root cases, in the order of the list inside each group', () => {
+      const ref = makeGrouped(true)
+
+      expect(rowNames(ref)).toEqual(['Dev new', 'Dev old', 'Writer one', 'Gone one'])
+    })
+
+    it('trusts the origin agent while the known agents are unavailable (null)', () => {
+      const ref = makeGrouped(true, null)
+
+      expect(headers(ref).map((h) => headerText(h, 'label'))).toEqual(['Deleted', 'Dev', 'Writer'])
+    })
+
+    it('exposes each header as a button with aria-expanded, and collapses its group on click', () => {
+      const ref = makeGrouped(true)
+      const dev = headerAt(ref, 0)
+      expect(dev.getAttribute('type')).toBe('button')
+      expect(dev.getAttribute('aria-expanded')).toBe('true')
+      expect(dev.getAttribute('aria-controls')).toBe(host(ref).querySelector('.case-agent-group__rows')?.id)
+
+      dev.click()
+      render(ref)
+
+      expect(headerAt(ref, 0).getAttribute('aria-expanded')).toBe('false')
+      expect(headerAt(ref, 0).hasAttribute('aria-controls')).toBe(false)
+      expect(rowNames(ref)).toEqual(['Writer one', 'Gone one'])
+
+      headerAt(ref, 0).click()
+      render(ref)
+
+      expect(headerAt(ref, 0).getAttribute('aria-expanded')).toBe('true')
+      expect(rowNames(ref)).toEqual(['Dev new', 'Dev old', 'Writer one', 'Gone one'])
+    })
+
+    it('persists the collapsed state per namespace and restores it on a new instance', () => {
+      const first = makeGrouped(true)
+      headerAt(first, 2).click() // Others
+      render(first)
+      expect(localStorage.getItem(`${COLLAPSED_GROUPS_STORAGE_KEY_PREFIX}${NS}`)).toBe('["others"]')
+
+      cleanupHosts()
+      TestBed.resetTestingModule()
+      const second = makeGrouped(true)
+
+      expect(headers(second).map((h) => h.getAttribute('aria-expanded'))).toEqual(['true', 'true', 'false'])
+    })
+
+    it('keeps a group collapsed when it disappears and comes back', () => {
+      const ref = makeGrouped(true)
+      headerAt(ref, 1).click() // Writer
+      render(ref)
+
+      ref.setInput(
+        'cases',
+        CASES.filter((c) => c.id !== 'writer')
+      )
+      render(ref)
+      expect(headers(ref)).toHaveLength(2)
+
+      ref.setInput('cases', CASES)
+      render(ref)
+      expect(headers(ref).map((h) => h.getAttribute('aria-expanded'))).toEqual(['true', 'false', 'true'])
+    })
+
+    it('filters inside the groups, drops the emptied ones and shows the rest expanded', () => {
+      const ref = makeGrouped(true)
+      headerAt(ref, 0).click() // collapse Dev
+      render(ref)
+
+      ref.setInput('filterQuery', 'dev')
+      render(ref)
+
+      expect(headers(ref).map((h) => h.getAttribute('aria-expanded'))).toEqual(['true'])
+      expect(rowNames(ref)).toEqual(['Dev new', 'Dev old'])
+
+      ref.setInput('filterQuery', 'zzz')
+      render(ref)
+      expect(host(ref).textContent).toContain('No case matches your filter.')
+    })
+
+    it('keeps the row actions working inside a group (star, delete confirmation)', () => {
+      const ref = makeGrouped(true)
+      const stars: Array<{ id: string; starred: boolean }> = []
+      const deletes: string[] = []
+      ref.instance.starToggled.subscribe((e) => stars.push(e))
+      ref.instance.deleteRequested.subscribe((id) => deletes.push(id))
+
+      host(ref).querySelector<HTMLButtonElement>('button[title="Add to favorites"]')!.click()
+      expect(stars).toEqual([{ id: 'dev-new', starred: true }])
+
+      ref.instance['onDeleteRequested']('writer')
+      expect(deletes).toEqual(['writer'])
+    })
+
+    it('marks the active case row inside a group', () => {
+      const ref = makeGrouped(true)
+      ref.setInput('activeCaseId', 'writer')
+      render(ref)
+
+      const active = host(ref).querySelectorAll('.case-tree-node__row--active')
+      expect(active).toHaveLength(1)
+      expect(active[0]?.textContent).toContain('Writer one')
+    })
+
+    it('reacts to the preference being switched at runtime', () => {
+      const ref = makeGrouped(false)
+
+      TestBed.inject(CaseListPreferencesService).setGroupByAgent(true)
+      render(ref)
+      expect(headers(ref)).toHaveLength(3)
+
+      TestBed.inject(CaseListPreferencesService).setGroupByAgent(false)
+      render(ref)
+      expect(headers(ref)).toHaveLength(0)
+    })
+
+    it('leaves the compact rail alone while grouped', () => {
+      const ref = makeGrouped(true)
+      ref.setInput('compact', true)
+      render(ref)
+
+      expect(headers(ref)).toHaveLength(0)
+      expect(host(ref).querySelectorAll('.case-drawer-compact__badge')).toHaveLength(4)
+    })
   })
 
   it('emits deleteRequested with the case id when a delete is requested', () => {

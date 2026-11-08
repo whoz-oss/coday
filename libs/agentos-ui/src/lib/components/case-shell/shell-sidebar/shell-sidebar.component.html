@@ -116,6 +116,18 @@
           (input)="caseFilter.set($any($event.target).value)"
         />
       </div>
+
+      <!-- Row 3: optional display of the list, grouped by the agent each case was created with -->
+      <label class="shell-sidebar__group-toggle">
+        <input
+          type="checkbox"
+          role="switch"
+          class="shell-sidebar__group-toggle-input"
+          [checked]="groupByAgent()"
+          (change)="onGroupByAgentChange($event)"
+        />
+        <span class="shell-sidebar__group-toggle-label">Group by agent</span>
+      </label>
     </div>
 
     <!-- Case list -->
@@ -126,6 +138,8 @@
         [activeCaseId]="activeCaseId()"
         [compact]="false"
         [filterQuery]="caseFilter()"
+        [namespaceId]="namespaceId()"
+        [knownAgentNames]="knownAgentNames()"
         (caseSelected)="caseSelected.emit($event)"
         (createRequested)="createRequested.emit()"
         (subCaseCreateRequested)="subCaseCreateRequested.emit($event)"

@@ -4594,6 +4594,12 @@ components:
         namespaceId:
           type: string
           format: uuid
+        originAgentName:
+          type: string
+          description: Name of the agent first selected for this case (origin agent),
+            derived from the first agent selection in the case event log. Null when
+            no agent has been selected yet. Read-only, ignored when sent on create
+            or update.
         parentCaseId:
           type: string
           format: uuid

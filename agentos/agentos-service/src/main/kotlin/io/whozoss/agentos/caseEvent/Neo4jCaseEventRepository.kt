@@ -77,5 +77,10 @@ open class Neo4jCaseEventRepository(
         }
     }
 
+    override fun findOriginAgentNames(caseIds: Collection<UUID>): Map<UUID, String> =
+        caseEventNodeNeo4jRepository
+            .findOriginAgentNames(caseIds.map { it.toString() })
+            .associate { row -> UUID.fromString(row["caseId"] as String) to row["originAgentName"] as String }
+
     companion object : KLogging()
 }

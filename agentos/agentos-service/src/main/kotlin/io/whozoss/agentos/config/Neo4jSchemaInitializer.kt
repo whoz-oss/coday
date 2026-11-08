@@ -66,6 +66,14 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index case_event_case_id created" }
 
+        // Index on AgentSelectedEvent.caseId: serves the origin-agent batch lookup of case lists
+        // (first agent selection per case) without scanning every case event.
+        neo4jClient
+            .query(
+                "CREATE INDEX agent_selected_event_case_id IF NOT EXISTS FOR (e:AgentSelectedEvent) ON (e.caseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index agent_selected_event_case_id created" }
+
         neo4jClient
             .query(
                 "CREATE INDEX case_namespace_id IF NOT EXISTS FOR (c:Case) ON (c.namespaceId)",

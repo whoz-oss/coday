@@ -15,6 +15,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -24,6 +25,7 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -75,6 +77,19 @@ abstract class AbstractCaseEventPersistenceSpec : StringSpec() {
         namespaceId = UUID.randomUUID(),
         caseId = caseId,
         status = status,
+    )
+
+    fun agentSelectedEvent(
+        caseId: UUID,
+        agentName: String,
+        timestamp: Instant,
+    ) = AgentSelectedEvent(
+        metadata = EntityMetadata(),
+        namespaceId = UUID.randomUUID(),
+        caseId = caseId,
+        timestamp = timestamp,
+        agentId = UUID.randomUUID(),
+        agentName = agentName,
     )
 
     init {
@@ -201,6 +216,64 @@ abstract class AbstractCaseEventPersistenceSpec : StringSpec() {
 
         "findLastMessageTimestamps returns empty map when caseIds is empty" {
             repo.findLastMessageTimestamps(emptyList()).values.shouldBeEmpty()
+        }
+
+        "findOriginAgentNames returns the agent of the first AgentSelectedEvent, ignoring later selections" {
+            //given
+            val ns = namespaceRepo.save(namespace())
+            val case = caseRepo.save(case(ns.id))
+            val start = Instant.parse("2025-06-01T10:00:00Z")
+            // saved out of chronological order on purpose: the oldest timestamp wins, not the insertion order
+            repo.save(agentSelectedEvent(case.id, agentName = "other-agent", timestamp = start.plusSeconds(60)))
+            repo.save(agentSelectedEvent(case.id, agentName = "first-agent", timestamp = start))
+            repo.save(agentSelectedEvent(case.id, agentName = "last-agent", timestamp = start.plusSeconds(120)))
+
+            //when
+            val result = repo.findOriginAgentNames(listOf(case.id))
+
+            //then
+            result shouldBe mapOf(case.id to "first-agent")
+        }
+
+        "findOriginAgentNames resolves a mixed list in one call and omits cases without agent selection" {
+            //given
+            val ns = namespaceRepo.save(namespace())
+            val caseA = caseRepo.save(case(ns.id))
+            val caseB = caseRepo.save(case(ns.id))
+            val caseWithoutSelection = caseRepo.save(case(ns.id))
+            val start = Instant.parse("2025-06-01T10:00:00Z")
+            repo.save(agentSelectedEvent(caseA.id, agentName = "agent-a", timestamp = start))
+            repo.save(agentSelectedEvent(caseB.id, agentName = "agent-b", timestamp = start))
+            repo.save(agentSelectedEvent(caseB.id, agentName = "agent-c", timestamp = start.plusSeconds(30)))
+            // messages and status events are not agent selections
+            repo.save(msgEvent(caseWithoutSelection.id))
+            repo.save(statusEvent(caseWithoutSelection.id))
+
+            //when
+            val result = repo.findOriginAgentNames(listOf(caseA.id, caseB.id, caseWithoutSelection.id))
+
+            //then
+            result shouldBe mapOf(caseA.id to "agent-a", caseB.id to "agent-b")
+        }
+
+        "findOriginAgentNames ignores removed AgentSelectedEvents" {
+            //given
+            val ns = namespaceRepo.save(namespace())
+            val case = caseRepo.save(case(ns.id))
+            val start = Instant.parse("2025-06-01T10:00:00Z")
+            val removed = repo.save(agentSelectedEvent(case.id, agentName = "removed-agent", timestamp = start))
+            repo.save(agentSelectedEvent(case.id, agentName = "kept-agent", timestamp = start.plusSeconds(10)))
+            repo.delete(removed.id)
+
+            //when
+            val result = repo.findOriginAgentNames(listOf(case.id))
+
+            //then
+            result shouldBe mapOf(case.id to "kept-agent")
+        }
+
+        "findOriginAgentNames returns empty map when caseIds is empty" {
+            repo.findOriginAgentNames(emptyList()).values.shouldBeEmpty()
         }
 
         "deleteByParent removes all events for a case" {

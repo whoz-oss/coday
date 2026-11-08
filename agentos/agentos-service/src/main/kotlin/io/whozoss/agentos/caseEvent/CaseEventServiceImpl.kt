@@ -56,5 +56,7 @@ class CaseEventServiceImpl(
     override fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant> =
         repository.findLastMessageTimestamps(caseIds)
 
+    override fun findOriginAgentNames(caseIds: Collection<UUID>): Map<UUID, String> = repository.findOriginAgentNames(caseIds)
+
     companion object : KLogging()
 }

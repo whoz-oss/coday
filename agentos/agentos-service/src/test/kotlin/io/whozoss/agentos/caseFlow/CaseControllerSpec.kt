@@ -104,6 +104,8 @@ class CaseControllerSpec :
             every { favoriteService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
             // Default: no messages in any case. Tests that assert lastMessageAt override this.
             every { caseEventService.findLastMessageTimestamps(any()) } returns emptyMap()
+            // Default: no agent selected in any case. Tests that assert originAgentName override this.
+            every { caseEventService.findOriginAgentNames(any()) } returns emptyMap()
             // Default: namespace defines no runCostThreshold. Tests that need a specific value override this.
             every { namespaceService.resolveRunCostThreshold(any()) } returns null
         }
@@ -175,6 +177,7 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe null
             verify(exactly = 1) { caseService.create(any(), any()) }
             verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
+            verify(exactly = 0) { caseEventService.findOriginAgentNames(any()) }
             verify(exactly = 1) {
                 permissionService.grantPermission(
                     callerId.toString(),
@@ -184,6 +187,20 @@ class CaseControllerSpec :
                 )
             }
             verify(exactly = 1) { caseListUpdateBroadcaster.publishCaseCreated(namespaceId) }
+        }
+
+        "create ignores an originAgentName sent by the client" {
+            //given
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.create(any(), any()) } returns saved
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            //when
+            val result = controller.create(caseResource(id = null).copy(originAgentName = "forged-agent"))
+
+            //then
+            result.originAgentName shouldBe null
         }
 
         "create preserves runCostThreshold from the request" {
@@ -444,6 +461,207 @@ class CaseControllerSpec :
 
             result.single { it.id == withMsg.metadata.id }.lastMessageAt shouldBe msgTimestamp
             result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // originAgentName — resolved from the event log in one batch per list
+        // -------------------------------------------------------------------------
+
+        "listByParent populates originAgentName in one batch lookup, null for cases without agent selection" {
+            //given
+            val withAgent = caseEntity(title = "has agent")
+            val otherAgent = caseEntity(title = "has another agent")
+            val noAgent = caseEntity(title = "no agent")
+            every { userService.getCurrentUser() } returns caller
+            every {
+                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+            } returns true
+            every { caseService.findByParent(namespaceId) } returns listOf(withAgent, otherAgent, noAgent)
+            every {
+                caseEventService.findOriginAgentNames(listOf(withAgent.id, otherAgent.id, noAgent.id))
+            } returns mapOf(withAgent.id to "coder", otherAgent.id to "reviewer")
+
+            //when
+            val result = controller.listByParent(namespaceId)
+
+            //then
+            result.single { it.id == withAgent.metadata.id }.originAgentName shouldBe "coder"
+            result.single { it.id == otherAgent.metadata.id }.originAgentName shouldBe "reviewer"
+            result.single { it.id == noAgent.metadata.id }.originAgentName shouldBe null
+            verify(exactly = 1) { caseEventService.findOriginAgentNames(any()) }
+        }
+
+        "listByParent keeps the order of the cases and their other fields when populating originAgentName" {
+            //given
+            val first = caseEntity(title = "first")
+            val second = caseEntity(title = "second")
+            every { userService.getCurrentUser() } returns caller
+            every {
+                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+            } returns false
+            every { caseService.findAccessibleByUserInNamespace(callerId, namespaceId) } returns listOf(first, second)
+            every { caseEventService.findOriginAgentNames(any()) } returns mapOf(second.id to "coder")
+            every {
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(second.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favorite = true))
+
+            //when
+            val result = controller.listByParent(namespaceId)
+
+            //then
+            result.map { it.title } shouldBe listOf("first", "second")
+            result[0].originAgentName shouldBe null
+            result[0].favorite shouldBe false
+            result[1].originAgentName shouldBe "coder"
+            result[1].favorite shouldBe true
+            result[1].role shouldBe "MEMBER"
+        }
+
+        "listMineByParent populates originAgentName" {
+            //given
+            val withAgent = caseEntity(title = "has agent")
+            val noAgent = caseEntity(title = "no agent")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(withAgent, noAgent)
+            every {
+                caseEventService.findOriginAgentNames(listOf(withAgent.id, noAgent.id))
+            } returns mapOf(withAgent.id to "coder")
+
+            //when
+            val result = controller.listMineByParent(namespaceId)
+
+            //then
+            result.single { it.id == withAgent.metadata.id }.originAgentName shouldBe "coder"
+            result.single { it.id == noAgent.metadata.id }.originAgentName shouldBe null
+        }
+
+        "listByUser populates originAgentName when the caller is the target user" {
+            //given
+            val withAgent = caseEntity(title = "has agent")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUser(callerId) } returns listOf(withAgent)
+            every { caseEventService.findOriginAgentNames(listOf(withAgent.id)) } returns mapOf(withAgent.id to "coder")
+
+            //when
+            val result = controller.listByUser(callerId)
+
+            //then
+            result.single().originAgentName shouldBe "coder"
+        }
+
+        "listByUser populates originAgentName when the caller is not the target user" {
+            //given
+            val otherId = UUID.randomUUID()
+            val withAgent = caseEntity(title = "has agent")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUser(otherId) } returns listOf(withAgent)
+            every { caseEventService.findOriginAgentNames(listOf(withAgent.id)) } returns mapOf(withAgent.id to "coder")
+
+            //when
+            val result = controller.listByUser(otherId)
+
+            //then
+            result.single().originAgentName shouldBe "coder"
+            verify(exactly = 0) { favoriteService.listDirectRelations(any(), any()) }
+        }
+
+        "listByUserExternalId populates originAgentName" {
+            //given
+            val withAgent = caseEntity(title = "has agent")
+            every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUser(callerId) } returns listOf(withAgent)
+            every { caseEventService.findOriginAgentNames(listOf(withAgent.id)) } returns mapOf(withAgent.id to "coder")
+
+            //when
+            val result = controller.listByUserExternalId(caller.externalId)
+
+            //then
+            result.single().originAgentName shouldBe "coder"
+        }
+
+        "listByUserInNamespace populates originAgentName" {
+            //given
+            val withAgent = caseEntity(title = "has agent")
+            val namespaceExternalId = "ext-ns-origin-agent"
+            val namespace =
+                io.whozoss.agentos.namespace.Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-ns",
+                    externalId = namespaceExternalId,
+                )
+            every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
+            every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
+            every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(withAgent)
+            every { caseEventService.findOriginAgentNames(listOf(withAgent.id)) } returns mapOf(withAgent.id to "coder")
+
+            //when
+            val result =
+                controller.listByUserInNamespace(
+                    ListByUserInNamespaceRequest(
+                        userExternalId = caller.externalId,
+                        namespaceExternalId = namespaceExternalId,
+                    ),
+                )
+
+            //then
+            result.single().originAgentName shouldBe "coder"
+        }
+
+        "getById populates originAgentName, and returns null when the case has no agent selection" {
+            //given
+            val withAgent = caseEntity(title = "has agent")
+            val noAgent = caseEntity(title = "no agent")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.getById(withAgent.metadata.id) } returns withAgent
+            every { caseService.getById(noAgent.metadata.id) } returns noAgent
+            every { caseEventService.findOriginAgentNames(listOf(withAgent.id)) } returns mapOf(withAgent.id to "coder")
+
+            //when
+            val withAgentResult = controller.getById(withAgent.metadata.id)
+            val noAgentResult = controller.getById(noAgent.metadata.id)
+
+            //then
+            withAgentResult.originAgentName shouldBe "coder"
+            noAgentResult.originAgentName shouldBe null
+        }
+
+        "getByIds populates originAgentName in one batch lookup" {
+            //given
+            val withAgent = caseEntity(title = "has agent")
+            val noAgent = caseEntity(title = "no agent")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findByIds(any(), any()) } returns listOf(withAgent, noAgent)
+            every {
+                caseEventService.findOriginAgentNames(listOf(withAgent.id, noAgent.id))
+            } returns mapOf(withAgent.id to "coder")
+
+            //when
+            val result =
+                controller.getByIds(
+                    io.whozoss.agentos.sdk.api.common
+                        .GetByIdsRequest(listOf(withAgent.metadata.id, noAgent.metadata.id)),
+                )
+
+            //then
+            result.single { it.id == withAgent.metadata.id }.originAgentName shouldBe "coder"
+            result.single { it.id == noAgent.metadata.id }.originAgentName shouldBe null
+            verify(exactly = 1) { caseEventService.findOriginAgentNames(any()) }
+        }
+
+        "update populates originAgentName" {
+            //given
+            val existing = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.edit(existing.metadata.id, any()) } returns existing
+            every { caseEventService.findOriginAgentNames(listOf(existing.id)) } returns mapOf(existing.id to "coder")
+
+            //when
+            val result = controller.update(existing.metadata.id, caseResource(id = existing.metadata.id).copy(originAgentName = "forged"))
+
+            //then
+            result.originAgentName shouldBe "coder"
         }
 
         "listByParent (permission-filtered branch) sets favorite=true only for favorited cases" {

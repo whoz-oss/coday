@@ -17,7 +17,7 @@ import {
   NamespaceControllerService,
   NamespaceListItem,
 } from '@whoz-oss/agentos-api-client'
-import { catchError, debounceTime, map, of, skip } from 'rxjs'
+import { catchError, concat, debounceTime, map, of, skip, switchMap } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import {
@@ -30,6 +30,9 @@ import {
 } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { AgentStateService } from '../../services/agent-state.service'
+import { CaseListPreferencesService } from '../../services/case-list-preferences.service'
+import { knownAgentNamesFrom } from '../case-drawer/case-agent-grouping.utils'
 import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
@@ -73,6 +76,8 @@ export class CaseShellComponent {
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
+  private readonly agentState = inject(AgentStateService)
+  private readonly caseListPreferences = inject(CaseListPreferencesService)
   private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
   protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
@@ -181,6 +186,43 @@ export class CaseShellComponent {
   )
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
+
+  /**
+   * Agents of the active namespace, only requested while the list is grouped by agent. The request depends on the
+   * user (deployment-based access), so it is replayed once the user is known.
+   */
+  private readonly agentsRequest = computed(() => {
+    const namespaceId = this.namespaceId()
+    const user = this.userState.currentUser()
+    return namespaceId && this.caseListPreferences.groupByAgent()
+      ? { namespaceId, userKey: user?.externalId ?? user?.email ?? '' }
+      : null
+  })
+
+  /**
+   * Names of the agents available in the namespace, or null while unknown: nothing requested, loading, failed or
+   * empty. The "group by agent" display then trusts each case's origin agent instead of dumping every case into
+   * "Others" (see groupCasesByAgent).
+   */
+  protected readonly knownAgentNames = toSignal(
+    toObservable(this.agentsRequest).pipe(
+      switchMap((request) =>
+        request
+          ? concat(
+              of(null),
+              this.agentState.listEffective(request.namespaceId).pipe(
+                map((agents) => knownAgentNamesFrom(agents)),
+                catchError((err) => {
+                  console.error('[CaseShell] Failed to load the agents for the case grouping', err)
+                  return of(null)
+                })
+              )
+            )
+          : of(null)
+      )
+    ),
+    { initialValue: null }
+  )
 
   /** Admin of the platform or of the current namespace: allowed to open the namespace settings. */
   protected readonly canConfigureNamespace = computed(() => {
