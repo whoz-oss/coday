@@ -2,8 +2,8 @@ import { JavaStatus } from '../runtime/java'
 import { initialState, RuntimeState } from '../runtime/state'
 import { ApplyTracker, buildSetupStatus, decideIdentityChange, idleApply, StatusFacts } from './progress'
 
-const laptopState = (patch: Partial<RuntimeState> = {}): RuntimeState => ({
-  ...initialState('nx', 'laptop'),
+const unmanagedState = (patch: Partial<RuntimeState> = {}): RuntimeState => ({
+  ...initialState('nx', 'unmanaged'),
   provisioned: true,
   java: { state: 'ok', version: 'openjdk 25', major: 25 },
   ...patch,
@@ -12,7 +12,7 @@ const laptopState = (patch: Partial<RuntimeState> = {}): RuntimeState => ({
 const facts = (patch: Partial<StatusFacts> = {}): StatusFacts => ({
   setupEnabled: true,
   setup: {},
-  state: laptopState(),
+  state: unmanagedState(),
   agentosHealthy: false,
   factoryHealthy: false,
   apply: idleApply(),
@@ -20,9 +20,9 @@ const facts = (patch: Partial<StatusFacts> = {}): StatusFacts => ({
 })
 
 describe('buildSetupStatus', () => {
-  it('reports laptop mode, not done, no identity on a first run', () => {
+  it('reports unmanaged mode, not done, no identity on a first run', () => {
     const status = buildSetupStatus(facts())
-    expect(status.mode).toBe('laptop')
+    expect(status.mode).toBe('unmanaged')
     expect(status.setupDone).toBe(false)
     expect(status.identity).toBeUndefined()
     expect(status.steps.agentos).toEqual({ state: 'pending', message: 'Waiting for your email' })
@@ -40,21 +40,21 @@ describe('buildSetupStatus', () => {
 
   it('surfaces a missing Java as a blocked step with the install hint', () => {
     const java: JavaStatus = { state: 'missing', hint: 'brew install --cask temurin@25' }
-    const status = buildSetupStatus(facts({ state: laptopState({ java }) }))
+    const status = buildSetupStatus(facts({ state: unmanagedState({ java }) }))
     expect(status.steps.java).toEqual({ state: 'blocked', hint: 'brew install --cask temurin@25' })
     expect(status.steps.agentos.state).toBe('blocked')
   })
 
   it('reports an old Java with its version', () => {
     const java: JavaStatus = { state: 'too-old', version: 'openjdk 21', major: 21, hint: 'upgrade' }
-    expect(buildSetupStatus(facts({ state: laptopState({ java }) })).steps.java).toMatchObject({
+    expect(buildSetupStatus(facts({ state: unmanagedState({ java }) })).steps.java).toMatchObject({
       state: 'blocked',
       version: 'openjdk 21',
     })
   })
 
   it('merges the AgentOS and Factory downloads into one weighted percentage', () => {
-    const state = laptopState({
+    const state = unmanagedState({
       downloads: { agentos: { state: 'running', percent: 50 }, factory: { state: 'done', percent: 100 } },
     })
     const { download } = buildSetupStatus(facts({ state })).steps
@@ -63,14 +63,14 @@ describe('buildSetupStatus', () => {
   })
 
   it('turns a failed download into an error that also fails AgentOS', () => {
-    const state = laptopState({ downloads: { agentos: { state: 'error', message: 'Manifest HTTP 404' } } })
+    const state = unmanagedState({ downloads: { agentos: { state: 'error', message: 'Manifest HTTP 404' } } })
     const { steps } = buildSetupStatus(facts({ state }))
     expect(steps.download).toEqual({ state: 'error', message: 'Manifest HTTP 404' })
     expect(steps.agentos).toEqual({ state: 'error', message: 'Manifest HTTP 404' })
   })
 
   it('does not let a Factory download failure block the wizard: it is reported on the Factory step only', () => {
-    const state = laptopState({
+    const state = unmanagedState({
       agentosStarted: true,
       downloads: { agentos: { state: 'done' }, factory: { state: 'error', message: "No 'factory-service' entry" } },
     })
@@ -81,7 +81,7 @@ describe('buildSetupStatus', () => {
   })
 
   it('goes pending -> running -> done for AgentOS and chains Factory behind it', () => {
-    const started = laptopState({
+    const started = unmanagedState({
       agentosStarted: true,
       downloads: { agentos: { state: 'done' }, factory: { state: 'done' } },
     })
@@ -98,7 +98,7 @@ describe('buildSetupStatus', () => {
   })
 
   it('has nothing to download, check or start for an external AgentOS and Factory, only to wait for them', () => {
-    const state = laptopState({ profile: 'managed', java: { state: 'missing', hint: 'install java' } })
+    const state = unmanagedState({ profile: 'managed', java: { state: 'missing', hint: 'install java' } })
     const waiting = buildSetupStatus(facts({ state, setupEnabled: false, external: { agentos: true, factory: true } }))
     expect(waiting.steps.download).toEqual({ state: 'done', percent: 100 })
     expect(waiting.steps.java).toEqual({ state: 'done' })
@@ -113,7 +113,7 @@ describe('buildSetupStatus', () => {
   })
 
   it('leaves the Factory out of the status when it is disabled (CODAY_NO_FACTORY): no step, no download share', () => {
-    const state = laptopState({
+    const state = unmanagedState({
       downloads: { agentos: { state: 'running', percent: 50 }, factory: { state: 'error', message: 'stale' } },
     })
     const { steps } = buildSetupStatus(facts({ state, factoryDisabled: true }))
@@ -123,7 +123,7 @@ describe('buildSetupStatus', () => {
   })
 
   it('does not wait for a Factory once it is disabled: AgentOS up is all there is', () => {
-    const started = laptopState({ agentosStarted: true, downloads: { agentos: { state: 'done' } } })
+    const started = unmanagedState({ agentosStarted: true, downloads: { agentos: { state: 'done' } } })
     const setup = { identity: { email: 'a@b.co' } }
     const up = buildSetupStatus(facts({ state: started, setup, agentosHealthy: true, factoryDisabled: true }))
     expect(up.steps.agentos.state).toBe('done')
@@ -131,7 +131,7 @@ describe('buildSetupStatus', () => {
   })
 
   it('has nothing to download or check for an external AgentOS when the Factory is disabled', () => {
-    const state = laptopState({ profile: 'managed', java: { state: 'missing', hint: 'install java' } })
+    const state = unmanagedState({ profile: 'managed', java: { state: 'missing', hint: 'install java' } })
     const { steps } = buildSetupStatus(
       facts({ state, setupEnabled: false, external: { agentos: true }, factoryDisabled: true })
     )
@@ -140,7 +140,7 @@ describe('buildSetupStatus', () => {
   })
 
   it('still waits for an external Factory even when the managed one is disabled', () => {
-    const state = laptopState({ profile: 'managed' })
+    const state = unmanagedState({ profile: 'managed' })
     const { steps } = buildSetupStatus(
       facts({ state, setupEnabled: false, external: { factory: true }, factoryDisabled: true })
     )
@@ -148,7 +148,7 @@ describe('buildSetupStatus', () => {
   })
 
   it('still reports a managed Factory download while only AgentOS is external', () => {
-    const state = laptopState({
+    const state = unmanagedState({
       profile: 'managed',
       downloads: { factory: { state: 'running', percent: 30 } },
     })
@@ -228,12 +228,14 @@ describe('decideIdentityChange', () => {
   })
 
   it('accepts the first identity and a change before AgentOS started', () => {
-    expect(decideIdentityChange(true, {}, laptopState(), email)).toEqual({ ok: true })
-    expect(decideIdentityChange(true, { identity: { email: 'old@b.co' } }, laptopState(), email)).toEqual({ ok: true })
+    expect(decideIdentityChange(true, {}, unmanagedState(), email)).toEqual({ ok: true })
+    expect(decideIdentityChange(true, { identity: { email: 'old@b.co' } }, unmanagedState(), email)).toEqual({
+      ok: true,
+    })
   })
 
   it('refuses to change the identity once AgentOS booted with another one (bootstrap admin is fixed)', () => {
-    const started = laptopState({ agentosStarted: true })
+    const started = unmanagedState({ agentosStarted: true })
     expect(decideIdentityChange(true, { identity: { email: 'old@b.co' } }, started, email)).toMatchObject({
       ok: false,
       status: 409,
@@ -241,7 +243,7 @@ describe('decideIdentityChange', () => {
   })
 
   it('still refuses after a restart when an earlier run created the AgentOS database', () => {
-    const restarted = laptopState({ agentosStarted: false })
+    const restarted = unmanagedState({ agentosStarted: false })
     expect(decideIdentityChange(true, { identity: { email: 'old@b.co' } }, restarted, email, true)).toMatchObject({
       ok: false,
       status: 409,
@@ -249,7 +251,7 @@ describe('decideIdentityChange', () => {
   })
 
   it('accepts re-sending the same identity after AgentOS started (page reload)', () => {
-    const started = laptopState({ agentosStarted: true })
+    const started = unmanagedState({ agentosStarted: true })
     expect(decideIdentityChange(true, { identity: { email } }, started, email)).toEqual({ ok: true })
   })
 })

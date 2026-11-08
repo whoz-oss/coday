@@ -79,8 +79,8 @@ export class ApplyTracker {
 }
 
 export interface SetupStatus {
-  /** `laptop`: the wizard applies. `managed`: pre-wizard behaviour, the client must not redirect. */
-  mode: 'laptop' | 'managed'
+  /** `unmanaged`: the wizard applies. `managed`: pre-wizard behaviour, the client must not redirect. */
+  mode: 'unmanaged' | 'managed'
   setupEnabled: boolean
   setupDone: boolean
   identity?: { email: string }
@@ -195,7 +195,7 @@ export function buildSetupStatus(facts: StatusFacts): SetupStatus {
     agentos = state ? { state: 'running', message: 'Waiting for AgentOS' } : { state: 'pending' }
   else if (download.state === 'error') agentos = { state: 'error', message: download.message }
   else if (java.state === 'blocked') agentos = { state: 'blocked', message: 'Waiting for Java' }
-  else if (!setup.identity && state?.profile === 'laptop')
+  else if (!setup.identity && state?.profile === 'unmanaged')
     agentos = { state: 'pending', message: 'Waiting for your email' }
   else if (!state) agentos = { state: 'pending' }
   else if (state.agentosStarted) agentos = { state: 'running', message: 'Starting AgentOS' }

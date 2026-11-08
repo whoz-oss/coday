@@ -281,7 +281,9 @@ export class SetupStateService {
     if (status.identity && !this.email()) this.email.set(status.identity.email)
     // Download and AgentOS startup are already running in the background: show them from the start.
     this.startPolling()
-    const wizard = preview ? preview === 'fresh' : status.mode === 'laptop' && status.setupEnabled && !status.setupDone
+    const wizard = preview
+      ? preview === 'fresh'
+      : status.mode === 'unmanaged' && status.setupEnabled && !status.setupDone
     if (!wizard) {
       // No wizard to show (setup done, or a mode without one: --auth, external AgentOS, existing install): only the
       // loading page, which hands over to the app once AgentOS is up.

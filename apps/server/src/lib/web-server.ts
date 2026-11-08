@@ -53,7 +53,7 @@ const FORBIDDEN_USERNAMES = [
 
 export interface WebAppOptions {
   codayOptions: CodayOptions
-  /** Laptop profile without `--auth`: the first-run wizard API accepts mutations. */
+  /** Unmanaged profile without `--auth`: the first-run wizard API accepts mutations. */
   setupEnabled: boolean
 }
 

@@ -5,14 +5,14 @@ import { SetupStatus } from './setup.models'
 
 /** True when this server wants the first-run wizard to be shown. */
 export const wizardRequired = (status: SetupStatus | null): boolean =>
-  !!status && status.mode === 'laptop' && status.setupEnabled && !status.setupDone
+  !!status && status.mode === 'unmanaged' && status.setupEnabled && !status.setupDone
 
 /**
  * Global guard of the application routes: while the first-run setup is not done, everything redirects to
  * `/welcome`.
  *
  * It never redirects when:
- *  - the server is not in laptop/managed-first-run mode (`--auth` deployments, external AgentOS, existing
+ *  - the server is not in unmanaged first-run mode (`--auth` deployments, external AgentOS, existing
  *    installs): `setupEnabled` is false there,
  *  - the setup API cannot be read (older server, network hiccup): the app must stay usable.
  *

@@ -25,8 +25,8 @@ afterEach(() => fs.rmSync(configDir, { recursive: true, force: true }))
 describe('decideProfile', () => {
   const base = () => ({ auth: false, configDir })
 
-  it('is laptop on a fresh install', () => {
-    expect(decideProfile(base())).toMatchObject({ profile: 'laptop', setupEnabled: true })
+  it('is unmanaged on a fresh install', () => {
+    expect(decideProfile(base())).toMatchObject({ profile: 'unmanaged', setupEnabled: true })
   })
 
   it.each([
@@ -42,24 +42,26 @@ describe('decideProfile', () => {
     expect(decideProfile(base())).toMatchObject({ profile: 'managed', setupEnabled: false })
   })
 
-  it('goes laptop once the wizard identity exists, even with data', () => {
+  it('goes unmanaged once the wizard identity exists, even with data', () => {
     fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
     saveIdentity(configDir, 'me@acme.com')
-    expect(decideProfile(base()).profile).toBe('laptop')
+    expect(decideProfile(base()).profile).toBe('unmanaged')
   })
 
   describe('CODAY_PROFILE', () => {
-    it('forces laptop over an external AgentOS, without the wizard', () => {
-      expect(decideProfile({ ...base(), agentosUrl: 'http://localhost:8224', forcedProfile: 'laptop' })).toMatchObject({
-        profile: 'laptop',
+    it('forces unmanaged over an external AgentOS, without the wizard', () => {
+      expect(
+        decideProfile({ ...base(), agentosUrl: 'http://localhost:8224', forcedProfile: 'unmanaged' })
+      ).toMatchObject({
+        profile: 'unmanaged',
         setupEnabled: false,
       })
     })
 
-    it('forces laptop with the wizard when nothing else prevents it', () => {
+    it('forces unmanaged with the wizard when nothing else prevents it', () => {
       fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
-      expect(decideProfile({ ...base(), forcedProfile: 'Laptop' })).toMatchObject({
-        profile: 'laptop',
+      expect(decideProfile({ ...base(), forcedProfile: 'Unmanaged' })).toMatchObject({
+        profile: 'unmanaged',
         setupEnabled: true,
       })
     })
@@ -74,7 +76,7 @@ describe('decideProfile', () => {
     it('ignores an unknown value', () => {
       expect(parseForcedProfile('whatever')).toBeUndefined()
       expect(parseForcedProfile(undefined)).toBeUndefined()
-      expect(decideProfile({ ...base(), forcedProfile: 'whatever' })).toMatchObject({ profile: 'laptop' })
+      expect(decideProfile({ ...base(), forcedProfile: 'whatever' })).toMatchObject({ profile: 'unmanaged' })
     })
   })
 })
@@ -98,7 +100,7 @@ describe('state', () => {
   it('merges ports and downloads one level deep and stamps updatedAt', () => {
     const t = new Date('2030-01-01T00:00:00Z')
     const merged = mergeState(
-      { ...initialState('nx', 'laptop'), ports: { express: 1 }, downloads: { agentos: { state: 'running' } } },
+      { ...initialState('nx', 'unmanaged'), ports: { express: 1 }, downloads: { agentos: { state: 'running' } } },
       { ports: { agentos: 2 }, downloads: { factory: { state: 'done' } } },
       () => t
     )
@@ -108,7 +110,7 @@ describe('state', () => {
   })
 
   it('lets each writer update its own keys without clobbering the others', () => {
-    updateState(configDir, { ports: { express: 1 } }, initialState('nx', 'laptop'))
+    updateState(configDir, { ports: { express: 1 } }, initialState('nx', 'unmanaged'))
     updateState(configDir, { downloads: { agentos: { state: 'running', percent: 10 } } })
     updateState(configDir, { downloads: { factory: { state: 'done' } } })
     expect(readState(configDir)).toMatchObject({
@@ -118,7 +120,7 @@ describe('state', () => {
   })
 
   it('remembers the port block of the last start next to the ports', () => {
-    updateState(configDir, { ports: { express: 3020 }, portBlock: 3020 }, initialState('nx', 'laptop'))
+    updateState(configDir, { ports: { express: 3020 }, portBlock: 3020 }, initialState('nx', 'unmanaged'))
     updateState(configDir, { downloads: { agentos: { state: 'running' } } })
     expect(readState(configDir)).toMatchObject({ ports: { express: 3020 }, portBlock: 3020 })
   })

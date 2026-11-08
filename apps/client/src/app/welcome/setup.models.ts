@@ -20,8 +20,8 @@ export interface SetupProviderInfo {
 export type ProviderId = 'anthropic' | 'openai' | 'requesty'
 
 export interface SetupStatus {
-  /** `laptop`: the wizard applies. `managed`: pre-wizard behaviour, never redirect to /welcome. */
-  mode: 'laptop' | 'managed'
+  /** `unmanaged`: the wizard applies. `managed`: pre-wizard behaviour, never redirect to /welcome. */
+  mode: 'unmanaged' | 'managed'
   setupEnabled: boolean
   setupDone: boolean
   identity?: { email: string }

@@ -40,8 +40,8 @@ describe('createWebApp without AgentOS', () => {
     // Provisioned, but nothing listens on the AgentOS / Factory ports (1 is refused at once).
     updateState(
       dir,
-      { profile: 'laptop', provisioned: true, ports: { express: 3000, agentos: 1, factory: 1 } },
-      initialState('nx', 'laptop')
+      { profile: 'unmanaged', provisioned: true, ports: { express: 3000, agentos: 1, factory: 1 } },
+      initialState('nx', 'unmanaged')
     )
     const options: CodayOptions = { configDir: dir, auth: false, host: '127.0.0.1', noOpen: false }
     server = http.createServer(createWebApp({ codayOptions: options, setupEnabled: true }))
@@ -88,7 +88,7 @@ describe('createWebApp without AgentOS', () => {
     expect(res.status).toBe(200)
     expect(res.type).toContain('application/json')
     const status = JSON.parse(res.body)
-    expect(status).toMatchObject({ mode: 'laptop', setupEnabled: true, setupDone: false })
+    expect(status).toMatchObject({ mode: 'unmanaged', setupEnabled: true, setupDone: false })
     expect(status.steps.agentos.state).not.toBe('done')
   })
 

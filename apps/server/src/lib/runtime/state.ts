@@ -12,7 +12,7 @@ import { JavaStatus } from './java'
 import { readJsonFile, writeJsonFile } from './json-file'
 import { statePath } from './paths'
 
-export type RuntimeProfile = 'laptop' | 'managed'
+export type RuntimeProfile = 'unmanaged' | 'managed'
 export type ServiceKind = 'agentos' | 'factory'
 export type DownloadState = 'idle' | 'running' | 'done' | 'error'
 

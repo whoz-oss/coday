@@ -40,7 +40,7 @@ export interface CodayOptions {
   port?: number
   /** False with `--no-open` (the Nx `server` task then does not open the browser). Env: CODAY_NO_OPEN. */
   noOpen: boolean
-  /** `--profile laptop|managed` / `CODAY_PROFILE`: forces the runtime profile (see runtime/profile.ts). Unset: derived. */
+  /** `--profile unmanaged|managed` / `CODAY_PROFILE`: forces the runtime profile (see runtime/profile.ts). Unset: derived. */
   profile?: string
 }
 
@@ -80,7 +80,7 @@ export function parseCodayOptions(
     })
     .option('profile', {
       type: 'string',
-      description: 'Force the runtime profile: laptop or managed (default: derived). Env: CODAY_PROFILE',
+      description: 'Force the runtime profile: unmanaged or managed (default: derived). Env: CODAY_PROFILE',
     })
     .help().argv as Argv
 

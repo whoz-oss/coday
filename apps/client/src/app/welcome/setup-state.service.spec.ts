@@ -11,7 +11,7 @@ import { SetupStatus } from './setup.models'
 
 const baseStatus = (patch: Partial<SetupStatus> = {}): SetupStatus =>
   ({
-    mode: 'laptop',
+    mode: 'unmanaged',
     setupEnabled: true,
     setupDone: false,
     steps: {
@@ -517,7 +517,7 @@ describe('SetupStateService', () => {
       expect(state.loadingReady()).toBe(true)
     })
 
-    it('never asks outside the managed loading page (laptop install, wizard, preview)', async () => {
+    it('never asks outside the managed loading page (unmanaged install, wizard, preview)', async () => {
       providers(platformProviders, [])
       api.getStatus.mockReturnValue(
         of(

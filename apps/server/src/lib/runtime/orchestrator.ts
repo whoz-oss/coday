@@ -77,7 +77,7 @@ export async function provisionJars(
 }
 
 /**
- * Wait until Java >= 25 is usable. In `laptop` profile a missing Java is a normal first-run state
+ * Wait until Java >= 25 is usable. In `unmanaged` profile a missing Java is a normal first-run state
  * the user fixes while the wizard explains how: poll. Otherwise give up immediately (null).
  */
 async function requireJava(ctx: OrchestratorContext, patient: boolean): Promise<JavaStatus | null> {
@@ -120,13 +120,13 @@ function requirePorts(state: RuntimeState | undefined): Required<
 }
 
 function secretsFor(ctx: OrchestratorContext, state: RuntimeState): RuntimeSecrets | undefined {
-  return state.profile === 'laptop'
+  return state.profile === 'unmanaged'
     ? ensureSecrets(ctx.configDir, (m) => ctx.sink.write(`[secrets] ${m}`)).secrets
     : undefined
 }
 
 /**
- * Download, wait for the prerequisites (Java, then the identity in laptop profile), spawn AgentOS
+ * Download, wait for the prerequisites (Java, then the identity in unmanaged profile), spawn AgentOS
  * and wait for its health. Returns null when AgentOS cannot be started (the reason was written
  * to the sink and to state.json).
  */
@@ -135,7 +135,7 @@ export async function startAgentosService(ctx: OrchestratorContext): Promise<Sta
   const state = readState(configDir)
   const ports = requirePorts(state)
   const version = state?.versions?.agentos ?? getAgentosVersion()
-  const laptop = state?.profile === 'laptop'
+  const unmanaged = state?.profile === 'unmanaged'
 
   const download = await provisionJars(ctx, 'agentos', version)
   if (!isSuccessfulDownload(download)) {
@@ -147,12 +147,12 @@ export async function startAgentosService(ctx: OrchestratorContext): Promise<Sta
     return null
   }
 
-  const java = await requireJava(ctx, laptop)
+  const java = await requireJava(ctx, unmanaged)
   if (!java) return null
 
-  // Laptop profile: AgentOS reads its bootstrap admin at first boot, so it must know the email.
+  // Unmanaged profile: AgentOS reads its bootstrap admin at first boot, so it must know the email.
   let identityEmail: string | undefined
-  if (laptop) {
+  if (unmanaged) {
     identityEmail = readIdentityEmail(configDir)
     if (!identityEmail) {
       sink.write('')
@@ -166,7 +166,7 @@ export async function startAgentosService(ctx: OrchestratorContext): Promise<Sta
 
   // Adoption of an AgentOS already running on that port (orphan of a previous run, own bootRun...).
   const healthUrl = `http://${LOOPBACK}:${ports.agentos}/management/health`
-  if (!laptop && (await isHealthy(healthUrl))) {
+  if (!unmanaged && (await isHealthy(healthUrl))) {
     sink.write(`[agentos] An AgentOS already answers on port ${ports.agentos}: adopting it (it will not be stopped).`)
     return { port: ports.agentos, spawned: false, shutdown: async () => undefined }
   }
@@ -224,7 +224,7 @@ export async function startFactoryService(
     sink.write(`[factory] JAR not found at ${factoryJarPath(configDir, version)}`)
     return null
   }
-  const java = await requireJava(ctx, state?.profile === 'laptop')
+  const java = await requireJava(ctx, state?.profile === 'unmanaged')
   if (!java) return null
 
   const spec = buildFactorySpec({
