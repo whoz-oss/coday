@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, Injector, OnInit } from '@angular/core'
+import { ChangeDetectionStrategy, Component, inject, Injector, OnDestroy, OnInit } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import { parseWelcomePreview, SetupStateService, WIZARD_STEPS, WizardStep } from './setup-state.service'
 import { EmailStepComponent } from './steps/email-step.component'
@@ -31,7 +31,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
   styleUrl: './welcome.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class WelcomeComponent implements OnInit {
+export class WelcomeComponent implements OnInit, OnDestroy {
   protected readonly state = inject(SetupStateService)
   protected readonly steps = WIZARD_STEPS.map((id) => ({ id, label: STEP_LABELS[id] }))
   private readonly injector = inject(Injector)
@@ -40,6 +40,11 @@ export class WelcomeComponent implements OnInit {
   ngOnInit(): void {
     void this.applyTheme()
     void this.state.init(parseWelcomePreview(this.route.snapshot.queryParamMap.get('preview')))
+  }
+
+  /** The service is root-scoped: without this, the status polling would outlive the page, whatever way the user leaves it. */
+  ngOnDestroy(): void {
+    this.state.stopPolling()
   }
 
   /**
