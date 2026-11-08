@@ -18,6 +18,7 @@ describe('createWebApp without AgentOS', () => {
     cockpit: process.env['CODAY_FACTORY_COCKPIT_PATH'],
     agentosUrl: process.env['AGENTOS_URL'],
     factoryUrl: process.env['FACTORY_URL'],
+    noFactory: process.env['CODAY_NO_FACTORY'],
   }
   let dir: string
   let server: http.Server
@@ -37,6 +38,7 @@ describe('createWebApp without AgentOS', () => {
     // proxies reach a real service instead of the dead ports provisioned below.
     delete process.env['AGENTOS_URL']
     delete process.env['FACTORY_URL']
+    delete process.env['CODAY_NO_FACTORY']
     // Provisioned, but nothing listens on the AgentOS / Factory ports (1 is refused at once).
     updateState(
       dir,
@@ -56,6 +58,7 @@ describe('createWebApp without AgentOS', () => {
       ['CODAY_FACTORY_COCKPIT_PATH', saved.cockpit],
       ['AGENTOS_URL', saved.agentosUrl],
       ['FACTORY_URL', saved.factoryUrl],
+      ['CODAY_NO_FACTORY', saved.noFactory],
     ] as const) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
@@ -90,6 +93,15 @@ describe('createWebApp without AgentOS', () => {
     const status = JSON.parse(res.body)
     expect(status).toMatchObject({ mode: 'unmanaged', setupEnabled: true, setupDone: false })
     expect(status.steps.agentos.state).not.toBe('done')
+  })
+
+  it('has a Factory step by default, and none once CODAY_NO_FACTORY is set (the loading page then never waits for it)', async () => {
+    const withFactory = JSON.parse((await get('/api/setup/status')).body)
+    expect(withFactory.steps.factory).toBeDefined()
+
+    process.env['CODAY_NO_FACTORY'] = '1'
+    const without = JSON.parse((await get('/api/setup/status')).body)
+    expect(without.steps).not.toHaveProperty('factory')
   })
 
   const postIdentity = (headers: Record<string, string>) =>

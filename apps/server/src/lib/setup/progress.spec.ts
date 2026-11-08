@@ -62,6 +62,35 @@ describe('buildSetupStatus', () => {
     expect(download.percent).toBe(Math.round(0.85 * 50 + 0.15 * 100))
   })
 
+  it('names the exact versions being downloaded', () => {
+    const state = unmanagedState({
+      versions: { agentos: '0.250.1', factory: '0.250.1' },
+      downloads: { agentos: { state: 'running', percent: 10 }, factory: { state: 'running', percent: 10 } },
+    })
+    expect(buildSetupStatus(facts({ state })).steps.download.versions).toEqual({
+      agentos: '0.250.1',
+      factory: '0.250.1',
+    })
+  })
+
+  it('names no version for the `dev` sentinel, nor for a service that is external, left out or failed', () => {
+    const versions = { agentos: '0.250.1', factory: '0.250.2' }
+    const running = { agentos: { state: 'running' as const }, factory: { state: 'running' as const } }
+    const download = (patch: Partial<StatusFacts>, state = unmanagedState({ versions, downloads: running })) =>
+      buildSetupStatus(facts({ state, ...patch })).steps.download
+
+    const dev = unmanagedState({ versions: { agentos: 'dev', factory: 'dev' }, downloads: running })
+    expect(download({}, dev)).not.toHaveProperty('versions')
+    expect(download({ external: { agentos: true } }).versions).toEqual({ factory: '0.250.2' })
+    expect(download({ factoryDisabled: true }).versions).toEqual({ agentos: '0.250.1' })
+    expect(download({ external: { agentos: true }, factoryDisabled: true })).not.toHaveProperty('versions')
+    const failedFactory = unmanagedState({
+      versions,
+      downloads: { agentos: { state: 'running' }, factory: { state: 'error', message: 'x' } },
+    })
+    expect(download({}, failedFactory).versions).toEqual({ agentos: '0.250.1' })
+  })
+
   it('turns a failed download into an error that also fails AgentOS', () => {
     const state = unmanagedState({ downloads: { agentos: { state: 'error', message: 'Manifest HTTP 404' } } })
     const { steps } = buildSetupStatus(facts({ state }))

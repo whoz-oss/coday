@@ -6,7 +6,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { SetupApiService } from './setup-api.service'
-import { parseWelcomePreview, SetupStateService } from './setup-state.service'
+import { downloadLabel, parseWelcomePreview, SetupStateService } from './setup-state.service'
 import { SetupStatus } from './setup.models'
 
 const baseStatus = (patch: Partial<SetupStatus> = {}): SetupStatus =>
@@ -255,6 +255,21 @@ describe('SetupStateService', () => {
         'agent',
       ])
       expect(state.checklist()[0]).toMatchObject({ state: 'running', percent: 40 })
+    })
+
+    it('names the exact versions in the download line, on the wizard and on the loading page', async () => {
+      const download = { state: 'running' as const, percent: 40, versions: { agentos: '0.250.1', factory: '0.250.1' } }
+      api.getStatus.mockReturnValue(of(baseStatus({ steps: { ...baseStatus().steps, download } })))
+      await state.refreshStatus()
+      expect(state.checklist()[0]?.label).toBe('Downloading AgentOS 0.250.1 and Factory 0.250.1')
+      expect(state.loadingChecklist()[0]?.label).toBe('Downloading AgentOS 0.250.1 and Factory 0.250.1')
+    })
+
+    it('builds the download label from whatever versions are known', () => {
+      expect(downloadLabel()).toBe('Downloading AgentOS')
+      expect(downloadLabel({})).toBe('Downloading AgentOS')
+      expect(downloadLabel({ agentos: '1.2.3' })).toBe('Downloading AgentOS 1.2.3')
+      expect(downloadLabel({ factory: '1.2.3' })).toBe('Downloading Factory 1.2.3')
     })
 
     it('exposes the blocked Java so the UI can show the install hint', async () => {

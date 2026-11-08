@@ -85,7 +85,7 @@ export interface SetupStatus {
   setupDone: boolean
   identity?: { email: string }
   steps: {
-    download: { state: StepState; percent?: number; message?: string }
+    download: { state: StepState; percent?: number; message?: string; versions?: DownloadVersions }
     java: { state: StepState; version?: string; hint?: string }
     agentos: StepStatus
     /** Absent when the managed Factory is left out (`CODAY_NO_FACTORY`). */
@@ -97,6 +97,12 @@ export interface SetupStatus {
   }
   apply: { status: ApplyStatus; error?: string }
   namespaceId?: string
+}
+
+/** Exact versions of the packages this run downloads (only the services Coday fetches, never the `dev` sentinel). */
+export interface DownloadVersions {
+  agentos?: string
+  factory?: string
 }
 
 export type IdentityDecision = { ok: true } | { ok: false; status: 403 | 409; message: string }
@@ -147,6 +153,20 @@ function javaStep(java: JavaStatus | undefined): SetupStatus['steps']['java'] {
   return { state: 'blocked', hint: java.hint, ...(java.state === 'too-old' ? { version: java.version } : {}) }
 }
 
+/** `{ versions }` of the services this run downloads, or nothing when there is no real version to show. */
+function downloadVersions(
+  state: RuntimeState,
+  withAgentos: boolean,
+  withFactory: boolean
+): { versions: DownloadVersions } | Record<string, never> {
+  // 'dev' is the hand-placed JAR sentinel: nothing is downloaded, so there is no version to announce.
+  const real = (version?: string): string | undefined => (version && version !== 'dev' ? version : undefined)
+  const agentos = withAgentos ? real(state.versions?.agentos) : undefined
+  const factory = withFactory ? real(state.versions?.factory) : undefined
+  if (!agentos && !factory) return {}
+  return { versions: { ...(agentos ? { agentos } : {}), ...(factory ? { factory } : {}) } }
+}
+
 /**
  * The wizard only waits for AgentOS: a Factory that cannot be downloaded must not block the first run (its
  * failure is reported on the `factory` step instead). So the Factory only contributes to the progress while it
@@ -162,19 +182,22 @@ function downloadStep(
   const noFactoryDownload = !!external.factory || factoryDisabled
   if (external.agentos && noFactoryDownload) return { state: 'done', percent: 100 }
   const { agentos, factory } = state.downloads
+  const withAgentos = !external.agentos
+  const withFactory = !noFactoryDownload && factory?.state !== 'error'
   const overall = overallDownload({
-    agentos: external.agentos ? undefined : agentos,
-    factory: noFactoryDownload || factory?.state === 'error' ? undefined : factory,
+    agentos: withAgentos ? agentos : undefined,
+    factory: withFactory ? factory : undefined,
   })
+  const versions = downloadVersions(state, withAgentos, withFactory)
   switch (overall.state) {
     case 'done':
-      return { state: 'done', percent: 100 }
+      return { state: 'done', percent: 100, ...versions }
     case 'error':
-      return { state: 'error', message: overall.message }
+      return { state: 'error', message: overall.message, ...versions }
     case 'running':
-      return { state: 'running', percent: overall.percent }
+      return { state: 'running', percent: overall.percent, ...versions }
     default:
-      return { state: 'pending' }
+      return { state: 'pending', ...versions }
   }
 }
 
