@@ -14,7 +14,7 @@
  * setup AND with an external AgentOS (`AGENTOS_URL`) or an existing install, as the identity the proxies use
  * (`AGENTOS_EXTERNAL_USERID`, else the wizard email). Never behind `--auth`: no single identity to act as.
  *
- * Every mutating route and the folder browser only answer when `setupEnabled` (laptop profile, no
+ * Every mutating route and the folder browser only answer when `setupEnabled` (unmanaged profile, no
  * `--auth`) AND the caller is a page of this machine on loopback: this API can read the filesystem and
  * receives API keys.
  */
@@ -41,7 +41,7 @@ import { isManagedFactoryDisabled } from '../runtime/factory-option'
 
 export interface SetupRouterOptions {
   configDir: string
-  /** Laptop profile and no `--auth`: the wizard and its mutations apply. */
+  /** Unmanaged profile and no `--auth`: the wizard and its mutations apply. */
   setupEnabled: boolean
   fetchFn?: typeof fetch
   /** `AGENTOS_URL` / `FACTORY_URL`: services Coday does not run. The status probes them instead of the managed ports. */

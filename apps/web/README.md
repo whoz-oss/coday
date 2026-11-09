@@ -219,7 +219,7 @@ Each process writes to its own file, in addition to its pane / the console:
 
 `configDir` defaults to `~/.coday` (`--configDir <dir>` to change it).
 
-### Security in laptop mode
+### Security in unmanaged mode
 
 Auth mode trusts identity headers, so every listener is bound to loopback: Express `127.0.0.1`, AgentOS
 `--server.address=127.0.0.1`, Factory `FACTORY_BIND_HOST=127.0.0.1`. AgentOS and Factory run with
@@ -245,7 +245,7 @@ existing installs without a wizard identity keep their previous behaviour: no wi
 | `CODAY_AGENTOS_PORT`, `CODAY_FACTORY_PORT`, `CODAY_AGENTOS_BOLT_PORT` | Port of the managed AgentOS, Factory and AgentOS Bolt instead of the block's (strict) |
 | `AGENTOS_URL`, `FACTORY_URL` | Use an external AgentOS / Factory instead of managed ones. A service that is external has no pane in the Nx run (nothing to run); the `status` pane still reports it |
 | `CODAY_NO_FACTORY=1` | Leave the managed Factory out: no `factory` pane in the Nx run, it is neither downloaded nor started, `/api/factory` is not proxied, and the wizard and the loading page do not mention it. An external `FACTORY_URL` is still used |
-| `--profile laptop\|managed` / `CODAY_PROFILE` | Force the profile instead of deriving it (the flag wins over the env var). E.g. a dev server (`AGENTOS_URL`) started on the configDir of a running `coday-web` with `--profile laptop` keeps forwarding the wizard identity to that AgentOS. An external AgentOS on an already provisioned configDir never rewrites `runtime/state.json` (ports, progress) in the single-process mode, except for this profile |
+| `--profile unmanaged\|managed` / `CODAY_PROFILE` | Force the profile instead of deriving it (the flag wins over the env var). E.g. a dev server (`AGENTOS_URL`) started on the configDir of a running `coday-web` with `--profile unmanaged` keeps forwarding the wizard identity to that AgentOS. An external AgentOS on an already provisioned configDir never rewrites `runtime/state.json` (ports, progress) in the single-process mode, except for this profile |
 | `AGENTOS_EXTERNAL_USERID` | Impose the identity forwarded to AgentOS (disables the wizard) |
 | `CODAY_AGENTOS_VERSION`, `CODAY_FACTORY_VERSION` | JAR version to run (`dev` = JARs placed by hand in `<configDir>/{agentos,factory}`) |
 | `CODAY_DEFAULT_FILES_DIR` | Folder proposed by the wizard instead of `~/Coday` |

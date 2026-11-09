@@ -46,7 +46,7 @@ export async function provision(input: ProvisionInput): Promise<ProvisionResult>
     return { decision, state }
   }
 
-  if (decision.profile === 'laptop') {
+  if (decision.profile === 'unmanaged') {
     const { created } = ensureSecrets(input.configDir, log)
     if (created) log('Generated install secrets (runtime/secrets.json, mode 0600)')
   }

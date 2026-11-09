@@ -263,7 +263,7 @@ export async function runServerTask(): Promise<number> {
   try {
     const app = createWebApp({
       codayOptions: options,
-      setupEnabled: decision.setupEnabled && state.profile === 'laptop',
+      setupEnabled: decision.setupEnabled && state.profile === 'unmanaged',
     })
     server = await listen(app, options, port)
     printStartup({ ...state.ports, express: port })

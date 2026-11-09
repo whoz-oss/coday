@@ -33,7 +33,7 @@ export interface AgentosSpecInput extends CommonInput {
   port: number
   boltPort: number
   expressPort: number
-  /** Bootstrap admin (laptop profile). */
+  /** Bootstrap admin (unmanaged profile). */
   identityEmail?: string
   secrets?: RuntimeSecrets
 }
@@ -62,7 +62,7 @@ export function buildAgentosSpec(input: AgentosSpecInput): ServiceSpec {
   }
   const args = ['-jar', agentosJarPath(configDir, input.version), `--server.port=${port}`]
 
-  if (profile === 'laptop') {
+  if (profile === 'unmanaged') {
     // `auth` mode trusts identity headers: nothing but loopback may reach AgentOS.
     args.push(`--server.address=${LOOPBACK}`)
     env.AGENTOS_SECURITY_MODE = 'auth'
@@ -101,7 +101,7 @@ export function buildFactorySpec(input: FactorySpecInput): ServiceSpec {
     `--server.port=${port}`,
   ]
 
-  if (profile === 'laptop') {
+  if (profile === 'unmanaged') {
     // Factory reads FACTORY_SECURITY_MODE, NOT AGENTOS_SECURITY_MODE.
     env.FACTORY_SECURITY_MODE = 'auth'
     env.FACTORY_BIND_HOST = LOOPBACK

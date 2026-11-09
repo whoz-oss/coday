@@ -1,7 +1,18 @@
+// The host is an unknown element (display: inline). Without this it is a flex item of the drawer that
+// neither grows nor is bounded, so the body below never gets a definite height to scroll within and a
+// long file is clipped by the drawer instead of scrolling.
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .exchange-content-viewer {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   overflow: hidden;
 }

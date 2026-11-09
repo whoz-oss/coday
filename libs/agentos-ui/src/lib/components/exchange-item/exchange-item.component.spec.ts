@@ -64,6 +64,13 @@ describe('ExchangeItemComponent copy relative path', () => {
     expect(el.querySelector('.exchange-item__actions--hidden')).not.toBeNull()
   })
 
+  it('exposes the full file name as a tooltip on the row, as the visible name can be truncated', () => {
+    const { el } = setup({ filename: 'quarterly-report-final-version-2026-03-v12.xlsx' })
+    expect(el.querySelector<HTMLButtonElement>('.exchange-item__main')?.title).toBe(
+      'quarterly-report-final-version-2026-03-v12.xlsx'
+    )
+  })
+
   it('copying does not preview the file', () => {
     const { fixture, buttons } = setup()
     const view = jest.fn()

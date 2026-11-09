@@ -88,6 +88,15 @@ const checklistLine = (
   message: step.message ?? (key === 'java' ? step.version : undefined),
 })
 
+/** `Downloading AgentOS 1.2.3 and Factory 1.2.3`: the exact packages, when the server knows them. */
+export const downloadLabel = (versions?: { agentos?: string; factory?: string }): string => {
+  const parts = [
+    versions?.agentos ? `AgentOS ${versions.agentos}` : null,
+    versions?.factory ? `Factory ${versions.factory}` : null,
+  ].filter((part): part is string => !!part)
+  return parts.length > 0 ? `Downloading ${parts.join(' and ')}` : 'Downloading AgentOS'
+}
+
 export const errorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof HttpErrorResponse) {
     const body = err.error as { error?: string } | string | null
@@ -179,7 +188,7 @@ export class SetupStateService {
     const s = this.status()?.steps
     if (!s) return []
     return [
-      checklistLine('download', 'Downloading AgentOS', s.download),
+      checklistLine('download', downloadLabel(s.download.versions), s.download),
       checklistLine('java', 'Checking Java 25', s.java),
       checklistLine('agentos', 'Starting AgentOS', s.agentos),
       checklistLine('providers', 'Configuring your AI providers', s.providers),
@@ -194,7 +203,7 @@ export class SetupStateService {
     const s = this.status()?.steps
     if (!s) return []
     return [
-      checklistLine('download', 'Downloading AgentOS', s.download),
+      checklistLine('download', downloadLabel(s.download.versions), s.download),
       checklistLine('java', 'Checking Java 25', s.java),
       checklistLine('agentos', 'Starting AgentOS', s.agentos),
       // Only with an external Factory (FACTORY_URL): Coday does not run one otherwise.
@@ -281,7 +290,9 @@ export class SetupStateService {
     if (status.identity && !this.email()) this.email.set(status.identity.email)
     // Download and AgentOS startup are already running in the background: show them from the start.
     this.startPolling()
-    const wizard = preview ? preview === 'fresh' : status.mode === 'laptop' && status.setupEnabled && !status.setupDone
+    const wizard = preview
+      ? preview === 'fresh'
+      : status.mode === 'unmanaged' && status.setupEnabled && !status.setupDone
     if (!wizard) {
       // No wizard to show (setup done, or a mode without one: --auth, external AgentOS, existing install): only the
       // loading page, which hands over to the app once AgentOS is up.
