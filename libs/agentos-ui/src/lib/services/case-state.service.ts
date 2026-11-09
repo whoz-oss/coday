@@ -1,5 +1,11 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { Case, CaseControllerService, MessageEvent, ReasoningEffort } from '@whoz-oss/agentos-api-client'
+import {
+  Case,
+  CaseControllerService,
+  CaseStatusEnum,
+  MessageEvent,
+  ReasoningEffort,
+} from '@whoz-oss/agentos-api-client'
 import {
   catchError,
   concatMap,
@@ -131,7 +137,7 @@ export class CaseStateService {
    * confirms it for an open chat.
    */
   killCase(caseId: string): Observable<void> {
-    return this.caseController.killCase(caseId).pipe(tap(() => this.updateCaseStatus(caseId, 'KILLED')))
+    return this.caseController.killCase(caseId).pipe(tap(() => this.updateCaseStatus(caseId, CaseStatusEnum.KILLED)))
   }
 
   /**

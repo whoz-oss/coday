@@ -329,7 +329,7 @@ export class CaseHomeComponent implements OnInit {
 
   /** The send button of the footer: while recording it sends the recording, otherwise the typed message. */
   protected onSendClick(): void {
-    if (this.voice.state() === 'recording') {
+    if (this.voice.isRecording()) {
       this.sendRecording()
     } else {
       void this.submit()
@@ -338,7 +338,7 @@ export class CaseHomeComponent implements OnInit {
 
   /** A recording can be sent as soon as it runs; the typed message follows the usual rules. */
   protected get canSendNow(): boolean {
-    return this.voice.state() === 'recording' || this.canSend
+    return this.voice.isRecording() || this.canSend
   }
 
   /** The key that sends, for the recording hint: the Enter preference decides whether it needs Ctrl/Cmd. */
@@ -352,7 +352,7 @@ export class CaseHomeComponent implements OnInit {
    * once the recording is on its way (the length limit may have sent it), does nothing.
    */
   protected onRecordingKeydown(event: KeyboardEvent): void {
-    if (this.voice.state() !== 'recording') return
+    if (!this.voice.isRecording()) return
     if (event.key === 'Escape') {
       event.preventDefault()
       this.cancelRecording()

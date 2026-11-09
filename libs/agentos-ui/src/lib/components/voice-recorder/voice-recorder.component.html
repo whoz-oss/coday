@@ -1,4 +1,4 @@
-@if (state() === 'recording') {
+@if (state() === states.RECORDING) {
   <div
     #bar
     class="voice-recorder"
@@ -11,7 +11,7 @@
     <span class="voice-recorder__time">{{ formatElapsed(elapsedMs()) }}</span>
     <span class="voice-recorder__hint">Recording… press {{ sendKey() }} to send</span>
   </div>
-} @else if (state() === 'sending') {
+} @else if (state() === states.SENDING) {
   <div class="voice-recorder voice-recorder--sending" role="status">
     <!-- A CSS spinner: the app loads the classic Material Icons font, which has no `progress_activity` glyph. -->
     <span class="voice-recorder__spinner" aria-hidden="true"></span>

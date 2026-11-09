@@ -12,7 +12,16 @@ import {
   VOICE_ERRORS,
 } from './voice-recorder.utils'
 
-export type VoiceRecorderState = 'idle' | 'starting' | 'recording' | 'sending' | 'error'
+/** The states of a recording, in the order of its life. Compare to these, never to the bare strings. */
+export const VOICE_RECORDER_STATE = {
+  IDLE: 'idle',
+  STARTING: 'starting',
+  RECORDING: 'recording',
+  SENDING: 'sending',
+  ERROR: 'error',
+} as const
+
+export type VoiceRecorderState = (typeof VOICE_RECORDER_STATE)[keyof typeof VOICE_RECORDER_STATE]
 
 /**
  * The case a recording is posted to: its id, or a function resolving it when the recording is sent. The function
@@ -62,13 +71,19 @@ export class VoiceRecorderService implements OnDestroy {
   private readonly media = inject(VOICE_MEDIA_PORT)
   private readonly api = inject(VoiceMessageControllerService)
 
-  readonly state = signal<VoiceRecorderState>('idle')
+  readonly state = signal<VoiceRecorderState>(VOICE_RECORDER_STATE.IDLE)
   readonly elapsedMs = signal(0)
   readonly error = signal<string | null>(null)
   /** The recording bar is shown. */
-  readonly isActive = computed(() => this.state() === 'recording' || this.state() === 'sending')
+  readonly isActive = computed(
+    () => this.state() === VOICE_RECORDER_STATE.RECORDING || this.state() === VOICE_RECORDER_STATE.SENDING
+  )
+  /** The microphone is on and the recording not yet sent. */
+  readonly isRecording = computed(() => this.state() === VOICE_RECORDER_STATE.RECORDING)
   /** Something is under way: the composer must not start another recording. */
-  readonly isBusy = computed(() => this.state() !== 'idle' && this.state() !== 'error')
+  readonly isBusy = computed(
+    () => this.state() !== VOICE_RECORDER_STATE.IDLE && this.state() !== VOICE_RECORDER_STATE.ERROR
+  )
 
   private generation = 0
   private stream: MediaStream | null = null
@@ -96,7 +111,7 @@ export class VoiceRecorderService implements OnDestroy {
       return
     }
     const generation = ++this.generation
-    this.state.set('starting')
+    this.state.set(VOICE_RECORDER_STATE.STARTING)
 
     let stream: MediaStream
     try {
@@ -140,20 +155,20 @@ export class VoiceRecorderService implements OnDestroy {
     this.handlers = handlers
     this.startedAt = Date.now()
     this.elapsedMs.set(0)
-    this.state.set('recording')
+    this.state.set(VOICE_RECORDER_STATE.RECORDING)
     this.timer = setInterval(() => this.tick(), TICK_MS)
   }
 
   /** Stops the recording and posts it. Resolves true when the server accepted it. */
   async stopAndSend(): Promise<boolean> {
-    if (this.state() !== 'recording' || !this.recorder) return false
+    if (!this.isRecording() || !this.recorder) return false
     const generation = this.generation
     const target = this.target
     const handlers = this.handlers
     this.clearTimer()
     const durationMs = Math.round(Date.now() - this.startedAt)
     this.elapsedMs.set(durationMs)
-    this.state.set('sending')
+    this.state.set(VOICE_RECORDER_STATE.SENDING)
     handlers.onSending?.()
 
     const blob = await this.finishRecording()
@@ -191,7 +206,7 @@ export class VoiceRecorderService implements OnDestroy {
     }
     // The case was left while the recording was uploading: it was posted to its case, nothing to show here.
     if (generation !== this.generation) return true
-    this.state.set('idle')
+    this.state.set(VOICE_RECORDER_STATE.IDLE)
     this.elapsedMs.set(0)
     handlers.onSent()
     return true
@@ -221,7 +236,7 @@ export class VoiceRecorderService implements OnDestroy {
     this.abortStop?.()
     this.chunks = []
     this.bytes = 0
-    this.state.set('idle')
+    this.state.set(VOICE_RECORDER_STATE.IDLE)
     this.elapsedMs.set(0)
     this.error.set(null)
   }
@@ -286,7 +301,7 @@ export class VoiceRecorderService implements OnDestroy {
     this.chunks = []
     this.bytes = 0
     this.elapsedMs.set(0)
-    this.state.set('error')
+    this.state.set(VOICE_RECORDER_STATE.ERROR)
     this.error.set(message)
   }
 }

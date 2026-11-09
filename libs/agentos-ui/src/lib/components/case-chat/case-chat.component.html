@@ -591,7 +591,7 @@
           <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 
           <!-- Right next to the send button, on its left -->
-          @if (voice.state() === 'recording') {
+          @if (voice.isRecording()) {
             <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
           } @else if (voiceCapability.available()) {
             <ds-icon-button
@@ -609,7 +609,7 @@
             <ds-icon-button
               icon="send"
               variant="primary"
-              [title]="voice.state() === 'recording' ? 'Send voice message' : preferences.composerHint()"
+              [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
               [disabled]="!canSendNow"
               (action)="onSendClick()"
             />
