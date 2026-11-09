@@ -348,6 +348,27 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             messagesOf(caseId).first().content shouldBe listOf(MessageContent.Text("@Helper Tidy up the descriptions"))
         }
 
+        "a topic of the chat is a chat of its own: its own case, answered in the topic" {
+            linkAda()
+            text("in the chat")
+            val ofTheChat = conversation().caseId.shouldNotBeNull()
+
+            gateway.handle(bot, MessagingInbound.Text(chatId = "$chatId/42", sender = sender(), messageId = nextMessageId++, text = "in a topic", direct = true))
+
+            val topic = conversations.open(MessagingPlatform.TELEGRAM, bot.accountId, "$chatId/42", ada.id)
+            val ofTheTopic = topic.caseId.shouldNotBeNull()
+            ofTheTopic shouldNotBe ofTheChat
+            caseEventService.create(
+                MessageEvent(
+                    namespaceId = namespace.id,
+                    caseId = ofTheTopic,
+                    actor = Actor(id = "agent", displayName = "Helper", role = ActorRole.AGENT),
+                    content = listOf(MessageContent.Text("answered in the topic")),
+                ),
+            )
+            eventually(2.seconds) { bot.textsTo("$chatId/42").any { "answered in the topic" in it } shouldBe true }
+        }
+
         "a voice message is transcribed, shown to the chat, and posted as the text it says" {
             linkAda()
 

@@ -104,6 +104,11 @@ applied from a chat, where the secret would stay in the chat's history on the pl
 the user to the card for it, and *Reject* stays. A click on a plan already applied, rejected, expired or replaced is
 told so.
 
+**Topics (Telegram threaded mode).** A bot whose threaded mode is on in @BotFather lets the user open topics in
+the chat with it. Each topic is a chat of its own: its first message starts a case, its replies come back in the
+topic, and `/new`, `/cases` and `/case` work in it alone. The General topic is the chat itself. The account is
+linked once, for all its topics.
+
 **Voice messages.** A voice message (Telegram's, or a clip recorded in Slack) is transcribed on the AgentOS server,
 then taken in as the text it says, marked 🎤: the bot first shows that text in the chat, so that the user sees what
 the agent will read, and the case keeps it as a message like any other. An audio file sent as music is

@@ -55,17 +55,20 @@ class TelegramBotClient(
         pendingPoll.get()?.cancel()
     }
 
+    /** Sends [text] to [chatId], in its topic [threadId] when there is one. */
     fun sendMessage(
         chatId: String,
         text: String,
         parseMode: String?,
         replyMarkup: Map<String, Any>?,
+        threadId: Long? = null,
     ): TelegramMessage =
         call(
             method = "sendMessage",
             payload =
                 mapOf(
                     "chat_id" to chatId,
+                    "message_thread_id" to threadId,
                     "text" to text,
                     "parse_mode" to parseMode,
                     "reply_markup" to replyMarkup,
@@ -105,8 +108,13 @@ class TelegramBotClient(
     fun sendChatAction(
         chatId: String,
         action: String,
+        threadId: Long? = null,
     ) {
-        call<JsonNode>("sendChatAction", mapOf("chat_id" to chatId, "action" to action), type(JsonNode::class.java))
+        call<JsonNode>(
+            "sendChatAction",
+            mapOf("chat_id" to chatId, "message_thread_id" to threadId, "action" to action),
+            type(JsonNode::class.java),
+        )
     }
 
     /** Where to download the file [fileId] from: Telegram keeps the path valid for an hour at least. */

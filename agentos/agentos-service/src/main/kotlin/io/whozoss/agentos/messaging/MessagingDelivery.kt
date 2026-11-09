@@ -190,9 +190,10 @@ class MessagingDelivery(
         }
     }
 
-    /** True while the conversation's chat is the one its user has linked through the bot. */
+    /** True while the conversation's chat (or a topic of it) is the one its user has linked through the bot. */
     private fun isLinked(conversation: MessagingConversation): Boolean =
-        identities.findByUser(conversation.userId, conversation.platform, conversation.accountId)?.directChatId == conversation.chatId
+        identities.findByUser(conversation.userId, conversation.platform, conversation.accountId)?.directChatId ==
+            MessagingChats.chatOf(conversation.chatId)
 
     private fun deliverStatus(
         event: CaseStatusEvent,

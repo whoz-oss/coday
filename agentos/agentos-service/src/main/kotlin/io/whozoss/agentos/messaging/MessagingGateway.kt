@@ -283,7 +283,8 @@ class MessagingGateway(
                 platform = adapter.platform,
                 accountId = adapter.accountId,
                 externalUserId = inbound.sender.externalUserId,
-                directChatId = inbound.chatId,
+                // The chat itself, not the topic the link came from: the account is linked in all its topics.
+                directChatId = MessagingChats.chatOf(inbound.chatId),
                 displayName = inbound.sender.displayName,
             )
         val linked = identities.link(token, adapter.bot, account)

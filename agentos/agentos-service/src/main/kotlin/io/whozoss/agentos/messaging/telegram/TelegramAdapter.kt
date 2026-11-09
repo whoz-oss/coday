@@ -6,6 +6,7 @@ import io.whozoss.agentos.messaging.MessagingActionCodec
 import io.whozoss.agentos.messaging.MessagingAudio
 import io.whozoss.agentos.messaging.MessagingBotRef
 import io.whozoss.agentos.messaging.MessagingButton
+import io.whozoss.agentos.messaging.MessagingChats
 import io.whozoss.agentos.messaging.MessagingDeliveryException
 import io.whozoss.agentos.messaging.MessagingManagerAdapter
 import io.whozoss.agentos.messaging.OutboundMessage
@@ -17,7 +18,7 @@ import java.io.IOException
  *
  * Messages go out as Telegram HTML; one Telegram refuses (a parse error, a link button to a host it does not
  * accept, such as `localhost`) goes again as plain text without link buttons. A refusal for flooding is waited
- * out, a bounded number of times.
+ * out, a bounded number of times. A chat address with a topic ([MessagingChats]) is answered in that topic.
  */
 class TelegramAdapter(
     private val client: TelegramBotClient,
@@ -58,7 +59,7 @@ class TelegramAdapter(
             )
         val keyboard = mapOf("keyboard" to listOf(listOf(button)), "resize_keyboard" to true, "one_time_keyboard" to true)
         try {
-            withFloodRetry { client.sendMessage(chatId, TelegramFormatter.toHtml(offer.text), "HTML", keyboard) }
+            withFloodRetry { client.sendMessage(chatOf(chatId), TelegramFormatter.toHtml(offer.text), "HTML", keyboard, topicOf(chatId)) }
         } catch (e: TelegramApiException) {
             throw MessagingDeliveryException(e.description, e)
         } catch (e: IOException) {
@@ -86,7 +87,7 @@ class TelegramAdapter(
     }
 
     override fun showTyping(chatId: String) {
-        bestEffort("typing indicator") { client.sendChatAction(chatId, "typing") }
+        bestEffort("typing indicator") { client.sendChatAction(chatOf(chatId), "typing", topicOf(chatId)) }
     }
 
     override fun acknowledgeClick(
@@ -100,7 +101,7 @@ class TelegramAdapter(
         chatId: String,
         messageId: String,
     ) {
-        bestEffort("button removal") { messageId.toLongOrNull()?.let { client.removeInlineKeyboard(chatId, it) } }
+        bestEffort("button removal") { messageId.toLongOrNull()?.let { client.removeInlineKeyboard(chatOf(chatId), it) } }
     }
 
     private fun sendChunk(
@@ -112,7 +113,7 @@ class TelegramAdapter(
         try {
             when (html) {
                 null -> sendPlain(chatId, markdown, buttons)
-                else -> withFloodRetry { client.sendMessage(chatId, html, "HTML", keyboard(buttons)) }
+                else -> withFloodRetry { client.sendMessage(chatOf(chatId), html, "HTML", keyboard(buttons), topicOf(chatId)) }
             }
         } catch (e: TelegramApiException) {
             when (e.errorCode) {
@@ -136,7 +137,7 @@ class TelegramAdapter(
         try {
             parts.forEachIndexed { index, part ->
                 val markup = keyboard(buttons.takeIf { index == parts.lastIndex }.orEmpty())
-                withFloodRetry { client.sendMessage(chatId, part, null, markup) }
+                withFloodRetry { client.sendMessage(chatOf(chatId), part, null, markup, topicOf(chatId)) }
             }
         } catch (e: TelegramApiException) {
             throw MessagingDeliveryException(e.description, e)
@@ -145,6 +146,11 @@ class TelegramAdapter(
             throw MessagingDeliveryException("Telegram cannot be reached", e)
         }
     }
+
+    /** The Telegram chat of [address] ([MessagingChats]): a topic's messages go to its chat, in the topic. */
+    private fun chatOf(address: String): String = MessagingChats.chatOf(address)
+
+    private fun topicOf(address: String): Long? = MessagingChats.threadOf(address)?.toLongOrNull()
 
     /** One button per row: options are sentences more often than words. */
     private fun keyboard(buttons: List<MessagingButton>): Map<String, Any>? =

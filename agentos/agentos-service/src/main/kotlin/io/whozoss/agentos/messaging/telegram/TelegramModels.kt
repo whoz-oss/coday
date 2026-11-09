@@ -3,6 +3,7 @@ package io.whozoss.agentos.messaging.telegram
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.messaging.MessagingChats
 
 /*
  * The few objects of the Telegram Bot API (https://core.telegram.org/bots/api) AgentOS reads. Unknown fields
@@ -24,6 +25,10 @@ data class TelegramMessage(
     @JsonProperty("from") val from: TelegramUser? = null,
     @JsonProperty("chat") val chat: TelegramChat,
     @JsonProperty("text") val text: String? = null,
+    /** The topic of the message, in a forum or a private chat in threaded mode ([topicMessage]). */
+    @JsonProperty("message_thread_id") val messageThreadId: Long? = null,
+    /** True for a message in a topic: not in the General one, whose messages are the chat's own. */
+    @JsonProperty("is_topic_message") val topicMessage: Boolean = false,
     /** A voice message, recorded in Telegram. */
     @JsonProperty("voice") val voice: TelegramAudioFile? = null,
     /** An audio file, sent as music. */
@@ -39,6 +44,10 @@ data class TelegramMessage(
     @JsonProperty("contact") val contact: JsonNode? = null,
     @JsonProperty("poll") val poll: JsonNode? = null,
 ) {
+    /** The chat of the message as the messaging code addresses it: the topic, for a message in one ([MessagingChats]). */
+    val chatAddress: String
+        get() = MessagingChats.address(chat.id.toString(), messageThreadId?.takeIf { topicMessage }?.toString())
+
     /** True when the message holds content the bot does not read, such as a photo or a file. */
     val unreadable: Boolean
         get() = listOf(photo, document, video, videoNote, animation, sticker, location, contact, poll).any { it != null }

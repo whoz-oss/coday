@@ -197,6 +197,38 @@ class TelegramDriverUnitSpec :
             }
         }
 
+        "a topic of a private chat in threaded mode is a chat of its own, answered in the topic" {
+            val updates =
+                """{"ok":true,"result":[""" +
+                    """{"update_id":1,"message":{"message_id":5,"from":{"id":1001,"first_name":"Ada"},"chat":{"id":1001,"type":"private"},""" +
+                    """"message_thread_id":42,"is_topic_message":true,"text":"in a topic"}},""" +
+                    """{"update_id":2,"message":{"message_id":6,"from":{"id":1001,"first_name":"Ada"},"chat":{"id":1001,"type":"private"},""" +
+                    """"message_thread_id":1,"text":"in the General topic"}}]}"""
+            val sentMessage = """{"ok":true,"result":{"message_id":7,"chat":{"id":1001,"type":"private"},"message_thread_id":42,"is_topic_message":true}}"""
+            FakeBotApi { method, call ->
+                when {
+                    method == "getUpdates" && call == 1 -> 200 to updates
+                    method == "sendMessage" -> 200 to sentMessage
+                    else -> null
+                }
+            }.use { api ->
+                val received = CopyOnWriteArrayList<MessagingInbound>()
+                val connection = driver(api).start(bot(), MessagingSink { _, inbound -> received.add(inbound) }) {}
+
+                eventually(5.seconds) { received.size shouldBe 2 }
+                received.map { (it as MessagingInbound.Text).chatId } shouldBe listOf("1001/42", "1001")
+
+                connection.adapter.send("1001/42", io.whozoss.agentos.messaging.OutboundMessage("the answer"))
+                connection.adapter.showTyping("1001/42")
+                connection.stop()
+                val sent = mapper.readTree(api.calls.first { it.first == "sendMessage" }.second)
+                sent["chat_id"].asText() shouldBe "1001"
+                sent["message_thread_id"].asLong() shouldBe 42
+                val typing = mapper.readTree(api.calls.first { it.first == "sendChatAction" }.second)
+                typing["message_thread_id"].asLong() shouldBe 42
+            }
+        }
+
         "a voice message downloads from the path getFile gives, within the size allowed" {
             FakeBotApi { method, _ ->
                 when (method) {

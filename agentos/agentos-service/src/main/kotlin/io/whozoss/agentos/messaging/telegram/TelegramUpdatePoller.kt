@@ -29,6 +29,9 @@ import java.io.IOException
  * instance behind an access proxy. Telegram serves one poller per token: a second program polling the same bot
  * gets `409 Conflict` until the first stops, which [onStatus] reports as [MessagingBotStatus.CONFLICT].
  *
+ * A topic of a private chat in threaded mode is a chat of its own ([TelegramMessage.chatAddress]): its own
+ * conversation and case, its replies sent in it.
+ *
  * The updates of one chat are handled in order, on a lane of their own ([SerialLanes]); different chats in
  * parallel. An update is confirmed to Telegram (the offset of the next poll) once queued: one lost in a crash
  * before it was handled is not delivered again, one delivered again after a crash before the confirmation is
@@ -151,7 +154,7 @@ class TelegramUpdatePoller(
         return when {
             message?.from != null && message.text != null ->
                 MessagingInbound.Text(
-                    chatId = message.chat.id.toString(),
+                    chatId = message.chatAddress,
                     sender = sender(message.from),
                     messageId = message.messageId,
                     text = message.text,
@@ -160,7 +163,7 @@ class TelegramUpdatePoller(
             message?.from != null && (message.voice ?: message.audio) != null -> {
                 val file = requireNotNull(message.voice ?: message.audio)
                 MessagingInbound.Voice(
-                    chatId = message.chat.id.toString(),
+                    chatId = message.chatAddress,
                     sender = sender(message.from),
                     messageId = message.messageId,
                     audio = MessagingAudio(ref = file.fileId, mimeType = file.mimeType, durationSeconds = file.duration, sizeBytes = file.fileSize),
@@ -169,14 +172,14 @@ class TelegramUpdatePoller(
             }
             message?.from != null && message.unreadable ->
                 MessagingInbound.Unsupported(
-                    chatId = message.chat.id.toString(),
+                    chatId = message.chatAddress,
                     sender = sender(message.from),
                     messageId = message.messageId,
                     direct = message.chat.private,
                 )
             click?.message != null ->
                 MessagingInbound.Click(
-                    chatId = click.message.chat.id.toString(),
+                    chatId = click.message.chatAddress,
                     sender = sender(click.from),
                     clickId = click.id,
                     messageId = click.message.messageId.toString(),
