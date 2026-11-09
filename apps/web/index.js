@@ -4,7 +4,15 @@ import { dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
-import { chooseMode, nxArgs, nxEnv, parseWorkspaceDir, resolveConfigDir, serverArgs } from './launcher.js';
+import {
+  chooseMode,
+  nxArgs,
+  nxEnv,
+  parseWorkspaceDir,
+  resolveConfigDir,
+  serverArgs,
+  shouldRunDoctor,
+} from './launcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,6 +25,9 @@ const __dirname = dirname(__filename);
  *    bundled `nx` on it, so the server, AgentOS and the Factory each get their own pane and log file.
  * 3. No TTY (desktop apps), --managed or CODAY_NO_NX=1: runs everything inside the server process,
  *    exactly like before (it still prints `Server is running on http://localhost:PORT`).
+ *
+ * Before 2, it runs the `doctor` preflight (implemented in the bundled server, nothing duplicated here) so that a
+ * missing Java or an unwritable config directory is said in plain scrollback, not inside an Nx pane that scrolls away.
  */
 
 // Create require function for resolving packages
@@ -151,7 +162,26 @@ function runNx() {
   return undefined;
 }
 
+/**
+ * `coday-server doctor`: prints its own report, exits 1 when something blocks the start. A preflight that cannot
+ * itself run (spawn error, killed by a signal) must never be what stops Coday, so it only warns.
+ */
+function preflight() {
+  if (!shouldRunDoctor({ mode, argv: rawArgs, env: process.env })) return;
+  const result = spawnSync(process.execPath, [serverMainPath, 'doctor', ...serverArgs(rawArgs)], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  if (result.status === 0) return;
+  if (result.error || result.status === null) {
+    console.warn(`Preflight could not run (${result.error?.message ?? 'no exit code'}): starting anyway.`);
+    return;
+  }
+  process.exit(result.status);
+}
+
 console.log(`Coday Web: ${mode} mode (${reason})`);
+preflight();
 (mode === 'nx' ? Promise.resolve().then(runNx) : runManaged()).catch((error) => {
   console.error('Failed to start server:', error);
   process.exit(1);

@@ -2,6 +2,7 @@
  * Entry point of the bundled Coday web server (`server.js`).
  *
  * The first positional argument selects what runs (see lib/runtime/commands.ts):
+ *   doctor                                   preflight: Node, Java, config dir, ripgrep, ports (exit 1 when blocked)
  *   provision | agentos | factory | server   the Nx tasks of the generated runtime workspace
  *   (nothing)                                everything in this one process: Express + AgentOS + Factory,
  *                                            the mode the desktop apps and `CODAY_NO_NX=1` rely on.
@@ -43,8 +44,9 @@ process.on('unhandledRejection', (reason, promise) => {
 
 runCommand(command)
   .then((code) => {
-    // `workspace` is a machine-readable one-shot: keep its stdout clean.
-    if (command !== 'workspace') debugLog('EXIT', `${command ?? 'managed'} finished with code ${code}`)
+    // One-shots whose stdout is read as it is: `workspace` by the launcher, `doctor` by the user.
+    if (command !== 'workspace' && command !== 'doctor')
+      debugLog('EXIT', `${command ?? 'managed'} finished with code ${code}`)
     process.exit(code)
   })
   .catch((error) => {

@@ -34,9 +34,27 @@ export function resolveConfigDir(argv, home = homedir()) {
   return join(home, '.coday');
 }
 
-/** The arguments the server must see: the launcher's own (`--managed`) are removed. */
+/** Flags the launcher handles itself; the server never sees them. */
+const LAUNCHER_FLAGS = ['--managed', '--skip-doctor'];
+
+/** The arguments the server must see: the launcher's own are removed. */
 export function serverArgs(argv) {
-  return argv.filter((a) => a !== '--managed');
+  return argv.filter((a) => !LAUNCHER_FLAGS.includes(a));
+}
+
+/**
+ * Whether to run the `doctor` preflight before starting.
+ *
+ * Only in `nx` mode, and for one reason: the Nx TUI is about to take the terminal, so a blocking problem must be said
+ * in plain scrollback first. The managed mode is the desktop apps, which have their own installer and show the same
+ * facts in the first-run wizard, so they are left alone (and spared the extra process).
+ *
+ * `--skip-doctor` / `CODAY_SKIP_DOCTOR=1` bypasses it, for anyone who knows better than the checks.
+ */
+export function shouldRunDoctor({ mode, argv, env }) {
+  if (mode !== 'nx') return false;
+  if (argv.includes('--skip-doctor')) return false;
+  return !(env.CODAY_SKIP_DOCTOR === '1' || env.CODAY_SKIP_DOCTOR === 'true');
 }
 
 /** Marker the server's `workspace` command prints before the directory it generated. */
