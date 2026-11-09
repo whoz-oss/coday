@@ -364,6 +364,98 @@ class UserGroupServiceImplUnitSpec :
             verify(exactly = 0) { userGroupRepository.addAgents(any(), any()) }
         }
 
+        // -------------------------------------------------------------------------
+        // Member limit
+        // -------------------------------------------------------------------------
+
+        fun members(count: Int) =
+            (1..count).map {
+                UserGroupMember(
+                    userId = randomUUID(),
+                    externalId = "user-$it@example.com",
+                    role = "MEMBER",
+                    email = null,
+                    firstname = null,
+                    lastname = null,
+                )
+            }
+
+        "updateFromRequest throws 422 when the resulting roster exceeds the member limit" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.findMembers(groupId) } returns members(UserGroupServiceImpl.MAX_MEMBERS)
+
+            val service = buildService(userGroupRepository)
+
+            shouldThrow<UnprocessableEntityException> {
+                service.updateFromRequest(
+                    groupId,
+                    UserGroupUpdateRequest(name = "Team", userExternalIdsToAdd = setOf("one-too-many@example.com")),
+                )
+            }
+            verify(exactly = 0) { userGroupRepository.addUsers(any(), any()) }
+        }
+
+        "updateFromRequest accepts a roster that reaches exactly the member limit" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = UserGroupServiceImpl.MAX_MEMBERS,
+                )
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns members(UserGroupServiceImpl.MAX_MEMBERS - 1)
+
+            val service = buildService(userGroupRepository)
+            service.updateFromRequest(
+                groupId,
+                UserGroupUpdateRequest(name = "Team", userExternalIdsToAdd = setOf("last-one@example.com")),
+            )
+
+            verify(exactly = 1) { userGroupRepository.addUsers(groupId, setOf("last-one@example.com")) }
+        }
+
+        "updateFromRequest counts removals against the member limit" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = UserGroupServiceImpl.MAX_MEMBERS,
+                )
+            val full = members(UserGroupServiceImpl.MAX_MEMBERS)
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns full
+
+            val service = buildService(userGroupRepository)
+            // Swapping one member for another keeps the roster at the limit: allowed.
+            service.updateFromRequest(
+                groupId,
+                UserGroupUpdateRequest(
+                    name = "Team",
+                    userExternalIdsToAdd = setOf("replacement@example.com"),
+                    userExternalIdsToRemove = setOf(full.first().externalId),
+                ),
+            )
+
+            verify(exactly = 1) { userGroupRepository.addUsers(groupId, setOf("replacement@example.com")) }
+        }
+
         "updateFromRequest throws 422 when same externalId appears in added and removed" {
             val groupId = randomUUID()
             val service = buildService()

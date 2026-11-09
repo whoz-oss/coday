@@ -134,6 +134,7 @@ class UserGroupServiceImpl(
         val resultingMembers =
             (currentMembers.map { it.externalId }.toSet() - request.userExternalIdsToRemove) +
                 request.userExternalIdsToAdd
+        validateMemberLimit(resultingMembers.size)
         validateAdminsBelongToGroup(request.adminExternalIds, resultingMembers)
 
         update(existing.copy(name = request.name))
@@ -268,6 +269,20 @@ class UserGroupServiceImpl(
         }
     }
 
+    /**
+     * Guards the total roster size after an update. Each request is already bounded to 200 added
+     * members, so only repeated updates can grow a group past [MAX_MEMBERS]; the check therefore
+     * applies to the resulting roster, not to the size of the request.
+     */
+    private fun validateMemberLimit(resultingMemberCount: Int) {
+        when {
+            resultingMemberCount > MAX_MEMBERS ->
+                throw UnprocessableEntityException(
+                    "A user group cannot have more than $MAX_MEMBERS members (would have $resultingMemberCount)",
+                )
+        }
+    }
+
     private fun validateAgentsInNamespace(
         agentIds: Set<UUID>,
         namespaceId: UUID,
@@ -288,5 +303,10 @@ class UserGroupServiceImpl(
                     throw UnprocessableEntityException("Agent configs not found in namespace: $invalidIds")
                 }
             }
+    }
+
+    companion object {
+        /** Maximum number of members (MEMBER or ADMIN) a single user group may hold. */
+        const val MAX_MEMBERS = 50_000
     }
 }
