@@ -113,7 +113,7 @@
         </div>
         <!-- Mic (or cancel while recording) right next to the send button, on its left -->
         <div class="case-home__footer-right">
-          @if (voice.state() === 'recording') {
+          @if (voice.isRecording()) {
             <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
           } @else if (voiceCapability.available()) {
             <ds-icon-button
@@ -127,9 +127,7 @@
           <ds-icon-button
             icon="send"
             variant="primary"
-            [title]="
-              voice.state() === 'recording' ? 'Send voice message' : parentCaseId() ? 'Start sub-case' : 'Start case'
-            "
+            [title]="voice.isRecording() ? 'Send voice message' : parentCaseId() ? 'Start sub-case' : 'Start case'"
             [disabled]="!canSendNow"
             (action)="onSendClick()"
           />

@@ -10,7 +10,7 @@ import {
   output,
   viewChild,
 } from '@angular/core'
-import { VoiceRecorderState } from './voice-recorder.service'
+import { VOICE_RECORDER_STATE, VoiceRecorderState } from './voice-recorder.service'
 import { formatElapsed } from './voice-recorder.utils'
 
 /**
@@ -47,11 +47,12 @@ export class VoiceRecorderComponent {
   private readonly bar = viewChild<ElementRef<HTMLElement>>('bar')
 
   protected readonly formatElapsed = formatElapsed
+  protected readonly states = VOICE_RECORDER_STATE
 
   constructor() {
     // The bar exists once the recording view is rendered: focus it then, not when the state changes.
     effect(() => {
-      if (this.state() !== 'recording') return
+      if (this.state() !== VOICE_RECORDER_STATE.RECORDING) return
       afterNextRender(() => this.bar()?.nativeElement.focus(), { injector: this.injector })
     })
   }
