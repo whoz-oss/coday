@@ -52,9 +52,14 @@ export class TabCoordinatorService implements OnDestroy {
   private readonly zone = inject(NgZone)
   private readonly namespaceState = inject(NamespaceStateService)
 
-  /** Null where the platform has no BroadcastChannel — see the class doc's degraded mode. */
+  /**
+   * Null where the platform has no BroadcastChannel — see the class doc's degraded mode.
+   *
+   * `-v2`: builds before #1606 answer every announce, so their tabs bounce messages among themselves until reloaded,
+   * which a server restart does not do. A new name keeps that traffic away from the tabs of this build.
+   */
   private readonly channel: BroadcastChannel | null =
-    typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('agentos-companion')
+    typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('agentos-companion-v2')
 
   readonly tabId = crypto.randomUUID()
 
@@ -127,7 +132,7 @@ export class TabCoordinatorService implements OnDestroy {
       case 'TAB_ANNOUNCE': {
         // Answer news only (a tab we did not know, or a known tab on another namespace) so that it learns about us.
         // Answering every announce made two tabs bounce messages forever, and three multiply them, pinning the CPU
-        // (#1606). Not answering a repeat also ends the exchange with a tab of an older build, which answers everything.
+        // (#1606).
         const known = this.knownTabs()
         if (known.has(msg.tabId) && known.get(msg.tabId) === msg.namespaceId) break
         this.knownTabs.update((m) => new Map(m).set(msg.tabId, msg.namespaceId))
