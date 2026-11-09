@@ -18,14 +18,15 @@ const FALLBACK_PROVIDERS: SetupProviderInfo[] = [
   {
     id: 'requesty',
     label: 'Requesty',
-    description: 'One key for Claude, GPT and 600+ other models.',
+    description:
+      'Requires Requesty policies named claude-haiku, claude-sonnet and claude-opus configured in your account.',
     keyUrl: 'https://app.requesty.ai/api-keys',
   },
 ]
 
 /**
  * Step 2: pick one or more providers, paste each key, rank them (drag a card or use the arrows).
- * At least one is required. Rank 1 is the preferred provider: it wins every model alias.
+ * At least one is required. Rank 1 wins aliases shared by providers; default currently exists only in Requesty.
  */
 @Component({
   selector: 'app-providers-step',

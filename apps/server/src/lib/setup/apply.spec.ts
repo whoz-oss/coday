@@ -186,8 +186,63 @@ describe('runApply', () => {
     expect(big).toMatchObject({
       apiModelName: MODEL_CATALOGUE.requesty.models.BIG.apiModelName,
       contextWindow: MODEL_CATALOGUE.requesty.models.BIG.contextWindow,
-      maxCompletionTokens: MODEL_CATALOGUE.requesty.models.BIG.maxCompletionTokens,
     })
+    expect(big).not.toHaveProperty('maxCompletionTokens')
+  })
+
+  it('creates the Requesty policy aliases including default and remains idempotent', async () => {
+    const { fake, tracker, deps } = setup()
+    const run = () => runApply(input([{ id: 'requesty', rank: 1 }]), deps)
+
+    expect(await run()).toBe(true)
+    expect(Object.fromEntries(fake.models.map((m) => [m['alias'], m['apiModelName']]))).toEqual({
+      FRONTIER: 'anthropic/claude-fable-5.1',
+      BIGGEST: 'policy/claude-opus',
+      BIG: 'policy/claude-sonnet',
+      SMALL: 'policy/claude-haiku',
+      default: 'policy/claude-haiku',
+    })
+    expect(tracker.get().steps.models.message).toBe('5 models')
+    expect(await run()).toBe(true)
+    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(5)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
+  })
+
+  it('updates old Requesty references in place and adds default when the setup is retried', async () => {
+    const { fake, deps } = setup()
+    fake.providers.push({ id: 'requesty-old', name: 'requesty', namespaceId: null, userId: null })
+    const oldNames = {
+      FRONTIER: 'anthropic/claude-fable-5.1',
+      BIGGEST: 'anthropic/claude-opus-5-5',
+      BIG: 'anthropic/claude-sonnet-5-5',
+      SMALL: 'anthropic/claude-haiku-5-5',
+    }
+    for (const alias of MODEL_ALIASES) {
+      fake.models.push({
+        ...MODEL_CATALOGUE.requesty.models[alias],
+        id: `old-${alias}`,
+        aiProviderId: 'requesty-old',
+        alias,
+        priority: 10,
+        apiModelName: oldNames[alias],
+      })
+    }
+
+    expect(await runApply(input([{ id: 'requesty', rank: 1 }]), deps)).toBe(true)
+    for (const alias of MODEL_ALIASES) {
+      expect(fake.models.find((m) => m['alias'] === alias)).toMatchObject({
+        id: `old-${alias}`,
+        apiModelName: MODEL_CATALOGUE.requesty.models[alias].apiModelName,
+      })
+    }
+    expect(fake.models.find((m) => m['alias'] === 'default')?.['apiModelName']).toBe('policy/claude-haiku')
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(3)
+    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(1)
+    const policyWrites = fake.calls.filter(
+      (c) => ['POST', 'PUT'].includes(c.method) && c.body?.apiModelName?.startsWith('policy/')
+    )
+    expect(policyWrites).toHaveLength(4)
+    for (const call of policyWrites) expect(call.body).not.toHaveProperty('maxCompletionTokens')
   })
 
   it('is idempotent: a second run creates nothing new', async () => {
@@ -363,9 +418,9 @@ describe('runApply pricing', () => {
     )
     for (const provider of fake.providers) {
       const catalogue = getCatalogueProvider(provider['name'] as string) as CatalogueProvider
-      for (const alias of MODEL_ALIASES) {
+      for (const [alias, wanted] of Object.entries(catalogue.models)) {
         const model = fake.models.find((m) => m['aiProviderId'] === provider['id'] && m['alias'] === alias)
-        expect(model?.['pricing']).toEqual(catalogue.models[alias].pricing)
+        expect(model?.['pricing']).toEqual(wanted.pricing)
       }
     }
   })
@@ -388,7 +443,11 @@ describe('runApply pricing', () => {
     const { fake, deps } = setup()
     const run = () => runApply(input([{ id: 'requesty', rank: 1 }]), deps)
     await run()
-    for (const model of fake.models) model['pricing'] = { ...model['pricing'], cacheWrite: null }
+    for (const model of fake.models) {
+      if (model['pricing'].cacheWrite === undefined) {
+        model['pricing'] = { ...model['pricing'], cacheWrite: null }
+      }
+    }
 
     expect(await run()).toBe(true)
     expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
