@@ -139,8 +139,7 @@ function attemptStepStatus(attempt: AgentAttempt): TimelineStepStatus {
   if (status === 'succeeded' || status === 'completed' || status === 'superseded') return 'completed'
   if (status === 'starting' || status === 'running') return 'running'
   if (status === 'interrupted' || status === 'cancelled') return 'cancelled'
-  if (status === 'failed' || status === 'indeterminate' || status === 'waiting_human')
-    return status
+  if (status === 'failed' || status === 'indeterminate' || status === 'waiting_human') return status
   return 'pending'
 }
 
@@ -583,18 +582,17 @@ export function mapProjectionToRunSummary(
   }
 
   const mappedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
-  const cardState: RunSummary['cardState'] =
-    waitingHuman
-      ? 'waiting_human'
-      : mappedStatus === 'failed'
-        ? 'failed'
-        : blockedStepIds.size > 0
-          ? 'blocked'
-          : mappedStatus === 'running'
-            ? 'running'
-            : mappedStatus === 'succeeded'
-              ? 'succeeded'
-              : 'pending'
+  const cardState: RunSummary['cardState'] = waitingHuman
+    ? 'waiting_human'
+    : mappedStatus === 'failed'
+      ? 'failed'
+      : blockedStepIds.size > 0
+        ? 'blocked'
+        : mappedStatus === 'running'
+          ? 'running'
+          : mappedStatus === 'succeeded'
+            ? 'succeeded'
+            : 'pending'
   const summary: RunSummary = {
     id,
     workflow: getString(projection, 'title') ?? id,

@@ -1154,6 +1154,24 @@ paths:
       summary: List cases by user
       tags:
       - case-controller
+  /api/cases/events/mine:
+    get:
+      description: "Server-Sent Events stream fanning in PendingConfirmationEvent,\
+        \ ConfirmationResolvedEvent, QuestionEvent, AnswerEvent, AgentFinishedEvent\
+        \ and ErrorEvent across every case the current user is directly related to\
+        \ and that is currently active. Use the browser EventSource API to consume\
+        \ this endpoint, not a regular HTTP client."
+      operationId: streamMyEventsGlobalCaseEventSse
+      responses:
+        "200":
+          content:
+            text/event-stream: {}
+          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
+            \ (PendingConfirmationEvent, QuestionEvent, AgentFinishedEvent, etc.)\
+            \ with a \"type\" discriminant field and its own \"caseId\"."
+      summary: Stream notifiable events across all of my active cases via SSE
+      tags:
+      - sse
   /api/cases/unread-count:
     get:
       description: GET /api/cases/unread-count?namespaceId= — number of unread cases

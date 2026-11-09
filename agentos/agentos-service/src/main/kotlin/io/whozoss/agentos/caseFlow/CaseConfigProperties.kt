@@ -10,14 +10,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variables (Spring Boot relaxed binding):
  * - AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
  * - AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
+ * - AGENTOS_CASE_GLOBAL_EVENTS_POLL_INTERVAL_MS
  * - AGENTOS_CASE_SUMMARY_ENABLED
  *
  * Example (application.yml):
  * ```yaml
  * agentos:
  *   case:
- *     idle-eviction-grace-ms: 300000   # 5 min (default)
- *     sse-heartbeat-interval-ms: 30000 # 30 s (default)
+ *     idle-eviction-grace-ms: 300000        # 5 min (default)
+ *     sse-heartbeat-interval-ms: 30000      # 30 s (default)
+ *     global-events-poll-interval-ms: 5000  # 5 s (default)
  *     summary-enabled: true            # case summaries feeding the case search (default)
  * ```
  */
@@ -49,6 +51,18 @@ data class CaseConfigProperties(
      * Defaults to 30 s (30 000 ms).
      */
     val sseHeartbeatIntervalMs: Long = 30_000L,
+
+    /**
+     * Interval between re-scans of the active-case set for the global "my events" SSE
+     * stream (`GET /api/cases/events/mine`).
+     *
+     * There is no push-based case-created/case-removed event to react to, so the global
+     * stream polls [CaseService.getAllActiveCases] intersected with
+     * [CaseService.findConcerningUser] on this cadence to start/stop per-case collectors.
+     *
+     * Defaults to 5 s (5 000 ms).
+     */
+    val globalEventsPollIntervalMs: Long = 5_000L,
 
     /**
      * Whether a short summary is generated and kept up to date for each top-level case (it feeds the

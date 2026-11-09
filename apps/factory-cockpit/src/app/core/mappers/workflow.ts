@@ -137,9 +137,7 @@ export function mapProjectionToSessionDetail(
   const cancelAttemptAction = mappedAllowedActions.find(
     (action) => action.type === 'cancel_attempt' && action.attemptId !== undefined
   )
-  const runningAttempt = mappedAttempts.find(
-    (attempt) => attempt.status === 'running' || attempt.status === 'starting'
-  )
+  const runningAttempt = mappedAttempts.find((attempt) => attempt.status === 'running' || attempt.status === 'starting')
   const activeAttemptId = cancelAttemptAction?.attemptId ?? runningAttempt?.attemptId
   const activeAttemptRevision = cancelAttemptAction?.expectedRevision ?? runningAttempt?.revision
 

@@ -4,6 +4,7 @@ import {
   Injector,
   provideBrowserGlobalErrorListeners,
   provideZoneChangeDetection,
+  runInInjectionContext,
 } from '@angular/core'
 import { provideRouter } from '@angular/router'
 import { provideHttpClient } from '@angular/common/http'
@@ -36,6 +37,33 @@ function initializeCurrentUser(injector: Injector) {
   }
 }
 
+/**
+ * Start the companion's background concerns (global SSE stream + cross-tab coordination)
+ * once at app startup, in the main document context.
+ *
+ * Same dynamic-import constraint as initializeCurrentUser above: agentos-ui is
+ * lazy-loaded, so importing provideCompanion statically here would pull the whole
+ * library into the root bundle. Injecting the services by hand from the already-built
+ * root injector achieves the same thing without that cost.
+ *
+ * Errors are caught and logged — notifications are an enhancement, and a failure to
+ * open the stream must never block the app from rendering.
+ */
+function initializeCompanion(injector: Injector) {
+  return async () => {
+    try {
+      const { CompanionStateService, TabCoordinatorService } = await import('@whoz-oss/agentos-ui')
+      runInInjectionContext(injector, () => {
+        // TabCoordinatorService.start() creates an effect, hence the injection context.
+        injector.get(TabCoordinatorService).start()
+      })
+      injector.get(CompanionStateService).startSse()
+    } catch (err) {
+      console.warn('Failed to start the companion notification stream', err)
+    }
+  }
+}
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -54,6 +82,12 @@ export const appConfig: ApplicationConfig = {
       multi: true,
     },
     provideApi({ basePath: '/api/agentos' }),
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeCompanion,
+      deps: [Injector],
+      multi: true,
+    },
     {
       provide: MAT_DIALOG_DEFAULT_OPTIONS,
       useValue: {
