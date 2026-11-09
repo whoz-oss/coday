@@ -1,26 +1,26 @@
 /**
- * Model catalogue of the first-run wizard: DATA ONLY, no logic.
+ * Model catalogue of the first-run wizard.
  *
- * provider -> { FRONTIER, BIGGEST, BIG, SMALL } -> { apiModelName, contextWindow, maxCompletionTokens, pricing }.
- * Aliases are what agents reference (`modelName: BIG`); the provider rank chosen in the wizard
- * becomes the `priority` of its models, so when several providers are configured the best-ranked
- * one wins each alias.
+ * Providers declare FRONTIER, BIGGEST, BIG and SMALL; Requesty also declares default for utility calls.
+ * The wizard rank sets priority among providers sharing an alias, not a global provider fallback.
+ * default currently belongs only to Requesty, regardless of the ranking.
  *
  * Model names were verified against the official documentation at implementation time:
  *   - Anthropic  docs.anthropic.com/en/docs/about-claude/models/overview (dateless IDs, 4.6+ format)
  *   - OpenAI     platform.openai.com/docs/models (gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna)
- *   - Requesty   router.eu.requesty.ai/v1/models (provider-prefixed names, `anthropic/claude-fable-5.1`
- *                keeps a dot where the Anthropic ID has a dash)
+ *   - Requesty   All tiers use account policies: configure claude-fable, claude-opus, claude-sonnet and
+ *                claude-haiku in Requesty before use.
  *
  * Prices are USD per million tokens (the `pricing` of an AgentOS model, which uses it to estimate costs). Same sources:
  *   - Anthropic  docs.anthropic.com/en/docs/about-claude/pricing
  *   - OpenAI     platform.openai.com/docs/pricing
- *   - Requesty   router.eu.requesty.ai/v1/models (it bills its own list: Sonnet 5.5 cache reads are listed there at
- *                $0.20 against $0.10 at Anthropic)
+ *   - Requesty   policy rates and context windows are inherited estimates, not policy guarantees.
+ *                Haiku/default use the existing ai-models/SMALL.yaml estimates; backing models may change.
  * AgentOS prices ONE tier per model. Claude Haiku 5.5 is dearer past 100k prompt tokens ($0.50 in / $2.50 out):
- * the base tier is the one given here. The cache write rate is only used with the Anthropic API type (OpenAI-style
- * APIs, Requesty included, do not report cache writes), so it is only given there.
- * Model availability and prices change: update this file, nothing else.
+ * the base tier is retained for direct Anthropic. Cache write rates are only used with the Anthropic API type
+ * (OpenAI-style APIs, Requesty included, do not report cache writes). Haiku's retained estimate is therefore unused
+ * with Requesty. Policies omit maxCompletionTokens to leave the output limit to the backing model.
+ * Keep policy mappings and estimates aligned with the active ai-models/*.yaml catalogue.
  */
 
 export const MODEL_ALIASES = ['FRONTIER', 'BIGGEST', 'BIG', 'SMALL'] as const
@@ -55,7 +55,7 @@ export interface CatalogueProvider {
   baseUrl: string
   /** Where the user gets a key (shown in the wizard). */
   keyUrl: string
-  models: Record<ModelAlias, CatalogueModel>
+  models: Record<ModelAlias, CatalogueModel> & { default?: CatalogueModel }
 }
 
 const ANTHROPIC_PRICING: Record<ModelAlias, CatalogueModelPricing> = {
@@ -69,7 +69,7 @@ const REQUESTY_PRICING: Record<ModelAlias, CatalogueModelPricing> = {
   FRONTIER: { inputMTokens: 10, outputMTokens: 50, cacheRead: 0.25 },
   BIGGEST: { inputMTokens: 4, outputMTokens: 20, cacheRead: 0.2 },
   BIG: { inputMTokens: 2, outputMTokens: 10, cacheRead: 0.2 },
-  SMALL: { inputMTokens: 0.1, outputMTokens: 0.5, cacheRead: 0.01 },
+  SMALL: { inputMTokens: 1, outputMTokens: 5, cacheRead: 0.1, cacheWrite: 1.25 },
 }
 
 const OPENAI_PRICING: Record<ModelAlias, CatalogueModelPricing> = {
@@ -145,6 +145,38 @@ const openaiModels = (prefix: string): CatalogueProvider['models'] => ({
   },
 })
 
+// Policy pricing and limits retain the existing estimates;
+// they are not guarantees of whichever backing model Requesty selects.
+const requestySmall: CatalogueModel = {
+  apiModelName: 'policy/claude-haiku',
+  description: 'Claude Haiku tier via your Requesty policy; backing model may change',
+  contextWindow: 200_000,
+  pricing: REQUESTY_PRICING.SMALL,
+}
+
+const requestyModels: CatalogueProvider['models'] = {
+  FRONTIER: {
+    apiModelName: 'policy/claude-fable',
+    description: 'Claude Fable tier via your Requesty policy; backing model may change',
+    contextWindow: 1_000_000,
+    pricing: REQUESTY_PRICING.FRONTIER,
+  },
+  BIGGEST: {
+    apiModelName: 'policy/claude-opus',
+    description: 'Claude Opus tier via your Requesty policy; backing model may change',
+    contextWindow: 1_000_000,
+    pricing: REQUESTY_PRICING.BIGGEST,
+  },
+  BIG: {
+    apiModelName: 'policy/claude-sonnet',
+    description: 'Claude Sonnet tier via your Requesty policy; backing model may change',
+    contextWindow: 1_000_000,
+    pricing: REQUESTY_PRICING.BIG,
+  },
+  SMALL: requestySmall,
+  default: requestySmall,
+}
+
 export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
   anthropic: {
     id: 'anthropic',
@@ -170,13 +202,12 @@ export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
     id: 'requesty',
     name: 'requesty',
     label: 'Requesty',
-    description: 'One key for Claude, GPT and 600+ other models through the Requesty router.',
+    description:
+      'Requires Requesty policies named claude-fable, claude-opus, claude-sonnet and claude-haiku configured in your account.',
     apiType: 'OpenAI',
     baseUrl: 'https://router.eu.requesty.ai',
     keyUrl: 'https://app.requesty.ai/api-keys',
-    // Requesty prefixes the lab and spells Fable 5.1 with a dot. It serves both labs, but one alias
-    // maps to ONE model per provider: the Claude family is used (the Coday agent is tuned on it).
-    models: anthropicModels('anthropic/', 'claude-fable-5.1', REQUESTY_PRICING),
+    models: requestyModels,
   },
 }
 

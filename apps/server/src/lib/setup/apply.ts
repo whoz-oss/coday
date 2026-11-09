@@ -5,7 +5,7 @@
  *   0. identify   a first call as the first-run user: AgentOS creates the user and its personal namespace on the
  *                 first request it sees, whatever else its database already holds
  *   1. providers  platform-scope AI providers, one per chosen catalogue entry
- *   2. models     the 4 aliased models of each provider, priority derived from the rank
+ *   2. models     the aliased models of each provider, priority derived from the rank
  *   3. namespace  the personal namespace `user:<email>` (created asynchronously by AgentOS),
  *                 its `sharedExchangePath` set to the chosen folder
  *   4. agent      the default agent is deployed and is the namespace default
@@ -18,7 +18,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { AgentosClient, AgentosHttpError, AgentosModelPricing, AgentosNamespace } from './agentos-client'
-import { CatalogueProvider, getCatalogueProvider, MODEL_ALIASES, priorityForRank } from './model-catalogue'
+import { CatalogueProvider, getCatalogueProvider, priorityForRank } from './model-catalogue'
 import { ApplyTracker } from './progress'
 
 /**
@@ -154,8 +154,7 @@ const samePricing = (a: AgentosModelPricing | null | undefined, b: AgentosModelP
 
 async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, providerId: string, priority: number) {
   const existing = await deps.client.listModelsOfProvider(providerId)
-  for (const alias of MODEL_ALIASES) {
-    const wanted = catalogue.models[alias]
+  for (const [alias, wanted] of Object.entries(catalogue.models)) {
     const body = {
       aiProviderId: providerId,
       apiModelName: wanted.apiModelName,
@@ -250,7 +249,11 @@ export async function runApply(
       const catalogue = getCatalogueProvider(p.id) as CatalogueProvider
       await ensureModels(deps, catalogue, providerIds.get(p.id) as string, priorityForRank(index + 1, ordered.length))
     }
-    tracker.step('models', 'done', `${ordered.length * MODEL_ALIASES.length} models`)
+    const modelCount = ordered.reduce(
+      (count, p) => count + Object.keys((getCatalogueProvider(p.id) as CatalogueProvider).models).length,
+      0
+    )
+    tracker.step('models', 'done', `${modelCount} models`)
 
     // 3. personal namespace + shared folder
     tracker.step('namespace', 'running', 'Waiting for your personal namespace')
