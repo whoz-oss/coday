@@ -14,7 +14,7 @@ import * as path from 'path'
  * SKIPPED (with a reason) when Java 25 or the locally built JARs are unavailable, so CI without a JVM stays green.
  *
  * It asserts, through the AgentOS REST API (via the Coday proxy, as the first-run user):
- *  - platform-scope providers and their 4 aliased models, `default` (a copy of SMALL), plus WHISPER (the transcription
+ *  - platform-scope providers and their tier aliases (plus default for Requesty), `default` (a copy of SMALL), plus WHISPER (the transcription
  *    model) for requesty,
  *  - the personal namespace `user:<email>` with the ADMIN role,
  *  - the Coday agent deployed and default, with its three integrations (config, case files, namespace files),
