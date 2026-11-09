@@ -19,11 +19,8 @@ import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.sdk.tool.ToolContext
-import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.usage.CostRunStopped
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -31,8 +28,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.slf4j.MDCContext
 import kotlinx.coroutines.selects.select
 import mu.KLogging
 import org.slf4j.MDC
@@ -50,7 +45,6 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.TimeSource
-import kotlin.time.measureTime
 
 /**
  * Simple agent implementation with single LLM call.
@@ -166,13 +160,23 @@ class AgentSimple(
                 val llmTurnIndex = if (latencyLoggingEnabled) AtomicInteger(1) else null
 
                 // Convert StandardTool to ToolCallback with event emission
+                val toolInvoker =
+                    ToolInvoker(
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        userId = userId,
+                        userExternalId = userExternalId,
+                        caseEventsProvider = caseEventsProvider,
+                        toolMetricsService = toolMetricsService,
+                        sendEvent = { toolEventChannel.trySend(it) },
+                    )
                 val toolCallbacks =
                     tools.map { tool ->
                         createToolCallbackWithEvents(
                             tool,
-                            namespaceId,
+                            toolInvoker,
                             caseId,
-                            toolEventChannel,
                             llmTurnMark,
                             llmTurnIndex,
                             logContext,
@@ -495,8 +499,7 @@ class AgentSimple(
     }
 
     /**
-     * Create a [ToolCallback] that wraps a StandardTool and emits events.
-     * Emits ToolRequestEvent before execution and ToolResponseEvent after.
+     * Create a [ToolCallback] that runs a StandardTool through [invoker], which emits its events.
      *
      * We implement [ToolCallback] directly rather than using [MethodToolCallback] because
      * [MethodToolCallback] generates its input schema by introspecting the Java method
@@ -515,9 +518,8 @@ class AgentSimple(
      */
     private fun createToolCallbackWithEvents(
         tool: StandardTool<*>,
-        namespaceId: UUID,
+        invoker: ToolInvoker,
         caseId: UUID,
-        eventChannel: Channel<CaseEvent>,
         llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>?,
         llmTurnIndex: AtomicInteger?,
         logContext: Map<String, String>? = null,
@@ -534,15 +536,9 @@ class AgentSimple(
 
             override fun getToolDefinition() = definition
 
-            fun sendEvent(event: CaseEvent) {
-                eventChannel.trySend(event)
-            }
-
             override fun call(toolInput: String): String = withMdc(logContext) { callWithLogContext(toolInput) }
 
             private fun callWithLogContext(toolInput: String): String {
-                val toolRequestId = UUID.randomUUID().toString()
-
                 // The LLM decided to call this tool: in DEBUG, log how long it thought
                 // since the prompt was sent (or since the previous tool response was returned).
                 if (llmTurnMark != null && llmTurnIndex != null) {
@@ -552,115 +548,7 @@ class AgentSimple(
                     }
                 }
 
-                logger.trace { "[AgentSimple] agent=$name tool '${tool.name}' called with args: $toolInput" }
-
-                sendEvent(
-                    ToolRequestEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = toolRequestId,
-                        toolName = tool.name,
-                        args = toolInput,
-                    ),
-                )
-
-                // Filter case events to only those belonging to this integration.
-                // Tool names follow the "INTEGRATION_NAME__toolName" convention, so the
-                // prefix before "__" is the integration identity. Events from other
-                // integrations are not visible to this tool — no cross-integration leakage.
-                val integrationPrefix = tool.name.substringBefore("__", missingDelimiterValue = "")
-                val filteredEvents =
-                    caseEventsProvider().let { all ->
-                        if (integrationPrefix.isEmpty()) {
-                            all
-                        } else {
-                            all.filter { event ->
-                                when (event) {
-                                    is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
-                                    else -> false
-                                }
-                            }
-                        }
-                    }
-                val context =
-                    ToolContext(
-                        namespaceId = namespaceId,
-                        userId = userId,
-                        userExternalId = userExternalId,
-                        caseEvents = filteredEvents,
-                        toolRequestId = toolRequestId,
-                    )
-
-                val executionResult: ToolExecutionResult
-                val sample = toolMetricsService?.startTimer()
-                val toolDuration =
-                    measureTime {
-                        executionResult =
-                            try {
-                                // MDCContext() captures the MDC of this thread, which withMdc has just merged:
-                                // the run's keys plus the foreign keys (e.g. an infra trace id) of the callback thread.
-                                runBlocking(Dispatchers.IO + MDCContext()) {
-                                    tool.executeWithJson(toolInput, context)
-                                }
-                            } catch (e: AgentInterrupt) {
-                                // Interrupt is not an error: emit a successful response so traces
-                                // are complete, then re-throw the signal for the flow catch block.
-                                toolMetricsService?.stopTimerAndSendMetrics(
-                                    sample,
-                                    tool.name,
-                                    name,
-                                    namespaceId,
-                                    success = true,
-                                )
-                                val message =
-                                    when (e) {
-                                        is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
-                                        is AgentInterrupt.AwaitAnswer -> "Waiting for the user's answer."
-                                    }
-                                sendEvent(
-                                    ToolResponseEvent(
-                                        namespaceId = namespaceId,
-                                        caseId = caseId,
-                                        toolRequestId = toolRequestId,
-                                        toolName = tool.name,
-                                        output = MessageContent.Text(message),
-                                        success = true,
-                                        structuredOutput = (e as? AgentInterrupt.AwaitAnswer)?.structuredOutput,
-                                    ),
-                                )
-                                throw e
-                            } catch (e: Exception) {
-                                // Cancellation and thread interruption (runBlocking above) are signals,
-                                // not tool failures: keep unwinding the run instead of turning them
-                                // into a result the LLM would be re-prompted on.
-                                if (e is CancellationException || e is InterruptedException) throw e
-                                // A tool failure is a tool result, not a run failure: the message goes
-                                // back to the LLM so it can correct its call (same contract as
-                                // AgentAdvanced.executeTool). Spring AI only turns ToolExecutionException
-                                // into a tool result; any other exception escaping call() errors the
-                                // stream and ends the turn.
-                                logger.warn(e) { "[AgentSimple] error during tool execution for ${tool.name}" }
-                                val reason = e.message ?: e::class.simpleName ?: "unknown error"
-                                ToolExecutionResult.error(
-                                    "Error executing tool: $reason",
-                                    errorType = e::class.simpleName,
-                                    errorMessage = e.message,
-                                )
-                            }
-                    }
-                if (llmTurnMark != null) {
-                    "tool '${tool.name}' executed in $toolDuration, success=${executionResult.success}" +
-                            (executionResult.errorType?.let { ", errorType=$it" } ?: "")
-                }
-                // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
-                // rethrowing; cancellation/interruption rethrow without recording a metric.
-                toolMetricsService?.stopTimerAndSendMetrics(
-                    sample,
-                    tool.name,
-                    name,
-                    namespaceId,
-                    success = executionResult.success,
-                )
+                val executionResult = invoker.invoke(tool, toolInput)
 
                 // Reset the turn mark so the next measurement starts from when
                 // we hand the tool result back to the LLM.
@@ -668,24 +556,6 @@ class AgentSimple(
                     llmTurnMark.set(TimeSource.Monotonic.markNow())
                     llmTurnIndex.incrementAndGet()
                 }
-
-                sendEvent(
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = toolRequestId,
-                        toolName = tool.name,
-                        output = MessageContent.Text(executionResult.output),
-                        success = executionResult.success,
-                        durationMs = toolDuration.inWholeMilliseconds,
-                        toolMetadata = executionResult.metadata,
-                        // Images are preserved on the event (persistence, SSE).
-                        // They will be delivered to the LLM via the conversation history
-                        // on subsequent turns (convertEventsToMessages injects UserMessage+Media).
-                        images = executionResult.images,
-                        structuredOutput = executionResult.structuredOutput,
-                    ),
-                )
 
                 // ToolCallback.call() returns text only — images reach the LLM via the
                 // rebuilt conversation context in convertEventsToMessages(), not here.
