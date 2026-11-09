@@ -4661,19 +4661,19 @@ components:
       - name
     Audio:
       allOf:
-        - $ref: "#/components/schemas/MessageContent"
-        - type: object
-          properties:
-            durationMs:
-              type: integer
-              format: int64
-            mimeType:
-              type: string
-            path:
-              type: string
+      - $ref: "#/components/schemas/MessageContent"
+      - type: object
+        properties:
+          durationMs:
+            type: integer
+            format: int64
+          mimeType:
+            type: string
+          path:
+            type: string
       required:
-        - mimeType
-        - path
+      - mimeType
+      - path
     AuthSettingConnectResponse:
       type: object
       properties:
