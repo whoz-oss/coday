@@ -183,6 +183,13 @@ data class AgentFinishedEvent(
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val maxIterationsReached: Int? = null,
+    /**
+     * The conversation the agent's runtime kept for this run, when it keeps one outside the case
+     * events (the Claude Code CLI): the agent's next run resumes it and only sends what happened
+     * since. Null for runtimes that rebuild the conversation from the case events on every run.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val runtimeSessionId: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }

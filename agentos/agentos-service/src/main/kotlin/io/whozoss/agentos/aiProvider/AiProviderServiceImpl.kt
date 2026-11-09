@@ -1,10 +1,13 @@
 package io.whozoss.agentos.aiProvider
 
+import io.whozoss.agentos.claudeCode.ClaudeCodeProperties
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -35,8 +38,10 @@ class AiProviderServiceImpl(
     private val mergeStrategy: AiProviderMergeStrategy,
     private val permissionService: PermissionService,
     private val userService: UserService,
+    private val claudeCodeProperties: ClaudeCodeProperties = ClaudeCodeProperties(),
 ) : AiProviderService {
     override fun create(entity: AiProvider): AiProvider {
+        assertClaudeCodeProvider(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ConflictException(conflictMessage(entity))
         }
@@ -45,6 +50,7 @@ class AiProviderServiceImpl(
     }
 
     override fun update(entity: AiProvider): AiProvider {
+        assertClaudeCodeProvider(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -52,6 +58,24 @@ class AiProviderServiceImpl(
             }
         assertConsistentApiTypeAcrossLayers(entity)
         return saveOrConflict(entity)
+    }
+
+    /**
+     * A [AiApiType.ClaudeCode] provider exists only where the instance enables the runtime, and carries no
+     * credential: each user signs in to the `claude` CLI on the AgentOS host, under their own configuration
+     * directory, so the provider can sit at any scope and still run every user on their own subscription.
+     */
+    private fun assertClaudeCodeProvider(entity: AiProvider) {
+        if (entity.apiType != AiApiType.ClaudeCode) return
+        if (!claudeCodeProperties.enabled) {
+            throw BadRequestException("Claude Code providers are disabled on this instance (agentos.claude-code.enabled)")
+        }
+        if (!entity.baseUrl.isNullOrBlank() || !entity.apiKey.isNullOrBlank()) {
+            throw BadRequestException(
+                "A Claude Code provider takes neither a base URL nor an API key: " +
+                    "each user signs in to the claude CLI on the AgentOS host",
+            )
+        }
     }
 
     override fun findByIds(
