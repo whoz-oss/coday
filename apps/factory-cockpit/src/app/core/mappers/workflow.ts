@@ -35,7 +35,7 @@ import {
 // Run status helpers
 // ---------------------------------------------------------------------------
 
-const RUN_WORKING_STATES = new Set(['running', 'active', 'waiting_human'])
+const RUN_WORKING_STATES = new Set(['running', 'active', 'waiting_human', 'needs_research'])
 const RUN_IDLE_STATES = new Set(['idle', 'ready', 'pending', 'queued'])
 
 export function deriveRunStatus(state: string | undefined, runStatus: RunStatus): SandboxStatus {
@@ -137,7 +137,7 @@ export function mapProjectionToSessionDetail(
   const cancelAttemptAction = mappedAllowedActions.find(
     (action) => action.type === 'cancel_attempt' && action.attemptId !== undefined
   )
-  const runningAttempt = mappedAttempts.find((attempt) => attempt.status === 'running')
+  const runningAttempt = mappedAttempts.find((attempt) => attempt.status === 'running' || attempt.status === 'starting')
   const activeAttemptId = cancelAttemptAction?.attemptId ?? runningAttempt?.attemptId
   const activeAttemptRevision = cancelAttemptAction?.expectedRevision ?? runningAttempt?.revision
 
@@ -145,11 +145,35 @@ export function mapProjectionToSessionDetail(
   const controllerCaseId = controllerCaseIdOf(snapshot)
   const projectedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const derivedStatus = mapWorkflowStateToRunStatus(undefined, steps)
-  const status = derivedStatus === 'failed' ? 'failed' : projectedStatus
+  const latestAttemptByStep = new Map<string, import('../models').AgentAttempt>()
+  for (const attempt of mappedAttempts) {
+    const prev = latestAttemptByStep.get(attempt.stepId)
+    if (!prev || attempt.attemptNumber >= prev.attemptNumber) {
+      latestAttemptByStep.set(attempt.stepId, attempt)
+    }
+  }
+  const latestAttempts = [...latestAttemptByStep.values()]
+  const hasRunningAttempt = latestAttempts.some(
+    (attempt) => attempt.status.toLowerCase() === 'running' || attempt.status.toLowerCase() === 'starting'
+  )
+  const hasNeedsResearchAttempt =
+    !hasRunningAttempt &&
+    latestAttempts.some(
+      (attempt) =>
+        attempt.status.toLowerCase() === 'indeterminate' &&
+        attempt.failureCode?.toUpperCase() === 'AGENT_NEEDS_RESEARCH'
+    )
   const stepStates = steps.map(resolveStepState)
+  const isActivelyRunning = stepStates.includes('running') || hasRunningAttempt
   const waitingHuman =
-    stepStates.includes('waiting_human') || mappedAttempts.some((attempt) => attempt.status === 'waiting_human')
-  const activelyRunning = !waitingHuman && stepStates.includes('running')
+    !isActivelyRunning &&
+    (stepStates.includes('waiting_human') ||
+      hasNeedsResearchAttempt ||
+      latestAttempts.some((attempt) => attempt.status === 'waiting_human') ||
+      (agentQuestions ?? []).some((q) => !q.answered))
+  const status: RunStatus =
+    isActivelyRunning || waitingHuman ? 'running' : derivedStatus === 'failed' ? 'failed' : projectedStatus
+  const activelyRunning = isActivelyRunning
   const executionState: import('../models').TimelineStepStatus = waitingHuman
     ? 'waiting_human'
     : activelyRunning
@@ -330,9 +354,11 @@ function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]):
     const evidenceStatus =
       recordedStatus === 'running'
         ? 'running'
-        : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
-          ? 'completed'
-          : 'failed'
+        : recordedStatus === 'needs_research'
+          ? 'waiting_human'
+          : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
+            ? 'completed'
+            : 'failed'
     return {
       ...step,
       ...(durationMs !== undefined ? { durationMs } : {}),
@@ -418,10 +444,10 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
   summary.unknownCostCount = detail.unknownCostCount ?? 0
   summary.waitingHuman = detail.executionState === 'waiting_human'
   summary.cardState =
-    detail.status === 'failed'
-      ? 'failed'
-      : detail.executionState === 'waiting_human'
-        ? 'waiting_human'
+    detail.executionState === 'waiting_human'
+      ? 'waiting_human'
+      : detail.status === 'failed'
+        ? 'failed'
         : blockedStepIds.size > 0
           ? 'blocked'
           : detail.activelyRunning

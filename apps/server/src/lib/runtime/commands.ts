@@ -14,7 +14,6 @@
 
 import { Server } from 'http'
 import { CodayOptions, parseCodayOptions } from '../coday-options-utils'
-import { findAvailablePort } from '../find-available-port'
 import { debugLog } from '../log'
 import { createWebApp } from '../web-server'
 import { teeConsoleToFile } from './console-tee'
@@ -38,28 +37,63 @@ import { Command } from './command-names'
 import { hideBin } from 'yargs/helpers'
 import { decideProfile } from './profile'
 import { provision } from './provision'
-import { parsePreferredPorts } from './ports'
+import { chooseStackPorts, PickedPorts, stackRequestFromEnv, StackChoice } from './ports'
+import { parsePortBase, portsFor, profileBase } from './port-scheme'
+import { startupLines } from './startup-info'
 import { readState } from './state'
 
 export { COMMANDS, parseCommand } from './command-names'
 
-/** Honour a forced PORT (strict), otherwise fall back to the next free ports. */
-async function chooseExpressPort(): Promise<number> {
-  const preferred = process.env.PORT
-    ? parseInt(process.env.PORT)
-    : process.env.BUILD_ENV === 'development'
-      ? 4100
-      : 3000
-  const forced = !!process.env.PORT
+/**
+ * The ports of the stack, one block for all of it (see ports.ts). Only an explicit choice is strict: `--port` / `PORT`
+ * (Express) and `CODAY_PORT_BASE` (the block); a packaged stack otherwise moves to the next free block of its profile
+ * (prod 3000 -> 3020 -> 3040, local 3010 -> 3030 -> 3050) and says so. The dev profile is strict too: its Angular and
+ * Nx configs are static and cannot follow a move.
+ */
+async function chooseStack(options: CodayOptions): Promise<StackChoice> {
+  const state = readState(options.configDir)
+  const request = stackRequestFromEnv(process.env, {
+    port: options.port,
+    remembered: parsePortBase(String(state?.portBlock ?? '')),
+    managed: {
+      agentos: !process.env.AGENTOS_URL,
+      factory: !process.env.FACTORY_URL && !isManagedFactoryDisabled(),
+    },
+  })
   try {
-    return await findAvailablePort(preferred, forced ? 0 : 10, forced)
+    return await chooseStackPorts({ ...request, log: (m) => console.log(`[ports] ${m}`) })
   } catch (error) {
-    if (error instanceof Error && error.message.includes('already in use')) {
+    if (error instanceof Error && error.message.includes('is already in use')) {
       // Parsed by the desktop apps (server-lifecycle.ts).
       process.stderr.write(`PORT_IN_USE: ${error.message}\n`)
     }
     throw error
   }
+}
+
+/**
+ * The addresses of a start, printed once Express listens: Express is the only one to open, the other ports are
+ * internal (see startup-info.ts).
+ */
+function printStartup(
+  ports: Pick<PickedPorts, 'express'> & Partial<PickedPorts>,
+  env: NodeJS.ProcessEnv = process.env
+): void {
+  const dev = env['BUILD_ENV'] === 'development'
+  const block = portsFor(profileBase(env))
+  const lines = startupLines({
+    dev,
+    express: ports.express,
+    agentos: ports.agentos,
+    factory: ports.factory,
+    bolt: ports.agentosBolt,
+    client: Number(env['ANGULAR_CLIENT_PORT']) || block.client,
+    cockpit: Number(env['FACTORY_COCKPIT_PORT']) || block.factoryCockpit,
+    externalAgentos: env['AGENTOS_URL'],
+    externalFactory: env['FACTORY_URL'],
+    factoryDisabled: isManagedFactoryDisabled(env),
+  })
+  for (const line of lines) console.log(line)
 }
 
 function listen(app: ReturnType<typeof createWebApp>, options: CodayOptions, port: number): Promise<Server> {
@@ -75,7 +109,7 @@ function listen(app: ReturnType<typeof createWebApp>, options: CodayOptions, por
 
 /** Where the wizard is, for the "waiting for first-run setup" message (always /welcome, whatever the setup state). */
 const welcomeUrlOf = (state: { ports: { express?: number } }): string =>
-  `http://localhost:${state.ports.express ?? 3000}/welcome`
+  `http://localhost:${state.ports.express ?? portsFor(profileBase()).server}/welcome`
 
 function profileInput(options: CodayOptions) {
   return {
@@ -94,12 +128,12 @@ function profileInput(options: CodayOptions) {
 
 export async function runProvision(): Promise<number> {
   const options = parseCodayOptions()
-  const expressPort = await chooseExpressPort()
+  const choice = await chooseStack(options)
   await provision({
     ...profileInput(options),
     orchestrator: 'nx',
-    expressPort,
-    preferredPorts: parsePreferredPorts(),
+    ports: choice.ports,
+    portBlock: choice.base,
     log: (m) => console.log(`[provision] ${m}`),
   })
   console.log('[provision] done')
@@ -229,9 +263,10 @@ export async function runServerTask(): Promise<number> {
   try {
     const app = createWebApp({
       codayOptions: options,
-      setupEnabled: decision.setupEnabled && state.profile === 'laptop',
+      setupEnabled: decision.setupEnabled && state.profile === 'unmanaged',
     })
     server = await listen(app, options, port)
+    printStartup({ ...state.ports, express: port })
   } catch (error) {
     return stayUpAfterFailure(
       'server',
@@ -300,16 +335,18 @@ export async function runManaged(): Promise<number> {
   teeConsoleToFile(logFilePath(options.configDir, 'server'))
   debugLog('INIT', 'Coday options:', options)
 
-  const expressPort = await chooseExpressPort()
+  const choice = await chooseStack(options)
+  const expressPort = choice.ports.express
   const { decision } = await provision({
     ...profileInput(options),
     orchestrator: 'in-process',
-    expressPort,
-    preferredPorts: parsePreferredPorts(),
+    ports: choice.ports,
+    portBlock: choice.base,
     log: (m) => debugLog('PROVISION', m),
   })
   const app = createWebApp({ codayOptions: options, setupEnabled: decision.setupEnabled })
   const server = await listen(app, options, expressPort)
+  printStartup(choice.ports)
 
   // Every JVM this process spawned, healthy or still starting; adopted instances are never in it.
   const spawned: RunningService[] = []

@@ -46,6 +46,7 @@ class WorkspacePrecheckService(
         namespaceId: String,
         callerExternalUserId: String? = null,
         requiredAgents: List<String> = emptyList(),
+        requireGitWorkspace: Boolean = true,
     ): WorkspacePrecheckReport {
         if (!properties.enabled) {
             return WorkspacePrecheckReport(enabled = false, namespaceId = namespaceId, verified = emptyList(), unverified = emptyList())
@@ -63,58 +64,60 @@ class WorkspacePrecheckService(
         }
         verified += "namespace"
 
-        // 2. Git workspaces enabled (Factory kill-switch).
-        if (!properties.gitWorkspacesEnabled) {
-            throw WorkspacePrecheckException(
-                WorkspacePrecheckCodes.GIT_WORKSPACES_DISABLED,
-                "Git workspaces are disabled; a run worktree cannot be provisioned.",
-                details = mapOf("namespaceId" to namespaceId, "remedy" to "Enable git workspaces (agentos.git.workspaces.enabled)."),
-            )
-        }
+        if (requireGitWorkspace) {
+            // 2. Git workspaces enabled (Factory kill-switch).
+            if (!properties.gitWorkspacesEnabled) {
+                throw WorkspacePrecheckException(
+                    WorkspacePrecheckCodes.GIT_WORKSPACES_DISABLED,
+                    "Git workspaces are disabled; a run worktree cannot be provisioned.",
+                    details = mapOf("namespaceId" to namespaceId, "remedy" to "Enable git workspaces (agentos.git.workspaces.enabled)."),
+                )
+            }
 
-        // 3. Git configuration adapted (association + checkout state).
-        val git = readPort.namespaceGitState(namespaceId, callerExternalUserId)
-        if (git == null || !git.gitAvailable) {
-            throw WorkspacePrecheckException(
-                WorkspacePrecheckCodes.GIT_WORKSPACES_DISABLED,
-                "Git workspaces are not available for namespace '$namespaceId' (no Git plugin/association endpoint).",
-                details = mapOf("namespaceId" to namespaceId, "remedy" to "Load the GIT plugin on the AgentOS instance."),
-            )
-        }
-        verified += "gitWorkspaces"
-        if (!git.associated) {
-            throw WorkspacePrecheckException(
-                WorkspacePrecheckCodes.GIT_CONFIG_MISSING,
-                "The namespace '$namespaceId' has no repository associated; no worktree can be provisioned.",
-                details = mapOf(
-                    "namespaceId" to namespaceId,
-                    "remedy" to "Associate a repository with the namespace (PUT /api/namespaces/{id}/git).",
-                ),
-            )
-        }
-        if (git.checkoutStatus?.equals("FAILED", ignoreCase = true) == true) {
-            throw WorkspacePrecheckException(
-                WorkspacePrecheckCodes.GIT_CONFIG_MISSING,
-                "The Git checkout of namespace '$namespaceId' is FAILED: ${git.failureReason ?: "unknown cause"}.",
-                details = mapOf(
-                    "namespaceId" to namespaceId,
-                    "checkoutStatus" to git.checkoutStatus,
-                    "failureReason" to git.failureReason,
-                    "remedy" to "Repair the namespace Git association and retry the checkout before running.",
-                ),
-            )
-        }
-        verified += "gitConfiguration"
+            // 3. Git configuration adapted (association + checkout state).
+            val git = readPort.namespaceGitState(namespaceId, callerExternalUserId)
+            if (git == null || !git.gitAvailable) {
+                throw WorkspacePrecheckException(
+                    WorkspacePrecheckCodes.GIT_WORKSPACES_DISABLED,
+                    "Git workspaces are not available for namespace '$namespaceId' (no Git plugin/association endpoint).",
+                    details = mapOf("namespaceId" to namespaceId, "remedy" to "Load the GIT plugin on the AgentOS instance."),
+                )
+            }
+            verified += "gitWorkspaces"
+            if (!git.associated) {
+                throw WorkspacePrecheckException(
+                    WorkspacePrecheckCodes.GIT_CONFIG_MISSING,
+                    "The namespace '$namespaceId' has no repository associated; no worktree can be provisioned.",
+                    details = mapOf(
+                        "namespaceId" to namespaceId,
+                        "remedy" to "Associate a repository with the namespace (PUT /api/namespaces/{id}/git).",
+                    ),
+                )
+            }
+            if (git.checkoutStatus?.equals("FAILED", ignoreCase = true) == true) {
+                throw WorkspacePrecheckException(
+                    WorkspacePrecheckCodes.GIT_CONFIG_MISSING,
+                    "The Git checkout of namespace '$namespaceId' is FAILED: ${git.failureReason ?: "unknown cause"}.",
+                    details = mapOf(
+                        "namespaceId" to namespaceId,
+                        "checkoutStatus" to git.checkoutStatus,
+                        "failureReason" to git.failureReason,
+                        "remedy" to "Repair the namespace Git association and retry the checkout before running.",
+                    ),
+                )
+            }
+            verified += "gitConfiguration"
 
-        // 4. Automatic worktree allocation for root cases.
-        if (!properties.autoWorktreeForRootCases) {
-            throw WorkspacePrecheckException(
-                WorkspacePrecheckCodes.AUTO_WORKTREE_DISABLED,
-                "Automatic worktree allocation for root cases is disabled.",
-                details = mapOf("namespaceId" to namespaceId, "remedy" to "Enable factory.workspace.auto-worktree-for-root-cases."),
-            )
+            // 4. Automatic worktree allocation for root cases.
+            if (!properties.autoWorktreeForRootCases) {
+                throw WorkspacePrecheckException(
+                    WorkspacePrecheckCodes.AUTO_WORKTREE_DISABLED,
+                    "Automatic worktree allocation for root cases is disabled.",
+                    details = mapOf("namespaceId" to namespaceId, "remedy" to "Enable factory.workspace.auto-worktree-for-root-cases."),
+                )
+            }
+            verified += "autoWorktree"
         }
-        verified += "autoWorktree"
 
         // 5. Workstream context resolvable.
         if (!contextPort.isWorkstreamResolvable(scope)) {

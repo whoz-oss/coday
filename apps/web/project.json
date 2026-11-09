@@ -1,6 +1,7 @@
 {
   "name": "web",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "// dev ports": "The dev-agentos / dev-factory / dev-server env values below are the DEV block of apps/server/src/lib/runtime/port-scheme.json (base 4000: AgentOS +5, Factory +6, Bolt +7) that Nx cannot compute: guarded by apps/server/src/lib/runtime/port-scheme-consistency.spec.ts. dev-server has no PORT: BUILD_ENV=development means the dev base.",
   "projectType": "application",
   "sourceRoot": "{projectRoot}",
   "tags": ["web-bundle", "platform:npm"],
@@ -22,8 +23,8 @@
         "cwd": "{workspaceRoot}",
         "env": {
           "BUILD_ENV": "development",
-          "AGENTOS_URL": "http://localhost:8124",
-          "FACTORY_URL": "http://localhost:8141"
+          "AGENTOS_URL": "http://localhost:4005",
+          "FACTORY_URL": "http://localhost:4006"
         }
       }
     },
@@ -33,7 +34,12 @@
       "cache": false,
       "options": {
         "command": "./gradlew :agentos-service:bootRun",
-        "cwd": "{workspaceRoot}/agentos"
+        "cwd": "{workspaceRoot}/agentos",
+        "env": {
+          "SERVER_PORT": "4005",
+          "AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT": "4007",
+          "SPRING_NEO4J_URI": "bolt://localhost:4007"
+        }
       }
     },
     "dev-factory": {
@@ -42,7 +48,11 @@
       "cache": false,
       "options": {
         "command": "./gradlew :factory-service:bootRun",
-        "cwd": "{workspaceRoot}/factory"
+        "cwd": "{workspaceRoot}/factory",
+        "env": {
+          "SERVER_PORT": "4006",
+          "AGENTOS_URL": "http://localhost:4005"
+        }
       }
     },
     "serve:dev": {

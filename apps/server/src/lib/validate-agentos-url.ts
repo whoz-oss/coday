@@ -2,7 +2,7 @@
  * Validates that a string is a well-formed http(s) URL suitable for use as
  * the AgentOS proxy target.
  *
- * `new URL()` alone is too permissive: `new URL('localhost:8124')` succeeds
+ * `new URL()` alone is too permissive: `new URL('localhost:4005')` succeeds
  * by treating `localhost:` as the scheme, which is the most likely migration
  * mistake when a user copies a bare hostname from the old AGENTOS_HOSTNAME var.
  * This helper adds an explicit protocol and hostname assertion.
@@ -18,12 +18,12 @@ export function validateAgentOsUrl(url: string): void {
     parsed = new URL(url)
   } catch {
     throw new Error(
-      `Invalid AGENTOS_URL: "${url}". Must be a complete URL including scheme, e.g. "http://localhost:8124".`
+      `Invalid AGENTOS_URL: "${url}". Must be a complete URL including scheme, e.g. "http://localhost:4005".`
     )
   }
   if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname || parsed.pathname.startsWith('//')) {
     throw new Error(
-      `Invalid AGENTOS_URL: "${url}". Expected an http(s) URL with a hostname, e.g. "http://localhost:8124".`
+      `Invalid AGENTOS_URL: "${url}". Expected an http(s) URL with a hostname, e.g. "http://localhost:4005".`
     )
   }
 }

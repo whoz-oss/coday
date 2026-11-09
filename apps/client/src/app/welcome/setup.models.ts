@@ -20,13 +20,19 @@ export interface SetupProviderInfo {
 export type ProviderId = 'anthropic' | 'openai' | 'requesty'
 
 export interface SetupStatus {
-  /** `laptop`: the wizard applies. `managed`: pre-wizard behaviour, never redirect to /welcome. */
-  mode: 'laptop' | 'managed'
+  /** `unmanaged`: the wizard applies. `managed`: pre-wizard behaviour, never redirect to /welcome. */
+  mode: 'unmanaged' | 'managed'
   setupEnabled: boolean
   setupDone: boolean
   identity?: { email: string }
   steps: {
-    download: { state: StepState; percent?: number; message?: string }
+    /** `versions`: exact packages being downloaded (absent for external services and the `dev` sentinel). */
+    download: {
+      state: StepState
+      percent?: number
+      message?: string
+      versions?: { agentos?: string; factory?: string }
+    }
     java: { state: StepState; version?: string; hint?: string }
     agentos: StepStatus
     /** Only present when `FACTORY_URL` points to a Factory: Coday never downloads nor runs one. */

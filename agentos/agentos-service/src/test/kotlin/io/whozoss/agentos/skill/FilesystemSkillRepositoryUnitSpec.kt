@@ -16,6 +16,8 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
@@ -169,8 +171,8 @@ class FilesystemSkillRepositoryUnitSpec : StringSpec({
         val delegate = mockk<SkillRepository>()
         val nsRepo = mockk<NamespaceRepository>()
 
-        val id1 = FilesystemSkillRepository.computeFilesystemSkillId(nsId1, "Code Review")
-        val id2 = FilesystemSkillRepository.computeFilesystemSkillId(nsId2, "Code Review")
+        val id1 = filesystemEntityId(FilesystemEntityKind.SKILL, nsId1, "Code Review")
+        val id2 = filesystemEntityId(FilesystemEntityKind.SKILL, nsId2, "Code Review")
 
         (id1 == id2) shouldBe false
 

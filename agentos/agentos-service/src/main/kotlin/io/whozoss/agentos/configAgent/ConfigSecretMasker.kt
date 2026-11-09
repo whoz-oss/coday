@@ -28,6 +28,14 @@ internal object ConfigSecretMasker {
                 ConfigSecretPolicy.AUTH_SETTING_SECRET_FIELDS.forEach { field ->
                     if (copy.hasNonNull(field)) copy.put(field, ConfigJson.MASK)
                 }
+            ConfigKind.AI_PROVIDER -> {
+                if (copy.hasNonNull("apiKey")) copy.put("apiKey", ConfigJson.MASK)
+                (copy.get("headers") as? ObjectNode)?.let { headers ->
+                    headers.properties().toList().forEach { (name, value) ->
+                        if (value.isTextual && ConfigSecretPolicy.isCredentialHeader(name)) headers.put(name, ConfigJson.MASK)
+                    }
+                }
+            }
             else -> Unit
         }
         return copy

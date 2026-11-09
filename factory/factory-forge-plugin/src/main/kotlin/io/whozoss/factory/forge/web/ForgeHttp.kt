@@ -1,13 +1,23 @@
 package io.whozoss.factory.forge.web
 
-import io.whozoss.factory.web.AuthenticatedUser
-import io.whozoss.factory.web.factoryError
-import io.whozoss.factory.web.factoryStorageFailure
+import io.whozoss.factory.forge.port.ForgePluginHttpException
+import io.whozoss.factory.sdk.spi.FactoryCallerIdentity
 
 /** Canonical HTTP success envelope for Forge surfaces. */
 data class ForgeDataEnvelope<T>(val data: T)
 
-/** Relay and audit identity. Ledger handlers resolve their namespace separately. */
+/** Canonical HTTP error envelope matching `{ "error": { "code", "message", "details" } }`. */
+data class ForgeErrorDetail(
+    val code: String,
+    val message: String,
+    val details: Any? = null,
+)
+
+data class ForgeErrorEnvelope(
+    val error: ForgeErrorDetail,
+)
+
+/** Relay and audit identity resolved from [FactoryCallerIdentity]. */
 data class ForgeCaller(
     val organizationId: String,
     val actorId: String,
@@ -16,10 +26,7 @@ data class ForgeCaller(
 )
 
 fun forgeError(statusCode: Int, code: String, message: String, details: Any? = null): Nothing =
-    factoryError(statusCode, code, message, details)
+    throw ForgePluginHttpException(statusCode, code, message, details)
 
-/** Authentication never invents a ledger's workstream. */
-fun resolveForgeCaller(user: AuthenticatedUser): ForgeCaller =
-    ForgeCaller(user.organizationId, user.userId, user.userId, user.userId)
-
-fun forgeStorageFailure(error: Throwable): Nothing = factoryStorageFailure(error)
+fun resolveForgeCaller(caller: FactoryCallerIdentity): ForgeCaller =
+    ForgeCaller(caller.organizationId, caller.userId, caller.userId, caller.userId)

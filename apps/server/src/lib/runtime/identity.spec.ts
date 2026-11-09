@@ -13,12 +13,12 @@ beforeEach(() => {
 })
 afterEach(() => fs.rmSync(configDir, { recursive: true, force: true }))
 
-const setProfile = (profile: 'laptop' | 'managed') =>
+const setProfile = (profile: 'unmanaged' | 'managed') =>
   updateState(configDir, { profile }, initialState('in-process', profile))
 
 describe('createIdentityProvider (read at request time)', () => {
   it('reads the identity written AFTER the provider was created, without any restart', () => {
-    setProfile('laptop')
+    setProfile('unmanaged')
     const identity = createIdentityProvider(configDir, {})
     expect(identity()).toBeUndefined()
 
@@ -30,7 +30,7 @@ describe('createIdentityProvider (read at request time)', () => {
   })
 
   it('feeds the proxy header decision: set once known, untouched before', () => {
-    setProfile('laptop')
+    setProfile('unmanaged')
     const identity = createIdentityProvider(configDir, {})
     const decide = () =>
       decideProxyIdentity({ authEnabled: false, envUserId: identity(), resolveUser: () => 'os-user' })
@@ -45,19 +45,19 @@ describe('createIdentityProvider (read at request time)', () => {
   })
 
   it('lets the explicit AGENTOS_EXTERNAL_USERID env var win (unchanged behaviour)', () => {
-    setProfile('laptop')
+    setProfile('unmanaged')
     saveIdentity(configDir, 'me@acme.com')
     expect(createIdentityProvider(configDir, { AGENTOS_EXTERNAL_USERID: 'service' })()).toBe('service')
   })
 
-  it('ignores the wizard identity outside the laptop profile (pre-wizard behaviour)', () => {
+  it('ignores the wizard identity outside the unmanaged profile (pre-wizard behaviour)', () => {
     setProfile('managed')
     saveIdentity(configDir, 'me@acme.com')
     expect(createIdentityProvider(configDir, {})()).toBeUndefined()
   })
 
   it('ignores a corrupted or invalid web-setup.json', () => {
-    setProfile('laptop')
+    setProfile('unmanaged')
     fs.writeFileSync(webSetupPath(configDir), '{ nope')
     expect(createIdentityProvider(configDir, {})()).toBeUndefined()
     fs.writeFileSync(webSetupPath(configDir), JSON.stringify({ identity: { email: 'not-an-email' } }))

@@ -98,7 +98,7 @@ export function createStatusReporter(): (facts: StatusFacts) => string[] {
       } else if (download?.state === 'done') {
         const next =
           name === 'agentos'
-            ? state.profile === 'laptop' && !setup.identity
+            ? state.profile === 'unmanaged' && !setup.identity
               ? 'waiting for first-run setup'
               : 'starting'
             : healthy.agentos || external.agentos

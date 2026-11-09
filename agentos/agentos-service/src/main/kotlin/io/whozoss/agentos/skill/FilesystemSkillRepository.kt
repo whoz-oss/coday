@@ -2,7 +2,9 @@ package io.whozoss.agentos.skill
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
@@ -144,7 +146,7 @@ class FilesystemSkillRepository(
                     if (result.size < MAX_SKILL_COUNT) {
                         result += skill.copy(
                             metadata = EntityMetadata(
-                                id = computeFilesystemSkillId(namespaceId, skill.name),
+                                id = filesystemEntityId(FilesystemEntityKind.SKILL, namespaceId, skill.name),
                             ),
                             namespaceId = namespaceId,
                         )
@@ -168,10 +170,5 @@ class FilesystemSkillRepository(
 
         const val MAX_SKILL_COUNT = 500
         const val MAX_WALK_DEPTH = 2
-
-        fun computeFilesystemSkillId(
-            namespaceId: UUID,
-            name: String,
-        ): UUID = UUID.nameUUIDFromBytes("filesystem-skill:$namespaceId:$name".toByteArray(Charsets.UTF_8))
     }
 }

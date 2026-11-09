@@ -48,6 +48,7 @@ import io.whozoss.agentos.usage.UsageOutcome
 import io.whozoss.agentos.usage.UsageRecord
 import io.whozoss.agentos.usage.UsageRecordService
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.util.coRunCatching
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.CoroutineContext
@@ -98,6 +99,11 @@ class CaseServiceImpl(
     /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
     private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
     /**
+     * Keeps the case summary up to date (#1566). Optional so that a service built by hand without it
+     * simply never summarizes; `agentos.case.summary-enabled` switches it off in the running service.
+     */
+    private val caseSummaryService: CaseSummaryService? = null,
+    /**
      * Coroutine context used to build the service scope.
      * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
      * in tests so all coroutines run on the test scheduler and virtual time applies.
@@ -115,6 +121,9 @@ class CaseServiceImpl(
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
+
+    /** Cases whose summary is being generated, so that two quick turns do not pay for two calls. */
+    private val summariesInFlight: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
 
     /**
      * Eviction watcher [Job] per active runtime, keyed by case id.
@@ -955,10 +964,12 @@ class CaseServiceImpl(
         if (newStatus == CaseStatus.IDLE && postProcess) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
+                val events = caseEventService.findByParent(caseId)
                 triggerNamingIfNeeded(
                     case = updated,
-                    events = caseEventService.findByParent(caseId),
+                    events = events,
                 ) { event -> runtime.emitEvent(event) }
+                triggerSummaryIfNeeded(updated, events)
             }
         }
 
@@ -1312,7 +1323,49 @@ class CaseServiceImpl(
         }
     }
 
+    /**
+     * Launches a fire-and-forget summary coroutine when the summary of [case] is worth (re)writing.
+     *
+     * Triggers when the feature is enabled, the case is a top-level one (sub-cases are skipped to save
+     * cost: their parent's summary covers the work), at least one agent turn has finished, and either
+     * there is no summary yet or at least [SUMMARY_REFRESH_USER_MESSAGES] user messages came in since the
+     * last one. Called when a turn ends, so the agent's answer is part of what gets summarized.
+     */
+    private fun triggerSummaryIfNeeded(
+        case: Case,
+        events: List<CaseEvent>,
+    ) {
+        val summaryService = caseSummaryService
+        // The in-flight claim comes last: it must only be taken when a generation is really launched.
+        if (summaryService != null && isSummaryDue(case, events) && summariesInFlight.add(case.id)) {
+            scope.launch(LogContext.mdcContext(LogContext.CASE_ID to case.id, LogContext.NAMESPACE_ID to case.namespaceId)) {
+                try {
+                    coRunCatching { summaryService.summarizeCase(case, events) }
+                        .onFailure { e -> logger.error(e) { "[CaseSummary] Failed for case ${case.id}" } }
+                } finally {
+                    summariesInFlight.remove(case.id)
+                }
+            }
+        }
+    }
+
+    private fun isSummaryDue(
+        case: Case,
+        events: List<CaseEvent>,
+    ): Boolean =
+        when {
+            !caseConfig.summaryEnabled || case.parentCaseId != null -> false
+            events.none { it is AgentFinishedEvent } -> false
+            case.summary == null -> true
+            else ->
+                CaseSummaryService.countUserMessages(events) - (case.summaryMessageCount ?: 0) >=
+                    SUMMARY_REFRESH_USER_MESSAGES
+        }
+
     companion object : KLogging() {
+        /** User messages after which an existing case summary is refreshed. */
+        internal const val SUMMARY_REFRESH_USER_MESSAGES = 3
+
         /**
          * Maximum depth of delegation chains allowed.
          *

@@ -76,6 +76,16 @@ data class CaseDto(
                 "whatever the model has configured; not sent to Anthropic and Gemini providers.",
     )
     val reasoningEffort: ReasoningEffort? = null,
+    /**
+     * Short summary of the case (what it is about, where it stands), generated and refreshed by the
+     * server after agent turns. Null until the first one. Read-only: ignored on create and update.
+     */
+    @field:Schema(
+        description =
+            "Short server-generated summary of the case, refreshed after agent turns and matched by the case " +
+                "search. Null until the first one. Read-only: ignored on create and update.",
+    )
+    val summary: String? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**

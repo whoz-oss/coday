@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test
  * Verifies that:
  *  - attempts whose caseId is not a valid UUID (e.g. "case:wf-179", created by
  *    a previous Node.js version of the service) are skipped without calling
- *    [AgentOsExecutionAdapter.reconcile], which would throw
+ *    [AgentOsExecutionAdapter.reconcileResult] (nor the legacy reconcile API), which would throw
  *    `MethodArgumentTypeMismatchException` because AgentOS expects
  *    `@PathVariable caseId: UUID`;
  *  - attempts with a valid UUID caseId continue the normal reconcile flow;
@@ -40,6 +40,7 @@ class BridgeRecoveryWorkerLegacyCaseIdTest {
         adapter = adapter,
         evidenceRepository = null,
         sseHub = null,
+        leaseTtlMs = 0L,
     )
 
     // ---- isValidUuid companion helper -----------------------------------------
@@ -83,7 +84,8 @@ class BridgeRecoveryWorkerLegacyCaseIdTest {
         assertThat(report.scanned).isEqualTo(1)
         assertThat(report.skipped).isEqualTo(1)
         assertThat(report.finalized).isEqualTo(0)
-        // The guard must fire BEFORE calling reconcile — no HTTP call to AgentOS.
+        // The guard must fire before either enriched or legacy reconciliation.
+        verify(exactly = 0) { adapter.reconcileResult(any()) }
         verify(exactly = 0) { adapter.reconcile(any<String>()) }
     }
 
@@ -99,6 +101,7 @@ class BridgeRecoveryWorkerLegacyCaseIdTest {
 
         assertThat(report.scanned).isEqualTo(2)
         assertThat(report.skipped).isEqualTo(2)
+        verify(exactly = 0) { adapter.reconcileResult(any()) }
         verify(exactly = 0) { adapter.reconcile(any<String>()) }
     }
 
@@ -107,15 +110,26 @@ class BridgeRecoveryWorkerLegacyCaseIdTest {
         val validCaseId = java.util.UUID.randomUUID().toString()
         val validAttempt = durableAttempt(caseId = validCaseId, status = AgentAttemptStatus.RUNNING)
         every { attempts.findNonTerminal(any()) } returns listOf(ScopedDurableAgentAttempt(scope, validAttempt))
-        // reconcile returns Indeterminate (not quiescent) so the worker skips finalization
-        every { adapter.reconcile(validCaseId) } returns AgentOsExecutionVerdict.Indeterminate(
-            reason = "not quiescent",
-            evidence = emptyMap(),
+        every { attempts.claim(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), leaseTtlMs = 0L, now = any()) } returns validAttempt
+        every { attempts.transition(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), any(), any(), any()) } returns validAttempt
+        every { attempts.finalize(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), any(), any(), any(), any(), any()) } returns validAttempt
+        every { adapter.reconcileResult(match { it.caseId == validCaseId }) } returns io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+            AgentOsExecutionVerdict.Indeterminate(reason = "not quiescent", evidence = emptyMap()),
+            null,
+        )
+        every { adapter.observeTurnResult(match { it.caseId == validCaseId }, any()) } returns io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+            AgentOsExecutionVerdict.Indeterminate(reason = "still not quiescent", evidence = emptyMap()),
+            null,
         )
 
-        worker.recover()
+        val report = worker.recover()
 
-        verify(exactly = 1) { adapter.reconcile(validCaseId) }
+        assertThat(report.resumed).isEqualTo(1)
+        assertThat(report.skipped).isZero()
+        assertThat(report.conflicted).isZero()
+        verify(exactly = 1) { attempts.claim(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), leaseTtlMs = 0L, now = any()) }
+        verify(exactly = 1) { adapter.reconcileResult(match { it.caseId == validCaseId }) }
+        verify(exactly = 1) { adapter.observeTurnResult(match { it.caseId == validCaseId }, any()) }
     }
 
     @Test
@@ -125,15 +139,30 @@ class BridgeRecoveryWorkerLegacyCaseIdTest {
             ScopedDurableAgentAttempt(scope, durableAttempt(caseId = "case:wf-99", stepId = "step-a")),
             ScopedDurableAgentAttempt(scope, durableAttempt(caseId = validCaseId, stepId = "step-b", status = AgentAttemptStatus.RUNNING)),
         )
+        val validAttempt = batch[1].attempt
         every { attempts.findNonTerminal(any()) } returns batch
-        every { adapter.reconcile(validCaseId) } returns AgentOsExecutionVerdict.Indeterminate("not quiescent", emptyMap())
+        every { attempts.claim(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), leaseTtlMs = 0L, now = any()) } returns validAttempt
+        every { attempts.transition(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), any(), any(), any()) } returns validAttempt
+        every { attempts.finalize(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), any(), any(), any(), any(), any()) } returns validAttempt
+        every { adapter.reconcileResult(match { it.caseId == validCaseId }) } returns io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+            AgentOsExecutionVerdict.Indeterminate("not quiescent", emptyMap()),
+            null,
+        )
+        every { adapter.observeTurnResult(match { it.caseId == validCaseId }, any()) } returns io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+            AgentOsExecutionVerdict.Indeterminate("still not quiescent", emptyMap()),
+            null,
+        )
 
         val report = worker.recover()
 
         assertThat(report.scanned).isEqualTo(2)
-        assertThat(report.skipped).isEqualTo(2) // legacy skip + reconcile skip (indeterminate, RUNNING but no finalization)
-        verify(exactly = 0) { adapter.reconcile("case:wf-99") }
-        verify(exactly = 1) { adapter.reconcile(validCaseId) }
+        assertThat(report.skipped).isEqualTo(1)
+        assertThat(report.resumed).isEqualTo(1)
+        assertThat(report.conflicted).isZero()
+        verify(exactly = 0) { adapter.reconcileResult(match { it.caseId == "case:wf-99" }) }
+        verify(exactly = 1) { adapter.reconcileResult(match { it.caseId == validCaseId }) }
+        verify(exactly = 1) { adapter.observeTurnResult(match { it.caseId == validCaseId }, any()) }
+        verify(exactly = 1) { attempts.claim(scope, namespace, workflowId, validAttempt.stepId, validAttempt.attemptId, any(), leaseTtlMs = 0L, now = any()) }
     }
 
     // ---- helpers ---------------------------------------------------------------

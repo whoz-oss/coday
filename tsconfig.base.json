@@ -26,6 +26,7 @@
       "@whoz-oss/design-system": ["libs/design-system/src/index.ts"],
       "gradle-plugins": ["tools/plugins/gradle-plugins/src/index.ts"]
     },
+    "resolveJsonModule": true,
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
     "sourceMap": true,

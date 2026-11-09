@@ -1,6 +1,7 @@
 {
   "name": "client",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "// serve port": "4001 = dev base + client offset of apps/server/src/lib/runtime/port-scheme.json. Angular cannot compute it: guarded by apps/server/src/lib/runtime/port-scheme-consistency.spec.ts. The proxy file (proxy.conf.mjs) derives from the JSON.",
   "projectType": "application",
   "prefix": "app",
   "sourceRoot": "apps/client/src",
@@ -68,9 +69,9 @@
       "continuous": true,
       "executor": "@angular/build:dev-server",
       "options": {
-        "port": 4200,
+        "port": 4001,
         "host": "localhost",
-        "proxyConfig": "apps/client/proxy.conf.json"
+        "proxyConfig": "apps/client/proxy.conf.mjs"
       },
       "configurations": {
         "production": {

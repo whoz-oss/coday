@@ -102,7 +102,7 @@ sequenceDiagram
     work->>int: promote-to-integration (on success)
 
     Note over int,art: workstream-build.yml
-    int->>art: npm (dist-tag) + JARs (GitHub prerelease)
+    int->>art: JARs (GitHub prerelease), then npm (dist-tag) last
 
     Note over Dev,art: Reviewer exercises artifacts, then approves
     Dev->>ws: merge work PR into workstream
@@ -184,6 +184,19 @@ workstream's own numbering is gappy and conveys nothing. Reading the counter bac
 slug's own tags gives each workstream a contiguous sequence, and makes the tag namespace
 self-describing: `git tag --list 'workstream-forge-*'` is the complete, ordered build history
 for that workstream.
+
+### npm is published last
+
+The npm dist-tag `workstream-<slug>` is what consumers install, and `coday-web` downloads its
+AgentOS/Factory JARs at startup from the GitHub prerelease of the **same version**. The
+`publish-npm` job therefore runs at the very end of `workstream-build.yml`, `needs`-ing the
+`prerelease` job (which itself waits for the JAR builds and the GitHub Packages publishes).
+The dist-tag only moves once everything it depends on can be downloaded. Publishing npm first
+opened a window where a freshly published tag pointed at a version with no JARs yet.
+
+If an earlier job fails, npm is never published and the reserved tag is left dangling. If only
+`publish-npm` fails, re-running that job is safe: the nx publish executor treats an
+already-published version as success.
 
 ### The tag is a reservation, pushed *before* publishing
 

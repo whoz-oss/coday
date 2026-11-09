@@ -1,6 +1,11 @@
 package io.whozoss.factory.adapter.agentos
 
 /** Handle on an AgentOS execution (case) created or recovered at the Factory boundary. */
+data class AgentOsObservationResult(
+    val verdict: AgentOsExecutionVerdict,
+    val runtimeProof: VerdictDeriver.RuntimeCaseTerminationProof? = null,
+)
+
 data class CaseHandle(
     val caseId: String,
     val namespaceId: String?,
@@ -108,6 +113,19 @@ interface AgentOsExecutionAdapter : AgentRuntimeAdapter {
      * [VerdictDeriver.RUNTIME_UNREACHABLE] verdict — never `Succeeded`.
      */
     fun reconcile(caseId: String): AgentOsExecutionVerdict
+
+    fun observeTurnResult(
+        turn: TurnToken,
+        timeoutMs: Long,
+        onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit = {},
+        onAnswerObserved: (CaseEventView) -> Unit = {},
+    ): AgentOsObservationResult = AgentOsObservationResult(
+        observeTurn(turn, timeoutMs, onIntermediateVerdict, onAnswerObserved),
+        null,
+    )
+
+    fun reconcileResult(turn: TurnToken): AgentOsObservationResult =
+        AgentOsObservationResult(reconcile(turn), null)
 
     // ---- AgentRuntimeAdapter contract, defaulted over the historical signatures ----
 

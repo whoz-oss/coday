@@ -195,6 +195,7 @@
   <div class="case-tree-node" [style.--depth]="depth">
     <div
       class="case-tree-node__row"
+      [attr.title]="node.summary || null"
       [class.case-tree-node__row--active]="node.id === activeCaseId()"
       [class.case-tree-node__row--editing]="editingCaseId() === node.id"
     >
@@ -258,6 +259,9 @@
       } @else {
         <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
           <span class="case-tree-node__name">{{ node.name }}</span>
+          @if (isSearchActive() && node.summary) {
+            <span class="case-tree-node__summary">{{ node.summary }}</span>
+          }
         </button>
       }
 

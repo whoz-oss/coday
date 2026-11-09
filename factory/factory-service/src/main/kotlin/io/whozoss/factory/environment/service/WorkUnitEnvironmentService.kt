@@ -118,7 +118,7 @@ class WorkUnitEnvironmentService(
                 workflowId = environment.workflowId,
                 namespaceId = environment.namespaceId,
                 integrationBranch = environment.integrationBranch,
-                branch = environment.branch,
+                branch = requireNotNull(environment.branch) { "A detached environment cannot be provisioned as a named branch" },
             ),
         )
         val ready = environment.copy(

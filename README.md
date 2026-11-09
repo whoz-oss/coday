@@ -48,7 +48,7 @@ That's it!
 This command will:
 1. Download the latest version (if needed)
 2. Start the web server
-3. Open your browser at `http://localhost:3000`
+3. Open your browser at `http://localhost:3000` (if that port is already taken, Coday picks a free one and prints the address to open)
 4. Run from the directory you were at
 
 **📖 For detailed setup instructions**, see [Installation Guide](docs/02-getting-started/installation.md).

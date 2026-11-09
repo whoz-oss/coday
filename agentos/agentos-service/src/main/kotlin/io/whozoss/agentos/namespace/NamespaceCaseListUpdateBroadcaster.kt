@@ -29,6 +29,9 @@ class NamespaceCaseListUpdateBroadcaster {
         }
     }
 
+    /** Tells clients that a case of the namespace changed (e.g. its summary), so they reload their list. */
+    fun publishCaseUpdated(namespaceId: UUID) = publishCaseCreated(namespaceId)
+
     private fun emit(namespaceId: UUID) {
         streams[namespaceId]?.tryEmit(Unit)
     }

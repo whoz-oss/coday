@@ -62,6 +62,11 @@ data class DurableAgentAttempt(
      */
     val environmentRef: String? = null,
     val expectedEnvironmentRevision: Int? = null,
+    /** Exact durable physical-worktree occupation acquired for this attempt. */
+    val occupancyResourceIdentity: String? = null,
+    val occupancyOwnerKind: String? = null,
+    val occupancyOwnerId: String? = null,
+    val occupancyGeneration: Long? = null,
     /**
      * The bounded resumption context of a successor attempt `N+1` (Phase 4
      * ask-step-question): a compact JSON document holding the question, the

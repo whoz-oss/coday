@@ -2,7 +2,7 @@ import { initialState, RuntimeState } from './state'
 import { createStatusReporter, StatusFacts } from './status'
 
 const state = (patch: Partial<RuntimeState> = {}): RuntimeState => ({
-  ...initialState('nx', 'laptop'),
+  ...initialState('nx', 'unmanaged'),
   provisioned: true,
   ports: { express: 3000, agentos: 8224, agentosBolt: 7788, factory: 8241 },
   java: { state: 'ok', version: 'openjdk 25', major: 25 },

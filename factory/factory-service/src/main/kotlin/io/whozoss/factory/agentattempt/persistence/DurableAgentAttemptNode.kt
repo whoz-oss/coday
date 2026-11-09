@@ -51,6 +51,10 @@ data class DurableAgentAttemptNode(
     val environmentRef: String? = null,
     /** Environment revision captured at reservation (see [DurableAgentAttempt.expectedEnvironmentRevision]). */
     val expectedEnvironmentRevision: Int? = null,
+    val occupancyResourceIdentity: String? = null,
+    val occupancyOwnerKind: String? = null,
+    val occupancyOwnerId: String? = null,
+    val occupancyGeneration: Long? = null,
     /** Bounded resumption context of a successor attempt (see [DurableAgentAttempt.resumptionContext]). */
     val resumptionContext: String? = null,
     /** Frozen context envelope JSON of the attempt (see [DurableAgentAttempt.contextEnvelope]). */
@@ -87,6 +91,10 @@ data class DurableAgentAttemptNode(
         brief = brief,
         environmentRef = environmentRef,
         expectedEnvironmentRevision = expectedEnvironmentRevision,
+        occupancyResourceIdentity = occupancyResourceIdentity,
+        occupancyOwnerKind = occupancyOwnerKind,
+        occupancyOwnerId = occupancyOwnerId,
+        occupancyGeneration = occupancyGeneration,
         resumptionContext = resumptionContext,
         contextEnvelope = contextEnvelope,
         expectedAmendmentSeq = expectedAmendmentSeq,
@@ -146,6 +154,10 @@ data class DurableAgentAttemptNode(
                 brief = attempt.brief,
                 environmentRef = attempt.environmentRef,
                 expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
+                occupancyResourceIdentity = attempt.occupancyResourceIdentity,
+                occupancyOwnerKind = attempt.occupancyOwnerKind,
+                occupancyOwnerId = attempt.occupancyOwnerId,
+                occupancyGeneration = attempt.occupancyGeneration,
                 resumptionContext = attempt.resumptionContext,
                 contextEnvelope = attempt.contextEnvelope,
                 expectedAmendmentSeq = attempt.expectedAmendmentSeq,

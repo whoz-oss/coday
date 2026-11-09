@@ -87,6 +87,44 @@ describe('ConfigChangeCardComponent', () => {
     expect(button(root, 'Apply').disabled).toBe(false)
   })
 
+  it('reads the AI kinds with their own labels and asks for the provider key as a secret', () => {
+    const root = render(
+      plan({
+        operations: [
+          {
+            ref: 'prov',
+            order: 1,
+            kind: 'AI_PROVIDER',
+            action: 'CREATE',
+            name: 'acme-llm',
+            affects: 'CALLER_ONLY',
+            value: { name: 'acme-llm', apiType: 'OpenAI' },
+            changes: [],
+            secretInputs: [{ key: 'prov./apiKey', path: '/apiKey', label: 'Provider API key' }],
+            status: 'PENDING',
+          },
+          {
+            ref: 'model',
+            order: 2,
+            kind: 'AI_MODEL',
+            action: 'CREATE',
+            name: 'BIG',
+            affects: 'CALLER_ONLY',
+            value: { aiProviderId: { $op: 'prov' }, apiModelName: 'gpt-x', alias: 'BIG' },
+            changes: [],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+        ],
+      } as Partial<ConfigChangeViewDto>)
+    )
+
+    expect(root.textContent).toContain('Create AI provider acme-llm')
+    expect(root.textContent).toContain('Create AI model BIG')
+    expect(root.textContent).toContain('id created by step 1 (acme-llm)')
+    expect(button(root, 'Apply').disabled).toBe(true)
+  })
+
   it('names the namespace the plan creates on the operations that go into it', () => {
     const root = render(
       plan({
