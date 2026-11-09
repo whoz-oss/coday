@@ -84,7 +84,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
-import { findLegitimateAnswer } from './case-chat.utils'
+import { findLegitimateAnswer, runningAfter } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -904,17 +904,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       try {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
-          // Reconnection replays persisted history. The last known status restores the
-          // running indicator after a transport error; older statuses must not undo it.
-          // Timeline rows, file refreshes and streamed text remain deduplicated.
+          // Reconnection replays persisted history. The last event that tells whether the case runs
+          // restores the running indicator after a transport error; older ones must not undo it.
+          // This deliberately skips the terminal-close debounce the live branch applies: deciding on
+          // the LAST telling event already collapses a replayed KILLED-then-IDLE burst, which is all
+          // that debounce is for. Timeline rows, file refreshes and streamed text stay deduplicated.
           if (this.events().some((previous) => previous.id === event.id)) {
-            if (event.type === 'CaseStatusEvent') {
-              const latestStatus = [...this.events()]
-                .reverse()
-                .find((previous) => previous.type === 'CaseStatusEvent' || previous.type === 'AgentFinishedEvent')
-              if (latestStatus?.id === event.id) {
-                this.isRunning.set((event as CaseStatusEvent).status === 'RUNNING')
-              }
+            const running = runningAfter(event)
+            if (running !== null) {
+              const latest = this.events().findLast((previous) => runningAfter(previous) !== null)
+              if (latest?.id === event.id) this.isRunning.set(running)
             }
             return
           }
@@ -964,7 +963,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
-            const status = (event as CaseStatusEvent).status as string
+            const status = event.status as string
             // _sseStatus is last-writer-wins: the final frame in a replay batch wins,
             // so isTerminal (a computed from caseStatus) self-corrects automatically.
             this._sseStatus.set(status)
@@ -978,10 +977,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
                 clearTimeout(this.terminalCloseTimer)
                 this.terminalCloseTimer = null
               }
-              const running = status === 'RUNNING'
-              this.isRunning.set(running)
-              if (!running) {
-                // End of turn / idle: reset streaming buffer.
+              // One table, two call sites: the dedup branch above decides from the same function,
+              // so a status added to it lands on both paths. An unrecognised status leaves isRunning
+              // as it stands rather than unlocking the composer on a case that may be mid-run.
+              const running = runningAfter(event)
+              if (running !== null) {
+                this.isRunning.set(running)
+              }
+              // End of turn: reset the streaming buffer. Keyed on IDLE rather than on "not running",
+              // so adding a status to the table never silently changes what clears the buffer.
+              if (status === 'IDLE') {
                 this.streamingText.set('')
               }
             } else {
@@ -1004,8 +1009,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
-          // In practice, the SSE stream currently does NOT emit CaseStatusEvent.
-          // So we treat AgentFinishedEvent as the end-of-turn signal.
+          // A turn can change agent without the case changing status: a redirect, a command-queue
+          // drain, a question resumption. The next agent being selected, then starting, means the
+          // case still runs - see runningAfter, which mirrors the backend's own reader. Guarded on
+          // the terminal state so a mid-history frame replayed on a killed case does not flash the
+          // indicator before the debounced close fires.
+          // No early return on purpose: this is a cross-cutting rule rather than a per-type branch,
+          // and the branches below must keep running for the types they handle.
+          if ((event.type === 'AgentRunningEvent' || event.type === 'AgentSelectedEvent') && !this.isTerminal()) {
+            this.isRunning.set(true)
+          }
+
+          // AgentFinishedEvent ends the turn. A handoff emits one too, for the agent handing over;
+          // the rule above restores the running state when the next agent is selected.
           if (event.type === 'AgentFinishedEvent') {
             this.isRunning.set(false)
             // End-of-turn: reset streaming buffer.

@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@angular/core'
+import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -8,6 +8,7 @@ import {
   AgentRunningEvent,
   AnswerEvent,
   Case,
+  CaseStatusEnum,
   Configuration,
   ExchangeFileEntryScopeEnum,
   MessageEvent as CaseMessageEvent,
@@ -142,6 +143,149 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.destroy()
       globalThis.EventSource = original
       log.mockRestore()
+    }
+  })
+
+  it('keeps the composer closed while the launch gate holds the turn', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      // Submitting locks the composer optimistically; on a gated case the first frame back is
+      // PENDING, for as long as the workspace takes to prepare. It must not cancel that lock:
+      // a second message would be folded into the queued turn and run as two consecutive user
+      // messages.
+      ref.instance['isRunning'].set(true)
+      emit('CaseStatusEvent', 'pending-1', { status: 'PENDING' })
+
+      expect(ref.instance['isRunning']()).toBe(true)
+      ref.instance['inputValue'].set('a second message')
+      expect(ref.instance['canSend']).toBe(false)
+
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      expect(ref.instance['isRunning']()).toBe(true)
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('keeps the case running, and the composer closed, in the gap between two agents', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('AgentRunningEvent', 'assistant-running', { agentName: 'Assistant' })
+      emit('AgentFinishedEvent', 'assistant-finished', { agentName: 'Assistant' })
+      // The gap this test pins: the next agent is selected but has not started. The case stays
+      // RUNNING on the backend, and nothing else need arrive for seconds while the agent is
+      // resolved and its tools initialise.
+      emit('AgentSelectedEvent', 'frontend-selected', { agentName: 'Frontend' })
+
+      expect(ref.instance['isRunning']()).toBe(true)
+      // The user-visible stake: a message posted here would be persisted mid-turn and dropped.
+      ref.instance['inputValue'].set('a second message')
+      expect(ref.instance['canSend']).toBe(false)
+
+      // And the composer opens again once the turn really ends, so the check above is not vacuous.
+      emit('AgentRunningEvent', 'frontend-running', { agentName: 'Frontend' })
+      emit('AgentFinishedEvent', 'frontend-finished', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('does not revive the running indicator while a killed case replays its history', () => {
+    // caseStatus() falls back to the stored case status until a frame arrives, so seeding the shared
+    // list is what makes isTerminal() true here. With the default empty list it is false in every
+    // test and the terminal guard on the handoff rule would never be exercised.
+    const caseState = TestBed.inject(CaseStateService) as unknown as { cases: WritableSignal<Case[]> }
+    caseState.cases.set([
+      { id: 'c-1', namespaceId: 'ns-1', favorite: false, removed: false, status: CaseStatusEnum.KILLED },
+    ])
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      expect(ref.instance['isTerminal']()).toBe(true)
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+      // Mid-history frames of the last turn: on a dead case they must not flash the indicator.
+      emit('AgentSelectedEvent', 'assistant-selected', { agentName: 'Assistant' })
+      emit('AgentRunningEvent', 'assistant-running', { agentName: 'Assistant' })
+
+      expect(ref.instance['isRunning']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('keeps the case running when its run is handed to another agent, also after a reconnection', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('AgentRunningEvent', 'assistant-running', { agentName: 'Assistant' })
+      // The redirect: Assistant finishes, Frontend takes the same run over, the case status does not change.
+      emit('AgentFinishedEvent', 'assistant-finished', { agentName: 'Assistant' })
+      emit('AgentSelectedEvent', 'frontend-selected', { agentName: 'Frontend' })
+      emit('AgentRunningEvent', 'frontend-running', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      source.onerror!(new Event('error'))
+      for (const [type, id] of [
+        ['CaseStatusEvent', 'running-1'],
+        ['AgentRunningEvent', 'assistant-running'],
+        ['AgentFinishedEvent', 'assistant-finished'],
+        ['AgentSelectedEvent', 'frontend-selected'],
+        ['AgentRunningEvent', 'frontend-running'],
+      ] as const) {
+        emit(type, id, type === 'CaseStatusEvent' ? { status: 'RUNNING' } : {})
+      }
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      emit('AgentFinishedEvent', 'frontend-finished', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
     }
   })
 
