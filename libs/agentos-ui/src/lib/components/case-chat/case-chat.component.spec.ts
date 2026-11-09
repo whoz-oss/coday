@@ -145,6 +145,50 @@ describe('CaseChatComponent — submit with attachments', () => {
     }
   })
 
+  it('keeps the case running when its run is handed to another agent, also after a reconnection', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('AgentRunningEvent', 'assistant-running', { agentName: 'Assistant' })
+      // The redirect: Assistant finishes, Frontend takes the same run over, the case status does not change.
+      emit('AgentFinishedEvent', 'assistant-finished', { agentName: 'Assistant' })
+      emit('AgentSelectedEvent', 'frontend-selected', { agentName: 'Frontend' })
+      emit('AgentRunningEvent', 'frontend-running', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      source.onerror!(new Event('error'))
+      for (const [type, id] of [
+        ['CaseStatusEvent', 'running-1'],
+        ['AgentRunningEvent', 'assistant-running'],
+        ['AgentFinishedEvent', 'assistant-finished'],
+        ['AgentSelectedEvent', 'frontend-selected'],
+        ['AgentRunningEvent', 'frontend-running'],
+      ]) {
+        emit(type, id, type === 'CaseStatusEvent' ? { status: 'RUNNING' } : {})
+      }
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      emit('AgentFinishedEvent', 'frontend-finished', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('restores RUNNING after a transport error without replaying chunks, files or older statuses', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), {

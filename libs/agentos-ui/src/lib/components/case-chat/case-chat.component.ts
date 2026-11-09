@@ -154,6 +154,23 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 const TERMINAL_CLOSE_DEBOUNCE_MS = 300
 
+/**
+ * Whether the case runs after [event], for the events that tell: a status, an agent starting (a run handed to
+ * another agent goes on), an agent finishing. Null for the others.
+ */
+function runningAfter(event: CaseEvent): boolean | null {
+  switch (event.type) {
+    case 'CaseStatusEvent':
+      return (event as CaseStatusEvent).status === 'RUNNING'
+    case 'AgentRunningEvent':
+      return true
+    case 'AgentFinishedEvent':
+      return false
+    default:
+      return null
+  }
+}
+
 /** True when the user has an active text selection (e.g. preparing to copy). */
 function hasActiveSelection(): boolean {
   const selection = window.getSelection()
@@ -898,17 +915,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       try {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
-          // Reconnection replays persisted history. The last known status restores the
-          // running indicator after a transport error; older statuses must not undo it.
+          // Reconnection replays persisted history. The last event that tells whether the case runs
+          // restores the running indicator after a transport error; older ones must not undo it.
           // Timeline rows, file refreshes and streamed text remain deduplicated.
           if (this.events().some((previous) => previous.id === event.id)) {
-            if (event.type === 'CaseStatusEvent') {
-              const latestStatus = [...this.events()]
-                .reverse()
-                .find((previous) => previous.type === 'CaseStatusEvent' || previous.type === 'AgentFinishedEvent')
-              if (latestStatus?.id === event.id) {
-                this.isRunning.set((event as CaseStatusEvent).status === 'RUNNING')
-              }
+            const running = runningAfter(event)
+            if (running !== null) {
+              const latest = [...this.events()].reverse().find((previous) => runningAfter(previous) !== null)
+              if (latest?.id === event.id) this.isRunning.set(running)
             }
             return
           }
@@ -997,6 +1011,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             }
             return
           }
+
+          // A run handed to another agent (a redirect) finished the previous agent without the case
+          // changing status: the next agent starting means the case runs again.
+          if (event.type === 'AgentRunningEvent') this.isRunning.set(true)
 
           // In practice, the SSE stream currently does NOT emit CaseStatusEvent.
           // So we treat AgentFinishedEvent as the end-of-turn signal.
