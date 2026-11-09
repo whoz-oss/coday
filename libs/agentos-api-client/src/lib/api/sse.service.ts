@@ -259,4 +259,66 @@ export class SseService extends BaseService {
       reportProgress: reportProgress,
     })
   }
+
+  /**
+   * Stream notifiable events across all of my active cases via SSE
+   * Server-Sent Events stream fanning in PendingConfirmationEvent, ConfirmationResolvedEvent, QuestionEvent, AnswerEvent, AgentFinishedEvent and ErrorEvent across every case the current user is directly related to and that is currently active. Use the browser EventSource API to consume this endpoint, not a regular HTTP client.
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public streamMyEventsGlobalCaseEventSse(
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public streamMyEventsGlobalCaseEventSse(
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public streamMyEventsGlobalCaseEventSse(
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public streamMyEventsGlobalCaseEventSse(
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['text/event-stream'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/cases/events/mine`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
 }
