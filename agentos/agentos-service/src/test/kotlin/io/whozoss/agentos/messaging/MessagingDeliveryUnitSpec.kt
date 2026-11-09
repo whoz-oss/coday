@@ -193,6 +193,20 @@ class MessagingDeliveryUnitSpec :
             delivery.stop()
         }
 
+        "a case waiting for its workspace shows typing already" {
+            val adapter = FakeMessagingAdapter()
+            val chat = conversation()
+            val delivery = delivery(adapter, chat)
+
+            delivery.receive(
+                userMessage(chat.id),
+                CaseStatusEvent(metadata = EntityMetadata(), namespaceId = namespaceId, caseId = caseId, status = CaseStatus.PENDING),
+            )
+
+            eventually(2.seconds) { adapter.typing shouldBe listOf("11") }
+            delivery.stop()
+        }
+
         "a chat stops showing the case typing once the case answers elsewhere" {
             val adapter = FakeMessagingAdapter()
             val chat = conversation()

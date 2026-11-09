@@ -90,7 +90,7 @@ A linked user who may not use the agent (not deployed to them, disabled) is told
 **Answers.** What the agent says in reply to a message from the chat goes back to the chat: its messages, its
 questions (choices as buttons, an authorization as a link button; a reply typed while a question that takes
 words waits answers it, as the question panel of the UI does), warnings and errors, and a typing indicator
-while the case runs (Telegram only: Slack shows none for a bot). Tool calls, thinking and sub-cases stay in the UI. The rule is the one of a conversation: an
+while the case gets ready (a new case of a Git namespace waits for its worktree first) and runs (Telegram only: Slack shows none for a bot). Tool calls, thinking and sub-cases stay in the UI. The rule is the one of a conversation: an
 answer goes where the question came from, so a message typed in the UI is answered in the UI only.
 
 **Configuration plans.** When the config agent proposes a configuration change in a case the chat follows, the bot

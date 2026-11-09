@@ -47,7 +47,8 @@ import java.util.concurrent.ConcurrentHashMap
  * since: what the case says next stays in AgentOS.
  *
  * Only what a person reads is sent: the agent's messages and questions, warnings and errors (no default agent,
- * an unknown `@name`, a run stopped at its iteration limit...), and a typing indicator while the case runs. A
+ * an unknown `@name`, a run stopped at its iteration limit...), and a typing indicator while the case gets ready
+ * (a new case of a Git namespace waits for its worktree, tens of seconds) and runs. A
  * configuration plan of the config agent is sent as its card ([MessagingPlanCards]), read through the card's
  * endpoint as the chat's user, with Apply and Reject. Tool calls, thinking and sub-cases stay in AgentOS, one
  * click away.
@@ -98,7 +99,7 @@ class MessagingDelivery(
                     ?.let { origin -> lanes.submit(origin.conversationId) { deliver(event, origin) } }
         }
         // Whichever chat the case answers now: the one that showed it typing stops when the run does.
-        if (event is CaseStatusEvent && event.status != CaseStatus.RUNNING) typing.remove(event.caseId)?.cancel()
+        if (event is CaseStatusEvent && event.status !in BUSY) typing.remove(event.caseId)?.cancel()
         if (event is CaseStatusEvent && event.status.isTerminal()) {
             turnOrigins.remove(event.caseId)
             proposedPlans.remove(event.caseId)
@@ -202,7 +203,7 @@ class MessagingDelivery(
     ) {
         // In the order of the chat's lane too: an end of run handled before its start leaves no indicator behind.
         when (event.status) {
-            CaseStatus.RUNNING -> startTyping(event.caseId, conversation, adapter)
+            in BUSY -> startTyping(event.caseId, conversation, adapter)
             else -> typing.remove(event.caseId)?.cancel()
         }
         if (event.status == CaseStatus.ERROR) {
@@ -317,6 +318,8 @@ class MessagingDelivery(
     )
 
     companion object : KLogging() {
+        /** The statuses of a case that is about to answer: it waits for its workspace, or runs. */
+        private val BUSY = setOf(CaseStatus.PENDING, CaseStatus.RUNNING)
         private const val MAX_NOTICE_LENGTH = 500
         private const val MAX_OPTION_LABEL_LENGTH = 60
         private const val OPEN_CHOICE_HINT = "\n\n_Choose, or reply with your own answer._"
