@@ -1,3 +1,15 @@
+## 3.41.0 (2026-11-09)
+
+### 🚀 Features
+
+- wz-35528 - add 50000 member limit to user groups ([84e0639cc](https://github.com/whoz-oss/coday/commit/84e0639cc))
+- wz-35528 - add 50000 member limit to user groups ([#1601](https://github.com/whoz-oss/coday/pull/1601))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.40.1 (2026-10-26)
 
 ### 🩹 Fixes
