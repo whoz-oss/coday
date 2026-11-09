@@ -1,0 +1,26 @@
+{
+  "//": "THE port scheme of Coday, the single source of truth. Read by port-scheme.ts, scripts/web-local.ts, apps/client/proxy.conf.mjs, apps/client-e2e/playwright.config.ts and scripts/web-dev-tmux.sh. Files that cannot read it (Nx project.json, .idea run configurations) repeat the DEV values and are guarded by port-scheme-consistency.spec.ts. blockSize: width of the block a stack owns [base, base + blockSize - 1]. offsets: the role ports inside a block. profiles: first block (base) of each profile and the distance (step) between its candidate blocks, within the same thousand: prod 3000, 3020, 3040... and local 3010, 3030, 3050... interleave and never collide, dev 4000, 4010, 4020...",
+  "blockSize": 10,
+  "offsets": {
+    "agentos": 5,
+    "bolt": 7,
+    "client": 1,
+    "factory": 6,
+    "factoryCockpit": 2,
+    "server": 0
+  },
+  "profiles": {
+    "dev": {
+      "base": 4000,
+      "step": 10
+    },
+    "local": {
+      "base": 3010,
+      "step": 20
+    },
+    "prod": {
+      "base": 3000,
+      "step": 20
+    }
+  }
+}

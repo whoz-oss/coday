@@ -83,6 +83,82 @@
       (stopCost)="onStopCost()"
     />
 
+    <!-- Parent Run chain of fragments, persistent findings & run-level escalation (Lot 5) -->
+    @if (parentRun(); as pRun) {
+      <section class="parent-run sf-panel" aria-label="Parent Run Overview">
+        <div class="title-row">
+          <div>
+            <strong>Parent Run:</strong>
+            <span class="sf-mono">{{ pRun.runId }}</span>
+            <span class="sf-muted">({{ pRun.runType }} · domain rev {{ pRun.domainRevision }})</span>
+          </div>
+          <sf-status-chip
+            [tone]="
+              pRun.status === 'completed'
+                ? 'green'
+                : pRun.status === 'failed'
+                  ? 'red'
+                  : pRun.status === 'waiting_human' || pRun.status === 'waiting_human_escalation'
+                    ? 'amber'
+                    : 'blue'
+            "
+            size="sm"
+          >
+            {{ pRun.status }}
+          </sf-status-chip>
+        </div>
+
+        @if (pRun.activeEscalation; as esc) {
+          <div class="escalation-banner" role="alert">
+            <div>
+              <strong>Run Escalation:</strong> {{ esc.question }}
+              <span class="sf-muted">({{ esc.reason }})</span>
+            </div>
+            <div class="escalation-actions">
+              @for (opt of esc.options; track opt) {
+                <button mat-stroked-button (click)="onReplyRunEscalation(opt)">
+                  {{ opt }}
+                </button>
+              }
+            </div>
+          </div>
+        }
+
+        <div class="fragment-chain">
+          <span class="sf-muted">Fragments ({{ pRun.fragments.length }}):</span>
+          @for (frag of pRun.fragments; track frag.fragmentId) {
+            <a
+              mat-stroked-button
+              class="sf-secondary"
+              [routerLink]="['/sessions', frag.fragmentId]"
+              [queryParams]="{ namespaceId: pRun.namespaceId || currentNamespaceId() }"
+              [class.active-fragment]="frag.fragmentId === effectiveRunId()"
+            >
+              #{{ frag.ordinal }} {{ frag.flowType }} ({{ frag.status }})
+            </a>
+          }
+        </div>
+
+        @if (pRun.findings.length > 0) {
+          <div class="run-findings">
+            <span class="sf-muted">Run Findings ({{ pRun.findings.length }}):</span>
+            <ul>
+              @for (f of pRun.findings; track f.id) {
+                <li>
+                  <span class="sf-mono">[{{ f.severity }} · {{ f.status }}]</span>
+                  <b>{{ f.code }}</b
+                  >: {{ f.message }}
+                  @if (f.filePath) {
+                    <span class="sf-mono">({{ f.filePath }})</span>
+                  }
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      </section>
+    }
+
     <!-- Timeline -->
     <sf-agent-timeline
       [lanes]="s.lanes"

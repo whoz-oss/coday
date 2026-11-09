@@ -38,4 +38,4 @@ Theming is owned by `AgentosThemeService` (`libs/agentos-ui`), exposed through `
 
 ## Proxy
 
-The Angular dev server proxies `/api/agentos/*` to the AgentOS backend (port 8123). Config: `apps/client/proxy.conf.json`.
+The Angular dev server proxies `/api/agentos/*` to the AgentOS backend (port 4005 in the DEV port scheme). Config: `apps/client/proxy.conf.mjs` (ports derived from `apps/server/src/lib/runtime/port-scheme.json`).

@@ -148,7 +148,7 @@ class AiModelController(
     companion object : KLogging()
 }
 
-private fun toDto(entity: AiModel) =
+internal fun toDto(entity: AiModel) =
     AiModelDto(
         id = entity.metadata.id,
         aiProviderId = entity.aiProviderId,

@@ -42,10 +42,10 @@ No installation needed! Simply run from any directory:
 
 This command will:
 1. Download the latest version (if needed)
-2. Start the web server on an available port (typically 3000-3010)
+2. Start the web server on port 3000 (the PROD port block 3000-3009: Express on 3000, AgentOS 3005, Factory 3006, embedded Neo4j 3007)
 3. Display the URL in your terminal
 
-**Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:3000`).
+**Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:3000`). If a port of the block is taken, the whole stack moves to the next free block (3020, 3040...) and says so in the terminal; set `PORT=<n>` to choose it yourself (then it is strict).
 
 You can have an alias too in your shell configuration
 
@@ -77,7 +77,7 @@ For contributors or those who want to run from source:
   # Install dependencies
   pnpm install
   
-  # Run in development mode
+  # Run in development mode (open Express on http://localhost:4000; Angular client 4001 and AgentOS 4005 are internal)
   pnpm web:dev
 ```
 

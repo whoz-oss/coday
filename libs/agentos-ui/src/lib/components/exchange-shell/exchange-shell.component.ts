@@ -8,14 +8,15 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
-import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
-import { canViewFile } from '../../services/exchange-content.utils'
+import { canViewFile, ensureImageBlob, isFormatViewable, isImageFile } from '../../services/exchange-content.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { ExchangeDrawerComponent } from '../exchange-drawer/exchange-drawer.component'
+import { ExchangeDrawerComponent, ExchangeManifestStatus } from '../exchange-drawer/exchange-drawer.component'
 
 /**
  * ExchangeShellComponent — smart container for the file-exchange drawer panel.
@@ -46,9 +47,18 @@ export class ExchangeShellComponent {
   // ── Current selection / viewer content ────────────────────────────────────────
   protected readonly selectedFile = signal<ExchangeFileRef | null>(null)
   protected readonly selectedContent = signal<string | null>(null)
+  /** Object URL of the previewed image; owned here so it can be revoked when the selection changes. */
+  protected readonly selectedImageUrl = signal<string | null>(null)
   protected readonly contentStatus = signal<'loading' | 'ready' | 'error'>('loading')
   protected readonly canViewSelected = signal<boolean>(true)
   protected readonly actionError = signal<string | null>(null)
+
+  // ── Namespace file filter ────────────────────────────────────────────────────────────────────────────────
+  /** Query reported by the drawer; the recursive manifest is only fetched while it is non-empty. */
+  private readonly namespaceFilterQuery = signal('')
+  private readonly manifestRetry = signal(0)
+  protected readonly namespaceManifest = signal<ExchangeFileEntry[] | null>(null)
+  protected readonly namespaceManifestStatus = signal<ExchangeManifestStatus>('idle')
 
   // ── Delete confirmation ─────────────────────────────────────────────────────
   protected readonly pendingDelete = signal<ExchangeFileRef | null>(null)
@@ -66,6 +76,8 @@ export class ExchangeShellComponent {
   protected readonly environmentCaseId = signal<string | null>(null)
 
   constructor() {
+    // An object URL keeps its blob in memory until revoked.
+    this.destroyRef.onDestroy(() => this.revokeImageUrl())
     // The case view is rendered directly by the case-shell (not through a router-outlet with
     // `:namespaceId/cases/:caseId` path params), so the active case/namespace come through query
     // params (`?ns=..&case=..`), mirroring case-chat. Subscribing (not reading the snapshot once)
@@ -89,6 +101,33 @@ export class ExchangeShellComponent {
     })
     // Release the shared exchange state when this shell is torn down.
     effect((onCleanup) => onCleanup(() => this.state.clear()))
+
+    // Load the recursive namespace manifest lazily, when a filter is typed, and again whenever the
+    // namespace scope changed (upload, delete, refresh): the state service hands out a fresh request
+    // then, and replays the cached one otherwise, so typing more characters costs nothing.
+    effect((onCleanup) => {
+      const query = this.namespaceFilterQuery()
+      this.state.namespaceManifestVersion()
+      this.manifestRetry()
+      if (!query) {
+        this.namespaceManifest.set(null)
+        this.namespaceManifestStatus.set('idle')
+        return
+      }
+      // Keep showing the previous result while a refresh is in flight, rather than flashing a spinner.
+      if (untracked(() => this.namespaceManifest()) === null) this.namespaceManifestStatus.set('loading')
+      const subscription = untracked(() => this.state.namespaceManifest()).subscribe({
+        next: (files) => {
+          this.namespaceManifest.set(files)
+          this.namespaceManifestStatus.set('ready')
+        },
+        error: () => {
+          this.namespaceManifest.set(null)
+          this.namespaceManifestStatus.set('error')
+        },
+      })
+      onCleanup(() => subscription.unsubscribe())
+    })
   }
 
   // ── View ──────────────────────────────────────────────────────────────────────
@@ -104,14 +143,21 @@ export class ExchangeShellComponent {
   protected onFileSelected(ref: ExchangeFileRef): void {
     this.selectedFile.set(ref)
     this.selectedContent.set(null)
+    this.revokeImageUrl()
     const file = this.findFile(ref)
-    const viewable = file ? canViewFile(file) : false
+    // A file reached through the filter lives deeper than the directory being browsed: judge it by its
+    // manifest entry, or by its name alone when even that is unknown.
+    const viewable = file ? canViewFile(file) : this.canViewUnlisted(ref)
     this.canViewSelected.set(viewable)
     if (!viewable) {
       this.contentStatus.set('ready')
       return
     }
     this.contentStatus.set('loading')
+    if (isImageFile(ref.path)) {
+      this.loadImage(ref)
+      return
+    }
     this.state
       .getContent(ref.scope, ref.path)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -193,6 +239,14 @@ export class ExchangeShellComponent {
     this.state.refreshManifest()
   }
 
+  protected onNamespaceFilterChanged(query: string): void {
+    this.namespaceFilterQuery.set(query)
+  }
+
+  protected onNamespaceFilterRetry(): void {
+    this.manifestRetry.update((n) => n + 1)
+  }
+
   protected onClose(): void {
     this.closeRequested.emit()
   }
@@ -202,9 +256,39 @@ export class ExchangeShellComponent {
     this.clearSelection()
   }
 
+  /**
+   * Images cannot go through the text endpoint: fetch the raw bytes via the download endpoint and
+   * preview them from an object URL.
+   */
+  private loadImage(ref: ExchangeFileRef): void {
+    this.state
+      .getBlob(ref.scope, ref.path)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (blob) => {
+          if (!this.isStillSelected(ref)) return
+          const typed = ensureImageBlob(blob instanceof Blob ? blob : new Blob([blob]), ref.path)
+          this.revokeImageUrl()
+          this.selectedImageUrl.set(URL.createObjectURL(typed))
+          this.contentStatus.set('ready')
+        },
+        error: () => {
+          if (!this.isStillSelected(ref)) return
+          this.contentStatus.set('error')
+        },
+      })
+  }
+
+  private revokeImageUrl(): void {
+    const url = this.selectedImageUrl()
+    if (url) URL.revokeObjectURL(url)
+    this.selectedImageUrl.set(null)
+  }
+
   private clearSelection(): void {
     this.selectedFile.set(null)
     this.selectedContent.set(null)
+    this.revokeImageUrl()
     this.contentStatus.set('loading')
     this.canViewSelected.set(true)
   }
@@ -214,9 +298,20 @@ export class ExchangeShellComponent {
     this.actionError.set(null)
   }
 
-  private findFile(ref: ExchangeFileRef): ExchangeDirectoryEntry | undefined {
+  private findFile(ref: ExchangeFileRef): { name?: string; filename?: string; size?: number } | undefined {
     const files = ref.scope === ExchangeFileEntryScopeEnum.CASE ? this.state.caseFiles() : this.state.namespaceFiles()
-    return files.find((f) => f.path === ref.path)
+    const listed = files.find((f) => f.path === ref.path)
+    if (listed || ref.scope === ExchangeFileEntryScopeEnum.CASE) return listed
+    return this.namespaceManifest()?.find((f) => f.path === ref.path)
+  }
+
+  /**
+   * Preview decision for a namespace file absent from both the current directory and the manifest.
+   * Without a size only the format can be checked; the server still enforces its own limits.
+   */
+  private canViewUnlisted(ref: ExchangeFileRef): boolean {
+    if (ref.scope !== ExchangeFileEntryScopeEnum.NAMESPACE) return false
+    return isImageFile(ref.path) || isFormatViewable(ref.path)
   }
 
   private isStillSelected(ref: ExchangeFileRef): boolean {

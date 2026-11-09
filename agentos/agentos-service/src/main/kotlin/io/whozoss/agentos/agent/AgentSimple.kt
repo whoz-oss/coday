@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
@@ -53,11 +54,23 @@ import kotlin.time.TimeSource
 import kotlin.time.measureTime
 
 /**
- * Simple agent implementation with single LLM call.
+ * Control-flow signal thrown by an [AgentSimple] tool callback right after a tool that produced images
+ * has recorded its [ToolResponseEvent]. It ends the current Spring AI streamed call so that [AgentSimple]
+ * can rebuild the conversation (where [toolImagesUserMessage] attaches the pixels) and start a fresh call:
+ * `ToolCallback.call` can only return text, so this is the only way the model sees the images in the same turn.
+ *
+ * Spring AI only converts `ToolExecutionException` into a tool result, so this propagates out of the
+ * stream unwrapped, like [AgentInterrupt]; it is still looked up through the cause chain. `internal`
+ * because [io.whozoss.agentos.chat.UsageTrackingChatModel] must not count it as a failed run.
+ */
+internal class ToolImagesProduced : RuntimeException("A tool produced images", null, false, false)
+
+/**
+ * Simple agent implementation: the LLM orchestrates the tools through one streamed call.
  *
  * This agent delegates tool orchestration to the LLM itself:
  * 1. Converts events to messages (including tool calls/responses and image attachments)
- * 2. Makes a single LLM call with available tools
+ * 2. Makes a streamed LLM call with available tools
  * 3. LLM decides which tools to call and when
  * 4. Tools are wrapped to emit ToolRequestEvent and ToolResponseEvent
  * 5. Streams text progressively with TextChunkEvent
@@ -65,7 +78,13 @@ import kotlin.time.measureTime
  * Image handling mirrors AgentAdvanced: tool responses that produced images are injected
  * as follow-up [UserMessage] with [org.springframework.ai.content.Media] attachments in
  * [convertEventsToMessages]. Budget management (newest-first selection) is governed by
- * [imageCharCost] and [maxAttachedImages].
+ * [maxAttachedImages].
+ *
+ * A tool callback can only return text, so a tool that produced images ends the current Spring AI call
+ * ([ToolImagesProduced]) and the run continues with a new call whose messages are rebuilt from the events
+ * of the case plus those emitted so far in this run: the very next LLM call sees the images. At most
+ * [MAX_IMAGE_CONTINUATIONS] such restarts happen per run; past it, a tool with images behaves as before and
+ * its images are only attached from the next user turn on.
  *
  * This is simpler but gives less control over the orchestration loop
  * compared to AgentAdvanced.
@@ -116,26 +135,12 @@ class AgentSimple(
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
 
             try {
-                // Convert events to messages
-                val messages = convertEventsToMessages(events)
-
                 // Build the system message from systemPrompt + instructions (either or both may be null)
                 val effectiveSystemMessage =
                     listOfNotNull(systemPrompt, instructions)
                         .joinToString("\n")
                         .takeUnless { it.isBlank() }
                         ?.let { SystemMessage(it) }
-                val allMessages =
-                    if (effectiveSystemMessage != null) {
-                        listOf(effectiveSystemMessage) + messages
-                    } else {
-                        messages
-                    }
-
-                logger.debug {
-                    "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM $llmProvider/$llmModel with ${tools.size} tool(s)" +
-                        (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
-                }
 
                 // Bail out immediately if an interrupt/kill was requested before
                 // the LLM call even starts (e.g. kill fired while the previous
@@ -165,6 +170,9 @@ class AgentSimple(
                     if (latencyLoggingEnabled) AtomicReference(TimeSource.Monotonic.markNow()) else null
                 val llmTurnIndex = if (latencyLoggingEnabled) AtomicInteger(1) else null
 
+                // How many times a tool with images already restarted the call in this run.
+                val imageContinuations = AtomicInteger()
+
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
                     tools.map { tool ->
@@ -176,111 +184,62 @@ class AgentSimple(
                             llmTurnMark,
                             llmTurnIndex,
                             logContext,
+                            imageContinuations,
+                            shouldContinue,
                         )
                     }
 
-                // Make single LLM call with tools
-                val prompt = chatClient.prompt(Prompt(allMessages))
-
-                // Add tool callbacks if available
-                val promptWithTools =
-                    if (toolCallbacks.isNotEmpty()) {
-                        prompt.toolCallbacks(toolCallbacks)
-                    } else {
-                        prompt
-                    }
-
-                // Use stream() for progressive text display
-                val streamSpec = promptWithTools.stream()
-
-                // Collect tool events and streamed chunks concurrently. Spring AI executes a
-                // tool callback while its content stream is still open; draining the callback
-                // channel only when a text chunk arrives used to hide a long-running tool (and
-                // the following LLM round) from the UI until the model eventually produced text.
-                // Keeping those two sources separate makes the live activity timeline truthful.
-                val contentBuilder = StringBuilder()
-                var currentTurnLogged = false
+                // Durable events (tool requests and responses, intermediate agent messages) emitted so far
+                // in this run: the case does not hold them yet, but the next call must see them.
+                val runEvents = mutableListOf<CaseEvent>()
+                var content = ""
                 // Set from the last response when the tool round limit cut the run short.
                 var maxIterationsReached: Int? = null
 
-                coroutineScope {
-                    // Keep the producer/consumer bridge bounded: unlike tool callbacks,
-                    // streamed text can safely suspend until the event flow catches up.
-                    // This preserves streaming back-pressure instead of accumulating an
-                    // arbitrarily large response in memory.
-                    val textChunkChannel = Channel<String>(Channel.BUFFERED)
-                    val streamJob =
-                        launch {
-                            try {
-                                // takeWhile cancels the upstream reactive stream as soon as
-                                // shouldContinue() returns false, rather than merely skipping chunks.
-                                streamSpec.chatResponse().asFlow().takeWhile { shouldContinue() }.collect { response ->
-                                    response.metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED)?.let {
-                                        maxIterationsReached = it
-                                    }
-                                    val chunk = response.result?.output?.text
-                                    if (!chunk.isNullOrEmpty()) textChunkChannel.send(chunk)
-                                }
-                                textChunkChannel.close()
-                            } catch (e: Throwable) {
-                                textChunkChannel.close(e)
-                                // Cancellation is control flow, not a stream failure. Let it
-                                // propagate through the structured scope so the HTTP stream and
-                                // every child coroutine are cancelled promptly.
-                                if (e is CancellationException) throw e
-                            }
-                        }
+                while (true) {
+                    val allMessages = listOfNotNull(effectiveSystemMessage) + convertEventsToMessages(events + runEvents)
 
-                    var streamCompleted = false
-                    while (!streamCompleted) {
-                        select<Unit> {
-                            toolEventChannel.onReceiveCatching { received ->
-                                received.exceptionOrNull()?.let { throw it }
-                                received.getOrNull()?.let { toolEvent ->
-                                    emit(toolEvent)
-                                    if (toolEvent is ToolResponseEvent) {
-                                        currentTurnLogged = false
-                                        // The tool response has been handed back to Spring AI.
-                                        // Tell live consumers that the next LLM turn is underway.
-                                        emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
-                                    }
-                                }
-                            }
-                            textChunkChannel.onReceiveCatching { received ->
-                                received.exceptionOrNull()?.let { throw it }
-                                val chunk = received.getOrNull()
-                                if (chunk == null) {
-                                    streamCompleted = true
-                                } else {
-                                    // Log LLM thinking time once per turn on its first text chunk.
-                                    if (latencyLoggingEnabled && !currentTurnLogged) {
-                                        currentTurnLogged = true
-                                        logger.debug {
-                                            "[AgentSimple] agent=$name case=$caseId LLM turn=${llmTurnIndex!!.get()} " +
-                                                "first response after ${llmTurnMark!!.get().elapsedNow()}"
-                                        }
-                                    }
-
-                                    contentBuilder.append(chunk)
-                                    emit(
-                                        TextChunkEvent(
-                                            namespaceId = namespaceId,
-                                            caseId = caseId,
-                                            chunk = chunk,
-                                        ),
-                                    )
-                                }
-                            }
-                        }
+                    logger.debug {
+                        "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM $llmProvider/$llmModel with ${tools.size} tool(s)" +
+                            (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
                     }
-                    streamJob.join()
-                }
 
-                // Strip any conversation tags the LLM may have hallucinated in its response.
-                // TextChunkEvents are left as-is (tags split across chunks are harmless noise
-                // in the stream and render invisibly in markdown). Only the stored MessageEvent
-                // needs to be clean.
-                val content = contentBuilder.toString().stripConversationTags()
+                    val iterationEvents = mutableListOf<CaseEvent>()
+                    val outcome =
+                        streamOnce(
+                            allMessages,
+                            toolCallbacks,
+                            toolEventChannel,
+                            iterationEvents,
+                            namespaceId,
+                            caseId,
+                            shouldContinue,
+                            llmTurnMark,
+                            llmTurnIndex,
+                        )
+
+                    if (!outcome.imagesProduced) {
+                        // Strip any conversation tags the LLM may have hallucinated in its response.
+                        // TextChunkEvents are left as-is (tags split across chunks are harmless noise
+                        // in the stream and render invisibly in markdown). Only the stored MessageEvent
+                        // needs to be clean.
+                        content = outcome.content.stripConversationTags()
+                        maxIterationsReached = outcome.maxIterationsReached
+                        break
+                    }
+
+                    // A tool produced images: the call was cut short so that the next one is built with them.
+                    // What the model said before calling the tool becomes a message of its own, placed before
+                    // the tool exchange in the rebuilt history so that it does not end on an assistant message.
+                    val partialText = outcome.content.stripConversationTags()
+                    val partialMessage =
+                        partialText.takeIf { it.isNotEmpty() }?.let { agentMessage(namespaceId, caseId, it) }
+                    partialMessage?.let { emit(it) }
+                    runEvents += listOfNotNull(partialMessage) + iterationEvents
+
+                    emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
+                    if (!shouldContinue()) break
+                }
 
                 // Close tool event channel and emit remaining events
                 toolEventChannel.close()
@@ -292,18 +251,7 @@ class AgentSimple(
 
                 // Emit the final assistant message
                 if (content.isNotEmpty()) {
-                    emit(
-                        MessageEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            actor = Actor(id.toString(), name, ActorRole.AGENT),
-                            content = listOf(MessageContent.Text(content)),
-                            llmProvider = llmProvider,
-                            llmModel = llmModel,
-                            reasoningEffort = reasoningEffort,
-                            requestedReasoningEffort = requestedReasoningEffort,
-                        ),
-                    )
+                    emit(agentMessage(namespaceId, caseId, content))
                 }
 
                 emit(
@@ -340,6 +288,166 @@ class AgentSimple(
             }
         }
 
+    /** What one streamed call (with the Spring AI tool rounds it ran) produced. */
+    private class StreamOutcome(
+        /** Text streamed by the model, raw. */
+        val content: String,
+        val maxIterationsReached: Int?,
+        /** True when the call was cut short because a tool produced images ([ToolImagesProduced]). */
+        val imagesProduced: Boolean,
+    )
+
+    private fun agentMessage(
+        namespaceId: UUID,
+        caseId: UUID,
+        text: String,
+    ) = MessageEvent(
+        namespaceId = namespaceId,
+        caseId = caseId,
+        actor = Actor(id.toString(), name, ActorRole.AGENT),
+        content = listOf(MessageContent.Text(text)),
+        llmProvider = llmProvider,
+        llmModel = llmModel,
+        reasoningEffort = reasoningEffort,
+        requestedReasoningEffort = requestedReasoningEffort,
+    )
+
+    /** Emits what the tool callbacks queued, and records the durable ones in [durableEvents]. */
+    private suspend fun FlowCollector<CaseEvent>.drainToolEvents(
+        channel: Channel<CaseEvent>,
+        durableEvents: MutableList<CaseEvent>,
+    ) {
+        while (true) {
+            val toolEvent = channel.tryReceive().getOrNull() ?: break
+            emit(toolEvent)
+            if (toolEvent is ToolRequestEvent || toolEvent is ToolResponseEvent) durableEvents.add(toolEvent)
+        }
+    }
+
+    /**
+     * Runs one streamed call of [messages] with [toolCallbacks], emitting text chunks and tool events live.
+     *
+     * Returns normally when the call completed, or with [StreamOutcome.imagesProduced] when a tool callback
+     * ended it with [ToolImagesProduced]. In that case the tool events still queued are emitted before
+     * returning. Every durable tool event of the call is added to [durableEvents].
+     */
+    private suspend fun FlowCollector<CaseEvent>.streamOnce(
+        messages: List<Message>,
+        toolCallbacks: List<ToolCallback>,
+        toolEventChannel: Channel<CaseEvent>,
+        durableEvents: MutableList<CaseEvent>,
+        namespaceId: UUID,
+        caseId: UUID,
+        shouldContinue: () -> Boolean,
+        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>?,
+        llmTurnIndex: AtomicInteger?,
+    ): StreamOutcome {
+        // Collect tool events and streamed chunks concurrently. Spring AI executes a
+        // tool callback while its content stream is still open; draining the callback
+        // channel only when a text chunk arrives used to hide a long-running tool (and
+        // the following LLM round) from the UI until the model eventually produced text.
+        // Keeping those two sources separate makes the live activity timeline truthful.
+        val contentBuilder = StringBuilder()
+        var currentTurnLogged = false
+        val latencyLoggingEnabled = logger.isDebugEnabled
+        var maxIterationsReached: Int? = null
+        try {
+            val prompt = chatClient.prompt(Prompt(messages))
+
+            // Add tool callbacks if available
+            val promptWithTools =
+                if (toolCallbacks.isNotEmpty()) {
+                    prompt.toolCallbacks(toolCallbacks)
+                } else {
+                    prompt
+                }
+
+            // Use stream() for progressive text display
+            val streamSpec = promptWithTools.stream()
+
+            coroutineScope {
+                // Keep the producer/consumer bridge bounded: unlike tool callbacks,
+                // streamed text can safely suspend until the event flow catches up.
+                // This preserves streaming back-pressure instead of accumulating an
+                // arbitrarily large response in memory.
+                val textChunkChannel = Channel<String>(Channel.BUFFERED)
+                val streamJob =
+                    launch {
+                        try {
+                            // takeWhile cancels the upstream reactive stream as soon as
+                            // shouldContinue() returns false, rather than merely skipping chunks.
+                            streamSpec.chatResponse().asFlow().takeWhile { shouldContinue() }.collect { response ->
+                                response.metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED)?.let {
+                                    maxIterationsReached = it
+                                }
+                                val chunk = response.result?.output?.text
+                                if (!chunk.isNullOrEmpty()) textChunkChannel.send(chunk)
+                            }
+                            textChunkChannel.close()
+                        } catch (e: Throwable) {
+                            textChunkChannel.close(e)
+                            // Cancellation is control flow, not a stream failure. Let it
+                            // propagate through the structured scope so the HTTP stream and
+                            // every child coroutine are cancelled promptly.
+                            if (e is CancellationException) throw e
+                        }
+                    }
+
+                var streamCompleted = false
+                while (!streamCompleted) {
+                    select<Unit> {
+                        toolEventChannel.onReceiveCatching { received ->
+                            received.exceptionOrNull()?.let { throw it }
+                            received.getOrNull()?.let { toolEvent ->
+                                emit(toolEvent)
+                                if (toolEvent is ToolRequestEvent) durableEvents.add(toolEvent)
+                                if (toolEvent is ToolResponseEvent) {
+                                    durableEvents.add(toolEvent)
+                                    currentTurnLogged = false
+                                    // The tool response has been handed back to Spring AI.
+                                    // Tell live consumers that the next LLM turn is underway.
+                                    emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
+                                }
+                            }
+                        }
+                        textChunkChannel.onReceiveCatching { received ->
+                            received.exceptionOrNull()?.let { throw it }
+                            val chunk = received.getOrNull()
+                            if (chunk == null) {
+                                streamCompleted = true
+                            } else {
+                                // Log LLM thinking time once per turn on its first text chunk.
+                                if (latencyLoggingEnabled && !currentTurnLogged) {
+                                    currentTurnLogged = true
+                                    logger.debug {
+                                        "[AgentSimple] agent=$name case=$caseId LLM turn=${llmTurnIndex!!.get()} " +
+                                            "first response after ${llmTurnMark!!.get().elapsedNow()}"
+                                    }
+                                }
+
+                                contentBuilder.append(chunk)
+                                emit(
+                                    TextChunkEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = caseId,
+                                        chunk = chunk,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+                streamJob.join()
+            }
+        } catch (e: Exception) {
+            if (generateSequence<Throwable>(e) { it.cause }.none { it is ToolImagesProduced }) throw e
+            // The tool response was queued just before the signal: it may not have been received yet.
+            drainToolEvents(toolEventChannel, durableEvents)
+            return StreamOutcome(contentBuilder.toString(), maxIterationsReached, imagesProduced = true)
+        }
+        return StreamOutcome(contentBuilder.toString(), maxIterationsReached, imagesProduced = false)
+    }
+
     /**
      * Convert CaseEvents to Spring AI Messages for LLM context.
      * Includes tool calls and responses for proper conversation history.
@@ -353,7 +461,7 @@ class AgentSimple(
      * Image handling: tool responses that include images are replayed with a follow-up
      * [UserMessage] carrying [org.springframework.ai.content.Media] attachments, mirroring
      * the pattern used by AgentAdvancedContext. Budget management (newest-first) is governed
-     * by [maxAttachedImages] and [imageCharCost]. Tool responses whose images exceed the budget
+     * by [maxAttachedImages]. Tool responses whose images exceed the budget
      * receive a text marker instead.
      */
     internal fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
@@ -456,6 +564,9 @@ class AgentSimple(
      * or the end of the list), this flush must be called at every such boundary — and only
      * at those boundaries.
      *
+     * The accumulated calls come from recorded [ToolRequestEvent]s only: the calls of an assistant round
+     * that a [ToolImagesProduced] cut short before they ran have no event, so they are simply absent.
+     *
      * When a response is missing (e.g. the run was interrupted mid-tool), a
      * `[No response recorded]` placeholder is inserted so the message list remains
      * syntactically valid even for incomplete histories.
@@ -512,6 +623,9 @@ class AgentSimple(
      *
      * [llmTurnMark] and [llmTurnIndex] are shared with the stream collector so that
      * LLM thinking time can be measured per turn (i.e. per tool-calling round-trip).
+     *
+     * A tool that produced images throws [ToolImagesProduced] once its [ToolResponseEvent] is queued, while
+     * [imageContinuations] is below [MAX_IMAGE_CONTINUATIONS] and [shouldContinue] holds.
      */
     private fun createToolCallbackWithEvents(
         tool: StandardTool<*>,
@@ -520,7 +634,9 @@ class AgentSimple(
         eventChannel: Channel<CaseEvent>,
         llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>?,
         llmTurnIndex: AtomicInteger?,
-        logContext: Map<String, String>? = null,
+        logContext: Map<String, String>?,
+        imageContinuations: AtomicInteger,
+        shouldContinue: () -> Boolean,
     ): ToolCallback =
         object : ToolCallback {
             // Expose the tool's own schema verbatim — no reflection-based generation.
@@ -679,19 +795,33 @@ class AgentSimple(
                         success = executionResult.success,
                         durationMs = toolDuration.inWholeMilliseconds,
                         toolMetadata = executionResult.metadata,
-                        // Images are preserved on the event (persistence, SSE).
-                        // They will be delivered to the LLM via the conversation history
-                        // on subsequent turns (convertEventsToMessages injects UserMessage+Media).
+                        // Images are preserved on the event (persistence, SSE) and attached to the
+                        // conversation by convertEventsToMessages (UserMessage+Media).
                         images = executionResult.images,
                         structuredOutput = executionResult.structuredOutput,
                     ),
                 )
 
-                // ToolCallback.call() returns text only — images reach the LLM via the
-                // rebuilt conversation context in convertEventsToMessages(), not here.
+                // ToolCallback.call() returns text only, so the images cannot travel with this return value:
+                // end the Spring AI call here and let run() start the next one from the rebuilt conversation,
+                // where the images are attached. Past the continuation budget the call goes on with the text
+                // alone, and the images are attached from the next user turn on.
+                if (executionResult.images.isNotEmpty() &&
+                    imageContinuations.get() < MAX_IMAGE_CONTINUATIONS &&
+                    shouldContinue()
+                ) {
+                    imageContinuations.incrementAndGet()
+                    throw ToolImagesProduced()
+                }
                 return executionResult.output
             }
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * How many times, in one run, a tool that produced images may restart the LLM call so that the model
+         * sees them right away. Bounds the extra calls of a model looping on image tools.
+         */
+        internal const val MAX_IMAGE_CONTINUATIONS = 8
+    }
 }

@@ -124,6 +124,13 @@ class Neo4jSchemaInitializer(
 
         neo4jClient
             .query(
+                "CREATE CONSTRAINT worktree_execution_occupancy_id_unique IF NOT EXISTS " +
+                    "FOR (o:WorktreeExecutionOccupancy) REQUIRE o.id IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint worktree_execution_occupancy_id_unique ensured" }
+
+        neo4jClient
+            .query(
                 "CREATE INDEX work_environment_workflow IF NOT EXISTS " +
                     "FOR (e:WorkEnvironment) ON (e.organizationId, e.workstreamId, e.workflowId)",
             ).run()

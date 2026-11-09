@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core'
 import {
   ApiKeyAuthSetting,
+  AuthSettingConnection,
   AuthSettingControllerService,
   AuthSettingDto,
   BasicAuthAuthSetting,
@@ -10,7 +11,20 @@ import {
   OAuthMcpDiscoverableAuthSetting,
   OAuthRegisteredAuthSetting,
 } from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
+import {
+  BehaviorSubject,
+  catchError,
+  combineLatest,
+  filter,
+  map,
+  Observable,
+  of,
+  shareReplay,
+  switchMap,
+  take,
+  tap,
+  timer,
+} from 'rxjs'
 import { multicastRefreshable } from './rxjs-state.utils'
 import { UserStateService } from './user-state.service'
 
@@ -78,6 +92,21 @@ const NAMESPACE_NONE_SENTINEL = 'none'
 /** Sentinel accepted by the backend's `?userId=` to mean "the authenticated user". */
 const USER_ME_SENTINEL = 'me'
 
+/** How often the connection state is read while the user authorizes in the popup. */
+export const CONNECTION_POLL_MS = 2000
+/** How long a connection is awaited: a little more than the backend gives the flow (2 minutes by default). */
+export const CONNECTION_WAIT_MS = 150_000
+/** Polls to wait, once the popup is closed, for the backend to finish exchanging the code. */
+const CONNECTION_CLOSED_GRACE_POLLS = 3
+
+/**
+ * How an authorization ended, as seen from the browser:
+ * - `connected`: a new connection was stored;
+ * - `abandoned`: the popup was closed and nothing new appeared;
+ * - `timeout`: nothing appeared within [CONNECTION_WAIT_MS].
+ */
+export type ConnectionOutcome = 'connected' | 'abandoned' | 'timeout'
+
 // ── authType discriminant mapping ────────────────────────────────────────────
 //
 // The OpenAPI generator uses schema class names as discriminant values, but Jackson
@@ -137,6 +166,12 @@ function fromBackendRaw(raw: object): AuthSettingDto {
     if (mapped) return { ...r, authType: mapped } as AuthSettingDto
   }
   return raw as AuthSettingDto
+}
+
+/** Whether [connectedAt] is after [since]; any connection counts when there was none before. */
+function isNewerThan(connectedAt: string | undefined, since: string | null): boolean {
+  if (since === null) return true
+  return connectedAt !== undefined && Date.parse(connectedAt) > Date.parse(since)
 }
 
 /**
@@ -307,5 +342,77 @@ export class AuthSettingConfigStateService {
   delete(id: string, scope: AuthSettingScope): Observable<unknown> {
     void scope
     return this.controller.deleteAuthSetting(id).pipe(tap(() => this.refresh()))
+  }
+
+  /**
+   * Whether the caller holds a usable connection to an OAuth auth setting. Never carries a token.
+   *
+   * Pass the namespace the setting is used from: a connection belongs to the layer the runtime resolves the
+   * setting name to, so two rows with the same name share one connection.
+   */
+  getConnection(id: string, namespaceId?: string): Observable<AuthSettingConnection> {
+    return this.controller.getConnectionAuthSetting(id, namespaceId)
+  }
+
+  /**
+   * Forget the caller's own stored connection (OAuth tokens) to an auth setting, so the next use of an
+   * integration bound to it asks for a fresh authorization. Personal to the caller whatever the scope of
+   * the setting; idempotent. No list refresh: the rows do not carry the connection state.
+   */
+  resetCredential(id: string, namespaceId?: string): Observable<unknown> {
+    return this.controller.resetMyCredentialAuthSetting(id, namespaceId)
+  }
+
+  /**
+   * Connects the caller to an OAuth auth setting: starts the authorization on the backend, hands its URL to
+   * [authorize] (which points the popup at it), then waits for a new connection to be stored.
+   *
+   * The popup reports nothing reliable (the callback answers before the token exchange), so success is read
+   * from the connection itself: it must be newer than the one that existed when the flow started, which also
+   * makes a reconnection distinguishable from the connection it replaces. [abandoned] tells whether the user
+   * closed the popup.
+   */
+  connect(
+    id: string,
+    namespaceId: string | undefined,
+    authorize: (authorizationUrl: string) => void,
+    abandoned: () => boolean
+  ): Observable<ConnectionOutcome> {
+    // The state before comes first and must be readable: without it a reconnection cannot be told from the
+    // connection it replaces, and starting the flow anyway would leave it pending with nobody to finish it.
+    return this.getConnection(id, namespaceId).pipe(
+      switchMap((before) =>
+        this.controller.connectAuthSetting(id, namespaceId).pipe(
+          tap((started) => authorize(started.authorizationUrl)),
+          switchMap(() =>
+            this.awaitNewConnection(id, namespaceId, before.connected ? (before.connectedAt ?? null) : null, abandoned)
+          )
+        )
+      )
+    )
+  }
+
+  /** Polls the connection until it is newer than [since] (any connection when null), abandoned, or too late. */
+  awaitNewConnection(
+    id: string,
+    namespaceId: string | undefined,
+    since: string | null,
+    abandoned: () => boolean
+  ): Observable<ConnectionOutcome> {
+    let polls = 0
+    let closedPolls = 0
+    return timer(CONNECTION_POLL_MS, CONNECTION_POLL_MS).pipe(
+      // A failed read is not an answer: keep waiting rather than reporting a failure that did not happen.
+      switchMap(() => this.getConnection(id, namespaceId).pipe(catchError(() => of(null)))),
+      map((connection): ConnectionOutcome | null => {
+        polls++
+        if (connection?.connected && isNewerThan(connection.connectedAt, since)) return 'connected'
+        if (polls * CONNECTION_POLL_MS >= CONNECTION_WAIT_MS) return 'timeout'
+        if (abandoned() && ++closedPolls >= CONNECTION_CLOSED_GRACE_POLLS) return 'abandoned'
+        return null
+      }),
+      filter((outcome): outcome is ConnectionOutcome => outcome !== null),
+      take(1)
+    )
   }
 }

@@ -2,6 +2,7 @@ import { Injectable, inject, OnDestroy, NgZone } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { signal } from '@angular/core'
 import { Configuration, QuestionEvent } from '@whoz-oss/agentos-api-client'
+import { openOAuthPopup } from './oauth-popup'
 
 export const AGENTOS_OAUTH_CALLBACK_STORAGE_KEY = 'agentos_oauth_callback'
 
@@ -71,15 +72,8 @@ export class OAuthAgentosService implements OnDestroy {
    */
   openPopup(event: QuestionEvent): void {
     console.log('[OAuthAgentos] Opening popup from user gesture:', event.id)
-    const authUrl = event.question // The question field holds the full authorization URL
-
-    const width = 600
-    const height = 900
-    const left = window.screenX + (window.outerWidth - width) / 2
-    const top = window.screenY + (window.outerHeight - height) / 2
-    const features = `width=${width},height=${height},left=${left},top=${top},popup=yes,resizable=yes,scrollbars=yes`
-
-    const popup = window.open(authUrl, 'agentos_oauth_popup', features)
+    // The question field holds the full authorization URL
+    const popup = openOAuthPopup(event.question)
 
     if (popup) {
       popup.focus()

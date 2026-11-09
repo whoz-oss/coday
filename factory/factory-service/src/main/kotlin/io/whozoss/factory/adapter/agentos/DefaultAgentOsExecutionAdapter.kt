@@ -237,7 +237,7 @@ class DefaultAgentOsExecutionAdapter(
             externalUserId = record?.externalUserId,
             checkpoint = checkpoint,
             context = contextFor(caseId),
-            reconcile = { reconcileResult(caseId, record?.externalUserId, baseline.takeIf { it.isPositioned() }) },
+            reconcile = { reconcileSnapshot(caseId, record?.externalUserId, baseline.takeIf { it.isPositioned() }) },
             onIntermediateVerdict = onIntermediateVerdict,
             onAnswerObserved = onAnswerObserved,
         )
@@ -258,7 +258,7 @@ class DefaultAgentOsExecutionAdapter(
             ?: turn.baseline.takeIf { it.isPositioned() }
             ?: checkpointStore.latestBaseline(caseId)
         val result = try {
-            reconcileResult(caseId, record?.externalUserId, baseline?.takeIf { it.isPositioned() })
+            reconcileSnapshot(caseId, record?.externalUserId, baseline?.takeIf { it.isPositioned() })
         } catch (e: Exception) {
             // An unreachable runtime makes the case state unknowable: the
             // verdict stays honestly indeterminate — never Succeeded, never a
@@ -278,6 +278,29 @@ class DefaultAgentOsExecutionAdapter(
                     ?.status,
             ),
         )
+    }
+
+    override fun observeTurnResult(
+        turn: TurnToken,
+        timeoutMs: Long,
+        onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
+        onAnswerObserved: (CaseEventView) -> Unit,
+    ): AgentOsObservationResult {
+        val verdict = observeTurn(turn, timeoutMs, onIntermediateVerdict, onAnswerObserved)
+        val baseline = checkpointStore.baseline(turn.caseId, turn.attemptId) ?: turn.baseline
+        val events = persistedEvents(turn.caseId)
+        val derived = VerdictDeriver.deriveWithProof(events, contextFor(turn.caseId), turn.attemptId, baseline)
+        return AgentOsObservationResult(verdict, derived.runtimeProof)
+    }
+
+    override fun reconcileResult(turn: TurnToken): AgentOsObservationResult {
+        val verdict = reconcile(turn)
+        val baseline = checkpointStore.baseline(turn.caseId, turn.attemptId)
+            ?: turn.baseline.takeIf { it.isPositioned() }
+            ?: checkpointStore.latestBaseline(turn.caseId)
+        val events = runCatching { persistedEvents(turn.caseId) }.getOrDefault(emptyList())
+        val derived = VerdictDeriver.deriveWithProof(events, contextFor(turn.caseId), turn.attemptId, baseline)
+        return AgentOsObservationResult(verdict, derived.runtimeProof)
     }
 
     override fun persistedEvents(caseId: String): List<CaseEventView> {
@@ -407,7 +430,7 @@ class DefaultAgentOsExecutionAdapter(
      * is not yet quiescent). When a per-turn [baseline] is known, events at or
      * before it (older turns of a reused case) are filtered out first.
      */
-    private fun reconcileResult(
+    private fun reconcileSnapshot(
         caseId: String,
         externalUserId: String?,
         baseline: HighWaterMark? = null,

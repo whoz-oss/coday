@@ -3,6 +3,7 @@ import {
   buildAttachmentMention,
   kindLabel,
   middleTruncate,
+  pastedImageName,
   PendingAttachment,
   resolveUploadScope,
 } from './composer-attachments.utils'
@@ -60,6 +61,27 @@ describe('buildAttachmentMention', () => {
   it('ignores attachments without an uploaded scope', () => {
     const pending: PendingAttachment = { id: 'p', file: new File(['x'], 'p.txt'), status: 'pending' }
     expect(buildAttachmentMention([pending])).toBe('')
+  })
+})
+
+describe('pastedImageName', () => {
+  // Local-time constructor on purpose: the helper formats in local time.
+  const date = new Date(2026, 0, 5, 9, 7, 3)
+
+  it('builds a timestamped name with the extension of the mime type', () => {
+    expect(pastedImageName(date, 0, 'image/png')).toBe('pasted-image-20260105-090703.png')
+    expect(pastedImageName(date, 0, 'image/jpeg')).toBe('pasted-image-20260105-090703.jpg')
+    expect(pastedImageName(date, 0, 'image/gif')).toBe('pasted-image-20260105-090703.gif')
+    expect(pastedImageName(date, 0, 'image/webp')).toBe('pasted-image-20260105-090703.webp')
+  })
+
+  it('defaults to png for an unknown mime type', () => {
+    expect(pastedImageName(date, 0, 'image/x-weird')).toBe('pasted-image-20260105-090703.png')
+  })
+
+  it('suffixes the following images of the same paste', () => {
+    expect(pastedImageName(date, 1, 'image/png')).toBe('pasted-image-20260105-090703-2.png')
+    expect(pastedImageName(date, 2, 'image/png')).toBe('pasted-image-20260105-090703-3.png')
   })
 })
 

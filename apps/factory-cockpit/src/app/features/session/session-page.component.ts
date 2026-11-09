@@ -12,7 +12,7 @@ import { DatePipe } from '@angular/common'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { MatButtonModule } from '@angular/material/button'
 import { MatExpansionModule } from '@angular/material/expansion'
-import { ActivatedRoute } from '@angular/router'
+import { ActivatedRoute, RouterLink } from '@angular/router'
 import { combineLatest, distinctUntilChanged, map, tap } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
 import { TimelineBlock } from '../../core/models'
@@ -36,6 +36,7 @@ import { SessionPageState } from './session-page.state'
   selector: 'sf-session-page',
   imports: [
     DatePipe,
+    RouterLink,
     MatButtonModule,
     MatExpansionModule,
     StatusChipComponent,
@@ -64,6 +65,7 @@ export class SessionPageComponent implements OnDestroy {
 
   protected readonly effectiveRunId = computed(() => this.runId() || this.routeRunId())
   protected readonly session = this.pageState.session
+  protected readonly parentRun = this.pageState.parentRun
   private readonly run = this.pageState.run
 
   /**
@@ -225,11 +227,16 @@ export class SessionPageComponent implements OnDestroy {
   protected onReply(intent: ReplyIntent): void {
     const id = this.effectiveRunId()
     if (!id) return
-    this.store.replyInteraction(id, intent.interactionId, {
-      actionId: intent.actionId,
-      text: intent.text,
-      expectedRevision: intent.expectedRevision,
-    })
+    this.store.replyInteraction(
+      id,
+      intent.interactionId,
+      {
+        actionId: intent.actionId,
+        text: intent.text,
+        expectedRevision: intent.expectedRevision,
+      },
+      this.currentNamespaceId()
+    )
   }
 
   protected onAgentQuestionAnswered(intent: AgentQuestionAnswerIntent): void {
@@ -273,6 +280,19 @@ export class SessionPageComponent implements OnDestroy {
     const id = this.effectiveRunId()
     if (!id) return
     this.store.stopCost(id)
+  }
+
+  protected onReplyRunEscalation(selectedOption: string): void {
+    const parent = this.parentRun()
+    const esc = parent?.activeEscalation
+    if (!parent || !esc) return
+    this.store.replyParentRunEscalation(
+      parent.runId,
+      esc.escalationId,
+      selectedOption,
+      undefined,
+      parent.namespaceId || this.currentNamespaceId()
+    )
   }
 }
 

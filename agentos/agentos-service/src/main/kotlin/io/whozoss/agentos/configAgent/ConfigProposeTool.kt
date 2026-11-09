@@ -46,6 +46,13 @@ class ConfigProposeTool(
         runCostThreshold, maxToolRounds (cap on the tool rounds of one agent run; absent inherits the platform default);
         an auth setting has name, description, authType and the fields of that type:
         ${ConfigAuthSettingTypes.description}, where * marks a secret).
+        An AI provider (kind AI_PROVIDER) has name, description, apiType (OpenAI, Anthropic, Gemini, vLLM or Ollama: fixed once created),
+        baseUrl, apiKey* and headers {"Name": "value"}: declare /apiKey as a secret, and /headers/<name> too for a header that
+        carries a credential (Authorization, X-Api-Key...). An AI model (kind AI_MODEL) has aiProviderId (required: the id of its
+        provider, or {"${'$'}op": "<ref>"} of a provider created earlier in the plan), apiModelName (required), alias (e.g. BIG,
+        SMALL: what an agent's modelName refers to), description, priority, temperature, maxCompletionTokens, contextWindow,
+        pricing, reasoningEffort, supportsAdvancedExecution. A model has no scope of its own: it takes its provider's, so give
+        it no 'scope', namespaceId or userId.
         A namespace's Git repository, which gives each case its worktree, is an integration of type
         ${GitRepositoryIntegration.TYPE} (one per namespace, shared) with parameters ${GitRepositoryIntegration.PARAM_REPOSITORY_URL},
         ${GitRepositoryIntegration.PARAM_MAIN_BRANCH}, ${GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID} (id of a shared auth setting of
@@ -78,12 +85,12 @@ class ConfigProposeTool(
                 "type": "object",
                 "properties": {
                   "ref": { "type": "string", "description": "Short unique name of this operation, used by {\"${'$'}op\": ref}." },
-                  "kind": { "type": "string", "enum": ["AGENT", "SKILL", "PROMPT", "INTEGRATION", "AUTH_SETTING", "NAMESPACE"], "description": "NAMESPACE: CREATE and UPDATE only." },
+                  "kind": { "type": "string", "enum": ["AGENT", "SKILL", "PROMPT", "INTEGRATION", "AUTH_SETTING", "AI_PROVIDER", "AI_MODEL", "NAMESPACE"], "description": "NAMESPACE, AI_PROVIDER and AI_MODEL: CREATE and UPDATE only." },
                   "action": { "type": "string", "enum": ["CREATE", "UPDATE", "ENABLE", "DISABLE", "DEPLOY", "UNDEPLOY"] },
                   "id": { "type": "string", "description": "Target id, for every action but CREATE." },
                   "scope": {
                     "type": "object",
-                    "description": "CREATE (but not of a NAMESPACE), and DEPLOY or UNDEPLOY on another namespace. namespaceId: \"current\" for this namespace, the id of a namespace the user administers, {\"${'$'}op\": \"<ref>\"} for a namespace created by this plan, null for platform. userId: \"me\" for a personal entity, null for a shared one.",
+                    "description": "CREATE (but not of a NAMESPACE or an AI_MODEL, which takes its provider's scope), and DEPLOY or UNDEPLOY on another namespace. namespaceId: \"current\" for this namespace, the id of a namespace the user administers, {\"${'$'}op\": \"<ref>\"} for a namespace created by this plan, null for platform. userId: \"me\" for a personal entity, null for a shared one.",
                     "properties": {
                       "namespaceId": { "type": ["string", "object", "null"] },
                       "userId": { "type": ["string", "null"] }
@@ -177,12 +184,7 @@ class ConfigProposeTool(
 
     companion object {
         fun describe(op: PlannedOperation): String {
-            val subject =
-                op.target?.name
-                    ?: op.value
-                        ?.path("name")
-                        ?.asText()
-                        .orEmpty()
+            val subject = op.target?.name ?: ConfigJson.nameOf(op.kind, op.value)
             return "${op.ref}: ${op.action} ${op.kind} $subject".trimEnd()
         }
     }

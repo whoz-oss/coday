@@ -840,4 +840,42 @@ describe('FactoryApiService', () => {
       )
     })
   })
+
+  describe('parent Runs API (Lot 5)', () => {
+    it('getParentRuns unwraps { data: { items: [...] } } and forwards namespaceId', () => {
+      let result: unknown[] | undefined
+      service.getParentRuns('ns-1').subscribe((items) => (result = items))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/runs')
+      expect(request.request.method).toBe('GET')
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      request.flush({
+        data: {
+          namespaceId: 'ns-1',
+          items: [{ runId: 'run-1', runType: 'forge-controller-v1', status: 'running', fragments: [] }],
+        },
+      })
+
+      expect(result).toEqual([{ runId: 'run-1', runType: 'forge-controller-v1', status: 'running', fragments: [] }])
+    })
+
+    it('getParentRun reads /api/factory/runs/:runId and replyParentRunEscalation posts to /escalations/:id/reply', () => {
+      let detail: unknown
+      service.getParentRun('run-1', 'ns-1').subscribe((d) => (detail = d))
+      const getReq = http.expectOne((r) => r.url === '/api/factory/runs/run-1')
+      expect(getReq.request.method).toBe('GET')
+      getReq.flush({ data: { runId: 'run-1', status: 'waiting_human_escalation' } })
+      expect(detail).toEqual({ runId: 'run-1', status: 'waiting_human_escalation' })
+
+      let replied: unknown
+      service
+        .replyParentRunEscalation('run-1', 'esc-1', { selectedOption: 'retry', text: 'go' }, 'ns-1')
+        .subscribe((r) => (replied = r))
+      const postReq = http.expectOne((r) => r.url === '/api/factory/runs/run-1/escalations/esc-1/reply')
+      expect(postReq.request.method).toBe('POST')
+      expect(postReq.request.body).toEqual({ selectedOption: 'retry', text: 'go', namespaceId: 'ns-1' })
+      postReq.flush({ data: { runId: 'run-1', status: 'running' } })
+      expect(replied).toEqual({ runId: 'run-1', status: 'running' })
+    })
+  })
 })

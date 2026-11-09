@@ -39,6 +39,15 @@
           />
         </div>
       }
+      @if (autocomplete.fileSuggestions().length > 0) {
+        <div class="case-home__autocomplete">
+          <agentos-file-autocomplete
+            [files]="autocomplete.fileSuggestions()"
+            (selected)="onFileSelected($event)"
+            (dismissed)="closeFileAutocomplete()"
+          />
+        </div>
+      }
       @if (autocomplete.slashSuggestions().length > 0) {
         <div class="case-home__autocomplete">
           <agentos-prompt-autocomplete
@@ -68,6 +77,7 @@
         [disabled]="isCreating()"
         (input)="onInput($event)"
         (keydown)="onKeydown($event)"
+        (paste)="!isCreating() && attachments.onPaste($event)"
       ></textarea>
       <agentos-voice-recorder
         [state]="voice.state()"

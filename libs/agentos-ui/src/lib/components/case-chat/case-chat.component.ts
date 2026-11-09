@@ -77,6 +77,8 @@ import {
   parseEffortCommand,
 } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
+import { FileSuggestion } from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
@@ -190,6 +192,7 @@ function hasActiveSelection(): boolean {
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
     EffortAutocompleteComponent,
+    FileAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
     CopyButtonComponent,
@@ -298,6 +301,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
+  private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
 
@@ -455,6 +459,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
+    // `#` lists what the agent reaches through its exchange tools: the namespace and this case.
+    this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: this.caseId }))
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent)
@@ -1217,7 +1223,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       event,
       this.promptAutocompleteRef,
       this.agentAutocompleteRef,
-      this.effortAutocompleteRef
+      this.effortAutocompleteRef,
+      this.fileAutocompleteRef
     )
     if (consumed) return
     if (this.preferences.shouldSend(event)) {
@@ -1232,6 +1239,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected onAgentSelected(agent: AgentConfig): void {
     this.autocomplete.onAgentSelected(agent, this.agentAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected onFileSelected(file: FileSuggestion): void {
+    this.autocomplete.onFileSelected(file, this.fileAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected closeFileAutocomplete(): void {
+    this.autocomplete.closeFileSuggestions()
   }
 
   protected closeSlashAutocomplete(): void {

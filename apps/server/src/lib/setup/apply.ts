@@ -5,7 +5,7 @@
  *   0. identify   a first call as the first-run user: AgentOS creates the user and its personal namespace on the
  *                 first request it sees, whatever else its database already holds
  *   1. providers  platform-scope AI providers, one per chosen catalogue entry
- *   2. models     the 4 aliased chat models of each provider, its `default` model (a copy of its SMALL one), plus its
+ *   2. models     the aliased chat models of each provider, its `default` model (a copy of its SMALL one), plus its
  *                 WHISPER transcription model when it has one (OpenAI, Requesty), priority derived from the rank
  *   3. namespace  the personal namespace `user:<email>` (created asynchronously by AgentOS),
  *                 its `sharedExchangePath` set to the chosen folder
@@ -289,6 +289,10 @@ export async function runApply(
       await ensureModels(deps, catalogue, providerIds.get(p.id) as string, priorityForRank(index + 1, ordered.length))
       modelCount += modelCountOf(catalogue)
     }
+    const modelCount = ordered.reduce(
+      (count, p) => count + Object.keys((getCatalogueProvider(p.id) as CatalogueProvider).models).length,
+      0
+    )
     tracker.step('models', 'done', `${modelCount} models`)
 
     // 3. personal namespace + shared folder

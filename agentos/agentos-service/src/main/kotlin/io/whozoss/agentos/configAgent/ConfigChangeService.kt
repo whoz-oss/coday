@@ -364,7 +364,7 @@ class ConfigChangeService(
             order = index + 1,
             kind = op.kind,
             action = op.action,
-            name = op.target?.name ?: op.value?.path("name")?.asText().orEmpty(),
+            name = op.target?.name ?: ConfigJson.nameOf(op.kind, op.value),
             targetId = op.target?.id ?: evaluation.entityId,
             namespaceId = op.target?.namespaceId ?: op.scope?.namespaceIn(createdIds),
             userId = op.target?.userId ?: op.scope?.userId,

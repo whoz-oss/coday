@@ -1505,6 +1505,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/runs:
+    get:
+      tags:
+      - run-controller
+      operationId: listRuns
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - run-controller
+      operationId: startRun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/runs/{runId}/escalations/{escalationId}/reply:
+    post:
+      tags:
+      - run-controller
+      operationId: replyEscalationRun
+      parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: escalationId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/plan-change-proposals:
     get:
       tags:
@@ -2230,6 +2294,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/runs/{runId}:
+    get:
+      tags:
+      - run-controller
+      operationId: getRun
+      parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/plan-change-proposals/{proposalId}:
     get:
       tags:
@@ -2571,7 +2658,6 @@ components:
         envType:
           type: string
       required:
-      - branch
       - createdAt
       - createdBy
       - envType
