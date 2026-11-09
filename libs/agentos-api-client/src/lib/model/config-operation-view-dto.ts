@@ -67,6 +67,8 @@ export enum ConfigOperationViewDtoKindEnum {
   INTEGRATION = 'INTEGRATION',
   AUTH_SETTING = 'AUTH_SETTING',
   NAMESPACE = 'NAMESPACE',
+  AI_PROVIDER = 'AI_PROVIDER',
+  AI_MODEL = 'AI_MODEL',
 }
 export enum ConfigOperationViewDtoStatusEnum {
   PENDING = 'PENDING',

@@ -1,13 +1,17 @@
 import { TestBed } from '@angular/core/testing'
-import { NamespaceControllerService, UserControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AiProviderControllerService,
+  NamespaceControllerService,
+  UserControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { SetupApiService } from './setup-api.service'
-import { parseWelcomePreview, SetupStateService } from './setup-state.service'
+import { downloadLabel, parseWelcomePreview, SetupStateService } from './setup-state.service'
 import { SetupStatus } from './setup.models'
 
 const baseStatus = (patch: Partial<SetupStatus> = {}): SetupStatus =>
   ({
-    mode: 'laptop',
+    mode: 'unmanaged',
     setupEnabled: true,
     setupDone: false,
     steps: {
@@ -27,7 +31,11 @@ const baseStatus = (patch: Partial<SetupStatus> = {}): SetupStatus =>
 describe('SetupStateService', () => {
   let api: { getStatus: jest.Mock; saveIdentity: jest.Mock; apply: jest.Mock; browse: jest.Mock; mkdir: jest.Mock }
   let getMeUser: jest.Mock
+  let updateUser: jest.Mock
   let listByExternalIdsNamespace: jest.Mock
+  let listAiProvider: jest.Mock
+  let createAiProvider: jest.Mock
+  let updateAiProvider: jest.Mock
   let state: SetupStateService
 
   beforeEach(() => {
@@ -39,12 +47,17 @@ describe('SetupStateService', () => {
       mkdir: jest.fn(),
     }
     getMeUser = jest.fn().mockReturnValue(of({ externalId: 'me@acme.com', isAdmin: true }))
+    updateUser = jest.fn().mockReturnValue(of({}))
     listByExternalIdsNamespace = jest.fn().mockReturnValue(of([{ id: 'ns-personal', externalId: 'user:me@acme.com' }]))
+    listAiProvider = jest.fn().mockReturnValue(of([]))
+    createAiProvider = jest.fn().mockReturnValue(of({}))
+    updateAiProvider = jest.fn().mockReturnValue(of({}))
     TestBed.configureTestingModule({
       providers: [
         { provide: SetupApiService, useValue: api },
-        { provide: UserControllerService, useValue: { getMeUser } },
+        { provide: UserControllerService, useValue: { getMeUser, updateUser } },
         { provide: NamespaceControllerService, useValue: { listByExternalIdsNamespace } },
+        { provide: AiProviderControllerService, useValue: { listAiProvider, createAiProvider, updateAiProvider } },
       ],
     })
     state = TestBed.inject(SetupStateService)
@@ -244,6 +257,21 @@ describe('SetupStateService', () => {
       expect(state.checklist()[0]).toMatchObject({ state: 'running', percent: 40 })
     })
 
+    it('names the exact versions in the download line, on the wizard and on the loading page', async () => {
+      const download = { state: 'running' as const, percent: 40, versions: { agentos: '0.250.1', factory: '0.250.1' } }
+      api.getStatus.mockReturnValue(of(baseStatus({ steps: { ...baseStatus().steps, download } })))
+      await state.refreshStatus()
+      expect(state.checklist()[0]?.label).toBe('Downloading AgentOS 0.250.1 and Factory 0.250.1')
+      expect(state.loadingChecklist()[0]?.label).toBe('Downloading AgentOS 0.250.1 and Factory 0.250.1')
+    })
+
+    it('builds the download label from whatever versions are known', () => {
+      expect(downloadLabel()).toBe('Downloading AgentOS')
+      expect(downloadLabel({})).toBe('Downloading AgentOS')
+      expect(downloadLabel({ agentos: '1.2.3' })).toBe('Downloading AgentOS 1.2.3')
+      expect(downloadLabel({ factory: '1.2.3' })).toBe('Downloading Factory 1.2.3')
+    })
+
     it('exposes the blocked Java so the UI can show the install hint', async () => {
       api.getStatus.mockReturnValue(
         of(baseStatus({ steps: { ...baseStatus().steps, java: { state: 'blocked', hint: 'brew install' } } }))
@@ -374,6 +402,274 @@ describe('SetupStateService', () => {
 
       getMeUser.mockReturnValue(throwError(() => new Error('boom')))
       expect(await state.loadingTarget()).toEqual({ path: '/home', queryParams: {} })
+    })
+  })
+
+  describe('profile: email and user keys (managed mode)', () => {
+    const managed = (agentos: 'running' | 'done' = 'done') =>
+      baseStatus({
+        mode: 'managed',
+        setupEnabled: false,
+        setupDone: false,
+        steps: { ...baseStatus().steps, agentos: { state: agentos } },
+      })
+    const platformProviders = [
+      { id: 'p-anthropic', name: 'anthropic', apiType: 'Anthropic' },
+      { id: 'p-openai', name: 'openai', apiType: 'OpenAI' },
+    ]
+    const providers = (platform: unknown[], mine: unknown[]) =>
+      listAiProvider.mockImplementation((_ns: string, user?: string) => of(user ? mine : platform))
+    const me = { id: 'user-1', externalId: 'me@acme.com', email: 'me@acme.com', firstname: 'Me', isAdmin: false }
+    const mineWithKey = [{ id: 'u-1', name: 'anthropic', apiKey: 'sk-a****cdef' }]
+
+    it('waits for AgentOS before looking at the providers', async () => {
+      api.getStatus.mockReturnValue(of(managed('running')))
+      await state.init()
+      expect(listAiProvider).not.toHaveBeenCalled()
+      expect(state.userKeysChecked()).toBe(false)
+    })
+
+    it('asks for every platform provider when the user has no global key for any of them', async () => {
+      providers(platformProviders, [{ id: 'u-1', name: 'anthropic' }])
+      getMeUser.mockReturnValue(of(me))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      expect(listAiProvider).toHaveBeenCalledWith('none')
+      expect(listAiProvider).toHaveBeenCalledWith('none', 'me')
+      expect(state.userKeys().map((k) => k.name)).toEqual(['anthropic', 'openai'])
+      expect(state.needsUserKeys()).toBe(true)
+      expect(state.needsEmail()).toBe(false)
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('asks for no key when the user already has one for a platform provider, whatever the case of its name', async () => {
+      providers(platformProviders, [{ id: 'u-1', name: 'Anthropic', apiKey: 'sk-a****cdef' }])
+      getMeUser.mockReturnValue(of(me))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsUserKeys()).toBe(false)
+    })
+
+    it('does not count the key of a provider the platform does not offer', async () => {
+      providers(platformProviders, [{ id: 'u-9', name: 'mistral', apiKey: 'sk-m****cdef' }])
+      getMeUser.mockReturnValue(of(me))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsUserKeys()).toBe(true)
+    })
+
+    it('asks for the email when the profile has none, and not when it has one', async () => {
+      providers(platformProviders, mineWithKey)
+      api.getStatus.mockReturnValue(of(managed()))
+      getMeUser.mockReturnValue(of({ ...me, email: undefined }))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsEmail()).toBe(true)
+      expect(state.needsProfile()).toBe(true)
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('treats a blank email as missing', async () => {
+      providers(platformProviders, mineWithKey)
+      api.getStatus.mockReturnValue(of(managed()))
+      getMeUser.mockReturnValue(of({ ...me, email: '  ' }))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsEmail()).toBe(true)
+    })
+
+    it('asks for nothing when the user has an email and a key', async () => {
+      providers(platformProviders, mineWithKey)
+      getMeUser.mockReturnValue(of(me))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsEmail()).toBe(false)
+      expect(state.needsUserKeys()).toBe(false)
+      expect(state.needsProfile()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('updates a keyless global provider of the user instead of creating a duplicate', async () => {
+      providers(platformProviders, [{ id: 'u-2', name: 'openai', apiType: 'OpenAI' }])
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.userKeys().find((k) => k.name === 'openai')?.existingId).toBe('u-2')
+    })
+
+    it('is not ready while the check is not done, nor while something is still asked', async () => {
+      providers(platformProviders, [])
+      api.getStatus.mockReturnValue(of(managed()))
+      expect(state.loadingReady()).toBe(false)
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsProfile()).toBe(true)
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('asks for nothing and hands over when there is no platform provider at all, even with no email', async () => {
+      getMeUser.mockReturnValue(of({ ...me, email: undefined }))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsEmail()).toBe(false)
+      expect(state.needsUserKeys()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('does not hold the user back when the check fails', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+      listAiProvider.mockReturnValue(throwError(() => new Error('boom')))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      expect(state.needsProfile()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('never asks outside the managed loading page (unmanaged install, wizard, preview)', async () => {
+      providers(platformProviders, [])
+      api.getStatus.mockReturnValue(
+        of(
+          baseStatus({
+            setupDone: true,
+            apply: { status: 'done' },
+            steps: { ...baseStatus().steps, agentos: { state: 'done' } },
+          })
+        )
+      )
+      await state.init()
+      expect(listAiProvider).not.toHaveBeenCalled()
+
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init('nofresh')
+      expect(listAiProvider).not.toHaveBeenCalled()
+    })
+
+    it('saves the typed keys as user-global providers and lets the user through', async () => {
+      providers(platformProviders, [{ id: 'u-2', name: 'openai', apiType: 'OpenAI' }])
+      getMeUser.mockReturnValue(of(me))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      expect(state.profileValid()).toBe(false)
+      state.setUserKey('anthropic', ' sk-ant-long-enough ')
+      state.setUserKey('openai', 'sk-openai-long-enough')
+      expect(state.profileValid()).toBe(true)
+      await state.submitProfile()
+      expect(updateUser).not.toHaveBeenCalled()
+
+      expect(createAiProvider).toHaveBeenCalledWith({
+        name: 'anthropic',
+        apiType: 'Anthropic',
+        apiKey: 'sk-ant-long-enough',
+        userId: 'user-1',
+      })
+      expect(updateAiProvider).toHaveBeenCalledWith('u-2', {
+        name: 'openai',
+        apiType: 'OpenAI',
+        apiKey: 'sk-openai-long-enough',
+        userId: 'user-1',
+      })
+      expect(state.needsUserKeys()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('leaves empty keys unset and keeps the failed ones with a message', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+      providers(platformProviders, [])
+      getMeUser.mockReturnValue(of(me))
+      createAiProvider.mockReturnValue(throwError(() => ({ status: 409 })))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      state.setUserKey('anthropic', 'sk-ant-long-enough')
+      await state.submitProfile()
+
+      expect(createAiProvider).toHaveBeenCalledTimes(1)
+      expect(state.userKeys().map((k) => k.name)).toEqual(['anthropic'])
+      expect(state.error()).toMatch(/anthropic/)
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('requires a plausible email when the profile has none, and at least one plausible key', async () => {
+      providers(platformProviders, [])
+      getMeUser.mockReturnValue(of({ ...me, email: undefined }))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      state.setUserKey('anthropic', 'sk-ant-long-enough')
+      expect(state.profileValid()).toBe(false)
+      state.setProfileEmail('nope')
+      expect(state.profileValid()).toBe(false)
+      state.setProfileEmail(' Me@Acme.com ')
+      expect(state.profileValid()).toBe(true)
+      state.setUserKey('openai', 'short')
+      expect(state.profileValid()).toBe(false)
+    })
+
+    it('saves the email first, keeping the other fields of the profile, then the keys', async () => {
+      providers(platformProviders, [])
+      getMeUser.mockReturnValue(of({ ...me, email: undefined, bio: 'hi', preferredLanguage: 'fr', isAdmin: true }))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      state.setProfileEmail(' Me@Acme.com ')
+      state.setUserKey('anthropic', 'sk-ant-long-enough')
+      await state.submitProfile()
+
+      expect(updateUser).toHaveBeenCalledWith('user-1', {
+        id: 'user-1',
+        externalId: 'me@acme.com',
+        email: 'me@acme.com',
+        firstname: 'Me',
+        bio: 'hi',
+        preferredLanguage: 'fr',
+        isAdmin: true,
+      })
+      expect(createAiProvider).toHaveBeenCalledTimes(1)
+      expect(getMeUser).toHaveBeenCalledTimes(1)
+      expect(state.needsEmail()).toBe(false)
+      expect(state.loadingReady()).toBe(true)
+    })
+
+    it('stops at the email when it cannot be saved, and still asks for it', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+      providers(platformProviders, [])
+      getMeUser.mockReturnValue(of({ ...me, email: undefined }))
+      updateUser.mockReturnValue(throwError(() => ({ status: 500 })))
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+
+      state.setProfileEmail('me@acme.com')
+      state.setUserKey('anthropic', 'sk-ant-long-enough')
+      await state.submitProfile()
+
+      expect(state.error()).toBe('Could not save your email.')
+      expect(createAiProvider).not.toHaveBeenCalled()
+      expect(state.needsEmail()).toBe(true)
+      expect(state.busy()).toBe(false)
+      expect(state.loadingReady()).toBe(false)
+    })
+
+    it('does nothing while the profile is not valid', async () => {
+      providers(platformProviders, [])
+      api.getStatus.mockReturnValue(of(managed()))
+      await state.init()
+      await state.checkUserKeys()
+      await state.submitProfile()
+      expect(updateUser).not.toHaveBeenCalled()
+      expect(createAiProvider).not.toHaveBeenCalled()
     })
   })
 

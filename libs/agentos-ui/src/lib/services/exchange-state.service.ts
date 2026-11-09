@@ -8,6 +8,7 @@ import {
   ExchangeDirectoryEntry,
   ExchangeDirectoryListing,
   ExchangeDirectoryListingCapabilityEnum,
+  ExchangeFileEntry,
 } from '@whoz-oss/agentos-api-client'
 import {
   BehaviorSubject,
@@ -113,6 +114,12 @@ export class ExchangeStateService {
   private namespacePage = 0
   readonly caseLoadingMore = signal(false)
   readonly namespaceLoadingMore = signal(false)
+
+  // Recursive namespace manifest backing the file filter. Fetched lazily (only once the user types a
+  // filter) and kept per namespace; any change to the namespace scope drops it, and the version lets a
+  // consumer that is showing it know it must ask again.
+  private namespaceManifestCache: { id: string; files$: Observable<ExchangeFileEntry[]> } | null = null
+  readonly namespaceManifestVersion = signal(0)
 
   private readonly caseView = this.buildScopeView(
     this.caseRefresh$,
@@ -331,6 +338,7 @@ export class ExchangeStateService {
     this.casePath = ''
     this.casePage = 0
     this.namespacePage = 0
+    this.invalidateNamespaceManifest()
     this.caseRefresh$.next()
     this.namespaceRefresh$.next()
   }
@@ -365,6 +373,7 @@ export class ExchangeStateService {
   refreshManifest(): void {
     this.casePage = 0
     this.namespacePage = 0
+    this.invalidateNamespaceManifest()
     this.caseRefresh$.next()
     this.namespaceRefresh$.next()
   }
@@ -376,7 +385,13 @@ export class ExchangeStateService {
 
   /** Refresh only the namespace manifest — used when the agent mutates the namespace scope. */
   refreshNamespace(): void {
+    this.invalidateNamespaceManifest()
     this.namespaceRefresh$.next()
+  }
+
+  private invalidateNamespaceManifest(): void {
+    this.namespaceManifestCache = null
+    this.namespaceManifestVersion.update((version) => version + 1)
   }
 
   loadMore(scope: ExchangeScope): void {
@@ -395,6 +410,24 @@ export class ExchangeStateService {
   }
 
   // ── Reads ───────────────────────────────────────────────────────────────────
+  /**
+   * Every file of the namespace, at any depth (the recursive manifest, not the directory being browsed).
+   *
+   * Shared and replayed per namespace until the namespace scope changes, so repeated filtering costs one
+   * request. A failure is not cached: shareReplay resets on error, so the next subscription asks again.
+   */
+  namespaceManifest(): Observable<ExchangeFileEntry[]> {
+    const id = this.namespaceId
+    if (!id) return throwError(() => new Error('No active namespace for manifest request'))
+    if (this.namespaceManifestCache?.id === id) return this.namespaceManifestCache.files$
+    const files$ = this.controller.getNamespaceFilesManifestExchange(id).pipe(
+      map((manifest) => manifest.files ?? []),
+      shareReplay({ bufferSize: 1, refCount: false })
+    )
+    this.namespaceManifestCache = { id, files$ }
+    return files$
+  }
+
   getContent(scope: ExchangeScope, path: string): Observable<ExchangeFileContent> {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const id = isCase ? this.caseId : this.namespaceId
@@ -402,6 +435,27 @@ export class ExchangeStateService {
     return isCase
       ? this.controller.getCaseFileContentExchange(id, path)
       : this.controller.getNamespaceFileContentExchange(id, path)
+  }
+
+  /**
+   * Binary content of a file, for previews the text endpoint cannot serve (images).
+   *
+   * Goes through the download endpoints, which stream the raw bytes.
+   */
+  getBlob(scope: ExchangeScope, path: string): Observable<Blob> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return throwError(() => new Error('No active scope for blob request'))
+    return this.downloadStream(scope, id, path)
+  }
+
+  /** Download endpoint of a scope. Typed Observable<string> but requests responseType:'blob', so it yields a Blob. */
+  private downloadStream(scope: ExchangeScope, id: string, path: string): Observable<Blob> {
+    const download$ =
+      scope === ExchangeFileEntryScopeEnum.CASE
+        ? this.controller.downloadCaseFileExchange(id, path)
+        : this.controller.downloadNamespaceFileExchange(id, path)
+    return download$ as unknown as Observable<Blob>
   }
 
   // ── Writes (case + namespace, gated per scope by the server-computed capability) ──
@@ -468,14 +522,8 @@ export class ExchangeStateService {
   }
 
   private downloadFrom(scope: ExchangeScope, id: string, path: string): Promise<{ success: boolean; error?: string }> {
-    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const filename = path.split('/').pop() ?? path
-    const download$ = isCase
-      ? this.controller.downloadCaseFileExchange(id, path)
-      : this.controller.downloadNamespaceFileExchange(id, path)
-    // The generated method is typed Observable<string> but requests responseType:'blob'
-    // (Accept '*/*'), so at runtime it yields a Blob.
-    const downloadBlob$ = download$ as unknown as Observable<Blob>
+    const downloadBlob$ = this.downloadStream(scope, id, path)
     return new Promise((resolve) => {
       downloadBlob$.subscribe({
         next: (body) => {

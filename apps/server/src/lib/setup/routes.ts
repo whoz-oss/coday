@@ -8,7 +8,7 @@
  *   POST /api/setup/mkdir     { path, name } (disabled once setup is done)
  *   POST /api/setup/apply     { providers: [{ id, apiKey, rank }], sharedExchangePath }
  *
- * Every mutating route and the folder browser only answer when `setupEnabled` (laptop profile, no
+ * Every mutating route and the folder browser only answer when `setupEnabled` (unmanaged profile, no
  * `--auth`) AND the caller is a page of this machine on loopback: this API can read the filesystem and
  * receives API keys.
  */
@@ -34,7 +34,7 @@ import { isManagedFactoryDisabled } from '../runtime/factory-option'
 
 export interface SetupRouterOptions {
   configDir: string
-  /** Laptop profile and no `--auth`: the wizard and its mutations apply. */
+  /** Unmanaged profile and no `--auth`: the wizard and its mutations apply. */
   setupEnabled: boolean
   fetchFn?: typeof fetch
   /** `AGENTOS_URL` / `FACTORY_URL`: services Coday does not run. The status probes them instead of the managed ports. */

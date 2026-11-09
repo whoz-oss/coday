@@ -39,6 +39,14 @@
     }
   }
 
+  &__thumbnail {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    object-fit: cover;
+    border-radius: var(--radius-sm, 6px);
+  }
+
   &__name {
     font-weight: 500;
   }

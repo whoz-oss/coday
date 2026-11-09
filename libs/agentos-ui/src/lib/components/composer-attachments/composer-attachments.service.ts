@@ -1,6 +1,11 @@
 import { computed, inject, Injectable, signal } from '@angular/core'
 import { ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { buildAttachmentMention, MAX_ATTACHMENTS, PendingAttachment } from './composer-attachments.utils'
+import {
+  buildAttachmentMention,
+  MAX_ATTACHMENTS,
+  pastedImageName,
+  PendingAttachment,
+} from './composer-attachments.utils'
 
 /**
  * ComposerAttachmentsService — staging and upload orchestration for the files attached to a
@@ -65,6 +70,41 @@ export class ComposerAttachmentsService {
     this.isDragOver.set(false)
     this.isUploading.set(false)
     this.dragDepth = 0
+  }
+
+  // ── Clipboard paste (bound directly from the host textareas) ──────────────────
+
+  /**
+   * Stages the images of a paste as attachments. Only IMAGE-ONLY clipboards are intercepted
+   * (a screenshot to clipboard): when the clipboard also carries `text/plain` — e.g. cells or
+   * a picture copied from an office document, which come with a text rendition — the default
+   * text paste is kept and nothing is attached, so a text paste never loses its text. Without
+   * any image the event is left untouched (plain text paste unaffected).
+   *
+   * Clipboard screenshots are all called `image.png` and a duplicate name is a 409 on upload,
+   * so every image is renamed with the paste time (see [pastedImageName]).
+   */
+  onPaste(event: ClipboardEvent): void {
+    const clipboard = event.clipboardData
+    if (!clipboard) return
+    const images = this.clipboardImages(clipboard)
+    if (images.length === 0) return
+    if (Array.from(clipboard.types ?? []).includes('text/plain')) return
+    event.preventDefault()
+    const now = new Date()
+    this.addFiles(
+      images.map((image, index) => new File([image], pastedImageName(now, index, image.type), { type: image.type }))
+    )
+  }
+
+  /** Image files of the clipboard: `items` first (Chrome/Safari/Firefox), `files` as fallback. */
+  private clipboardImages(clipboard: DataTransfer): File[] {
+    const fromItems = Array.from(clipboard.items ?? [])
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (fromItems.length > 0) return fromItems
+    return Array.from(clipboard.files ?? []).filter((file) => file.type.startsWith('image/'))
   }
 
   // ── Drag & drop (bound directly from the host templates) ──────────────────────

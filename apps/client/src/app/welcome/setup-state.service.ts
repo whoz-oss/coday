@@ -1,6 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http'
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
-import { NamespaceControllerService, UserControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AiProvider,
+  AiProviderControllerService,
+  NamespaceControllerService,
+  User,
+  UserControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { catchError, firstValueFrom, of, Subscription, timer } from 'rxjs'
 import { exhaustMap } from 'rxjs/operators'
 import { SetupApiService } from './setup-api.service'
@@ -22,6 +28,18 @@ export interface ProviderDraft {
   id: ProviderId
   enabled: boolean
   apiKey: string
+}
+
+/**
+ * A platform-level AI provider the user can set a key for (managed mode). The key is saved as a user-global provider of
+ * the same name, which AgentOS overlays on the platform one. `existingId` is set when the user already has a user-global
+ * provider of that name without a key: it is then updated instead of created.
+ */
+export interface UserKeyDraft {
+  name: string
+  apiType: AiProvider['apiType']
+  apiKey: string
+  existingId?: string
 }
 
 /**
@@ -70,6 +88,15 @@ const checklistLine = (
   message: step.message ?? (key === 'java' ? step.version : undefined),
 })
 
+/** `Downloading AgentOS 1.2.3 and Factory 1.2.3`: the exact packages, when the server knows them. */
+export const downloadLabel = (versions?: { agentos?: string; factory?: string }): string => {
+  const parts = [
+    versions?.agentos ? `AgentOS ${versions.agentos}` : null,
+    versions?.factory ? `Factory ${versions.factory}` : null,
+  ].filter((part): part is string => !!part)
+  return parts.length > 0 ? `Downloading ${parts.join(' and ')}` : 'Downloading AgentOS'
+}
+
 export const errorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof HttpErrorResponse) {
     const body = err.error as { error?: string } | string | null
@@ -91,6 +118,7 @@ export class SetupStateService {
   private readonly api = inject(SetupApiService)
   private readonly users = inject(UserControllerService)
   private readonly namespaces = inject(NamespaceControllerService)
+  private readonly aiProviders = inject(AiProviderControllerService)
   private readonly destroyRef = inject(DestroyRef)
 
   // --- server facts -------------------------------------------------------------------------------
@@ -117,6 +145,21 @@ export class SetupStateService {
   readonly busy = signal(false)
   readonly error = signal<string | null>(null)
 
+  // --- managed mode: the profile the platform providers require (email, own keys) ---------------------
+  /** The email typed by the user, when their profile has none. */
+  readonly profileEmail = signal('')
+  /** The user has no email yet. Only ever set when the platform offers AI providers. */
+  readonly needsEmail = signal(false)
+  /**
+   * All the platform providers, when the user has no global key for any of them yet. Emptied once the keys are saved
+   * (the ones that fail to save stay in).
+   */
+  readonly userKeys = signal<UserKeyDraft[]>([])
+  readonly userKeysChecked = signal(false)
+  private userKeysCheck: Promise<void> | null = null
+  /** The current user as read by the check, kept for the email update (which must send the other fields back). */
+  private me: User | null = null
+
   // --- derived ------------------------------------------------------------------------------------
   readonly emailValid = computed(() => EMAIL_PATTERN.test(this.email().trim()))
   readonly enabledProviders = computed(() => this.providers().filter((p) => p.enabled))
@@ -124,6 +167,19 @@ export class SetupStateService {
     const enabled = this.enabledProviders()
     return enabled.length > 0 && enabled.every((p) => p.apiKey.trim().length >= MIN_KEY_LENGTH)
   })
+  readonly needsUserKeys = computed(() => this.userKeys().length > 0)
+  /** The loading page must ask for something before handing over. */
+  readonly needsProfile = computed(() => this.needsEmail() || this.needsUserKeys())
+  /** At least one key typed, and every typed key plausible: the ones left empty are simply not set. */
+  readonly userKeysValid = computed(() => {
+    const typed = this.userKeys().filter((k) => k.apiKey.trim().length > 0)
+    return typed.length > 0 && typed.every((k) => k.apiKey.trim().length >= MIN_KEY_LENGTH)
+  })
+  readonly profileEmailValid = computed(() => EMAIL_PATTERN.test(this.profileEmail().trim()))
+  /** Whatever is asked is filled in: a plausible email when needed, and the keys rule when keys are needed. */
+  readonly profileValid = computed(
+    () => (!this.needsEmail() || this.profileEmailValid()) && (!this.needsUserKeys() || this.userKeysValid())
+  )
   readonly folderValid = computed(() => this.folder().startsWith('/') || /^[A-Za-z]:[\\/]/.test(this.folder()))
   readonly stepIndex = computed(() => WIZARD_STEPS.indexOf(this.step()))
 
@@ -132,7 +188,7 @@ export class SetupStateService {
     const s = this.status()?.steps
     if (!s) return []
     return [
-      checklistLine('download', 'Downloading AgentOS', s.download),
+      checklistLine('download', downloadLabel(s.download.versions), s.download),
       checklistLine('java', 'Checking Java 25', s.java),
       checklistLine('agentos', 'Starting AgentOS', s.agentos),
       checklistLine('providers', 'Configuring your AI providers', s.providers),
@@ -147,7 +203,7 @@ export class SetupStateService {
     const s = this.status()?.steps
     if (!s) return []
     return [
-      checklistLine('download', 'Downloading AgentOS', s.download),
+      checklistLine('download', downloadLabel(s.download.versions), s.download),
       checklistLine('java', 'Checking Java 25', s.java),
       checklistLine('agentos', 'Starting AgentOS', s.agentos),
       // Only with an external Factory (FACTORY_URL): Coday does not run one otherwise.
@@ -162,6 +218,8 @@ export class SetupStateService {
   readonly loadingReady = computed(() => {
     const s = this.status()?.steps
     if (!s || s.agentos.state !== 'done') return false
+    // Managed mode: the user is not handed over before the check of their profile is done and settled.
+    if (this.status()?.mode === 'managed' && (!this.userKeysChecked() || this.needsProfile())) return false
     if (!s.factory) return true
     return s.factory.state === 'done' || s.factory.state === 'error' || this.factoryGraceElapsed()
   })
@@ -187,6 +245,7 @@ export class SetupStateService {
     if (this.mode() === 'loading' && status.steps.agentos.state === 'done' && !this.factoryGraceTimer) {
       this.factoryGraceTimer = setTimeout(() => this.factoryGraceElapsed.set(true), FACTORY_GRACE_MS)
     }
+    this.maybeCheckUserKeys()
   }
 
   // --- status -------------------------------------------------------------------------------------
@@ -231,12 +290,15 @@ export class SetupStateService {
     if (status.identity && !this.email()) this.email.set(status.identity.email)
     // Download and AgentOS startup are already running in the background: show them from the start.
     this.startPolling()
-    const wizard = preview ? preview === 'fresh' : status.mode === 'laptop' && status.setupEnabled && !status.setupDone
+    const wizard = preview
+      ? preview === 'fresh'
+      : status.mode === 'unmanaged' && status.setupEnabled && !status.setupDone
     if (!wizard) {
       // No wizard to show (setup done, or a mode without one: --auth, external AgentOS, existing install): only the
       // loading page, which hands over to the app once AgentOS is up.
       this.mode.set('loading')
       this.step.set('progress')
+      this.maybeCheckUserKeys()
       return
     }
     // A preview of the wizard always starts at the first step, whatever an earlier apply did.
@@ -397,6 +459,136 @@ export class SetupStateService {
       return
     }
     await this.submitFolderAndApply()
+  }
+
+  // --- profile: email and user keys (managed mode) ----------------------------------------------------
+
+  /** Once AgentOS is up, on the loading page of a managed install (no wizard, so providers are the platform's). */
+  private maybeCheckUserKeys(): void {
+    const status = this.status()
+    if (this.mode() !== 'loading' || this.preview() || status?.mode !== 'managed') return
+    if (status.steps.agentos.state !== 'done') return
+    void this.checkUserKeys()
+  }
+
+  /**
+   * Idempotent: looks once at what the platform requires from the user. Never blocks on a failure.
+   *
+   * A platform that offers AI providers (the ones of the platform are the only way to run an agent) requires an email
+   * on the profile, and at least one personal key for one of those providers. A platform with none requires nothing.
+   */
+  checkUserKeys(): Promise<void> {
+    this.userKeysCheck ??= this.loadProfileRequirements()
+    return this.userKeysCheck
+  }
+
+  private async loadProfileRequirements(): Promise<void> {
+    try {
+      const [platform, mine, me] = await Promise.all([
+        firstValueFrom(this.aiProviders.listAiProvider('none')),
+        firstValueFrom(this.aiProviders.listAiProvider('none', 'me')),
+        firstValueFrom(this.users.getMeUser()),
+      ])
+      if (platform.length === 0) return
+      this.me = me
+      this.needsEmail.set(!me.email?.trim())
+
+      // Names are compared case-insensitively, as AgentOS overlays the platform provider by name.
+      const owned = new Map(mine.map((p) => [p.name.toLowerCase(), p]))
+      const platformNames = new Set(platform.map((p) => p.name.toLowerCase()))
+      // One key for one platform provider is enough: the user can add the others from the AI providers page.
+      const hasKey = mine.some((p) => !!p.apiKey && platformNames.has(p.name.toLowerCase()))
+      if (!hasKey) {
+        this.userKeys.set(
+          platform.map((p) => ({
+            name: p.name,
+            apiType: p.apiType,
+            apiKey: '',
+            existingId: owned.get(p.name.toLowerCase())?.id,
+          }))
+        )
+      }
+    } catch (err) {
+      // The app stays usable: the email and the keys can still be set from the profile and AI providers pages.
+      console.warn('Could not check the profile requirements of the platform', err)
+    } finally {
+      this.userKeysChecked.set(true)
+    }
+  }
+
+  setProfileEmail(value: string): void {
+    this.profileEmail.set(value)
+  }
+
+  setUserKey(name: string, apiKey: string): void {
+    this.userKeys.update((list) => list.map((k) => (k.name === name ? { ...k, apiKey } : k)))
+  }
+
+  /**
+   * Saves what was asked: the email on the profile first (nothing else is tried if it fails), then the typed keys as
+   * user-global providers. The keys that fail stay in the list with a message.
+   */
+  async submitProfile(): Promise<void> {
+    if (!this.profileValid() || this.busy()) return
+    this.error.set(null)
+    this.busy.set(true)
+    try {
+      if (this.needsEmail() && !(await this.saveProfileEmail())) return
+      if (this.needsUserKeys()) await this.saveUserKeys()
+    } finally {
+      this.busy.set(false)
+    }
+  }
+
+  /** Puts the email on the profile, sending the other fields back unchanged. False (with the error set) on failure. */
+  private async saveProfileEmail(): Promise<boolean> {
+    try {
+      const me = await this.currentUser()
+      await firstValueFrom(
+        this.users.updateUser(me.id as string, { ...me, email: this.profileEmail().trim().toLowerCase() })
+      )
+      this.needsEmail.set(false)
+      return true
+    } catch (err) {
+      console.warn('Could not save the email of the user', err)
+      this.error.set(errorMessage(err, 'Could not save your email.'))
+      return false
+    }
+  }
+
+  private async saveUserKeys(): Promise<void> {
+    try {
+      const me = await this.currentUser()
+      const failed: UserKeyDraft[] = []
+      for (const draft of this.userKeys()) {
+        const apiKey = draft.apiKey.trim()
+        if (!apiKey) continue
+        const provider: AiProvider = { name: draft.name, apiType: draft.apiType, apiKey, userId: me.id }
+        try {
+          await firstValueFrom(
+            draft.existingId
+              ? this.aiProviders.updateAiProvider(draft.existingId, provider)
+              : this.aiProviders.createAiProvider(provider)
+          )
+        } catch (err) {
+          console.warn(`Could not save the key of ${draft.name}`, err)
+          failed.push(draft)
+        }
+      }
+      this.userKeys.set(failed)
+      if (failed.length > 0) {
+        this.error.set(`Could not save the key of ${failed.map((k) => k.name).join(', ')}. Check it and try again.`)
+      }
+    } catch (err) {
+      this.error.set(errorMessage(err, 'Could not save your keys.'))
+    }
+  }
+
+  /** The user read by the check, fetched only when the check did not keep it. */
+  private async currentUser(): Promise<User> {
+    this.me ??= await firstValueFrom(this.users.getMeUser())
+    if (!this.me.id) throw new Error('The current user has no id')
+    return this.me
   }
 
   private applyProviders(): ApplyProviderRequest[] {

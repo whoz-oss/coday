@@ -51,15 +51,21 @@ class ConfigPlanner(
         context: ProposalContext,
     ): PlanningResult {
         val refs = rawOperations.mapIndexed { index, op -> op.ref?.trim()?.takeIf { it.isNotEmpty() } ?: "op${index + 1}" }
-        val planRefs = PlanRefs(all = refs.toSet(), namespaces = refs.filterIndexed { index, _ -> isNamespaceCreate(rawOperations[index]) }.toSet())
+        val planRefs =
+            PlanRefs(
+                all = refs.toSet(),
+                namespaces = refs.filterIndexed { index, _ -> isCreateOf(rawOperations[index], ConfigKind.NAMESPACE) }.toSet(),
+                providers = refs.filterIndexed { index, _ -> isCreateOf(rawOperations[index], ConfigKind.AI_PROVIDER) }.toSet(),
+            )
         val errors = mutableListOf<String>()
         refs.groupBy { it }.filterValues { it.size > 1 }.keys.forEach { errors += "ref '$it': refs must be unique." }
         val planned =
-            rawOperations.mapIndexedNotNull { index, op ->
-                val ref = refs[index]
-                val opErrors = mutableListOf<String>()
-                planOperation(ref, op, planRefs, context, opErrors).also { errors += opErrors.map { "$ref: $it" } }
-            }
+            rawOperations
+                .mapIndexedNotNull { index, op ->
+                    val ref = refs[index]
+                    val opErrors = mutableListOf<String>()
+                    planOperation(ref, op, planRefs, context, opErrors).also { errors += opErrors.map { "$ref: $it" } }
+                }.let(::withModelAffects)
         val order = orderOperations(planned.withIndex().toList())
         return when {
             errors.isNotEmpty() -> PlanningResult.Invalid(errors)
@@ -171,8 +177,9 @@ class ConfigPlanner(
         val source = op.copyFrom?.let { copySource(kind, it, context, errors) }
         // A copy keeps its source's name unless the plan gives another one.
         val effective = source?.takeUnless { value.has("name") }?.let { value.deepCopy().put("name", it.name) } ?: value
-        val name = effective.path("name").asText("").trim()
-        if (name.isEmpty()) errors += "CREATE needs 'value.name'."
+        val name = ConfigJson.nameOf(kind, effective)
+        if (name.isEmpty()) errors += if (kind == ConfigKind.AI_MODEL) "CREATE needs 'value.apiModelName'." else "CREATE needs 'value.name'."
+        if (kind == ConfigKind.AI_MODEL) errors += aiProviderIdErrors(effective, refs, context)
         if (kind == ConfigKind.AGENT) {
             if (effective.path("modelName").asText("").isBlank()) {
                 errors += "creating an agent needs 'value.modelName': the model alias or name it runs on, e.g. BIG."
@@ -184,8 +191,13 @@ class ConfigPlanner(
                 .takeIf { it.isNotEmpty() }
                 ?.let { errors += SubAgentSelectorValidation.correction(it) }
         }
-        listOf("id", "namespaceId", "userId").filter { effective.has(it) }.forEach {
-            errors += "'value.$it' is not allowed: the scope goes in 'scope' and the id is assigned by the server."
+        listOf("id", "namespaceId", "userId").filter { effective.has(it) }.forEach { field ->
+            when {
+                // A null is harmless: the server resolves a model's scope from its provider anyway.
+                kind == ConfigKind.AI_MODEL && field != "id" ->
+                    if (!effective.get(field).isNull) errors += "'value.$field' is not allowed: $MODEL_SCOPE_FROM_PROVIDER"
+                else -> errors += "'value.$field' is not allowed: the scope goes in 'scope' and the id is assigned by the server."
+            }
         }
         val scope = scopeOf(kind, op.scope, refs, context, errors)
         secrets.forEach { slot ->
@@ -218,8 +230,63 @@ class ConfigPlanner(
                 deployTo = deployTo,
                 copyFrom = source,
                 dependsOn = dependsOn.toList().sorted(),
-                affects = affects(namespaced = it.namespaceId != null || it.namespaceRef != null, userId = it.userId),
+                affects =
+                    if (kind == ConfigKind.AI_MODEL) {
+                        modelAffects(effective, context)
+                    } else {
+                        affects(namespaced = it.namespaceId != null || it.namespaceRef != null, userId = it.userId)
+                    },
             )
+        }
+    }
+
+    /** What a `CREATE` of an AI model must say about its provider, which gives it its scope. */
+    private fun aiProviderIdErrors(
+        value: JsonNode,
+        refs: PlanRefs,
+        context: ProposalContext,
+    ): List<String> {
+        val node = value.get(AI_PROVIDER_ID_FIELD)
+        val ref = node?.let(ConfigJson::opRefOf)
+        val id = node?.takeIf { it.isTextual }?.textValue()?.let { runCatching { UUID.fromString(it.trim()) }.getOrNull() }
+        return when {
+            node == null || node.isNull ->
+                listOf("creating an AI model needs 'value.$AI_PROVIDER_ID_FIELD': the id of its AI provider, or {\"\$op\": \"<ref>\"} of a provider this plan creates.")
+            // Reported once, as an unknown reference, by the caller.
+            ref != null -> if (ref in refs.all && ref !in refs.providers) listOf("value.$AI_PROVIDER_ID_FIELD {\"\$op\": \"$ref\"} must name an operation of this plan that creates an AI_PROVIDER.") else emptyList()
+            id == null -> listOf("'value.$AI_PROVIDER_ID_FIELD' must be the id of an AI provider, or {\"\$op\": \"<ref>\"} of a provider this plan creates.")
+            configReadService.find(ConfigKind.AI_PROVIDER, id, context.callerId, context.namespaceId) == null ->
+                listOf("no ai_provider with id $id is visible to the user.")
+            else -> emptyList()
+        }
+    }
+
+    /** Who a new AI model concerns: whoever its provider concerns (an existing one is read, one created by the plan is corrected afterwards). */
+    private fun modelAffects(
+        value: JsonNode,
+        context: ProposalContext,
+    ): ConfigAffects {
+        val provider =
+            value
+                .get(AI_PROVIDER_ID_FIELD)
+                ?.takeIf { it.isTextual }
+                ?.textValue()
+                ?.let { runCatching { UUID.fromString(it.trim()) }.getOrNull() }
+                ?.let { configReadService.find(ConfigKind.AI_PROVIDER, it, context.callerId, context.namespaceId) }
+        return provider?.let { affects(namespaced = it.namespaceId != null, userId = it.userId) } ?: ConfigAffects.NAMESPACE_MEMBERS
+    }
+
+    /** A model created from a provider the same plan creates concerns the same people as that provider. */
+    private fun withModelAffects(planned: List<PlannedOperation>): List<PlannedOperation> {
+        val byRef = planned.associateBy { it.ref }
+        return planned.map { op ->
+            val providerRef =
+                op
+                    .takeIf { it.kind == ConfigKind.AI_MODEL && it.action == ConfigAction.CREATE }
+                    ?.value
+                    ?.get(AI_PROVIDER_ID_FIELD)
+                    ?.let(ConfigJson::opRefOf)
+            providerRef?.let { byRef[it] }?.let { op.copy(affects = it.affects) } ?: op
         }
     }
 
@@ -401,6 +468,11 @@ class ConfigPlanner(
                 if (scope != null && (namespaceNodeOf(scope) != null || !scope.userId.isNullOrBlank())) errors += "a namespace has no scope: omit 'scope'."
                 PlannedScope(namespaceId = null, userId = null)
             }
+            kind == ConfigKind.AI_MODEL -> {
+                val ownUser = scope?.userId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+                if (scope != null && (namespaceNodeOf(scope) != null || ownUser != null)) errors += "an AI model has no 'scope': $MODEL_SCOPE_FROM_PROVIDER"
+                PlannedScope(namespaceId = null, userId = null)
+            }
             scope == null -> {
                 errors +=
                     "CREATE needs 'scope': {\"namespaceId\": \"${ScopeInput.CURRENT_NAMESPACE}\", {\"\$op\": \"<ref>\"} of a namespace this plan creates or null for platform, " +
@@ -464,8 +536,10 @@ class ConfigPlanner(
         return if (raw.equals(ScopeInput.CURRENT_NAMESPACE, ignoreCase = true)) context.namespaceId else raw?.let { runCatching { UUID.fromString(it) }.getOrNull() }
     }
 
-    private fun isNamespaceCreate(op: OperationInput): Boolean =
-        enumOrNull<ConfigKind>(op.kind) == ConfigKind.NAMESPACE && enumOrNull<ConfigAction>(op.action) == ConfigAction.CREATE
+    private fun isCreateOf(
+        op: OperationInput,
+        kind: ConfigKind,
+    ): Boolean = enumOrNull<ConfigKind>(op.kind) == kind && enumOrNull<ConfigAction>(op.action) == ConfigAction.CREATE
 
     /**
      * Secrets may only target fields that hold one: the credential fields of an auth setting and the
@@ -541,18 +615,20 @@ class ConfigPlanner(
     private fun rank(op: PlannedOperation): Int =
         when (op.kind) {
             // A namespace is created first; its update comes last, e.g. to name a default agent the plan creates.
-            ConfigKind.NAMESPACE -> if (op.action == ConfigAction.CREATE) 0 else 9
+            ConfigKind.NAMESPACE -> if (op.action == ConfigAction.CREATE) 0 else 11
             ConfigKind.AUTH_SETTING -> 1
-            ConfigKind.INTEGRATION -> 2
-            ConfigKind.SKILL -> 3
+            ConfigKind.AI_PROVIDER -> 2
+            ConfigKind.AI_MODEL -> 3
+            ConfigKind.INTEGRATION -> 4
+            ConfigKind.SKILL -> 5
             ConfigKind.AGENT ->
                 when (op.action) {
-                    ConfigAction.CREATE -> 4
-                    ConfigAction.UPDATE -> 5
-                    ConfigAction.ENABLE, ConfigAction.DISABLE -> 7
-                    ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> 8
+                    ConfigAction.CREATE -> 6
+                    ConfigAction.UPDATE -> 7
+                    ConfigAction.ENABLE, ConfigAction.DISABLE -> 9
+                    ConfigAction.DEPLOY, ConfigAction.UNDEPLOY -> 10
                 }
-            ConfigKind.PROMPT -> 6
+            ConfigKind.PROMPT -> 8
         }
 
     private fun allowedActions(kind: ConfigKind): Set<ConfigAction> =
@@ -570,6 +646,9 @@ class ConfigPlanner(
                 ConfigKind.AUTH_SETTING -> setOf(ConfigAuthSettingTypes.TYPE_FIELD)
                 // The REST API keeps a namespace's externalId as created.
                 ConfigKind.NAMESPACE -> setOf("externalId")
+                // The REST API keeps a provider's apiType as created, and a model stays with its provider.
+                ConfigKind.AI_PROVIDER -> setOf("apiType")
+                ConfigKind.AI_MODEL -> setOf(AI_PROVIDER_ID_FIELD)
                 else -> emptySet()
             }
 
@@ -577,10 +656,14 @@ class ConfigPlanner(
         kind: ConfigKind,
         path: String,
     ): String =
-        if (kind == ConfigKind.PROMPT && path.startsWith("/agentConfigId")) {
-            " (a prompt is attached to an agent when it is created: create a new prompt instead)"
-        } else {
-            ""
+        when {
+            kind == ConfigKind.PROMPT && path.startsWith("/agentConfigId") ->
+                " (a prompt is attached to an agent when it is created: create a new prompt instead)"
+            kind == ConfigKind.AI_PROVIDER && path.startsWith("/apiType") ->
+                " (create a new AI provider with the other API type instead)"
+            kind == ConfigKind.AI_MODEL && path.startsWith("/$AI_PROVIDER_ID_FIELD") ->
+                " (a model stays with its AI provider: create a new model instead)"
+            else -> ""
         }
 
     /**
@@ -638,6 +721,12 @@ class ConfigPlanner(
 
         /** The one agent field keyed by name, so the one an id silently breaks. */
         private const val SUB_AGENTS_FIELD = "subAgents"
+
+        /** The field of an AI model that names its provider, from which the model takes its scope. */
+        private const val AI_PROVIDER_ID_FIELD = "aiProviderId"
+
+        private const val MODEL_SCOPE_FROM_PROVIDER =
+            "its scope comes from its AI provider, set 'value.aiProviderId' to a provider in the scope you want."
 
         private const val DEFAULT_SUMMARY = "Configuration change"
 

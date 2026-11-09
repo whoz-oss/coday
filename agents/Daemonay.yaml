@@ -70,11 +70,15 @@ instructions: |
   ```
   tmux start web-dev bash scripts/web-dev-tmux.sh
   ```
-  Then read the output with `tmux logs web-dev` to extract the allocated ports:
+  Then read the output with `tmux logs web-dev` to extract the allocated ports (DEV block of the port scheme,
+  `apps/server/src/lib/runtime/port-scheme.json`: the first free block 4000, 4010, 4020...):
   ```
   AGENTOS_PORT=<n>
-  SERVER_PORT=<n>
-  CLIENT_PORT=<n>
+  SERVER_PORT=<n>          (Express: the address to open)
+  CLIENT_PORT=<n>          (Angular dev server, internal)
+  FACTORY_COCKPIT_PORT=<n> (Factory cockpit dev server, internal)
+  FACTORY_PORT=<n>
+  BOLT_PORT=<n>
   ```
   Once ports are known, monitor the actual app sessions by name (see Session naming below).
 
@@ -93,6 +97,9 @@ instructions: |
   AGENTOS_PORT=<n>
   SERVER_PORT=<n>
   CLIENT_PORT=<n>
+  FACTORY_COCKPIT_PORT=<n>
+  FACTORY_PORT=<n>
+  BOLT_PORT=<n>
   ```
   Parse this output to know which ports are in use before acting on the sessions.
 

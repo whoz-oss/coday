@@ -101,10 +101,13 @@ parameters:
         - client_<branch>_<port>    Angular dev server
       Where <branch> is the first 12 chars of the last git branch segment.
 
-      Output includes a machine-readable block with allocated ports:
+      Output includes a machine-readable block with allocated ports (DEV block of the port scheme):
         AGENTOS_PORT=<n>
-        SERVER_PORT=<n>
-        CLIENT_PORT=<n>
+        SERVER_PORT=<n>          Express, the address to open
+        CLIENT_PORT=<n>          Angular dev server, internal
+        FACTORY_COCKPIT_PORT=<n> Factory cockpit dev server, internal
+        FACTORY_PORT=<n>
+        BOLT_PORT=<n>
 
       Ready signals to look for in tmux logs:
         AgentOS  : "Started AgentOSApplication"

@@ -33,7 +33,7 @@ export interface AgentosSpecInput extends CommonInput {
   port: number
   boltPort: number
   expressPort: number
-  /** Bootstrap admin (laptop profile). */
+  /** Bootstrap admin (unmanaged profile). */
   identityEmail?: string
   secrets?: RuntimeSecrets
 }
@@ -55,14 +55,14 @@ export function buildAgentosSpec(input: AgentosSpecInput): ServiceSpec {
     ...baseEnv,
     // The callback must point at the actual Express port; an explicit env value wins (reverse proxy).
     AGENTOS_OAUTH_REDIRECT_URI: baseEnv.AGENTOS_OAUTH_REDIRECT_URI ?? `http://localhost:${expressPort}/oauth/callback`,
-    // Bolt port of the embedded Neo4j (7788 by default, next free one otherwise; 7688 is the dev default),
-    // SDN must connect to the same one.
+    // Bolt port of the embedded Neo4j: always passed explicitly (base+7 of the block of the stack, see port-scheme.json;
+    // the application-embedded-neo4j.yml default, 7688, is never relied on). SDN must connect to the same one.
     AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT: boltPortValue,
     SPRING_NEO4J_URI: baseEnv.SPRING_NEO4J_URI ?? `bolt://localhost:${boltPortValue}`,
   }
   const args = ['-jar', agentosJarPath(configDir, input.version), `--server.port=${port}`]
 
-  if (profile === 'laptop') {
+  if (profile === 'unmanaged') {
     // `auth` mode trusts identity headers: nothing but loopback may reach AgentOS.
     args.push(`--server.address=${LOOPBACK}`)
     env.AGENTOS_SECURITY_MODE = 'auth'
@@ -101,7 +101,7 @@ export function buildFactorySpec(input: FactorySpecInput): ServiceSpec {
     `--server.port=${port}`,
   ]
 
-  if (profile === 'laptop') {
+  if (profile === 'unmanaged') {
     // Factory reads FACTORY_SECURITY_MODE, NOT AGENTOS_SECURITY_MODE.
     env.FACTORY_SECURITY_MODE = 'auth'
     env.FACTORY_BIND_HOST = LOOPBACK

@@ -42,6 +42,8 @@ import { CaseStateService } from '../../services/case-state.service'
 import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
+import { FileSuggestion } from '../composer-autocomplete/file-mention'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
@@ -77,6 +79,7 @@ const GIT_INTEGRATION_TYPE = 'GIT'
     IconButtonComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
+    FileAutocompleteComponent,
     ComposerAttachmentsComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
@@ -105,6 +108,7 @@ export class CaseHomeComponent implements OnInit {
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
+  private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected namespaceId = this.route.snapshot.queryParams['ns'] as string
   protected readonly parentCaseId = signal<string | null>(this.route.snapshot.queryParams['parentCase'] ?? null)
@@ -181,6 +185,8 @@ export class CaseHomeComponent implements OnInit {
   constructor() {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
     this.autocomplete.init(this.namespaceId)
+    // No case yet: `#` lists the namespace exchange only.
+    this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: null }))
 
     // A namespace switch drops the answer still pending for the previous one. A sub-case shares its
     // root's worktree, so its composer asks nothing.
@@ -243,7 +249,13 @@ export class CaseHomeComponent implements OnInit {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
+    const consumed = this.autocomplete.onKeydown(
+      event,
+      this.promptAutocompleteRef,
+      this.agentAutocompleteRef,
+      undefined,
+      this.fileAutocompleteRef
+    )
     if (consumed) return
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
@@ -261,6 +273,14 @@ export class CaseHomeComponent implements OnInit {
 
   protected closeSlashAutocomplete(): void {
     this.autocomplete.slashSuggestions.set([])
+  }
+
+  protected onFileSelected(file: FileSuggestion): void {
+    this.autocomplete.onFileSelected(file, this.fileAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected closeFileAutocomplete(): void {
+    this.autocomplete.closeFileSuggestions()
   }
 
   protected closeAtAutocomplete(): void {

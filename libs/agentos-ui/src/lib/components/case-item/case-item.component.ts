@@ -14,6 +14,8 @@ export interface CaseListItem extends EntityListItem {
   canDelete: boolean
   /** Whether the caller may rename this case. Gates the rename menu action. */
   canRename: boolean
+  /** Server-generated summary of the case: matched by the search, shown as tooltip and result subtitle. */
+  summary?: string
 }
 
 /**
@@ -42,6 +44,7 @@ export class CaseItemComponent {
       // Renaming goes through PUT /api/cases/{id}, gated server-side on Case:WRITE. That is a
       // permission of its own, which today resolves to the same direct ADMIN relation as delete.
       canRename: c.role === CaseRoleEnum.ADMIN,
+      summary: c.summary?.trim() || undefined,
     }
   }
 }
