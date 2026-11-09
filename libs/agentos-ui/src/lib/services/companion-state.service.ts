@@ -294,7 +294,9 @@ export class CompanionStateService {
         return this.resolveRootAsync(c.parentCaseId, true, depth + 1)
       }),
       map((target): ResolvedRootTarget => ({ ...target, isSubCase: isSubCase || target.isSubCase })),
-      catchError((): Observable<ResolvedRootTarget> => of({ rootCaseId: caseId, rootTitle: caseId.slice(0, 8), isSubCase }))
+      catchError(
+        (): Observable<ResolvedRootTarget> => of({ rootCaseId: caseId, rootTitle: caseId.slice(0, 8), isSubCase })
+      )
     )
   }
 

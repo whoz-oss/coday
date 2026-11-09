@@ -24,8 +24,13 @@ class MockEventSource {
 }
 
 const delegation: DelegationPresentation = {
-  delegationId: 'd-1', toolRequestId: 't-1', subCaseId: 'c-1', agentName: 'Research',
-  task: 'Find facts', resumed: false, status: 'WORKING',
+  delegationId: 'd-1',
+  toolRequestId: 't-1',
+  subCaseId: 'c-1',
+  agentName: 'Research',
+  task: 'Find facts',
+  resumed: false,
+  status: 'WORKING',
 }
 
 describe('DelegationCardComponent', () => {
@@ -59,7 +64,7 @@ describe('DelegationCardComponent', () => {
     return (fixture.nativeElement as HTMLElement).querySelector('.delegation-card__last-event')
   }
   function toggle(): void {
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.delegation-card__toggle')!.click()
+    ;(fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.delegation-card__toggle')!.click()
     fixture.detectChanges()
   }
 
@@ -81,7 +86,8 @@ describe('DelegationCardComponent', () => {
   })
 
   it.each(['WAITING_USER', 'SUCCESS', 'ERROR', 'TIMEOUT', 'KILLED'] as const)(
-    'disconnects automatically on %s', (status) => {
+    'disconnects automatically on %s',
+    (status) => {
       update()
       const source = MockEventSource.instances[0]!
       update({ status })
@@ -155,9 +161,14 @@ describe('DelegationCardComponent', () => {
   })
 
   it('shows the parent result question without needing a stream', () => {
-    update({ status: 'WAITING_USER', result: {
-      delegationId: 'd-1', toolRequestId: 't-1', pendingQuestion: 'Which project?',
-    } })
+    update({
+      status: 'WAITING_USER',
+      result: {
+        delegationId: 'd-1',
+        toolRequestId: 't-1',
+        pendingQuestion: 'Which project?',
+      },
+    })
     expect(line()?.textContent?.trim()).toBe('Question: Which project?')
     expect(MockEventSource.instances).toHaveLength(0)
   })

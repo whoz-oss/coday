@@ -3,8 +3,13 @@ import { describeDelegationActivity } from './delegation-activity.models'
 import { DelegationPresentation, DelegationStatus } from './delegation.models'
 
 const delegation: DelegationPresentation = {
-  delegationId: 'd-1', toolRequestId: 't-1', subCaseId: 'c-1', agentName: 'Research',
-  task: 'Find facts', resumed: false, status: 'WORKING',
+  delegationId: 'd-1',
+  toolRequestId: 't-1',
+  subCaseId: 'c-1',
+  agentName: 'Research',
+  task: 'Find facts',
+  resumed: false,
+  status: 'WORKING',
 }
 
 function event(type: CaseEvent['type'], fields: Record<string, unknown> = {}): CaseEvent {
@@ -34,23 +39,46 @@ describe('describeDelegationActivity', () => {
   })
 
   it('describes nested delegations', () => {
-    expect(summary([event('SubCaseStartedEvent', {
-      delegationId: 'nested', toolRequestId: 'nested-tool', agentName: 'Search', subCaseId: 'nested-case',
-    })])?.label).toBe('Delegating to Search')
+    expect(
+      summary([
+        event('SubCaseStartedEvent', {
+          delegationId: 'nested',
+          toolRequestId: 'nested-tool',
+          agentName: 'Search',
+          subCaseId: 'nested-case',
+        }),
+      ])?.label
+    ).toBe('Delegating to Search')
   })
 
   it('prefers the parent pending question while waiting', () => {
-    expect(describeDelegationActivity({ ...delegation, status: 'WAITING_USER', result: {
-      delegationId: 'd-1', toolRequestId: 't-1', pendingQuestion: 'Which branch?',
-    } }, [event('QuestionEvent', { question: 'Older question' })])).toEqual({
-      label: 'Question: Which branch?', waitingForUser: true,
+    expect(
+      describeDelegationActivity(
+        {
+          ...delegation,
+          status: 'WAITING_USER',
+          result: {
+            delegationId: 'd-1',
+            toolRequestId: 't-1',
+            pendingQuestion: 'Which branch?',
+          },
+        },
+        [event('QuestionEvent', { question: 'Older question' })]
+      )
+    ).toEqual({
+      label: 'Question: Which branch?',
+      waitingForUser: true,
     })
     expect(summary([], 'WAITING_USER')?.label).toBe('Waiting for answer')
   })
 
   it('preserves unanswered questions across status, finished and diagnostic events', () => {
-    const events = [event('QuestionEvent', { id: 'q-1', question: 'Which branch?' }),
-      event('AgentFinishedEvent'), event('CaseStatusEvent'), event('WarnEvent')]
+    const events = [
+      event('QuestionEvent', { id: 'q-1', question: 'Which branch?' }),
+      event('AgentFinishedEvent'),
+      event('CaseStatusEvent'),
+      event('WarnEvent'),
+    ]
     for (const status of ['WORKING', 'WAITING_USER'] as const) {
       expect(summary(events, status)).toEqual({ label: 'Question: Which branch?', waitingForUser: true })
     }
@@ -59,18 +87,29 @@ describe('describeDelegationActivity', () => {
   })
 
   it('keeps confirmations pending until their matching resolution', () => {
-    const events = [event('PendingConfirmationEvent', {
-      id: 'p-1', toolName: 'FILES__readFile', inputJson: '{"filePath":"README.md"}',
-    }), event('CaseStatusEvent')]
+    const events = [
+      event('PendingConfirmationEvent', {
+        id: 'p-1',
+        toolName: 'FILES__readFile',
+        inputJson: '{"filePath":"README.md"}',
+      }),
+      event('CaseStatusEvent'),
+    ]
     expect(summary(events)).toEqual({ label: 'Confirmation needed: Reading README.md', waitingForUser: true })
-    expect(summary([...events, event('ConfirmationResolvedEvent', { pendingEventId: 'other' })])?.waitingForUser).toBe(true)
-    expect(summary([...events, event('ConfirmationResolvedEvent', { pendingEventId: 'p-1' })])?.waitingForUser).toBe(false)
+    expect(summary([...events, event('ConfirmationResolvedEvent', { pendingEventId: 'other' })])?.waitingForUser).toBe(
+      true
+    )
+    expect(summary([...events, event('ConfirmationResolvedEvent', { pendingEventId: 'p-1' })])?.waitingForUser).toBe(
+      false
+    )
   })
 
   it('shows the newest unresolved interaction', () => {
-    expect(summary([
-      event('QuestionEvent', { question: 'Which branch?' }),
-      event('PendingConfirmationEvent', { toolName: 'GIT__git_push' }),
-    ])?.label).toBe('Confirmation needed: Pushing the branch')
+    expect(
+      summary([
+        event('QuestionEvent', { question: 'Which branch?' }),
+        event('PendingConfirmationEvent', { toolName: 'GIT__git_push' }),
+      ])?.label
+    ).toBe('Confirmation needed: Pushing the branch')
   })
 })
