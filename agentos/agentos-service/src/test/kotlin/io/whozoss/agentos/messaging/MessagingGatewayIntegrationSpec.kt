@@ -358,6 +358,9 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             val topic = conversations.open(MessagingPlatform.TELEGRAM, bot.accountId, "$chatId/42", ada.id)
             val ofTheTopic = topic.caseId.shouldNotBeNull()
             ofTheTopic shouldNotBe ofTheChat
+            // Once the runs are over: an event written into a case while its run writes there can deadlock.
+            eventually(10.seconds) { caseService.getAllActiveCases().none { it.isRunning() } shouldBe true }
+            delivery.redirect(ofTheTopic, topic.id)
             caseEventService.create(
                 MessageEvent(
                     namespaceId = namespace.id,
