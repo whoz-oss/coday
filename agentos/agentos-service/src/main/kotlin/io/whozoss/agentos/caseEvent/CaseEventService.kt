@@ -21,4 +21,10 @@ interface CaseEventService : EntityService<CaseEvent, UUID> {
      * Cases with no messages are absent from the result.
      */
     fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant>
+
+    /**
+     * Return the name of the first agent selected for each of the given [caseIds], as a map of
+     * caseId → agentName. Cases with no agent selection are absent.
+     */
+    fun findOriginAgentNames(caseIds: Collection<UUID>): Map<UUID, String>
 }

@@ -16,6 +16,10 @@ export interface Case {
   lastMessageAt?: string
   modified?: string
   namespaceId: string
+  /**
+   * Name of the agent first selected for this case (origin agent), derived from the first agent selection in the case event log. Null when no agent has been selected yet. Read-only, ignored when sent on create or update.
+   */
+  originAgentName?: string
   parentCaseId?: string
   /**
    * Timestamp of the caller\'s last read. Null = never read (unread).

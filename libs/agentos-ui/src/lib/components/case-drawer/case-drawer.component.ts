@@ -6,6 +6,7 @@ import {
   Component,
   computed,
   ElementRef,
+  inject,
   input,
   output,
   signal,
@@ -17,6 +18,18 @@ import { NgTemplateOutlet } from '@angular/common'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { Case, CaseRoleEnum, CaseStatusEventStatusEnum } from '@whoz-oss/agentos-api-client'
 import { CaseItemComponent, CaseListItem } from '../case-item/case-item.component'
+import { CaseListPreferencesService } from '../../services/case-list-preferences.service'
+import { filterCasesByQuery, groupCasesByAgent } from './case-agent-grouping.utils'
+
+/** A group of the "group by agent" display, ready to render. */
+export interface CaseAgentGroupView {
+  key: string
+  label: string
+  /** Number of cases shown in the group (after the search filter, if any). */
+  count: number
+  expanded: boolean
+  nodes: CaseTreeItem[]
+}
 
 /**
  * A case list item extended with a recursive children list (parent/child cases).
@@ -60,6 +73,13 @@ export class CaseDrawerComponent {
   readonly compact = input<boolean>(false)
   /** External filter query (from the sidebar search input). Overrides internal search when provided. */
   readonly filterQuery = input<string>('')
+  /** Namespace of the list: scopes the persisted collapsed groups. */
+  readonly namespaceId = input<string | null>(null)
+  /**
+   * Names of the agents available in the namespace, or null while unknown (not loaded, failed, empty). Only read by
+   * the "group by agent" display, see [groupCasesByAgent].
+   */
+  readonly knownAgentNames = input<string[] | null>(null)
 
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
@@ -69,6 +89,38 @@ export class CaseDrawerComponent {
   readonly renameRequested = output<{ id: string; title: string }>()
 
   @ViewChild('caseRowTpl', { static: true }) caseRowTpl!: TemplateRef<{ node: CaseTreeItem; depth: number }>
+
+  private readonly listPreferences = inject(CaseListPreferencesService)
+
+  /**
+   * Whether the expanded list is grouped by agent: the persisted preference, ignored by the compact rail (which keeps
+   * its own rendering).
+   */
+  protected readonly isGroupedByAgent = computed(() => this.listPreferences.groupByAgent() && !this.compact())
+
+  /**
+   * Root cases grouped under their origin agent, groups sorted by activity ("Others" last). A search keeps only the
+   * matching cases, drops the emptied groups and shows the remaining ones expanded, without touching the persisted
+   * collapsed state. Empty while the display is off, so the default list does no extra work.
+   */
+  protected readonly agentGroups = computed((): CaseAgentGroupView[] => {
+    if (!this.isGroupedByAgent()) {
+      return []
+    }
+    const collapsed = this.listPreferences.collapsedGroups(this.namespaceId())
+    const query = this.activeQuery()
+    const groups = groupCasesByAgent(this.cases(), { knownAgentNames: this.knownAgentNames() })
+    return groups
+      .map((group) => ({ group, shown: filterCasesByQuery(group.cases, query) }))
+      .filter(({ shown }) => shown.length > 0)
+      .map(({ group, shown }) => ({
+        key: group.key,
+        label: group.label,
+        count: shown.length,
+        expanded: query.length > 0 || !collapsed.has(group.key),
+        nodes: shown.map(toTreeNode),
+      }))
+  })
 
   /** Current search query, driven by ds-entity-list's searchChanged output. */
   protected readonly searchQuery = signal('')
@@ -270,6 +322,11 @@ export class CaseDrawerComponent {
     })
   }
 
+  /** Collapses or expands an agent group; persisted per namespace. */
+  protected toggleAgentGroup(groupKey: string): void {
+    this.listPreferences.toggleGroupCollapsed(this.namespaceId(), groupKey)
+  }
+
   /** Called from ShellSidebarComponent’s search input via the filterQuery input. */
   protected onSearchChanged(query: string): void {
     this.searchQuery.set(query)
@@ -432,6 +489,20 @@ function getInitials(name: string): string {
 }
 
 /**
+ * Map a Case to a childless tree node. Reuses the shared mapping so each node carries name, favorite and
+ * canDelete; the case ID is stored in description so search (and ds-entity-list's filter) also match on it.
+ */
+function toTreeNode(c: Case): CaseTreeItem {
+  return {
+    ...CaseItemComponent.toListItem(c),
+    description: c.id ?? '',
+    status: c.status ?? 'IDLE',
+    canCreateSubCase: !c.parentCaseId && c.role === CaseRoleEnum.ADMIN,
+    children: [],
+  }
+}
+
+/**
  * Build a tree of CaseTreeItem from a flat Case list, sorted newest first at every level.
  * Uses `modified` (falling back to `created`) so the list reflects recent activity.
  */
@@ -439,19 +510,9 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
   const allIds = new Set(cases.map((c) => c.id ?? ''))
   const modifiedAt = new Map(cases.map((c) => [c.id ?? '', c.modified ?? c.created ?? '']))
 
-  // Reuse the shared mapping so each node carries name, favorite and canDelete; store the
-  // case ID in description so search (and ds-entity-list's filter) also match on it.
-  const toNode = (c: Case): CaseTreeItem => ({
-    ...CaseItemComponent.toListItem(c),
-    description: c.id ?? '',
-    status: c.status ?? 'IDLE',
-    canCreateSubCase: !c.parentCaseId && c.role === CaseRoleEnum.ADMIN,
-    children: [],
-  })
-
   const nodeMap = new Map<string, CaseTreeItem>()
   for (const c of cases) {
-    nodeMap.set(c.id ?? '', toNode(c))
+    nodeMap.set(c.id ?? '', toTreeNode(c))
   }
 
   const roots: CaseTreeItem[] = []

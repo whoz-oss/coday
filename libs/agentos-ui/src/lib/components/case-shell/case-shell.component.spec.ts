@@ -13,6 +13,8 @@ import { EMPTY, finalize, of, Subject, throwError } from 'rxjs'
 import { CaseShellComponent } from './case-shell.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { AgentStateService } from '../../services/agent-state.service'
+import { CaseListPreferencesService } from '../../services/case-list-preferences.service'
 import { THEME_PORT } from '../../services/theme.service'
 
 describe('CaseShellComponent', () => {
@@ -36,6 +38,7 @@ describe('CaseShellComponent', () => {
   let caseListUpdates$: Subject<'connected' | 'updated'>
   let caseListUpdatesMock: { connect: jest.Mock }
   let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
+  let agentStateMock: { listEffective: jest.Mock }
 
   function makeComponent(
     queryParams: Record<string, string> = {},
@@ -72,6 +75,8 @@ describe('CaseShellComponent', () => {
       theme: jest.fn().mockReturnValue('light'),
       setTheme: jest.fn(),
     }
+    agentStateMock = { listEffective: jest.fn().mockReturnValue(of([{ name: 'Dev' }])) }
+    localStorage.clear()
 
     TestBed.configureTestingModule({
       providers: [
@@ -92,6 +97,7 @@ describe('CaseShellComponent', () => {
         { provide: NamespaceControllerService, useValue: namespaceControllerMock },
         { provide: NamespaceCaseListUpdateSseService, useValue: caseListUpdatesMock },
         { provide: THEME_PORT, useValue: themeMock },
+        { provide: AgentStateService, useValue: agentStateMock },
         { provide: ElementRef, useValue: { nativeElement: document.createElement('div') } },
       ],
     })
@@ -222,6 +228,43 @@ describe('CaseShellComponent', () => {
       themeMock.setTheme.mockClear()
       component['onMenuThemeVariantChanged']('rainbow')
       expect(themeMock.setTheme).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('agents known to the "group by agent" display', () => {
+    it('does not request the agents while the list is not grouped by agent', () => {
+      const component = makeComponent({ ns: NS_ID })
+
+      expect(agentStateMock.listEffective).not.toHaveBeenCalled()
+      expect(component['knownAgentNames']()).toBeNull()
+    })
+
+    it('requests the agents of the active namespace once the display is on, and exposes their names', () => {
+      const component = makeComponent({ ns: NS_ID })
+      TestBed.inject(CaseListPreferencesService).setGroupByAgent(true)
+      TestBed.flushEffects()
+
+      expect(agentStateMock.listEffective).toHaveBeenCalledWith(NS_ID)
+      expect(component['knownAgentNames']()).toEqual(['Dev'])
+    })
+
+    it('stays unknown (null) when the agents cannot be loaded, instead of failing the shell', () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const component = makeComponent({ ns: NS_ID })
+      agentStateMock.listEffective.mockReturnValue(throwError(() => new Error('403')))
+      TestBed.inject(CaseListPreferencesService).setGroupByAgent(true)
+      TestBed.flushEffects()
+
+      expect(component['knownAgentNames']()).toBeNull()
+    })
+
+    it('stays unknown (null) when the namespace answers with no agent at all', () => {
+      const component = makeComponent({ ns: NS_ID })
+      agentStateMock.listEffective.mockReturnValue(of([]))
+      TestBed.inject(CaseListPreferencesService).setGroupByAgent(true)
+      TestBed.flushEffects()
+
+      expect(component['knownAgentNames']()).toBeNull()
     })
   })
 

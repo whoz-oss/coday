@@ -26,6 +26,9 @@ import java.util.UUID
  * @property modified Server-set last-modification timestamp. Present in responses only.
  * @property lastMessageAt Timestamp of the most recent message in this case. Present in responses only.
  *   Null for cases that have never received a message. Used as the primary sort key in conversation lists.
+ * @property originAgentName Name of the agent first selected for this case (the first `AgentSelectedEvent`
+ *   of its event log), or null when no agent has been selected yet. Read-only, present in responses only and
+ *   ignored when sent on create/update. A later agent selection (e.g. another `@mention`) never changes it.
  * @property removed Soft-delete flag. False by default.
  * @property favorite Per-user favorite flag. Populated by all read endpoints except `listByUser` and
  *   `listByUserExternalId` where the target user may differ from the caller. Defaults to false on create.
@@ -93,6 +96,18 @@ data class CaseDto(
      * List endpoints sort by this field descending (most recently active first).
      */
     val lastMessageAt: Instant? = null,
+    /**
+     * Name of the agent first selected for this case, derived from the first `AgentSelectedEvent` of its
+     * event log. Null when no agent has been selected yet. Never changed by a later selection.
+     * Present in responses of the read endpoints that also populate [lastMessageAt]; ignored on create/update.
+     */
+    @field:Schema(
+        description =
+            "Name of the agent first selected for this case (origin agent), derived from the first agent " +
+                "selection in the case event log. Null when no agent has been selected yet. " +
+                "Read-only, ignored when sent on create or update.",
+    )
+    val originAgentName: String? = null,
     val removed: Boolean = false,
     /**
      * Per-user favorite flag. Populated by all read endpoints (list, getById, getByIds, update);

@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   ElementRef,
+  inject,
   input,
   output,
   signal,
@@ -13,6 +14,7 @@ import { Case, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { CaseDrawerComponent } from '../../case-drawer/case-drawer.component'
 import { ShellUserMenuComponent } from '../shell-user-menu/shell-user-menu.component'
 import { AvatarComponent, BlueprintDirective } from '@whoz-oss/design-system'
+import { CaseListPreferencesService } from '../../../services/case-list-preferences.service'
 
 /**
  * ShellSidebarComponent — desktop sidebar.
@@ -40,6 +42,14 @@ import { AvatarComponent, BlueprintDirective } from '@whoz-oss/design-system'
 export class ShellSidebarComponent {
   protected brandHovered = false
 
+  private readonly listPreferences = inject(CaseListPreferencesService)
+
+  /** Whether the case list is grouped by agent (persisted preference). */
+  protected readonly groupByAgent = this.listPreferences.groupByAgent
+
+  protected onGroupByAgentChange(event: Event): void {
+    this.listPreferences.setGroupByAgent((event.target as HTMLInputElement).checked)
+  }
   private static readonly COMPACT_WIDTH = 64
 
   /** Whether the case drawer is in compact (icons-only) mode. */
@@ -149,6 +159,10 @@ export class ShellSidebarComponent {
   // Cases
   readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly cases = input.required<Case[]>()
+  /** Active namespace: scopes the persisted collapsed groups of the "group by agent" display. */
+  readonly namespaceId = input<string | null>(null)
+  /** Names of the agents of the namespace, null while unknown (see CaseDrawerComponent). */
+  readonly knownAgentNames = input<string[] | null>(null)
   readonly activeCaseId = input.required<string | null>()
 
   // User menu

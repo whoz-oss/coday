@@ -145,26 +145,24 @@ class CaseController(
 
     /**
      * Map domain [Case] to [CaseDto]s, enriching each with [userId]'s direct
-     * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
+     * relation (`role`), favorite flag, [CaseDto.readAt], and the event-derived fields
+     * ([CaseDto.lastMessageAt], [CaseDto.originAgentName], see [withEventDerivedFields]).
      *
-     * Two batch queries resolve the whole set (no per-case round-trips):
+     * Batch queries resolve the whole set (no per-case round-trips):
      * - [FavoriteService.listDirectRelations] for role/favorite/readAt metadata
-     * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
-     *   used by the frontend to sort and group conversations.
+     * - [CaseEventService] lookups for the event-derived fields
      *
      * Cases the user has no direct edge on get `role = null`, `favorite = false`,
      * and `readAt = null` (e.g. the namespace-admin fast path in [listByParent]).
      */
     private fun List<Case>.withCallerMeta(userId: String): List<CaseDto> {
         val starred = favoriteService.listDirectRelations(userId, EntityType.CASE)
-        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(this.map { it.id })
-        return this.map {
-            val meta = starred[it.metadata.id.toString()]
-            toDto(it).copy(
+        return zip(withEventDerivedFields()) { case, dto ->
+            val meta = starred[case.metadata.id.toString()]
+            dto.copy(
                 favorite = meta?.favorite ?: false,
                 role = meta?.relation?.name,
                 readAt = meta?.readAt,
-                lastMessageAt = lastMessageTimestamps[it.id],
             )
         }
     }
@@ -218,8 +216,8 @@ class CaseController(
 
         // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
         // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
-        // lastMessageAt is intentionally omitted: a newly created case has no messages yet,
-        // so the field is always null and the query would be a wasted round-trip.
+        // lastMessageAt and originAgentName are intentionally omitted: a newly created case has no
+        // event yet, so both are always null and the queries would be wasted round-trips.
         val dto = toDto(saved)
         return if (granted) dto.copy(role = PermissionRelation.ADMIN.name) else dto
     }
@@ -285,7 +283,7 @@ class CaseController(
         val cases = caseService.findConcerningUser(userId)
         // Enrich with caller's meta only when the caller is the target user;
         // otherwise the caller has no direct relation on these cases so favorite would always be false.
-        return if (caller.id == userId) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
+        return if (caller.id == userId) cases.withCallerMeta(caller.id.toString()) else cases.withEventDerivedFields()
     }
 
     @GetMapping("/by-user/external/{externalId}")
@@ -300,7 +298,7 @@ class CaseController(
         val cases = caseService.findConcerningUser(user.id)
         // Enrich with caller's meta only when the caller is the target user;
         // otherwise the caller has no direct relation on these cases so favorite would always be false.
-        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
+        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withEventDerivedFields()
     }
 
     @PostMapping("/by-user/in-namespace", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -318,7 +316,7 @@ class CaseController(
         val cases = caseService.findConcerningUserInNamespace(user.id, namespace.id)
         // Enrich with caller's meta only when the caller is the target user;
         // otherwise the caller has no direct relation on these cases so favorite would always be false.
-        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
+        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withEventDerivedFields()
     }
 
     @PostMapping("/{caseId}/messages")
@@ -446,14 +444,24 @@ class CaseController(
     }
 
     /**
-     * Enrich a list of [Case]s with [CaseDto.lastMessageAt] only — no role/favorite.
+     * Map [Case]s to [CaseDto]s enriched with the fields derived from the case event log, which is their
+     * single source of truth (nothing is stored on the Case itself):
+     * - [CaseDto.lastMessageAt]: timestamp of the most recent message
+     * - [CaseDto.originAgentName]: agent of the first agent selection
      *
-     * Used by the "list by target user" endpoints where role and favorite are caller-relative
-     * and would be misleading, but [CaseDto.lastMessageAt] is objective and always useful.
+     * One batch lookup per field resolves the whole set. No role/favorite: used as such by the
+     * "list by target user" endpoints, where those are caller-relative and would be misleading.
      */
-    private fun List<Case>.withLastMessageAt(): List<CaseDto> {
-        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(map { it.id })
-        return map { toDto(it).copy(lastMessageAt = lastMessageTimestamps[it.id]) }
+    private fun List<Case>.withEventDerivedFields(): List<CaseDto> {
+        val caseIds = map { it.id }
+        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(caseIds)
+        val originAgentNames = caseEventService.findOriginAgentNames(caseIds)
+        return map {
+            toDto(it).copy(
+                lastMessageAt = lastMessageTimestamps[it.id],
+                originAgentName = originAgentNames[it.id],
+            )
+        }
     }
 
     /**
@@ -485,8 +493,8 @@ internal fun toDto(entity: Case) =
         summary = entity.summary,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
-        // lastMessageAt is not stored on Case — it is resolved at list time by
-        // withCallerMeta via CaseEventService.findLastMessageTimestamps and injected
-        // via .copy() after this mapping. Single-case endpoints leave it null.
+        // lastMessageAt and originAgentName are not stored on Case — they are resolved at read time by
+        // withEventDerivedFields via CaseEventService and injected via .copy() after this mapping.
+        // The create endpoint leaves them null.
         removed = entity.metadata.removed,
     )

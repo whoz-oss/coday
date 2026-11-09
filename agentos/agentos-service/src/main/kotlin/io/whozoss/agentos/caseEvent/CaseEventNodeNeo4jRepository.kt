@@ -49,4 +49,27 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
     fun findLastMessageTimestamps(
         @Param("caseIds") caseIds: List<String>,
     ): List<Map<String, Any>>
+
+    /**
+     * Return the `agentName` of the FIRST non-removed [AgentSelectedEventNode] (oldest timestamp, then id)
+     * for each of the given case ids.
+     *
+     * One row per case with at least one agent selection; other cases are absent. Only the
+     * `AgentSelectedEvent` label is matched (served by the `agent_selected_event_case_id` index), so full
+     * event histories are never loaded. Returned as a single `collect(...)` column of maps holding
+     * `caseId` and `originAgentName` (both Strings), like [findLastMessageTimestamps].
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""UNWIND $caseIds AS cid
+            MATCH (selected:AgentSelectedEvent {caseId: cid})
+            WHERE selected.removed IS NULL OR selected.removed = false
+            WITH cid, selected ORDER BY selected.timestamp ASC, selected.id ASC
+            WITH cid, head(collect(selected.agentName)) AS originAgentName
+            RETURN collect({caseId: cid, originAgentName: originAgentName})
+            """,
+    )
+    fun findOriginAgentNames(
+        @Param("caseIds") caseIds: List<String>,
+    ): List<Map<String, Any>>
 }

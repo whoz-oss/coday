@@ -175,7 +175,51 @@
 } @else {
   <!-- ===== EXPANDED LIST ===== -->
   <div class="case-drawer-list">
-    @if (displayItems().length === 0) {
+    @if (isGroupedByAgent()) {
+      <!-- Grouped by origin agent: root cases only, one collapsible section per agent -->
+      @for (group of agentGroups(); track group.key) {
+        <section class="case-agent-group" [attr.data-agent-group]="group.key">
+          <button
+            type="button"
+            class="case-agent-group__header"
+            [attr.aria-expanded]="group.expanded"
+            [attr.aria-controls]="group.expanded ? 'case-agent-group-' + $index : null"
+            (click)="toggleAgentGroup(group.key)"
+          >
+            <svg
+              class="case-agent-group__chevron"
+              [class.case-agent-group__chevron--expanded]="group.expanded"
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M3 1.5l4 3.5-4 3.5"
+                stroke="currentColor"
+                stroke-width="1.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="case-agent-group__label">{{ group.label }}</span>
+            <span class="case-agent-group__count">{{ group.count }}</span>
+          </button>
+          @if (group.expanded) {
+            <div class="case-agent-group__rows" [id]="'case-agent-group-' + $index">
+              @for (node of group.nodes; track node.id) {
+                <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: node, depth: 0 }" />
+              }
+            </div>
+          }
+        </section>
+      } @empty {
+        <p class="case-drawer-list__empty">
+          {{ isSearchActive() ? 'No case matches your filter.' : 'No cases yet. Start one with the + button above.' }}
+        </p>
+      }
+    } @else if (displayItems().length === 0) {
       <p class="case-drawer-list__empty">No cases yet. Start one with the + button above.</p>
     } @else {
       @for (item of displayItems(); track item.id) {

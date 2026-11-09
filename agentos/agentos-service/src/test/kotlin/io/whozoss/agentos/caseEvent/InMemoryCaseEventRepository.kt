@@ -1,6 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.entity.InMemoryEntityRepository
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import java.time.Instant
@@ -30,4 +31,16 @@ class InMemoryCaseEventRepository : CaseEventRepository {
             .filter { it.caseId in caseIds }
             .groupBy { it.caseId }
             .mapValues { (_, events) -> events.maxOf { it.timestamp } }
+
+    /**
+     * Returns the agent name of the oldest [AgentSelectedEvent] per case id.
+     * Cases with no agent selection are absent from the result.
+     */
+    override fun findOriginAgentNames(caseIds: Collection<UUID>): Map<UUID, String> =
+        delegate
+            .findAll()
+            .filterIsInstance<AgentSelectedEvent>()
+            .filter { it.caseId in caseIds }
+            .groupBy { it.caseId }
+            .mapValues { (_, events) -> events.minWith(compareBy({ it.timestamp }, { it.id })).agentName }
 }

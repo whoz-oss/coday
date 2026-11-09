@@ -21,4 +21,12 @@ interface CaseEventRepository : EntityRepository<CaseEvent, UUID> {
      * case's own creation timestamp for such cases.
      */
     fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant>
+
+    /**
+     * Return the agent name of the FIRST (oldest) [io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent]
+     * for each of the given [caseIds], as a map of caseId → agentName. Later selections are ignored.
+     *
+     * Cases with no agent selection are absent from the result. Removed events are not considered.
+     */
+    fun findOriginAgentNames(caseIds: Collection<UUID>): Map<UUID, String>
 }

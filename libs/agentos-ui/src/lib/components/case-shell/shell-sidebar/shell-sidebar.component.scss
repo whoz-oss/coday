@@ -151,6 +151,33 @@
     flex-shrink: 0;
   }
 
+  // Optional grouping of the case list by origin agent (labelled switch under the filter row)
+  &__group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    align-self: flex-start;
+    color: var(--color-neutral-600);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  &__group-toggle-input {
+    flex-shrink: 0;
+    margin: 0;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
+  &__group-toggle:hover {
+    color: var(--color-text);
+  }
+
   // Search input inside top bar
   &__search {
     width: 100%;

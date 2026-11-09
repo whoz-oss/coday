@@ -41,6 +41,63 @@
   }
 }
 
+// ── Agent groups ("group by agent" display) ────────────────────────────────────────
+
+.case-agent-group {
+  &__header {
+    @include ds.button-reset;
+
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: calc(100% - 16px);
+    margin: 8px 8px 2px;
+    padding: 4px 9px;
+    color: var(--color-neutral-700);
+    cursor: pointer;
+    border-radius: var(--radius-sm, 0);
+    text-align: left;
+
+    &:hover {
+      background: color-mix(in srgb, var(--color-text) 6%, transparent);
+      color: var(--color-text);
+    }
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
+  &__chevron {
+    flex: none;
+    transition: transform 0.15s ease;
+
+    &--expanded {
+      transform: rotate(90deg);
+    }
+  }
+
+  &__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-family: var(--font-heading);
+    font-weight: 600;
+  }
+
+  &__count {
+    flex: none;
+    font-size: 11px;
+    font-family: var(--font-heading);
+    color: var(--color-neutral-500);
+  }
+}
+
 // ── Compact / icons mode ─────────────────────────────────────────────
 
 .case-drawer-compact {
