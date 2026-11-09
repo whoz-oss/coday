@@ -112,9 +112,12 @@ describe('runningAfter', () => {
     expect(runningAfter(statusEvent(CaseStatusEventStatusEnum.RUNNING))).toBe(true)
   })
 
+  it('reads a PENDING status as running, because the gate holds a turn it will admit', () => {
+    expect(runningAfter(statusEvent(CaseStatusEventStatusEnum.PENDING))).toBe(true)
+  })
+
   it.each([
     CaseStatusEventStatusEnum.CREATED,
-    CaseStatusEventStatusEnum.PENDING,
     CaseStatusEventStatusEnum.IDLE,
     CaseStatusEventStatusEnum.KILLED,
     CaseStatusEventStatusEnum.ERROR,

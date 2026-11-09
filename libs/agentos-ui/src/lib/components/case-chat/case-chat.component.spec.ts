@@ -146,6 +146,39 @@ describe('CaseChatComponent — submit with attachments', () => {
     }
   })
 
+  it('keeps the composer closed while the launch gate holds the turn', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      // Submitting locks the composer optimistically; on a gated case the first frame back is
+      // PENDING, for as long as the workspace takes to prepare. It must not cancel that lock:
+      // a second message would be folded into the queued turn and run as two consecutive user
+      // messages.
+      ref.instance['isRunning'].set(true)
+      emit('CaseStatusEvent', 'pending-1', { status: 'PENDING' })
+
+      expect(ref.instance['isRunning']()).toBe(true)
+      ref.instance['inputValue'].set('a second message')
+      expect(ref.instance['canSend']).toBe(false)
+
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      expect(ref.instance['isRunning']()).toBe(true)
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
   it('keeps the case running, and the composer closed, in the gap between two agents', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })
