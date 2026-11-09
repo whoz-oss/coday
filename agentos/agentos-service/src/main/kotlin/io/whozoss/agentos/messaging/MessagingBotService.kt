@@ -1,14 +1,19 @@
 package io.whozoss.agentos.messaging
 
 import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigDeletedEvent
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceDeletedEvent
 import io.whozoss.agentos.sdk.api.messaging.MessagingPlatform
 import mu.KLogging
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.event.TransactionalEventListener
 import java.util.UUID
 
 /**
@@ -18,6 +23,9 @@ import java.util.UUID
  * The token is checked with the platform before anything is saved ([MessagingDriver.probe]): a refused token,
  * or a bot already serving someone else, saves nothing. Rights are the caller's business: the controller checks
  * them, the bot manager checks them for the creator of a bot.
+ *
+ * An agent or a namespace deleted takes its bots with it: they would otherwise run on out of sight, holding
+ * their tokens and their accounts.
  */
 @Service
 class MessagingBotService(
@@ -154,6 +162,19 @@ class MessagingBotService(
         val unlinked = identities.unlinkAll(bot.platform, bot.accountId)
         eventPublisher.publishEvent(MessagingBotChanged.Removed(bot.id))
         logger.info { "[Messaging] ${bot.platform} bot @${bot.username} removed, $unlinked link(s) with it" }
+    }
+
+    // After the deletion commits, in a transaction of its own: one joined there would never commit.
+    @TransactionalEventListener(fallbackExecution = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    fun onAgentDeleted(deleted: AgentConfigDeletedEvent) {
+        repository.findByAgentId(deleted.agentConfigId).forEach(::remove)
+    }
+
+    @TransactionalEventListener(fallbackExecution = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    fun onNamespaceDeleted(deleted: NamespaceDeletedEvent) {
+        repository.findAgentBotsByNamespace(deleted.namespaceId).forEach(::remove)
     }
 
     /**

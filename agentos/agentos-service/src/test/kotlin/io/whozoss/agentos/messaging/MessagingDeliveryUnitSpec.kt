@@ -209,6 +209,20 @@ class MessagingDeliveryUnitSpec :
             delivery.stop()
         }
 
+        "a redirect for an action that fails leaves the case answering where it did" {
+            val adapter = FakeMessagingAdapter()
+            val chat = conversation()
+            val delivery = delivery(adapter, chat)
+
+            delivery.receive(userMessage(conversationId = null))
+            runCatching { delivery.redirectFor(caseId, chat.id) { error("refused") } }
+            delivery.receive(agentMessage("the answer, in the UI"))
+
+            delay(300)
+            adapter.sent.shouldBeEmpty()
+            delivery.stop()
+        }
+
         "a redirect sends what the case says next to the chat" {
             val adapter = FakeMessagingAdapter()
             val chat = conversation()

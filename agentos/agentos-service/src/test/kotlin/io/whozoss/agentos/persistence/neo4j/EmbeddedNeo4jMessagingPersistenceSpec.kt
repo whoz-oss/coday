@@ -3,7 +3,6 @@ package io.whozoss.agentos.persistence.neo4j
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
-import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.messaging.LinkedAccount
 import io.whozoss.agentos.messaging.MessagingBot
@@ -92,7 +91,7 @@ class EmbeddedNeo4jMessagingPersistenceSpec : StringSpec() {
             botRepository.findAll().single().url shouldBe "https://t.me/bot_4242"
         }
 
-        "a bot that cannot be read is left out of the list, and the others are listed" {
+        "a bot that cannot be read is left out of every read, and the others are listed" {
             val unreadable = botRepository.save(bot("4242"))
             val readable = botRepository.save(bot("5151"))
             driver.session().use {
@@ -100,6 +99,9 @@ class EmbeddedNeo4jMessagingPersistenceSpec : StringSpec() {
             }
 
             botRepository.findAll().map { it.id } shouldBe listOf(readable.id)
+            botRepository.findByRole(MessagingBotRole.AGENT).map { it.id } shouldBe listOf(readable.id)
+            botRepository.findByAgentId(unreadable.agentId!!) shouldBe emptyList()
+            botRepository.findById(unreadable.id) shouldBe null
         }
 
         "a bot serves one agent, and an agent has one bot per platform and namespace" {
@@ -143,7 +145,6 @@ class EmbeddedNeo4jMessagingPersistenceSpec : StringSpec() {
 
             identityRepository.findByIdentityKey(identity.identityKey) shouldBe identity
             conversationRepository.findByConversationKey(conversation.conversationKey) shouldBe conversation
-            conversationRepository.findByCaseId(caseId) shouldContainExactly listOf(conversation)
         }
 
         "an account cannot be linked twice at once: the constraint holds on the active identities" {

@@ -1,7 +1,9 @@
 package io.whozoss.agentos.messaging
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.launch
@@ -16,6 +18,9 @@ import java.util.concurrent.ConcurrentHashMap
  * life of [scope]: a lane per chat seen since startup, a few bytes each.
  *
  * Work that throws is logged and the lane goes on with the next item.
+ *
+ * The work runs on [LANE_DISPATCHER], whatever the dispatcher of [scope]: it blocks (a transcription waiting for
+ * its slot, a send waiting out a rate limit), and chats must not take the threads the rest of AgentOS blocks on.
  */
 class SerialLanes<K : Any>(
     private val scope: CoroutineScope,
@@ -35,7 +40,7 @@ class SerialLanes<K : Any>(
 
     private fun open(key: K): SendChannel<suspend () -> Unit> =
         Channel<suspend () -> Unit>(capacity).also { channel ->
-            scope.launch {
+            scope.launch(LANE_DISPATCHER) {
                 for (work in channel) {
                     try {
                         work()
@@ -50,5 +55,13 @@ class SerialLanes<K : Any>(
 
     companion object : KLogging() {
         const val DEFAULT_CAPACITY = 100
+
+        /**
+         * The threads of every lane, together: a view of [Dispatchers.IO] of its own, which neither takes more
+         * than [LANE_THREADS] threads nor counts against those of [Dispatchers.IO]. The long polls of the bots stay
+         * on their own scopes: one per bot, waiting, they would fill it.
+         */
+        private const val LANE_THREADS = 32
+        val LANE_DISPATCHER: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(LANE_THREADS)
     }
 }

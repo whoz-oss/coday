@@ -71,12 +71,6 @@ class MessagingSchemaInitializer(
             "CREATE CONSTRAINT messaging_conversation_active_key_unique IF NOT EXISTS " +
                 "FOR (c:ActiveMessagingConversation) REQUIRE c.conversationKey IS UNIQUE",
         )
-        // Serves MessagingConversationNodeNeo4jRepository.findActiveByCaseId, read for every agent reply to deliver.
-        ensure(
-            "messaging_conversation_case_lookup",
-            "CREATE INDEX messaging_conversation_case_lookup IF NOT EXISTS " +
-                "FOR (c:ActiveMessagingConversation) ON (c.caseId)",
-        )
         ensure(
             "messaging_conversation_user_lookup",
             "CREATE INDEX messaging_conversation_user_lookup IF NOT EXISTS " +

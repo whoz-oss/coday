@@ -113,6 +113,27 @@ class MessagingDelivery(
         moveTurn(caseId, TurnOrigin(conversationId, authorId = null))
     }
 
+    /**
+     * Sends what [caseId] says to [conversationId] from before [action], which may make the case answer at once;
+     * when [action] fails, the case answers where it did before.
+     */
+    fun <T> redirectFor(
+        caseId: UUID,
+        conversationId: UUID,
+        action: () -> T,
+    ): T {
+        val previous = turnOrigins[caseId]
+        val redirected = TurnOrigin(conversationId, authorId = null)
+        moveTurn(caseId, redirected)
+        return try {
+            action()
+        } catch (e: Exception) {
+            // Unless the case has moved on since.
+            if (turnOrigins[caseId] == redirected) moveTurn(caseId, previous)
+            throw e
+        }
+    }
+
     private fun trackOrigin(message: MessageEvent) {
         moveTurn(message.caseId, message.sessionContext?.messagingConversationId()?.let { TurnOrigin(it, authorId = message.actor.id) })
     }

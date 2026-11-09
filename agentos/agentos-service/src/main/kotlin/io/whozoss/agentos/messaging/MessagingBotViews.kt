@@ -14,11 +14,15 @@ class MessagingBotViews(
     private val registry: MessagingBotRegistry,
     private val identities: MessagingIdentityService,
 ) {
-    /** [bot] as [userId] sees it: whether they have linked an account through it. [agentName] when already read. */
+    /**
+     * [bot] as [userId] sees it: whether they have linked an account through it. [agentName] and [linked] when
+     * already known, as for a list.
+     */
     fun toDto(
         bot: MessagingBot,
         userId: UUID,
         agentName: String? = null,
+        linked: Boolean? = null,
     ): MessagingBotDto =
         MessagingBotDto(
             id = bot.id,
@@ -32,7 +36,7 @@ class MessagingBotViews(
             managed = bot.managed,
             status = status(bot),
             url = bot.url,
-            linked = identities.findByUser(userId, bot.platform, bot.accountId) != null,
+            linked = linked ?: (identities.findByUser(userId, bot.platform, bot.accountId) != null),
             createdAt = bot.metadata.created,
         )
 

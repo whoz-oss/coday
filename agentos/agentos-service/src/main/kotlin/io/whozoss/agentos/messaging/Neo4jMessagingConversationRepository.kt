@@ -40,10 +40,6 @@ open class Neo4jMessagingConversationRepository(
     open override fun findByConversationKey(conversationKey: String): MessagingConversation? =
         neo4jRepository.findActiveByConversationKey(conversationKey)?.toDomain()
 
-    @Transactional(readOnly = true)
-    open override fun findByCaseId(caseId: UUID): List<MessagingConversation> =
-        neo4jRepository.findActiveByCaseId(caseId.toString()).map { it.toDomain() }
-
     @Transactional
     open override fun delete(id: UUID): Boolean =
         neo4jRepository

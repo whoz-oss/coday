@@ -44,7 +44,11 @@ class SlackSocket(
     private val current = AtomicReference<WebSocket?>()
     private val failures = AtomicInteger()
 
+    /** True while a connection is being opened: a disconnect and the close that follows it ask for one each. */
+    private val connecting = AtomicBoolean(false)
+
     fun start() {
+        connecting.set(true)
         scope.launch { connect() }
     }
 
@@ -56,6 +60,14 @@ class SlackSocket(
 
     /** Opens a connection, retrying until Slack gives one, the token is refused, or the socket stops. */
     private suspend fun connect() {
+        try {
+            openConnection()
+        } finally {
+            connecting.set(false)
+        }
+    }
+
+    private suspend fun openConnection() {
         while (!stopped.get()) {
             try {
                 val url = web.openConnection(appToken)
@@ -90,7 +102,7 @@ class SlackSocket(
     }
 
     private fun reconnect(afterMillis: Long) {
-        if (!stopped.get()) {
+        if (!stopped.get() && connecting.compareAndSet(false, true)) {
             scope.launch {
                 delay(afterMillis)
                 connect()

@@ -40,7 +40,7 @@ public URL. Slack has no managed bots: there is no bot manager for Slack.
 
 Either way the tokens are stored encrypted (the field encryption of credentials) and never returned by the API.
 From the same section, an admin turns the bot off and on, or removes it, which also removes the links of its
-users.
+users. Deleting the agent, or its namespace, removes its bot the same way.
 
 **Telegram serves one receiver per bot**: two instances running the same bot take turns failing, shown as *Used
 elsewhere*. A bot that had a webhook loses it when AgentOS starts it, as polling libraries do: Telegram refuses polling
@@ -80,7 +80,7 @@ its own commands: there, the bot's commands start with `!` (`!new`, `!cases`...)
 
 | Command | Effect |
 |---|---|
-| `/new` | The next message starts a new case. |
+| `/new` | The next message starts a new case; `/new <message>` starts it with that message. |
 | `/cases` | Lists the user's recent cases of the bot's namespace; choosing one moves the chat to it. |
 | `/case` | Shows the current case, with its link. |
 | `/help` | Lists the commands. |
@@ -88,7 +88,8 @@ its own commands: there, the bot's commands start with `!` (`!new`, `!cases`...)
 A linked user who may not use the agent (not deployed to them, disabled) is told so, and nothing else happens.
 
 **Answers.** What the agent says in reply to a message from the chat goes back to the chat: its messages, its
-questions (choices as buttons, an authorization as a link button), warnings and errors, and a typing indicator
+questions (choices as buttons, an authorization as a link button; a reply typed while a question that takes
+words waits answers it, as the question panel of the UI does), warnings and errors, and a typing indicator
 while the case runs (Telegram only: Slack shows none for a bot). Tool calls, thinking and sub-cases stay in the UI. The rule is the one of a conversation: an
 answer goes where the question came from, so a message typed in the UI is answered in the UI only.
 

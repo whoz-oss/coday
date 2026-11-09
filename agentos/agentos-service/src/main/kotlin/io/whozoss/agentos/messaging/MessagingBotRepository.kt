@@ -3,7 +3,8 @@ package io.whozoss.agentos.messaging
 import java.util.UUID
 
 /**
- * Persistence for [MessagingBot]. A bot is removed for good: its token must not linger.
+ * Persistence for [MessagingBot]. A bot is removed for good: its token must not linger. A bot that cannot be read
+ * (a token encrypted with another key) is left out of every read, so that the others still run and list.
  */
 interface MessagingBotRepository {
     fun save(bot: MessagingBot): MessagingBot

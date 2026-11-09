@@ -10,6 +10,4 @@ interface MessagingConversationRepository : EntityRepository<MessagingConversati
     /** The active conversation of a chat, or null before the chat's first message. */
     fun findByConversationKey(conversationKey: String): MessagingConversation?
 
-    /** The active conversations whose next message goes to [caseId]. */
-    fun findByCaseId(caseId: UUID): List<MessagingConversation>
 }

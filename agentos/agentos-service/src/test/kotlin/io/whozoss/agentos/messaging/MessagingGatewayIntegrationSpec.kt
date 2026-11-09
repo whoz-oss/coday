@@ -229,7 +229,7 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             cases.findConcerningUser(ada.id) shouldHaveSize 0
         }
 
-        "a link token links the account that sends it, once" {
+        "a link token links the account that sends it, once: sent again, it says the account is linked" {
             val token = identities.issueLinkToken(ada.id, bot.bot).token
 
             text("/start $token")
@@ -237,13 +237,25 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
 
             identities.findByAccount(MessagingPlatform.TELEGRAM, bot.accountId, chatId)?.userId shouldBe ada.id
             bot.textsTo(chatId)[0] shouldContain "linked to AgentOS as **Ada Lovelace**. Write to talk to **Helper**"
-            bot.textsTo(chatId)[1] shouldContain "expired or was already used"
+            bot.textsTo(chatId)[1] shouldBe "This account is linked to AgentOS as **Ada Lovelace**."
         }
 
         "a link message links the account that sends it, where a link cannot carry the token" {
             text(MessagingCommand.linkMessage(identities.issueLinkToken(ada.id, bot.bot).token))
 
             identities.findByAccount(MessagingPlatform.TELEGRAM, bot.accountId, chatId)?.userId shouldBe ada.id
+        }
+
+        "/new with a message starts the new case with it" {
+            linkAda()
+            text("first")
+            val first = conversation().caseId.shouldNotBeNull()
+
+            text("/new second topic")
+
+            val second = conversation().caseId.shouldNotBeNull()
+            second shouldNotBe first
+            messagesOf(second).first().content shouldBe listOf(MessageContent.Text("@Helper second topic"))
         }
 
         "a command may start with an exclamation mark, for the platforms that keep the slash" {
@@ -309,6 +321,21 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             bot.textsTo(chatId).single() shouldContain "I cannot hand your message to **Sales Ops**"
             conversation().caseId shouldBe null
             cases.findConcerningUser(ada.id) shouldHaveSize 0
+        }
+
+        "an agent that cannot be named is still reached when a new case would get it anyway" {
+            agentConfigService.update(agent.copy(name = "Sales Ops"))
+            agentIn(namespace, "Sales Assistant")
+            namespaceService.update(namespace.copy(defaultAgentName = "Sales Ops"))
+            linkAda()
+
+            text("hello")
+
+            val caseId = conversation().caseId.shouldNotBeNull()
+            messagesOf(caseId).first().content shouldBe listOf(MessageContent.Text("hello"))
+            eventually(5.seconds) {
+                caseEventService.findByParent(caseId).filterIsInstance<AgentSelectedEvent>().first().agentName shouldBe "Sales Ops"
+            }
         }
 
         "a prompt command runs on the first message of a case, with the bot's agent" {
@@ -424,6 +451,33 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
 
             bot.textsTo("2002").single() shouldContain "You cannot talk to **Helper**"
             cases.findConcerningUser(bob.id) shouldHaveSize 0
+        }
+
+        "a reply typed in the chat answers the case's open question, as the question panel does" {
+            linkAda()
+            // Saved without a runtime, as in the test below: the runtime the answer needs is rebuilt with the question.
+            val case = cases.save(Case(namespaceId = namespace.id))
+            permissionService.grantPermission(ada.id.toString(), EntityType.CASE, case.id.toString(), PermissionRelation.ADMIN)
+            conversations.update(conversation()) { it.copy(caseId = case.id) }
+            val question =
+                caseEventService.create(
+                    QuestionEvent(
+                        namespaceId = namespace.id,
+                        caseId = case.id,
+                        agentId = agent.id,
+                        agentName = agent.name,
+                        question = "Which one?",
+                        options = listOf("A", "B"),
+                        questionType = QuestionType.OPEN_CHOICE,
+                    ),
+                )
+
+            text("neither, use C")
+
+            answersOf(case.id).single().let {
+                it.questionId shouldBe question.id
+                it.answer shouldBe "neither, use C"
+            }
         }
 
         "a click on an option answers the question as the user, once" {

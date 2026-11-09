@@ -20,8 +20,6 @@ class MessagingConversationService(
 ) {
     fun findById(id: UUID): MessagingConversation? = repository.findById(id)
 
-    /** The active conversations whose next message goes to [caseId]. */
-    fun findByCase(caseId: UUID): List<MessagingConversation> = repository.findByCaseId(caseId)
 
     /**
      * The conversation of the chat [chatId], created for [userId] on first use. A chat whose account was linked

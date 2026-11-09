@@ -196,6 +196,24 @@ class MessagingBotsIntegrationSpec : StringSpec() {
             identities.findByUser(ada.id) shouldHaveSize 0
         }
 
+        "deleting an agent, or its namespace, removes its bot and the links made through it" {
+            val bot = attachHelper()
+            linkAdaTo(bot)
+
+            agentConfigService.delete(helper.id)
+
+            repository.findById(bot.id) shouldBe null
+            registry.status(bot.id) shouldBe null
+            identities.findByUser(ada.id) shouldHaveSize 0
+
+            helper = agentIn(namespace, "Helper again")
+            val again = attachHelper()
+
+            namespaceService.delete(namespace.id)
+
+            repository.findById(again.id) shouldBe null
+        }
+
         "the bots of the database start with the application" {
             // Saved without the service: no change is published, as for the bots found at startup.
             val bot =

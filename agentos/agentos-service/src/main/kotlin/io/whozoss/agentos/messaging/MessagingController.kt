@@ -54,10 +54,16 @@ class MessagingController(
     @Operation(summary = "List the bots of the agents the current user can talk to")
     override fun listMessagingBots(): List<MessagingBotDto> {
         val userId = users.getCurrentUser().id
+        // The user's links, read once for the whole list.
+        val linkedBots = identities.findByUser(userId).map { it.platform to it.accountId }.toSet()
         return bots
             .findAllAgentBots()
             .filter { it.enabled }
-            .mapNotNull { bot -> bots.usableAgent(userId, bot.ref())?.let { agent -> views.toDto(bot, userId, agent.name) } }
+            .mapNotNull { bot ->
+                bots.usableAgent(userId, bot.ref())?.let { agent ->
+                    views.toDto(bot, userId, agent.name, linked = (bot.platform to bot.accountId) in linkedBots)
+                }
+            }
     }
 
     @PostMapping("/messaging/bots/{botId}/link")

@@ -7,6 +7,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.AgentMention
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.caseFlow.SessionContextKeys
+import io.whozoss.agentos.configAgent.ConfigAgentIntegration
 import io.whozoss.agentos.configAgent.ConfigChangeConflictException
 import io.whozoss.agentos.configAgent.ConfigChangeRecipientException
 import io.whozoss.agentos.context.UserSessionContextResolver
@@ -27,9 +28,12 @@ import io.whozoss.agentos.sdk.api.configChange.ConfigChangeState
 import io.whozoss.agentos.sdk.api.configChange.ConfigChangeViewDto
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -158,7 +162,7 @@ class MessagingGateway(
                     takeIn(chat, inbound.messageId) { current ->
                         when (command?.name) {
                             MessagingCommand.START, MessagingCommand.HELP -> reply(current, helpText(current))
-                            MessagingCommand.NEW -> startNewCase(current)
+                            MessagingCommand.NEW -> startNewCase(current, command.argument)
                             MessagingCommand.CASE -> showCurrentCase(current)
                             MessagingCommand.CASES -> listCases(current)
                             else -> post(current, inbound.text)
@@ -282,26 +286,43 @@ class MessagingGateway(
                 directChatId = inbound.chatId,
                 displayName = inbound.sender.displayName,
             )
+        val linked = identities.link(token, adapter.bot, account)
+        // A link message delivered again, after a restart, finds its token used: the account it linked stays so.
+        val already = if (linked == null) identities.findByAccount(account.platform, account.accountId, account.externalUserId) else null
         val text =
-            identities.link(token, adapter.bot, account)?.let { identity ->
-                val name = userService.findById(identity.userId)?.displayName() ?: identity.userId.toString()
-                val agent = agentOf(adapter)?.name?.let { "**$it**" } ?: "your agent"
-                "Your account is now linked to AgentOS as **$name**. Write to talk to $agent. " +
-                    "${adapter.commandPrefix}help lists the commands."
-            } ?: "This link has expired or was already used. Ask for a new one in your AgentOS profile${profileSuffix()}."
+            when {
+                linked != null -> {
+                    val agent = agentOf(adapter)?.name?.let { "**$it**" } ?: "your agent"
+                    "Your account is now linked to AgentOS as **${nameOf(linked.userId)}**. Write to talk to $agent. " +
+                        "${adapter.commandPrefix}help lists the commands."
+                }
+                already != null -> "This account is linked to AgentOS as **${nameOf(already.userId)}**."
+                else -> "This link has expired or was already used. Ask for a new one in your AgentOS profile${profileSuffix()}."
+            }
         adapter.send(inbound.chatId, OutboundMessage(text))
     }
 
-    /** Posts [text] to the chat's case, starting one when the chat has none it can still write to. */
+    /**
+     * Posts [text] to the chat's case, starting one when the chat has none it can still write to. A reply to the
+     * case's open question answers it, as the question panel of the UI does.
+     */
     private fun post(
         chat: Chat,
         text: String,
     ) {
         val current = currentCase(chat)
         val open = current?.takeIf { !it.status.isTerminal() }
-        val message = addressed(chat, open?.caseId, text)
+        val events = open?.let { caseEventService.findByParent(it.caseId) }.orEmpty()
+        val question = openQuestion(chat, events)
+        val message = if (question != null) text else addressed(chat, events, text)
         when {
             message == null -> reply(chat, unreachableText(chat))
+            open != null && question != null -> {
+                // An answer carries no session context: the reply follows the chat it was given in.
+                delivery.redirect(open.caseId, chat.conversation.id)
+                addMessage(chat, open, message, answerToEventId = question.id)
+                chat.adapter.showTyping(chat.chatId)
+            }
             open != null -> {
                 addMessage(chat, open, message)
                 chat.adapter.showTyping(chat.chatId)
@@ -335,20 +356,42 @@ class MessagingGateway(
 
     /**
      * [text], addressed to the bot's agent when the case would otherwise go to another one: a message naming an
-     * agent goes to that one, and a case whose last agent is the bot's needs no name (the case keeps its agent).
-     * Null when the bot's agent cannot be named ([mentionOf]): the message would go to another agent.
+     * agent goes to that one, a case whose last agent is the bot's needs no name (the case keeps its agent), nor
+     * does a case with no agent yet when the bot's agent is the one it would get ([CaseService.defaultAgentName]).
+     * Null when the bot's agent would need a name it cannot be given ([mentionOf]): the message would go to
+     * another agent.
      */
     private fun addressed(
         chat: Chat,
-        caseId: UUID?,
+        events: List<CaseEvent>,
         text: String,
     ): String? {
         // A selection names its agent: its id is derived from that name, not the agent's own.
-        val lastAgentName =
-            caseId?.let { caseEventService.findByParent(it).filterIsInstance<AgentSelectedEvent>().lastOrNull()?.agentName }
+        val lastAgentName = events.filterIsInstance<AgentSelectedEvent>().lastOrNull()?.agentName
         return when {
             AgentMention.extractName(text) != null || lastAgentName.equals(chat.agent.name, ignoreCase = true) -> text
+            lastAgentName == null && caseService.defaultAgentName(chat.namespaceId, chat.user.id) == chat.agent.name -> text
             else -> mentionOf(chat)?.let { "@$it $text" }
+        }
+    }
+
+    /**
+     * The question a reply typed in the chat answers: the case's last question, when nothing the user wrote came
+     * after it, it is still open, takes words ([QuestionType.FREE_TEXT] or [QuestionType.OPEN_CHOICE]) and is
+     * for this user. Not the question of a configuration plan: its card answers it.
+     */
+    private fun openQuestion(
+        chat: Chat,
+        events: List<CaseEvent>,
+    ): QuestionEvent? {
+        val question =
+            events.lastOrNull { it is QuestionEvent || (it is MessageEvent && it.actor.role == ActorRole.USER) } as? QuestionEvent
+                ?: return null
+        return question.takeIf { asked ->
+            asked.questionType in TYPED_ANSWERS &&
+                (asked.userId == null || asked.userId == chat.user.id) &&
+                events.none { it is AnswerEvent && it.questionId == asked.id } &&
+                events.none { it is ToolResponseEvent && it.toolName == ConfigAgentIntegration.PROPOSE_TOOL_NAME && it.structuredOutput?.path("questionId")?.asText() == asked.id.toString() }
         }
     }
 
@@ -414,8 +457,13 @@ class MessagingGateway(
     // Commands
     // ======================================================
 
-    private fun startNewCase(chat: Chat) {
-        conversations.update(chat.conversation) { it.copy(caseId = null) }
+    /** Moves the chat out of its case: [text], when the command carries one, starts the new case at once. */
+    private fun startNewCase(
+        chat: Chat,
+        text: String?,
+    ) {
+        val cleared = conversations.update(chat.conversation) { it.copy(caseId = null) }
+        if (text != null) return post(chat.copy(conversation = cleared), text)
         reply(chat, "Your next message starts a new case with **${chat.agent.name}**.")
     }
 
@@ -543,11 +591,13 @@ class MessagingGateway(
         messageId: String,
     ): String {
         val view = recipientsPlan(chat, questionId, messageId)
-        // The agent's next answer comes back here, whichever chat or page the plan was proposed from.
-        delivery.redirect(view.caseId, chat.conversation.id)
+        // The agent's next answer comes back here, whichever chat or page the plan was proposed from; a plan the
+        // endpoint refuses leaves the case answering where it did.
         val report =
-            planCall(chat, messageId) {
-                configChanges.applyConfigChange(view.caseId, questionId, ConfigChangeApplyRequest(expectedPlanHash = view.planHash))
+            delivery.redirectFor(view.caseId, chat.conversation.id) {
+                planCall(chat, messageId) {
+                    configChanges.applyConfigChange(view.caseId, questionId, ConfigChangeApplyRequest(expectedPlanHash = view.planHash))
+                }
             }
         // A plan whose answer could not reach the agent stays open: applying it again sends the answer.
         if (report.answerPosted) chat.adapter.removeButtons(chat.chatId, messageId)
@@ -567,8 +617,9 @@ class MessagingGateway(
         messageId: String,
     ): String {
         val view = recipientsPlan(chat, questionId, messageId)
-        delivery.redirect(view.caseId, chat.conversation.id)
-        planCall(chat, messageId) { configChanges.rejectConfigChange(view.caseId, questionId, null) }
+        delivery.redirectFor(view.caseId, chat.conversation.id) {
+            planCall(chat, messageId) { configChanges.rejectConfigChange(view.caseId, questionId, null) }
+        }
         chat.adapter.removeButtons(chat.chatId, messageId)
         replyAfter(chat, MessagingPlanCards.rejected(chat.user.displayName()))
         chat.adapter.showTyping(chat.chatId)
@@ -687,6 +738,8 @@ class MessagingGateway(
         )
     }
 
+    private fun nameOf(userId: UUID): String = userService.findById(userId)?.displayName() ?: userId.toString()
+
     private fun agentOf(adapter: MessagingAdapter): AgentConfig? = adapter.bot.agentId?.let { agentConfigService.findById(it) }
 
     private fun caseSummary(
@@ -795,6 +848,7 @@ class MessagingGateway(
         private const val NOT_LINKED_NOTICE = "Link your account to AgentOS first."
         private const val NO_AGENT_TEXT = "The agent of this bot no longer exists."
         private const val EXPIRED_BUTTON_NOTICE = "This button no longer works."
+        private val TYPED_ANSWERS = setOf(QuestionType.FREE_TEXT, QuestionType.OPEN_CHOICE)
         private const val CLICK_FAILED_NOTICE = "Something went wrong: try again, or open AgentOS."
         private const val DENIED_TEXT = "AgentOS refused this: you do not have the rights for it. Ask an admin of the namespace."
         private const val DENIED_NOTICE = "AgentOS refused this: you do not have the rights for it."
