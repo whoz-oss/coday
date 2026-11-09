@@ -205,10 +205,11 @@ describe('runApply', () => {
       BIG: 'policy/claude-sonnet',
       SMALL: 'policy/claude-haiku',
       default: 'policy/claude-haiku',
+      WHISPER: 'openai/whisper-1',
     })
-    expect(tracker.get().steps.models.message).toBe('5 models')
+    expect(tracker.get().steps.models.message).toBe('6 models')
     expect(await run()).toBe(true)
-    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(5)
+    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(6)
     expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
   })
 
@@ -241,7 +242,7 @@ describe('runApply', () => {
     }
     expect(fake.models.find((m) => m['alias'] === 'default')?.['apiModelName']).toBe('policy/claude-haiku')
     expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(4)
-    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(1)
+    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(2) // default and WHISPER
     const policyWrites = fake.calls.filter(
       (c) => ['POST', 'PUT'].includes(c.method) && c.body?.apiModelName?.startsWith('policy/')
     )
@@ -513,12 +514,15 @@ describe('runApply default model', () => {
     )
     for (const id of ['anthropic', 'requesty'] as const) {
       const small = MODEL_CATALOGUE[id].models.SMALL
-      expect(defaultOf(fake, id)).toMatchObject({
+      const model = defaultOf(fake, id)
+      expect(model).toMatchObject({
         apiModelName: small.apiModelName,
         pricing: small.pricing,
         contextWindow: small.contextWindow,
-        maxCompletionTokens: small.maxCompletionTokens,
+        // Requesty policies declare no output limit: the key is absent, not undefined
+        ...(small.maxCompletionTokens ? { maxCompletionTokens: small.maxCompletionTokens } : {}),
       })
+      if (!small.maxCompletionTokens) expect(model).not.toHaveProperty('maxCompletionTokens')
     }
   })
 
@@ -588,7 +592,8 @@ describe('runApply pricing', () => {
     const run = () => runApply(input([{ id: 'requesty', rank: 1 }]), deps)
     await run()
     for (const model of fake.models) {
-      if (model['pricing'].cacheWrite === undefined) {
+      // WHISPER has no pricing at all (billed per audio minute)
+      if (model['pricing'] && model['pricing'].cacheWrite === undefined) {
         model['pricing'] = { ...model['pricing'], cacheWrite: null }
       }
     }
