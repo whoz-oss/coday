@@ -8,8 +8,8 @@
  * Model names were verified against the official documentation at implementation time:
  *   - Anthropic  docs.anthropic.com/en/docs/about-claude/models/overview (dateless IDs, 4.6+ format)
  *   - OpenAI     platform.openai.com/docs/models (gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna)
- *   - Requesty   FRONTIER retains anthropic/claude-fable-5.1. The other tiers use account policies:
- *                configure claude-haiku, claude-sonnet and claude-opus in Requesty before use.
+ *   - Requesty   All tiers use account policies: configure claude-fable, claude-opus, claude-sonnet and
+ *                claude-haiku in Requesty before use.
  *
  * Prices are USD per million tokens (the `pricing` of an AgentOS model, which uses it to estimate costs). Same sources:
  *   - Anthropic  docs.anthropic.com/en/docs/about-claude/pricing
@@ -145,14 +145,36 @@ const openaiModels = (prefix: string): CatalogueProvider['models'] => ({
   },
 })
 
-// Keep FRONTIER unchanged. Policy pricing and limits retain the existing estimates;
+// Policy pricing and limits retain the existing estimates;
 // they are not guarantees of whichever backing model Requesty selects.
-const requestyModels = anthropicModels('anthropic/', 'claude-fable-5.1', REQUESTY_PRICING)
 const requestySmall: CatalogueModel = {
   apiModelName: 'policy/claude-haiku',
   description: 'Claude Haiku tier via your Requesty policy; backing model may change',
   contextWindow: 200_000,
   pricing: REQUESTY_PRICING.SMALL,
+}
+
+const requestyModels: CatalogueProvider['models'] = {
+  FRONTIER: {
+    apiModelName: 'policy/claude-fable',
+    description: 'Claude Fable tier via your Requesty policy; backing model may change',
+    contextWindow: 1_000_000,
+    pricing: REQUESTY_PRICING.FRONTIER,
+  },
+  BIGGEST: {
+    apiModelName: 'policy/claude-opus',
+    description: 'Claude Opus tier via your Requesty policy; backing model may change',
+    contextWindow: 1_000_000,
+    pricing: REQUESTY_PRICING.BIGGEST,
+  },
+  BIG: {
+    apiModelName: 'policy/claude-sonnet',
+    description: 'Claude Sonnet tier via your Requesty policy; backing model may change',
+    contextWindow: 1_000_000,
+    pricing: REQUESTY_PRICING.BIG,
+  },
+  SMALL: requestySmall,
+  default: requestySmall,
 }
 
 export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
@@ -181,27 +203,11 @@ export const MODEL_CATALOGUE: Record<CatalogueProviderId, CatalogueProvider> = {
     name: 'requesty',
     label: 'Requesty',
     description:
-      'Requires Requesty policies named claude-haiku, claude-sonnet and claude-opus configured in your account.',
+      'Requires Requesty policies named claude-fable, claude-opus, claude-sonnet and claude-haiku configured in your account.',
     apiType: 'OpenAI',
     baseUrl: 'https://router.eu.requesty.ai',
     keyUrl: 'https://app.requesty.ai/api-keys',
-    models: {
-      ...requestyModels,
-      BIGGEST: {
-        apiModelName: 'policy/claude-opus',
-        description: 'Claude Opus tier via your Requesty policy; backing model may change',
-        contextWindow: 1_000_000,
-        pricing: REQUESTY_PRICING.BIGGEST,
-      },
-      BIG: {
-        apiModelName: 'policy/claude-sonnet',
-        description: 'Claude Sonnet tier via your Requesty policy; backing model may change',
-        contextWindow: 1_000_000,
-        pricing: REQUESTY_PRICING.BIG,
-      },
-      SMALL: requestySmall,
-      default: requestySmall,
-    },
+    models: requestyModels,
   },
 }
 

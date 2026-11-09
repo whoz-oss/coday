@@ -196,7 +196,7 @@ describe('runApply', () => {
 
     expect(await run()).toBe(true)
     expect(Object.fromEntries(fake.models.map((m) => [m['alias'], m['apiModelName']]))).toEqual({
-      FRONTIER: 'anthropic/claude-fable-5.1',
+      FRONTIER: 'policy/claude-fable',
       BIGGEST: 'policy/claude-opus',
       BIG: 'policy/claude-sonnet',
       SMALL: 'policy/claude-haiku',
@@ -236,12 +236,12 @@ describe('runApply', () => {
       })
     }
     expect(fake.models.find((m) => m['alias'] === 'default')?.['apiModelName']).toBe('policy/claude-haiku')
-    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(3)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(4)
     expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(1)
     const policyWrites = fake.calls.filter(
       (c) => ['POST', 'PUT'].includes(c.method) && c.body?.apiModelName?.startsWith('policy/')
     )
-    expect(policyWrites).toHaveLength(4)
+    expect(policyWrites).toHaveLength(5)
     for (const call of policyWrites) expect(call.body).not.toHaveProperty('maxCompletionTokens')
   })
 

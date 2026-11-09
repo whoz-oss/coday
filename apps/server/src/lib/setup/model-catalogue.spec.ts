@@ -40,13 +40,13 @@ describe('model catalogue shape', () => {
     expect(MODEL_CATALOGUE.requesty.baseUrl).toBe('https://router.eu.requesty.ai')
   })
 
-  it('routes Requesty tiers through policies, preserving FRONTIER and direct providers', () => {
+  it('routes every Requesty tier through policies, preserving direct providers', () => {
     const models = MODEL_CATALOGUE.requesty.models
     expect(models.SMALL.apiModelName).toBe('policy/claude-haiku')
     expect(models.default).toEqual(models.SMALL)
     expect(models.BIG.apiModelName).toBe('policy/claude-sonnet')
     expect(models.BIGGEST.apiModelName).toBe('policy/claude-opus')
-    expect(models.FRONTIER.apiModelName).toBe('anthropic/claude-fable-5.1')
+    expect(models.FRONTIER.apiModelName).toBe('policy/claude-fable')
     expect(MODEL_CATALOGUE.anthropic.models.SMALL.apiModelName).toBe('claude-haiku-5-5')
     expect(MODEL_CATALOGUE.anthropic.models.BIG.apiModelName).toBe('claude-sonnet-5-5')
     expect(MODEL_CATALOGUE.anthropic.models.BIGGEST.apiModelName).toBe('claude-opus-5-5')
@@ -88,7 +88,9 @@ describe('model pricing', () => {
     for (const id of CATALOGUE_PROVIDER_IDS) {
       for (const model of Object.values(MODEL_CATALOGUE[id].models)) {
         const retainedHaiku = id === 'requesty' && model.apiModelName === 'policy/claude-haiku'
-        expect(model.pricing.cacheWrite !== undefined).toBe(MODEL_CATALOGUE[id].apiType === 'Anthropic' || retainedHaiku)
+        expect(model.pricing.cacheWrite !== undefined).toBe(
+          MODEL_CATALOGUE[id].apiType === 'Anthropic' || retainedHaiku
+        )
       }
     }
   })

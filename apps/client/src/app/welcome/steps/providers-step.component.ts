@@ -19,7 +19,7 @@ const FALLBACK_PROVIDERS: SetupProviderInfo[] = [
     id: 'requesty',
     label: 'Requesty',
     description:
-      'Requires Requesty policies named claude-haiku, claude-sonnet and claude-opus configured in your account.',
+      'Requires Requesty policies named claude-fable, claude-opus, claude-sonnet and claude-haiku configured in your account.',
     keyUrl: 'https://app.requesty.ai/api-keys',
   },
 ]
