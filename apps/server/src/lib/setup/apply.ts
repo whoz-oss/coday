@@ -289,10 +289,6 @@ export async function runApply(
       await ensureModels(deps, catalogue, providerIds.get(p.id) as string, priorityForRank(index + 1, ordered.length))
       modelCount += modelCountOf(catalogue)
     }
-    const modelCount = ordered.reduce(
-      (count, p) => count + Object.keys((getCatalogueProvider(p.id) as CatalogueProvider).models).length,
-      0
-    )
     tracker.step('models', 'done', `${modelCount} models`)
 
     // 3. personal namespace + shared folder
