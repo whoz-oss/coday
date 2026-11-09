@@ -22,11 +22,13 @@ package io.whozoss.agentos.caseFlow
  * Agent names are not constrained (they may hold spaces, dots or non-ASCII letters), so each
  * form delimits the name its own way:
  *
- * - **Plain** uses `[\w-]+`. `\S+` was deliberately rejected: a message like
+ * - **Plain** uses `[\p{L}\p{M}\p{N}_-]+`: Unicode letters, marks, digits, `_` and `-`, so a name such
+ *   as `Éric` can be mentioned. `\S+` was deliberately rejected: a message like
  *   `@inspector\u00A0https://...`, where the separator is a non-breaking space (U+00A0) or any
  *   other non-ASCII whitespace, would make `\S+` capture `inspector\u00A0https://...` as the
- *   name, because `\S` in Java/Kotlin regex only excludes ASCII whitespace. `[\w-]+` stops at
- *   the first space-like or special character.
+ *   name, because `\S` in Java/Kotlin regex only excludes ASCII whitespace. The Unicode class
+ *   stops at the first space-like or punctuation character. A name holding spaces or dots can
+ *   only be addressed through the chip form.
  * - **Chip** takes everything up to the closing `]`. That bracket is an explicit delimiter, so
  *   the non-breaking-space problem cannot arise, and a name the composer emits as the chip label
  *   is never cut short. The name must start with a non-whitespace character and stays on one line.
@@ -52,7 +54,7 @@ object AgentMention {
      * whatever one recognises, the other removes entirely.
      */
     private val LEADING_MENTION_REGEX =
-        """^(?:\[@([^\]\s][^\]\r\n]*)\](?:\([^)]*\))?(?!\()|@([\w-]+))""".toRegex()
+        """^(?:\[@([^\]\s][^\]\r\n]*)\](?:\([^)]*\))?(?!\()|@([\p{L}\p{M}\p{N}_-]+))""".toRegex()
 
     /**
      * Returns the agent name mentioned at the start of [text], or `null` when there is none.
@@ -60,11 +62,11 @@ object AgentMention {
      * Accepts both the plain form (`@Name`) and the chip form (`[@Name](#agent=...)`).
      * Leading whitespace is ignored (the text is trimmed before matching).
      */
-    fun extractName(text: String): String? {
-        val match = LEADING_MENTION_REGEX.find(text.trim()) ?: return null
-        // Group 1 is set by the chip branch `[@Name](...)`, group 2 by the plain branch `@Name`.
-        return (match.groups[1] ?: match.groups[2])?.value?.trim()
-    }
+    fun extractName(text: String): String? =
+        LEADING_MENTION_REGEX.find(text.trim())?.let { match ->
+            // Group 1 is set by the chip branch `[@Name](...)`, group 2 by the plain branch `@Name`.
+            (match.groups[1] ?: match.groups[2])?.value?.trim()
+        }
 
     /**
      * Returns [text] without its leading mention, trimmed.

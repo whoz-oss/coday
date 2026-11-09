@@ -2396,7 +2396,8 @@ class CaseServiceImplSpec :
             "hello" to "@Starter hello",
             "@ hello" to "@Starter @ hello",
             "@@Casting hello" to "@Starter @@Casting hello",
-            "@\u00e9ric hello" to "@Starter @\u00e9ric hello",
+            "@!ric hello" to "@Starter @!ric hello",
+            "@\u00e9ric hello" to "@\u00e9ric hello",
         ).forEach { (promptContent, expectedMessage) ->
             "an agent-linked prompt '$promptContent' reaches the conversation as '$expectedMessage'" {
                 val agentConfigService: AgentConfigService =
