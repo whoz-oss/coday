@@ -40,7 +40,7 @@ class VoiceMessageServiceUnitSpec :
         class Fixture(
             preferredLanguage: String? = "fr",
             available: Boolean = true,
-            namespaceWrite: Boolean = true,
+            namespaceRead: Boolean = true,
         ) {
             val case = Case(namespaceId = UUID.randomUUID())
             val user = User(externalId = "voice-user", email = "voice@example.com", firstname = "Ada", preferredLanguage = preferredLanguage)
@@ -48,8 +48,8 @@ class VoiceMessageServiceUnitSpec :
             val permissions =
                 mockk<PermissionService>(relaxed = true) {
                     every {
-                        hasPermission(user.id.toString(), EntityType.NAMESPACE, case.namespaceId.toString(), Action.WRITE)
-                    } returns namespaceWrite
+                        hasPermission(user.id.toString(), EntityType.NAMESPACE, case.namespaceId.toString(), Action.READ)
+                    } returns namespaceRead
                 }
             val transcription =
                 mockk<TranscriptionService> {
@@ -125,19 +125,29 @@ class VoiceMessageServiceUnitSpec :
             f.verifyNothingHappened()
         }
 
-        "no write access on the namespace of the case is refused and nothing is transcribed, stored or posted" {
-            val f = Fixture(namespaceWrite = false)
+        "no access to the namespace of the case is refused and nothing is transcribed, stored or posted" {
+            val f = Fixture(namespaceRead = false)
 
             shouldThrow<AccessDeniedException> { f.post() }
 
             verify(exactly = 1) {
-                f.permissions.hasPermission(f.user.id.toString(), EntityType.NAMESPACE, f.case.namespaceId.toString(), Action.WRITE)
+                f.permissions.hasPermission(f.user.id.toString(), EntityType.NAMESPACE, f.case.namespaceId.toString(), Action.READ)
             }
             f.verifyNothingHappened()
         }
 
-        "the namespace is checked first: a user without write access learns nothing about the availability" {
-            val f = Fixture(available = false, namespaceWrite = false)
+        "a member who only reads the namespace is not refused: namespace WRITE is not required" {
+            val f = Fixture()
+
+            f.post().transcript shouldBe "hello there"
+
+            verify(exactly = 0) {
+                f.permissions.hasPermission(any(), EntityType.NAMESPACE, any(), Action.WRITE)
+            }
+        }
+
+        "the namespace is checked first: a user without access learns nothing about the availability" {
+            val f = Fixture(available = false, namespaceRead = false)
 
             shouldThrow<AccessDeniedException> { f.post() }
 

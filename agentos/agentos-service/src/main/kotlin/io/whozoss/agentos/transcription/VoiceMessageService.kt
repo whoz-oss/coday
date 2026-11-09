@@ -36,7 +36,7 @@ import kotlin.time.measureTimedValue
  * case as one user message made of the audio and its transcript.
  *
  * The access check on the case itself (Case WRITE) is declared by [VoiceMessageController]. This service adds
- * two rules: the caller must hold WRITE on the namespace of the case (see [requireNamespaceWrite]), and the
+ * two rules: the caller must still hold READ on the namespace of the case (see [requireNamespaceRead]), and the
  * owner-access rule applies when the exchange directory is shared with another case (see [storeAudio]).
  */
 @Service
@@ -54,7 +54,7 @@ class VoiceMessageService(
     /**
      * Transcribe, store, post.
      *
-     * The caller must hold WRITE on the namespace of the case; this is checked first, before anything is
+     * The caller must hold READ on the namespace of the case; this is checked first, before anything is
      * transcribed, stored or posted, and before the availability of the feature is revealed.
      *
      * The transcription comes first: when it fails or comes back empty, nothing is stored and nothing is
@@ -74,7 +74,7 @@ class VoiceMessageService(
         val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
         val user = userService.getCurrentUser()
         val userId = user.id.toString()
-        requireNamespaceWrite(userId, case)
+        requireNamespaceRead(userId, case)
 
         if (!isAvailable()) {
             throw ConflictException("Voice messages are not available on this instance")
@@ -102,13 +102,17 @@ class VoiceMessageService(
         return VoiceMessageResponse(transcript = transcript, path = relativePath)
     }
 
-    /** A voice message is a write into the case, made on behalf of the namespace: WRITE on the namespace is required. */
-    private fun requireNamespaceWrite(
+    /**
+     * Same gate as creating a case (`CaseController.create`): READ on the namespace. Writing to the case itself
+     * (Case WRITE) is declared by the controller; WRITE on the namespace would be the namespace admin right,
+     * which a member who posts a text message in their own case does not have.
+     */
+    private fun requireNamespaceRead(
         userId: String,
         case: Case,
     ) {
-        if (!exchangeCapabilityService.canWrite(userId, EntityType.NAMESPACE, case.namespaceId.toString())) {
-            throw AccessDeniedException("Voice messages require write access to the namespace")
+        if (!exchangeCapabilityService.canRead(userId, EntityType.NAMESPACE, case.namespaceId.toString())) {
+            throw AccessDeniedException("Voice messages require access to the namespace of the case")
         }
     }
 
