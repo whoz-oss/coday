@@ -124,11 +124,16 @@ export class TabCoordinatorService implements OnDestroy {
 
   private onMessage(msg: TabMessage): void {
     switch (msg.type) {
-      case 'TAB_ANNOUNCE':
+      case 'TAB_ANNOUNCE': {
+        // Answer news only (a tab we did not know, or a known tab on another namespace) so that it learns about us.
+        // Answering every announce made two tabs bounce messages forever, and three multiply them, pinning the CPU
+        // (#1606). Not answering a repeat also ends the exchange with a tab of an older build, which answers everything.
+        const known = this.knownTabs()
+        if (known.has(msg.tabId) && known.get(msg.tabId) === msg.namespaceId) break
         this.knownTabs.update((m) => new Map(m).set(msg.tabId, msg.namespaceId))
-        // Re-announce so the new/updated tab knows about us too
         this.announce()
         break
+      }
 
       case 'NAVIGATE_REQUEST':
         if (msg.namespaceId === this.currentNamespaceId()) {
