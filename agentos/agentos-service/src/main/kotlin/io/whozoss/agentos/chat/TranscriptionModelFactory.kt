@@ -12,6 +12,9 @@ import org.springframework.util.LinkedMultiValueMap
  *
  * Sibling of [ChatModelFactory]: the caller (see [io.whozoss.agentos.transcription.TranscriptionService])
  * resolves the model/provider and passes the connectivity details, this factory only wires Spring AI.
+ *
+ * TODO: remove this specific implementation once the project is on Spring AI 2, which makes it unnecessary
+ *  (review of PR #1578).
  */
 @Component
 class TranscriptionModelFactory {
