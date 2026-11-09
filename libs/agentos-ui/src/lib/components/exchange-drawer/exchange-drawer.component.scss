@@ -1,9 +1,15 @@
 @use 'libs/design-system/src/styles' as ds;
 
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .exchange-drawer {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   overflow: hidden;
   font-family: var(--font-body, sans-serif);
