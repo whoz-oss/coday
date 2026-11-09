@@ -10,6 +10,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -38,6 +39,8 @@ class NamespaceServiceImpl(
     private val userGroupRepository: UserGroupRepository,
     private val agentConfigRepository: AgentConfigRepository,
     private val limitsConfig: LimitsConfigProperties,
+    /** Spring always injects it; the no-op default only serves the unit tests that build this service by hand. */
+    private val eventPublisher: ApplicationEventPublisher = ApplicationEventPublisher {},
 ) : NamespaceService {
     @Transactional
     override fun create(entity: Namespace): Namespace = try {
@@ -78,7 +81,7 @@ class NamespaceServiceImpl(
             .onFailure { e ->
                 logger.warn(e) { "[NamespaceService] UserGroup cascade failed for namespace $id — proceeding with namespace soft-delete anyway" }
             }
-        return namespaceRepository.delete(id)
+        return namespaceRepository.delete(id).also { deleted -> if (deleted) eventPublisher.publishEvent(NamespaceDeletedEvent(id)) }
     }
 
     @Transactional

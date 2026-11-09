@@ -227,4 +227,13 @@ interface CaseService : EntityService<Case, UUID> {
      * replayed after a restart.
      */
     fun resumeIfPending(caseId: UUID) = Unit
+
+    /**
+     * The agent a message that names none goes to in a new case of [namespaceId], for [userId]: the namespace's
+     * default agent, else the instance's. Null when the message would reach none.
+     */
+    fun defaultAgentName(
+        namespaceId: UUID,
+        userId: UUID?,
+    ): String?
 }

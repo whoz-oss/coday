@@ -37,9 +37,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
-/** Holds a pending command to be executed sequentially after the current agent turn. */
+/**
+ * Holds a pending command to be executed sequentially after the current agent turn, with the session context of
+ * the message it came from: the next line of a prompt is sent from where its first one was.
+ */
 private data class PendingCommand(
     val content: List<MessageContent>,
+    val sessionContext: Map<String, Any?>? = null,
 )
 
 /**
@@ -289,10 +293,14 @@ class CaseRuntime(
 
     /**
      * Enqueue a command for sequential execution after the current agent turn.
-     * Used when a prompt resolves to multiple commands.
+     * Used when a prompt resolves to multiple commands; [sessionContext] is the one of the message that did, which
+     * the command's message carries in turn (where it came from, such as a chat to answer).
      */
-    fun enqueueCommand(content: List<MessageContent>) {
-        commandQueue.add(PendingCommand(content))
+    fun enqueueCommand(
+        content: List<MessageContent>,
+        sessionContext: Map<String, Any?>? = null,
+    ) {
+        commandQueue.add(PendingCommand(content, sessionContext))
     }
 
     fun isRunning(): Boolean = runInFlight.get()
@@ -653,7 +661,7 @@ class CaseRuntime(
                     val actor =
                         resolveLastUserActor(eventList.getAll())
                             ?: return CaseStatus.ERROR
-                    addUserMessage(actor, nextCommand.content)
+                    addUserMessage(actor, nextCommand.content, sessionContext = nextCommand.sessionContext)
                     iterationCount = 0
                 }
             }
