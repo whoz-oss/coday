@@ -14,6 +14,7 @@ import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.claudeCode.ClaudeCodeProcessLauncher
 import io.whozoss.agentos.claudeCode.ClaudeCodeProperties
 import io.whozoss.agentos.claudeCode.FakeClaudeCli
+import io.whozoss.agentos.claudeCode.McpTestServer
 import io.whozoss.agentos.git.PosixOnly
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -26,9 +27,16 @@ import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
+import org.springframework.http.HttpStatus
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -46,10 +54,12 @@ class AgentClaudeCodeSpec :
         val userId = UUID.randomUUID()
         val directories = mutableListOf<Path>()
         fun directory(): Path = Files.createTempDirectory("agentos-agent-claude-code-").also { directories.add(it) }
+        val server = McpTestServer(ClaudeCodeProperties())
         afterTest {
             directories.forEach { it.toFile().deleteRecursively() }
             directories.clear()
         }
+        afterSpec { server.close() }
 
         val model =
             AiModel(
@@ -63,6 +73,7 @@ class AgentClaudeCodeSpec :
             usage: UsageAccumulator? = null,
             idleTimeout: Duration = Duration.ofMinutes(1),
             minimumVersion: String = "2.1.317",
+            tools: List<StandardTool<*>> = emptyList(),
         ): AgentClaudeCode {
             val properties =
                 ClaudeCodeProperties(
@@ -85,6 +96,8 @@ class AgentClaudeCodeSpec :
                 reasoningEffort = ReasoningEffort.HIGH,
                 usageAccumulator = usage,
                 maxTurns = 20,
+                tools = tools,
+                toolBridge = server.bridge,
             )
         }
 
@@ -102,6 +115,42 @@ class AgentClaudeCodeSpec :
         }
 
         fun replay(fixture: String) = "cat '${FakeClaudeCli.fixture(fixture)}'"
+
+        /**
+         * A CLI that, like the real one, connects to the AgentOS MCP server, lists the tools, then has the model
+         * call [tool] (`tool_use` id `toolu_1`) and shows its result before [afterResult]. It keeps its MCP
+         * configuration, the tool list and the call's response in its directory.
+         */
+        fun toolCli(
+            tool: String,
+            afterResult: String,
+        ): FakeClaudeCli {
+            val dir = directory()
+            return FakeClaudeCli(
+                dir,
+                """
+                read -r message
+                config=${'$'}(awk 'prev == "--mcp-config" { print } { prev = ${'$'}0 }' '$dir/argv')
+                cp "${'$'}config" '$dir/mcp.json'
+                url=${'$'}(sed -E 's/.*"url":"([^"]*)".*/\1/' "${'$'}config")
+                auth=${'$'}(sed -E 's/.*"Authorization":"([^"]*)".*/\1/' "${'$'}config")
+                post() { curl -s -H "Authorization: ${'$'}auth" -H 'Content-Type: application/json' --data "${'$'}1" "${'$'}url"; }
+                post '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}' > /dev/null
+                post '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' > '$dir/tools-list'
+                echo '{"type":"system","subtype":"init","session_id":"s","model":"m","claude_code_version":"2.1.318","tools":[],"mcp_servers":[{"name":"agentos","status":"connected"}]}'
+                echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"mcp__agentos__$tool","input":{"timezone":"Europe/Paris"}}]}}'
+                post '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"$tool","arguments":{"timezone":"Europe/Paris"},"_meta":{"claudecode/toolUseId":"toolu_1"}}}' > '$dir/tool-call'
+                echo '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":[{"type":"text","text":"done"}]}]}}'
+                $afterResult
+                """.trimIndent(),
+            )
+        }
+
+        val answer =
+            """
+            echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"It is 10:00."}}}'
+            echo '{"type":"result","subtype":"success","is_error":false,"result":"It is 10:00.","session_id":"s","num_turns":2,"usage":{"input_tokens":3,"output_tokens":5}}'
+            """.trimIndent()
 
         fun user(text: String) =
             MessageEvent(
@@ -293,6 +342,129 @@ class AgentClaudeCodeSpec :
 
             events.single().shouldBeInstanceOf<AgentFinishedEvent>()
             Files.exists(cli.directory.resolve("calls")) shouldBe false
+        }
+
+        "the CLI calls the agent's tools through the bridge, and the calls are case events" {
+            val now = McpTestServer.tool("DATETIME__now") { context ->
+                ToolExecutionResult.success("10:00 for request ${context.toolRequestId}")
+            }
+            val cli = toolCli("DATETIME__now", answer)
+
+            val events = agent(cli, tools = listOf(now)).run(listOf(user("What time is it?"))).toList()
+
+            cli.arguments() shouldContain "mcp__agentos__*"
+            cli.directory.resolve("tools-list").readText() shouldContain "\"name\":\"DATETIME__now\""
+            cli.directory.resolve("tool-call").readText() shouldContain "10:00 for request toolu_1"
+            val request = events.filterIsInstance<ToolRequestEvent>().single()
+            request.toolRequestId shouldBe "toolu_1"
+            request.toolName shouldBe "DATETIME__now"
+            request.args shouldBe """{"timezone":"Europe/Paris"}"""
+            val response = events.filterIsInstance<ToolResponseEvent>().single()
+            response.toolRequestId shouldBe "toolu_1"
+            response.success shouldBe true
+            // The result goes back to the model, which goes on: the stream says so before its answer.
+            events.indexOf(response) shouldBe events.indexOfFirst { it is TextChunkEvent } - 2
+            events[events.indexOf(response) + 1].shouldBeInstanceOf<ThinkingEvent>()
+            events.filterIsInstance<MessageEvent>().single().content shouldBe listOf(MessageContent.Text("It is 10:00."))
+            events.last().shouldBeInstanceOf<AgentFinishedEvent>().runtimeSessionId.shouldNotBeNull()
+
+            // The run's endpoint is gone with the run.
+            val config = cli.directory.resolve("mcp.json").readText()
+            val runId = Regex("/mcp/([0-9a-f-]+)").find(config)!!.groupValues[1]
+            val token = Regex("Bearer ([A-Za-z0-9_-]+)").find(config)!!.groupValues[1]
+            server.controller.post(runId, "Bearer $token", """{"jsonrpc":"2.0","id":1,"method":"ping"}""").statusCode shouldBe
+                HttpStatus.NOT_FOUND
+        }
+
+        "an agent without tools gets no MCP server" {
+            val cli = cli(replay("text-turn.jsonl"))
+
+            agent(cli).run(listOf(user("Say OK"))).toList()
+
+            cli.arguments() shouldNotContain "--mcp-config"
+        }
+
+        "a tool asking the user ends the run once the CLI shows its result, and the session is kept" {
+            val questionId = UUID.randomUUID()
+            val ask = McpTestServer.tool("ASK__user") { context ->
+                throw AgentInterrupt.AwaitAnswer(question = "Which branch?", questionId = questionId, userId = context.userId)
+            }
+            // The model would go on: the run must not wait for it.
+            val cli = toolCli("ASK__user", "sleep 30\n$answer")
+
+            val events = agent(cli, tools = listOf(ask)).run(listOf(user("Deploy it"))).toList()
+
+            cli.directory.resolve("tool-call").readText() shouldContain "Waiting for the user's answer."
+            events.filterIsInstance<ToolResponseEvent>().single().success shouldBe true
+            events.filterIsInstance<MessageEvent>().shouldBeEmpty()
+            events.filterIsInstance<ErrorEvent>().shouldBeEmpty()
+            val finished = events.filterIsInstance<AgentFinishedEvent>().single()
+            finished.runtimeSessionId shouldBe cli.arguments().valueOf("--session-id")
+            val question = events.last().shouldBeInstanceOf<QuestionEvent>()
+            question.id shouldBe questionId
+            question.userId shouldBe userId
+            events.indexOf(finished) shouldBe events.size - 2
+        }
+
+        "a CLI that does not reach the AgentOS tools is stopped with an error" {
+            val dir = directory()
+            val cli =
+                FakeClaudeCli(
+                    dir,
+                    """
+                    read -r message
+                    echo '{"type":"system","subtype":"init","session_id":"s","model":"m","claude_code_version":"2.1.318","tools":[],"mcp_servers":[{"name":"agentos","status":"failed"}]}'
+                    sleep 30
+                    """.trimIndent(),
+                )
+            val tool = McpTestServer.tool("DATETIME__now") { ToolExecutionResult.success("10:00") }
+
+            val events = agent(cli, tools = listOf(tool)).run(listOf(user("What time is it?"))).toList()
+
+            events.filterIsInstance<ErrorEvent>().single().message shouldContain "could not reach the agent's AgentOS tools (MCP server failed)"
+            events.last().shouldBeInstanceOf<AgentFinishedEvent>().runtimeSessionId.shouldBeNull()
+        }
+
+        "a run stopped through its cost gate runs no further tool and ends without an error" {
+            val ran = java.util.concurrent.atomic.AtomicBoolean()
+            val tool = McpTestServer.tool("DATETIME__now") {
+                ran.set(true)
+                ToolExecutionResult.success("10:00")
+            }
+            val gates = java.util.concurrent.atomic.AtomicInteger()
+            // The gate lets the run start, then reports the stop at the tool call.
+            val usage =
+                UsageAccumulator().apply {
+                    beforeCall = {
+                        if (gates.incrementAndGet() == 1) {
+                            java.util.concurrent.CompletableFuture.completedFuture(null)
+                        } else {
+                            java.util.concurrent.CompletableFuture.failedFuture(io.whozoss.agentos.usage.CostRunStopped())
+                        }
+                    }
+                }
+            val cli = toolCli("DATETIME__now", "sleep 30\n$answer")
+
+            val events = agent(cli, usage, tools = listOf(tool)).run(listOf(user("What time is it?"))).toList()
+
+            ran.get() shouldBe false
+            cli.directory.resolve("tool-call").readText() shouldContain "Not run: the run was stopped."
+            events.filterIsInstance<ToolRequestEvent>().shouldBeEmpty()
+            events.filterIsInstance<ErrorEvent>().shouldBeEmpty()
+            events.last().shouldBeInstanceOf<AgentFinishedEvent>().runtimeSessionId.shouldBeNull()
+        }
+
+        "the idle timeout waits for a running tool" {
+            val slow = McpTestServer.tool("DATETIME__now") {
+                delay(1_500)
+                ToolExecutionResult.success("10:00")
+            }
+            val cli = toolCli("DATETIME__now", answer)
+
+            val events = agent(cli, idleTimeout = Duration.ofMillis(500), tools = listOf(slow)).run(listOf(user("What time is it?"))).toList()
+
+            events.filterIsInstance<ErrorEvent>().shouldBeEmpty()
+            events.filterIsInstance<MessageEvent>().single().content shouldBe listOf(MessageContent.Text("It is 10:00."))
         }
 
         "the CLI process runs the user's own configuration directory" {

@@ -56,6 +56,7 @@ class ClaudeCodeCommandSpec :
             arguments shouldNotContain "--bare"
             jacksonObjectMapper().readTree(arguments.valueOf("--settings")).let { settings ->
                 settings["disableAllHooks"].asBoolean() shouldBe true
+                settings["disableClaudeAiConnectors"].asBoolean() shouldBe true
                 settings["autoMemoryEnabled"].asBoolean() shouldBe false
                 settings["claudeMdExcludes"].map { it.asText() }.shouldContainInOrder("**/CLAUDE.md", "**/CLAUDE.local.md")
             }

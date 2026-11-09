@@ -355,6 +355,13 @@ agentos:
     # A turn whose CLI prints nothing for this long is considered stuck and stopped.
     # Override with env var: AGENTOS_CLAUDE_CODE_IDLE_TIMEOUT
     # idle-timeout: 10m
+    # How long the CLI waits for one AgentOS tool call (a delegation lasts as long as the delegate works).
+    # Override with env var: AGENTOS_CLAUDE_CODE_TOOL_TIMEOUT
+    # tool-timeout: 60m
+    # Base URL of this AgentOS as the CLI reaches it on this host, for the AgentOS tools.
+    # Defaults to http://127.0.0.1:<server port>.
+    # Override with env var: AGENTOS_CLAUDE_CODE_BRIDGE_URL
+    # bridge-url: http://127.0.0.1:8124
   plugins:
     # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
     # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,

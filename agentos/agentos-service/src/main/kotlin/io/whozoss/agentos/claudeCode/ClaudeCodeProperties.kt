@@ -21,6 +21,8 @@ import java.time.Duration
  * | `statusTimeout` | `AGENTOS_CLAUDE_CODE_STATUS_TIMEOUT` | `10s` | Timeout of `claude --version` and `claude auth status` |
  * | `maxConcurrentProcesses` | `AGENTOS_CLAUDE_CODE_MAX_CONCURRENT_PROCESSES` | `4` | Turns running at once on the instance; others wait |
  * | `idleTimeout` | `AGENTOS_CLAUDE_CODE_IDLE_TIMEOUT` | `10m` | A turn whose CLI stays silent this long is stopped |
+ * | `toolTimeout` | `AGENTOS_CLAUDE_CODE_TOOL_TIMEOUT` | `60m` | How long the CLI waits for one AgentOS tool call |
+ * | `bridgeUrl` | `AGENTOS_CLAUDE_CODE_BRIDGE_URL` | `http://127.0.0.1:<server port>` | Where the CLI reaches the AgentOS tools |
  */
 @ConfigurationProperties(prefix = "agentos.claude-code")
 data class ClaudeCodeProperties(
@@ -46,4 +48,14 @@ data class ClaudeCodeProperties(
      * nothing for this long is considered stuck and stopped.
      */
     val idleTimeout: Duration = Duration.ofMinutes(10),
+    /**
+     * The CLI calls the AgentOS tools through a loopback MCP server and gives up on a call after this long.
+     * A delegation to another agent runs for as long as that agent works; the idle timeout is paused meanwhile.
+     */
+    val toolTimeout: Duration = Duration.ofMinutes(60),
+    /**
+     * Base URL of this AgentOS as the CLI reaches it, on the same host. Defaults to the loopback address on the
+     * port the server listens on; set it when the server only listens on another address.
+     */
+    val bridgeUrl: String? = null,
 )

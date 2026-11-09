@@ -155,6 +155,8 @@ suspend fun FlowCollector<CaseEvent>.handleGenericAgentException(
  * Emits [AgentFinishedEvent] to close the current agent's turn, then emits
  * the interrupt-specific follow-up events.
  *
+ * [runtimeSessionId] is the runtime session the agent's next run resumes ([AgentFinishedEvent.runtimeSessionId]).
+ *
  * The [when] is exhaustive over the [AgentInterrupt] sealed hierarchy: adding a new
  * subtype without handling it here is a compile error.
  */
@@ -164,6 +166,7 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
     namespaceId: UUID,
     caseId: UUID,
     logger: KLogger,
+    runtimeSessionId: String? = null,
 ) {
     emit(
         AgentFinishedEvent(
@@ -173,6 +176,7 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
             agentName = agent.name,
             llmProvider = agent.llmProvider,
             llmModel = agent.llmModel,
+            runtimeSessionId = runtimeSessionId,
         ),
     )
     when (e) {

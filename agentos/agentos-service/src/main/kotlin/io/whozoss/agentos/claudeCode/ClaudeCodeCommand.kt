@@ -209,7 +209,8 @@ internal class ClaudeCodeCommand(
         /**
          * Settings passed on top of `--setting-sources ""`. The built-in plugins that read `AGENTS.md`
          * files or teach plugin authoring are turned off; telemetry and privacy plugins keep the user's
-         * own configuration.
+         * own configuration. The connectors of the user's claude.ai account (mail, drive…) are not loaded:
+         * `--strict-mcp-config` does not cover them, and the agent only gets its AgentOS tools.
          */
         internal val SETTINGS_JSON: String =
             MAPPER.writeValueAsString(
@@ -221,6 +222,7 @@ internal class ClaudeCodeCommand(
                             "cc-plugin-plugin-authoring@builtin" to false,
                         ),
                     "autoMemoryEnabled" to false,
+                    "disableClaudeAiConnectors" to true,
                     "claudeMdExcludes" to listOf("**/CLAUDE.md", "**/CLAUDE.local.md", "**/.claude/rules/**", "**/AGENTS.md"),
                 ),
             )

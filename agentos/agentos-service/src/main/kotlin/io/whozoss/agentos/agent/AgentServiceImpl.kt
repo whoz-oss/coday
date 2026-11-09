@@ -17,6 +17,7 @@ import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.chat.sentTo
 import io.whozoss.agentos.claudeCode.ClaudeCodeProcessLauncher
 import io.whozoss.agentos.claudeCode.ClaudeCodeProperties
+import io.whozoss.agentos.claudeCode.ClaudeCodeToolBridge
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.configAgent.ConfigToolGrantService
 import io.whozoss.agentos.delegation.DelegationTool
@@ -106,6 +107,7 @@ class AgentServiceImpl(
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
     private val claudeCodeProperties: ClaudeCodeProperties = ClaudeCodeProperties(),
     private val claudeCodeLauncher: ClaudeCodeProcessLauncher = ClaudeCodeProcessLauncher(claudeCodeProperties),
+    private val claudeCodeToolBridge: ClaudeCodeToolBridge = ClaudeCodeToolBridge(claudeCodeProperties),
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -758,6 +760,7 @@ class AgentServiceImpl(
                         modelConfig = modelConfig,
                         providerConfig = providerConfig,
                         context = context,
+                        resolvedTools = resolvedTools,
                         resolvedUser = resolvedUser,
                         redirectGuideline = redirectGuideline,
                         maxToolRounds = maxToolRounds,
@@ -793,8 +796,8 @@ class AgentServiceImpl(
     }
 
     /**
-     * An [AgentClaudeCode] for a model whose provider is [AiApiType.ClaudeCode]. Tools are not handed to it
-     * yet: the run gets the agent's instructions and the conversation, and answers without tools.
+     * An [AgentClaudeCode] for a model whose provider is [AiApiType.ClaudeCode]. Its CLI calls the agent's
+     * tools through [claudeCodeToolBridge].
      */
     private fun createClaudeCodeAgent(
         agentName: String,
@@ -804,6 +807,7 @@ class AgentServiceImpl(
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
+        resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
         redirectGuideline: String?,
         maxToolRounds: Int?,
@@ -825,6 +829,11 @@ class AgentServiceImpl(
             requestedReasoningEffort = modelConfig.reasoningEffort,
             usageAccumulator = context.usageAccumulator,
             maxTurns = maxToolRounds,
+            tools = resolvedTools,
+            toolBridge = claudeCodeToolBridge,
+            userExternalId = resolvedUser?.externalId,
+            caseEventsProvider = context.caseEventsProvider,
+            toolMetricsService = toolMetricsService,
         )
 
     /**
