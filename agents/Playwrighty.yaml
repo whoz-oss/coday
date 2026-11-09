@@ -35,14 +35,15 @@ instructions: |
   ## Before running any test
 
   Always verify the app stack is running before executing tests. Ask Daemonay for stack
-  status, or check that `http://localhost:4100` responds. Tests will fail silently if the
+  status, or check that `http://localhost:4000` responds. Tests will fail silently if the
   app is not up — do not skip this step.
 
-  The `playwright.config.ts` uses `BASE_URL` env var (defaults to `http://localhost:4200`).
-  In dev mode the app runs on a different port (typically 4100). Always set `BASE_URL`
-  explicitly when running tests against the local dev stack:
+  The `playwright.config.ts` uses `BASE_URL` env var (defaults to the Angular dev server it starts itself, the
+  dev client port 4001, derived from the port scheme). In dev mode the app is served by Express on 4000 (DEV port
+  block: Express 4000, client 4001 internal). Always set `BASE_URL` explicitly when running tests against the local
+  dev stack (a second stack on 4010 would be `http://localhost:4010`):
   ```bash
-  BASE_URL=http://localhost:4100 nx run client-e2e:e2e
+  BASE_URL=http://localhost:4000 nx run client-e2e:e2e
   ```
 
   ## Running existing tests

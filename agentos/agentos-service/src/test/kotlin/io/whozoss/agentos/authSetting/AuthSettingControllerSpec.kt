@@ -7,6 +7,8 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.clearAllMocks
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -19,14 +21,20 @@ import io.whozoss.agentos.authSetting.OAuthDiscoverableAuthSettingDto
 import io.whozoss.agentos.authSetting.OAuthMcpDiscoverableAuthSettingDto
 import io.whozoss.agentos.authSetting.authSettingFromDataMap
 import io.whozoss.agentos.authSetting.toDataMap
+import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.credential.CredentialService
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.permissions.ScopedAccessPolicy
+import io.whozoss.agentos.sdk.credential.Credential
+import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -34,6 +42,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.server.ResponseStatusException
+import java.time.Instant
 import java.util.UUID
 
 // Convenience accessor so domain-entity assertions stay map-based.
@@ -61,12 +70,16 @@ class AuthSettingControllerSpec :
         val namespaceService = mockk<NamespaceService>(relaxed = true)
         val userService = mockk<UserService>(relaxed = true)
         val permissionService = mockk<PermissionService>(relaxed = true)
+        val credentialService = mockk<CredentialService>()
+        val oAuthFlowService = mockk<OAuthFlowService>()
         val controller = AuthSettingController(
             service,
             namespaceService,
             userService,
             permissionService,
             ScopedAccessPolicy(permissionService),
+            credentialService,
+            oAuthFlowService,
         )
 
         val namespaceId = UUID.randomUUID()
@@ -587,6 +600,165 @@ class AuthSettingControllerSpec :
             shouldThrow<BadRequestException> {
                 controller.list(namespaceId = null, userId = bobId.toString())
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // resetMyCredential — personal connection reset
+        // -------------------------------------------------------------------------
+
+        "resetMyCredential without a namespace deletes only the caller's credential for that very setting" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId, nsId = null, uId = aliceId)
+            every { credentialService.delete(aliceId, settingId) } returns true
+
+            controller.resetMyCredential(settingId)
+
+            verify(exactly = 1) { credentialService.delete(aliceId, settingId) }
+            verify(exactly = 0) { credentialService.delete(bobId, any()) }
+            verify(exactly = 0) { credentialService.deleteByAuthSetting(any()) }
+        }
+
+        "resetMyCredential is idempotent when the caller has no credential" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId, nsId = null, uId = aliceId)
+            every { credentialService.delete(aliceId, settingId) } returns false
+
+            controller.resetMyCredential(settingId)
+
+            verify(exactly = 1) { credentialService.delete(aliceId, settingId) }
+        }
+
+        "resetMyCredential with a namespace targets the layer the runtime resolves the name to" {
+            // A credential is stored under the lowest layer defining the name, not under the clicked row.
+            val clickedId = UUID.randomUUID()
+            val baseId = UUID.randomUUID()
+            every { service.findById(clickedId) } returns
+                setting(id = clickedId, nsId = namespaceId, uId = aliceId, name = "jira")
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+            } returns true
+            every { service.resolveAuthSetting(namespaceId, aliceId, "jira") } returns
+                setting(id = baseId, nsId = null, uId = null, name = "jira")
+            every { credentialService.delete(aliceId, baseId) } returns true
+
+            controller.resetMyCredential(clickedId, namespaceId)
+
+            verify(exactly = 1) { credentialService.delete(aliceId, baseId) }
+            verify(exactly = 0) { credentialService.delete(aliceId, clickedId) }
+        }
+
+        "resetMyCredential refuses a namespace the caller cannot read" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId)
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+            } returns false
+
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
+                controller.resetMyCredential(settingId, namespaceId)
+            }
+            verify(exactly = 0) { credentialService.delete(any(), any()) }
+        }
+
+        "resetMyCredential answers 404 for an unknown setting" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns null
+
+            shouldThrow<ResourceNotFoundException> { controller.resetMyCredential(settingId) }
+            verify(exactly = 0) { credentialService.delete(any(), any()) }
+        }
+
+        "resetMyCredential answers 404 when the name does not resolve in that namespace" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId, name = "jira")
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+            } returns true
+            every { service.resolveAuthSetting(namespaceId, aliceId, "jira") } throws
+                ConfigNotFoundException(namespaceId, aliceId, "jira")
+
+            shouldThrow<ResourceNotFoundException> { controller.resetMyCredential(settingId, namespaceId) }
+            verify(exactly = 0) { credentialService.delete(any(), any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // getConnection / connect — direct OAuth connection from the settings page
+        // -------------------------------------------------------------------------
+
+        "getConnection reports the usable credential and when it was last written" {
+            val settingId = UUID.randomUUID()
+            val modified = Instant.parse("2026-01-02T03:04:05Z")
+            every { service.findById(settingId) } returns setting(id = settingId, nsId = null, uId = aliceId)
+            every { oAuthFlowService.findUsableCredential(aliceId, settingId) } returns
+                Credential(
+                    metadata = EntityMetadata(modified = modified),
+                    userId = aliceId,
+                    authSettingId = settingId,
+                    credentialType = CredentialType.OAUTH_TOKENS,
+                )
+
+            val response = controller.getConnection(settingId)
+
+            response.connected shouldBe true
+            response.connectedAt shouldBe modified
+        }
+
+        "getConnection reports not connected when nothing usable is stored" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId, nsId = null, uId = aliceId)
+            every { oAuthFlowService.findUsableCredential(aliceId, settingId) } returns null
+
+            val response = controller.getConnection(settingId)
+
+            response.connected shouldBe false
+            response.connectedAt.shouldBeNull()
+        }
+
+        "connect starts the authorization of the caller for the resolved setting and returns its URL" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId, nsId = null, uId = aliceId)
+            every { oAuthFlowService.isInteractiveAvailable() } returns true
+            coEvery { oAuthFlowService.startInteractiveConnection(aliceId, any()) } returns "https://provider.example.com/auth?state=s"
+
+            val response = controller.connect(settingId)
+
+            response.authorizationUrl shouldBe "https://provider.example.com/auth?state=s"
+            coVerify(exactly = 1) {
+                oAuthFlowService.startInteractiveConnection(aliceId, match { it.metadata.id == settingId })
+            }
+        }
+
+        "connect refuses a setting that is not OAuth" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns
+                setting(
+                    id = settingId,
+                    nsId = null,
+                    uId = aliceId,
+                    authType = AuthType.API_KEY,
+                    data = mapOf("apiKey" to "sk-test-123456789"),
+                )
+
+            shouldThrow<BadRequestException> { controller.connect(settingId) }
+            coVerify(exactly = 0) { oAuthFlowService.startInteractiveConnection(any(), any()) }
+        }
+
+        "connect answers 422 when the instance has no OAuth redirect URI" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId, nsId = null, uId = aliceId)
+            every { oAuthFlowService.isInteractiveAvailable() } returns false
+
+            shouldThrow<UnprocessableEntityException> { controller.connect(settingId) }
+            coVerify(exactly = 0) { oAuthFlowService.startInteractiveConnection(any(), any()) }
+        }
+
+        "connect answers 422 when the authorization could not start" {
+            val settingId = UUID.randomUUID()
+            every { service.findById(settingId) } returns setting(id = settingId, nsId = null, uId = aliceId)
+            every { oAuthFlowService.isInteractiveAvailable() } returns true
+            coEvery { oAuthFlowService.startInteractiveConnection(aliceId, any()) } returns null
+
+            shouldThrow<UnprocessableEntityException> { controller.connect(settingId) }
         }
 
         // -------------------------------------------------------------------------

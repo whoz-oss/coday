@@ -3,7 +3,7 @@ import { validateAgentOsUrl } from './validate-agentos-url'
 describe('validateAgentOsUrl', () => {
   describe('valid URLs', () => {
     it('accepts http with localhost and port', () => {
-      expect(() => validateAgentOsUrl('http://localhost:8124')).not.toThrow()
+      expect(() => validateAgentOsUrl('http://localhost:4005')).not.toThrow()
     })
 
     it('accepts https with a named host', () => {
@@ -21,17 +21,17 @@ describe('validateAgentOsUrl', () => {
     })
 
     it('rejects localhost:port without scheme (parsed as scheme=localhost:)', () => {
-      expect(() => validateAgentOsUrl('localhost:8124')).toThrow('Invalid AGENTOS_URL: "localhost:8124"')
+      expect(() => validateAgentOsUrl('localhost:4005')).toThrow('Invalid AGENTOS_URL: "localhost:4005"')
     })
 
     it('rejects a doubled scheme (http://http://...)', () => {
-      expect(() => validateAgentOsUrl('http://http://localhost:8124')).toThrow(
-        'Invalid AGENTOS_URL: "http://http://localhost:8124"'
+      expect(() => validateAgentOsUrl('http://http://localhost:4005')).toThrow(
+        'Invalid AGENTOS_URL: "http://http://localhost:4005"'
       )
     })
 
     it('rejects a non-http scheme such as ftp://', () => {
-      expect(() => validateAgentOsUrl('ftp://localhost:8124')).toThrow('Invalid AGENTOS_URL: "ftp://localhost:8124"')
+      expect(() => validateAgentOsUrl('ftp://localhost:4005')).toThrow('Invalid AGENTOS_URL: "ftp://localhost:4005"')
     })
 
     it('error message names the offending value', () => {
@@ -39,7 +39,7 @@ describe('validateAgentOsUrl', () => {
     })
 
     it('error message shows a valid example', () => {
-      expect(() => validateAgentOsUrl('bad-value')).toThrow('http://localhost:8124')
+      expect(() => validateAgentOsUrl('bad-value')).toThrow('http://localhost:4005')
     })
   })
 })

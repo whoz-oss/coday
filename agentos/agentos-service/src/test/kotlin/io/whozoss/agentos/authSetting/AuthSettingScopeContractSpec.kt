@@ -4,6 +4,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.credential.CredentialService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -78,6 +80,8 @@ class AuthSettingScopeContractSpec :
                     userService,
                     permissionService,
                     ScopedAccessPolicy(permissionService),
+                    mockk<CredentialService>(),
+                    mockk<OAuthFlowService>(),
                 )
 
                 controller.list(case.namespaceParam, case.userParam).map { it.id } shouldContainExactlyInAnyOrder

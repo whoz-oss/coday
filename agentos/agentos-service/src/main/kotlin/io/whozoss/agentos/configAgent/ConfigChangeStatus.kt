@@ -45,7 +45,7 @@ class ConfigChangeStatus(
         viewerId: UUID,
         createdIds: Map<String, UUID>,
     ): OperationEvaluation {
-        val name = op.value?.path("name")?.asText().orEmpty()
+        val name = ConfigJson.nameOf(op.kind, op.value)
         val existing = findExisting(op, name, plan, viewerId, createdIds)
         return when {
             existing == null -> OperationEvaluation(ConfigOperationStatus.PENDING)
@@ -73,6 +73,7 @@ class ConfigChangeStatus(
         createdIds: Map<String, UUID>,
     ): ConfigEntity? {
         val scope = op.scope
+        if (op.kind == ConfigKind.AI_MODEL) return findExistingModel(op, name, plan, viewerId, createdIds)
         val namespaceId = scope?.namespaceIn(createdIds)
         return when {
             scope?.namespaceRef == null -> configReadService.findByName(op.kind, name, scope?.namespaceId, scope?.userId, viewerId, plan.namespaceId)
@@ -80,6 +81,25 @@ class ConfigChangeStatus(
             namespaceId == null -> null
             else -> configReadService.findByName(op.kind, name, namespaceId, scope.userId, viewerId, namespaceId)
         }
+    }
+
+    /** A model is looked up among those of its provider; nothing exists yet when that provider is still to be created. */
+    private fun findExistingModel(
+        op: PlannedOperation,
+        name: String,
+        plan: ConfigChangePlan,
+        viewerId: UUID,
+        createdIds: Map<String, UUID>,
+    ): ConfigEntity? {
+        val providerNode = op.value?.get("aiProviderId")
+        // The provider the plan creates does not exist yet, so neither can its model.
+        if (providerNode == null || ConfigJson.opRefs(providerNode).any { it !in createdIds }) return null
+        return ConfigJson
+            .resolveOpRefs(providerNode, createdIds)
+            ?.takeIf { it.isTextual }
+            ?.textValue()
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            ?.let { configReadService.findModel(it, name, viewerId, plan.namespaceId) }
     }
 
     /**

@@ -1,7 +1,7 @@
 /**
  * Which security profile the managed services run with.
  *
- *  - `laptop`: the first-run experience. AgentOS and Factory run in `auth` mode, bound to loopback,
+ *  - `unmanaged`: the first-run experience. AgentOS and Factory run in `auth` mode, bound to loopback,
  *    with generated secrets; the identity is the email typed in the wizard.
  *  - `managed`: the behaviour that existed before the wizard (local security mode, plaintext, default
  *    binding). Kept for what must not change under users' feet:
@@ -10,8 +10,8 @@
  *      * installs that already hold AgentOS data but never ran the wizard: switching them to `auth`
  *        would lock their existing (OS-username) user out.
  *
- * `CODAY_PROFILE=laptop|managed` forces the profile, whatever the rules below would say. Typical use: a dev server
- * (`AGENTOS_URL`) sharing the configDir of a running `coday-web`, which must keep the `laptop` profile so that the
+ * `CODAY_PROFILE=unmanaged|managed` forces the profile, whatever the rules below would say. Typical use: a dev server
+ * (`AGENTOS_URL`) sharing the configDir of a running `coday-web`, which must keep the `unmanaged` profile so that the
  * identity of the wizard keeps being forwarded to its AgentOS.
  */
 
@@ -26,7 +26,7 @@ export interface ProfileInput {
   factoryUrl?: string
   /** `AGENTOS_EXTERNAL_USERID`: the identity is imposed from outside (desktop apps, deployments). */
   externalUserId?: string
-  /** `CODAY_PROFILE`: forces the profile. Anything but `laptop` / `managed` is ignored. */
+  /** `CODAY_PROFILE`: forces the profile. Anything but `unmanaged` / `managed` is ignored. */
   forcedProfile?: string
   configDir: string
 }
@@ -40,7 +40,7 @@ export interface ProfileDecision {
 
 export function parseForcedProfile(value: string | undefined): RuntimeProfile | undefined {
   const normalized = value?.trim().toLowerCase()
-  return normalized === 'laptop' || normalized === 'managed' ? normalized : undefined
+  return normalized === 'unmanaged' || normalized === 'managed' ? normalized : undefined
 }
 
 /**
@@ -59,9 +59,9 @@ export const borrowsRuntime = (
 
 export function decideProfile(input: ProfileInput, exists: (p: string) => boolean = fs.existsSync): ProfileDecision {
   const forced = parseForcedProfile(input.forcedProfile)
-  if (forced === 'laptop') {
+  if (forced === 'unmanaged') {
     // The wizard needs a runtime of our own: not with an external AgentOS, nor behind `--auth`.
-    return { profile: 'laptop', setupEnabled: !input.agentosUrl && !input.auth, reason: 'forced by CODAY_PROFILE' }
+    return { profile: 'unmanaged', setupEnabled: !input.agentosUrl && !input.auth, reason: 'forced by CODAY_PROFILE' }
   }
   if (forced === 'managed') return { profile: 'managed', setupEnabled: false, reason: 'forced by CODAY_PROFILE' }
   if (input.agentosUrl) return { profile: 'managed', setupEnabled: false, reason: 'external AgentOS (AGENTOS_URL)' }
@@ -73,5 +73,5 @@ export function decideProfile(input: ProfileInput, exists: (p: string) => boolea
   if (!hasIdentity && exists(agentosDataDir(input.configDir))) {
     return { profile: 'managed', setupEnabled: false, reason: 'existing install without first-run setup' }
   }
-  return { profile: 'laptop', setupEnabled: true, reason: 'first-run / laptop mode' }
+  return { profile: 'unmanaged', setupEnabled: true, reason: 'first-run / unmanaged mode' }
 }

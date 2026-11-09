@@ -54,6 +54,8 @@ model/ai-model.ts
 model/ai-provider.ts
 model/answer-event.ts
 model/api-key-auth-setting.ts
+model/auth-setting-connect-response.ts
+model/auth-setting-connection.ts
 model/auth-setting-dto.ts
 model/basic-auth-auth-setting.ts
 model/bearer-token-auth-setting.ts

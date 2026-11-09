@@ -1,9 +1,15 @@
 @use 'libs/design-system/src/styles' as ds;
 
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .exchange-drawer {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   overflow: hidden;
   font-family: var(--font-body, sans-serif);
@@ -252,6 +258,77 @@
     font-size: 0.75rem;
     color: var(--color-text-secondary, #6b7280);
   }
+}
+
+// Namespace file filter, pinned above the listing (like the folder nav) so the field stays reachable.
+.exchange-drawer__filter {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 0 4px 0 8px;
+  background: var(--color-bg, #f2f2f3);
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-md, 0);
+
+  &:focus-within {
+    border-color: var(--color-primary, #007aff);
+  }
+}
+
+.exchange-drawer__filter-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--color-text-secondary, #6e6e73);
+}
+
+.exchange-drawer__filter-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-text, #1d1d1f);
+
+  // The native clear button would duplicate ours and is not styled consistently.
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+.exchange-drawer__filter-clear {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary, #6e6e73);
+  cursor: pointer;
+
+  .material-icons {
+    font-size: 16px;
+  }
+
+  &:hover {
+    color: var(--color-text, #1d1d1f);
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+
+  &:focus-visible {
+    @include ds.focus-ring;
+  }
+}
+
+.exchange-drawer__tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .exchange-drawer__git-dot {

@@ -787,6 +787,92 @@ paths:
           description: OK
       tags:
       - auth-setting-controller
+  /api/auth-settings/{id}/connect:
+    post:
+      description: Starts an OAuth authorization for the caller and returns the URL
+        to open. Only OAuth settings can be connected (400 otherwise); 422 when the
+        instance has no OAuth redirect URI configured or the authorization could not
+        start. A new authorization replaces an existing connection only once it completes.
+      operationId: connectAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSettingConnectResponse"
+          description: OK
+      summary: Connect my account to an AuthSetting
+      tags:
+      - auth-setting-controller
+  /api/auth-settings/{id}/connection:
+    get:
+      description: "Tells whether the caller holds a stored connection that can still\
+        \ serve a run. Pass the namespaceId the setting is used from: a connection\
+        \ belongs to the layer the runtime resolves the setting name to, which depends\
+        \ on the namespace."
+      operationId: getConnectionAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSettingConnection"
+          description: OK
+      summary: Get my connection state for an AuthSetting
+      tags:
+      - auth-setting-controller
+  /api/auth-settings/{id}/credential:
+    delete:
+      description: "Deletes the caller's own stored credential for this AuthSetting\
+        \ (OAuth tokens), so the next use of an integration bound to it asks for a\
+        \ new authorization. Other users' credentials are never touched. Requires\
+        \ READ on the AuthSetting; idempotent (204 even when the caller had no credential)."
+      operationId: resetMyCredentialAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: Reset my connection to an AuthSetting
+      tags:
+      - auth-setting-controller
   /api/case-events/by-ids:
     post:
       operationId: getByIdsCaseEventRest
@@ -4495,6 +4581,30 @@ components:
       required:
       - authType
       - name
+    AuthSettingConnectResponse:
+      type: object
+      properties:
+        authorizationUrl:
+          type: string
+          description: Authorization URL to open in a popup; the flow waits for its
+            callback.
+      required:
+      - authorizationUrl
+    AuthSettingConnection:
+      type: object
+      properties:
+        connected:
+          type: boolean
+          description: "True when the caller holds a stored connection that can still\
+            \ serve a run (valid access token, or expired but refreshable)."
+        connectedAt:
+          type: string
+          format: date-time
+          description: "When the stored connection was last written, null when not\
+            \ connected. A new authorization always moves it forward, which is how\
+            \ a client sees a reconnection complete."
+      required:
+      - connected
     AuthSettingDto:
       type: object
       discriminator:
@@ -4635,6 +4745,11 @@ components:
           - IDLE
           - KILLED
           - ERROR
+        summary:
+          type: string
+          description: "Short server-generated summary of the case, refreshed after\
+            \ agent turns and matched by the case search. Null until the first one.\
+            \ Read-only: ignored on create and update."
         title:
           type: string
         worktree:
@@ -4968,6 +5083,8 @@ components:
           - INTEGRATION
           - AUTH_SETTING
           - NAMESPACE
+          - AI_PROVIDER
+          - AI_MODEL
         name:
           type: string
           description: Name of the entity created or targeted.

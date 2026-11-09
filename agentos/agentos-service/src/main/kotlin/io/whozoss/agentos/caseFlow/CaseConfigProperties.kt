@@ -10,6 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variables (Spring Boot relaxed binding):
  * - AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
  * - AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
+ * - AGENTOS_CASE_SUMMARY_ENABLED
  *
  * Example (application.yml):
  * ```yaml
@@ -17,6 +18,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   case:
  *     idle-eviction-grace-ms: 300000   # 5 min (default)
  *     sse-heartbeat-interval-ms: 30000 # 30 s (default)
+ *     summary-enabled: true            # case summaries feeding the case search (default)
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.case")
@@ -47,4 +49,13 @@ data class CaseConfigProperties(
      * Defaults to 30 s (30 000 ms).
      */
     val sseHeartbeatIntervalMs: Long = 30_000L,
+
+    /**
+     * Whether a short summary is generated and kept up to date for each top-level case (it feeds the
+     * case search). Each refresh is one small utility LLM call on the namespace default model, see
+     * [CaseSummaryService]. Set to false to switch the feature off; existing summaries are kept.
+     *
+     * Defaults to true.
+     */
+    val summaryEnabled: Boolean = true,
 )

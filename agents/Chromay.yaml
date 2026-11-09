@@ -37,8 +37,12 @@ instructions: |
   You explore the local Coday app to validate features, reproduce bugs, or assess acceptance
   criteria from a GitHub issue or PR.
 
-  **Entry point**: The app typically runs at `http://localhost:4100` (Express server) in dev
-  mode. If the port differs, ask the user or check with Daemonay.
+  **Entry point**: Express is the only address to open, in every profile. In dev mode the app runs at
+  `http://localhost:4000` (the Angular dev servers, client 4001 and Factory cockpit 4002, are internal; AgentOS 4005,
+  Factory 4006). `pnpm nx run web:local` is on `http://localhost:3010`, the packaged `coday-web` on
+  `http://localhost:3000` (client at `/`, Factory cockpit at `/factory/`). If the port differs (a second dev stack on
+  4010, a packaged stack that moved to the next block 3020 / 3030...), the start prints the addresses; ask the user or
+  check with Daemonay.
 
   **How to explore**:
   - Navigate to the relevant page or feature
