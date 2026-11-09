@@ -57,14 +57,18 @@ interface Tab {
 
 describe('TabCoordinatorService', () => {
   const originalBroadcastChannel = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel
+  /** The injectors of the tabs a test opened: destroyed after it, which closes their channels and stops their effects. */
+  let tabInjectors: EnvironmentInjector[]
 
   beforeEach(() => {
     bus = new FakeBus()
+    tabInjectors = []
     ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = FakeBroadcastChannel
     TestBed.configureTestingModule({ providers: [{ provide: Router, useValue: { navigate: jest.fn() } }] })
   })
 
   afterEach(() => {
+    for (const injector of tabInjectors) injector.destroy()
     TestBed.resetTestingModule()
     ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = originalBroadcastChannel
   })
@@ -76,6 +80,7 @@ describe('TabCoordinatorService', () => {
       [TabCoordinatorService, { provide: NamespaceStateService, useValue: { activeNamespaceId: namespace } }],
       TestBed.inject(EnvironmentInjector)
     )
+    tabInjectors.push(injector)
     const service = injector.get(TabCoordinatorService)
     runInInjectionContext(injector, () => service.start())
     TestBed.flushEffects()
@@ -107,6 +112,23 @@ describe('TabCoordinatorService', () => {
     expect(bus.posted).toBeLessThanOrEqual(3 * 3)
   })
 
+  it('lets a tab join tabs that already know each other, then stops talking', () => {
+    const a = openTab('ns-a')
+    const b = openTab('ns-b')
+    bus.flush()
+    const before = bus.posted
+
+    const c = openTab('ns-c')
+    bus.flush()
+
+    expect(a.service.findTabForNamespace('ns-c')).toBe(c.service.tabId)
+    expect(b.service.findTabForNamespace('ns-c')).toBe(c.service.tabId)
+    expect(c.service.findTabForNamespace('ns-a')).toBe(a.service.tabId)
+    expect(c.service.findTabForNamespace('ns-b')).toBe(b.service.tabId)
+    // The newcomer's announce, an answer from each of the two tabs, and the newcomer's answer to each of them.
+    expect(bus.posted - before).toBeLessThanOrEqual(1 + 2 + 2)
+  })
+
   it('tells the other tabs when a tab switches namespace, and stops there', () => {
     const a = openTab('ns-a')
     const b = openTab('ns-b')
@@ -123,13 +145,16 @@ describe('TabCoordinatorService', () => {
     expect(bus.posted - before).toBeLessThanOrEqual(2)
   })
 
-  it('ends the exchange with a tab of an older build that answers every announce', () => {
+  it('stays apart from the tabs of builds before #1606, which answer every announce', () => {
     const olderBuild = new FakeBroadcastChannel('agentos-companion')
-    olderBuild.onmessage = () => olderBuild.postMessage({ type: 'TAB_ANNOUNCE', tabId: 'older', namespaceId: 'ns-old' })
+    const heardByOlderBuild = jest.fn()
+    olderBuild.onmessage = heardByOlderBuild
     const a = openTab('ns-a')
 
+    olderBuild.postMessage({ type: 'TAB_ANNOUNCE', tabId: 'older', namespaceId: 'ns-old' })
     bus.flush()
 
-    expect(a.service.findTabForNamespace('ns-old')).toBe('older')
+    expect(heardByOlderBuild).not.toHaveBeenCalled()
+    expect(a.service.findTabForNamespace('ns-old')).toBeNull()
   })
 })
