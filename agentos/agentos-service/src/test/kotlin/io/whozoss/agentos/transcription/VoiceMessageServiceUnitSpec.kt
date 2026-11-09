@@ -19,6 +19,8 @@ import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ResolvedExchangeRoot
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -27,6 +29,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.server.ResponseStatusException
 import java.nio.file.Path
 import java.time.Instant
@@ -37,10 +40,17 @@ class VoiceMessageServiceUnitSpec :
         class Fixture(
             preferredLanguage: String? = "fr",
             available: Boolean = true,
+            namespaceWrite: Boolean = true,
         ) {
             val case = Case(namespaceId = UUID.randomUUID())
             val user = User(externalId = "voice-user", email = "voice@example.com", firstname = "Ada", preferredLanguage = preferredLanguage)
             val root = ResolvedExchangeRoot(Path.of("/provider/documents"), case.id)
+            val permissions =
+                mockk<PermissionService>(relaxed = true) {
+                    every {
+                        hasPermission(user.id.toString(), EntityType.NAMESPACE, case.namespaceId.toString(), Action.WRITE)
+                    } returns namespaceWrite
+                }
             val transcription =
                 mockk<TranscriptionService> {
                     every { isAvailable() } returns available
@@ -72,7 +82,7 @@ class VoiceMessageServiceUnitSpec :
                     cases,
                     resolver,
                     storage,
-                    ExchangeCapabilityService(mockk<PermissionService>(relaxed = true)),
+                    ExchangeCapabilityService(permissions),
                     mockk<UserService> { every { getCurrentUser() } returns user },
                 )
 
@@ -111,6 +121,25 @@ class VoiceMessageServiceUnitSpec :
             val f = Fixture(available = false)
 
             shouldThrow<ConflictException> { f.post() }
+
+            f.verifyNothingHappened()
+        }
+
+        "no write access on the namespace of the case is refused and nothing is transcribed, stored or posted" {
+            val f = Fixture(namespaceWrite = false)
+
+            shouldThrow<AccessDeniedException> { f.post() }
+
+            verify(exactly = 1) {
+                f.permissions.hasPermission(f.user.id.toString(), EntityType.NAMESPACE, f.case.namespaceId.toString(), Action.WRITE)
+            }
+            f.verifyNothingHappened()
+        }
+
+        "the namespace is checked first: a user without write access learns nothing about the availability" {
+            val f = Fixture(available = false, namespaceWrite = false)
+
+            shouldThrow<AccessDeniedException> { f.post() }
 
             f.verifyNothingHappened()
         }

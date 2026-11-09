@@ -1,5 +1,6 @@
 package io.whozoss.agentos.transcription
 
+import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
@@ -11,6 +12,7 @@ import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.FileExistsException
 import io.whozoss.agentos.exchange.InvalidExchangePathException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.VoiceMessageResponse
@@ -19,6 +21,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.http.HttpStatus
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 import java.io.IOException
@@ -32,8 +35,9 @@ import kotlin.time.measureTimedValue
  * Voice messages: a recording is transcribed with Whisper, stored in the case exchange, and posted to the
  * case as one user message made of the audio and its transcript.
  *
- * The access check on the case itself (Case WRITE) is declared by [VoiceMessageController]; this service
- * adds the owner-access rule when the exchange directory is shared with another case (see [storeAudio]).
+ * The access check on the case itself (Case WRITE) is declared by [VoiceMessageController]. This service adds
+ * two rules: the caller must hold WRITE on the namespace of the case (see [requireNamespaceWrite]), and the
+ * owner-access rule applies when the exchange directory is shared with another case (see [storeAudio]).
  */
 @Service
 class VoiceMessageService(
@@ -50,6 +54,9 @@ class VoiceMessageService(
     /**
      * Transcribe, store, post.
      *
+     * The caller must hold WRITE on the namespace of the case; this is checked first, before anything is
+     * transcribed, stored or posted, and before the availability of the feature is revealed.
+     *
      * The transcription comes first: when it fails or comes back empty, nothing is stored and nothing is
      * posted. The message carries the [MessageContent.Audio] first and the [MessageContent.Text] transcript
      * second; only the transcript reaches the agent.
@@ -64,16 +71,20 @@ class VoiceMessageService(
         answerToEventId: UUID?,
         durationMs: Long?,
     ): VoiceMessageResponse {
+        val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        val user = userService.getCurrentUser()
+        val userId = user.id.toString()
+        requireNamespaceWrite(userId, case)
+
         if (!isAvailable()) {
             throw ConflictException("Voice messages are not available on this instance")
         }
         val mimeType = validatedMimeType(contentType, bytes)
 
-        val user = userService.getCurrentUser()
         val transcript = transcribe(caseId, bytes, mimeType, user.preferredLanguage)
 
         val relativePath = voiceMessagePath(mimeType)
-        storeAudio(caseId, relativePath, bytes)
+        storeAudio(case, userId, relativePath, bytes)
 
         val actor = Actor(id = user.metadata.id.toString(), displayName = user.displayName(), role = ActorRole.USER)
         caseService.addMessage(
@@ -89,6 +100,16 @@ class VoiceMessageService(
         )
         logger.info { "Voice message posted to case $caseId: stored at '$relativePath'" }
         return VoiceMessageResponse(transcript = transcript, path = relativePath)
+    }
+
+    /** A voice message is a write into the case, made on behalf of the namespace: WRITE on the namespace is required. */
+    private fun requireNamespaceWrite(
+        userId: String,
+        case: Case,
+    ) {
+        if (!exchangeCapabilityService.canWrite(userId, EntityType.NAMESPACE, case.namespaceId.toString())) {
+            throw AccessDeniedException("Voice messages require write access to the namespace")
+        }
     }
 
     /** The base MIME type of the upload, after checking the type is an accepted audio type and the size fits. */
@@ -137,19 +158,15 @@ class VoiceMessageService(
      * with another case. The path is server-generated, so the upload extension allow-list does not apply.
      */
     private fun storeAudio(
-        caseId: UUID,
+        case: Case,
+        userId: String,
         relativePath: String,
         bytes: ByteArray,
     ) {
-        val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        val caseId = case.id
         exchangeRootResolver.withFileMutation(case) { root ->
             if (root.ownerCaseId != caseId) {
-                exchangeCapabilityService.requireCaseAccess(
-                    userService.getCurrentUser().id.toString(),
-                    caseId,
-                    root,
-                    Action.WRITE,
-                )
+                exchangeCapabilityService.requireCaseAccess(userId, caseId, root, Action.WRITE)
             }
             val directory = root.requireUsable()
             try {
