@@ -161,7 +161,7 @@ class WorkflowController(
         )
 }
 
-internal fun WorkflowStepDto.toDomain(): LoopStep = LoopStep(id = id, tool = tool, input = LoopStepInput(params = params, from = from))
+internal fun WorkflowStepDto.toDomain(): WorkflowStep = WorkflowStep(id = id, tool = tool)
 
 internal fun toDto(workflow: Workflow): WorkflowDto =
     WorkflowDto(
@@ -170,7 +170,7 @@ internal fun toDto(workflow: Workflow): WorkflowDto =
         name = workflow.name,
         description = workflow.description,
         version = workflow.version,
-        steps = workflow.steps.map { WorkflowStepDto(id = it.id, tool = it.tool, params = it.input.params, from = it.input.from) },
+        steps = workflow.steps.map { WorkflowStepDto(id = it.id, tool = it.tool) },
         createdBy = workflow.metadata.createdBy,
         createdOn = workflow.metadata.created,
         updatedBy = workflow.metadata.modifiedBy,

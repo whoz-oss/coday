@@ -1,9 +1,9 @@
 package io.whozoss.agentos.workflow
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.userGroup.ListAgentUsersTool
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -12,12 +12,13 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Seeds the platform default [Workflow] at startup, then points every scheduled prompt that names
- * no workflow at it.
+ * Seeds the platform **user-group** [Workflow] at startup, then points every scheduled prompt that
+ * names no workflow at it (handover D5).
  *
- * The default is the scheduler's historical behaviour expressed as data: list the users the target
- * agent is deployed to, then start one case per user with the scheduled prompt. Its params only
- * carry run bindings, so the same definition serves every scheduled prompt.
+ * It is the scheduler's historical behaviour expressed as data: list the users the scheduled agent
+ * is deployed to (`listAgentUsers`, fed with the agent by
+ * [io.whozoss.agentos.scheduledPrompt.ScheduledWorkflowWiring]), then start one case per user.
+ * The three other predefined workflows (talent, task, dossier) are created by Whoz, not here.
  *
  * Existence, not content: created only when absent, never updated or deleted afterwards. Several
  * instances booting together race on the `doubleKey` constraint; the losers get a 409, logged.
@@ -45,13 +46,13 @@ class DefaultWorkflowSeeder(
             }
         } catch (e: ConflictException) {
             logger.info { "[WorkflowSeeder] Default workflow created concurrently, reusing it" }
-            checkNotNull(workflowRepository.findByName(null, WorkflowServiceImpl.DEFAULT_WORKFLOW_NAME)) { "Default workflow vanished after a conflict" }
+            checkNotNull(workflowRepository.findByName(null, WorkflowServiceImpl.DEFAULT_WORKFLOW_NAME)) {
+                "Default workflow vanished after a conflict"
+            }
         }
 
     companion object : KLogging() {
-        private val MAPPER = jacksonObjectMapper()
-
-        /** The default definition; mirrors what the scheduler did before workflows existed. */
+        /** The user-group definition: the agent's deployment audience, then one case per user. */
         fun defaultWorkflow(): Workflow =
             Workflow(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -60,29 +61,8 @@ class DefaultWorkflowSeeder(
                 description = "Lists the users the scheduled agent is deployed to, then starts one case per user with the scheduled prompt.",
                 steps =
                     listOf(
-                        LoopStep(
-                            id = "list-audience",
-                            tool = "ListAgentUsers",
-                            input = LoopStepInput(params = MAPPER.valueToTree(mapOf("agentConfigId" to "{{run.agentConfigId}}"))),
-                        ),
-                        LoopStep(
-                            id = "fan-out",
-                            tool = "BatchCaseStarter",
-                            input =
-                                LoopStepInput(
-                                    from = "list-audience",
-                                    params =
-                                        MAPPER.valueToTree(
-                                            mapOf(
-                                                "agentName" to "{{run.agentName}}",
-                                                "promptId" to "{{run.promptId}}",
-                                                "title" to "{{run.title}}",
-                                                "scheduledPromptId" to "{{run.scheduledPromptId}}",
-                                                "runId" to "{{run.runId}}",
-                                            ),
-                                        ),
-                                ),
-                        ),
+                        WorkflowStep(id = "list-audience", tool = ListAgentUsersTool.TOOL_NAME),
+                        WorkflowStep(id = "start-cases", tool = Workflow.BATCH_CASE_STARTER_TOOL),
                     ),
             )
     }

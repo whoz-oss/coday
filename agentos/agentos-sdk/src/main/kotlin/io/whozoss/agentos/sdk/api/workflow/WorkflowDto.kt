@@ -1,7 +1,6 @@
 package io.whozoss.agentos.sdk.api.workflow
 
 import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -10,29 +9,25 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * One step of a [WorkflowDto]: a tool call, executed in order.
+ * One step of a [WorkflowDto]: a tool, named as granted to the scheduler loop agent, bare
+ * (`listAgentUsers`) or prefixed by its integration config (`USER_GROUP__listAgentUsers`).
  *
- * [params] is the tool input. A string value that is exactly `{{run.<name>}}` is replaced, for each
- * run, by a value of the scheduled run: `agentConfigId`, `agentName`, `promptId`, `title`,
- * `scheduledPromptId` or `runId`. [from] names an earlier step whose structured output is passed
- * to this one as `previousStepOutput`.
+ * A step carries no parameters: they are supplied at run time by the scheduled prompt
+ * (`ScheduledPromptDto.workflowInput`, agent, prompt).
  */
 @Schema(name = "WorkflowStep")
-@JsonInclude(JsonInclude.Include.NON_NULL)
 data class WorkflowStepDto(
     @field:NotBlank(message = "step id must not be blank")
     val id: String,
     @field:NotBlank(message = "step tool must not be blank")
     val tool: String,
-    @field:Schema(description = "Tool input; string values may be run bindings such as {{run.agentConfigId}}.", type = "object", nullable = true)
-    val params: JsonNode? = null,
-    @field:Schema(description = "Id of an earlier step whose output feeds this one.", nullable = true)
-    val from: String? = null,
 )
 
 /**
- * HTTP DTO for a workflow: a strictly linear sequence of steps run by the scheduler for each
- * occurrence of a scheduled prompt.
+ * HTTP DTO for a workflow: which tools the scheduler runs, in which order, for each occurrence of
+ * a scheduled prompt.
+ *
+ * Exactly two steps: a target search (whose output carries `targets`), then `BatchCaseStarter`.
  *
  * Scope on POST: `namespaceId` null is a platform workflow (Super Admin only), otherwise a
  * namespace workflow (WRITE on the namespace). `namespaceId` is immutable on PUT.

@@ -1,23 +1,26 @@
 package io.whozoss.agentos.workflow
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * A reusable, strictly linear sequence of tool steps executed by the loop agent.
+ * A reusable definition of what the loop agent runs for a scheduled prompt: **which tools, in
+ * which order**. It carries no parameters: those are runtime values supplied by the scheduled
+ * prompt ([io.whozoss.agentos.scheduledPrompt.ScheduledPrompt.workflowInput], agent, prompt) and
+ * by the run. See `docs/study/HANDOVER-wz-35443.md` (D2, D3).
  *
- * A [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt] references one Workflow: the scheduled
- * prompt says *when* and *what* (its Prompt), the Workflow says *how* and *to whom*.
+ * A workflow has exactly two steps (enforced by [WorkflowValidator]):
+ * 1. **target search**: a tool whose structured output follows the [WorkflowTargets] contract,
+ *    fed with the scheduled prompt's `workflowInput`. `listAgentUsers` for the platform user-group
+ *    workflow, Whoz search tools for the workflows Whoz creates.
+ * 2. **case start**: [BATCH_CASE_STARTER_TOOL], fed with the scheduled prompt and the targets.
  *
- * Scope:
- * - `namespaceId == null` → platform workflow (visible everywhere, super-admin write only).
- *   The seeded default workflow is a platform workflow.
- * - `namespaceId != null` → namespace workflow, configured by the namespace's administrators.
+ * How runtime values reach each step is decided in one place:
+ * [io.whozoss.agentos.scheduledPrompt.ScheduledWorkflowWiring].
  *
- * [steps] reuse the [LoopStep] model executed by [LoopWorkflowRunnerService]: there is a single
- * step model, persisted here and run there. Step params may contain run bindings
- * (`{{run.agentConfigId}}` …), substituted when a run resolves its effective [LoopConfig].
+ * Scope: `namespaceId == null` is a platform workflow, otherwise a namespace one.
  */
 data class Workflow(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -25,12 +28,25 @@ data class Workflow(
     val name: String,
     val description: String? = null,
     val version: Int = CURRENT_VERSION,
-    val steps: List<LoopStep>,
+    val steps: List<WorkflowStep>,
 ) : Entity {
-    /** The definition as the runner consumes it, before run bindings are substituted. */
-    fun toLoopConfig(): LoopConfig = LoopConfig(version = version, steps = steps)
-
     companion object {
         const val CURRENT_VERSION = 1
+
+        /** Bare name of the step-2 tool. A step may name it bare or prefixed (`CASE__BatchCaseStarter`). */
+        const val BATCH_CASE_STARTER_TOOL = "BatchCaseStarter"
     }
 }
+
+/**
+ * One step of a [Workflow]: a tool, named as it is granted to the loop agent, bare (`listAgentUsers`)
+ * or prefixed by its integration config (`USER_GROUP__listAgentUsers`). Names are case-sensitive.
+ *
+ * Unknown properties are ignored so that definitions persisted before parameters were removed
+ * from steps still load.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class WorkflowStep(
+    val id: String,
+    val tool: String,
+)

@@ -28,7 +28,7 @@ class WorkflowServiceImplUnitSpec :
             metadata = EntityMetadata(id = UUID.randomUUID()),
             namespaceId = ns,
             name = name,
-            steps = listOf(LoopStep(id = "list", tool = "ListAgentUsers")),
+            steps = listOf(WorkflowStep(id = "search", tool = "SearchTalents"), WorkflowStep(id = "start", tool = "BatchCaseStarter")),
         )
 
         beforeTest { inUse.clear() }

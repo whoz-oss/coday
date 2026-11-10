@@ -3,17 +3,15 @@ package io.whozoss.agentos.workflow
 import io.whozoss.agentos.exception.BadRequestException
 
 /**
- * Write-time validation of a [Workflow] definition: everything that can be checked without
- * running it. Each rule is a reason for a 400, so a broken definition never reaches a run.
+ * Write-time validation of a [Workflow] definition. Each rule is a reason for a 400, so a broken
+ * definition never reaches a run.
+ *
+ * The shape is fixed for now (handover D3): exactly two steps, a target search then
+ * [Workflow.BATCH_CASE_STARTER_TOOL]. The search tool name is not checked against a catalog: Whoz
+ * search tools are integrations whose names only the deployment knows (D7). A wrong name aborts
+ * the run with a readable reason.
  */
 object WorkflowValidator {
-    /**
-     * Tools a workflow step may name: the tools granted to the scheduler loop agent.
-     *
-     * TODO(wz-35443): derive from the seeded scheduler-loop AgentConfig integrations once it is seeded.
-     */
-    val ALLOWED_TOOLS: Set<String> = setOf("ListAgentUsers", "BatchCaseStarter")
-
     /** The problems found in [workflow], empty when it is valid. */
     fun problems(workflow: Workflow): List<String> =
         buildList {
@@ -21,23 +19,21 @@ object WorkflowValidator {
             if (workflow.version != Workflow.CURRENT_VERSION) {
                 add("version must be ${Workflow.CURRENT_VERSION}, got ${workflow.version}")
             }
-            if (workflow.steps.isEmpty()) add("a workflow must declare at least one step")
-
-            val seen = mutableSetOf<String>()
-            workflow.steps.forEachIndexed { index, step ->
-                val label = "step ${index + 1} ('${step.id}')"
-                if (step.id.isBlank()) add("step ${index + 1}: id must not be blank")
-                if (step.id in seen) add("$label: duplicate step id")
-                if (step.tool !in ALLOWED_TOOLS) add("$label: unknown tool '${step.tool}' (allowed: ${ALLOWED_TOOLS.joinToString()})")
-                step.input.from?.let { from ->
-                    if (from !in seen) add("$label: 'from' must reference an earlier step, got '$from'")
-                }
-                step.input.params?.let { params ->
-                    if (!params.isObject) add("$label: params must be a JSON object")
-                }
-                WorkflowRunBindings.problemsIn(step.input.params).forEach { add("$label: $it") }
-                seen += step.id
+            if (workflow.steps.size != 2) {
+                add(
+                    "a workflow must have exactly 2 steps (target search, then ${Workflow.BATCH_CASE_STARTER_TOOL}), " +
+                        "got ${workflow.steps.size}",
+                )
+                return@buildList
             }
+            workflow.steps.forEachIndexed { index, step ->
+                if (step.id.isBlank()) add("step ${index + 1}: id must not be blank")
+                if (step.tool.isBlank()) add("step ${index + 1}: tool must not be blank")
+            }
+            val (search, start) = workflow.steps
+            if (search.id == start.id) add("step ids must be distinct")
+            if (isBatchCaseStarter(search.tool)) add("step 1 must be a target search, not ${Workflow.BATCH_CASE_STARTER_TOOL}")
+            if (!isBatchCaseStarter(start.tool)) add("step 2 must be ${Workflow.BATCH_CASE_STARTER_TOOL}, got '${start.tool}'")
         }
 
     /** @throws BadRequestException listing every problem when [workflow] is invalid. */
@@ -45,4 +41,7 @@ object WorkflowValidator {
         val problems = problems(workflow)
         if (problems.isNotEmpty()) throw BadRequestException("Invalid workflow: " + problems.joinToString("; "))
     }
+
+    private fun isBatchCaseStarter(tool: String): Boolean =
+        tool == Workflow.BATCH_CASE_STARTER_TOOL || tool.endsWith("__${Workflow.BATCH_CASE_STARTER_TOOL}")
 }

@@ -62,7 +62,7 @@ data class WorkflowNode(
 
     companion object {
         private val MAPPER = jacksonObjectMapper()
-        private val STEPS_TYPE = object : TypeReference<List<LoopStep>>() {}
+        private val STEPS_TYPE = object : TypeReference<List<WorkflowStep>>() {}
 
         /** `(namespaceId, name)` discriminator; the name is slugged so "My Flow" and "my flow" collide. */
         fun computeDoubleKey(
