@@ -4,16 +4,18 @@ import {
   ExchangeManifestCapabilityEnum,
 } from '@whoz-oss/agentos-api-client'
 import {
-  appendFileReferences,
   applyFileMention,
+  buildReferenceMention,
   directoryOf,
   FileSuggestion,
   fileMentionPrefix,
   fileReference,
   manifestToSuggestions,
   MAX_FILE_SUGGESTIONS,
+  mergeFileReferences,
   rankFiles,
   scopeOfRef,
+  withoutFileReferences,
 } from './file-mention'
 
 const file = (path: string, scope: FileSuggestion['scope'] = 'namespace'): FileSuggestion => ({
@@ -60,7 +62,7 @@ describe('fileReference / applyFileMention', () => {
   })
 })
 
-describe('scopeOfRef / appendFileReferences', () => {
+describe('referenced files', () => {
   const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
   const cs = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
 
@@ -69,37 +71,53 @@ describe('scopeOfRef / appendFileReferences', () => {
     expect(scopeOfRef(ExchangeFileEntryScopeEnum.NAMESPACE)).toBe('namespace')
   })
 
-  it('writes the # mention format, one reference per file', () => {
-    expect(appendFileReferences('', [ns('docs/readme.md'), cs('notes/todo.md')])).toBe(
-      'namespace:docs/readme.md case:notes/todo.md '
-    )
+  describe('mergeFileReferences', () => {
+    it('appends the new files in order', () => {
+      expect(mergeFileReferences([ns('a.md')], [cs('b.md'), ns('c.md')])).toEqual([ns('a.md'), cs('b.md'), ns('c.md')])
+    })
+
+    it('skips a file already held, and a file repeated inside the batch', () => {
+      expect(mergeFileReferences([ns('a.md')], [ns('a.md'), ns('b.md'), ns('b.md')])).toEqual([ns('a.md'), ns('b.md')])
+    })
+
+    it('does not confuse the two scopes', () => {
+      expect(mergeFileReferences([ns('a.md')], [cs('a.md')])).toEqual([ns('a.md'), cs('a.md')])
+    })
+
+    it('returns the same list when nothing is new', () => {
+      const current = [ns('a.md')]
+      expect(mergeFileReferences(current, [ns('a.md')])).toBe(current)
+      expect(mergeFileReferences(current, [])).toBe(current)
+    })
   })
 
-  it('separates from the draft with one space, unless it already ends with whitespace', () => {
-    expect(appendFileReferences('see', [ns('a.md')])).toBe('see namespace:a.md ')
-    expect(appendFileReferences('see ', [ns('a.md')])).toBe('see namespace:a.md ')
-    expect(appendFileReferences('see\n', [ns('a.md')])).toBe('see\nnamespace:a.md ')
+  describe('withoutFileReferences', () => {
+    it('drops the given files only, in the right scope', () => {
+      expect(withoutFileReferences([ns('a.md'), cs('a.md'), ns('b.md')], [ns('a.md')])).toEqual([
+        cs('a.md'),
+        ns('b.md'),
+      ])
+    })
+
+    it('keeps everything when nothing matches', () => {
+      expect(withoutFileReferences([ns('a.md')], [cs('a.md')])).toEqual([ns('a.md')])
+    })
   })
 
-  it('skips a reference already in the draft, as a whole token only', () => {
-    expect(appendFileReferences('read namespace:a.md now', [ns('a.md'), ns('b.md')])).toBe(
-      'read namespace:a.md now namespace:b.md '
-    )
-    expect(appendFileReferences('namespace:a.md.bak', [ns('a.md')])).toBe('namespace:a.md.bak namespace:a.md ')
-    expect(appendFileReferences('xnamespace:a.md', [ns('a.md')])).toBe('xnamespace:a.md namespace:a.md ')
-  })
+  describe('buildReferenceMention', () => {
+    it('lists the scope-qualified paths on one line', () => {
+      expect(buildReferenceMention([ns('docs/readme.md'), cs('notes/todo.md')])).toBe(
+        '[Files referenced: namespace:docs/readme.md, case:notes/todo.md]'
+      )
+    })
 
-  it('does not confuse the two scopes', () => {
-    expect(appendFileReferences('case:a.md ', [ns('a.md')])).toBe('case:a.md namespace:a.md ')
-  })
+    it('writes a single file without a separator', () => {
+      expect(buildReferenceMention([ns('a.md')])).toBe('[Files referenced: namespace:a.md]')
+    })
 
-  it('skips a file repeated inside the batch', () => {
-    expect(appendFileReferences('', [ns('a.md'), ns('a.md')])).toBe('namespace:a.md ')
-  })
-
-  it('returns the value untouched when nothing is new', () => {
-    expect(appendFileReferences('see namespace:a.md', [ns('a.md')])).toBe('see namespace:a.md')
-    expect(appendFileReferences('draft', [])).toBe('draft')
+    it('is empty without any file', () => {
+      expect(buildReferenceMention([])).toBe('')
+    })
   })
 })
 

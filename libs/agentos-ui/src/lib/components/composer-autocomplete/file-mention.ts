@@ -48,31 +48,39 @@ export function scopeOfRef(scope: ExchangeScope): FileMentionScope {
   return scope === ExchangeFileEntryScopeEnum.CASE ? 'case' : 'namespace'
 }
 
-/** True when [token] stands in [value] as a whole word (delimited by the edges or whitespace). */
-function hasToken(value: string, token: string): boolean {
-  for (let from = value.indexOf(token); from >= 0; from = value.indexOf(token, from + 1)) {
-    const end = from + token.length
-    if ((from === 0 || /\s/.test(value[from - 1]!)) && (end === value.length || /\s/.test(value[end]!))) return true
+/** Identity of a referenced file across both scopes. */
+const referenceKey = (ref: ExchangeFileRef): string => `${ref.scope}:${ref.path}`
+
+/**
+ * [current] plus the files of [refs] it does not hold yet (same scope and path), in order.
+ * Returns [current] itself when nothing is new.
+ */
+export function mergeFileReferences(current: ExchangeFileRef[], refs: ExchangeFileRef[]): ExchangeFileRef[] {
+  const known = new Set(current.map(referenceKey))
+  const added: ExchangeFileRef[] = []
+  for (const ref of refs) {
+    if (known.has(referenceKey(ref))) continue
+    known.add(referenceKey(ref))
+    added.push({ scope: ref.scope, path: ref.path })
   }
-  return false
+  return added.length > 0 ? [...current, ...added] : current
+}
+
+/** [current] without the files of [removed]. */
+export function withoutFileReferences(current: ExchangeFileRef[], removed: ExchangeFileRef[]): ExchangeFileRef[] {
+  const gone = new Set(removed.map(referenceKey))
+  return current.filter((ref) => !gone.has(referenceKey(ref)))
 }
 
 /**
- * Appends one reference per file at the end of [value], skipping those already in it (or earlier in the batch).
- * Returns [value] itself when nothing is new.
+ * Line appended to the outgoing message for the files referenced from the drawer, e.g.
+ * `[Files referenced: namespace:docs/readme.md, case:notes/todo.md]`: the exact scope-qualified paths the agent
+ * reads with its exchange tools, as the `#` mention writes them. Empty when there is none.
  */
-export function appendFileReferences(value: string, refs: ExchangeFileRef[]): string {
-  const seen = new Set<string>()
-  let added = ''
-  for (const ref of refs) {
-    const reference = fileReference({ scope: scopeOfRef(ref.scope), path: ref.path })
-    const token = reference.trim()
-    if (seen.has(token) || hasToken(value, token)) continue
-    seen.add(token)
-    added += reference
-  }
-  if (!added) return value
-  return value === '' || /\s$/.test(value) ? value + added : `${value} ${added}`
+export function buildReferenceMention(refs: ExchangeFileRef[]): string {
+  if (refs.length === 0) return ''
+  const references = refs.map((ref) => fileReference({ scope: scopeOfRef(ref.scope), path: ref.path }).trim())
+  return `[Files referenced: ${references.join(', ')}]`
 }
 
 /** Replaces the trailing `#<prefix>` word of the value with [reference]. */
