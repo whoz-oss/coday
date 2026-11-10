@@ -4,7 +4,17 @@ import { dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
-import { chooseMode, nxArgs, nxEnv, parseWorkspaceDir, resolveConfigDir, serverArgs } from './launcher.js';
+import {
+  chooseMode,
+  nxArgs,
+  nxEnv,
+  parseWorkspaceDir,
+  resolveConfigDir,
+  serverArgs,
+  shouldRunDoctor,
+  wantsDoctorOnly,
+  withoutCommand,
+} from './launcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,6 +27,9 @@ const __dirname = dirname(__filename);
  *    bundled `nx` on it, so the server, AgentOS and the Factory each get their own pane and log file.
  * 3. No TTY (desktop apps), --managed or CODAY_NO_NX=1: runs everything inside the server process,
  *    exactly like before (it still prints `Server is running on http://localhost:PORT`).
+ *
+ * Before 2, it runs the `doctor` preflight (implemented in the bundled server, nothing duplicated here) so that a
+ * missing Java or an unwritable config directory is said in plain scrollback, not inside an Nx pane that scrolls away.
  */
 
 // Create require function for resolving packages
@@ -151,7 +164,43 @@ function runNx() {
   return undefined;
 }
 
+/**
+ * The exit code `doctor` uses for "a check blocks the start" (DOCTOR_BLOCKED_EXIT in
+ * apps/server/src/lib/runtime/doctor.ts). It is deliberately not 1: that is what the server exits with on any
+ * unhandled error, and a preflight that merely crashed must never be what stops Coday.
+ */
+const DOCTOR_BLOCKED_EXIT = 2;
+
+/** Run the bundled server's `doctor`, inheriting the terminal so it prints its own report. */
+function runDoctor(argv) {
+  return spawnSync(process.execPath, [serverMainPath, 'doctor', ...serverArgs(argv)], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+}
+
+/**
+ * Preflight before the Nx TUI takes the terminal. Only a genuine blocker stops the start; anything else (a spawn
+ * error, a signal, a crash of the preflight itself) warns and carries on, like `runNx` falls back when the
+ * `workspace` command fails.
+ */
+function preflight() {
+  if (!shouldRunDoctor({ mode, argv: rawArgs, env: process.env })) return;
+  const result = runDoctor(rawArgs);
+  if (result.status === 0) return;
+  if (result.status === DOCTOR_BLOCKED_EXIT) process.exit(result.status);
+  const why = result.error?.message ?? (result.signal ? `killed by ${result.signal}` : `exit code ${result.status}`);
+  console.warn(`Preflight could not run (${why}): starting anyway.`);
+}
+
+// `coday-web doctor`: the report is the whole job, whatever the terminal is.
+if (wantsDoctorOnly(rawArgs)) {
+  const result = runDoctor(withoutCommand(rawArgs));
+  process.exit(result.error ? 1 : (result.status ?? 1));
+}
+
 console.log(`Coday Web: ${mode} mode (${reason})`);
+preflight();
 (mode === 'nx' ? Promise.resolve().then(runNx) : runManaged()).catch((error) => {
   console.error('Failed to start server:', error);
   process.exit(1);

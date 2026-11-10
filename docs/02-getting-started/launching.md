@@ -17,6 +17,33 @@ This will:
 
 Open your browser and navigate to the displayed URL (usually `http://localhost:3000`).
 
+## Preflight
+
+Before starting, Coday checks the few things it needs and prints a short report:
+
+```
+Coday preflight
+  ok  node     v24.4.0
+  ok  java     openjdk 25 2025-09-16
+  ok  config   /home/me/.coday
+  !!  ripgrep  not found
+               Agents search files with it. Install it with: brew install ripgrep
+  !!  ports    Port 3000 is in use (by node, pid 42), Coday starts on block 3020: http://localhost:3020/
+```
+
+- `ok` nothing to do.
+- `!!` a warning: Coday starts anyway. The `ports` line is worth reading — when another program (often a Coday you
+  already have running) holds the usual address, this is where the address to open is announced.
+- `XX` a blocker: Coday stops there and says what to install or fix.
+
+A missing Java only blocks a start that needs one right away. On a first run it is a warning: Coday comes up, the
+setup wizard explains how to install it and waits. With an external AgentOS and Factory, no JVM is started at all
+and the check passes.
+
+Run the preflight on its own with `npx --yes @whoz-oss/coday-web doctor`, which reports and exits without starting
+anything, and skip it with `--skip-doctor` (or `CODAY_SKIP_DOCTOR=1`). The desktop applications do not run it: their
+installer handles the prerequisites and their first-run wizard reports the same facts.
+
 ## Command Line Options
 
 ```bash
@@ -38,6 +65,7 @@ Open your browser and navigate to the displayed URL (usually `http://localhost:3
   1. **Cloudflare Access** — decodes the `Cf-Access-Jwt-Assertion` header JWT and uses its `email` claim.
   2. **Reverse-proxy header** — falls back to the `x-forwarded-email` header set by an upstream auth proxy.
 - `--debug` - Enable debug logging for troubleshooting
+- `--skip-doctor` - Skip the preflight checks (see above). `CODAY_SKIP_DOCTOR=1` does the same
 
 ### Execution Options
 
