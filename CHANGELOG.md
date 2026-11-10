@@ -1,3 +1,22 @@
+## 3.42.0 (2026-11-10)
+
+### 🚀 Features
+
+- wz-35031 - handle mentions with link ([1e77d1072](https://github.com/whoz-oss/coday/commit/1e77d1072))
+- wz-35031 - PR review ([23560c2f4](https://github.com/whoz-oss/coday/commit/23560c2f4))
+- wz-35031 - PR review ([21007e15d](https://github.com/whoz-oss/coday/commit/21007e15d))
+- wz-35031 - handle mentions with link ([#1529](https://github.com/whoz-oss/coday/pull/1529))
+
+### 🩹 Fixes
+
+- wz-35031 address review on agent mention parsing ([3bd518862](https://github.com/whoz-oss/coday/commit/3bd518862))
+- wz-35031 address review comments on mention parsing and its tests ([1e74eeb84](https://github.com/whoz-oss/coday/commit/1e74eeb84))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.41.0 (2026-11-09)
 
 ### 🚀 Features
