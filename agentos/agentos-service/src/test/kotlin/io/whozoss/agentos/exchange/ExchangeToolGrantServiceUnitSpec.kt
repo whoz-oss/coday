@@ -164,6 +164,29 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             grantService.resolveNamespaceGrant(mapOf(ExchangeIntegrationTypes.NAMESPACE to emptyList())) shouldBe null
         }
 
+        "the namespace exchange is granted by default: every tool when the key is absent, still opt-out with an empty list" {
+            // The shipped default, deliberately through the no-argument properties so that a flip of
+            // the compiled default shows up here. The Namespace READ gate is not this service's: it
+            // stays in AgentServiceImpl, which is where a missing user is denied.
+            val grantService = service()
+
+            grantService.resolveNamespaceGrant(null).shouldNotBeNull().allowedTools shouldBe null
+            grantService.resolveNamespaceGrant(emptyMap()).shouldNotBeNull().allowedTools shouldBe null
+            grantService.resolveNamespaceGrant(mapOf(ExchangeIntegrationTypes.NAMESPACE to emptyList())) shouldBe null
+        }
+
+        "the namespace exchange is not granted when the operator turns its platform default off" {
+            val grantService = service(ExchangeToolsConfigProperties(namespaceEnabledByDefault = false))
+
+            grantService.resolveNamespaceGrant(null) shouldBe null
+            grantService.resolveNamespaceGrant(emptyMap()) shouldBe null
+            // A declaration still wins over the switched-off default.
+            grantService
+                .resolveNamespaceGrant(mapOf(ExchangeIntegrationTypes.NAMESPACE to null))
+                .shouldNotBeNull()
+                .allowedTools shouldBe null
+        }
+
         "each scope reads its own platform default" {
             val grantService =
                 service(
