@@ -20,7 +20,27 @@ scheduler (agent audience → one case per user, translated prompt) must stay id
 ## 2. Status of the branch (as of handover)
 
 Branch `feature/archay/adr64-us4-scheduler-agentloop-convergence`, master merged in (`92dff5e59`).
-22 commits on top, all small and self-describing (`git log --oneline 92dff5e59..HEAD`).
+All commits on top are small and self-describing (`git log --oneline 92dff5e59..HEAD`).
+
+> **Not compiled since block B/C.** The last implementation session was told not to run build
+> tools. The code was written to compile and its specs were updated, but **the first action of the
+> next developer is to compile and run the suite** (§4 step 1).
+
+### Code map (where things live)
+| Concern | Class |
+|---|---|
+| Definition (which tools, in which order) | `workflow/Workflow.kt` (`Workflow`, `WorkflowStep(id, tool)`) |
+| Definition rules (exactly 2 steps, step 2 = BatchCaseStarter) | `workflow/WorkflowValidator.kt` |
+| Contract between step 1 and step 2 (`targets`) | `workflow/WorkflowTargets.kt` (`WorkflowTarget`, `WorkflowTargets.ARRAY_SCHEMA`) |
+| Runtime values → step inputs (hardcoded mapping, D3) | `scheduledPrompt/ScheduledWorkflowWiring.kt` (pure function) |
+| Run → scheduled prompt → workflow → `LoopConfig` | `scheduledPrompt/ScheduledPromptLoopConfigResolver.kt` |
+| Resolved form executed by the loop | `workflow/LoopConfig.kt` (`LoopStep(id, tool, input, feedsNext)`) |
+| Executes the resolved steps, writes the transcript | `workflow/LoopWorkflowRunnerService.kt` (knows nothing of scheduler/targets) |
+| The loop agent (case ↔ runner adapter) | `agent/AgentLoop.kt` |
+| Step 1, user-group workflow | `userGroup/ListAgentUsersTool.kt` (output `{ targets, members }`) |
+| Step 2 | `casePlugin/BatchCaseStarterTool.kt` (input `targets`, resolves `userExternalId`) |
+| Persistence / API | `workflow/WorkflowNode`, `Neo4jWorkflowRepository`, `WorkflowServiceImpl`, `WorkflowController`; SDK `api/workflow/WorkflowDto` |
+| Default workflow + backfill | `workflow/DefaultWorkflowSeeder.kt` |
 
 ### Done
 | Area | State |
@@ -35,14 +55,17 @@ Branch `feature/archay/adr64-us4-scheduler-agentloop-convergence`, master merged
 | `BatchCaseStarter` only granted when explicitly named (`RequiresExplicitGrant` + `ToolResolverService`), agent allowlist applied, invalid UUIDs → `INVALID_INPUT`, input schema aligned | done |
 | `SchedulerScannerUnitSpec` fixtures have an execution identity (`createdBy`) | done, green |
 | Case title falls back to prompt when blank | done |
+| **B2** Workflow steps are `{id, tool}`; `WorkflowRunBindings` deleted; validator = exactly 2 steps | done |
+| **B3** `ScheduledPrompt.workflowInput` (domain, node `workflowInputJson`, DTO, controller; must be a JSON object) | done |
+| **B4** `ScheduledWorkflowWiring` + resolver + runner hand-over via `LoopStep.feedsNext`; non-object input → `Aborted`; `AgentLoop` turns unexpected errors into a `WarnEvent` | done |
+| **C5** `listAgentUsers` output `{ targets: [{userExternalId}], members: [...] }` | done |
+| **C6** `BatchCaseStarter` input `targets`, user resolved by external id, outcome per target | done (+ `BatchCaseStarterToolUnitSpec`) |
 
 ### Not done / known red
-- **Full test suite not confirmed green** since the last 3 commits. Before them: 159 failures, the
-  bulk being one root cause (missing `LoopConfigResolver` bean) now fixed. **First action: run the
-  full suite** (`nx run agentos-service:test`, read `build/test-results/test/*.xml`).
-- The current Workflow model still has **per-step `params` with `{{run.*}}` bindings**
-  (`WorkflowRunBindings`). The meeting **rejected this** — see §3. Step 2 of the plan removes it.
-- Everything in §4 steps 2 → 10.
+- **Not compiled / suite not run** since block B/C (see warning above).
+- The only TODO left in code: `ScheduledPromptServiceImpl.resolveWorkflowId` — validation of
+  `workflowInput` against the step-1 tool schema (§4 step 8).
+- Everything in §4 steps 7 → 22.
 
 ## 3. Design decisions (final)
 
@@ -66,10 +89,11 @@ The data mapping between steps is **hardcoded** this sprint (no JsonPath / FEEL 
 language). Later evolution (context-based data flow, expression language, planning table) is
 explicitly out of scope; keep `steps` a list so the model does not need reshaping.
 
-Hardcoded wiring (to implement in one class, e.g. `ScheduledWorkflowWiring`):
-- step 1 input = `ScheduledPrompt.workflowInput` (as is), plus `agentConfigId` for the user-group
-  workflow (see D6);
-- step 2 input = `{ agentName, promptId, title, scheduledPromptId, runId, targets: <step1.targets> }`.
+Hardcoded wiring (implemented in `ScheduledWorkflowWiring`):
+- step 1 input = `ScheduledPrompt.workflowInput` (as is), plus `agentConfigId` (always added; a
+  `workflowInput` key of the same name wins; search tools that do not declare it ignore it);
+- step 2 input = `{ agentName, promptId, title, scheduledPromptId, runId }` + `targets` handed over
+  from step 1 by the runner (`LoopStep.feedsNext = "targets"`).
 
 ### D4. Common output contract for all target-search tools
 Every step-1 tool returns in its structured output:
@@ -81,8 +105,8 @@ Every step-1 tool returns in its structured output:
 - `entityId`/`entityType` optional: present for Whoz searches (→ `activeContext` session context),
   absent for user groups.
 - One case **per element**, no dedup (unchanged).
-- Tools concerned: `ListAgentUsers` (AgentOS, must be adapted) and the Whoz `SearchTalents`,
-  `SearchTasks`, `SearchDossiers` (Whoz side, coordinate with Vincent).
+- Tools concerned: `listAgentUsers` (AgentOS, **done**: also returns `members` for LLM use) and the
+  Whoz `SearchTalents`, `SearchTasks`, `SearchDossiers` (Whoz side, coordinate with Vincent).
 
 ### D5. Four predefined workflows, referenced by stable name
 - **AgentOS seeds one**: the user-group workflow (current default, `default-audience-fan-out`;
@@ -100,7 +124,7 @@ explicit `userGroupId`. So for that workflow `workflowInput` is empty and the wi
 `agentConfigId`.
 
 ### D7. Loop agent tools
-The seeded platform `scheduler-loop` AgentConfig (LOOP) gets `USER_GROUP:[ListAgentUsers]`,
+The seeded platform `scheduler-loop` AgentConfig (LOOP) gets `USER_GROUP:[listAgentUsers]`,
 `CASE:[BatchCaseStarter]`, and **access to the Whoz search tools through its integrations for the
 namespaces that need them** (Whoz configures those integrations). Hence the validator must **not**
 check step-1 tool names against a fixed catalog; a wrong name aborts the run with a readable reason.
@@ -113,9 +137,9 @@ same machinery as a run (`ToolResolverService` + effective integration configs o
 the loop agent). If not resolvable at save time, fail with a clear 400 rather than skipping.
 
 ### D9. Kept from earlier work (unchanged)
-`dispatchKey` idempotency (`runId:userExternalId[:entityId]` — adapt key to external id or keep
-internal id after resolution, internal is fine), `TARGETING` run status, translation at case start
-via stored Prompt, execution identity = scheduled prompt creator (never fall back to an admin).
+`dispatchKey` idempotency (`runId:userId[:entityId]`, internal user id after resolution by external
+id), `TARGETING` run status, translation at case start via stored Prompt, execution identity =
+scheduled prompt creator (never fall back to an admin).
 
 ## 4. Plan — do it in this order, one small commit per step
 
@@ -124,23 +148,17 @@ Rules: commit after every green compile; message `feat|fix|refactor|test|docs: w
 or `factory/`; run targeted specs, full suite at the end of each block.
 
 **Block A — get to a known state**
-1. Run the full `agentos-service` suite; fix residual failures (expect `CaseStarterServiceUnitSpec`,
-   integration specs). Commit fixes.
+1. Compile, run the full `agentos-service` suite; fix residual failures (expect
+   `CaseStarterServiceUnitSpec`, integration specs, anything touched by blocks B/C). Commit fixes.
 
-**Block B — reshape the Workflow model (D2, D3)**
-2. `WorkflowStep(id, tool)`; delete `WorkflowRunBindings` + spec; `WorkflowValidator` = exactly 2
-   steps, step 2 is `BatchCaseStarter`, step 1 is not, distinct non-blank ids/tools; update
-   `WorkflowDto/StepDto` (drop `params`, `from`), node JSON, seeder, controller mappers, specs.
-   `LoopConfig`/`LoopStep` stay the runner's resolved form.
-3. `ScheduledPrompt.workflowInput: JsonNode?` (domain, node `workflowInputJson`, DTO, controller).
-4. `ScheduledWorkflowWiring` + rewrite `ScheduledPromptLoopConfigResolver` to build the 2-step
-   `LoopConfig` (D3); runner: step 2 receives `targets` directly (drop `previousStepOutput`).
-   Make non-object params an `Aborted`, not a `ClassCastException`.
+**Block B — reshape the Workflow model (D2, D3)** — ✅ steps 2–4 done
+2. ✅ `WorkflowStep(id, tool)`, `WorkflowRunBindings` deleted, 2-step validator, DTO/node/seeder/controller.
+3. ✅ `ScheduledPrompt.workflowInput`.
+4. ✅ `ScheduledWorkflowWiring` + resolver; runner hand-over via `feedsNext`.
 
-**Block C — common contract (D4, D6)**
-5. `ListAgentUsers` structured output → `{ targets: [{ userExternalId }] }` (check other callers of
-   `MEMBER_ARRAY_SCHEMA`; keep the member list for LLM use if needed via a separate field).
-6. `BatchCaseStarter` reads `targets`, resolves `userExternalId` → user; update schema & tests.
+**Block C — common contract (D4, D6)** — ✅ done
+5. ✅ `listAgentUsers` → `{ targets, members }`.
+6. ✅ `BatchCaseStarter` reads `targets`, resolves `userExternalId`.
 
 **Block D — references & validation (D5, D8)**
 7. Stable names: rename/seed user-group workflow; accept workflow by name on scheduled prompt DTO.
