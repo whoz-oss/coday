@@ -45,7 +45,7 @@ This command will:
 2. Start the web server on port 3000 (the PROD port block 3000-3009: Express on 3000, AgentOS 3005, Factory 3006, embedded Neo4j 3007)
 3. Display the URL in your terminal
 
-**Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:3000`). If a port of the block is taken, the whole stack moves to the next free block (3020, 3040...) and says so in the terminal; set `PORT=<n>` to choose it yourself (then it is strict).
+**Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:3000`). If a port of the block is taken, Coday refuses to start and names the process holding it: stop it and start again. The ports are always the same on purpose (the redirect URIs registered at OAuth providers are tied to them); to use other ports anyway, set `PORT=<n>` or `CODAY_PORT_BASE=<n>` (then the redirect URIs of your providers must be registered for them).
 
 You can have an alias too in your shell configuration
 
