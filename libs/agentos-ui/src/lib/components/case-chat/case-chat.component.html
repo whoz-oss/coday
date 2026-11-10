@@ -553,7 +553,9 @@
           [namespaceBadge]="namespaceTargeted()"
           [limitError]="attachments.limitError()"
           [disabled]="attachments.isUploading()"
+          [references]="referencedFiles()"
           (removed)="attachments.remove($event)"
+          (referenceRemoved)="removeReference($event)"
           (filesSelected)="attachments.addFiles($event)"
         />
         <textarea

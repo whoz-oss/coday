@@ -162,25 +162,135 @@ describe('CaseHomeComponent — first message with attachments', () => {
   describe('files added from the drawer', () => {
     const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
 
-    it('writes one namespace reference per file into the draft, without duplicates', () => {
+    it('keeps one chip reference per file, without duplicates, and leaves the draft alone', () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('summarize')
 
       ref.instance['onAddFilesToContext']([ns('docs/readme.md'), ns('notes.md')])
-      expect(ref.instance['inputValue']()).toBe('summarize namespace:docs/readme.md namespace:notes.md ')
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), ns('other.md')])
 
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
-      expect(ref.instance['inputValue']()).toBe('summarize namespace:docs/readme.md namespace:notes.md ')
+      expect(ref.instance['referencedFiles']()).toEqual([ns('docs/readme.md'), ns('notes.md'), ns('other.md')])
+      expect(ref.instance['inputValue']()).toBe('summarize')
       ref.destroy()
     })
 
-    it('sends the references with the first message of the created case', async () => {
+    it('removes a reference when its chip is removed', () => {
       const ref = makeComponent()
+      ref.instance['onAddFilesToContext']([ns('a.md'), ns('b.md')])
+
+      ref.instance['removeReference'](ns('a.md'))
+
+      expect(ref.instance['referencedFiles']()).toEqual([ns('b.md')])
+      ref.destroy()
+    })
+
+    it('renders the references as chips, next to the staged uploads', () => {
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+      ref.changeDetectorRef.detectChanges()
+      const host = ref.location.nativeElement as HTMLElement
+
+      const chips = host.querySelectorAll('.composer-attachments__chip')
+      expect(chips).toHaveLength(1)
+      expect(chips[0]!.textContent).toContain('readme.md')
+      expect(chips[0]!.textContent).toContain('namespace')
+      expect((host.querySelector('textarea') as HTMLTextAreaElement).value).toBe('')
+
+      host.querySelector<HTMLButtonElement>('.composer-attachments__chip button')!.click()
+      ref.changeDetectorRef.detectChanges()
+      expect(host.querySelectorAll('.composer-attachments__chip')).toHaveLength(0)
+      ref.destroy()
+    })
+
+    it('can send with references only, and only then', () => {
+      const ref = makeComponent()
+      expect(ref.instance['canSend']).toBe(false)
+
+      ref.instance['onAddFilesToContext']([ns('a.md')])
+
+      expect(ref.instance['canSend']).toBe(true)
+      ref.destroy()
+    })
+
+    it('is not offered the mic while references are present', () => {
+      const ref = makeComponent()
+      expect(ref.instance['canRecord']).toBe(true)
+
+      ref.instance['onAddFilesToContext']([ns('a.md')])
+
+      expect(ref.instance['canRecord']).toBe(false)
+      ref.destroy()
+    })
+
+    it('sends a references line with the first message of the created case, then clears them', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('summarize')
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), ns('notes.md')])
+
+      await ref.instance['submit']()
+
+      expect(api.addMessageCase).toHaveBeenCalledWith('case-9', {
+        content: 'summarize\n\n[Files referenced: namespace:docs/readme.md, namespace:notes.md]',
+      })
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(exchangeState.initializeForCase).not.toHaveBeenCalled()
+      expect(ref.instance['referencedFiles']()).toEqual([])
+      ref.destroy()
+    })
+
+    it('sends the references alone when there is no text', async () => {
+      const ref = makeComponent()
+      ref.instance['onAddFilesToContext']([ns('a.md')])
+
+      await ref.instance['submit']()
+
+      expect(api.addMessageCase).toHaveBeenCalledWith('case-9', { content: '[Files referenced: namespace:a.md]' })
+      ref.destroy()
+    })
+
+    it('combines the upload mention and the references line', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
       ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
 
       await ref.instance['submit']()
 
-      expect(api.addMessageCase).toHaveBeenCalledWith('case-9', { content: 'namespace:docs/readme.md' })
+      expect(api.addMessageCase).toHaveBeenCalledWith('case-9', {
+        content:
+          'compare\n\n[Files attached to the case exchange: report.pdf]\n[Files referenced: namespace:docs/readme.md]',
+      })
+      ref.destroy()
+    })
+
+    it('keeps the references when the send fails, and sends them on the retry with the same case', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      ref.instance['onAddFilesToContext']([ns('a.md')])
+      api.addMessageCase.mockReturnValueOnce(throwError(() => new Error('Message not accepted')))
+
+      await ref.instance['submit']()
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+      expect(router.navigate).not.toHaveBeenCalled()
+
+      await ref.instance['submit']()
+
+      expect(api.createCase).toHaveBeenCalledTimes(1)
+      expect(api.addMessageCase).toHaveBeenLastCalledWith('case-9', { content: '[Files referenced: namespace:a.md]' })
+      expect(ref.instance['referencedFiles']()).toEqual([])
+      errorSpy.mockRestore()
+      ref.destroy()
+    })
+
+    it('drops the references on a namespace switch, like the staged files', () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      ref.instance['onAddFilesToContext']([ns('a.md')])
+
+      queryParams$.next({ ns: 'ns-2' })
+
+      expect(ref.instance['referencedFiles']()).toEqual([])
       ref.destroy()
     })
 

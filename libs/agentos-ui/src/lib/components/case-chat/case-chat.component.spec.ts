@@ -410,29 +410,123 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   describe('files added from the drawer', () => {
-    const refs = [
-      { scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/readme.md' },
-      { scope: ExchangeFileEntryScopeEnum.CASE, path: 'notes/todo.md' },
-    ]
+    const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
+    const cs = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
 
-    it('writes one scope-qualified reference per file into the draft, without duplicates', () => {
+    it('keeps one chip reference per file, without duplicates, and leaves the draft alone', () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('compare')
 
-      ref.instance['onAddFilesToContext'](refs)
-      expect(ref.instance['inputValue']()).toBe('compare namespace:docs/readme.md case:notes/todo.md ')
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), cs('notes/todo.md')])
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
 
-      ref.instance['onAddFilesToContext'](refs)
-      expect(ref.instance['inputValue']()).toBe('compare namespace:docs/readme.md case:notes/todo.md ')
+      expect(ref.instance['referencedFiles']()).toEqual([ns('docs/readme.md'), cs('notes/todo.md')])
+      expect(ref.instance['inputValue']()).toBe('compare')
+    })
+
+    it('removes a reference when its chip is removed', () => {
+      const ref = makeComponent()
+      ref.instance['onAddFilesToContext']([ns('a.md'), cs('a.md')])
+
+      ref.instance['removeReference'](ns('a.md'))
+
+      expect(ref.instance['referencedFiles']()).toEqual([cs('a.md')])
     })
 
     it('does nothing on a terminal case', () => {
       const ref = makeComponent()
       ref.instance['_sseStatus'].set('KILLED')
 
-      ref.instance['onAddFilesToContext'](refs)
+      ref.instance['onAddFilesToContext']([ns('a.md')])
 
+      expect(ref.instance['referencedFiles']()).toEqual([])
+    })
+
+    it('can send with references only, and only then', () => {
+      const ref = makeComponent()
+      expect(ref.instance['canSend']).toBe(false)
+
+      ref.instance['onAddFilesToContext']([ns('a.md')])
+
+      expect(ref.instance['canSend']).toBe(true)
+    })
+
+    it('sends a references line after the text, uploads nothing, then clears them', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), cs('notes/todo.md')])
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: 'compare\n\n[Files referenced: namespace:docs/readme.md, case:notes/todo.md]',
+        userId: 'default-user',
+      })
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(ref.instance['referencedFiles']()).toEqual([])
       expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('sends the references alone when there is no text', async () => {
+      const ref = makeComponent()
+      ref.instance['onAddFilesToContext']([cs('a.md')])
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: '[Files referenced: case:a.md]',
+        userId: 'default-user',
+      })
+    })
+
+    it('combines the upload mention and the references line', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+
+      await ref.instance['submit']()
+
+      expect(calls).toEqual(['upload', 'post'])
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content:
+          'compare\n\n[Files attached to the case exchange: report.pdf]\n[Files referenced: namespace:docs/readme.md]',
+        userId: 'default-user',
+      })
+    })
+
+    it('keeps the references when the send fails, and sends them again on the retry', async () => {
+      const ref = makeComponent()
+      ref.instance['onAddFilesToContext']([ns('a.md')])
+      http.post.mockImplementationOnce(() => throwError(() => new Error('network down')))
+
+      await ref.instance['submit']()
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledTimes(2)
+      expect(ref.instance['referencedFiles']()).toEqual([])
+    })
+
+    it('drops the references on a case switch, like the staged files', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        ref.instance['onAddFilesToContext']([ns('a.md')])
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['referencedFiles']()).toEqual([])
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
     })
   })
 
