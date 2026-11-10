@@ -14,8 +14,15 @@
 
 import { JavaStatus } from './java'
 
-/** Minimum Node major version. The published bundles are built for the toolchain of the CI (Node 24). */
+/** Minimum Node major version, the prerequisite the installation docs state. The server bundle targets it too. */
 export const NODE_MIN_VERSION = 22
+
+/**
+ * Exit code of `doctor` when a check BLOCKS the start, and the only one the launcher stops on. Any other non-zero
+ * code means the preflight itself failed (a crash, a bad option, a signal), which must never prevent a start:
+ * apps/web/index.js warns and carries on. Kept distinct from 1, which is what an unhandled throw exits with.
+ */
+export const DOCTOR_BLOCKED_EXIT = 2
 
 export type CheckState = 'ok' | 'warn' | 'blocked'
 
@@ -53,14 +60,31 @@ export interface PortsFacts {
   /** The block the stack would own; undefined when the ports would come from the OS. */
   base?: number
   notes: string[]
-  /** The choice failed: an explicit port (`PORT`, `CODAY_PORT_BASE`, `CODAY_*_PORT`) is taken. */
+  /**
+   * The choice failed and the start would fail the same way. The message comes from `chooseStackPorts` and already
+   * says what to do, whatever the cause (an explicit port taken, two services landing on one port, a port the OS
+   * refuses); the doctor does not guess a cause on top of it.
+   */
   error?: string
+}
+
+/**
+ * How much a missing Java actually costs, which is NOT the same everywhere (see orchestrator.ts `requireJava`):
+ * with an external AgentOS and Factory no JVM is ever spawned, and on a first run the wizard polls every few
+ * seconds while the user installs it. Blocking the start in those two cases would refuse what works today.
+ */
+export interface JavaNeed {
+  /** A JVM service is actually managed by this runtime. */
+  required: boolean
+  /** The first-run wizard is on and will wait for Java, so its absence is a normal state rather than a blocker. */
+  awaited: boolean
 }
 
 export interface DoctorFacts {
   /** `process.versions.node`. */
   node: string
   java: JavaStatus
+  javaNeed: JavaNeed
   configDir: ConfigDirFacts
   /** First line of `rg --version`; undefined when ripgrep is not installed. */
   ripgrep?: string
@@ -105,8 +129,11 @@ export function checkNode(version: string, platform?: NodeJS.Platform): Check {
  * and only `JAVA_HOME` is wrong, the line says so — `not found` next to a hint naming an installed Java reads as a
  * contradiction, and that confusion is the whole point of the check.
  */
-export function checkJava(java: JavaStatus): Check {
+export function checkJava(java: JavaStatus, need: JavaNeed): Check {
   if (java.state === 'ok') return { name: 'java', state: 'ok', detail: java.version }
+  if (!need.required)
+    return { name: 'java', state: 'ok', detail: 'not needed, the JVM services are external or disabled' }
+
   const misplaced = java.alternative !== undefined
   const detail =
     java.state === 'too-old'
@@ -114,6 +141,8 @@ export function checkJava(java: JavaStatus): Check {
       : misplaced
         ? 'not where JAVA_HOME points'
         : 'not found'
+  // The wizard is reachable without Java and explains the same thing, so stopping here would hide it.
+  if (need.awaited) return { name: 'java', state: 'warn', detail, hint: `${java.hint} Coday starts and waits for it.` }
   return { name: 'java', state: 'blocked', detail, hint: java.hint }
 }
 
@@ -139,24 +168,21 @@ export function checkRipgrep(version: string | undefined, platform?: NodeJS.Plat
  * that was already running and concludes nothing changed.
  */
 export function checkPorts(ports: PortsFacts): Check {
-  if (ports.error)
-    return {
-      name: 'ports',
-      state: 'blocked',
-      detail: ports.error,
-      hint: 'That port was chosen explicitly, so Coday does not move away from it.',
-    }
+  if (ports.error) return { name: 'ports', state: 'blocked', detail: ports.error }
   if (ports.express === undefined) return { name: 'ports', state: 'warn', detail: 'could not be determined' }
-  const where = ports.base === undefined ? 'ports assigned by the OS' : `block ${ports.base}`
-  const detail = `${where}, open http://localhost:${ports.express}/`
-  if (ports.notes.length === 0) return { name: 'ports', state: 'ok', detail }
-  return { name: 'ports', state: 'warn', detail, hint: ports.notes.join(' ') }
+  // Every block is taken: the ports come from the OS, and the real start gets its own set. Announcing the one
+  // probed here would name an address nothing ends up listening on.
+  if (ports.base === undefined)
+    return { name: 'ports', state: 'warn', detail: 'every block is taken, the OS assigns the ports at startup' }
+  // The note already names the block and the address, so repeating them as a detail says the same thing twice.
+  if (ports.notes.length > 0) return { name: 'ports', state: 'warn', detail: ports.notes.join(' ') }
+  return { name: 'ports', state: 'ok', detail: `block ${ports.base}, open http://localhost:${ports.express}/` }
 }
 
 export function buildReport(facts: DoctorFacts): DoctorReport {
   const checks = [
     checkNode(facts.node, facts.platform),
-    checkJava(facts.java),
+    checkJava(facts.java, facts.javaNeed),
     checkConfigDir(facts.configDir),
     checkRipgrep(facts.ripgrep, facts.platform),
     checkPorts(facts.ports),

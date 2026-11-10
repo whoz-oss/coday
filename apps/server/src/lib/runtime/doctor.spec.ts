@@ -6,6 +6,7 @@ import {
   checkPorts,
   checkRipgrep,
   DoctorFacts,
+  JavaNeed,
   NODE_MIN_VERSION,
   parseNodeMajor,
   renderReport,
@@ -14,6 +15,7 @@ import {
 const okFacts = (): DoctorFacts => ({
   node: `${NODE_MIN_VERSION}.11.0`,
   java: { state: 'ok', version: 'openjdk 25 2025-09-16', major: 25 },
+  javaNeed: { required: true, awaited: false },
   configDir: { path: '/home/me/.coday', writable: true },
   ripgrep: 'ripgrep 14.1.0',
   ports: { express: 3000, base: 3000, notes: [] },
@@ -52,8 +54,10 @@ describe('checkNode', () => {
 })
 
 describe('checkJava', () => {
+  const needed: JavaNeed = { required: true, awaited: false }
+
   it('blocks on a missing JVM and keeps the install hint', () => {
-    expect(checkJava({ state: 'missing', hint: 'brew install --cask temurin@25' })).toMatchObject({
+    expect(checkJava({ state: 'missing', hint: 'brew install --cask temurin@25' }, needed)).toMatchObject({
       state: 'blocked',
       detail: 'not found',
       hint: 'brew install --cask temurin@25',
@@ -61,17 +65,40 @@ describe('checkJava', () => {
   })
 
   it('blocks on a JVM that is too old and shows the version found', () => {
-    expect(checkJava({ state: 'too-old', version: 'openjdk 21.0.3', major: 21, hint: 'upgrade' })).toMatchObject({
-      state: 'blocked',
-      detail: 'openjdk 21.0.3',
-    })
+    expect(
+      checkJava({ state: 'too-old', version: 'openjdk 21.0.3', major: 21, hint: 'upgrade' }, needed)
+    ).toMatchObject({ state: 'blocked', detail: 'openjdk 21.0.3' })
   })
 
   it('passes and names the version', () => {
-    expect(checkJava({ state: 'ok', version: 'openjdk 25 2025-09-16', major: 25 })).toMatchObject({
+    expect(checkJava({ state: 'ok', version: 'openjdk 25 2025-09-16', major: 25 }, needed)).toMatchObject({
       state: 'ok',
       detail: 'openjdk 25 2025-09-16',
     })
+  })
+
+  it('only warns on a first run: the wizard is reachable and waits for Java', () => {
+    const check = checkJava({ state: 'missing', hint: 'install it' }, { required: true, awaited: true })
+    expect(check.state).toBe('warn')
+    expect(check.hint).toContain('waits for it')
+  })
+
+  it('passes when no JVM is managed at all (external AgentOS and Factory)', () => {
+    expect(checkJava({ state: 'missing', hint: 'install it' }, { required: false, awaited: false })).toMatchObject({
+      state: 'ok',
+    })
+  })
+
+  it('says where JAVA_HOME went wrong instead of "not found"', () => {
+    expect(
+      checkJava({ state: 'missing', hint: 'unset it', alternative: { version: 'openjdk 25' } }, needed)
+    ).toMatchObject({ detail: 'not where JAVA_HOME points' })
+    expect(
+      checkJava(
+        { state: 'too-old', version: 'openjdk 17', major: 17, hint: 'h', alternative: { version: 'openjdk 25' } },
+        needed
+      )
+    ).toMatchObject({ detail: 'openjdk 17 at JAVA_HOME' })
   })
 })
 
@@ -115,26 +142,25 @@ describe('checkPorts', () => {
     })
   })
 
-  it('warns when the stack moved, so nobody opens the old instance on 3000', () => {
-    const check = checkPorts({
-      express: 3020,
-      base: 3020,
-      notes: ['Port 3000 is in use (by node, pid 42), Coday starts on block 3020: http://localhost:3020/'],
-    })
+  it('warns with the move on ONE line, so nobody opens the old instance on 3000', () => {
+    const note = 'Port 3000 is in use (by node, pid 42), Coday starts on block 3020: http://localhost:3020/'
+    const check = checkPorts({ express: 3020, base: 3020, notes: [note] })
+    expect(check).toMatchObject({ state: 'warn', detail: note })
+    // The note already carries the block and the URL: repeating them as a hint says the same thing twice.
+    expect(check.hint).toBeUndefined()
+  })
+
+  it('announces no address when the OS assigns the ports: the real start gets different ones', () => {
+    const check = checkPorts({ express: 51234, notes: ['every block is taken'] })
     expect(check.state).toBe('warn')
-    expect(check.detail).toContain('http://localhost:3020/')
-    expect(check.hint).toContain('pid 42')
+    expect(check.detail).toContain('the OS assigns the ports at startup')
+    expect(check.detail).not.toContain('51234')
   })
 
-  it('says so when the ports come from the OS', () => {
-    expect(checkPorts({ express: 51234, notes: ['every block is taken'] }).detail).toContain('ports assigned by the OS')
-  })
-
-  it('blocks when an explicitly chosen port is taken', () => {
-    expect(checkPorts({ notes: [], error: 'Port 3000 is already in use (by nginx, pid 7).' })).toMatchObject({
-      state: 'blocked',
-      detail: 'Port 3000 is already in use (by nginx, pid 7).',
-    })
+  it('blocks on a failed choice without guessing a cause: the message already says what to do', () => {
+    const check = checkPorts({ notes: [], error: 'Port 3000 is already in use (by nginx, pid 7).' })
+    expect(check).toMatchObject({ state: 'blocked', detail: 'Port 3000 is already in use (by nginx, pid 7).' })
+    expect(check.hint).toBeUndefined()
   })
 })
 
@@ -147,6 +173,15 @@ describe('buildReport', () => {
 
   it('is blocked as soon as one check is', () => {
     expect(buildReport({ ...okFacts(), java: { state: 'missing', hint: 'install java' } }).blocked).toBe(true)
+  })
+
+  it('is not blocked by a missing Java the first run will wait for', () => {
+    const facts = {
+      ...okFacts(),
+      java: { state: 'missing' as const, hint: 'install java' },
+      javaNeed: { required: true, awaited: true },
+    }
+    expect(buildReport(facts).blocked).toBe(false)
   })
 
   it('is not blocked by a warning alone', () => {

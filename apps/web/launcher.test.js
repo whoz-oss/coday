@@ -9,6 +9,8 @@ import {
   resolveConfigDir,
   serverArgs,
   shouldRunDoctor,
+  wantsDoctorOnly,
+  withoutCommand,
 } from './launcher.js';
 
 test('interactive terminal runs through nx', () => {
@@ -52,11 +54,26 @@ test('the preflight is skipped in managed mode: the desktop apps have their own 
   assert.equal(shouldRunDoctor({ mode: 'managed', argv: [], env: {} }), false);
 });
 
-test('the preflight can be bypassed by flag or environment', () => {
+test('the preflight can be bypassed by flag or environment, in both flag forms', () => {
   assert.equal(shouldRunDoctor({ mode: 'nx', argv: ['--skip-doctor'], env: {} }), false);
+  assert.equal(shouldRunDoctor({ mode: 'nx', argv: ['--skip-doctor=true'], env: {} }), false);
   assert.equal(shouldRunDoctor({ mode: 'nx', argv: [], env: { CODAY_SKIP_DOCTOR: '1' } }), false);
   assert.equal(shouldRunDoctor({ mode: 'nx', argv: [], env: { CODAY_SKIP_DOCTOR: 'true' } }), false);
   assert.equal(shouldRunDoctor({ mode: 'nx', argv: [], env: { CODAY_SKIP_DOCTOR: '0' } }), true);
+});
+
+test('`coday-web doctor` is the preflight and nothing else, whatever the terminal', () => {
+  assert.equal(wantsDoctorOnly(['doctor']), true);
+  assert.equal(wantsDoctorOnly(['--configDir=/x', 'doctor']), true);
+  assert.equal(wantsDoctorOnly([]), false);
+  assert.equal(wantsDoctorOnly(['--skip-doctor']), false);
+  assert.equal(wantsDoctorOnly(['status']), false);
+});
+
+test('the command word is not handed to the server twice', () => {
+  assert.deepEqual(withoutCommand(['doctor', '--auth']), ['--auth']);
+  assert.deepEqual(withoutCommand(['--configDir=/x', 'doctor', '--auth']), ['--configDir=/x', '--auth']);
+  assert.deepEqual(withoutCommand(['--auth']), ['--auth']);
 });
 
 test('the workspace directory is read from the marker line, whatever else the server prints', () => {

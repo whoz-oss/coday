@@ -28,18 +28,21 @@ Coday preflight
   ok  config   /home/me/.coday
   !!  ripgrep  not found
                Agents search files with it. Install it with: brew install ripgrep
-  ok  ports    block 3020, open http://localhost:3020/
-               Port 3000 is in use (by node, pid 42), Coday starts on block 3020: http://localhost:3020/
+  !!  ports    Port 3000 is in use (by node, pid 42), Coday starts on block 3020: http://localhost:3020/
 ```
 
 - `ok` nothing to do.
 - `!!` a warning: Coday starts anyway. The `ports` line is worth reading — when another program (often a Coday you
   already have running) holds the usual address, this is where the address to open is announced.
-- `XX` a blocker: Coday stops there and says what to install or fix. Node and Java are the usual ones.
+- `XX` a blocker: Coday stops there and says what to install or fix.
 
-Run it on its own at any time with `npx --yes @whoz-oss/coday-web doctor`, and skip it with `--skip-doctor` (or
-`CODAY_SKIP_DOCTOR=1`). The desktop applications do not run it: their installer handles the prerequisites and their
-first-run wizard reports the same facts.
+A missing Java only blocks a start that needs one right away. On a first run it is a warning: Coday comes up, the
+setup wizard explains how to install it and waits. With an external AgentOS and Factory, no JVM is started at all
+and the check passes.
+
+Run the preflight on its own with `npx --yes @whoz-oss/coday-web doctor`, which reports and exits without starting
+anything, and skip it with `--skip-doctor` (or `CODAY_SKIP_DOCTOR=1`). The desktop applications do not run it: their
+installer handles the prerequisites and their first-run wizard reports the same facts.
 
 ## Command Line Options
 

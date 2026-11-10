@@ -12,6 +12,8 @@ import {
   resolveConfigDir,
   serverArgs,
   shouldRunDoctor,
+  wantsDoctorOnly,
+  withoutCommand,
 } from './launcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -163,21 +165,38 @@ function runNx() {
 }
 
 /**
- * `coday-server doctor`: prints its own report, exits 1 when something blocks the start. A preflight that cannot
- * itself run (spawn error, killed by a signal) must never be what stops Coday, so it only warns.
+ * The exit code `doctor` uses for "a check blocks the start" (DOCTOR_BLOCKED_EXIT in
+ * apps/server/src/lib/runtime/doctor.ts). It is deliberately not 1: that is what the server exits with on any
+ * unhandled error, and a preflight that merely crashed must never be what stops Coday.
  */
-function preflight() {
-  if (!shouldRunDoctor({ mode, argv: rawArgs, env: process.env })) return;
-  const result = spawnSync(process.execPath, [serverMainPath, 'doctor', ...serverArgs(rawArgs)], {
+const DOCTOR_BLOCKED_EXIT = 2;
+
+/** Run the bundled server's `doctor`, inheriting the terminal so it prints its own report. */
+function runDoctor(argv) {
+  return spawnSync(process.execPath, [serverMainPath, 'doctor', ...serverArgs(argv)], {
     stdio: 'inherit',
     env: process.env,
   });
+}
+
+/**
+ * Preflight before the Nx TUI takes the terminal. Only a genuine blocker stops the start; anything else (a spawn
+ * error, a signal, a crash of the preflight itself) warns and carries on, like `runNx` falls back when the
+ * `workspace` command fails.
+ */
+function preflight() {
+  if (!shouldRunDoctor({ mode, argv: rawArgs, env: process.env })) return;
+  const result = runDoctor(rawArgs);
   if (result.status === 0) return;
-  if (result.error || result.status === null) {
-    console.warn(`Preflight could not run (${result.error?.message ?? 'no exit code'}): starting anyway.`);
-    return;
-  }
-  process.exit(result.status);
+  if (result.status === DOCTOR_BLOCKED_EXIT) process.exit(result.status);
+  const why = result.error?.message ?? (result.signal ? `killed by ${result.signal}` : `exit code ${result.status}`);
+  console.warn(`Preflight could not run (${why}): starting anyway.`);
+}
+
+// `coday-web doctor`: the report is the whole job, whatever the terminal is.
+if (wantsDoctorOnly(rawArgs)) {
+  const result = runDoctor(withoutCommand(rawArgs));
+  process.exit(result.error ? 1 : (result.status ?? 1));
 }
 
 console.log(`Coday Web: ${mode} mode (${reason})`);

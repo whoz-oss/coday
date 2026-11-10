@@ -34,12 +34,29 @@ export function resolveConfigDir(argv, home = homedir()) {
   return join(home, '.coday');
 }
 
-/** Flags the launcher handles itself; the server never sees them. */
+/** Flags the launcher handles itself; the server never sees them. Both `--flag` and `--flag=value` forms. */
 const LAUNCHER_FLAGS = ['--managed', '--skip-doctor'];
+
+const hasFlag = (argv, flag) => argv.some((a) => a === flag || a.startsWith(`${flag}=`));
 
 /** The arguments the server must see: the launcher's own are removed. */
 export function serverArgs(argv) {
-  return argv.filter((a) => !LAUNCHER_FLAGS.includes(a));
+  return argv.filter((a) => !LAUNCHER_FLAGS.some((flag) => a === flag || a.startsWith(`${flag}=`)));
+}
+
+/**
+ * `coday-web doctor`: run the preflight and nothing else. Same rule as the bundled server's `parseCommand` (the
+ * first positional wins), so the command means the same thing with or without a terminal — without this the Nx
+ * branch would print the report and then start the whole stack, which is not what anyone typing `doctor` wants.
+ */
+export function wantsDoctorOnly(argv) {
+  return argv.find((a) => !a.startsWith('-')) === 'doctor';
+}
+
+/** The same arguments without that leading command word, so it is not handed to the server twice. */
+export function withoutCommand(argv) {
+  const at = argv.findIndex((a) => !a.startsWith('-'));
+  return at === -1 ? argv : [...argv.slice(0, at), ...argv.slice(at + 1)];
 }
 
 /**
@@ -53,7 +70,7 @@ export function serverArgs(argv) {
  */
 export function shouldRunDoctor({ mode, argv, env }) {
   if (mode !== 'nx') return false;
-  if (argv.includes('--skip-doctor')) return false;
+  if (hasFlag(argv, '--skip-doctor')) return false;
   return !(env.CODAY_SKIP_DOCTOR === '1' || env.CODAY_SKIP_DOCTOR === 'true');
 }
 

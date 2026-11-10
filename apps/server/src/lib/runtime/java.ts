@@ -73,7 +73,11 @@ export function javaHomeHint(
 export function findJavaHome(
   platform: NodeJS.Platform = process.platform,
   run: (args: string[]) => string = (args) =>
-    execFileSync('/usr/libexec/java_home', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    execFileSync('/usr/libexec/java_home', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2_000,
+    })
 ): string | undefined {
   if (platform !== 'darwin') return undefined
   try {
@@ -85,8 +89,10 @@ export function findJavaHome(
 
 /** Probe the local JVM. Never throws. */
 export function inspectJava(
+  // The preflight runs this before anything is on screen, so a `java` on a stale mount or behind a slow wrapper
+  // must time out rather than freeze the start. A JVM printing its version takes a fraction of this.
   run: (bin: string) => string = (bin) =>
-    execFileSync(bin, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
+    execFileSync(bin, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 }),
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   findHome: typeof findJavaHome = findJavaHome

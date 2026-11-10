@@ -39,7 +39,7 @@ import { Command } from './command-names'
 import { hideBin } from 'yargs/helpers'
 import { decideProfile } from './profile'
 import { provision } from './provision'
-import { buildReport, ConfigDirFacts, PortsFacts, renderReport } from './doctor'
+import { buildReport, ConfigDirFacts, DOCTOR_BLOCKED_EXIT, JavaNeed, PortsFacts, renderReport } from './doctor'
 import { inspectJava } from './java'
 import { chooseStackPorts, PickedPorts, stackRequestFromEnv, StackChoice, StackRequest } from './ports'
 import { parsePortBase, portsFor, profileBase } from './port-scheme'
@@ -147,7 +147,12 @@ function inspectConfigDir(dir: string): ConfigDirFacts {
 /** First line of `rg --version`, undefined when ripgrep is not installed. Never throws. */
 function inspectRipgrep(): string | undefined {
   try {
-    const out = execFileSync('rg', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    // A probe on the critical startup path: a binary on a stale mount or behind a slow wrapper must not hang it.
+    const out = execFileSync('rg', ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2_000,
+    })
     return out.split('\n')[0]?.trim() || undefined
   } catch {
     return undefined
@@ -170,20 +175,35 @@ async function inspectPorts(options: CodayOptions): Promise<PortsFacts> {
 }
 
 /**
+ * What a missing Java would actually cost here. `required` mirrors the services the runtime really spawns (an
+ * external AgentOS or Factory needs none), `awaited` mirrors the `patient` flag of `requireJava`: in the unmanaged
+ * profile the wizard is up and polls every few seconds while the user installs it.
+ */
+function inspectJavaNeed(options: CodayOptions): JavaNeed {
+  const { managed } = stackRequest(options)
+  return {
+    required: managed?.agentos !== false || managed?.factory !== false,
+    awaited: decideProfile(profileInput(options)).profile === 'unmanaged',
+  }
+}
+
+/**
  * `doctor`: the preflight the launcher runs BEFORE the Nx TUI takes the terminal (apps/web/index.js). Gathers the
- * facts; the checks themselves are in doctor.ts. Exit code 1 when one of them blocks the start.
+ * facts; the checks themselves are in doctor.ts. Exits `DOCTOR_BLOCKED_EXIT` when one of them blocks the start —
+ * any other non-zero code means the preflight itself failed, which never stops a start.
  */
 export async function runDoctor(): Promise<number> {
   const options = parseCodayOptions()
   const report = buildReport({
     node: process.versions.node,
     java: inspectJava(),
+    javaNeed: inspectJavaNeed(options),
     configDir: inspectConfigDir(options.configDir),
     ripgrep: inspectRipgrep(),
     ports: await inspectPorts(options),
   })
   for (const line of renderReport(report)) console.log(line)
-  return report.blocked ? 1 : 0
+  return report.blocked ? DOCTOR_BLOCKED_EXIT : 0
 }
 
 // ---------------------------------------------------------------------------
