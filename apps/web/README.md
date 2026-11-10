@@ -114,9 +114,8 @@ manifest calling `coday-server provision|agentos|factory|server|status`.
 That is the only address you ever need. The Factory cockpit is on the same address, under `/factory/` (for example
 http://localhost:3000/factory/). Every other port is internal: Coday uses it, you never type it.
 
-If the terminal says Coday started on another address (for example `Coday starts on block 3020:
-http://localhost:3020/`), a port was already taken by another program: open the address it prints. Nothing needs to be
-stopped or disabled. See *When a port is taken* below.
+If the terminal says a port is already in use, another program holds it: Coday refuses to start and names it. See *When a
+port is taken* below.
 
 Every start prints the addresses, for example:
 
@@ -155,26 +154,28 @@ Easy to remember: **3xxx is packaged Coday, 4xxx is development.** In dev, 4001 
 
 #### When a port is taken
 
-Coday never asks you to stop or disable anything.
+The ports are **always the same** for a given way of running Coday: the redirect URIs registered at OAuth providers
+(allowlists) are tied to them, so Coday never moves to other ports by itself.
 
-- **npx, `coday-web` and `web:local`**: if any port of the block is taken, the **whole stack** moves to the next free
-  block of its profile and prints the new address once:
-  `Port 3000 is in use (by node, pid 4242), Coday starts on block 3020: http://localhost:3020/`.
-  - prod tries 3000, 3020, 3040 … up to 3980;
-  - local tries 3010, 3030, 3050 … up to 3990;
-  - the two never land on the same block, so a `coday-web` and a `web:local` always run side by side.
+- **npx, `coday-web`, `web:local` and `pnpm web:serve:dev`**: if any port the stack uses (Express, AgentOS, Neo4j Bolt,
+  Factory) is taken, Coday **refuses to start** and prints one line naming the port and, when it can find it, the
+  program holding it (on macOS, 5000 and 7000 come with an AirPlay Receiver hint):
+  `Port 3000 is already in use (by node, pid 4242). Stop what uses it or choose another port (PORT=<n>, or CODAY_PORT_BASE=<n> for a whole block).`
+  Stop that program and start again.
+- If you really need other ports, choose them explicitly (see *Choosing the ports yourself*), knowing that the redirect
+  URIs registered at your OAuth providers are tied to the default ports and will have to be registered again.
+- **`scripts/web-dev-tmux.sh`**: a helper that picks the first free block among 4000, 4010, 4020 … for itself, so
+  several worktrees run side by side; it then starts the stack on that block explicitly (`CODAY_PORT_BASE`).
+- **`pnpm web:serve:dev`**: its ports are written in Nx and Angular config files, which cannot follow a move. Same
+  rule: it stops at once with a message naming the port and the program holding it. Stop that program, or use the
+  tmux script.
 
-  The block chosen is remembered (`runtime/state.json`, `portBlock`) and tried first at the next start, so the address
-  stays the same from one start to the next as long as it is free.
-- **`scripts/web-dev-tmux.sh`**: takes the first free block among 4000, 4010, 4020 … so several worktrees run side by
-  side.
-- **`pnpm web:serve:dev`**: its ports are written in Nx and Angular config files, which cannot follow a move. It stops
-  at once with a message naming the port and the program holding it. Stop that program, or use the tmux script.
+`runtime/state.json` records the block of the last start (`portBlock`) for information only: it never influences the
+choice.
 
 #### Choosing the ports yourself
 
-An explicit choice is **strict**: if the port is taken, Coday stops with a message naming the port and, when it can find
-it, the program holding it, instead of moving.
+An explicit choice is just as strict: if the port is taken, Coday stops with the same message.
 
 | To | Use |
 |---|---|
@@ -239,10 +240,10 @@ existing installs without a wizard identity keep their previous behaviour: no wi
 | `--host <addr>` / `CODAY_HOST` | Interface Express listens on (default `127.0.0.1`; `0.0.0.0` with `--auth`) |
 | `--managed` / `CODAY_NO_NX=1` | Force the single-process mode (no Nx) |
 | `--no-open` / `CODAY_NO_OPEN=1` | Do not open the browser on start (only Nx mode opens it; never with `--auth`, a non-loopback host or `CI`) |
-| `PORT` | Express port, **strict** when set (default: the first free block of the profile, see *Ports*) |
-| `CODAY_PORT_BASE` | Pin the stack on this port block (**strict**, no block fallback); unset: the profile picks and falls back (see *Ports*) |
-| `CODAY_PORT_PROFILE=prod\|local\|dev` | Profile whose candidate blocks are used (set to `local` by `web:local`); derived from `BUILD_ENV` otherwise. Not an explicit choice: stays non-strict |
-| `CODAY_AGENTOS_PORT`, `CODAY_FACTORY_PORT`, `CODAY_AGENTOS_BOLT_PORT` | Port of the managed AgentOS, Factory and AgentOS Bolt instead of the block's (strict) |
+| `PORT` | Express port instead of the one of the block (default: the first block of the profile, always the same, see *Ports*). Taken: Coday refuses to start |
+| `CODAY_PORT_BASE` | Use this port block instead of the default one of the profile. Taken: Coday refuses to start (no block fallback). Redirect URIs registered at OAuth providers are tied to the default ports |
+| `CODAY_PORT_PROFILE=prod\|local\|dev` | Profile whose default block is used (set to `local` by `web:local`); derived from `BUILD_ENV` otherwise |
+| `CODAY_AGENTOS_PORT`, `CODAY_FACTORY_PORT`, `CODAY_AGENTOS_BOLT_PORT` | Port of the managed AgentOS, Factory and AgentOS Bolt instead of the block's (taken: Coday refuses to start) |
 | `AGENTOS_URL`, `FACTORY_URL` | Use an external AgentOS / Factory instead of managed ones. A service that is external has no pane in the Nx run (nothing to run); the `status` pane still reports it |
 | `CODAY_NO_FACTORY=1` | Leave the managed Factory out: no `factory` pane in the Nx run, it is neither downloaded nor started, `/api/factory` is not proxied, and the wizard and the loading page do not mention it. An external `FACTORY_URL` is still used |
 | `--profile unmanaged\|managed` / `CODAY_PROFILE` | Force the profile instead of deriving it (the flag wins over the env var). E.g. a dev server (`AGENTOS_URL`) started on the configDir of a running `coday-web` with `--profile unmanaged` keeps forwarding the wizard identity to that AgentOS. An external AgentOS on an already provisioned configDir never rewrites `runtime/state.json` (ports, progress) in the single-process mode, except for this profile |
@@ -262,7 +263,7 @@ pnpm nx run web:local                     # everyday: build local code, run it l
 pnpm nx run web:local -- --fresh          # test the first-run wizard again (deletes the local config first)
 pnpm nx run web:local -- --managed        # single process, plain console (instead of the Nx TUI)
 pnpm nx run web:local -- --no-open        # do not open the browser (every restart would otherwise open a tab)
-pnpm nx run web:local -- --port 3100      # pin the Express port (strict: taken, the run fails)
+pnpm nx run web:local -- --port 3100      # choose the Express port (taken: the run fails)
 ```
 
 The first time you get the wizard; afterwards the loading page and then the app, on the instance you configured, so you can stop,
@@ -287,12 +288,12 @@ lies in, them, your home or the repository), and nothing is published.
 | Option / env | Effect |
 |---|---|
 | `--fresh` | Delete `config/` and `files/` (printed) before starting: a brand-new first run |
-| `--managed`, `--port <n>` | Single-process mode, Express port (strict when given). Without `--port` the stack takes the first free LOCAL block, 3010 then 3030, 3050... (prod has 3000, 3020...: never the same block) and says which |
+| `--managed`, `--port <n>` | Single-process mode, Express port (taken: the run fails). Without `--port` the stack uses the LOCAL block 3010 (prod has 3000: never the same block) and fails, naming the process, when one of its ports is taken |
 | `--no-open` | Do not open the browser (also `CODAY_NO_OPEN=1`) |
 | `--prepare-only` | Prepare everything, print the paths as JSON on the last line, no server |
 | `--clean` | Delete the **whole** root when the server stops (setup and data included) |
 | `CODAY_LOCAL_DIR=<dir>` | Use another root than `~/.coday-local` (`CODAY_FIRST_RUN_DIR` is a deprecated alias) |
-| `CODAY_PORT_BASE=<n>` | Pin the stack on this port block (strict: a second checkout side by side, e.g. a block of the 3xxx range your prod and local do not use) |
+| `CODAY_PORT_BASE=<n>` | Use this port block instead of 3010 (taken: the run fails; e.g. a second checkout side by side, on a block of the 3xxx range your prod and local do not use) |
 
 `web:first-run` is kept as an alias of `web:local -- --fresh`.
 
@@ -351,5 +352,6 @@ than the former thin launcher. Versions of the `platform:npm` packages move in l
   cause. With an external `AGENTOS_URL`, check that URL answers on `/management/health`. (Opening `/` yourself
   meanwhile shows a blank page for up to 90 s, the app waits for AgentOS.)
 - **Java missing or too old**: install Java 25 (the wizard shows the command), the page continues by itself.
-- **Port already in use**: the packaged stack moves to the next free block by itself and says so; to choose, `PORT=3100
-  npx @whoz-oss/coday-web` (strict, see *Ports*).
+- **Port already in use**: Coday keeps the same ports on purpose (OAuth redirect URI allowlists are tied to them), so it
+  refuses to start and names the program holding the port. Stop it, or choose other ports explicitly
+  (`PORT=3100 npx @whoz-oss/coday-web`, or `CODAY_PORT_BASE=<n>` for a whole block; see *Ports*).

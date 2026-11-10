@@ -28,16 +28,17 @@
  *   --fresh          delete `config/` and `files/` first: a brand-new first run (the wizard shows again)
  *   --managed        run everything in one process, without the Nx TUI (what the desktop apps get; used by e2e)
  *   --no-open        do not open the browser when the server is up (Nx mode opens it; also CODAY_NO_OPEN=1)
- *   --port <n>       Express port, STRICT (an explicit choice: taken, the run fails). Without it the stack takes the first
- *                    free block of the LOCAL profile (3010, then 3030, 3050...: the prod blocks 3000, 3020... never
- *                    collide) and says so; see apps/server/src/lib/runtime/port-scheme.json and apps/web/README.md
+ *   --port <n>       Express port, STRICT (an explicit choice: taken, the run fails). Without it the stack always takes the
+ *                    first block of the LOCAL profile (3010; the prod block 3000 never collides) and FAILS when one of
+ *                    its ports is taken, naming the process holding it; see
+ *                    apps/server/src/lib/runtime/port-scheme.json and apps/web/README.md
  *   --prepare-only   prepare everything, print the paths as JSON on the last line and exit (no server)
  *   --clean          delete the WHOLE root (config included) when the server stops
  *
  * Env:
  *   CODAY_LOCAL_DIR=<dir>      use another root than ~/.coday-local
  *   CODAY_FIRST_RUN_DIR=<dir>  deprecated alias of CODAY_LOCAL_DIR
- *   CODAY_PORT_BASE=<n>        pin the stack on this port block (strict: taken, the run fails)
+ *   CODAY_PORT_BASE=<n>        use this port block instead of the default one of the profile (taken: the run fails)
  */
 
 import { execFileSync, spawn } from 'child_process'
@@ -48,7 +49,7 @@ import { fileURLToPath } from 'url'
 // Leaf module (imports only port-scheme.json: the single definition of the port scheme): a relative import is the only
 // way for this tooling project to share it, hence the exception to the module boundaries rule.
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import { candidateBases, parsePortBase, portsFor } from '../apps/server/src/lib/runtime/port-scheme'
+import { parsePortBase, PORT_BASES, portsFor } from '../apps/server/src/lib/runtime/port-scheme'
 import {
   builtJarGlob,
   devJarTarget,
@@ -65,14 +66,13 @@ import {
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 /**
- * Port scheme of the local stack (apps/server/src/lib/runtime/port-scheme.json): the LOCAL profile owns the blocks
- * 3010, 3030, 3050... (prod has 3000, 3020...: never the same block). The server picks the first free one at start,
- * moves the whole stack to the next when a port is taken, and says so. Only an explicit choice is strict: `--port`,
- * or a `CODAY_PORT_BASE` of the caller (that block, no fallback).
+ * Port scheme of the local stack (apps/server/src/lib/runtime/port-scheme.json): the LOCAL profile owns the block 3010
+ * (prod has 3000: never the same block). The ports are ALWAYS the same (OAuth redirect URI allowlists are tied to
+ * them): when one is taken the server refuses to start and names the process holding it. `--port` or a
+ * `CODAY_PORT_BASE` of the caller are the explicit ways to choose other ports.
  */
 const EXPLICIT_BASE = parsePortBase(process.env['CODAY_PORT_BASE'])
-const LOCAL_FIRST_BLOCK = candidateBases('local')[0] as number
-const EXPECTED_PORT = portsFor(EXPLICIT_BASE ?? LOCAL_FIRST_BLOCK).server
+const EXPECTED_PORT = portsFor(EXPLICIT_BASE ?? PORT_BASES.local).server
 
 const log = (message: string) => console.log(`[web-local] ${message}`)
 
@@ -233,8 +233,8 @@ async function main(): Promise<void> {
     CODAY_FACTORY_VERSION: 'dev',
     // The wizard proposes this folder instead of ~/Coday: the local stack never writes in the real home.
     CODAY_DEFAULT_FILES_DIR: filesFolder,
-    // The LOCAL profile: candidate blocks 3010, 3030... The server takes the first free one (it is NOT an explicit choice,
-    // so it is not strict). A CODAY_PORT_BASE or --port of the caller, below, is.
+    // The LOCAL profile: default block 3010. A taken port makes the start fail; CODAY_PORT_BASE or --port of the caller,
+    // below, choose other ports explicitly.
     CODAY_PORT_PROFILE: 'local',
     ...(port ? { PORT: port } : {}),
   }
@@ -262,9 +262,7 @@ async function main(): Promise<void> {
   const note = javaNote()
   if (note) log(`NOTE: ${note}`)
   log(`running: ${bin} ${launchArgs.join(' ')}`)
-  const where = port
-    ? `http://localhost:${port}/`
-    : `http://localhost:${EXPECTED_PORT}/ (or the next free block: the URL is printed below)`
+  const where = port ? `http://localhost:${port}/` : `http://localhost:${EXPECTED_PORT}/`
   log(
     firstRun ? `Open ${where} and walk through the wizard.` : `Open ${where}: you are back in your configured instance.`
   )

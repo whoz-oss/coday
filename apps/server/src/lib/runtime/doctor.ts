@@ -50,20 +50,16 @@ export interface ConfigDirFacts {
   error?: string
 }
 
-/**
- * The ports a start would take. `notes` are the lines `chooseStackPorts` logged (a moved block, the OS fallback):
- * they are already written for a user, so they are reported as they are rather than rebuilt here.
- */
+/** The ports a start would take. */
 export interface PortsFacts {
   /** Where the user would open Coday; undefined when the choice failed. */
   express?: number
-  /** The block the stack would own; undefined when the ports would come from the OS. */
+  /** The block the stack would own; undefined when the choice failed. */
   base?: number
-  notes: string[]
   /**
    * The choice failed and the start would fail the same way. The message comes from `chooseStackPorts` and already
-   * says what to do, whatever the cause (an explicit port taken, two services landing on one port, a port the OS
-   * refuses); the doctor does not guess a cause on top of it.
+   * says what to do, whatever the cause (a port taken and by whom, two services landing on one port); the doctor does
+   * not guess a cause on top of it.
    */
   error?: string
 }
@@ -163,19 +159,13 @@ export function checkRipgrep(version: string | undefined, platform?: NodeJS.Plat
 }
 
 /**
- * Not a yes/no check: a packaged stack moves to the next free block on its own, so a taken 3000 is NOT a failure.
- * What matters is saying WHICH address to open — someone who keeps opening 3000 out of habit lands on the instance
- * that was already running and concludes nothing changed.
+ * A yes/no check: the ports are always the same (OAuth redirect URI allowlists are tied to them), so a taken port IS a
+ * failure the user must solve. The message of `chooseStackPorts` names the process holding it and what to do.
  */
 export function checkPorts(ports: PortsFacts): Check {
   if (ports.error) return { name: 'ports', state: 'blocked', detail: ports.error }
-  if (ports.express === undefined) return { name: 'ports', state: 'warn', detail: 'could not be determined' }
-  // Every block is taken: the ports come from the OS, and the real start gets its own set. Announcing the one
-  // probed here would name an address nothing ends up listening on.
-  if (ports.base === undefined)
-    return { name: 'ports', state: 'warn', detail: 'every block is taken, the OS assigns the ports at startup' }
-  // The note already names the block and the address, so repeating them as a detail says the same thing twice.
-  if (ports.notes.length > 0) return { name: 'ports', state: 'warn', detail: ports.notes.join(' ') }
+  if (ports.express === undefined || ports.base === undefined)
+    return { name: 'ports', state: 'warn', detail: 'could not be determined' }
   return { name: 'ports', state: 'ok', detail: `block ${ports.base}, open http://localhost:${ports.express}/` }
 }
 

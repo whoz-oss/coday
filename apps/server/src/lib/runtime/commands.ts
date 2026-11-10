@@ -42,23 +42,20 @@ import { provision } from './provision'
 import { buildReport, ConfigDirFacts, DOCTOR_BLOCKED_EXIT, JavaNeed, PortsFacts, renderReport } from './doctor'
 import { inspectJava } from './java'
 import { chooseStackPorts, PickedPorts, stackRequestFromEnv, StackChoice, StackRequest } from './ports'
-import { parsePortBase, portsFor, profileBase } from './port-scheme'
+import { portsFor, profileBase } from './port-scheme'
 import { startupLines } from './startup-info'
 import { readState } from './state'
 
 export { COMMANDS, parseCommand } from './command-names'
 
 /**
- * The ports of the stack, one block for all of it (see ports.ts). Only an explicit choice is strict: `--port` / `PORT`
- * (Express) and `CODAY_PORT_BASE` (the block); a packaged stack otherwise moves to the next free block of its profile
- * (prod 3000 -> 3020 -> 3040, local 3010 -> 3030 -> 3050) and says so. The dev profile is strict too: its Angular and
- * Nx configs are static and cannot follow a move.
+ * The ports of the stack, one block for all of it (see ports.ts). Every profile is strict: the block is the first of
+ * the profile (prod 3000, local 3010, dev 4000), or the one of `CODAY_PORT_BASE`, with `--port` / `PORT` for Express.
+ * A taken port makes the start fail, so the ports stay the same on every start (OAuth redirect URI allowlists).
  */
 function stackRequest(options: CodayOptions): StackRequest {
-  const state = readState(options.configDir)
   return stackRequestFromEnv(process.env, {
     port: options.port,
-    remembered: parsePortBase(String(state?.portBlock ?? '')),
     managed: {
       agentos: !process.env.AGENTOS_URL,
       factory: !process.env.FACTORY_URL && !isManagedFactoryDisabled(),
@@ -68,7 +65,7 @@ function stackRequest(options: CodayOptions): StackRequest {
 
 async function chooseStack(options: CodayOptions): Promise<StackChoice> {
   try {
-    return await chooseStackPorts({ ...stackRequest(options), log: (m) => console.log(`[ports] ${m}`) })
+    return await chooseStackPorts(stackRequest(options))
   } catch (error) {
     if (error instanceof Error && error.message.includes('is already in use')) {
       // Parsed by the desktop apps (server-lifecycle.ts).
@@ -160,17 +157,15 @@ function inspectRipgrep(): string | undefined {
 }
 
 /**
- * The ports a start would take, and whatever `chooseStackPorts` has to say about them (a moved block, the OS
- * fallback). Probing is cheap and releases the ports right away, so running it here and again in `provision`
- * costs nothing.
+ * The ports a start would take, or why it would fail (a taken port). Probing is cheap and releases the ports right
+ * away, so running it here and again in `provision` costs nothing.
  */
 async function inspectPorts(options: CodayOptions): Promise<PortsFacts> {
-  const notes: string[] = []
   try {
-    const choice = await chooseStackPorts({ ...stackRequest(options), log: (m) => notes.push(m) })
-    return { express: choice.ports.express, base: choice.base, notes }
+    const choice = await chooseStackPorts(stackRequest(options))
+    return { express: choice.ports.express, base: choice.base }
   } catch (error) {
-    return { notes, error: error instanceof Error ? error.message : String(error) }
+    return { error: error instanceof Error ? error.message : String(error) }
   }
 }
 
