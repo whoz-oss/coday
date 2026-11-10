@@ -57,6 +57,16 @@ export class ExchangeItemComponent {
   }
 
   /**
+   * The checkbox is controlled by `selected`: it goes back to it at once, and shows the new state only if the
+   * parent applies it (the next binding update), so it never shows something the parent refused.
+   */
+  protected onToggle(event: Event): void {
+    const checkbox = event.target as HTMLInputElement
+    checkbox.checked = this.selected()
+    this.selectionToggled.emit()
+  }
+
+  /**
    * Build the row view-model from a directory entry.
    *
    * Size and timestamp are optional on the wire (a directory reports no size), so a file missing

@@ -16,7 +16,11 @@ import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
 import { canViewFile, ensureImageBlob, isFormatViewable, isImageFile } from '../../services/exchange-content.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { ExchangeDrawerComponent, ExchangeManifestStatus } from '../exchange-drawer/exchange-drawer.component'
+import {
+  ExchangeDrawerComponent,
+  ExchangeManifestStatus,
+  ExchangeReferenceToggle,
+} from '../exchange-drawer/exchange-drawer.component'
 
 /**
  * ExchangeShellComponent — smart container for the file-exchange drawer panel.
@@ -42,10 +46,12 @@ export class ExchangeShellComponent {
   protected readonly state = inject(ExchangeStateService)
 
   readonly active = input(false)
-  /** Lets the user check files and add them to the message being written (relayed to the drawer). */
+  /** Lets the user check files to put them in the message being written (relayed to the drawer). */
   readonly selectable = input(false)
+  /** Files the message references: the drawer checks exactly these. */
+  readonly referenced = input<ExchangeFileRef[]>([])
   readonly closeRequested = output<void>()
-  readonly addToContextRequested = output<ExchangeFileRef[]>()
+  readonly referenceToggled = output<ExchangeReferenceToggle>()
 
   // ── Current selection / viewer content ────────────────────────────────────────
   protected readonly selectedFile = signal<ExchangeFileRef | null>(null)

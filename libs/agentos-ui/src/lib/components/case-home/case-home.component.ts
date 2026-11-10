@@ -54,6 +54,7 @@ import {
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
@@ -397,10 +398,16 @@ export class CaseHomeComponent implements OnInit {
     input.style.height = `${input.scrollHeight}px`
   }
 
-  /** Keeps the files checked in the drawer as chips (once each), and puts the caret back in the composer. */
-  protected onAddFilesToContext(refs: ExchangeFileRef[]): void {
-    this.referencedFiles.update((current) => mergeFileReferences(current, refs))
-    afterNextRender(() => this.composerInput()?.nativeElement.focus(), { injector: this.injector })
+  /**
+   * A file was checked or unchecked in the drawer, whose checkboxes mirror [referencedFiles]: the chip follows.
+   * The focus stays where it is, the drawer remains open for the next file.
+   */
+  protected onReferenceToggled(change: ExchangeReferenceToggle): void {
+    if (change.referenced) {
+      this.referencedFiles.update((current) => mergeFileReferences(current, [change.ref]))
+    } else {
+      this.removeReference(change.ref)
+    }
   }
 
   protected removeReference(ref: ExchangeFileRef): void {
