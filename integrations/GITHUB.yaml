@@ -12,7 +12,7 @@ name: "GITHUB"
 integrationType: "BASH"
 description: "GitHub access to whoz-oss/coday through the gh CLI (no Docker / MCP server needed)."
 parameters:
-  workingDirectory: "{{NAMESPACE_CONFIG_PATH}}"
+  workingDirectory: "{{CASE_EXCHANGE}}/repo"
   defaultTimeoutSeconds: 60
   tools:
   - name: "gh"
