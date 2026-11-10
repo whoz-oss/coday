@@ -34,7 +34,7 @@ class DefaultWorkflowSeeder(
     override fun run(args: ApplicationArguments) = seed()
 
     internal fun seed() {
-        val default = workflowRepository.findByName(null, WorkflowServiceImpl.DEFAULT_WORKFLOW_NAME) ?: create()
+        val default = workflowRepository.findByName(null, Workflow.USER_GROUP_WORKFLOW_NAME) ?: create()
         val backfilled = scheduledPromptRepository.backfillWorkflowId(default.id)
         if (backfilled > 0) logger.info { "[WorkflowSeeder] Linked $backfilled scheduled prompt(s) to the default workflow" }
     }
@@ -46,7 +46,7 @@ class DefaultWorkflowSeeder(
             }
         } catch (e: ConflictException) {
             logger.info { "[WorkflowSeeder] Default workflow created concurrently, reusing it" }
-            checkNotNull(workflowRepository.findByName(null, WorkflowServiceImpl.DEFAULT_WORKFLOW_NAME)) {
+            checkNotNull(workflowRepository.findByName(null, Workflow.USER_GROUP_WORKFLOW_NAME)) {
                 "Default workflow vanished after a conflict"
             }
         }
@@ -57,7 +57,7 @@ class DefaultWorkflowSeeder(
             Workflow(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
                 namespaceId = null,
-                name = WorkflowServiceImpl.DEFAULT_WORKFLOW_NAME,
+                name = Workflow.USER_GROUP_WORKFLOW_NAME,
                 description = "Lists the users the scheduled agent is deployed to, then starts one case per user with the scheduled prompt.",
                 steps =
                     listOf(

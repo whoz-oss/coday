@@ -75,6 +75,16 @@ class WorkflowServiceImplUnitSpec :
             shouldThrow<BadRequestException> { service.resolveForScheduledPrompt(UUID.randomUUID(), namespaceId) }
         }
 
+        "findByName prefers the namespace workflow, then falls back to the platform one" {
+            val (service, _) = newService()
+            val platform = service.create(workflow(name = "talents", ns = null))
+            service.findByName(namespaceId, "Talents")?.id shouldBe platform.id
+            val own = service.create(workflow(name = "talents"))
+            service.findByName(namespaceId, "talents")?.id shouldBe own.id
+            service.findByName(null, "talents")?.id shouldBe platform.id
+            service.findByName(namespaceId, "unknown") shouldBe null
+        }
+
         "the default workflow cannot be deleted or renamed" {
             val (service, _) = newService()
             val default = service.create(DefaultWorkflowSeeder.defaultWorkflow())

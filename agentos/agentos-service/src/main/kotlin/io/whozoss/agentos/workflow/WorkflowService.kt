@@ -15,7 +15,17 @@ interface WorkflowService : EntityService<Workflow, UUID> {
     /** Workflows usable in [namespaceId]: the namespace's own, then the platform ones. */
     fun findAvailable(namespaceId: UUID): List<Workflow>
 
-    /** The seeded default workflow (list the agent's audience, start one case per user). */
+    /**
+     * The workflow named [name] as seen from [namespaceId]: the namespace's own first, then the
+     * platform one. Null [namespaceId] looks at platform workflows only. Null when none matches.
+     * Name matching is case- and accent-insensitive (same rule as uniqueness).
+     */
+    fun findByName(
+        namespaceId: UUID?,
+        name: String,
+    ): Workflow?
+
+    /** The seeded user-group workflow ([Workflow.USER_GROUP_WORKFLOW_NAME]), default of scheduled prompts. */
     fun getDefault(): Workflow
 
     /**

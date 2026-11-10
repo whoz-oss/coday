@@ -3,6 +3,7 @@ package io.whozoss.agentos.scheduledPrompt
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
@@ -16,6 +17,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptSearchRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.workflow.WorkflowService
 import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
@@ -86,6 +88,7 @@ class ScheduledPromptController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
+    private val workflowService: WorkflowService,
 ) : ScheduledPromptApi {
 
     private val crud =
@@ -181,7 +184,7 @@ class ScheduledPromptController(
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
             externalMetadata = resource.externalMetadata,
-            workflowId = resource.workflowId,
+            workflowId = workflowIdOf(resource, scope.namespaceId),
             workflowInput = resource.workflowInput,
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
@@ -247,9 +250,24 @@ class ScheduledPromptController(
             enabled = resource.enabled,
             externalMetadata = resource.externalMetadata,
             // Omitted on PUT means "back to the default workflow", same as on POST.
-            workflowId = resource.workflowId,
+            workflowId = workflowIdOf(resource, existing.namespaceId),
             workflowInput = resource.workflowInput,
         )
+
+    /**
+     * The workflow id the request refers to: [ScheduledPromptDto.workflowId], or the id of the
+     * workflow named [ScheduledPromptDto.workflowName] as seen from [namespaceId], or null (the
+     * service then applies the default). Namespace compatibility is checked by the service.
+     */
+    private fun workflowIdOf(
+        resource: ScheduledPromptDto,
+        namespaceId: UUID?,
+    ): UUID? {
+        val name = resource.workflowName?.takeIf { it.isNotBlank() } ?: return resource.workflowId
+        if (resource.workflowId != null) throw BadRequestException("Give workflowId or workflowName, not both")
+        return workflowService.findByName(namespaceId, name)?.id
+            ?: throw BadRequestException("No workflow named '$name' is available")
+    }
 
     companion object : KLogging()
 }

@@ -43,9 +43,14 @@ class WorkflowServiceImpl(
 
     override fun findAvailable(namespaceId: UUID): List<Workflow> = repository.findByParent(namespaceId) + repository.findPlatform()
 
+    override fun findByName(
+        namespaceId: UUID?,
+        name: String,
+    ): Workflow? = namespaceId?.let { repository.findByName(it, name) } ?: repository.findByName(null, name)
+
     override fun getDefault(): Workflow =
-        checkNotNull(repository.findByName(null, DEFAULT_WORKFLOW_NAME)) {
-            "The default workflow '$DEFAULT_WORKFLOW_NAME' is missing: it is seeded at startup"
+        checkNotNull(repository.findByName(null, Workflow.USER_GROUP_WORKFLOW_NAME)) {
+            "The default workflow '${Workflow.USER_GROUP_WORKFLOW_NAME}' is missing: it is seeded at startup"
         }
 
     override fun resolveForScheduledPrompt(
@@ -71,7 +76,7 @@ class WorkflowServiceImpl(
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
-    private fun Workflow.isDefault(): Boolean = namespaceId == null && name == DEFAULT_WORKFLOW_NAME
+    private fun Workflow.isDefault(): Boolean = namespaceId == null && name == Workflow.USER_GROUP_WORKFLOW_NAME
 
     private fun saveOrConflict(entity: Workflow): Workflow =
         try {
@@ -90,8 +95,5 @@ class WorkflowServiceImpl(
     private fun conflictMessage(entity: Workflow): String =
         "A workflow named '${entity.name}' already exists in this scope (namespaceId=${entity.namespaceId ?: "platform"})"
 
-    companion object : KLogging() {
-        /** Name of the seeded platform workflow used when a scheduled prompt names none. */
-        const val DEFAULT_WORKFLOW_NAME = "default-audience-fan-out"
-    }
+    companion object : KLogging()
 }

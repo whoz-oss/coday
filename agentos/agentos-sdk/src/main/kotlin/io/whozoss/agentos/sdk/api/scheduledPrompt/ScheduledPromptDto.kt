@@ -148,12 +148,20 @@ data class ScheduledPromptDto(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /**
-     * The workflow run for each occurrence (who receives the prompt, and how). Optional on POST/PUT:
-     * when omitted the platform default workflow is used (the target agent's audience, one case per
-     * user). Must be a platform workflow or one of the scheduled prompt's namespace.
+     * The workflow run for each occurrence (who receives the prompt, and how), by id. Optional on
+     * POST/PUT: when neither [workflowId] nor [workflowName] is given, the platform `user-group`
+     * workflow is used (the target agent's audience, one case per user). Must be a platform workflow
+     * or one of the scheduled prompt's namespace. Always set in responses.
      */
     @field:Schema(types = ["string", "null"], format = "uuid")
     val workflowId: UUID? = null,
+    /**
+     * The same reference by stable name (e.g. `user-group`), as used by clients that know the
+     * predefined workflows by name. **Input only**, mutually exclusive with [workflowId]; resolved
+     * to the namespace's workflow of that name, else the platform one. Not returned in responses.
+     */
+    @field:Schema(nullable = true)
+    val workflowName: String? = null,
     /**
      * Runtime input of the workflow's first step (e.g. search criteria), a JSON object. Omit for the
      * default user-group workflow. Validated against the first step's tool input schema.

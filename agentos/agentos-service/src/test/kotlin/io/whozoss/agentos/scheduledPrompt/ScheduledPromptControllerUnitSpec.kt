@@ -22,6 +22,8 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.workflow.Workflow
+import io.whozoss.agentos.workflow.WorkflowService
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -39,8 +41,9 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     // same namespaceService/userService/permissionService mocks.
     val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
     val overlayScopeAuthorizer = OverlayScopeAuthorizer(permissionService, userService, externalIdentifierResolver)
+    val workflowService = mockk<WorkflowService>()
     val controller = ScheduledPromptController(
-        service, userService, permissionService, overlayScopeAuthorizer,
+        service, userService, permissionService, overlayScopeAuthorizer, workflowService,
     )
 
     val namespaceId: UUID = UUID.randomUUID()
@@ -513,6 +516,44 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { service.deleteWithPrompt(id) } returns true
         controller.delete(id)
         verify { service.deleteWithPrompt(id) }
+    }
+
+    // -------------------------------------------------------------------------
+    // Workflow reference: by id or by stable name
+    // -------------------------------------------------------------------------
+
+    "create resolves workflowName to the workflow id seen from the namespace" {
+        val workflowId = UUID.randomUUID()
+        every { workflowService.findByName(namespaceId, "talents") } returns
+            Workflow(metadata = EntityMetadata(id = workflowId), name = "talents", steps = emptyList())
+        var captured: ScheduledPrompt? = null
+        every { service.createWithPrompt(any(), any()) } answers {
+            captured = firstArg()
+            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
+        }
+
+        controller.create(dto().copy(workflowName = "talents"))
+
+        captured?.workflowId shouldBe workflowId
+    }
+
+    "create refuses an unknown workflowName and a request naming both id and name" {
+        every { workflowService.findByName(namespaceId, "nope") } returns null
+        shouldThrow<BadRequestException> { controller.create(dto().copy(workflowName = "nope")) }
+        shouldThrow<BadRequestException> { controller.create(dto().copy(workflowName = "x", workflowId = UUID.randomUUID())) }
+    }
+
+    "create passes workflowId through when no name is given" {
+        val workflowId = UUID.randomUUID()
+        var captured: ScheduledPrompt? = null
+        every { service.createWithPrompt(any(), any()) } answers {
+            captured = firstArg()
+            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
+        }
+
+        controller.create(dto().copy(workflowId = workflowId))
+
+        captured?.workflowId shouldBe workflowId
     }
 
     // -------------------------------------------------------------------------

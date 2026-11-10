@@ -20,7 +20,9 @@ import java.util.UUID
  * How runtime values reach each step is decided in one place:
  * [io.whozoss.agentos.scheduledPrompt.ScheduledWorkflowWiring].
  *
- * Scope: `namespaceId == null` is a platform workflow, otherwise a namespace one.
+ * Scope: `namespaceId == null` is a platform workflow, otherwise a namespace one. Names are unique
+ * per scope; a namespace workflow may reuse a platform name, and then wins when referenced by name
+ * from that namespace ([WorkflowService.findByName]).
  */
 data class Workflow(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -32,6 +34,13 @@ data class Workflow(
 ) : Entity {
     companion object {
         const val CURRENT_VERSION = 1
+
+        /**
+         * Stable name of the platform user-group workflow seeded by [DefaultWorkflowSeeder], and the
+         * default of a scheduled prompt that names no workflow. A **contract** with the front, which
+         * references predefined workflows by name (handover D5): never rename it.
+         */
+        const val USER_GROUP_WORKFLOW_NAME = "user-group"
 
         /** Bare name of the step-2 tool. A step may name it bare or prefixed (`CASE__BatchCaseStarter`). */
         const val BATCH_CASE_STARTER_TOOL = "BatchCaseStarter"
