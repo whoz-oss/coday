@@ -9,6 +9,13 @@ import { CaseEvent, Configuration } from '@whoz-oss/agentos-api-client'
 export type GlobalStreamMessage =
   | { kind: 'case-event'; event: CaseEvent }
   | { kind: 'case-list-invalidated'; namespaceId: string }
+  /**
+   * The stream opened, which EventSource reports on the first connection and on every one of
+   * its own reconnections. Nothing is replayed on this stream, so whatever was published while
+   * it was down is gone: a consumer reloads its state on this rather than wait for the next
+   * event it may never get.
+   */
+  | { kind: 'connected' }
 
 /**
  * Fan-in SSE client for GET /api/cases/events/mine — the global, cross-case event stream.
@@ -73,6 +80,8 @@ export class GlobalCaseEventSseService {
         eventSource.addEventListener(name, onCaseEvent)
       }
       eventSource.addEventListener(GlobalCaseEventSseService.CASE_LIST_UPDATED, onCaseListUpdated)
+
+      eventSource.onopen = () => this.zone.run(() => subscriber.next({ kind: 'connected' }))
 
       eventSource.onerror = () => {
         // Not fatal: EventSource retries on its own. Only surface a hard failure
