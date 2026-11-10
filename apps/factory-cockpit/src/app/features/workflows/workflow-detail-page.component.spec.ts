@@ -85,6 +85,37 @@ describe('WorkflowDetailPageComponent', () => {
     expect(text).toContain('  ')
   })
 
+  it('renders configured Entry Mission Exit as readable escaped prose outside JSON', async () => {
+    const api = createApi({
+      getWorkflowDefinition: jest.fn().mockReturnValue(
+        of({
+          ...FULL_DEF,
+          steps: [
+            {
+              id: 'implement',
+              name: 'Implement',
+              entry: ['Sync branch'],
+              mission: '<script>not executable</script>',
+              exit: ['Commit', 'Push'],
+            },
+          ],
+        })
+      ),
+    })
+    const { host } = await setup(api)
+    const contract = query<HTMLElement>(host, '[data-step-contract]')
+    expect(contract.textContent).toContain('Sync branch')
+    expect(contract.textContent).toContain('<script>not executable</script>')
+    expect(contract.textContent).toContain('Commit')
+    expect(contract.textContent).toContain('Push')
+    expect(contract.querySelector('script')).toBeNull()
+    expect(Array.from(contract.querySelectorAll('h3')).map((heading) => heading.textContent)).toEqual([
+      'Entry / Préparation (configurée)',
+      'Mission (configurée)',
+      'Exit / Livrables (configurés)',
+    ])
+  })
+
   it('displays the title in the page header', async () => {
     const api = createApi()
     const { host } = await setup(api)

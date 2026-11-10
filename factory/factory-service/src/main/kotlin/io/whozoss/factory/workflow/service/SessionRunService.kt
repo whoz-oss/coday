@@ -1219,7 +1219,7 @@ class SessionRunService(
                 "completedAt" to completedAt,
                 "durationMs" to elapsedMs(startedAt, completedAt),
                 "waitingQuestion" to progress.waitingQuestions[step.id],
-            ).filterValues { it != null }
+            ).apply { step.contract?.let { putAll(it.toJson()) } }.filterValues { it != null }
         }
         val next = instance.copy(revision = instance.revision + 1, instance = nextInstance, projection = projection)
         // The instance document mirrors the row revision (the transition policy

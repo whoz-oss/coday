@@ -728,6 +728,10 @@ function normalizeFullWorkflowDefinition(payload: unknown): FullWorkflowDefiniti
   while (isEnvelope(normalized)) {
     normalized = normalized.data
   }
+  // Registry responses wrap the authored definition with its identity/hash.
+  if (typeof normalized === 'object' && normalized !== null && 'definition' in normalized) {
+    normalized = (normalized as { definition: unknown }).definition
+  }
   return (typeof normalized === 'object' && normalized !== null ? normalized : {}) as FullWorkflowDefinition
 }
 

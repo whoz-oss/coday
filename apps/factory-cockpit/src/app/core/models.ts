@@ -235,6 +235,8 @@ export interface RunEvent {
  * `GET /api/factory/workflows/:id/attempts`.
  */
 export interface AgentAttempt {
+  /** Frozen mandate dispatched for this exact attempt, absent when not available. */
+  effectiveMandate?: string
   attemptId: string
   stepId: string
   attemptNumber: number

@@ -163,7 +163,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
                 "failureCode", "resultEvidenceId", "environmentRef", "expectedEnvironmentRevision",
                 "resumptionContext", "expectedAmendmentSeq", "revision", "createdAt", "startedAt",
                 "activeDurationMs", "activeSince", "waitingDurationMs", "waitingSince", "completedAt",
-                "terminal", "sealingClass",
+                "terminal", "sealingClass", "effectiveMandate",
             ),
         )
         assertThat(first["status"]).isEqualTo("running")
@@ -171,13 +171,17 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(first["agentName"]).isEqualTo("builder")
         assertThat(first["attemptNumber"]).isEqualTo(1)
         assertThat(byId.getValue("attempt-2")["status"]).isEqualTo("pending")
+        assertThat(first["effectiveMandate"]).isEqualTo("Human-readable step mandate")
+        assertThat(byId.getValue("attempt-2")["effectiveMandate"]).isNull()
 
         // No secret or internal execution field ever crosses the boundary.
         val serialized = response.body.toString()
         assertThat(serialized).doesNotContain(secretOwner)
         assertThat(serialized).doesNotContain("ownerToken")
         assertThat(serialized).doesNotContain("capabilityToken")
-        assertThat(serialized).doesNotContain("brief")
+        assertThat(first).doesNotContainKey("brief")
+        assertThat(first).doesNotContainKey("contextEnvelope")
+        assertThat(serialized).doesNotContain("cap-secret", "cmd-secret", "turn-secret")
         assertThat(serialized).doesNotContain("leaseExpiresAt")
         assertThat(serialized).doesNotContain("commandId")
         assertThat(serialized).doesNotContain("lastObservedEventId")
@@ -250,7 +254,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             capabilityToken = "cap-secret",
             turnCorrelation = "turn-secret",
             commandId = "cmd-secret",
-            brief = "brief-secret",
+            brief = "Human-readable step mandate",
         )
 
     @Test

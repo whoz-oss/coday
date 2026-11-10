@@ -5,6 +5,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { ActivatedRoute, RouterLink } from '@angular/router'
 import { FactoryApiError, FactoryApiService, FullWorkflowDefinition } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
+import { stepContractSections } from '../../core/mappers/phase-detail'
 
 /**
  * Formats an arbitrary value as an indented JSON string.
@@ -50,6 +51,7 @@ export class WorkflowDetailPageComponent {
   protected readonly version: string
 
   protected readonly formatJson = formatJson
+  protected readonly stepContractSections = stepContractSections
 
   constructor() {
     const params = this.route.snapshot.paramMap

@@ -500,7 +500,10 @@ class CapabilityExecutionService(
                     val kind = ResponsibilityKind.fromWire(kindWire) ?: ResponsibilityKind.AGENT
                     val name = s["name"] as? String ?: id
                     val respName = respMap?.get("name") as? String
-                    id to WorkflowStepDefinition(id, name, WorkflowStepResponsibility(kind, respName), deps)
+                    id to WorkflowStepDefinition(
+                        id, name, WorkflowStepResponsibility(kind, respName), deps,
+                        io.whozoss.factory.workflow.domain.WorkflowStepContract.fromJson(s),
+                    )
                 }?.toMap()
                 if (definitionSteps == null) return@run null
                 val ancestors = transitiveAncestors(step.dependsOn, definitionSteps)
@@ -732,6 +735,7 @@ class CapabilityExecutionService(
     }
 
     private fun renderBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
+        if (step.contract != null) return renderExplicitBrief(step, assembly)
         val ticketInstruction = assembly.ticketInstruction
         val entryStep = assembly.entryStep
         val inputs = assembly.inputs
@@ -799,13 +803,54 @@ class CapabilityExecutionService(
             appendLine("  - Implementation: provide the scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.")
             appendLine("  - Review: provide prioritized findings with locations/evidence and residual risks; do not modify code unless requested.")
             appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If that tool is unavailable, do not guess or bypass the clarification requirement.")
-            appendLine(resultSubmissionInstruction())
-            appendLine("- Submit NEEDS_RESEARCH only when missing research blocks a reliable PASS/FAIL decision; identify the missing business information and useful references in the summary/findings.")
-            appendLine("- Otherwise use PASS or FAIL according to this step's criteria. Do not invent criteria.")
-            appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
-            appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
-            append("- Once Factory accepts the result, stop working on this step.")
+            append(resultProtocol())
         }
+    }
+
+    /** Explicit contracts replace legacy business defaults, never the Factory result protocol. */
+    private fun renderExplicitBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String = buildString {
+        val contract = requireNotNull(step.contract)
+        assembly.controllerRequest?.let {
+            appendLine("## User request")
+            appendLine(it)
+            appendLine()
+        }
+        appendLine("## Current step")
+        appendLine("Id: ${step.id}")
+        appendLine("Name: ${step.name}")
+        appendLine("Role: ${step.responsibility.name ?: step.responsibility.kind.wire}")
+        appendLine("Scope: Work only on this step.")
+        assembly.ticketInstruction?.let { appendLine("Ticket context: $it") }
+        if (assembly.inputs.isNotEmpty()) appendLine("Inputs: ${renderValue(assembly.inputs)}")
+        assembly.runBrief?.let { appendLine("Run brief handoff: ${renderValue(it)}") }
+        appendLine()
+        appendLine("## Entry / Preparation")
+        contract.entry.forEach { appendLine("- $it") }
+        appendLine()
+        appendLine("## Mission")
+        appendLine(contract.mission)
+        appendLine()
+        appendLine("## Exit / Deliverables")
+        contract.exit.forEach { appendLine("- $it") }
+        if (assembly.pluginSections.isNotEmpty()) {
+            appendLine()
+            appendLine("## Context contributions")
+            assembly.pluginSections.forEach { appendLine(it) }
+        }
+        appendLine()
+        appendLine("## Factory execution protocol")
+        appendLine("- Entry and exit prose are agent obligations, not machine-verified predicates. Factory still validates the structured result and configured validators.")
+        appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If unavailable, report the blocker; do not guess.")
+        append(resultProtocol())
+    }
+
+    private fun resultProtocol(): String = buildString {
+        appendLine(resultSubmissionInstruction())
+        appendLine("- Submit NEEDS_RESEARCH only when missing research blocks a reliable PASS/FAIL decision; identify the missing business information and useful references in the summary/findings.")
+        appendLine("- Otherwise use PASS or FAIL according to this step's criteria. Do not invent criteria.")
+        appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
+        appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
+        append("- Once Factory accepts the result, stop working on this step.")
     }
 
     private fun buildBrief(
@@ -816,7 +861,7 @@ class CapabilityExecutionService(
         ticket: String?,
     ): String {
         val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
-        return if (step.responsibility.name == GITAY_AGENT) {
+        return if (step.contract == null && step.responsibility.name == GITAY_AGENT) {
             renderGitayBrief(step, assembly, expectedFactoryBranch(scope, namespaceId, ticket, workflowId))
         } else {
             renderBrief(step, assembly)
@@ -884,7 +929,7 @@ class CapabilityExecutionService(
         expectedAmendmentSeq: Long? = null,
     ): Pair<String, AttemptContextEnvelope> {
         val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
-        val brief = if (step.responsibility.name == GITAY_AGENT) {
+        val brief = if (step.contract == null && step.responsibility.name == GITAY_AGENT) {
             renderGitayBrief(step, assembly, expectedFactoryBranch(scope, namespaceId, ticket, workflowId))
         } else {
             renderBrief(step, assembly)
@@ -1486,7 +1531,10 @@ class CapabilityExecutionService(
             val kind = ResponsibilityKind.fromWire(respMap?.get("kind") as? String) ?: ResponsibilityKind.AGENT
             val name = raw["name"] as? String ?: id
             val respName = respMap?.get("name") as? String
-            WorkflowStepDefinition(id, name, WorkflowStepResponsibility(kind, respName), deps)
+            WorkflowStepDefinition(
+                id, name, WorkflowStepResponsibility(kind, respName), deps,
+                io.whozoss.factory.workflow.domain.WorkflowStepContract.fromJson(raw),
+            )
         }
     }
 

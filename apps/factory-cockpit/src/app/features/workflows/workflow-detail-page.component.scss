@@ -1,3 +1,14 @@
+.contract-prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.step-contract {
+  padding: 16px;
+  border: 1px solid var(--sf-outline);
+  border-radius: 8px;
+}
+
 .page {
   display: flex;
   flex-direction: column;

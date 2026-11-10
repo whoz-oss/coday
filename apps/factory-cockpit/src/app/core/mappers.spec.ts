@@ -1355,8 +1355,8 @@ describe('mappers', () => {
         ])
       )
 
-      const prompts = session.phase.sections.find((section) => section.label === 'Prompts compilés')
-      expect(prompts).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite exposition backend)' })
+      const prompts = session.phase.sections.find((section) => section.label === 'Mandat effectif de la tentative')
+      expect(prompts).toMatchObject({ notAvailable: true })
       expect(prompts?.count).toBeUndefined()
 
       const model = session.phase.sections.find((section) => section.label === 'Modèle LLM résolu')

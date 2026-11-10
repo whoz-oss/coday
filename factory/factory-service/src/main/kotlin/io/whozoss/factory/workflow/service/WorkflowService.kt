@@ -1977,6 +1977,7 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             name = step["name"] as String,
             responsibility = WorkflowStepResponsibility(kind, responsibility?.get("name") as? String),
             dependsOn = (step["dependsOn"] as? List<*>)?.map { it as String } ?: emptyList(),
+            contract = io.whozoss.factory.workflow.domain.WorkflowStepContract.fromJson(step),
         )
     }
     return WorkflowPolicyDefinition(workflowType = workflowType, version = version, definitionHash = definitionHash, steps = steps)

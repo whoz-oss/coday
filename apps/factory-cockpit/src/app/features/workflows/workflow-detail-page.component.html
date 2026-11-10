@@ -23,6 +23,19 @@
       <span>{{ message }}</span>
     </div>
   } @else if (definition(); as def) {
-    <pre class="json-block" data-workflow-detail-json><code>{{ formatJson(def) }}</code></pre>
+    @for (step of def.steps ?? []; track step.id) {
+      <article class="step-contract" data-step-contract>
+        <h2>{{ step.name }}</h2>
+        @for (section of stepContractSections(step); track section.label) {
+          <h3>{{ section.label }}</h3>
+          <p class="contract-prose">{{ section.body }}</p>
+        }
+      </article>
+    }
+    <p class="sf-muted">Les obligations en prose ne sont pas des prédicats vérifiés automatiquement.</p>
+    <details>
+      <summary>Définition JSON</summary>
+      <pre class="json-block" data-workflow-detail-json><code>{{ formatJson(def) }}</code></pre>
+    </details>
   }
 </div>

@@ -19,7 +19,7 @@ private val PROJECTION_FIELDS = setOf("schemaVersion", "workflowId", "workflowTy
 // the cockpit swimlanes. They are pass-through metadata: absent for a v1/v2
 // publication, present once a session run has scheduled/executed the step.
 private val STEP_FIELDS =
-    setOf("id", "name", "status", "description", "dependsOn", "responsibility", "lane", "startedAt", "completedAt", "durationMs")
+    setOf("id", "name", "status", "description", "dependsOn", "responsibility", "lane", "startedAt", "completedAt", "durationMs", "entry", "mission", "exit")
 private val LANE_VALUES = setOf("agent", "code", "human")
 
 data class ProjectionError(val code: String, val path: String, val details: Map<String, Any?> = emptyMap())
@@ -111,7 +111,20 @@ object WorkflowProjectionValidator {
                     return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.responsibility.name")
                 }
             }
+            if (listOf("entry", "mission", "exit").any { step.containsKey(it) }) {
+                val mission = step["mission"]
+                if (mission !is String || mission.isBlank() || mission.length > 16_000) {
+                    return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.mission")
+                }
+                for (field in listOf("entry", "exit")) {
+                    val lines = step[field]
+                    if (lines !is List<*> || lines.size > 50 ||
+                        lines.any { it !is String || it.isBlank() || it.length > 4_000 }
+                    ) return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.$field")
+                }
+            }
             val normalizedStep = LinkedHashMap<String, Any?>()
+            WorkflowStepContract.fromJson(step)?.let { normalizedStep.putAll(it.toJson()) }
             normalizedStep["id"] = id
             normalizedStep["name"] = name
             normalizedStep["status"] = stepStatus

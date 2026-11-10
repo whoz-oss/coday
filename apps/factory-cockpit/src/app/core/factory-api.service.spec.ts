@@ -693,6 +693,20 @@ describe('FactoryApiService', () => {
       expect(result).toEqual({ workflowType: 't', version: 'v1', steps: [] })
     })
 
+    it('unwraps the real registry definition wrapper without dropping explicit contracts', () => {
+      const definition = {
+        workflowType: 't',
+        version: '1.0.0',
+        steps: [{ id: 'implement', name: 'Implement', entry: ['Sync'], mission: 'Implement', exit: ['Push'] }],
+      }
+      let result: unknown
+      service.getWorkflowDefinition('t', '1.0.0').subscribe((value) => (result = value))
+      http
+        .expectOne((request) => request.url === '/api/factory/workflow-definitions/t/1.0.0')
+        .flush({ data: { workflowType: 't', version: '1.0.0', definitionHash: 'hash', definition } })
+      expect(result).toEqual(definition)
+    })
+
     it('getWorkflowDefinition degrades to an empty object for a malformed payload', () => {
       let result: unknown
       service.getWorkflowDefinition('t', 'v1').subscribe((r) => (result = r))

@@ -8,6 +8,7 @@ import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.toDto
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
@@ -179,6 +180,47 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
         // The frozen envelope pins exactly the brief handed to the turn.
         assertThat(adapter.startTurnBriefs).hasSize(1)
         assertThat(envelope.briefHash).isEqualTo(CanonicalJsonHash.sha256(adapter.startTurnBriefs.single()))
+    }
+
+    @Test
+    fun `explicit contract orders mandate and retains Factory protocol without legacy business instructions`() {
+        val workflowId = "wf-explicit-${UUID.randomUUID()}"
+        startSession("ctx-explicit", workflowId)
+        val adapter = BriefCapturingAdapter()
+        val contract = io.whozoss.factory.workflow.domain.WorkflowStepContract(
+            listOf("Inspect the branch", "Sync before writing"),
+            "Implement only the authorized request",
+            listOf("Commit scoped changes", "Push before success"),
+        )
+        // Explicit Gitay must not invoke the legacy name-based Git business instructions.
+        val step = agentStep("A").copy(
+            responsibility = WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Gitay"),
+            contract = contract,
+        )
+        service(adapter).resolveAndRecord(scope, namespace, workflowId, step, repoRoot)
+        val brief = adapter.startTurnBriefs.single()
+        val ordered = listOf("## Entry / Preparation", "Inspect the branch", "Sync before writing", "## Mission",
+            contract.mission, "## Exit / Deliverables", "Commit scoped changes", "Push before success", "## Factory execution protocol")
+        assertThat(ordered.map { brief.indexOf(it) }).allMatch { it >= 0 }.isSorted()
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        assertThat(brief).contains("FACTORY_WORKER__submitStepResult", "attemptId '$attemptId'", "factory:$attemptId:result",
+            "structured arguments", "correct the tool payload and retry", "Once Factory accepts the result, stop",
+            "not machine-verified predicates")
+        assertThat(brief).doesNotContain("## Git contract", "Expected branch (authoritative", "Frame the handoff",
+            "Objectif, Périmètre", "Choose deliverables", "{{FACTORY_ATTEMPT_ID}}")
+        val persisted = durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)!!
+        assertThat(persisted.brief).isEqualTo(brief)
+        assertThat(persisted.toDto().effectiveMandate).isEqualTo(brief)
+    }
+
+    @Test
+    fun `legacy steps retain framing defaults and structured result protocol`() {
+        val workflowId = "wf-legacy-${UUID.randomUUID()}"
+        startSession("ctx-legacy", workflowId)
+        val adapter = BriefCapturingAdapter()
+        service(adapter).resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
+        assertThat(adapter.startTurnBriefs.single()).contains("Frame the handoff", "Choose deliverables",
+            "FACTORY_WORKER__submitStepResult", "If Factory rejects the result schema")
     }
 
     @Test

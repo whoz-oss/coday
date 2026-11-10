@@ -95,7 +95,29 @@ data class WorkflowStepDefinition(
     val name: String,
     val responsibility: WorkflowStepResponsibility,
     val dependsOn: List<String>,
+    val contract: WorkflowStepContract? = null,
 )
+
+/** Ordered prose obligations, not machine-verified predicates or orchestration commands. */
+data class WorkflowStepContract(
+    val entry: List<String>,
+    val mission: String,
+    val exit: List<String>,
+) {
+    fun toJson(): Map<String, Any?> = linkedMapOf("entry" to entry, "mission" to mission, "exit" to exit)
+
+    companion object {
+        /** Reads already validated definitions/projections; absence denotes legacy behavior. */
+        fun fromJson(step: Map<*, *>): WorkflowStepContract? {
+            val mission = step["mission"] as? String ?: return null
+            return WorkflowStepContract(
+                (step["entry"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
+                mission,
+                (step["exit"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
+            )
+        }
+    }
+}
 
 /** The resolved identity of a workflow definition used to hash a start command. */
 data class WorkflowDefinitionInput(

@@ -3425,6 +3425,8 @@ components:
           type: boolean
         sealingClass:
           type: string
+        effectiveMandate:
+          type: string
       required:
       - activeDurationMs
       - agentName
