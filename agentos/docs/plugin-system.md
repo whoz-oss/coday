@@ -155,6 +155,31 @@ The `Credential.data` keys are the ones documented on the SDK `Credential` class
 `password` for `BASIC_AUTH`, and `accessToken` / `refreshToken` / `expiresAt` / `tokenType` / `scope`
 for `OAUTH_TOKENS`.
 
+### Using the credential in BASH commands
+
+The `BASH` plugin hands the credential to its commands as environment variables, never as text in the
+command (which is logged and may be echoed). Bind an Auth Setting to the integration (`authSettingName`)
+and every command can reference the secret of the user running the case:
+
+```bash
+curl -H "Authorization: Bearer $AGENTOS_AUTH_TOKEN" https://api.example.com/me
+```
+
+| Variable | Value |
+|---|---|
+| `AGENTOS_AUTH_TOKEN` | OAuth access token, bearer token, API key, or for `BASIC_AUTH` the password |
+| `AGENTOS_AUTH_USERNAME`, `AGENTOS_AUTH_PASSWORD` | `BASIC_AUTH` only |
+| `AGENTOS_AUTH_TYPE` | the credential type name (`BEARER_TOKEN`, ...), to branch on in a script |
+
+The provider is not called when the tools are built (an OAuth setting may ask the user to authorize): it is
+called by the first command of the run, once, and the outcome is kept for the rest of the run. If the
+bound setting yields no usable credential the command is **not run** and the tool answers `AUTH_MISSING`.
+With no Auth Setting bound (or a run without a user) nothing is injected and commands behave as before.
+Secret values are masked as `***` in the output returned to the LLM, on a best-effort basis only: a command
+can still encode the value, so do not bind a secret to a BASH integration whose commands must not be able
+to read it. Like the other plugins, this works per user only for settings where each user holds their own
+credential.
+
 ### User-scope denial for network-reaching types
 
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is

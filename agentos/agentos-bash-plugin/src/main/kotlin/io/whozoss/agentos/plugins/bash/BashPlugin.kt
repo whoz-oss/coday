@@ -30,6 +30,12 @@ class BashPlugin : Plugin() {
  *
  * Config is validated by [BashConfigParser] on every [provideTools] call. Invalid
  * config logs an error and returns an empty list rather than crashing the service.
+ *
+ * When the integration is bound to an Auth Setting, the context carries a credential provider. It is wrapped
+ * in one [BashRunAuth] shared by all the tools built here and is **not invoked** by [provideTools]: it may
+ * block on an OAuth authorization, which must only be asked of a user whose run actually calls a tool of
+ * this integration. The secret then reaches each command as `$AGENTOS_AUTH_TOKEN` (and, for basic auth,
+ * `$AGENTOS_AUTH_USERNAME` / `$AGENTOS_AUTH_PASSWORD`), see [BashTool].
  */
 @Extension
 class BashToolProvider : ToolPlugin {
@@ -56,22 +62,26 @@ class BashToolProvider : ToolPlugin {
             return emptyList()
         }
 
+        val auth = context?.credentialProvider?.let { BashRunAuth(configName, it) } ?: BashRunAuth.NONE
+
         return integrationConfig.tools.map { toolConfig ->
             BashTool(
                 toolConfig = toolConfig,
                 integrationConfig = integrationConfig,
                 configName = configName,
+                auth = auth,
             )
         }
     }
 
     companion object : KLogging() {
+        // $$ string: the descriptions below mention shell variables ($AGENTOS_AUTH_TOKEN), which must stay literal.
         private val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
-            """
+            $$"""
             {
                 "type": "object",
                 "title": "Bash Integration Configuration",
-                "description": "Exposes configured bash commands as individual tools for the LLM.",
+                "description": "Exposes configured bash commands as individual tools for the LLM. When an Auth Setting is bound to the integration, its secret is available to every command as $AGENTOS_AUTH_TOKEN (the OAuth access token, bearer token or API key; for a basic-auth setting the password, with $AGENTOS_AUTH_USERNAME and $AGENTOS_AUTH_PASSWORD also set), and $AGENTOS_AUTH_TYPE holds the credential type. It is resolved for the user running the case and never written in the command text, e.g. curl -H \"Authorization: Bearer $AGENTOS_AUTH_TOKEN\" https://api.example.com. The secret is masked as *** in the output returned to the LLM, on a best-effort basis only. If the bound Auth Setting yields no credential the command is not run.",
                 "properties": {
                     "workingDirectory": {
                         "type": "string",
@@ -105,7 +115,7 @@ class BashToolProvider : ToolPlugin {
                                 "command": {
                                     "type": "string",
                                     "title": "Command",
-                                    "description": "Bash command to execute. Use the literal token PARAMETERS as a placeholder where the LLM input will be substituted. If the entire command is PARAMETERS, the LLM provides the full bash command (raw mode)."
+                                    "description": "Bash command to execute. Use the literal token PARAMETERS as a placeholder where the LLM input will be substituted. If the entire command is PARAMETERS, the LLM provides the full bash command (raw mode). When an Auth Setting is bound to the integration, reference its secret as an environment variable, e.g. curl -H \"Authorization: Bearer $AGENTOS_AUTH_TOKEN\" ... (use double quotes so the shell expands it)."
                                 },
                                 "parametersDescription": {
                                     "type": "string",
