@@ -2,10 +2,12 @@ import { AgentosClient } from './agentos-client'
 import { ApplyValidationError, DEFAULT_AGENT_NAME, runApply, validateApplyInput } from './apply'
 import {
   CatalogueProvider,
+  DEFAULT_MODEL_ALIAS,
   getCatalogueProvider,
   MODEL_ALIASES,
   MODEL_CATALOGUE,
   priorityForRank,
+  TRANSCRIPTION_ALIAS,
 } from './model-catalogue'
 import { ApplyTracker } from './progress'
 
@@ -141,10 +143,12 @@ describe('runApply', () => {
       expect(p['userId']).toBeNull()
     }
     expect(fake.providers[0]).toMatchObject({ apiType: 'Anthropic', apiKey: 'sk-secret-anthropic-key' })
-    expect(fake.models).toHaveLength(8)
+    expect(fake.models).toHaveLength(11) // 4 chat aliases + default each, + WHISPER for openai
     for (const provider of fake.providers) {
       const aliases = fake.models.filter((m) => m['aiProviderId'] === provider['id']).map((m) => m['alias'])
-      expect(aliases.sort()).toEqual([...MODEL_ALIASES].sort())
+      const chat = [...MODEL_ALIASES, DEFAULT_MODEL_ALIAS]
+      const expected = provider['name'] === 'openai' ? [...chat, TRANSCRIPTION_ALIAS] : chat
+      expect(aliases.sort()).toEqual(expected.sort())
     }
     expect(mkdir).toHaveBeenCalledWith('/home/me/Coday')
     expect(fake.namespaces[0]).toMatchObject({
@@ -201,10 +205,11 @@ describe('runApply', () => {
       BIG: 'policy/claude-sonnet',
       SMALL: 'policy/claude-haiku',
       default: 'policy/claude-haiku',
+      WHISPER: 'openai/whisper-1',
     })
-    expect(tracker.get().steps.models.message).toBe('5 models')
+    expect(tracker.get().steps.models.message).toBe('6 models')
     expect(await run()).toBe(true)
-    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(5)
+    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(6)
     expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
   })
 
@@ -237,7 +242,7 @@ describe('runApply', () => {
     }
     expect(fake.models.find((m) => m['alias'] === 'default')?.['apiModelName']).toBe('policy/claude-haiku')
     expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(4)
-    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(1)
+    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(2) // default and WHISPER
     const policyWrites = fake.calls.filter(
       (c) => ['POST', 'PUT'].includes(c.method) && c.body?.apiModelName?.startsWith('policy/')
     )
@@ -264,7 +269,8 @@ describe('runApply', () => {
     expect(fake.providers).toHaveLength(providers)
     expect(fake.models).toHaveLength(models)
     expect(fake.count('POST', /^\/api\/ai-providers$/)).toBe(2)
-    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(8)
+    expect(fake.count('POST', /^\/api\/ai-models$/)).toBe(11)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
   })
 
   it('converges after a partial failure (models failed, retry completes them)', async () => {
@@ -278,7 +284,7 @@ describe('runApply', () => {
 
     expect(await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)).toBe(true)
     expect(fake.providers).toHaveLength(1) // matched by name, not duplicated
-    expect(fake.models).toHaveLength(4)
+    expect(fake.models).toHaveLength(5)
   })
 
   it('matches existing providers by name case-insensitively and refreshes their key', async () => {
@@ -312,6 +318,10 @@ describe('runApply', () => {
 
   it('moves an existing model to the new priority when the ranking changed', async () => {
     const { fake, deps } = setup()
+    const whisperOf = (name: string) => {
+      const provider = fake.providers.find((p) => p['name'] === name)
+      return fake.models.find((m) => m['aiProviderId'] === provider?.['id'] && m['alias'] === TRANSCRIPTION_ALIAS)
+    }
     await runApply(
       input([
         { id: 'anthropic', rank: 1 },
@@ -319,6 +329,7 @@ describe('runApply', () => {
       ]),
       deps
     )
+    expect(whisperOf('openai')?.['priority']).toBe(priorityForRank(2, 2))
     await runApply(
       input([
         { id: 'anthropic', rank: 2 },
@@ -331,6 +342,7 @@ describe('runApply', () => {
       return fake.models.find((m) => m['aiProviderId'] === provider?.['id'] && m['alias'] === 'BIG')?.['priority']
     }
     expect(priorityOf('openai')).toBeGreaterThan(priorityOf('anthropic'))
+    expect(whisperOf('openai')?.['priority']).toBe(priorityForRank(1, 2))
   })
 
   it('retries the personal namespace lookup: it is created asynchronously', async () => {
@@ -406,6 +418,142 @@ describe('runApply', () => {
   })
 })
 
+describe('runApply transcription model', () => {
+  const whisperModels = (fake: FakeAgentos) => fake.models.filter((m) => m['alias'] === TRANSCRIPTION_ALIAS)
+  const providerId = (fake: FakeAgentos, name: string) => fake.providers.find((p) => p['name'] === name)?.['id']
+
+  it('creates a platform WHISPER model named whisper-1 for OpenAI, with the provider priority and no pricing', async () => {
+    const { fake, deps } = setup()
+    expect(await runApply(input([{ id: 'openai', rank: 1 }]), deps)).toBe(true)
+    const whisper = whisperModels(fake)
+    expect(whisper).toHaveLength(1)
+    expect(whisper[0]).toMatchObject({
+      aiProviderId: providerId(fake, 'openai'),
+      apiModelName: 'whisper-1',
+      alias: 'WHISPER',
+      priority: priorityForRank(1, 1),
+    })
+    expect(whisper[0]).not.toHaveProperty('pricing')
+    expect(whisper[0]).not.toHaveProperty('contextWindow')
+    expect(whisper[0]).not.toHaveProperty('maxCompletionTokens')
+  })
+
+  it('creates openai/whisper-1 for Requesty', async () => {
+    const { fake, deps } = setup()
+    await runApply(input([{ id: 'requesty', rank: 1 }]), deps)
+    expect(whisperModels(fake)).toHaveLength(1)
+    expect(whisperModels(fake)[0]).toMatchObject({
+      aiProviderId: providerId(fake, 'requesty'),
+      apiModelName: 'openai/whisper-1',
+    })
+  })
+
+  it('creates none for Anthropic alone, which has no transcription API', async () => {
+    const { fake, deps } = setup()
+    await runApply(input([{ id: 'anthropic', rank: 1 }]), deps)
+    expect(whisperModels(fake)).toHaveLength(0)
+    expect(fake.models).toHaveLength(5)
+  })
+
+  it('gives each provider its own WHISPER at its own priority: the best-ranked one wins', async () => {
+    const { fake, deps } = setup()
+    await runApply(
+      input([
+        { id: 'anthropic', rank: 1 },
+        { id: 'requesty', rank: 2 },
+        { id: 'openai', rank: 3 },
+      ]),
+      deps
+    )
+    const byProvider = (name: string) => whisperModels(fake).find((m) => m['aiProviderId'] === providerId(fake, name))
+    expect(whisperModels(fake)).toHaveLength(2)
+    expect(byProvider('requesty')?.['priority']).toBe(priorityForRank(2, 3))
+    expect(byProvider('openai')?.['priority']).toBe(priorityForRank(3, 3))
+    expect(byProvider('requesty')?.['priority']).toBeGreaterThan(byProvider('openai')?.['priority'])
+  })
+
+  it('creates it once and updates it only when something differs', async () => {
+    const { fake, deps } = setup()
+    const run = () => runApply(input([{ id: 'openai', rank: 1 }]), deps)
+    await run()
+    await run()
+    expect(whisperModels(fake)).toHaveLength(1)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
+
+    whisperModels(fake)[0]!['apiModelName'] = 'old-name'
+    await run()
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(1)
+    expect(whisperModels(fake)[0]).toMatchObject({ apiModelName: 'whisper-1' })
+  })
+
+  it('does not let the pricing refresh touch it: a correct WHISPER is not rewritten when chat prices are stale', async () => {
+    const { fake, deps } = setup()
+    const run = () => runApply(input([{ id: 'openai', rank: 1 }]), deps)
+    await run()
+    for (const model of fake.models) if (model['alias'] !== TRANSCRIPTION_ALIAS) delete model['pricing']
+    await run()
+    // 4 chat models and `default` refreshed, WHISPER left alone
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(5)
+  })
+})
+
+describe('runApply default model', () => {
+  const defaultOf = (fake: FakeAgentos, name: string) => {
+    const provider = fake.providers.find((p) => p['name'] === name)
+    return fake.models.find((m) => m['aiProviderId'] === provider?.['id'] && m['alias'] === DEFAULT_MODEL_ALIAS)
+  }
+
+  it('gives every provider a `default` model that is a copy of its SMALL one, pricing and limits included', async () => {
+    const { fake, deps } = setup()
+    await runApply(
+      input([
+        { id: 'anthropic', rank: 1 },
+        { id: 'requesty', rank: 2 },
+      ]),
+      deps
+    )
+    for (const id of ['anthropic', 'requesty'] as const) {
+      const small = MODEL_CATALOGUE[id].models.SMALL
+      const model = defaultOf(fake, id)
+      expect(model).toMatchObject({
+        apiModelName: small.apiModelName,
+        pricing: small.pricing,
+        contextWindow: small.contextWindow,
+        // Requesty policies declare no output limit: the key is absent, not undefined
+        ...(small.maxCompletionTokens ? { maxCompletionTokens: small.maxCompletionTokens } : {}),
+      })
+      if (!small.maxCompletionTokens) expect(model).not.toHaveProperty('maxCompletionTokens')
+    }
+  })
+
+  it('lets the best-ranked provider win: its `default` has the highest priority', async () => {
+    const { fake, deps } = setup()
+    await runApply(
+      input([
+        { id: 'openai', rank: 2 },
+        { id: 'anthropic', rank: 1 },
+      ]),
+      deps
+    )
+    expect(defaultOf(fake, 'anthropic')?.['priority']).toBe(priorityForRank(1, 2))
+    expect(defaultOf(fake, 'anthropic')?.['priority']).toBeGreaterThan(defaultOf(fake, 'openai')?.['priority'])
+  })
+
+  it('creates it once, and follows the SMALL model when the catalogue moves it', async () => {
+    const { fake, deps } = setup()
+    const run = () => runApply(input([{ id: 'anthropic', rank: 1 }]), deps)
+    await run()
+    await run()
+    expect(fake.models.filter((m) => m['alias'] === DEFAULT_MODEL_ALIAS)).toHaveLength(1)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(0)
+
+    defaultOf(fake, 'anthropic')!['apiModelName'] = 'old-small'
+    await run()
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(1)
+    expect(defaultOf(fake, 'anthropic')?.['apiModelName']).toBe(MODEL_CATALOGUE.anthropic.models.SMALL.apiModelName)
+  })
+})
+
 describe('runApply pricing', () => {
   it('sends the catalogue pricing with every created model', async () => {
     const { fake, deps } = setup()
@@ -432,11 +580,11 @@ describe('runApply pricing', () => {
     for (const model of fake.models) delete model['pricing']
 
     expect(await run()).toBe(true)
-    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(4)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(5)
     expect(fake.models.every((m) => m['pricing'])).toBe(true)
 
     expect(await run()).toBe(true)
-    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(4)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(5)
   })
 
   it('reads the nulls AgentOS answers for unset rates as no rate: right prices are not rewritten', async () => {
@@ -444,7 +592,8 @@ describe('runApply pricing', () => {
     const run = () => runApply(input([{ id: 'requesty', rank: 1 }]), deps)
     await run()
     for (const model of fake.models) {
-      if (model['pricing'].cacheWrite === undefined) {
+      // WHISPER has no pricing at all (billed per audio minute)
+      if (model['pricing'] && model['pricing'].cacheWrite === undefined) {
         model['pricing'] = { ...model['pricing'], cacheWrite: null }
       }
     }

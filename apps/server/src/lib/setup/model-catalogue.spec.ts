@@ -1,9 +1,12 @@
 import {
   CATALOGUE_PROVIDER_IDS,
+  DEFAULT_MODEL_ALIAS,
+  defaultModelOf,
   getCatalogueProvider,
   MODEL_ALIASES,
   MODEL_CATALOGUE,
   priorityForRank,
+  TRANSCRIPTION_ALIAS,
 } from './model-catalogue'
 
 describe('model catalogue shape', () => {
@@ -59,6 +62,48 @@ describe('model catalogue shape', () => {
   it('uses the provider id as the AgentOS provider name (the idempotency key)', () => {
     for (const id of CATALOGUE_PROVIDER_IDS) expect(MODEL_CATALOGUE[id].name).toBe(id)
     expect(getCatalogueProvider('nope')).toBeUndefined()
+  })
+})
+
+describe('default model', () => {
+  it('is the `default` alias AgentOS falls back to, outside the 4 chat aliases', () => {
+    expect(DEFAULT_MODEL_ALIAS).toBe('default')
+    expect(MODEL_ALIASES).not.toContain(DEFAULT_MODEL_ALIAS)
+  })
+
+  it.each(CATALOGUE_PROVIDER_IDS)('%s: is its SMALL model, the cheapest one', (id) => {
+    const provider = MODEL_CATALOGUE[id]
+    const model = defaultModelOf(provider)
+    expect(model.apiModelName).toBe(provider.models.SMALL.apiModelName)
+    expect(model.pricing).toEqual(provider.models.SMALL.pricing)
+    expect(model.contextWindow).toBe(provider.models.SMALL.contextWindow)
+    expect(model.description).toContain(provider.label)
+    const inputs = Object.values(provider.models).map((m) => m.pricing.inputMTokens)
+    expect(model.pricing.inputMTokens).toBe(Math.min(...inputs))
+  })
+})
+
+describe('transcription model', () => {
+  it('is whisper-1 for OpenAI, openai/whisper-1 for Requesty, and absent for Anthropic', () => {
+    expect(MODEL_CATALOGUE.openai.transcription).toMatchObject({ alias: 'WHISPER', apiModelName: 'whisper-1' })
+    expect(MODEL_CATALOGUE.requesty.transcription).toMatchObject({
+      alias: 'WHISPER',
+      apiModelName: 'openai/whisper-1',
+    })
+    expect(MODEL_CATALOGUE.anthropic.transcription).toBeUndefined()
+  })
+
+  it('stays out of the chat aliases and carries no pricing nor limits', () => {
+    expect(TRANSCRIPTION_ALIAS).toBe('WHISPER')
+    expect(MODEL_ALIASES).not.toContain(TRANSCRIPTION_ALIAS)
+    for (const id of CATALOGUE_PROVIDER_IDS) {
+      const transcription = MODEL_CATALOGUE[id].transcription
+      if (!transcription) continue
+      expect(transcription.description.length).toBeGreaterThan(0)
+      expect(transcription).not.toHaveProperty('pricing')
+      expect(transcription).not.toHaveProperty('contextWindow')
+      expect(transcription).not.toHaveProperty('maxCompletionTokens')
+    }
   })
 })
 

@@ -120,6 +120,8 @@ export function createWebApp({ codayOptions, setupEnabled }: WebAppOptions): exp
       setupEnabled,
       externalAgentosUrl: AGENTOS_URL_ENV,
       externalFactoryUrl: FACTORY_URL_ENV,
+      // Behind --auth the caller is whoever the proxy says: no single identity to create platform models as.
+      catchUpIdentity: codayOptions.auth ? undefined : currentIdentity,
     })
   )
 

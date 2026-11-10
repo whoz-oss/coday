@@ -29,6 +29,7 @@ import {
   AgentRunningEvent,
   AgentSelectedEvent,
   AnswerEvent,
+  Audio as AudioContent,
   CaseEvent,
   CaseStatusEnum,
   CaseStatusEvent,
@@ -92,6 +93,10 @@ import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
 import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
+import { AudioMessageComponent } from '../audio-message/audio-message.component'
+import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
+import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
+import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 
 export interface ToolCall {
   requestId: string
@@ -197,10 +202,12 @@ function hasActiveSelection(): boolean {
     DelegationCardComponent,
     ConfirmDialogComponent,
     AgentActivityComponent,
+    AudioMessageComponent,
+    VoiceRecorderComponent,
     CostPipe,
     TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -226,6 +233,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Files staged on the next message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
   protected readonly autocomplete = inject(ComposerAutocompleteService)
+  /** Voice messages: the recorder is component-scoped (microphone released with the host), the capability is app-wide. */
+  protected readonly voice = inject(VoiceRecorderService)
+  protected readonly voiceCapability = inject(VoiceCapabilityStateService)
   /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
   protected readonly canAttach = this.exchangeState.canWriteCase
   /**
@@ -234,7 +244,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * silently skipped by the in-flight loop.
    */
   protected readonly canStageFiles = computed(
-    () => this.canAttach() && !this.isRunning() && !this.isTerminal() && !this.attachments.isUploading()
+    () =>
+      this.canAttach() &&
+      !this.isRunning() &&
+      !this.isTerminal() &&
+      !this.attachments.isUploading() &&
+      !this.voice.isBusy()
   )
 
   protected toggleExchange(): void {
@@ -806,11 +821,90 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
       !this.isRunning() &&
       !this.isTerminal() &&
-      !this.attachments.isUploading()
+      !this.attachments.isUploading() &&
+      !this.voice.isBusy()
     )
   }
 
+  /** The mic is usable under the conditions that enable the textarea, and while no recording is under way. */
+  protected get canRecord(): boolean {
+    return (
+      !this.isRunning() &&
+      !this.isTerminal() &&
+      !this.attachments.isUploading() &&
+      !this.submitting &&
+      !this.voice.isBusy()
+    )
+  }
+
+  /** Asks for the microphone, then records until the user sends or cancels (or the length limit sends). */
+  protected startRecording(): void {
+    if (!this.canRecord) return
+    void this.voice.start(this.caseId, {
+      // The recording is uploaded and transcribed before the agent sees it: the case goes running like on a
+      // normal send, so the activity indicator behaves the same.
+      onSending: () => {
+        this.isRunning.set(true)
+        this.streamingText.set('')
+      },
+      onSendFailed: () => this.isRunning.set(false),
+      // The message and the agent turn come through the event stream.
+      onSent: () => undefined,
+    })
+  }
+
+  protected sendRecording(): void {
+    void this.voice.stopAndSend()
+  }
+
+  protected cancelRecording(): void {
+    this.voice.cancel()
+    // The recording bar leaves: the focus goes back to the textarea, once it is shown again.
+    afterNextRender(() => this.composerInput()?.nativeElement.focus(), { injector: this.injector })
+  }
+
+  /** The send button of the action bar: while recording it sends the recording, otherwise the typed message. */
+  protected onSendClick(): void {
+    if (this.voice.isRecording()) {
+      this.sendRecording()
+    } else {
+      void this.submit()
+    }
+  }
+
+  /** A recording can be sent as soon as it runs; the typed message follows the usual rules. */
+  protected get canSendNow(): boolean {
+    return this.voice.isRecording() || this.canSend
+  }
+
+  /** The key that sends, for the recording hint: the Enter preference decides whether it needs Ctrl/Cmd. */
+  protected get sendKeyLabel(): string {
+    return this.preferences.enterKeyBehavior() === 'newline' ? 'Ctrl/Cmd+Enter' : 'Enter'
+  }
+
+  /**
+   * Keys of the recording bar (the textarea is hidden while recording, so it cannot read them): Enter sends the
+   * recording under the same preference as a typed message, Escape discards it. A key held down, or pressed again
+   * once the recording is on its way (the length limit may have sent it), does nothing.
+   */
+  protected onRecordingKeydown(event: KeyboardEvent): void {
+    if (!this.voice.isRecording()) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelRecording()
+    } else if (this.preferences.shouldSend(event)) {
+      event.preventDefault()
+      if (!event.repeat) this.sendRecording()
+    }
+  }
+
+  /** The recording of a voice message, when this message is one. */
+  protected audioOf(event: CaseMessageEvent): AudioContent | undefined {
+    return event.content?.find((part): part is AudioContent => (part as { type?: string }).type === 'Audio')
+  }
+
   ngOnInit(): void {
+    this.voiceCapability.load()
     this.connectSse()
 
     // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
@@ -1236,6 +1330,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.isEditing.set(false)
     this.autocomplete.reset()
     this.attachments.reset()
+    this.voice.reset()
     this.connectSse()
   }
 
@@ -1343,6 +1438,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected extractText(event: CaseMessageEvent): string {
+    // Only parts that carry text: the Audio part of a voice message has none, its transcript is the Text part.
     return (
       event.content
         ?.filter((c): c is import('@whoz-oss/agentos-api-client').Text => 'content' in c)

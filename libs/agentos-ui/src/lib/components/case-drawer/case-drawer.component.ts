@@ -65,6 +65,7 @@ export class CaseDrawerComponent {
   readonly createRequested = output<void>()
   readonly subCaseCreateRequested = output<string>()
   readonly deleteRequested = output<string>()
+  readonly killRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly renameRequested = output<{ id: string; title: string }>()
 
@@ -158,6 +159,9 @@ export class CaseDrawerComponent {
 
   /** Case id pending delete confirmation in expanded mode. */
   protected readonly expandedConfirmingDeleteId = signal<string | null>(null)
+
+  /** Case id pending stop (kill) confirmation in expanded mode. */
+  protected readonly expandedConfirmingKillId = signal<string | null>(null)
 
   protected onCompactBadgeEnter(event: MouseEvent, item: ReturnType<typeof this.compactItems>[number]): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
@@ -295,6 +299,10 @@ export class CaseDrawerComponent {
 
   protected onDeleteRequested(id: string): void {
     this.deleteRequested.emit(id)
+  }
+
+  protected onKillRequested(id: string): void {
+    this.killRequested.emit(id)
   }
 
   /** Open the inline editor on a row, seeded with its current label. */
