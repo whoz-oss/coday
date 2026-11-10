@@ -324,9 +324,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isRunning = signal(false)
 
   /**
-   * True once the browser gave up on the event stream for good — EventSource reaching CLOSED,
-   * which is what a refused case answers with: a deleted or no longer readable case gets a 404
-   * (#1616). A mere transport hiccup leaves this false, since EventSource reconnects by itself.
+   * True once the browser gave up on the event stream for good — EventSource reaching CLOSED.
+   *
+   * A deleted or no longer readable case is refused with a 404 and lands here (#1616), but so
+   * does any other answer that is not a 200 `text/event-stream`: a backend being restarted, a
+   * session that expired. Hence a notice that does not swear the case is gone, and a Retry.
+   * A mere transport hiccup leaves this false, since EventSource reconnects by itself.
    */
   protected readonly streamUnavailable = signal(false)
 
@@ -837,6 +840,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
       !this.isRunning() &&
       !this.isTerminal() &&
+      // Nothing would come back: the case the stream was refused for may not even exist, and
+      // the answer to a message posted here would arrive on the stream that is gone.
+      !this.streamUnavailable() &&
       !this.attachments.isUploading() &&
       !this.voice.isBusy()
     )
@@ -982,6 +988,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------------------
+
+  /**
+   * Reopens a stream the browser gave up on, at the user's request. EventSource does not retry
+   * after CLOSED, so a backend that has come back up needs this (or a page reload) to be seen.
+   */
+  protected retryStream(): void {
+    this.streamUnavailable.set(false)
+    this.eventSource?.close()
+    this.connectSse()
+  }
 
   private connectSse(): void {
     const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
