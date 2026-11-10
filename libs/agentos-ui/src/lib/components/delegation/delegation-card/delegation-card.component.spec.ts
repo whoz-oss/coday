@@ -81,7 +81,7 @@ describe('DelegationCardComponent', () => {
 
     toggle()
     const source = MockEventSource.instances[0]!
-    expect(source.url).toBe('/backend/api/cases/c-1/events')
+    expect(source.url).toBe('/backend/api/cases/c-1/events?includePreviousEvents=false')
     expect(activity()).toHaveLength(1)
 
     // Changes unrelated to the stream identity must not reconnect it.
@@ -134,7 +134,7 @@ describe('DelegationCardComponent', () => {
     update({ subCaseId: 'c-2' })
 
     expect(old.close).toHaveBeenCalledTimes(1)
-    expect(MockEventSource.instances[1]!.url).toBe('/backend/api/cases/c-2/events')
+    expect(MockEventSource.instances[1]!.url).toBe('/backend/api/cases/c-2/events?includePreviousEvents=false')
     old.emit({ id: 'late', type: 'QuestionEvent', question: 'Late question?' })
     fixture.detectChanges()
     expect(line()?.textContent?.trim()).toBe('Thinking')
