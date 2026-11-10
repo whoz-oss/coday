@@ -1,8 +1,8 @@
 import { DestroyRef, inject, Injectable, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Case, CaseControllerService, CaseEvent } from '@whoz-oss/agentos-api-client'
-import { Observable, of } from 'rxjs'
-import { catchError, map, switchMap } from 'rxjs/operators'
+import { Observable, of, timer } from 'rxjs'
+import { catchError, map, retry, switchMap } from 'rxjs/operators'
 import { CaseStateService } from './case-state.service'
 import { BrowserNotificationService } from './browser-notification.service'
 import { CompanionPipService } from './companion-pip.service'
@@ -71,6 +71,9 @@ interface ResolvedRootTarget {
 const INPUT_PREVIEW_MAX_CHARS = 160
 const MAX_ANCESTOR_HOPS = 10
 
+/** How long the owning tab waits before reopening a global stream the browser gave up on. */
+const STREAM_RETRY_DELAY_MS = 5_000
+
 function truncate(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}\u2026` : text
 }
@@ -112,6 +115,9 @@ export class CompanionStateService {
 
   private sseStarted = false
 
+  /** Whether this tab reads the global stream itself, in which case it ignores the relays. */
+  private streamingLocally = false
+
   /**
    * Start the SSE subscription. Idempotent — safe to call multiple times.
    * Called at app startup so the stream is active regardless of whether the PiP window is open.
@@ -126,8 +132,13 @@ export class CompanionStateService {
     this.sseStarted = true
 
     // Registered in every tab, the owner's included: BroadcastChannel never delivers to its
-    // own sender, so the owner cannot receive its own relay back.
-    this.tabs.onCaseEvent((event) => this.onEvent(event))
+    // own sender, so the owner cannot receive its own relay back. A tab that reads the stream
+    // itself ignores relays all the same, so that a tab which both reads a stream and hears
+    // another one — a failed election, a browser without Web Locks — never handles an event
+    // once per open tab.
+    this.tabs.onCaseEvent((event) => {
+      if (!this.streamingLocally) this.onEvent(event)
+    })
 
     if (!this.tabs.coordinated) {
       // No owner can be elected, or no relay is available: fall back to a stream per tab.
@@ -138,16 +149,32 @@ export class CompanionStateService {
     void this.tabs.whenStreamOwner().then(() => this.connectStream())
   }
 
+  /**
+   * Opens the global stream and relays what it carries to the other tabs.
+   *
+   * The relay goes out before the event is handled here: a throw on an unexpected payload
+   * would otherwise drop that event for every other tab, with no sign of it there.
+   *
+   * The stream only errors once the browser has given up for good — a restarting backend, an
+   * expired session — and this tab holds it for the whole browser, so it reconnects on its own
+   * instead of leaving every tab without notifications until someone reloads this one.
+   */
   private connectStream(): void {
+    this.streamingLocally = true
     this.sse
       .connect()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (event) => {
-          this.onEvent(event)
-          this.tabs.broadcastCaseEvent(event)
-        },
-        error: (err) => console.error('[CompanionState] event stream error', err),
+      .pipe(
+        retry({
+          delay: (error, attempt) => {
+            console.warn(`[CompanionState] event stream dropped, retrying (attempt ${attempt})`, error)
+            return timer(STREAM_RETRY_DELAY_MS)
+          },
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((event) => {
+        this.tabs.broadcastCaseEvent(event)
+        this.onEvent(event)
       })
   }
 

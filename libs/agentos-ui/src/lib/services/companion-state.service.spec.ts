@@ -1,7 +1,7 @@
 import { signal } from '@angular/core'
-import { TestBed } from '@angular/core/testing'
+import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { Case, CaseControllerService, CaseEvent } from '@whoz-oss/agentos-api-client'
-import { Subject, of, throwError } from 'rxjs'
+import { Subject, defer, of, throwError } from 'rxjs'
 import { BrowserNotificationService } from './browser-notification.service'
 import { CaseStateService } from './case-state.service'
 import { CompanionPipService } from './companion-pip.service'
@@ -20,6 +20,8 @@ describe('CompanionStateService', () => {
   let browserCloseMany: jest.Mock
   let service: CompanionStateService
   let connect: jest.Mock
+  /** How many times a stream was actually opened — `connect` is called once, then resubscribed. */
+  let streamOpens: number
   let broadcastCaseEvent: jest.Mock
   let relayEvent: (event: CaseEvent) => void
   let becomeStreamOwner: () => void
@@ -29,6 +31,7 @@ describe('CompanionStateService', () => {
    *   False is the degraded single-tab mode, where the stream opens straight away.
    */
   function configure(coordinated: boolean): void {
+    TestBed.resetTestingModule()
     events$ = new Subject<CaseEvent>()
     casesSignal = signal<Case[]>([])
     isOpenSignal = signal<boolean>(false)
@@ -37,7 +40,16 @@ describe('CompanionStateService', () => {
     browserNotify = jest.fn()
     browserClose = jest.fn()
     browserCloseMany = jest.fn()
-    connect = jest.fn(() => events$.asObservable())
+    // Cold, like the real one: every subscription opens its own EventSource, so a retry after a
+    // dropped stream must land on a fresh subject rather than the errored one.
+    streamOpens = 0
+    connect = jest.fn(() =>
+      defer(() => {
+        streamOpens++
+        events$ = new Subject<CaseEvent>()
+        return events$.asObservable()
+      })
+    )
     broadcastCaseEvent = jest.fn()
     const ownership = new Promise<void>((resolve) => (becomeStreamOwner = resolve))
 
@@ -283,7 +295,6 @@ describe('CompanionStateService', () => {
   } as unknown as CaseEvent
 
   it('relays the events of the stream it owns to the other tabs', async () => {
-    TestBed.resetTestingModule()
     configure(true)
     becomeStreamOwner()
     await Promise.resolve()
@@ -297,7 +308,6 @@ describe('CompanionStateService', () => {
   })
 
   it('consumes the relay of the owning tab without opening a stream of its own', () => {
-    TestBed.resetTestingModule()
     configure(true)
     casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
 
@@ -312,7 +322,6 @@ describe('CompanionStateService', () => {
   })
 
   it('opens the stream as soon as this tab becomes the owner', async () => {
-    TestBed.resetTestingModule()
     configure(true)
     expect(connect).not.toHaveBeenCalled()
 
@@ -321,4 +330,35 @@ describe('CompanionStateService', () => {
 
     expect(connect).toHaveBeenCalledTimes(1)
   })
+
+  it('ignores the relay while it reads the stream itself', () => {
+    // Degraded mode, from the beforeEach: this tab has a stream of its own. Handling the relay
+    // on top would process every event once per open tab, beep included.
+    relayEvent(errorEvent)
+
+    expect(service.groups()).toEqual([])
+  })
+
+  // fakeAsync, not jest's fake timers: the retry delay goes through a timer zone.js patched
+  // before jest could replace it, so advanceTimersByTime never fires it.
+  it('reopens the global stream after the browser gives up on it', fakeAsync(() => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      configure(false)
+      casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
+
+      // What a restarting backend or an expired session produces: the browser stops retrying.
+      events$.error(new Error('companion event stream closed'))
+      tick(5_000)
+
+      expect(streamOpens).toBe(2)
+      expect(warn).toHaveBeenCalled()
+
+      // The reopened stream feeds the companion again.
+      events$.next(errorEvent)
+      expect(service.groups()).toHaveLength(1)
+    } finally {
+      warn.mockRestore()
+    }
+  }))
 })
