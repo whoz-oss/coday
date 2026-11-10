@@ -3,13 +3,23 @@ import { Observable } from 'rxjs'
 import { CaseEvent, Configuration } from '@whoz-oss/agentos-api-client'
 
 /**
- * Fan-in SSE client for GET /api/cases/events/mine — the global, cross-case event
- * stream backing the companion notification window.
+ * What the aggregated stream carries. Each message says what it is about, which is what lets
+ * one connection replace the per-scope streams it used to take (#1616).
+ */
+export type GlobalStreamMessage =
+  | { kind: 'case-event'; event: CaseEvent }
+  | { kind: 'case-list-invalidated'; namespaceId: string }
+
+/**
+ * Fan-in SSE client for GET /api/cases/events/mine — the global, cross-case event stream.
  *
  * Mirrors the named-event listener pattern used by the per-case stream in
  * CaseChatComponent.connectSse (the backend sends named SSE frames, e.g.
  * "event: PendingConfirmationEvent", so `onmessage` alone never fires) rather than the
  * generic onmessage-only pattern used by CaseEventSseService.
+ *
+ * Cold on purpose: every subscription opens its own EventSource, so a reconnection after a
+ * dropped stream is a plain resubscribe. [GlobalStreamService] owns that lifecycle.
  */
 @Injectable({
   providedIn: 'root',
@@ -28,34 +38,47 @@ export class GlobalCaseEventSseService {
     'ErrorEvent',
   ] as const
 
+  /** Name of the frame telling a namespace's case list to reload (GlobalCaseEventSseController). */
+  private static readonly CASE_LIST_UPDATED = 'namespace-case-list-updated'
+
   /**
-   * Opens the SSE connection and emits each notifiable CaseEvent as it arrives.
-   * Unsubscribing closes the underlying EventSource. The native EventSource
-   * auto-reconnects on transport drop, so no manual reconnect logic is needed here.
+   * Opens the SSE connection and emits each message as it arrives. Unsubscribing closes the
+   * underlying EventSource. The native EventSource auto-reconnects on transport drop; a hard
+   * failure (anything but a 200 event-stream) ends the observable, for the caller to retry.
    */
-  connect(): Observable<CaseEvent> {
-    return new Observable<CaseEvent>((subscriber) => {
+  connect(): Observable<GlobalStreamMessage> {
+    return new Observable<GlobalStreamMessage>((subscriber) => {
       const url = `${this.config.basePath}/api/cases/events/mine`
       const eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
-      const handler = (msg: globalThis.MessageEvent<string>) => {
+      const onCaseEvent = (msg: globalThis.MessageEvent<string>) => {
         try {
           const event = JSON.parse(msg.data) as CaseEvent
-          this.zone.run(() => subscriber.next(event))
+          this.zone.run(() => subscriber.next({ kind: 'case-event', event }))
         } catch (err) {
-          console.warn('[Companion SSE] failed to parse event data', err)
+          console.warn('[GlobalStream] failed to parse event data', err)
+        }
+      }
+
+      const onCaseListUpdated = (msg: globalThis.MessageEvent<string>) => {
+        try {
+          const { namespaceId } = JSON.parse(msg.data) as { namespaceId: string }
+          if (namespaceId) this.zone.run(() => subscriber.next({ kind: 'case-list-invalidated', namespaceId }))
+        } catch (err) {
+          console.warn('[GlobalStream] failed to parse case-list update', err)
         }
       }
 
       for (const name of GlobalCaseEventSseService.EVENT_NAMES) {
-        eventSource.addEventListener(name, handler)
+        eventSource.addEventListener(name, onCaseEvent)
       }
+      eventSource.addEventListener(GlobalCaseEventSseService.CASE_LIST_UPDATED, onCaseListUpdated)
 
       eventSource.onerror = () => {
         // Not fatal: EventSource retries on its own. Only surface a hard failure
         // once the browser gives up and closes the connection for good.
         if (eventSource.readyState === EventSource.CLOSED) {
-          this.zone.run(() => subscriber.error(new Error('Companion event stream closed')))
+          this.zone.run(() => subscriber.error(new Error('Global event stream closed')))
         }
       }
 

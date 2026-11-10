@@ -8,6 +8,9 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -47,6 +50,9 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
     val userActor = Actor(id = "u1", displayName = "User", role = ActorRole.USER)
 
     fun caseWithId(id: UUID) = Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+
+    /** These tests are about the case collectors; the case-list side has its own test below. */
+    fun namespaceServiceWithNoNamespace() = mockk<NamespaceService> { every { findIdsVisibleTo(any(), any()) } returns emptyList() }
 
     fun runtimeWithId(
         id: UUID,
@@ -182,6 +188,8 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     userService = userService,
                     caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
                     activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
+                    namespaceService = namespaceServiceWithNoNamespace(),
+                    caseListUpdateBroadcaster = NamespaceCaseListUpdateBroadcaster(),
                 )
             val emitter = controller.streamMyEvents()
 
@@ -224,6 +232,8 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     userService = userService,
                     caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
                     activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
+                    namespaceService = namespaceServiceWithNoNamespace(),
+                    caseListUpdateBroadcaster = NamespaceCaseListUpdateBroadcaster(),
                 )
             val emitter = controller.streamMyEvents()
 
@@ -237,6 +247,47 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
             // Next reconciliation tick cancels A's collector; B is untouched.
             subA.first { it == 0 }
             subB.value shouldBe 1
+
+            emitter.complete()
+        }
+
+        // -------------------------------------------------------------------------
+        // Case-list updates — carried here instead of one stream per namespace (#1616)
+        // -------------------------------------------------------------------------
+
+        "a readable namespace gets a case-list collector, and loses it when it stops being readable" {
+            val userId = UUID.randomUUID()
+            val user = User(metadata = EntityMetadata(id = userId), externalId = "u1")
+            val userService = mockk<UserService> { every { getCurrentUser() } returns user }
+            val caseService =
+                mockk<CaseService> {
+                    every { findConcerningUser(userId) } returns emptyList()
+                    every { getAllActiveCases() } returns emptyList()
+                }
+            val readableNamespaces = AtomicReference(listOf(namespaceId))
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findIdsVisibleTo(userId.toString(), Action.READ) } answers { readableNamespaces.get() }
+                }
+            val broadcaster = NamespaceCaseListUpdateBroadcaster()
+            val subscribers: StateFlow<Int> = broadcaster.events(namespaceId).subscriptionCount
+
+            val controller =
+                GlobalCaseEventSseController(
+                    caseService = caseService,
+                    userService = userService,
+                    caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
+                    activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
+                    namespaceService = namespaceService,
+                    caseListUpdateBroadcaster = broadcaster,
+                )
+            val emitter = controller.streamMyEvents()
+
+            subscribers.first { it >= 1 }
+
+            // Access revoked, or the namespace removed: the collector goes with it.
+            readableNamespaces.set(emptyList())
+            subscribers.first { it == 0 }
 
             emitter.complete()
         }
