@@ -57,7 +57,7 @@ All commits on top are small and self-describing (`git log --oneline 92dff5e59..
 | `ScheduledPromptLoopConfigResolver` resolves run → scheduled prompt → workflow; synthesizer deleted | done, **will be reshaped (§4 step 2)** |
 | App starts without a `LoopConfigResolver` (scheduler disabled): `AgentServiceImpl` takes it nullable | done |
 | `BatchCaseStarter` only granted when explicitly named (`RequiresExplicitGrant` + `ToolResolverService`), agent allowlist applied, invalid UUIDs → `INVALID_INPUT`, input schema aligned | done |
-| `SchedulerScannerUnitSpec` fixtures have an execution identity (`createdBy`) | done, green |
+| `SchedulerScannerUnitSpec` fixtures have an execution identity (`createdBy`) | done, green — **to rework with D10 (step 9b)** |
 | Case title falls back to prompt when blank | done |
 | **B2** Workflow steps are `{id, tool}`; `WorkflowRunBindings` deleted; validator = exactly 2 steps | done |
 | **B3** `ScheduledPrompt.workflowInput` (domain, node `workflowInputJson`, DTO, controller; must be a JSON object) | done |
@@ -153,8 +153,25 @@ technical identity — discuss with Vincent rather than bypassing the check.
 
 ### D9. Kept from earlier work (unchanged)
 `dispatchKey` idempotency (`runId:userId[:entityId]`, internal user id after resolution by external
-id), `TARGETING` run status, translation at case start via stored Prompt, execution identity =
-scheduled prompt creator (never fall back to an admin).
+id), `TARGETING` run status, translation at case start via stored Prompt.
+
+### D10. Execution identity = the user having access to the loop agent (changed 2026-11-10)
+The user the loop runs as (actor of the loop case's first message, `ToolContext.userId` of every
+step, caller of `CaseStarterService`) is **not** the scheduled prompt's `createdBy` any more. It is
+**the user who has access to the loop agent** (`scheduler-loop`) in the scheduled prompt's
+namespace, i.e. its deployment audience there (`DEPLOYED_TO` user group or namespace, same query
+as `listAgentUsers` / the canonical audience query of step 16).
+- exactly **one** such user → the loop runs as that user;
+- **zero** or **more than one** → error: the run is recorded `FAILED` with a readable reason
+  ("no user / N users have access to the loop agent 'scheduler-loop' in namespace X") and
+  `nextRunAt` is advanced (same treatment as the claim refusals of step 12). The prompt is **not**
+  disabled: deploying the loop agent correctly fixes it. Never fall back to the creator or an admin.
+- That user must hold **Namespace WRITE** (required by `CaseStarterService` to start cases for
+  other users); without it the run fails with a readable reason as well.
+- Consequence: the loop agent must be deployed (by the namespace admin / Whoz configuration) to
+  exactly one technical user per namespace that uses scheduled prompts. Because that user has the
+  agent deployed, the `@scheduler-loop` mention resolves normally — this also answers most of the
+  routing problem of step 9.
 
 ## 4. Plan — do it in this order, one small commit per step
 
@@ -182,14 +199,27 @@ or `factory/`; run targeted specs, full suite at the end of each block.
 **Block E — make the run actually work (review P0/P1)**
 9. ✅ Seed platform `scheduler-loop` AgentConfig (`SchedulerLoopAgentSeeder`), name from
    `SchedulerProperties.loopAgentName`.
-   ⏳ **Routing — next thing to do.** The executor posts `@scheduler-loop …` as the creator.
-   `CaseServiceImpl` selects the agent with `findDeployedByNamespaceIdAndUserIdAndName`: a
-   platform agent with no `DEPLOYED_TO` edge is only visible to super-admins, so for a normal
-   creator the mention will not resolve and the run will not start. Do **not** deploy the loop
-   agent to everyone (it would show up in @mention lists). Target shape: a narrow internal entry
-   point on `CaseService` (e.g. `startTurnWith(caseId, agentConfigId, actor, content)`) used only by
-   `ScheduledPromptExecutor`, not exposed to REST or tools; then check the agent is absent from
-   agent lists (`findDeployed…` already excludes it for non-admins; super-admins will see it).
+   ⏳ **Routing**: with D10 the loop runs as a user the loop agent is deployed to, so
+   `CaseServiceImpl`'s agent selection (`findDeployedByNamespaceIdAndUserIdAndName`) resolves
+   `@scheduler-loop` without any special entry point. Do **not** deploy the loop agent to
+   everyone. Remaining check: the loop agent must not show up in @mention / agent lists of normal
+   users (it only shows for its technical user and super-admins) — verify, and filter LOOP agents
+   out of those lists if needed.
+9b. ⏳ **Execution identity (D10) — next thing to do.** Replace the `createdBy`-based identity:
+   - `SchedulerScanner.claim`: drop the `createdBy` / removed-creator / creator-WRITE guards (and
+     the prompt disabling they do). Instead resolve the loop agent (`SchedulerProperties.loopAgentName`)
+     and its deployment audience in `scheduledPrompt.namespaceId`; exactly one user → continue,
+     zero or several → insert the run `FAILED` with the reason and advance `nextRunAt`; that user
+     without Namespace WRITE → same.
+   - Put the resolution behind one small interface (e.g. `LoopExecutionIdentityResolver.resolve(namespaceId): Result`
+     returning the user or a refusal reason) so the scanner stays readable and it is unit-testable.
+   - `ScheduledPromptExecutor.materialize(run, sp, executionUserId)`: rename `creatorId`; the loop
+     case's ADMIN grant and first-message actor use that user. Decide whether the creator should
+     also get READ on the loop case (to see the transcript) — default: no, keep it minimal.
+   - Specs: `SchedulerScannerUnitSpec` (fixtures currently rely on `createdBy`; replace with a
+     stubbed resolver: 0 / 1 / 2 users, user without WRITE), `ScheduledPromptExecutorUnitSpec`.
+   - Update KDoc of `SchedulerScanner`, `ScheduledPromptExecutor`, `SchedulerLoopAgentSeeder`
+     (mention that the agent must be deployed to exactly one user per namespace).
 10. Executor: drop the inert `@Transactional` self-call; explicit compensation (soft-delete loop
     case, run FAILED with reason) on failure after case creation; fix class KDoc.
 11. `recoverOrphanedTargetingRuns` authoritative & restart-safe: read loop case status each tick
@@ -225,7 +255,9 @@ or `factory/`; run targeted specs, full suite at the end of each block.
 
 ## 5. Open points (not blocking, decide with Vincent)
 - Whoz search tools must emit `targets` (D4) — Whoz-side change, track separately.
-- Production data check before shipping: enabled `ScheduledPrompt` without `createdBy` would be
-  disabled by the identity guard (query in `agentos-scheduler-agentloop-convergence.md`).
+- ~~Production data check on `createdBy`~~: obsolete since D10 (identity no longer comes from
+  `createdBy`). Replaced by: before shipping, deploy `scheduler-loop` to exactly one technical
+  user (with Namespace WRITE) in every namespace that has enabled scheduled prompts, otherwise
+  their runs will fail with a readable reason.
 - `findEffective` of Prompt/ScheduledPrompt ignores namespace-direct deployment (behaviour question).
 - Preset filters ("votre équipe" / workspace) vs search JSON: front/Whoz topic, not AgentOS.
