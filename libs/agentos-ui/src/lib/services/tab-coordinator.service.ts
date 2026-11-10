@@ -1,6 +1,6 @@
 import { effect, inject, Injectable, NgZone, OnDestroy, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { CaseEvent } from '@whoz-oss/agentos-api-client'
+import { GlobalStreamMessage } from './global-case-event-sse.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 
 // ---------------------------------------------------------------------------
@@ -19,13 +19,13 @@ interface NavigateRequestMessage {
   caseId: string
 }
 
-/** A global-stream event, relayed by the owning tab to every other tab. */
-interface CaseEventMessage {
-  type: 'CASE_EVENT'
-  event: CaseEvent
+/** A message of the aggregated stream, relayed by the owning tab to every other tab. */
+interface GlobalStreamRelayMessage {
+  type: 'GLOBAL_MESSAGE'
+  message: GlobalStreamMessage
 }
 
-type TabMessage = TabAnnounceMessage | NavigateRequestMessage | CaseEventMessage
+type TabMessage = TabAnnounceMessage | NavigateRequestMessage | GlobalStreamRelayMessage
 
 /** Web Lock naming the tab that holds the global case-event stream for the whole browser. */
 const STREAM_OWNER_LOCK = 'agentos-companion-stream'
@@ -91,7 +91,7 @@ export class TabCoordinatorService implements OnDestroy {
   /** Whether this tab is the one holding the global case-event stream. */
   readonly isStreamOwner = signal(false)
 
-  private readonly caseEventHandlers = new Set<(event: CaseEvent) => void>()
+  private readonly globalMessageHandlers = new Set<(message: GlobalStreamMessage) => void>()
   private streamOwnership: Promise<void> | null = null
 
   /**
@@ -128,21 +128,21 @@ export class TabCoordinatorService implements OnDestroy {
   }
 
   /**
-   * Relay an event from the owning tab to the others.
+   * Relay a message of the aggregated stream from the owning tab to the others.
    *
    * Only the owner may call it: where no owner is elected every tab reads the stream for
-   * itself, and relaying on top would have each tab handle every event once per open tab.
+   * itself, and relaying on top would have each tab handle every message once per open tab.
    */
-  broadcastCaseEvent(event: CaseEvent): void {
+  broadcastGlobalMessage(message: GlobalStreamMessage): void {
     if (!this.isStreamOwner()) return
-    const msg: CaseEventMessage = { type: 'CASE_EVENT', event }
+    const msg: GlobalStreamRelayMessage = { type: 'GLOBAL_MESSAGE', message }
     this.channel?.postMessage(msg)
   }
 
-  /** Register a handler for the events relayed by the owning tab; call the result to drop it. */
-  onCaseEvent(handler: (event: CaseEvent) => void): () => void {
-    this.caseEventHandlers.add(handler)
-    return () => this.caseEventHandlers.delete(handler)
+  /** Register a handler for the messages relayed by the owning tab; call the result to drop it. */
+  onGlobalMessage(handler: (message: GlobalStreamMessage) => void): () => void {
+    this.globalMessageHandlers.add(handler)
+    return () => this.globalMessageHandlers.delete(handler)
   }
 
   /**
@@ -214,10 +214,10 @@ export class TabCoordinatorService implements OnDestroy {
         break
       }
 
-      case 'CASE_EVENT':
+      case 'GLOBAL_MESSAGE':
         // Back into the zone: BroadcastChannel delivery is not patched by zone.js, and the
         // handlers write the signals the views read.
-        this.zone.run(() => this.caseEventHandlers.forEach((handler) => handler(msg.event)))
+        this.zone.run(() => this.globalMessageHandlers.forEach((handler) => handler(msg.message)))
         break
 
       case 'NAVIGATE_REQUEST':
@@ -244,6 +244,6 @@ export class TabCoordinatorService implements OnDestroy {
 
   ngOnDestroy(): void {
     this.channel?.close()
-    this.caseEventHandlers.clear()
+    this.globalMessageHandlers.clear()
   }
 }

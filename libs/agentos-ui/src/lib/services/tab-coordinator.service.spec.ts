@@ -1,7 +1,7 @@
 import { createEnvironmentInjector, EnvironmentInjector, runInInjectionContext, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { Router } from '@angular/router'
-import { CaseEvent } from '@whoz-oss/agentos-api-client'
+import { GlobalStreamMessage } from './global-case-event-sse.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { TabCoordinatorService } from './tab-coordinator.service'
 
@@ -207,7 +207,7 @@ describe('TabCoordinatorService', () => {
   // Global stream ownership — one connection per browser, not per tab (#1616)
   // ---------------------------------------------------------------------------
 
-  const caseEvent = { id: 'e-1', type: 'ErrorEvent', caseId: 'c-1', namespaceId: 'ns-a' } as unknown as CaseEvent
+  const message: GlobalStreamMessage = { kind: 'case-list-invalidated', namespaceId: 'ns-a' }
 
   it('gives the global stream to one tab, and to the next one when that tab goes away', async () => {
     const a = openTab('ns-a')
@@ -229,19 +229,19 @@ describe('TabCoordinatorService', () => {
     expect(b.service.isStreamOwner()).toBe(true)
   })
 
-  it('relays a case event to the other tabs, never to the tab that owns the stream', async () => {
+  it('relays a stream message to the other tabs, never to the tab that owns the stream', async () => {
     const owner = openTab('ns-a')
     const other = openTab('ns-b')
     const heardByOwner = jest.fn()
     const heardByOther = jest.fn()
-    owner.service.onCaseEvent(heardByOwner)
-    other.service.onCaseEvent(heardByOther)
+    owner.service.onGlobalMessage(heardByOwner)
+    other.service.onGlobalMessage(heardByOther)
     await owner.service.whenStreamOwner()
 
-    owner.service.broadcastCaseEvent(caseEvent)
+    owner.service.broadcastGlobalMessage(message)
     bus.flush()
 
-    expect(heardByOther).toHaveBeenCalledWith(caseEvent)
+    expect(heardByOther).toHaveBeenCalledWith(message)
     expect(heardByOwner).not.toHaveBeenCalled()
   })
 
@@ -249,9 +249,9 @@ describe('TabCoordinatorService', () => {
     const notOwner = openTab('ns-a')
     const other = openTab('ns-b')
     const heardByOther = jest.fn()
-    other.service.onCaseEvent(heardByOther)
+    other.service.onGlobalMessage(heardByOther)
 
-    notOwner.service.broadcastCaseEvent(caseEvent)
+    notOwner.service.broadcastGlobalMessage(message)
     bus.flush()
 
     // Without an owner every tab reads the stream for itself; relaying on top of that would
@@ -263,11 +263,11 @@ describe('TabCoordinatorService', () => {
     const owner = openTab('ns-a')
     const other = openTab('ns-b')
     const heard = jest.fn()
-    const unsubscribe = other.service.onCaseEvent(heard)
+    const unsubscribe = other.service.onGlobalMessage(heard)
     await owner.service.whenStreamOwner()
 
     unsubscribe()
-    owner.service.broadcastCaseEvent(caseEvent)
+    owner.service.broadcastGlobalMessage(message)
     bus.flush()
 
     expect(heard).not.toHaveBeenCalled()

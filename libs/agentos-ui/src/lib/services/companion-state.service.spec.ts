@@ -1,14 +1,18 @@
 import { signal } from '@angular/core'
-import { fakeAsync, TestBed, tick } from '@angular/core/testing'
+import { TestBed } from '@angular/core/testing'
 import { Case, CaseControllerService, CaseEvent } from '@whoz-oss/agentos-api-client'
-import { Subject, defer, of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { BrowserNotificationService } from './browser-notification.service'
 import { CaseStateService } from './case-state.service'
 import { CompanionPipService } from './companion-pip.service'
 import { CompanionStateService } from './companion-state.service'
-import { GlobalCaseEventSseService } from './global-case-event-sse.service'
-import { TabCoordinatorService } from './tab-coordinator.service'
+import { GlobalStreamService } from './global-stream.service'
 
+/**
+ * The aggregated stream itself — its ownership, relay and retry — is covered by
+ * global-stream.service.spec.ts. Here it is a plain subject: this service only routes what
+ * comes out of it.
+ */
 describe('CompanionStateService', () => {
   let events$: Subject<CaseEvent>
   let casesSignal: ReturnType<typeof signal<Case[]>>
@@ -19,18 +23,8 @@ describe('CompanionStateService', () => {
   let browserClose: jest.Mock
   let browserCloseMany: jest.Mock
   let service: CompanionStateService
-  let connect: jest.Mock
-  /** How many times a stream was actually opened — `connect` is called once, then resubscribed. */
-  let streamOpens: number
-  let broadcastCaseEvent: jest.Mock
-  let relayEvent: (event: CaseEvent) => void
-  let becomeStreamOwner: () => void
 
-  /**
-   * @param coordinated whether the browser can elect a stream owner and relay its events.
-   *   False is the degraded single-tab mode, where the stream opens straight away.
-   */
-  function configure(coordinated: boolean): void {
+  function configure(): void {
     TestBed.resetTestingModule()
     events$ = new Subject<CaseEvent>()
     casesSignal = signal<Case[]>([])
@@ -40,38 +34,17 @@ describe('CompanionStateService', () => {
     browserNotify = jest.fn()
     browserClose = jest.fn()
     browserCloseMany = jest.fn()
-    // Cold, like the real one: every subscription opens its own EventSource, so a retry after a
-    // dropped stream must land on a fresh subject rather than the errored one.
-    streamOpens = 0
-    connect = jest.fn(() =>
-      defer(() => {
-        streamOpens++
-        events$ = new Subject<CaseEvent>()
-        return events$.asObservable()
-      })
-    )
-    broadcastCaseEvent = jest.fn()
-    const ownership = new Promise<void>((resolve) => (becomeStreamOwner = resolve))
 
     TestBed.configureTestingModule({
       providers: [
         CompanionStateService,
-        { provide: GlobalCaseEventSseService, useValue: { connect } },
+        { provide: GlobalStreamService, useValue: { caseEvents$: events$.asObservable() } },
         { provide: CaseStateService, useValue: { cases: casesSignal } },
         { provide: CaseControllerService, useValue: { getByIdCase } },
         { provide: CompanionPipService, useValue: { playAlertBeep, isOpen: isOpenSignal } },
         {
           provide: BrowserNotificationService,
           useValue: { notify: browserNotify, close: browserClose, closeMany: browserCloseMany },
-        },
-        {
-          provide: TabCoordinatorService,
-          useValue: {
-            coordinated,
-            whenStreamOwner: () => ownership,
-            broadcastCaseEvent,
-            onCaseEvent: (handler: (event: CaseEvent) => void) => (relayEvent = handler),
-          },
         },
       ],
     })
@@ -80,7 +53,7 @@ describe('CompanionStateService', () => {
     service.startSse()
   }
 
-  beforeEach(() => configure(false))
+  beforeEach(() => configure())
 
   afterEach(() => TestBed.resetTestingModule())
 
@@ -281,84 +254,4 @@ describe('CompanionStateService', () => {
     expect(service.groups()).toHaveLength(1)
     expect(service.groups()[0]?.caseTitle).toBe('12345678')
   })
-
-  // ---------------------------------------------------------------------------
-  // Stream ownership — one connection per browser, not per tab (#1616)
-  // ---------------------------------------------------------------------------
-
-  const errorEvent = {
-    id: 'err-relay',
-    type: 'ErrorEvent',
-    caseId: 'case-1',
-    namespaceId: 'ns-1',
-    message: 'Boom',
-  } as unknown as CaseEvent
-
-  it('relays the events of the stream it owns to the other tabs', async () => {
-    configure(true)
-    becomeStreamOwner()
-    await Promise.resolve()
-    casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
-
-    events$.next(errorEvent)
-
-    expect(connect).toHaveBeenCalledTimes(1)
-    expect(broadcastCaseEvent).toHaveBeenCalledWith(errorEvent)
-    expect(service.groups()).toHaveLength(1)
-  })
-
-  it('consumes the relay of the owning tab without opening a stream of its own', () => {
-    configure(true)
-    casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
-
-    expect(connect).not.toHaveBeenCalled()
-
-    relayEvent(errorEvent)
-
-    expect(service.groups()).toHaveLength(1)
-    expect(service.groups()[0]?.notifications[0]?.id).toBe('err-relay')
-    // A relayed event must not be relayed again: that is the owner's job alone.
-    expect(broadcastCaseEvent).not.toHaveBeenCalled()
-  })
-
-  it('opens the stream as soon as this tab becomes the owner', async () => {
-    configure(true)
-    expect(connect).not.toHaveBeenCalled()
-
-    becomeStreamOwner()
-    await Promise.resolve()
-
-    expect(connect).toHaveBeenCalledTimes(1)
-  })
-
-  it('ignores the relay while it reads the stream itself', () => {
-    // Degraded mode, from the beforeEach: this tab has a stream of its own. Handling the relay
-    // on top would process every event once per open tab, beep included.
-    relayEvent(errorEvent)
-
-    expect(service.groups()).toEqual([])
-  })
-
-  // fakeAsync, not jest's fake timers: the retry delay goes through a timer zone.js patched
-  // before jest could replace it, so advanceTimersByTime never fires it.
-  it('reopens the global stream after the browser gives up on it', fakeAsync(() => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
-    try {
-      configure(false)
-      casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
-
-      // What a restarting backend or an expired session produces: the browser stops retrying.
-      events$.error(new Error('companion event stream closed'))
-      tick(5_000)
-
-      expect(streamOpens).toBe(2)
-      expect(warn).toHaveBeenCalled()
-
-      // The reopened stream feeds the companion again.
-      events$.next(errorEvent)
-      expect(service.groups()).toHaveLength(1)
-    } finally {
-      warn.mockRestore()
-    }
-  }))
 })
