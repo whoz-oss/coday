@@ -127,7 +127,7 @@ class CaseStarterService(
 
         val (effectivePrompt, effectiveTitle) = resolveMessage(request, targetUser)
 
-        val case = createCase(request, effectiveTitle ?: effectivePrompt)
+        val case = createCase(request, effectiveTitle?.takeIf { it.isNotBlank() } ?: effectivePrompt)
         startConversation(
             case = case,
             targetUser = targetUser,
