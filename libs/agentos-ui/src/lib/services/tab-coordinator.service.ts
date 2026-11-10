@@ -103,6 +103,10 @@ export class TabCoordinatorService implements OnDestroy {
    * Ownership is a Web Lock held for the lifetime of the tab, never a flag: the browser
    * releases it when the tab goes away, which hands the stream to the next waiting tab
    * without any of them having to notice the first one died.
+   *
+   * A lock claim that fails outright (an inactive document, an embedded context) resolves
+   * too: a failed election must leave the caller with a stream of its own, not waiting for
+   * one nobody will open.
    */
   whenStreamOwner(): Promise<void> {
     if (!this.coordinated) return Promise.resolve()
@@ -115,23 +119,30 @@ export class TabCoordinatorService implements OnDestroy {
           // open the same stream.
           return new Promise<void>(() => undefined)
         })
-        .catch((err) => console.warn('[TabCoordinator] could not claim the stream ownership lock', err))
+        .catch((err) => {
+          console.warn('[TabCoordinator] could not claim the stream ownership lock', err)
+          resolve()
+        })
     })
     return this.streamOwnership
   }
 
   /**
-   * Relay an event from the owning tab to the others. No-op without a channel, which is
-   * also when [coordinated] is false and every tab reads the stream for itself.
+   * Relay an event from the owning tab to the others.
+   *
+   * Only the owner may call it: where no owner is elected every tab reads the stream for
+   * itself, and relaying on top would have each tab handle every event once per open tab.
    */
   broadcastCaseEvent(event: CaseEvent): void {
+    if (!this.isStreamOwner()) return
     const msg: CaseEventMessage = { type: 'CASE_EVENT', event }
     this.channel?.postMessage(msg)
   }
 
-  /** Register a handler for the events relayed by the owning tab. */
-  onCaseEvent(handler: (event: CaseEvent) => void): void {
+  /** Register a handler for the events relayed by the owning tab; call the result to drop it. */
+  onCaseEvent(handler: (event: CaseEvent) => void): () => void {
     this.caseEventHandlers.add(handler)
+    return () => this.caseEventHandlers.delete(handler)
   }
 
   /**
@@ -233,5 +244,6 @@ export class TabCoordinatorService implements OnDestroy {
 
   ngOnDestroy(): void {
     this.channel?.close()
+    this.caseEventHandlers.clear()
   }
 }
