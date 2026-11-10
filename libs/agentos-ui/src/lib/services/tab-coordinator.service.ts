@@ -23,12 +23,28 @@ interface NavigateRequestMessage {
 interface GlobalStreamRelayMessage {
   type: 'GLOBAL_MESSAGE'
   message: GlobalStreamMessage
+  /** The user the relaying tab's stream was opened as: a tab of another user drops it. */
+  userId: string
 }
 
 type TabMessage = TabAnnounceMessage | NavigateRequestMessage | GlobalStreamRelayMessage
 
-/** Web Lock naming the tab that holds the global case-event stream for the whole browser. */
+/**
+ * Prefix of the Web Lock naming the tab that holds the global case-event stream, one per user: a tab
+ * opened after someone else signed in on the same browser must not wait behind, and read, the stream
+ * of a tab still open as the previous user.
+ */
 const STREAM_OWNER_LOCK = 'agentos-companion-stream'
+
+/**
+ * An id for this tab. `crypto.randomUUID` exists only in secure contexts, and AgentOS is also served
+ * over plain http on a LAN, where `getRandomValues` is all there is: failing here would fail every
+ * view that injects this service, the case shell included.
+ */
+function newTabId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 // ---------------------------------------------------------------------------
 // Service
@@ -71,7 +87,7 @@ export class TabCoordinatorService implements OnDestroy {
   private readonly channel: BroadcastChannel | null =
     typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('agentos-companion-v2')
 
-  readonly tabId = crypto.randomUUID()
+  readonly tabId = newTabId()
 
   /** Namespace currently active in this tab, mirrored from NamespaceStateService. */
   readonly currentNamespaceId = signal<string | null>(null)
@@ -91,7 +107,7 @@ export class TabCoordinatorService implements OnDestroy {
   /** Whether this tab is the one holding the global case-event stream. */
   readonly isStreamOwner = signal(false)
 
-  private readonly globalMessageHandlers = new Set<(message: GlobalStreamMessage) => void>()
+  private readonly globalMessageHandlers = new Set<(message: GlobalStreamMessage, userId: string) => void>()
   private streamOwnership: Promise<void> | null = null
 
   /**
@@ -102,17 +118,18 @@ export class TabCoordinatorService implements OnDestroy {
    *
    * Ownership is a Web Lock held for the lifetime of the tab, never a flag: the browser
    * releases it when the tab goes away, which hands the stream to the next waiting tab
-   * without any of them having to notice the first one died.
+   * without any of them having to notice the first one died. The lock is per user, each user's
+   * tabs electing their own owner (see STREAM_OWNER_LOCK).
    *
    * A lock claim that fails outright (an inactive document, an embedded context) resolves
    * too: a failed election must leave the caller with a stream of its own, not waiting for
    * one nobody will open.
    */
-  whenStreamOwner(): Promise<void> {
+  whenStreamOwner(userId: string): Promise<void> {
     if (!this.coordinated) return Promise.resolve()
     this.streamOwnership ??= new Promise<void>((resolve) => {
       navigator.locks
-        .request(STREAM_OWNER_LOCK, () => {
+        .request(`${STREAM_OWNER_LOCK}:${userId}`, () => {
           this.isStreamOwner.set(true)
           resolve()
           // Never resolves: returning here would release the lock and let a second tab
@@ -133,14 +150,17 @@ export class TabCoordinatorService implements OnDestroy {
    * Only the owner may call it: where no owner is elected every tab reads the stream for
    * itself, and relaying on top would have each tab handle every message once per open tab.
    */
-  broadcastGlobalMessage(message: GlobalStreamMessage): void {
+  broadcastGlobalMessage(message: GlobalStreamMessage, userId: string): void {
     if (!this.isStreamOwner()) return
-    const msg: GlobalStreamRelayMessage = { type: 'GLOBAL_MESSAGE', message }
+    const msg: GlobalStreamRelayMessage = { type: 'GLOBAL_MESSAGE', message, userId }
     this.channel?.postMessage(msg)
   }
 
-  /** Register a handler for the messages relayed by the owning tab; call the result to drop it. */
-  onGlobalMessage(handler: (message: GlobalStreamMessage) => void): () => void {
+  /**
+   * Register a handler for the messages relayed by an owning tab, with the user its stream was
+   * opened as; call the result to drop it.
+   */
+  onGlobalMessage(handler: (message: GlobalStreamMessage, userId: string) => void): () => void {
     this.globalMessageHandlers.add(handler)
     return () => this.globalMessageHandlers.delete(handler)
   }
@@ -217,7 +237,7 @@ export class TabCoordinatorService implements OnDestroy {
       case 'GLOBAL_MESSAGE':
         // Back into the zone: BroadcastChannel delivery is not patched by zone.js, and the
         // handlers write the signals the views read.
-        this.zone.run(() => this.globalMessageHandlers.forEach((handler) => handler(msg.message)))
+        this.zone.run(() => this.globalMessageHandlers.forEach((handler) => handler(msg.message, msg.userId)))
         break
 
       case 'NAVIGATE_REQUEST':
