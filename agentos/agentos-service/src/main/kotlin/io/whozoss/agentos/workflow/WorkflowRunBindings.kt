@@ -42,7 +42,10 @@ data class WorkflowRunBindings(
 
     private fun substitute(node: JsonNode): JsonNode =
         when (node) {
-            is ObjectNode -> node.deepCopy().also { copy -> copy.fields().forEach { (key, value) -> copy.set<JsonNode>(key, substitute(value)) } }
+            is ObjectNode ->
+                node.deepCopy().also { copy ->
+                    copy.fieldNames().asSequence().toList().forEach { key -> copy.set<JsonNode>(key, substitute(copy[key])) }
+                }
             is ArrayNode -> node.deepCopy().also { copy -> (0 until copy.size()).forEach { copy.set(it, substitute(copy[it])) } }
             is TextNode -> bindingName(node.textValue())?.let { name -> valueOf(name)?.let(::TextNode) } ?: node
             else -> node
