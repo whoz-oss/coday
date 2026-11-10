@@ -12,6 +12,8 @@
  * All the real logic lives in provision.ts / orchestrator.ts / web-server.ts; this file is glue.
  */
 
+import { accessSync, constants, mkdirSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { Server } from 'http'
 import { CodayOptions, parseCodayOptions } from '../coday-options-utils'
 import { debugLog } from '../log'
@@ -37,7 +39,9 @@ import { Command } from './command-names'
 import { hideBin } from 'yargs/helpers'
 import { decideProfile } from './profile'
 import { provision } from './provision'
-import { chooseStackPorts, PickedPorts, stackRequestFromEnv, StackChoice } from './ports'
+import { buildReport, ConfigDirFacts, DOCTOR_BLOCKED_EXIT, JavaNeed, PortsFacts, renderReport } from './doctor'
+import { inspectJava } from './java'
+import { chooseStackPorts, PickedPorts, stackRequestFromEnv, StackChoice, StackRequest } from './ports'
 import { parsePortBase, portsFor, profileBase } from './port-scheme'
 import { startupLines } from './startup-info'
 import { readState } from './state'
@@ -50,9 +54,9 @@ export { COMMANDS, parseCommand } from './command-names'
  * (prod 3000 -> 3020 -> 3040, local 3010 -> 3030 -> 3050) and says so. The dev profile is strict too: its Angular and
  * Nx configs are static and cannot follow a move.
  */
-async function chooseStack(options: CodayOptions): Promise<StackChoice> {
+function stackRequest(options: CodayOptions): StackRequest {
   const state = readState(options.configDir)
-  const request = stackRequestFromEnv(process.env, {
+  return stackRequestFromEnv(process.env, {
     port: options.port,
     remembered: parsePortBase(String(state?.portBlock ?? '')),
     managed: {
@@ -60,8 +64,11 @@ async function chooseStack(options: CodayOptions): Promise<StackChoice> {
       factory: !process.env.FACTORY_URL && !isManagedFactoryDisabled(),
     },
   })
+}
+
+async function chooseStack(options: CodayOptions): Promise<StackChoice> {
   try {
-    return await chooseStackPorts({ ...request, log: (m) => console.log(`[ports] ${m}`) })
+    return await chooseStackPorts({ ...stackRequest(options), log: (m) => console.log(`[ports] ${m}`) })
   } catch (error) {
     if (error instanceof Error && error.message.includes('is already in use')) {
       // Parsed by the desktop apps (server-lifecycle.ts).
@@ -120,6 +127,83 @@ function profileInput(options: CodayOptions) {
     forcedProfile: options.profile,
     configDir: options.configDir,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Preflight
+// ---------------------------------------------------------------------------
+
+/** `<configDir>` must exist and be writable: the runtime, the logs and the service data all go there. */
+function inspectConfigDir(dir: string): ConfigDirFacts {
+  try {
+    mkdirSync(dir, { recursive: true })
+    accessSync(dir, constants.W_OK)
+    return { path: dir, writable: true }
+  } catch (error) {
+    return { path: dir, writable: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/** First line of `rg --version`, undefined when ripgrep is not installed. Never throws. */
+function inspectRipgrep(): string | undefined {
+  try {
+    // A probe on the critical startup path: a binary on a stale mount or behind a slow wrapper must not hang it.
+    const out = execFileSync('rg', ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2_000,
+    })
+    return out.split('\n')[0]?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The ports a start would take, and whatever `chooseStackPorts` has to say about them (a moved block, the OS
+ * fallback). Probing is cheap and releases the ports right away, so running it here and again in `provision`
+ * costs nothing.
+ */
+async function inspectPorts(options: CodayOptions): Promise<PortsFacts> {
+  const notes: string[] = []
+  try {
+    const choice = await chooseStackPorts({ ...stackRequest(options), log: (m) => notes.push(m) })
+    return { express: choice.ports.express, base: choice.base, notes }
+  } catch (error) {
+    return { notes, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/**
+ * What a missing Java would actually cost here. `required` mirrors the services the runtime really spawns (an
+ * external AgentOS or Factory needs none), `awaited` mirrors the `patient` flag of `requireJava`: in the unmanaged
+ * profile the wizard is up and polls every few seconds while the user installs it.
+ */
+function inspectJavaNeed(options: CodayOptions): JavaNeed {
+  const { managed } = stackRequest(options)
+  return {
+    required: managed?.agentos !== false || managed?.factory !== false,
+    awaited: decideProfile(profileInput(options)).profile === 'unmanaged',
+  }
+}
+
+/**
+ * `doctor`: the preflight the launcher runs BEFORE the Nx TUI takes the terminal (apps/web/index.js). Gathers the
+ * facts; the checks themselves are in doctor.ts. Exits `DOCTOR_BLOCKED_EXIT` when one of them blocks the start —
+ * any other non-zero code means the preflight itself failed, which never stops a start.
+ */
+export async function runDoctor(): Promise<number> {
+  const options = parseCodayOptions()
+  const report = buildReport({
+    node: process.versions.node,
+    java: inspectJava(),
+    javaNeed: inspectJavaNeed(options),
+    configDir: inspectConfigDir(options.configDir),
+    ripgrep: inspectRipgrep(),
+    ports: await inspectPorts(options),
+  })
+  for (const line of renderReport(report)) console.log(line)
+  return report.blocked ? DOCTOR_BLOCKED_EXIT : 0
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +498,8 @@ export async function runCommand(command: Command | undefined): Promise<number> 
   switch (command) {
     case 'workspace':
       return runWorkspace()
+    case 'doctor':
+      return runDoctor()
     case 'provision':
       return runProvision()
     case 'agentos':

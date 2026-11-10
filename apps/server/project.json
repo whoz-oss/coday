@@ -1,5 +1,6 @@
 {
   "name": "server",
+  "// esbuild target": "node22 is the Node floor the package announces (engines.node in package.json, NODE_MIN_VERSION in src/lib/runtime/doctor.ts) and the installation docs state. Without it esbuild emits esnext and the published bundle can use syntax that floor cannot parse, failing with an unreadable error from inside the bundle.",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "apps/server/src",
@@ -33,6 +34,7 @@
             ".js": ".js"
           },
           "sourcemap": false,
+          "target": "node22",
           "banner": {
             "js": "import { createRequire as __createRequire } from 'module';import { dirname as __dirname_func } from 'path';import { fileURLToPath as __fileURLToPath } from 'url';const require = __createRequire(import.meta.url);const __filename = __fileURLToPath(import.meta.url);const __dirname = __dirname_func(__filename);"
           }

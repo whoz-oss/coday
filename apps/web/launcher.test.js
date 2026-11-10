@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'path';
-import { chooseMode, nxArgs, nxEnv, parseWorkspaceDir, resolveConfigDir, serverArgs } from './launcher.js';
+import {
+  chooseMode,
+  nxArgs,
+  nxEnv,
+  parseWorkspaceDir,
+  resolveConfigDir,
+  serverArgs,
+  shouldRunDoctor,
+  wantsDoctorOnly,
+  withoutCommand,
+} from './launcher.js';
 
 test('interactive terminal runs through nx', () => {
   assert.equal(chooseMode({ argv: [], env: {}, isTTY: true }).mode, 'nx');
@@ -31,8 +41,39 @@ test('configDir: a relative directory is made absolute, Nx runs from <configDir>
   assert.equal(resolveConfigDir(['--configDir=my-coday'], '/h'), resolve('my-coday'));
 });
 
-test('the launcher-only flag is not forwarded to the server', () => {
+test('the launcher-only flags are not forwarded to the server', () => {
   assert.deepEqual(serverArgs(['--managed', '--auth', '--configDir', '/x']), ['--auth', '--configDir', '/x']);
+  assert.deepEqual(serverArgs(['--skip-doctor', '--auth']), ['--auth']);
+});
+
+test('the preflight runs for an interactive start', () => {
+  assert.equal(shouldRunDoctor({ mode: 'nx', argv: [], env: {} }), true);
+});
+
+test('the preflight is skipped in managed mode: the desktop apps have their own installer and wizard', () => {
+  assert.equal(shouldRunDoctor({ mode: 'managed', argv: [], env: {} }), false);
+});
+
+test('the preflight can be bypassed by flag or environment, in both flag forms', () => {
+  assert.equal(shouldRunDoctor({ mode: 'nx', argv: ['--skip-doctor'], env: {} }), false);
+  assert.equal(shouldRunDoctor({ mode: 'nx', argv: ['--skip-doctor=true'], env: {} }), false);
+  assert.equal(shouldRunDoctor({ mode: 'nx', argv: [], env: { CODAY_SKIP_DOCTOR: '1' } }), false);
+  assert.equal(shouldRunDoctor({ mode: 'nx', argv: [], env: { CODAY_SKIP_DOCTOR: 'true' } }), false);
+  assert.equal(shouldRunDoctor({ mode: 'nx', argv: [], env: { CODAY_SKIP_DOCTOR: '0' } }), true);
+});
+
+test('`coday-web doctor` is the preflight and nothing else, whatever the terminal', () => {
+  assert.equal(wantsDoctorOnly(['doctor']), true);
+  assert.equal(wantsDoctorOnly(['--configDir=/x', 'doctor']), true);
+  assert.equal(wantsDoctorOnly([]), false);
+  assert.equal(wantsDoctorOnly(['--skip-doctor']), false);
+  assert.equal(wantsDoctorOnly(['status']), false);
+});
+
+test('the command word is not handed to the server twice', () => {
+  assert.deepEqual(withoutCommand(['doctor', '--auth']), ['--auth']);
+  assert.deepEqual(withoutCommand(['--configDir=/x', 'doctor', '--auth']), ['--configDir=/x', '--auth']);
+  assert.deepEqual(withoutCommand(['--auth']), ['--auth']);
 });
 
 test('the workspace directory is read from the marker line, whatever else the server prints', () => {
