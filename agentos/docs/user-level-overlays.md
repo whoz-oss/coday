@@ -14,9 +14,9 @@ over user preferences; user × namespace lets the user restore a personal overri
 Missing layers are skipped; if none exist, `ConfigNotFoundException` is thrown.
 
 Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`,
-`MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created or updated in the two user scopes: an overlay inherits the
+`MCP_STDIO`, `MCP_HTTP`, `GIT`, `BASH`) cannot be created or updated in the two user scopes: an overlay inherits the
 shared `authSettingName`, and for a network-reaching type that would let a user redirect the shared
-credential to a host they control. See `docs/plugin-system.md`.
+credential to a host they control (for `BASH`, run a command that reads it). See `docs/plugin-system.md`.
 
 Scope is inferred from `(body.namespaceId, body.userId)` on creation and from
 `?namespaceId=&userId=me` query params on list. `userId` only accepts `me`.

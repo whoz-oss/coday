@@ -194,10 +194,11 @@ agentos:
   integrations:
   # Comma-separated integration types that cannot be created or updated in a user scope
   # (user-global or user x namespace), because a user overlay of a network-reaching type could
-  # redirect a shared credential to a host the user controls. Platform and namespace-shared
+  # redirect a shared credential to a host the user controls, and a BASH overlay could run a
+  # command that reads the secret of the bound Auth Setting. Platform and namespace-shared
   # configs are unaffected. Setting the list replaces the default entirely.
   # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
-  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
+  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH
   # Comma-separated integration types that may set autoGrant, i.e. be handed to every agent within
   # a config's scope without any agent naming it. At platform scope that is every agent of the
   # environment at once, so the list starts closed and setting it replaces the default entirely.
