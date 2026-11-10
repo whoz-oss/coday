@@ -299,6 +299,36 @@ describe('CaseChatComponent — submit with attachments', () => {
     }
   })
 
+  it('reports the stream as gone only once the browser gave up, never on a reconnect', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+      readyState: 0,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+
+      // CONNECTING: EventSource is retrying on its own, there is nothing to tell the user.
+      source.onerror!(new Event('error'))
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+
+      // CLOSED: the stream was refused — a deleted case answers 404 — and will not be retried.
+      source.readyState = 2
+      source.onerror!(new Event('error'))
+      expect(ref.instance['streamUnavailable']()).toBe(true)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('restores RUNNING after a transport error without replaying chunks, files or older statuses', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), {

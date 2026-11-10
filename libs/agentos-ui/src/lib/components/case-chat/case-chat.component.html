@@ -624,6 +624,14 @@
             <button type="button" class="case-chat__reopen-btn" (click)="reopen()">Reopen</button>
           </div>
         }
+
+        @if (streamUnavailable()) {
+          <div class="case-chat__reopen-bar">
+            <span class="case-chat__reopen-label"
+              >This case is no longer available — it may have been deleted. Pick another case from the sidebar.</span
+            >
+          </div>
+        }
       </div>
     </div>
   </div>

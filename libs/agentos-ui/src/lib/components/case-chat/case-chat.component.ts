@@ -161,6 +161,15 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 const TERMINAL_CLOSE_DEBOUNCE_MS = 300
 
+/**
+ * `EventSource.CLOSED`, spelled out: the browser gave up and will not reconnect.
+ *
+ * Read as a literal rather than off the constructor, which the specs replace with a fake that
+ * carries none of the statics — comparing against an undefined constant would call every
+ * transport hiccup a dead stream.
+ */
+const EVENT_SOURCE_CLOSED = 2
+
 /** True when the user has an active text selection (e.g. preparing to copy). */
 function hasActiveSelection(): boolean {
   const selection = window.getSelection()
@@ -313,6 +322,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected inputValue = signal('')
   protected isRunning = signal(false)
+
+  /**
+   * True once the browser gave up on the event stream for good — EventSource reaching CLOSED,
+   * which is what a refused case answers with: a deleted or no longer readable case gets a 404
+   * (#1616). A mere transport hiccup leaves this false, since EventSource reconnects by itself.
+   */
+  protected readonly streamUnavailable = signal(false)
 
   /**
    * Derived terminal state — true when the effective case status is KILLED or ERROR.
@@ -970,30 +986,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private connectSse(): void {
     const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
 
-    console.log('[AgentOS SSE] connecting', {
-      url,
-      basePath: this.config.basePath,
-      caseId: this.caseId,
-      namespaceId: this.namespaceId,
-      now: new Date().toISOString(),
-    })
-
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
     // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
     // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
     const handler = (msg: globalThis.MessageEvent<string>) => {
-      const receivedAt = performance.now()
       const sseEventName = (msg as unknown as { type?: string }).type
-
-      // Log first bytes + sizes to detect batching.
       const raw = msg.data
-      console.log('[AgentOS SSE] frame received', {
-        sseEventName,
-        dataLength: raw?.length ?? 0,
-        dataPreview: raw?.slice(0, 120),
-        receivedAtMs: receivedAt,
-      })
 
       try {
         const event = JSON.parse(raw) as CaseEvent
@@ -1011,7 +1010,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             }
             return
           }
-          const beforeLen = this.events().length
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
           if (event.type === 'MessageEvent') {
@@ -1026,17 +1024,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
-          const afterLen = this.events().length
-
-          console.log('[AgentOS SSE] event processed', {
-            sseEventName,
-            eventType: event.type,
-            eventId: event.id,
-            beforeLen,
-            afterLen,
-            running: this.isRunning(),
-            terminal: this.isTerminal(),
-          })
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1188,26 +1175,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     // handle the different event names we see in the SSE stream
     for (const name of eventNames) {
-      console.log('[AgentOS SSE] addEventListener', name)
       this.eventSource.addEventListener(name, handler)
     }
 
-    this.eventSource.onopen = () => {
-      console.log('[AgentOS SSE] connection open', {
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
-    }
-
-    this.eventSource.onerror = (err) => {
-      console.warn('[AgentOS SSE] connection error', {
-        err,
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
+    this.eventSource.onerror = () => {
+      const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
+      if (closed) console.warn('[AgentOS SSE] stream refused for case', this.caseId)
       this.zone.run(() => {
         this.isRunning.set(false)
         // Do not mark terminal on transport error: EventSource may reconnect.
+        // CLOSED is the exception — the browser will not retry, so say the stream is gone
+        // rather than leave a chat that silently never updates again.
+        if (closed) this.streamUnavailable.set(true)
       })
     }
   }
@@ -1316,6 +1295,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.eventSource = null
+    this.streamUnavailable.set(false)
     this.events.set([])
     this.messageHtmlCache.clear()
     this.inputValue.set('')
