@@ -178,6 +178,22 @@ describe('DelegationCardComponent', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('.delegation-card--waiting')).not.toBeNull()
   })
 
+  it('drops what it saw when collapsed, so a confirmation cannot linger unresolved', () => {
+    update()
+    toggle()
+    const source = MockEventSource.instances[0]!
+    source.emit({ id: 'p', type: 'PendingConfirmationEvent', toolName: 'GIT__git_push', inputJson: '{}' })
+    fixture.detectChanges()
+    expect(line()?.textContent?.trim()).toBe('Confirmation needed: Pushing the branch')
+
+    toggle()
+
+    // The stream is gone with the card, so the resolution would never arrive: the label must
+    // stop claiming the sub-case is blocked and fall back to the parent's own view of it.
+    expect(line()?.textContent?.trim()).toBe('Thinking')
+    expect(line()?.classList.contains('delegation-card__last-event--waiting')).toBe(false)
+  })
+
   it('shows the parent result question without needing a stream', () => {
     update({
       status: 'WAITING_USER',
