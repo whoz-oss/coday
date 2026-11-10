@@ -146,4 +146,11 @@ data class ScheduledPromptDto(
      * External consumers store their own metadata here (e.g. `isStandard`).
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * The workflow run for each occurrence (who receives the prompt, and how). Optional on POST/PUT:
+     * when omitted the platform default workflow is used (the target agent's audience, one case per
+     * user). Must be a platform workflow or one of the scheduled prompt's namespace.
+     */
+    @field:Schema(types = ["string", "null"], format = "uuid")
+    val workflowId: UUID? = null,
 )
