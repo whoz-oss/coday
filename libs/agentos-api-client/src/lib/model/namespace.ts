@@ -10,6 +10,10 @@
 
 export interface Namespace {
   /**
+   * Whether the administrators of this namespace get a \'Mine / All cases\' switch in the case drawer. Null means inherit from the platform default (agentos.case.admin-list-all-cases-default). On PUT, null clears an existing override.
+   */
+  adminCanListAllCases?: boolean
+  /**
    * Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.).
    */
   configPath?: string

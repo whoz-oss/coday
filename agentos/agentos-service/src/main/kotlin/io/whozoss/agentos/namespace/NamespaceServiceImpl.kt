@@ -1,6 +1,7 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -38,6 +39,7 @@ class NamespaceServiceImpl(
     private val userGroupRepository: UserGroupRepository,
     private val agentConfigRepository: AgentConfigRepository,
     private val limitsConfig: LimitsConfigProperties,
+    private val caseConfig: CaseConfigProperties,
 ) : NamespaceService {
     @Transactional
     override fun create(entity: Namespace): Namespace = try {
@@ -118,6 +120,12 @@ class NamespaceServiceImpl(
 
     override fun resolveRunCostThreshold(namespaceId: UUID): Double? =
         findById(namespaceId)?.runCostThreshold ?: limitsConfig.runCostThreshold
+
+    override fun resolveAdminCanListAllCases(namespaceId: UUID): Boolean =
+        findById(namespaceId)?.let(::resolveAdminCanListAllCases) ?: caseConfig.adminListAllCasesDefault
+
+    override fun resolveAdminCanListAllCases(namespace: Namespace): Boolean =
+        namespace.adminCanListAllCases ?: caseConfig.adminListAllCasesDefault
 
     private fun validateAgentsInNamespace(agentConfigIds: Collection<UUID>, namespaceId: UUID) {
         agentConfigIds

@@ -12,6 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * - AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
  * - AGENTOS_CASE_GLOBAL_EVENTS_POLL_INTERVAL_MS
  * - AGENTOS_CASE_SUMMARY_ENABLED
+ * - AGENTOS_CASE_ADMIN_LIST_ALL_CASES_DEFAULT
  *
  * Example (application.yml):
  * ```yaml
@@ -21,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     sse-heartbeat-interval-ms: 30000      # 30 s (default)
  *     global-events-poll-interval-ms: 5000  # 5 s (default)
  *     summary-enabled: true            # case summaries feeding the case search (default)
+ *     admin-list-all-cases-default: false   # no "All cases" drawer switch for namespace admins (default)
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.case")
@@ -72,4 +74,16 @@ data class CaseConfigProperties(
      * Defaults to true.
      */
     val summaryEnabled: Boolean = true,
+
+    /**
+     * Platform default of the namespace setting [io.whozoss.agentos.namespace.Namespace.adminCanListAllCases]:
+     * whether the administrators of a namespace get a "Mine / All cases" switch in the case drawer.
+     * A namespace that sets the option itself keeps its own value; `null` there inherits this one.
+     *
+     * It only drives the drawer. It does not change who may read which case, nor the behaviour of
+     * `GET /api/cases/by-parentId/{parentId}`, whose namespace-ADMIN listing is always unfiltered.
+     *
+     * Defaults to false.
+     */
+    val adminListAllCasesDefault: Boolean = false,
 )

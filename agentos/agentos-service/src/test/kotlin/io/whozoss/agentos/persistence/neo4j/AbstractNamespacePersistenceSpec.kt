@@ -116,6 +116,22 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
             repo.findByIds(listOf(ns.id)).first().maxToolRounds shouldBe null
         }
 
+        "adminCanListAllCases keeps true, false and null apart: persisted, retrieved and cleared" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "list-all", adminCanListAllCases = true))
+            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe true
+
+            repo.save(ns.copy(adminCanListAllCases = false))
+            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe false
+
+            repo.save(ns.copy(adminCanListAllCases = null))
+            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe null
+        }
+
+        "a namespace saved without adminCanListAllCases reads back null" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "no-list-all"))
+            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe null
+        }
+
         "save throws on duplicate externalId" {
             repo.save(Namespace(metadata = EntityMetadata(), name = "ns-a", externalId = "ext-1"))
 

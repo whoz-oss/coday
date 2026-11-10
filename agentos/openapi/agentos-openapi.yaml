@@ -5981,6 +5981,12 @@ components:
     Namespace:
       type: object
       properties:
+        adminCanListAllCases:
+          type: boolean
+          description: Whether the administrators of this namespace get a 'Mine / All
+            cases' switch in the case drawer. Null means inherit from the platform
+            default (agentos.case.admin-list-all-cases-default). On PUT, null clears
+            an existing override.
         configPath:
           type: string
           description: "Optional filesystem path to a directory containing base configuration\
@@ -6088,6 +6094,11 @@ components:
     NamespaceListItem:
       type: object
       properties:
+        adminCanListAllCasesEffective:
+          type: boolean
+          description: Resolved value of the namespace setting 'adminCanListAllCases'
+            (the namespace override, else the platform default) whether this namespace's
+            administrators get a 'Mine / All cases' switch in the case drawer. Read-only.
         configPath:
           type: string
         defaultAgentName:

@@ -27,6 +27,7 @@ data class NamespaceNode(
     // Nullable and absent on existing nodes: no migration needed.
     val sharedExchangePath: String? = null,
     val maxToolRounds: Int? = null,
+    val adminCanListAllCases: Boolean? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -53,6 +54,7 @@ data class NamespaceNode(
             runCostThreshold = runCostThreshold,
             sharedExchangePath = sharedExchangePath,
             maxToolRounds = maxToolRounds,
+            adminCanListAllCases = adminCanListAllCases,
         )
 
     companion object {
@@ -67,6 +69,7 @@ data class NamespaceNode(
                 runCostThreshold = ns.runCostThreshold,
                 sharedExchangePath = ns.sharedExchangePath,
                 maxToolRounds = ns.maxToolRounds,
+                adminCanListAllCases = ns.adminCanListAllCases,
                 created = ns.metadata.created,
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,
