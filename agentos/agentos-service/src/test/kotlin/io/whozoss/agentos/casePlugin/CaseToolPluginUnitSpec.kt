@@ -13,6 +13,7 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.tool.RequiresExplicitGrant
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 class CaseToolPluginUnitSpec :
@@ -23,7 +24,8 @@ class CaseToolPluginUnitSpec :
         val starterService = mockk<CaseStarterService>()
         val mapper = jacksonObjectMapper()
 
-        fun plugin(loader: (UUID, UUID, UUID?) -> List<CaseEvent>? = noopLoader) = CaseToolPlugin(loader, starterService, LimitsConfigProperties())
+        fun plugin(loader: (UUID, UUID, UUID?) -> List<CaseEvent>? = noopLoader) =
+            CaseToolPlugin(loader, starterService, mockk<UserService>(), LimitsConfigProperties())
 
         /** Anonymous context: no user, no case events. What a ReadCase caller without identity looks like. */
         fun context() =

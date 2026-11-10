@@ -2,12 +2,13 @@ package io.whozoss.agentos.casePlugin
 
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.user.UserService
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /**
  * Spring configuration for the CASE internal integration ([CaseToolPlugin]: `ReadCase`,
- * `FreeCaseStarter` and `FreeCaseStarterForUser`).
+ * `FreeCaseStarter`, `FreeCaseStarterForUser` and `BatchCaseStarter`).
  *
  * Declared in a dedicated `@Configuration` class (mirroring
  * [io.whozoss.agentos.redirect.RedirectConfiguration] and
@@ -26,6 +27,7 @@ import org.springframework.context.annotation.Configuration
 class CasePluginConfiguration(
     private val caseToolService: CaseToolService,
     private val caseStarterService: CaseStarterService,
+    private val userService: UserService,
     private val limitsConfig: LimitsConfigProperties,
 ) {
     @Bean
@@ -33,6 +35,7 @@ class CasePluginConfiguration(
         CaseToolPlugin(
             caseEventsLoader = caseToolService::findCaseEvents,
             caseStarterService = caseStarterService,
+            userService = userService,
             limitsConfig = limitsConfig,
         )
 }

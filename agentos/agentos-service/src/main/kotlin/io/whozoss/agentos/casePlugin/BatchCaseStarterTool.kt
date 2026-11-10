@@ -8,38 +8,45 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.tool.RequiresExplicitGrant
+import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.workflow.WorkflowTarget
+import io.whozoss.agentos.workflow.WorkflowTargets
 import kotlinx.coroutines.CancellationException
 import mu.KLogging
 import java.util.UUID
 
 /**
- * Fan-out tool for the AgentLoop: starts one case per user element in [Input.previousStepOutput],
- * which is the structured output of [io.whozoss.agentos.userGroup.ListAgentUsersTool] — a JSON array
- * where each element has at least a `userId` field.
+ * Step 2 of every scheduler [io.whozoss.agentos.workflow.Workflow]: starts one case per element of
+ * [Input.targets], the targets produced by step 1 (contract: [WorkflowTargets]).
  *
- * **Direct Kotlin call**: this tool calls [CaseStarterService] directly (not via JSON delegation
- * through [FreeCaseStarterForUserTool]) so that [CaseStarterRequest.translateFrom] and
- * [CaseStarterRequest.scheduledPromptId] are carried through without being silently dropped.
- * All authorization gates live inside [CaseStarterService] and are not bypassed.
+ * Per target:
+ * 1. the user is resolved from [WorkflowTarget.userExternalId]; unknown → counted `unknownUser`;
+ * 2. when the target carries `entityId` + `entityType`, the case gets an `activeContext` session
+ *    context naming that entity;
+ * 3. when [Input.runId] is set, a [DispatchKey] makes the delivery idempotent (re-running a run never
+ *    starts the same case twice; duplicates are counted `skipped`);
+ * 4. [CaseStarterService.start] is called directly (not through `FreeCaseStarterForUser` JSON) so the
+ *    backend-only fields reach it. Every authorization gate lives there and is not bypassed.
  *
- * **One case per element, no deduplication**: a user reachable via multiple entities receives
- * one case per element. This is a deliberate product decision.
+ * One case per element, no deduplication: a user reached through several entities receives one case
+ * per entity (product decision).
  *
- * **Cap**: when the array size exceeds [LimitsConfigProperties.agentLoopMaxItems], the tool
- * returns an error immediately without starting any case.
+ * **Cap**: more targets than [LimitsConfigProperties.agentLoopMaxItems] fails the call before any case
+ * is started, never truncates.
  *
- * **Optional entity context**: when an element carries both `entityId` and `entityType`, the
- * tool builds an `activeContext` session context for that case. Otherwise null is passed and
- * [CaseStarterService] resolves the user's own context normally.
+ * **Grant**: [RequiresExplicitGrant]: an agent receives this tool only by naming it in its `CASE`
+ * integration (`CASE: [BatchCaseStarter]`). The integration's `agents` / `deniedAgents` allowlist
+ * applies, as for the other starters.
  *
  * @param configName Integration config name, used as tool-name prefix.
- * @param caseStarterService Starts the cases. It reaches [io.whozoss.agentos.caseFlow.CaseService]
- *   through a `@Lazy` proxy, so no new Spring cycle is introduced.
+ * @param caseStarterService Starts the cases (reaches `CaseService` through a `@Lazy` proxy).
+ * @param userService Resolves target users by external id.
  * @param limitsConfig Platform limits; [LimitsConfigProperties.agentLoopMaxItems] is the cap.
  */
 class BatchCaseStarterTool(
     configName: String?,
     private val caseStarterService: CaseStarterService,
+    private val userService: UserService,
     private val limitsConfig: LimitsConfigProperties,
     allowedAgents: List<String> = listOf("*"),
     deniedAgents: Set<String> = emptySet(),
@@ -49,51 +56,39 @@ class BatchCaseStarterTool(
     private val deniedNames = deniedAgents.map { it.lowercase() }.toSet()
 
     /**
-     * @param agentName Name of the agent to start for each user.
-     * @param prompt The prompt sent to the agent, on behalf of each user. Self-contained.
-     *   Ignored when [promptId] is set — in that case content and title are resolved from the
-     *   stored Prompt per target user via `PromptService.translate(...)`.
-     * @param promptId UUID string of a stored [io.whozoss.agentos.prompt.Prompt] whose content
-     *   and title supply the first message. When set it takes precedence over [prompt] and
-     *   [translateFrom], and is resolved per target user by [CaseStarterService], which reuses
-     *   persisted translations before falling back to an LLM. Null (the default) uses [prompt]
-     *   verbatim. NOT exposed in the JSON schema — set by Kotlin, never by an LLM.
-     * @param title Optional conversation title; derived from [prompt] (or the Prompt's own title)
-     *   when blank. Used as fallback when the Prompt itself has no title.
-     * @param translateFrom BCP-47 source language of [prompt]/[title]. When non-null and the
-     *   target user has a different `preferredLanguage`, both are translated. Null = no translation.
-     *   Ignored when [promptId] is set.
-     * @param scheduledPromptId UUID string of the scheduled prompt that triggered this batch;
-     *   written to [io.whozoss.agentos.caseFlow.Case.scheduledPromptId] on each started case.
-     * @param runId UUID string of the scheduler run that triggered this batch. When non-blank,
-     *   a [io.whozoss.agentos.casePlugin.CaseStarterRequest.dispatchKey] is derived per element
-     *   as `"$runId:$userId"` (plus `":$entityId"` when the element has a non-blank `entityId`).
-     *   Null (the default) for interactively-triggered loops: no dispatchKey is produced.
-     *   NOT exposed in the JSON schema — set by Kotlin, never by an LLM.
-     * @param previousStepOutput JSON array produced by the preceding step (typically
-     *   `ListAgentUsersTool`). Each element must carry at least `userId` (a UUID string). Optional
-     *   `entityId` + `entityType` fields trigger per-element `activeContext` injection.
+     * @param agentName Name of the agent each case is started with.
+     * @param targets Who to start a case for: the step-1 targets ([WorkflowTargets]).
+     * @param prompt First message, sent on behalf of each user. Required unless [promptId] is set.
+     * @param promptId Stored [io.whozoss.agentos.prompt.Prompt] supplying content and title, translated
+     *   per user (persisted translations reused). Takes precedence over [prompt] and [translateFrom].
+     * @param title Conversation title; derived from the prompt when blank.
+     * @param translateFrom Source language of [prompt]/[title]; when set they are translated to each
+     *   user's language. Ignored with [promptId].
+     * @param scheduledPromptId Recorded on each case ([io.whozoss.agentos.caseFlow.Case.scheduledPromptId]).
+     * @param runId Scheduler run; when set, enables [DispatchKey] idempotency.
      */
     data class Input(
         val agentName: String,
+        val targets: List<WorkflowTarget>? = null,
         val prompt: String? = null,
         val promptId: String? = null,
         val title: String? = null,
         val translateFrom: String? = null,
         val scheduledPromptId: String? = null,
         val runId: String? = null,
-        val previousStepOutput: JsonNode? = null,
     )
 
+    /** Per-target outcome, aggregated in the tool result. */
+    private enum class Outcome { STARTED, SKIPPED, UNKNOWN_USER, NO_AGENT_ACCESS, FAILED }
+
     override val name: String = buildToolName(configName)
-    override val version: String = "1.0.0"
+    override val version: String = "2.0.0"
     override val paramType: Class<Input> = Input::class.java
 
     override val description: String =
-        "Fan-out: starts one case per user entry in previousStepOutput (the output of ListAgentUsers). " +
-            "Each element must have a userId field. The cases run in the background; this tool returns " +
-            "a summary of started, refused and failed cases without waiting for results. " +
-            "Fails loudly if the array exceeds the platform batch cap."
+        "Starts one case per element of `targets` (users, optionally with the entity the case is about). " +
+            "The cases run in the background; this tool returns a summary of started, skipped, refused and failed " +
+            "targets without waiting for results. Fails, starting nothing, if there are more targets than the platform cap."
 
     override val inputSchema: String = INPUT_SCHEMA
 
@@ -104,162 +99,128 @@ class BatchCaseStarterTool(
         context: ToolContext,
     ): ToolExecutionResult {
         if (input == null || input.agentName.isBlank()) {
-            return ToolExecutionResult.error("agentName and prompt (or promptId) are required.", errorType = "MISSING_INPUT")
+            return ToolExecutionResult.error("agentName is required.", errorType = "MISSING_INPUT")
         }
         if (input.agentName.lowercase() in deniedNames || allowedRegexes.none { it.matches(input.agentName) }) {
-            return ToolExecutionResult.error(
-                "Agent '${input.agentName}' cannot be started by this tool.",
-                errorType = "UNAUTHORIZED_AGENT",
-            )
+            return ToolExecutionResult.error("Agent '${input.agentName}' cannot be started by this tool.", errorType = "UNAUTHORIZED_AGENT")
         }
-        val hasPrompt = !input.prompt.isNullOrBlank()
-        val hasPromptId = !input.promptId.isNullOrBlank()
-        if (!hasPrompt && !hasPromptId) {
-            return ToolExecutionResult.error(
-                "Either a non-blank prompt or a non-blank promptId is required.",
-                errorType = "MISSING_INPUT",
-            )
+        if (input.prompt.isNullOrBlank() && input.promptId.isNullOrBlank()) {
+            return ToolExecutionResult.error("Either a non-blank prompt or a non-blank promptId is required.", errorType = "MISSING_INPUT")
         }
-        val promptUuid =
-            parseOptionalUuid("promptId", input.promptId).getOrElse { return it.asInvalidInput() }
-        val scheduledPromptUuid =
-            parseOptionalUuid("scheduledPromptId", input.scheduledPromptId).getOrElse { return it.asInvalidInput() }
-        val runUuid = parseOptionalUuid("runId", input.runId).getOrElse { return it.asInvalidInput() }
-
-        val array = input.previousStepOutput
-        if (array == null || !array.isArray || array.size() == 0) {
-            return ToolExecutionResult.error(
-                "previousStepOutput must be a non-empty JSON array.",
-                errorType = "INVALID_INPUT",
-            )
+        val targets = input.targets
+        if (targets.isNullOrEmpty()) {
+            return ToolExecutionResult.error("targets must be a non-empty array.", errorType = "INVALID_INPUT")
         }
-
         val cap = limitsConfig.agentLoopMaxItems
-        if (array.size() > cap) {
+        if (targets.size > cap) {
             return ToolExecutionResult.error(
-                "Batch size ${array.size()} exceeds the platform cap of $cap items. " +
-                    "No cases were started. Reduce the audience or raise the cap.",
+                "${targets.size} targets exceed the platform cap of $cap. No case was started. Reduce the audience or raise the cap.",
                 errorType = "OVER_BATCH_CAP",
             )
         }
-
+        val promptId = parseOptionalUuid("promptId", input.promptId).getOrElse { return it.asInvalidInput() }
+        val scheduledPromptId = parseOptionalUuid("scheduledPromptId", input.scheduledPromptId).getOrElse { return it.asInvalidInput() }
+        val runId = parseOptionalUuid("runId", input.runId).getOrElse { return it.asInvalidInput() }
         val callerUserId =
             context.userId
-                ?: return ToolExecutionResult.error(
-                    "BatchCaseStarter requires a user context (userId is null).",
-                    errorType = "MISSING_USER_CONTEXT",
-                )
+                ?: return ToolExecutionResult.error("BatchCaseStarter requires a user context.", errorType = "MISSING_USER_CONTEXT")
         val callerCaseId =
             context.caseId
-                ?: return ToolExecutionResult.error(
-                    "BatchCaseStarter requires the calling case (the tool context has no case id).",
-                    errorType = "MISSING_CASE_CONTEXT",
-                )
+                ?: return ToolExecutionResult.error("BatchCaseStarter requires the calling case.", errorType = "MISSING_CASE_CONTEXT")
 
-        var started = 0
-        var unknownUser = 0
-        var noAgentAccess = 0
-        var failed = 0
-        var skipped = 0
         val startedCaseIds = mutableListOf<UUID>()
-
-        for (element in array) {
-            val userIdStr = element.path("userId").asText(null)
-            if (userIdStr.isNullOrBlank()) {
-                logger.warn { "[BatchCaseStarter] element missing userId, skipping: $element" }
-                failed++
-                continue
+        val outcomes =
+            targets.map { target ->
+                startOne(target) { targetUserId ->
+                    CaseStarterRequest(
+                        callerUserId = callerUserId,
+                        callerNamespaceId = context.namespaceId,
+                        callerCaseId = callerCaseId,
+                        agentName = input.agentName,
+                        prompt = input.prompt.orEmpty(),
+                        title = input.title,
+                        targetUserId = targetUserId,
+                        sessionContext = activeContextOf(target),
+                        translateFrom = input.translateFrom,
+                        scheduledPromptId = scheduledPromptId,
+                        dispatchKey = runId?.let { dispatchKeyOf(it, targetUserId, target) },
+                        promptId = promptId,
+                    )
+                }.also { (outcome, caseId) -> if (outcome == Outcome.STARTED && caseId != null) startedCaseIds += caseId }
+                    .first
             }
-            val targetUserId =
-                runCatching { UUID.fromString(userIdStr) }.getOrNull()
-                    ?: run {
-                        logger.warn { "[BatchCaseStarter] invalid userId '$userIdStr', skipping" }
-                        failed++
-                        continue
-                    }
+        return result(outcomes.groupingBy { it }.eachCount(), targets.size, startedCaseIds)
+    }
 
-            val sessionContext = buildSessionContext(element)
-
-            // Build the dispatchKey when a runId is present: "runId:userId" or "runId:userId:entityId".
-            val entityId = element.path("entityId").asText(null)?.takeIf { it.isNotBlank() }
-            val dispatchKey = runUuid?.let { runId ->
-                if (entityId != null) DispatchKey.of(runId, targetUserId, entityId) else DispatchKey.of(runId, targetUserId)
-            }
-
-            val request =
-                CaseStarterRequest(
-                    callerUserId = callerUserId,
-                    callerNamespaceId = context.namespaceId,
-                    callerCaseId = callerCaseId,
-                    agentName = input.agentName,
-                    prompt = input.prompt ?: "",
-                    title = input.title,
-                    targetUserId = targetUserId,
-                    sessionContext = sessionContext,
-                    translateFrom = input.translateFrom,
-                    scheduledPromptId = scheduledPromptUuid,
-                    dispatchKey = dispatchKey,
-                    promptId = promptUuid,
-                )
-
-            try {
-                val result = caseStarterService.start(request)
-                started++
-                startedCaseIds += result.caseId
-                logger.debug { "[BatchCaseStarter] started case ${result.caseId} for user $targetUserId" }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: CaseStarterRefusedException) {
-                when (e.reason) {
-                    CaseStarterRefusal.TARGET_USER_NOT_FOUND -> {
-                        unknownUser++
-                        logger.warn { "[BatchCaseStarter] user $targetUserId not found: ${e.message}" }
-                    }
-                    CaseStarterRefusal.AGENT_NOT_AVAILABLE,
-                    CaseStarterRefusal.TARGET_NO_ACCESS,
-                    CaseStarterRefusal.FORBIDDEN,
-                    -> {
-                        noAgentAccess++
-                        logger.warn { "[BatchCaseStarter] refused for user $targetUserId (${e.reason}): ${e.message}" }
-                    }
-                    CaseStarterRefusal.ALREADY_DISPATCHED -> {
-                        skipped++
-                        logger.info { "[BatchCaseStarter] skipped user $targetUserId — already dispatched (key: $dispatchKey)" }
-                    }
-                    CaseStarterRefusal.PROMPT_NOT_FOUND -> {
-                        failed++
-                        logger.error { "[BatchCaseStarter] prompt not found for user $targetUserId (${e.reason}): ${e.message}" }
-                    }
-                    else -> {
-                        failed++
-                        logger.warn { "[BatchCaseStarter] unexpected refusal for user $targetUserId (${e.reason}): ${e.message}" }
-                    }
+    /** Resolves the target user, starts the case, and classifies what happened. Never throws but on cancellation. */
+    private fun startOne(
+        target: WorkflowTarget,
+        request: (targetUserId: UUID) -> CaseStarterRequest,
+    ): Pair<Outcome, UUID?> {
+        val user =
+            userService.findByExternalId(target.userExternalId)
+                ?: return (Outcome.UNKNOWN_USER to null).also {
+                    logger.warn { "[BatchCaseStarter] no user with externalId '${target.userExternalId}'" }
                 }
-            } catch (e: Exception) {
-                failed++
-                logger.error(e) { "[BatchCaseStarter] unexpected failure for user $targetUserId" }
-            }
+        return try {
+            Outcome.STARTED to caseStarterService.start(request(user.id)).caseId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: CaseStarterRefusedException) {
+            logger.info { "[BatchCaseStarter] refused for user ${user.id} (${e.reason}): ${e.message}" }
+            outcomeOf(e.reason) to null
+        } catch (e: Exception) {
+            logger.error(e) { "[BatchCaseStarter] unexpected failure for user ${user.id}" }
+            Outcome.FAILED to null
+        }
+    }
+
+    private fun outcomeOf(refusal: CaseStarterRefusal): Outcome =
+        when (refusal) {
+            CaseStarterRefusal.ALREADY_DISPATCHED -> Outcome.SKIPPED
+            CaseStarterRefusal.TARGET_USER_NOT_FOUND -> Outcome.UNKNOWN_USER
+            CaseStarterRefusal.AGENT_NOT_AVAILABLE,
+            CaseStarterRefusal.TARGET_NO_ACCESS,
+            CaseStarterRefusal.FORBIDDEN,
+            -> Outcome.NO_AGENT_ACCESS
+            else -> Outcome.FAILED
         }
 
+    private fun dispatchKeyOf(
+        runId: UUID,
+        userId: UUID,
+        target: WorkflowTarget,
+    ): String = target.entityId?.takeIf { it.isNotBlank() }?.let { DispatchKey.of(runId, userId, it) } ?: DispatchKey.of(runId, userId)
+
+    /** The `activeContext` naming the target's entity, or null when the target has none. */
+    private fun activeContextOf(target: WorkflowTarget): Map<String, Any?>? {
+        val entityId = target.entityId?.takeIf { it.isNotBlank() } ?: return null
+        val entityType = target.entityType?.takeIf { it.isNotBlank() } ?: return null
+        return mapOf("activeContext" to listOf(mapOf("type" to entityType, "data" to mapOf("id" to entityId))))
+    }
+
+    private fun result(
+        counts: Map<Outcome, Int>,
+        total: Int,
+        startedCaseIds: List<UUID>,
+    ): ToolExecutionResult {
+        fun count(outcome: Outcome) = counts[outcome] ?: 0
         val summary =
-            "Batch complete: $started started, $skipped skipped (already dispatched), " +
-                "$unknownUser unknown users, $noAgentAccess no-access, $failed failed " +
-                "(out of ${array.size()} elements)."
+            "Batch complete: ${count(Outcome.STARTED)} started, ${count(Outcome.SKIPPED)} skipped (already dispatched), " +
+                "${count(Outcome.UNKNOWN_USER)} unknown users, ${count(Outcome.NO_AGENT_ACCESS)} no-access, " +
+                "${count(Outcome.FAILED)} failed (out of $total targets)."
         logger.info { "[BatchCaseStarter] $summary" }
-
         val structuredOutput =
-            objectMapper.createObjectNode().apply {
-                put("started", started)
-                put("skipped", skipped)
-                put("unknownUser", unknownUser)
-                put("noAgentAccess", noAgentAccess)
-                put("failed", failed)
-                set<JsonNode>(
-                    "startedCaseIds",
-                    objectMapper.createArrayNode().also { arr -> startedCaseIds.forEach { arr.add(it.toString()) } },
-                )
-            }
-
+            objectMapper.valueToTree<JsonNode>(
+                mapOf(
+                    "started" to count(Outcome.STARTED),
+                    "skipped" to count(Outcome.SKIPPED),
+                    "unknownUser" to count(Outcome.UNKNOWN_USER),
+                    "noAgentAccess" to count(Outcome.NO_AGENT_ACCESS),
+                    "failed" to count(Outcome.FAILED),
+                    "startedCaseIds" to startedCaseIds.map { it.toString() },
+                ),
+            )
         return ToolExecutionResult.success(output = summary, structuredOutput = structuredOutput)
     }
 
@@ -273,36 +234,13 @@ class BatchCaseStarterTool(
             .recoverCatching { throw IllegalArgumentException("$field '$text' is not a valid UUID.") }
     }
 
-    private fun Throwable.asInvalidInput(): ToolExecutionResult =
-        ToolExecutionResult.error(message ?: "Invalid input.", errorType = "INVALID_INPUT")
-
-    /**
-     * Builds an `activeContext` session context when the element carries both `entityId` and `entityType`.
-     * Returns null otherwise, letting [CaseStarterService] resolve the user's own context.
-     */
-    private fun buildSessionContext(element: JsonNode): Map<String, Any?>? {
-        val entityId = element.path("entityId").asText(null)?.takeIf { it.isNotBlank() } ?: return null
-        val entityType = element.path("entityType").asText(null)?.takeIf { it.isNotBlank() } ?: return null
-        return mapOf(
-            "activeContext" to
-                listOf(
-                    mapOf(
-                        "type" to entityType,
-                        "data" to mapOf("id" to entityId),
-                    ),
-                ),
-        )
-    }
+    private fun Throwable.asInvalidInput(): ToolExecutionResult = ToolExecutionResult.error(message ?: "Invalid input.", errorType = "INVALID_INPUT")
 
     companion object : KLogging() {
         /** Bare tool name, before the integration config prefix. */
         const val TOOL_NAME = "BatchCaseStarter"
 
         fun buildToolName(configName: String?): String = configName?.let { "${it}__$TOOL_NAME" } ?: TOOL_NAME
-
-        /** Whether [toolName] is a `BatchCaseStarter` tool, whatever its integration config. */
-        fun isBatchCaseStarterTool(toolName: String): Boolean =
-            toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
 
         private val objectMapper = jacksonObjectMapper()
 
@@ -312,77 +250,44 @@ class BatchCaseStarterTool(
                 {
                   "type": "object",
                   "properties": {
-                    "started":      { "type": "integer", "description": "Number of cases successfully started." },
-                    "skipped":      { "type": "integer", "description": "Elements skipped because their dispatchKey was already delivered (idempotency)." },
-                    "unknownUser":  { "type": "integer", "description": "Elements whose userId was not found." },
-                    "noAgentAccess": { "type": "integer", "description": "Elements where the agent is not deployed to the user or the user has no namespace access." },
-                    "failed":       { "type": "integer", "description": "Elements that failed for other reasons (infrastructure, unexpected refusals)." },
-                    "startedCaseIds": {
-                      "type": "array",
-                      "items": { "type": "string", "format": "uuid" },
-                      "description": "UUIDs of the cases that were successfully started, in order."
-                    }
+                    "started":       { "type": "integer", "description": "Cases started." },
+                    "skipped":       { "type": "integer", "description": "Targets already delivered by this run (idempotency)." },
+                    "unknownUser":   { "type": "integer", "description": "Targets whose userExternalId matches no user." },
+                    "noAgentAccess": { "type": "integer", "description": "Targets refused: agent not deployed to the user, user without namespace access, or caller not allowed." },
+                    "failed":        { "type": "integer", "description": "Targets that failed for another reason." },
+                    "startedCaseIds": { "type": "array", "items": { "type": "string", "format": "uuid" } }
                   },
                   "required": ["started", "skipped", "unknownUser", "noAgentAccess", "failed", "startedCaseIds"]
                 }
                 """.trimIndent(),
             )
 
-        private val INPUT_SCHEMA =
-            """
-            {
-              "type": "object",
-              "description": "Meant for backend workflows: granted only when an agent's CASE integration names it explicitly.",
-              "properties": {
-                "agentName": {
-                  "type": "string",
-                  "description": "Name of the agent to start for each user."
+        private val INPUT_SCHEMA: String =
+            objectMapper.writeValueAsString(
+                objectMapper.readTree(
+                    """
+                    {
+                      "type": "object",
+                      "description": "Meant for backend workflows: granted only when an agent's CASE integration names it explicitly.",
+                      "properties": {
+                        "agentName":         { "type": "string", "description": "Agent each case is started with." },
+                        "prompt":            { "type": "string", "description": "First message, sent on behalf of each user. Required unless promptId is given." },
+                        "promptId":          { "type": "string", "format": "uuid", "description": "Stored prompt, translated to each user's language. Takes precedence over prompt." },
+                        "title":             { "type": "string", "description": "Conversation title. Omit to derive it from the prompt." },
+                        "translateFrom":     { "type": "string", "description": "Language of prompt and title (BCP-47). Ignored with promptId." },
+                        "scheduledPromptId": { "type": "string", "format": "uuid", "description": "Scheduled prompt recorded on each case." },
+                        "runId":             { "type": "string", "format": "uuid", "description": "Run that triggered the batch; makes delivery idempotent." }
+                      },
+                      "required": ["agentName", "${WorkflowTargets.FIELD}"],
+                      "additionalProperties": false
+                    }
+                    """.trimIndent(),
+                ).also { schema ->
+                    (schema["properties"] as com.fasterxml.jackson.databind.node.ObjectNode).set<JsonNode>(
+                        WorkflowTargets.FIELD,
+                        WorkflowTargets.ARRAY_SCHEMA,
+                    )
                 },
-                "prompt": {
-                  "type": "string",
-                  "description": "Full, self-contained first message for the agent, sent on behalf of each user. Required unless promptId is given."
-                },
-                "promptId": {
-                  "type": "string",
-                  "format": "uuid",
-                  "description": "Id of a stored prompt whose content and title are sent, translated to each user's language. Takes precedence over prompt."
-                },
-                "title": {
-                  "type": "string",
-                  "description": "Conversation title. Omit to derive from the prompt."
-                },
-                "translateFrom": {
-                  "type": "string",
-                  "description": "Language of prompt and title (BCP-47). When set, they are translated to each user's language. Ignored with promptId."
-                },
-                "scheduledPromptId": {
-                  "type": "string",
-                  "format": "uuid",
-                  "description": "Scheduled prompt that triggered the batch, recorded on each started case."
-                },
-                "runId": {
-                  "type": "string",
-                  "format": "uuid",
-                  "description": "Run that triggered the batch. Makes delivery idempotent: re-running the same run never starts a case twice."
-                },
-                "previousStepOutput": {
-                  "type": "array",
-                  "description": "Array of user references from the preceding step (ListAgentUsers). Each element must have a userId field (UUID). Optional entityId and entityType fields trigger per-element activeContext injection.",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "userId":     { "type": "string", "format": "uuid" },
-                      "entityId":   { "type": "string" },
-                      "entityType": { "type": "string" }
-                    },
-                    "required": ["userId"],
-                    "additionalProperties": true
-                  }
-                }
-              },
-              "required": ["agentName", "previousStepOutput"],
-              "additionalProperties": false
-            }
-            """.trimIndent()
+            )
     }
 }

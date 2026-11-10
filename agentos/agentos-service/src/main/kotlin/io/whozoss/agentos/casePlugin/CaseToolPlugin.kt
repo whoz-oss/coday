@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.stringList
 import mu.KLogging
 import java.util.UUID
@@ -56,6 +57,7 @@ import java.util.UUID
 class CaseToolPlugin(
     private val caseEventsLoader: (caseId: UUID, namespaceId: UUID, userId: UUID?) -> List<CaseEvent>?,
     private val caseStarterService: CaseStarterService,
+    private val userService: UserService,
     private val limitsConfig: LimitsConfigProperties,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
@@ -100,6 +102,7 @@ class CaseToolPlugin(
             BatchCaseStarterTool(
                 configName = configName,
                 caseStarterService = caseStarterService,
+                userService = userService,
                 limitsConfig = limitsConfig,
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
                 deniedAgents = config.stringList("deniedAgents").toSet(),

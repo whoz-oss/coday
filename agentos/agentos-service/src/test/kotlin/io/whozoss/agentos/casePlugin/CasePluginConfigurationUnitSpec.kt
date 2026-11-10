@@ -8,6 +8,7 @@ import io.mockk.verify
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
@@ -24,11 +25,14 @@ class CasePluginConfigurationUnitSpec :
         fun context(user: UUID?) =
             ToolContext(namespaceId = namespaceId, userId = user, userExternalId = null, caseEvents = emptyList())
 
+        fun configuration(caseToolService: CaseToolService) =
+            CasePluginConfiguration(caseToolService, mockk<CaseStarterService>(), mockk<UserService>(), LimitsConfigProperties())
+
         "ReadCase reads through the CaseToolService, with the namespace and the user of the ToolContext" {
             val caseId = UUID.randomUUID()
             val caseToolService = mockk<CaseToolService>()
             every { caseToolService.findCaseEvents(caseId, namespaceId, userId) } returns emptyList<CaseEvent>()
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>(), LimitsConfigProperties()).caseToolPlugin() as CaseToolPlugin
+            val plugin = configuration(caseToolService).caseToolPlugin() as CaseToolPlugin
             val ctx = context(userId)
             val readCase = plugin.provideTools(config = null, context = ctx).filterIsInstance<ReadCaseTool>().single()
 
@@ -42,7 +46,7 @@ class CasePluginConfigurationUnitSpec :
             val caseId = UUID.randomUUID()
             val caseToolService = mockk<CaseToolService>()
             every { caseToolService.findCaseEvents(any(), any(), any()) } returns null
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>(), LimitsConfigProperties()).caseToolPlugin() as CaseToolPlugin
+            val plugin = configuration(caseToolService).caseToolPlugin() as CaseToolPlugin
             val ctx = context(userId)
             val readCase = plugin.provideTools(config = null, context = ctx).filterIsInstance<ReadCaseTool>().single()
 
@@ -56,7 +60,7 @@ class CasePluginConfigurationUnitSpec :
             val caseId = UUID.randomUUID()
             val caseToolService = mockk<CaseToolService>()
             every { caseToolService.findCaseEvents(caseId, namespaceId, null) } returns null
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>(), LimitsConfigProperties()).caseToolPlugin() as CaseToolPlugin
+            val plugin = configuration(caseToolService).caseToolPlugin() as CaseToolPlugin
             val ctx = context(null)
             val readCase = plugin.provideTools(config = null, context = ctx).filterIsInstance<ReadCaseTool>().single()
 
@@ -65,9 +69,9 @@ class CasePluginConfigurationUnitSpec :
             verify(exactly = 1) { caseToolService.findCaseEvents(caseId, namespaceId, null) }
         }
 
-        "the plugin it produces is the CASE integration, with its three tools" {
+        "the plugin it produces is the CASE integration, with its four tools" {
             val caseToolService = mockk<CaseToolService>()
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>(), LimitsConfigProperties()).caseToolPlugin()
+            val plugin = configuration(caseToolService).caseToolPlugin()
 
             plugin.integrationType shouldBe CaseToolPlugin.INTEGRATION_TYPE
             plugin.provideTools(config = null, context = context(userId)).map { it.name } shouldBe
