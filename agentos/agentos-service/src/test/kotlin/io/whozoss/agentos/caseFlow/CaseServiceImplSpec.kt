@@ -224,7 +224,7 @@ class CaseServiceImplSpec :
         val noOpCaseNamingService: CaseNamingService = mockk(relaxed = true)
 
         val permissionService: PermissionService = mockk(relaxed = true)
-        val promptService: PromptService = mockk(relaxed = true)
+        val promptServiceMock: PromptService = mockk(relaxed = true)
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
@@ -250,7 +250,7 @@ class CaseServiceImplSpec :
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 },
             coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
-            promptService: PromptService = promptService,
+            promptService: PromptService = promptServiceMock,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -1327,7 +1327,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -1571,7 +1571,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -1677,7 +1677,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -1762,7 +1762,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -1821,7 +1821,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -1910,7 +1910,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -1991,7 +1991,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -2116,7 +2116,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -2227,7 +2227,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -2783,7 +2783,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -3055,7 +3055,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
@@ -3211,7 +3211,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     CaseConfigProperties(idleEvictionGraceMs = 10_000),
                     permissionService,
-                    promptService,
+                    promptServiceMock,
                     noOpCaseNamingService,
                     LimitsConfigProperties(),
                     UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
@@ -3508,7 +3508,7 @@ class CaseServiceImplSpec :
                     namespaceService = nsService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     limitsConfig = LimitsConfigProperties(runCostThreshold = 0.001),
                     usageRecordService = usageRecordService,
@@ -3587,7 +3587,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
                     usageConfig = UsageConfigProperties(enabled = true),
@@ -3687,7 +3687,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
                     usageConfig = UsageConfigProperties(enabled = true),
@@ -3758,7 +3758,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = failingUsageRecordService,
                     usageConfig = UsageConfigProperties(enabled = true),
@@ -4077,7 +4077,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
                     usageConfig = UsageConfigProperties(enabled = true),
@@ -4182,7 +4182,7 @@ class CaseServiceImplSpec :
                     namespaceService = dualNamespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     limitsConfig = LimitsConfigProperties(),
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
@@ -4325,7 +4325,7 @@ class CaseServiceImplSpec :
                     caseConfig = CaseConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
-                    promptService = promptService,
+                    promptService = promptServiceMock,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
