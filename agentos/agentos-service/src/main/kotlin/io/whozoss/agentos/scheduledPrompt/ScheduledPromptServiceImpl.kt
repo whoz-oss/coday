@@ -2,7 +2,6 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
-import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
@@ -27,6 +26,8 @@ import java.util.UUID
  * - [promptId] must reference an existing generic Prompt (agentConfigId = null).
  * - The AgentConfig's namespace must be compatible with the ScheduledPrompt's namespace.
  * - Name uniqueness per scope enforced by the `scheduled_prompt_triple_key_unique` UNIQUE constraint.
+ * - The workflow must be usable in the namespace, and `workflowInput` must fit its step-1 tool
+ *   ([WorkflowInputValidator]). When none is named, the platform `user-group` workflow is used.
  *
  * Cross-field consistency of [Planning] (endDate/maxOccurrenceCount vs endType) is validated
  * as Bean Validation on [io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto] and enforced
@@ -48,6 +49,7 @@ class ScheduledPromptServiceImpl(
     private val namespaceService: NamespaceService,
     private val nextRunCalculatorService: NextRunCalculatorService,
     private val workflowService: WorkflowService,
+    private val workflowInputValidator: WorkflowInputValidator,
 ) : ScheduledPromptService {
 
     // -------------------------------------------------------------------------
@@ -228,13 +230,15 @@ class ScheduledPromptServiceImpl(
     // Helpers
     // -------------------------------------------------------------------------
 
-    /** The workflow the scheduled prompt runs: the one it names (validated), or the default one. */
+    /**
+     * The workflow the scheduled prompt runs: the one it names, or the default one. Rejected (400)
+     * when it is not usable in the prompt's namespace, or when `workflowInput` does not fit its
+     * step-1 tool.
+     */
     private fun resolveWorkflowId(entity: ScheduledPrompt): UUID {
-        if (entity.workflowInput != null && !entity.workflowInput.isObject) {
-            throw BadRequestException("workflowInput must be a JSON object")
-        }
-        // TODO(wz-35443, handover step 8): validate workflowInput against the step-1 tool input schema.
-        return workflowService.resolveForScheduledPrompt(entity.workflowId, entity.namespaceId).id
+        val workflow = workflowService.resolveForScheduledPrompt(entity.workflowId, entity.namespaceId)
+        workflowInputValidator.requireValid(workflow, entity.workflowInput, entity.namespaceId)
+        return workflow.id
     }
 
     /** Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars. */

@@ -41,6 +41,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
     private val namespaceService = mockk<NamespaceService>(relaxed = true)
     private val defaultWorkflowId: UUID = UUID.randomUUID()
     private val workflowService = mockk<WorkflowService>()
+    private val workflowInputValidator = mockk<WorkflowInputValidator>(relaxed = true)
 
     // Fixed clock: 2026-01-01 07:00 UTC — before the default timeUtc of 08:00
     private val fixedNow = Instant.parse("2026-01-01T07:00:00Z")
@@ -54,6 +55,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             namespaceService = namespaceService,
             nextRunCalculatorService = NextRunCalculatorService(clock = fixedClock),
             workflowService = workflowService,
+            workflowInputValidator = workflowInputValidator,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -154,6 +156,15 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             val foreign = UUID.randomUUID()
             every { workflowService.resolveForScheduledPrompt(foreign, namespaceId) } throws BadRequestException("another namespace")
             shouldThrow<BadRequestException> { newService().create(sp().copy(workflowId = foreign)) }
+        }
+
+        "create validates workflowInput against the resolved workflow, and is refused when it does not fit" {
+            val criteria = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree("""{"x":1}""")
+            newService().create(sp().copy(workflowInput = criteria))
+            verify { workflowInputValidator.requireValid(match { it.id == defaultWorkflowId }, criteria, namespaceId) }
+
+            every { workflowInputValidator.requireValid(any(), criteria, any()) } throws BadRequestException("bad input")
+            shouldThrow<BadRequestException> { newService().create(sp(name = "other").copy(workflowInput = criteria)) }
         }
 
         // -------------------------------------------------------------------------
