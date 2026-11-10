@@ -1,6 +1,7 @@
 import { createEnvironmentInjector, EnvironmentInjector, runInInjectionContext, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { Router } from '@angular/router'
+import { CaseEvent } from '@whoz-oss/agentos-api-client'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { TabCoordinatorService } from './tab-coordinator.service'
 
@@ -50,6 +51,41 @@ class FakeBroadcastChannel {
   }
 }
 
+/** The lock the service claims, spelled out here as the service keeps it private. */
+const STREAM_OWNER_LOCK = 'agentos-companion-stream'
+
+/**
+ * In-memory Web Locks: one holder per name, the other claims queued in order, and a lock only
+ * ever released by its holder's tab going away — exactly how the app uses them.
+ */
+class FakeLockManager {
+  private readonly held = new Set<string>()
+  private readonly queues = new Map<string, Array<() => void>>()
+
+  async request(name: string, callback: () => Promise<void>): Promise<void> {
+    if (this.held.has(name)) {
+      await new Promise<void>((resolve) => {
+        const queue = this.queues.get(name) ?? []
+        queue.push(resolve)
+        this.queues.set(name, queue)
+      })
+    }
+    this.held.add(name)
+    await callback()
+  }
+
+  /** The holder's tab goes away: the browser releases its lock and hands it to the next claim. */
+  closeHolder(name: string): void {
+    this.held.delete(name)
+    this.queues.get(name)?.shift()?.()
+  }
+}
+
+/** Lets the pending lock claims and `whenStreamOwner` continuations run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 interface Tab {
   service: TabCoordinatorService
   namespace: ReturnType<typeof signal<string | null>>
@@ -59,11 +95,15 @@ describe('TabCoordinatorService', () => {
   const originalBroadcastChannel = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel
   /** The injectors of the tabs a test opened: destroyed after it, which closes their channels and stops their effects. */
   let tabInjectors: EnvironmentInjector[]
+  const originalLocks = Object.getOwnPropertyDescriptor(navigator, 'locks')
+  let locks: FakeLockManager
 
   beforeEach(() => {
     bus = new FakeBus()
     tabInjectors = []
+    locks = new FakeLockManager()
     ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = FakeBroadcastChannel
+    Object.defineProperty(navigator, 'locks', { value: locks, configurable: true })
     TestBed.configureTestingModule({ providers: [{ provide: Router, useValue: { navigate: jest.fn() } }] })
   })
 
@@ -71,6 +111,8 @@ describe('TabCoordinatorService', () => {
     for (const injector of tabInjectors) injector.destroy()
     TestBed.resetTestingModule()
     ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = originalBroadcastChannel
+    if (originalLocks) Object.defineProperty(navigator, 'locks', originalLocks)
+    else Reflect.deleteProperty(navigator, 'locks')
   })
 
   /** One browser tab: its own coordinator and namespace state, started like app.config does it. */
@@ -156,5 +198,64 @@ describe('TabCoordinatorService', () => {
 
     expect(heardByOlderBuild).not.toHaveBeenCalled()
     expect(a.service.findTabForNamespace('ns-old')).toBeNull()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Global stream ownership — one connection per browser, not per tab (#1616)
+  // ---------------------------------------------------------------------------
+
+  const caseEvent = { id: 'e-1', type: 'ErrorEvent', caseId: 'c-1', namespaceId: 'ns-a' } as unknown as CaseEvent
+
+  it('gives the global stream to one tab, and to the next one when that tab goes away', async () => {
+    const a = openTab('ns-a')
+    const b = openTab('ns-b')
+    let bOwnsTheStream = false
+
+    await a.service.whenStreamOwner()
+    void b.service.whenStreamOwner().then(() => (bOwnsTheStream = true))
+    await settle()
+
+    expect(a.service.isStreamOwner()).toBe(true)
+    expect(bOwnsTheStream).toBe(false)
+    expect(b.service.isStreamOwner()).toBe(false)
+
+    locks.closeHolder(STREAM_OWNER_LOCK)
+    await settle()
+
+    expect(bOwnsTheStream).toBe(true)
+    expect(b.service.isStreamOwner()).toBe(true)
+  })
+
+  it('relays a case event to the other tabs, never to the tab that owns the stream', () => {
+    const owner = openTab('ns-a')
+    const other = openTab('ns-b')
+    const heardByOwner = jest.fn()
+    const heardByOther = jest.fn()
+    owner.service.onCaseEvent(heardByOwner)
+    other.service.onCaseEvent(heardByOther)
+
+    owner.service.broadcastCaseEvent(caseEvent)
+    bus.flush()
+
+    expect(heardByOther).toHaveBeenCalledWith(caseEvent)
+    expect(heardByOwner).not.toHaveBeenCalled()
+  })
+
+  it('leaves every tab to its own stream where Web Locks are missing', async () => {
+    Reflect.deleteProperty(navigator, 'locks')
+
+    const a = openTab('ns-a')
+
+    expect(a.service.coordinated).toBe(false)
+    await expect(a.service.whenStreamOwner()).resolves.toBeUndefined()
+  })
+
+  it('leaves every tab to its own stream where BroadcastChannel is missing', async () => {
+    ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = undefined
+
+    const a = openTab('ns-a')
+
+    expect(a.service.coordinated).toBe(false)
+    await expect(a.service.whenStreamOwner()).resolves.toBeUndefined()
   })
 })

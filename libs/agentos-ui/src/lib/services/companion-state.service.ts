@@ -7,6 +7,7 @@ import { CaseStateService } from './case-state.service'
 import { BrowserNotificationService } from './browser-notification.service'
 import { CompanionPipService } from './companion-pip.service'
 import { GlobalCaseEventSseService } from './global-case-event-sse.service'
+import { TabCoordinatorService } from './tab-coordinator.service'
 
 // ---------------------------------------------------------------------------
 // Notification types (shared with CompanionComponent)
@@ -100,6 +101,7 @@ export class CompanionStateService {
   private readonly caseState = inject(CaseStateService)
   private readonly companionPip = inject(CompanionPipService)
   private readonly browserNotifications = inject(BrowserNotificationService)
+  private readonly tabs = inject(TabCoordinatorService)
 
   /** Notification groups ordered by first-event arrival, one group per root caseId. */
   readonly groups = signal<CaseGroup[]>([])
@@ -113,16 +115,38 @@ export class CompanionStateService {
   /**
    * Start the SSE subscription. Idempotent — safe to call multiple times.
    * Called at app startup so the stream is active regardless of whether the PiP window is open.
+   *
+   * One tab opens the stream for the whole browser and relays its events to the others, so
+   * that N open tabs cost one connection instead of N: a browser allows 6 per origin, shared
+   * across tabs, and the per-case streams need that budget (#1616). Every tab still ends up
+   * with the same companion state, whether it reads the stream or the relay.
    */
   startSse(): void {
     if (this.sseStarted) return
     this.sseStarted = true
 
+    // Registered in every tab, the owner's included: BroadcastChannel never delivers to its
+    // own sender, so the owner cannot receive its own relay back.
+    this.tabs.onCaseEvent((event) => this.onEvent(event))
+
+    if (!this.tabs.coordinated) {
+      // No owner can be elected, or no relay is available: fall back to a stream per tab.
+      this.connectStream()
+      return
+    }
+
+    void this.tabs.whenStreamOwner().then(() => this.connectStream())
+  }
+
+  private connectStream(): void {
     this.sse
       .connect()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (event) => this.onEvent(event),
+        next: (event) => {
+          this.onEvent(event)
+          this.tabs.broadcastCaseEvent(event)
+        },
         error: (err) => console.error('[CompanionState] event stream error', err),
       })
   }
