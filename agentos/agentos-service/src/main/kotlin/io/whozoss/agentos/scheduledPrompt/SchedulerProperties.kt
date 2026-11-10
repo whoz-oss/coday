@@ -21,6 +21,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | `agentos.prompt.scheduler.targeting-orphan-threshold-minutes` | `AGENTOS_PROMPT_SCHEDULER_TARGETING_ORPHAN_THRESHOLD_MINUTES` | 30 | TARGETING runs older than this are swept as orphaned; the real upper bound on a loop run |
  * | `agentos.prompt.scheduler.lease-minutes` | `AGENTOS_PROMPT_SCHEDULER_LEASE_MINUTES` | 30 | Lease duration for RUNNING UserRuns (minutes) |
  * | `agentos.prompt.scheduler.windows` | `AGENTOS_PROMPT_SCHEDULER_WINDOWS` | [] | Comma-separated `DAYOFWEEK HH:mm` boundaries, grouped as open/close pairs. See [ExecutionWindowService]. |
+ * | `agentos.prompt.scheduler.loop-agent-name` | `AGENTOS_PROMPT_SCHEDULER_LOOP_AGENT_NAME` | scheduler-loop | Platform LOOP agent running each scheduled run's workflow |
  */
 @ConfigurationProperties(prefix = "agentos.prompt.scheduler")
 data class SchedulerProperties(
@@ -100,4 +101,10 @@ data class SchedulerProperties(
      * State is not persisted — on restart the window is re-evaluated from config + current time.
      */
     val windows: List<String> = emptyList(),
+    /**
+     * Name of the platform-scoped `LOOP` [io.whozoss.agentos.agentConfig.AgentConfig] that runs the
+     * workflow of every scheduled run. Its integrations grant the workflow step tools (handover D7):
+     * the case is started with it, and step tools are resolved against it.
+     */
+    val loopAgentName: String = "scheduler-loop",
 )

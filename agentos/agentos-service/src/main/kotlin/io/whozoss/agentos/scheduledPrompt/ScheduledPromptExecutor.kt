@@ -159,11 +159,11 @@ class ScheduledPromptExecutor(
         caseService.addMessage(
             caseId = case.id,
             actor = actor,
-            content = listOf(MessageContent.Text("@$LOOP_AGENT_NAME Run scheduled prompt '${scheduledPrompt.name}'."))
+            content = listOf(MessageContent.Text("@${properties.loopAgentName} Run scheduled prompt '${scheduledPrompt.name}'."))
         )
 
         logger.info {
-            "[Executor] Run=${run.id} → TARGETING, loop case=${case.id}, agent=$LOOP_AGENT_NAME"
+            "[Executor] Run=${run.id} → TARGETING, loop case=${case.id}, agent=${properties.loopAgentName}"
         }
 
         return case.id
@@ -226,12 +226,6 @@ class ScheduledPromptExecutor(
     }
 
     companion object : KLogging() {
-        /**
-         * Name of the platform-scoped loop agent that receives the fan-out config.
-         * TODO: make configurable via [SchedulerProperties] when seeding proves stable.
-         */
-        const val LOOP_AGENT_NAME = "scheduler-loop"
-
         private fun CaseStatus?.toRunOutcome(): Pair<RunStatus, String?> =
             when (this) {
                 CaseStatus.ERROR, CaseStatus.KILLED ->

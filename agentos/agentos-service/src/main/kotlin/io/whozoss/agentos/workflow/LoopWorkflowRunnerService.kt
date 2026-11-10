@@ -46,7 +46,7 @@ class LoopWorkflowRunnerService(
             if (!shouldContinue()) return LoopRunOutcome.Interrupted
 
             val tool =
-                context.tools.find { it.name == step.tool || it.name.endsWith("__" + step.tool) }
+                context.tools.find { ToolReference.matches(it.name, step.tool) }
                     ?: return LoopRunOutcome.Aborted(
                         "Step '${step.id}': tool '${step.tool}' is not available to agent '${context.agentName}' " +
                             "(available: ${context.tools.map { it.name }}). Check the agent integrations.",

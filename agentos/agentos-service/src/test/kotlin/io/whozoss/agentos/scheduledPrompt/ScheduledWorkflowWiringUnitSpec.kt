@@ -42,15 +42,20 @@ class ScheduledWorkflowWiringUnitSpec :
             start.feedsNext shouldBe null
         }
 
-        "the scheduled prompt's workflowInput is the search step input" {
+        "the scheduled prompt's workflowInput is the search step input, without injected keys" {
             val workflow = Workflow(name = "talents", steps = listOf(WorkflowStep("s", "WHOZ__SearchTalents"), WorkflowStep("c", "BatchCaseStarter")))
             val criteria = mapper.readTree("""{"completionRate":{"max":19}}""")
 
             val search = ScheduledWorkflowWiring.toLoopConfig(workflow, values.copy(workflowInput = criteria)).steps.first()
 
             search.tool shouldBe "WHOZ__SearchTalents"
-            search.input["completionRate"]["max"].asInt() shouldBe 19
-            search.input["agentConfigId"].asText() shouldBe values.agentConfigId.toString()
+            search.input shouldBe criteria
+        }
+
+        "agentConfigId is injected only for listAgentUsers, bare or prefixed" {
+            ScheduledWorkflowWiring.injectedSearchKeys("listAgentUsers") shouldBe setOf("agentConfigId")
+            ScheduledWorkflowWiring.injectedSearchKeys("USER_GROUP__listAgentUsers") shouldBe setOf("agentConfigId")
+            ScheduledWorkflowWiring.injectedSearchKeys("WHOZ__SearchTalents") shouldBe emptySet()
         }
 
         "a workflow without its two steps is refused" {

@@ -3,8 +3,10 @@ package io.whozoss.agentos.scheduledPrompt
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.userGroup.ListAgentUsersTool
 import io.whozoss.agentos.workflow.LoopConfig
 import io.whozoss.agentos.workflow.LoopStep
+import io.whozoss.agentos.workflow.ToolReference
 import io.whozoss.agentos.workflow.Workflow
 import io.whozoss.agentos.workflow.WorkflowTargets
 import java.util.UUID
@@ -15,17 +17,25 @@ import java.util.UUID
  *
  * | step | tool | input |
  * |---|---|---|
- * | 1 target search | the workflow's step-1 tool | the scheduled prompt's `workflowInput`, plus `agentConfigId` |
+ * | 1 target search | the workflow's step-1 tool | the scheduled prompt's `workflowInput` (+ `agentConfigId` for `listAgentUsers`) |
  * | 2 case start | `BatchCaseStarter` | agent, prompt, title, scheduled prompt, run, plus `targets` from step 1 |
  *
- * `agentConfigId` is always given to step 1: the user-group workflow (`listAgentUsers`) needs it to
- * find the agent's deployment audience (D6); a search tool that does not declare it ignores it.
- * A `workflowInput` key of the same name wins.
+ * `agentConfigId` is given to step 1 **only when it is `listAgentUsers`** (the user-group workflow,
+ * whose audience is the agent's deployment audience, D6). It is never added to other search tools:
+ * they validate their own input strictly and would reject an unknown key. See [injectedSearchKeys].
  *
  * Pure function of its inputs: no repository, no Spring. The resolver gathers the values.
  */
 object ScheduledWorkflowWiring {
     private val mapper = jacksonObjectMapper()
+
+    /**
+     * The step-1 input keys this wiring supplies itself for [searchTool], so a scheduled prompt does not
+     * have to: `agentConfigId` for `listAgentUsers`, nothing otherwise. Used by
+     * [ScheduledWorkflowInputValidator] to not require them in `workflowInput`.
+     */
+    fun injectedSearchKeys(searchTool: String): Set<String> =
+        if (isListAgentUsers(searchTool)) setOf(AGENT_CONFIG_ID) else emptySet()
 
     /** Runtime values of one scheduled run, gathered by [ScheduledPromptLoopConfigResolver]. */
     data class RunValues(
@@ -53,17 +63,25 @@ object ScheduledWorkflowWiring {
         return LoopConfig(
             steps =
                 listOf(
-                    LoopStep(id = search.id, tool = search.tool, input = searchInput(values), feedsNext = WorkflowTargets.FIELD),
+                    LoopStep(id = search.id, tool = search.tool, input = searchInput(search.tool, values), feedsNext = WorkflowTargets.FIELD),
                     LoopStep(id = start.id, tool = start.tool, input = startInput(values)),
                 ),
         )
     }
 
-    private fun searchInput(values: RunValues): JsonNode =
+    /** `workflowInput`, plus the keys of [injectedSearchKeys]; a `workflowInput` key of the same name wins. */
+    private fun searchInput(
+        searchTool: String,
+        values: RunValues,
+    ): JsonNode =
         mapper.createObjectNode().apply {
-            put("agentConfigId", values.agentConfigId.toString())
+            if (AGENT_CONFIG_ID in injectedSearchKeys(searchTool)) put(AGENT_CONFIG_ID, values.agentConfigId.toString())
             (values.workflowInput as? ObjectNode)?.let { setAll<JsonNode>(it) }
         }
+
+    private fun isListAgentUsers(tool: String): Boolean = ToolReference.refersTo(tool, ListAgentUsersTool.TOOL_NAME)
+
+    private const val AGENT_CONFIG_ID = "agentConfigId"
 
     private fun startInput(values: RunValues): JsonNode =
         mapper.valueToTree(

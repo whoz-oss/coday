@@ -200,7 +200,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             ).materialize(run, sp, creatorId)
 
             val text = contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content
-            text shouldStartWith "@${ScheduledPromptExecutor.LOOP_AGENT_NAME} "
+            text shouldStartWith "@${properties.loopAgentName} "
         }
 
         // -------------------------------------------------------------------------

@@ -42,6 +42,5 @@ object WorkflowValidator {
         if (problems.isNotEmpty()) throw BadRequestException("Invalid workflow: " + problems.joinToString("; "))
     }
 
-    private fun isBatchCaseStarter(tool: String): Boolean =
-        tool == Workflow.BATCH_CASE_STARTER_TOOL || tool.endsWith("__${Workflow.BATCH_CASE_STARTER_TOOL}")
+    private fun isBatchCaseStarter(tool: String): Boolean = ToolReference.refersTo(tool, Workflow.BATCH_CASE_STARTER_TOOL)
 }
