@@ -105,7 +105,7 @@ class BashTool(
                 is BashAuthEnvironment.None -> null
                 is BashAuthEnvironment.Variables -> authEnvironment
                 is BashAuthEnvironment.Missing -> return ToolExecutionResult.error(
-                    output = "Error: the command was not run, ${authEnvironment.reason}",
+                    output = "Error: ${authEnvironment.reason}",
                     errorType = "AUTH_MISSING",
                     errorMessage = authEnvironment.reason,
                 )
