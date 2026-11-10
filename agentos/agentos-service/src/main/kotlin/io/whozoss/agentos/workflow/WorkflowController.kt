@@ -80,8 +80,8 @@ class WorkflowController(
         @Valid @RequestBody resource: WorkflowDto,
     ): WorkflowDto {
         requireWrite(resource.namespaceId)
-        if (resource.namespaceId != null && namespaceService.findById(resource.namespaceId) == null) {
-            throw ResourceNotFoundException("Namespace not found: ${resource.namespaceId}")
+        resource.namespaceId?.let { nsId ->
+            if (namespaceService.findById(nsId) == null) throw ResourceNotFoundException("Namespace not found: $nsId")
         }
         val workflow =
             Workflow(
