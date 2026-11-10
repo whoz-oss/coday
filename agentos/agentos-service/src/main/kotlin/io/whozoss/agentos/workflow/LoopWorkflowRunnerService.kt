@@ -1,5 +1,6 @@
 package io.whozoss.agentos.workflow
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -13,21 +14,17 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Executes the config-driven step workflow of an [io.whozoss.agentos.agent.AgentLoop] run.
+ * Executes a resolved [LoopConfig] inside an [io.whozoss.agentos.agent.AgentLoop] case.
  *
- * Each step names a tool and an optional input descriptor. Steps are executed strictly in
- * order; the output of one step can be forwarded to the next via [LoopStepInput.from].
+ * For each step, in order:
+ * 1. stop with [LoopRunOutcome.Interrupted] when [shouldContinue] is false;
+ * 2. find the tool among the loop agent's tools (exact name or `CONFIG__name`);
+ * 3. build its input: [LoopStep.input], plus the field handed over by the previous step
+ *    ([LoopStep.feedsNext]);
+ * 4. emit a [ToolRequestEvent], run the tool, emit a [ToolResponseEvent] (the case transcript);
+ * 5. stop with [LoopRunOutcome.Aborted] and a readable reason on any failure.
  *
- * ## Flow
- *
- * 1. Guard: the triggering user must be identified.
- * 2. For each step in [LoopConfig.steps]:
- *    a. Check [shouldContinue]; return [LoopRunOutcome.Interrupted] if false.
- *    b. Resolve the tool by name (exact or `__`-suffix match).
- *    c. Build the input JSON from [LoopStepInput.params] and optionally a prior step output.
- *    d. Emit [ToolRequestEvent], execute the tool, emit [ToolResponseEvent].
- *    e. Return [LoopRunOutcome.Aborted] on tool failure; store structured output for later steps.
- * 3. Return [LoopRunOutcome.Completed] with the last step’s output.
+ * It has no knowledge of scheduled prompts, workflows or targets: that is the resolver's job.
  */
 @Service
 class LoopWorkflowRunnerService(
@@ -42,14 +39,12 @@ class LoopWorkflowRunnerService(
             context.triggerUser
                 ?: return LoopRunOutcome.Aborted("An AgentLoop must be triggered by an identified user.")
 
-        // Stores structuredOutput (as JsonNode) keyed by step id, for use by later steps via `from`.
-        val stepOutputs = mutableMapOf<String, com.fasterxml.jackson.databind.JsonNode>()
+        var handedOver: Pair<String, JsonNode>? = null
         var lastStepOutput: String? = null
 
         for (step in config.steps) {
             if (!shouldContinue()) return LoopRunOutcome.Interrupted
 
-            // Resolve tool by exact name or by the part after "__".
             val tool =
                 context.tools.find { it.name == step.tool || it.name.endsWith("__" + step.tool) }
                     ?: return LoopRunOutcome.Aborted(
@@ -57,25 +52,13 @@ class LoopWorkflowRunnerService(
                             "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
                     )
 
-            // Build the input JSON node.
-            val inputNode: ObjectNode =
-                step.input.params?.deepCopy()
-                    ?: objectMapper.createObjectNode()
+            val input =
+                (step.input as? ObjectNode)?.deepCopy()
+                    ?: return LoopRunOutcome.Aborted("Step '${step.id}': input must be a JSON object.")
+            handedOver?.let { (field, value) -> input.set<JsonNode>(field, value) }
 
-            if (step.input.from != null) {
-                val prior =
-                    stepOutputs[step.input.from]
-                        ?: return LoopRunOutcome.Aborted(
-                            "Step '${step.id}': references output of step '${step.input.from}' via 'from', " +
-                                "but that step has no structured output or was not executed yet.",
-                        )
-                inputNode.set<com.fasterxml.jackson.databind.JsonNode>("previousStepOutput", prior)
-            }
-
-            val inputJson = objectMapper.writeValueAsString(inputNode)
+            val inputJson = objectMapper.writeValueAsString(input)
             val toolRequestId = UUID.randomUUID().toString()
-            val toolCtx = toolContext(context, triggerUser)
-
             context.emitEvent(
                 ToolRequestEvent(
                     namespaceId = context.namespaceId,
@@ -88,7 +71,7 @@ class LoopWorkflowRunnerService(
 
             val result =
                 try {
-                    tool.executeWithJson(inputJson, toolCtx)
+                    tool.executeWithJson(inputJson, toolContext(context, triggerUser))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -110,12 +93,18 @@ class LoopWorkflowRunnerService(
             )
 
             if (!result.success) {
-                return LoopRunOutcome.Aborted(
-                    "Step '${step.id}': tool '${tool.name}' returned a failure: ${result.output}",
-                )
+                return LoopRunOutcome.Aborted("Step '${step.id}': tool '${tool.name}' returned a failure: ${result.output}")
             }
 
-            result.structuredOutput?.let { stepOutputs[step.id] = it }
+            handedOver =
+                step.feedsNext?.let { field ->
+                    val value =
+                        result.structuredOutput?.get(field)
+                            ?: return LoopRunOutcome.Aborted(
+                                "Step '${step.id}': tool '${tool.name}' output has no '$field' field to hand to the next step.",
+                            )
+                    field to value
+                }
             lastStepOutput = result.output
         }
 

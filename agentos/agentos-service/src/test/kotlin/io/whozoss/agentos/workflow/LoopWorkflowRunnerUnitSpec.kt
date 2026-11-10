@@ -1,5 +1,6 @@
 package io.whozoss.agentos.workflow
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.StringSpec
@@ -12,6 +13,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -22,26 +24,26 @@ import io.whozoss.agentos.user.User
 import java.util.UUID
 
 /**
- * Unit tests for [LoopWorkflowRunnerService]: guards, step resolution, input forwarding,
- * event emission, and outcome variants.
+ * Unit tests for [LoopWorkflowRunnerService]: tool resolution, input building and hand-over between
+ * steps, transcript events, and outcome variants.
  */
 class LoopWorkflowRunnerUnitSpec :
     StringSpec({
-
         val objectMapper = ObjectMapper().registerKotlinModule()
         val namespaceId: UUID = UUID.randomUUID()
         val caseId: UUID = UUID.randomUUID()
-
-        val triggerUser =
-            User(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                externalId = "ext-trigger",
-                email = "t@example.com",
-            )
-
+        val triggerUser = User(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "ext-trigger", email = "t@example.com")
         val runner = LoopWorkflowRunnerService(objectMapper)
-
         val emittedEvents = mutableListOf<CaseEvent>()
+
+        fun json(text: String): JsonNode = objectMapper.readTree(text)
+
+        fun step(
+            id: String,
+            tool: String,
+            input: String = "{}",
+            feedsNext: String? = null,
+        ) = LoopStep(id = id, tool = tool, input = json(input), feedsNext = feedsNext)
 
         fun context(
             tools: Collection<StandardTool<*>>,
@@ -49,266 +51,130 @@ class LoopWorkflowRunnerUnitSpec :
         ) = LoopRunContext(
             namespaceId = namespaceId,
             caseId = caseId,
-            agentName = "loop-agent",
+            agentName = "scheduler-loop",
             triggerUser = user,
             tools = tools,
             caseEvents = emptyList(),
             emitEvent = { emittedEvents.add(it) },
         )
 
-        fun mockTool(
+        fun tool(
             name: String,
-            result: ToolExecutionResult,
+            result: ToolExecutionResult = ToolExecutionResult.success("ok"),
         ): StandardTool<*> =
             mockk<StandardTool<*>>().also {
                 every { it.name } returns name
                 coEvery { it.executeWithJson(any(), any()) } returns result
             }
 
-        fun successTool(
-            name: String,
-            output: String = "ok",
-            structured: com.fasterxml.jackson.databind.JsonNode? = null,
-        ) = mockTool(
-            name,
-            ToolExecutionResult.success(output, structuredOutput = structured),
-        )
-
-        fun failTool(
-            name: String,
-            output: String = "failed",
-        ) = mockTool(name, ToolExecutionResult.error(output))
-
         beforeEach { emittedEvents.clear() }
 
-        // -------------------------------------------------------------------------
-        // Guard: trigger user
-        // -------------------------------------------------------------------------
-
         "aborts without a triggering user" {
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            val result = runner.run(config, context(emptyList(), user = null)) { true }
-            result.shouldBeInstanceOf<LoopRunOutcome.Aborted>().reason shouldContain "identified user"
+            runner.run(LoopConfig(listOf(step("s1", "T"))), context(emptyList(), user = null)) { true }
+                .shouldBeInstanceOf<LoopRunOutcome.Aborted>()
+                .reason shouldContain "identified user"
         }
 
-        // -------------------------------------------------------------------------
-        // Tool resolution
-        // -------------------------------------------------------------------------
-
-        "aborts when step tool is not available" {
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MissingTool")))
-            val result = runner.run(config, context(emptyList())) { true }
-            val aborted = result.shouldBeInstanceOf<LoopRunOutcome.Aborted>()
-            aborted.reason shouldContain "MissingTool"
-            aborted.reason shouldContain "s1"
+        "aborts when a step's tool is not granted, naming the step and the tool" {
+            val reason =
+                runner.run(LoopConfig(listOf(step("s1", "Missing"))), context(emptyList())) { true }
+                    .shouldBeInstanceOf<LoopRunOutcome.Aborted>()
+                    .reason
+            reason shouldContain "s1"
+            reason shouldContain "Missing"
         }
 
-        "resolves tool by exact name" {
-            val tool = successTool("MyTool")
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            runner.run(config, context(listOf(tool))) { true }.shouldBeInstanceOf<LoopRunOutcome.Completed>()
-            coVerify(exactly = 1) { tool.executeWithJson(any(), any()) }
+        "resolves a tool by exact name or by its integration prefix" {
+            val bare = tool("Search")
+            val prefixed = tool("CASE__BatchCaseStarter")
+            runner.run(LoopConfig(listOf(step("a", "Search"), step("b", "BatchCaseStarter"))), context(listOf(bare, prefixed))) { true }
+                .shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            coVerify(exactly = 1) { bare.executeWithJson(any(), any()) }
+            coVerify(exactly = 1) { prefixed.executeWithJson(any(), any()) }
         }
 
-        "resolves tool by suffix after __" {
-            val tool = successTool("INT__MyTool")
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            runner.run(config, context(listOf(tool))) { true }.shouldBeInstanceOf<LoopRunOutcome.Completed>()
-            coVerify(exactly = 1) { tool.executeWithJson(any(), any()) }
+        "passes the step input and the trigger user identity to the tool" {
+            val t = tool("T")
+            val input = slot<String>()
+            val ctx = slot<ToolContext>()
+            coEvery { t.executeWithJson(capture(input), capture(ctx)) } returns ToolExecutionResult.success("ok")
+
+            runner.run(LoopConfig(listOf(step("s1", "T", """{"k":"v"}"""))), context(listOf(t))) { true }
+
+            json(input.captured)["k"].asText() shouldBe "v"
+            ctx.captured.userId shouldBe triggerUser.metadata.id
+            ctx.captured.namespaceId shouldBe namespaceId
         }
 
-        // -------------------------------------------------------------------------
-        // Step execution and events
-        // -------------------------------------------------------------------------
+        "hands the feedsNext field of a step's output to the next step's input" {
+            val search = tool("Search", ToolExecutionResult.success("found", structuredOutput = json("""{"targets":[{"userExternalId":"a"}],"x":1}""")))
+            val start = tool("Start")
+            val startInput = slot<String>()
+            coEvery { start.executeWithJson(capture(startInput), any()) } returns ToolExecutionResult.success("ok")
 
-        "emits ToolRequestEvent and ToolResponseEvent for each step" {
-            val tool = successTool("MyTool", output = "done")
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            runner.run(config, context(listOf(tool))) { true }
+            runner.run(
+                LoopConfig(listOf(step("s1", "Search", feedsNext = "targets"), step("s2", "Start", """{"agentName":"A"}"""))),
+                context(listOf(search, start)),
+            ) { true }
+
+            val handed = json(startInput.captured)
+            handed["agentName"].asText() shouldBe "A"
+            handed["targets"][0]["userExternalId"].asText() shouldBe "a"
+            handed.has("x") shouldBe false
+        }
+
+        "aborts when the feedsNext field is missing from the output" {
+            val search = tool("Search", ToolExecutionResult.success("found", structuredOutput = json("""{"other":[]}""")))
+            val start = tool("Start")
+
+            runner.run(LoopConfig(listOf(step("s1", "Search", feedsNext = "targets"), step("s2", "Start"))), context(listOf(search, start))) { true }
+                .shouldBeInstanceOf<LoopRunOutcome.Aborted>()
+                .reason shouldContain "'targets'"
+            coVerify(exactly = 0) { start.executeWithJson(any(), any()) }
+        }
+
+        "aborts readably when a step input is not a JSON object" {
+            runner.run(LoopConfig(listOf(step("s1", "T", "[1]"))), context(listOf(tool("T")))) { true }
+                .shouldBeInstanceOf<LoopRunOutcome.Aborted>()
+                .reason shouldContain "JSON object"
+        }
+
+        "emits one request and one response event per step" {
+            runner.run(LoopConfig(listOf(step("s1", "T"))), context(listOf(tool("T", ToolExecutionResult.success("done"))))) { true }
 
             emittedEvents.filterIsInstance<ToolRequestEvent>().size shouldBe 1
-            emittedEvents.filterIsInstance<ToolResponseEvent>().size shouldBe 1
-            emittedEvents.filterIsInstance<ToolResponseEvent>().single().output.let {
-                (it as io.whozoss.agentos.sdk.caseEvent.MessageContent.Text).content shouldBe "done"
+            (emittedEvents.filterIsInstance<ToolResponseEvent>().single().output as MessageContent.Text).content shouldBe "done"
+        }
+
+        "aborts on a tool failure or exception and runs no further step" {
+            val next = tool("Next")
+            runner.run(LoopConfig(listOf(step("s1", "Bad"), step("s2", "Next"))), context(listOf(tool("Bad", ToolExecutionResult.error("nope")), next))) { true }
+                .shouldBeInstanceOf<LoopRunOutcome.Aborted>()
+                .reason shouldContain "nope"
+            coVerify(exactly = 0) { next.executeWithJson(any(), any()) }
+
+            val throwing = mockk<StandardTool<*>>().also {
+                every { it.name } returns "Boom"
+                coEvery { it.executeWithJson(any(), any()) } throws RuntimeException("boom")
             }
+            runner.run(LoopConfig(listOf(step("s1", "Boom"))), context(listOf(throwing))) { true }
+                .shouldBeInstanceOf<LoopRunOutcome.Aborted>()
+                .reason shouldContain "boom"
         }
 
-        "passes step params as input JSON" {
-            val tool = successTool("MyTool")
-            val paramsNode = objectMapper.readTree("""{"key":"val"}""")
-            val config =
-                LoopConfig(
-                    steps =
-                        listOf(
-                            LoopStep(id = "s1", tool = "MyTool", input = LoopStepInput(params = paramsNode)),
-                        ),
-                )
-            val jsonSlot = slot<String>()
-            coEvery { tool.executeWithJson(capture(jsonSlot), any()) } returns ToolExecutionResult.success("ok")
-            runner.run(config, context(listOf(tool))) { true }
-            objectMapper.readTree(jsonSlot.captured)["key"].asText() shouldBe "val"
+        "returns Interrupted when shouldContinue turns false between steps" {
+            val first = tool("A")
+            val second = tool("B")
+            var checks = 0
+            runner.run(LoopConfig(listOf(step("s1", "A"), step("s2", "B"))), context(listOf(first, second))) { checks++ == 0 }
+                .shouldBeInstanceOf<LoopRunOutcome.Interrupted>()
+            coVerify(exactly = 0) { second.executeWithJson(any(), any()) }
         }
 
-        "passes trigger user identity in ToolContext" {
-            val tool = successTool("MyTool")
-            val ctxSlot = slot<ToolContext>()
-            coEvery { tool.executeWithJson(any(), capture(ctxSlot)) } returns ToolExecutionResult.success("ok")
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            runner.run(config, context(listOf(tool))) { true }
-            ctxSlot.captured.userId shouldBe triggerUser.metadata.id
-            ctxSlot.captured.userExternalId shouldBe "ext-trigger"
-            ctxSlot.captured.namespaceId shouldBe namespaceId
-        }
-
-        // -------------------------------------------------------------------------
-        // Step output forwarding via `from`
-        // -------------------------------------------------------------------------
-
-        "forwards structured output of a prior step under previousStepOutput" {
-            val structuredOutput = objectMapper.readTree("""{"items":[1,2,3]}""")
-            val step1Tool = successTool("Step1Tool", structured = structuredOutput)
-            val step2Tool = successTool("Step2Tool")
-
-            val jsonSlot = slot<String>()
-            coEvery { step2Tool.executeWithJson(capture(jsonSlot), any()) } returns ToolExecutionResult.success("ok")
-
-            val config =
-                LoopConfig(
-                    steps =
-                        listOf(
-                            LoopStep(id = "step1", tool = "Step1Tool"),
-                            LoopStep(id = "step2", tool = "Step2Tool", input = LoopStepInput(from = "step1")),
-                        ),
-                )
-            runner.run(config, context(listOf(step1Tool, step2Tool))) { true }
-
-            val inputNode = objectMapper.readTree(jsonSlot.captured)
-            inputNode["previousStepOutput"]["items"].size() shouldBe 3
-        }
-
-        "aborts when `from` references a step with no structured output" {
-            val step1Tool = successTool("Step1Tool", structured = null)
-            val step2Tool = successTool("Step2Tool")
-
-            val config =
-                LoopConfig(
-                    steps =
-                        listOf(
-                            LoopStep(id = "step1", tool = "Step1Tool"),
-                            LoopStep(id = "step2", tool = "Step2Tool", input = LoopStepInput(from = "step1")),
-                        ),
-                )
-            val result = runner.run(config, context(listOf(step1Tool, step2Tool))) { true }
-            result.shouldBeInstanceOf<LoopRunOutcome.Aborted>().reason shouldContain "step1"
-        }
-
-        "aborts when `from` references an unknown step id" {
-            val tool = successTool("MyTool")
-            val config =
-                LoopConfig(
-                    steps =
-                        listOf(
-                            LoopStep(id = "s1", tool = "MyTool", input = LoopStepInput(from = "nonexistent")),
-                        ),
-                )
-            val result = runner.run(config, context(listOf(tool))) { true }
-            result.shouldBeInstanceOf<LoopRunOutcome.Aborted>().reason shouldContain "nonexistent"
-        }
-
-        // -------------------------------------------------------------------------
-        // Failure handling
-        // -------------------------------------------------------------------------
-
-        "aborts when a step tool returns failure" {
-            val tool = failTool("MyTool", "tool error msg")
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            val result = runner.run(config, context(listOf(tool))) { true }
-            val aborted = result.shouldBeInstanceOf<LoopRunOutcome.Aborted>()
-            aborted.reason shouldContain "tool error msg"
-        }
-
-        "aborts when a step tool throws" {
-            val tool =
-                mockk<StandardTool<*>>().also {
-                    every { it.name } returns "ThrowingTool"
-                    coEvery { it.executeWithJson(any(), any()) } throws RuntimeException("boom")
-                }
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "ThrowingTool")))
-            val result = runner.run(config, context(listOf(tool))) { true }
-            result.shouldBeInstanceOf<LoopRunOutcome.Aborted>().reason shouldContain "boom"
-        }
-
-        "does not execute subsequent steps after a failure" {
-            val step1 = failTool("Step1")
-            val step2 = successTool("Step2")
-            val config =
-                LoopConfig(
-                    steps =
-                        listOf(
-                            LoopStep(id = "s1", tool = "Step1"),
-                            LoopStep(id = "s2", tool = "Step2"),
-                        ),
-                )
-            runner.run(config, context(listOf(step1, step2))) { true }
-            coVerify(exactly = 0) { step2.executeWithJson(any(), any()) }
-        }
-
-        // -------------------------------------------------------------------------
-        // Interruption
-        // -------------------------------------------------------------------------
-
-        "returns Interrupted when shouldContinue is false before first step" {
-            val tool = successTool("MyTool")
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            val result = runner.run(config, context(listOf(tool))) { false }
-            result.shouldBeInstanceOf<LoopRunOutcome.Interrupted>()
-            coVerify(exactly = 0) { tool.executeWithJson(any(), any()) }
-        }
-
-        "returns Interrupted when shouldContinue returns false between steps" {
-            val step1 = successTool("Step1")
-            val step2 = successTool("Step2")
-            var calls = 0
-            val config =
-                LoopConfig(
-                    steps =
-                        listOf(
-                            LoopStep(id = "s1", tool = "Step1"),
-                            LoopStep(id = "s2", tool = "Step2"),
-                        ),
-                )
-            val result =
-                runner.run(config, context(listOf(step1, step2))) {
-                    calls++ == 0 // true for first check, false for second
-                }
-            result.shouldBeInstanceOf<LoopRunOutcome.Interrupted>()
-            coVerify(exactly = 1) { step1.executeWithJson(any(), any()) }
-            coVerify(exactly = 0) { step2.executeWithJson(any(), any()) }
-        }
-
-        // -------------------------------------------------------------------------
-        // Completed outcome
-        // -------------------------------------------------------------------------
-
-        "returns Completed with last step output" {
-            val tool = successTool("MyTool", output = "final output")
-            val config = LoopConfig(steps = listOf(LoopStep(id = "s1", tool = "MyTool")))
-            val result = runner.run(config, context(listOf(tool))) { true }
-            result.shouldBeInstanceOf<LoopRunOutcome.Completed>().lastStepOutput shouldBe "final output"
-        }
-
-        "returns Completed with last step output when multiple steps" {
-            val step1 = successTool("Step1", output = "first")
-            val step2 = successTool("Step2", output = "second")
-            val config =
-                LoopConfig(
-                    steps =
-                        listOf(
-                            LoopStep(id = "s1", tool = "Step1"),
-                            LoopStep(id = "s2", tool = "Step2"),
-                        ),
-                )
-            val result = runner.run(config, context(listOf(step1, step2))) { true }
-            result.shouldBeInstanceOf<LoopRunOutcome.Completed>().lastStepOutput shouldBe "second"
+        "returns Completed with the last step's output" {
+            runner.run(
+                LoopConfig(listOf(step("s1", "A"), step("s2", "B"))),
+                context(listOf(tool("A", ToolExecutionResult.success("first")), tool("B", ToolExecutionResult.success("second")))),
+            ) { true }.shouldBeInstanceOf<LoopRunOutcome.Completed>().lastStepOutput shouldBe "second"
         }
     })

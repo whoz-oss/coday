@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.Entity
@@ -111,4 +112,11 @@ data class ScheduledPrompt(
      * backfilled on existing rows at startup. A null value still means the default workflow.
      */
     val workflowId: UUID? = null,
+    /**
+     * Runtime input of the workflow's step 1 (e.g. the search criteria of a Whoz search tool), a JSON
+     * object. Null for the user-group workflow, whose audience comes from [agentConfigId]. Validated
+     * on save against the step-1 tool's input schema. See
+     * [io.whozoss.agentos.scheduledPrompt.ScheduledWorkflowWiring].
+     */
+    val workflowInput: JsonNode? = null,
 ) : Entity

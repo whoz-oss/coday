@@ -3,7 +3,6 @@ package io.whozoss.agentos.scheduledPrompt
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.workflow.LoopConfig
 import io.whozoss.agentos.workflow.LoopConfigResolver
-import io.whozoss.agentos.workflow.WorkflowRunBindings
 import io.whozoss.agentos.workflow.WorkflowService
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
@@ -12,8 +11,8 @@ import java.util.UUID
 /**
  * [LoopConfigResolver] for scheduler-started loop cases.
  *
- * Run (by its loop case id) → scheduled prompt → its [io.whozoss.agentos.workflow.Workflow] (the
- * default one when it names none) → the workflow's steps with the run bindings substituted.
+ * Loop case → its run (`loopCaseId`) → scheduled prompt → its [io.whozoss.agentos.workflow.Workflow]
+ * → [ScheduledWorkflowWiring] turns the two steps and the runtime values into a [LoopConfig].
  * Returns null when the case was not started by the scheduler.
  */
 @Service
@@ -35,15 +34,18 @@ class ScheduledPromptLoopConfigResolver(
             checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
                 "AgentConfig ${scheduledPrompt.agentConfigId} of scheduled prompt ${scheduledPrompt.id} not found"
             }
-        val bindings =
-            WorkflowRunBindings(
-                agentConfigId = scheduledPrompt.agentConfigId,
-                agentName = agentName,
-                promptId = scheduledPrompt.promptTemplateId,
-                title = scheduledPrompt.name,
-                scheduledPromptId = scheduledPrompt.id,
-                runId = run.id,
-            )
-        return bindings.applyTo(workflow.toLoopConfig())
+        return ScheduledWorkflowWiring.toLoopConfig(
+            workflow = workflow,
+            values =
+                ScheduledWorkflowWiring.RunValues(
+                    agentConfigId = scheduledPrompt.agentConfigId,
+                    agentName = agentName,
+                    promptId = scheduledPrompt.promptTemplateId,
+                    title = scheduledPrompt.name,
+                    scheduledPromptId = scheduledPrompt.id,
+                    runId = run.id,
+                    workflowInput = scheduledPrompt.workflowInput,
+                ),
+        )
     }
 }

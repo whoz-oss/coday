@@ -17,26 +17,28 @@ import io.whozoss.agentos.workflow.LoopConfigResolver
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import mu.KLogging
 import java.util.UUID
 
 /**
- * A zero-LLM agent that runs a config-driven step workflow.
+ * A zero-LLM agent that runs a resolved list of tool steps. Its case is the observable transcript
+ * of the run (one tool request/response pair per step).
  *
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunnerService]:
  *
- * 1. Resolve the [LoopConfig] via the injected [LoopConfigResolver], which is contributed by
- *    whatever initiated the run (e.g. [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor]).
- * 2. Delegate the workflow to [LoopWorkflowRunnerService].
+ * 1. Resolve the [LoopConfig] via the injected [LoopConfigResolver], contributed by whatever
+ *    initiated the run (today only the scheduler:
+ *    [io.whozoss.agentos.scheduledPrompt.ScheduledPromptLoopConfigResolver]).
+ * 2. Delegate the steps to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
- *    when the run could not proceed. Always ends with [AgentFinishedEvent].
+ *    when the run could not proceed (including any unexpected error). Always ends with
+ *    [AgentFinishedEvent].
  *
- * The agent carries no loop configuration of its own — configuration is supplied by a
- * [LoopConfigResolver] contributed by whatever initiated the run; the agent does not read
- * the triggering message for config.
+ * The agent carries no configuration of its own and does not read the triggering message.
  *
  * @param metadata        Agent identity, inherited from [Entity].
  * @param name            Display name of this agent instance.
@@ -107,6 +109,12 @@ class AgentLoop(
                 } catch (e: InvalidLoopPayloadException) {
                     logger.error(e) { "[AgentLoop] '$name' invalid loop config (caseId=$caseId): ${e.message}" }
                     LoopRunOutcome.Aborted(e.message ?: "Invalid AgentLoop payload")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Make an unexpected failure visible in the transcript rather than ending the case in ERROR silently.
+                    logger.error(e) { "[AgentLoop] '$name' failed unexpectedly (caseId=$caseId)" }
+                    LoopRunOutcome.Aborted("Unexpected error: ${e.message}")
                 }
 
             when (outcome) {
@@ -179,7 +187,6 @@ class AgentLoop(
             "No loop configuration is available for this case. A loop case must be started by an " +
                 "initiator that registers its configuration (e.g. a scheduled prompt).",
         )
-        if (config.version != 1) throw InvalidLoopPayloadException("Loop config version must be 1, got ${config.version}.")
         if (config.steps.isEmpty()) throw InvalidLoopPayloadException("Loop config must declare at least one step.")
         return config
     }

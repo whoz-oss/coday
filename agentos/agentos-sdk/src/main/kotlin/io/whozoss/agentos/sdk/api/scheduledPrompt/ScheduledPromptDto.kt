@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.scheduledPrompt
 import com.fasterxml.jackson.annotation.JsonFormat
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -153,4 +154,10 @@ data class ScheduledPromptDto(
      */
     @field:Schema(types = ["string", "null"], format = "uuid")
     val workflowId: UUID? = null,
+    /**
+     * Runtime input of the workflow's first step (e.g. search criteria), a JSON object. Omit for the
+     * default user-group workflow. Validated against the first step's tool input schema.
+     */
+    @field:Schema(type = "object", nullable = true)
+    val workflowInput: JsonNode? = null,
 )

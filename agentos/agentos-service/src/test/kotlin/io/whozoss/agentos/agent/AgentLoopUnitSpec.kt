@@ -55,11 +55,13 @@ class AgentLoopUnitSpec :
 
         val validLoopConfig =
             LoopConfig(
-                version = 1,
                 steps =
                     listOf(
-                        io.whozoss.agentos.workflow
-                            .LoopStep(id = "search", tool = "SearchTalents"),
+                        io.whozoss.agentos.workflow.LoopStep(
+                            id = "search",
+                            tool = "SearchTalents",
+                            input = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().createObjectNode(),
+                        ),
                     ),
             )
 

@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
@@ -228,8 +229,13 @@ class ScheduledPromptServiceImpl(
     // -------------------------------------------------------------------------
 
     /** The workflow the scheduled prompt runs: the one it names (validated), or the default one. */
-    private fun resolveWorkflowId(entity: ScheduledPrompt): UUID =
-        workflowService.resolveForScheduledPrompt(entity.workflowId, entity.namespaceId).id
+    private fun resolveWorkflowId(entity: ScheduledPrompt): UUID {
+        if (entity.workflowInput != null && !entity.workflowInput.isObject) {
+            throw BadRequestException("workflowInput must be a JSON object")
+        }
+        // TODO(wz-35443, handover step 8): validate workflowInput against the step-1 tool input schema.
+        return workflowService.resolveForScheduledPrompt(entity.workflowId, entity.namespaceId).id
+    }
 
     /** Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars. */
     private fun promptName(name: String): String = "scheduled--${name.toSlug()}".take(100)
