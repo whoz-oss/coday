@@ -22,13 +22,13 @@ import java.io.File
  * The `inputSchema` is generated accordingly so the LLM sees the right contract.
  *
  * **Auth Setting.** When one is bound to the integration, the secret of the user running the case is
- * available to the command as environment variables ([BashAuthVariables]: `$AGENTOS_AUTH_TOKEN`, plus
- * `$AGENTOS_AUTH_USERNAME` / `$AGENTOS_AUTH_PASSWORD` for basic auth and `$AGENTOS_AUTH_TYPE`). It is resolved
+ * available to the command as environment variables named after that Auth Setting ([BashAuthVariables]:
+ * `$GITHUB_TOKEN` for a setting named `GITHUB_TOKEN`, plus `$GITHUB_TOKEN_USERNAME` for basic auth). It is resolved
  * by the first command that runs, shared by the tools of the integration through [auth], and never put in
- * the command text. If the binding yields no usable credential the command is not run and the tool answers
- * `AUTH_MISSING`. Secret values are replaced by `***` in the stdout and stderr returned to the LLM; this is
- * defence in depth, not a guarantee: a command can encode a value, and the output is truncated before the
- * replacement. With no Auth Setting bound, nothing changes.
+ * the command text. If the binding yields no usable credential, or the Auth Setting name cannot be a variable
+ * name, the command is not run and the tool answers `AUTH_MISSING`. The secret value is replaced by `***` in
+ * the stdout and stderr returned to the LLM; this is defence in depth, not a guarantee: a command can encode a
+ * value, and the output is truncated before the replacement. With no Auth Setting bound, nothing changes.
  *
  * @param auth The run's authentication; defaults to [BashRunAuth.NONE] (no variable injected).
  */

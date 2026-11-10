@@ -13,28 +13,56 @@ import kotlinx.coroutines.sync.withLock
 import mu.KLogging
 
 /**
- * Names of the environment variables through which the secret of the Auth Setting bound to a BASH
- * integration reaches its commands. They are injected into the process environment, never substituted
- * in the command text: the command is logged and may be echoed, the environment is neither.
+ * The rule that names the environment variables through which the secret of the Auth Setting bound to a BASH
+ * integration reaches its commands. They are injected into the process environment, never substituted in the
+ * command text: the command is logged and may be echoed, the environment is neither.
+ *
+ * The variable is named after the Auth Setting (`<NAME>`), so that an integration bound to `GITHUB_TOKEN` gives
+ * its commands `$GITHUB_TOKEN`:
+ * - `<NAME>`: the secret, i.e. the OAuth access token, bearer token, API key or, for a basic-auth setting, the
+ *   password (so a command written for a token also works with a forge's username + token setting);
+ * - `<NAME>_USERNAME`: the username, basic-auth settings only.
  */
 object BashAuthVariables {
+    /** Appended to the Auth Setting name for the username of a basic-auth setting. */
+    const val USERNAME_SUFFIX = "_USERNAME"
+
+    private val VALID_NAME = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
+
     /**
-     * The secret: the OAuth access token, the bearer token, the API key or, for a basic-auth setting, the
-     * password (so a command written for a token also works with a forge's username + token setting).
+     * Names an Auth Setting cannot have for its variable, because setting them would change how the shell or
+     * the process behaves instead of just carrying a secret: `PATH` would break every command, `BASH_ENV` (or
+     * `ENV`) would make a shell source a file named by the secret, `IFS`, `PS4`, `PROMPT_COMMAND`, `SHELLOPTS`
+     * and `BASHOPTS` alter how the shell parses or runs, `HOME`, `USER`, `SHELL`, `PWD`, `OLDPWD`, `CDPATH`,
+     * `TMPDIR`, `LANG` and `TERM` redirect or reconfigure what commands find and print. Compared case-sensitively
+     * and exactly; the prefixes in [RESERVED_PREFIXES] are reserved too.
      */
-    const val TOKEN = "AGENTOS_AUTH_TOKEN"
+    val RESERVED_NAMES: Set<String> =
+        setOf(
+            "PATH", "HOME", "USER", "SHELL", "PWD", "OLDPWD", "IFS", "ENV", "BASH_ENV", "BASHOPTS", "SHELLOPTS",
+            "CDPATH", "PS4", "PROMPT_COMMAND", "TMPDIR", "LANG", "TERM",
+        )
 
-    /** Basic-auth settings only. */
-    const val USERNAME = "AGENTOS_AUTH_USERNAME"
+    /** Prefixes of reserved families: the dynamic loader's (`LD_`, `DYLD_`) and exported bash functions. */
+    val RESERVED_PREFIXES: List<String> = listOf("LD_", "DYLD_", "BASH_FUNC_")
 
-    /** Basic-auth settings only; same value as [TOKEN]. */
-    const val PASSWORD = "AGENTOS_AUTH_PASSWORD"
+    /** The variable holding the username of a basic-auth setting named [name]. */
+    fun usernameOf(name: String): String = name + USERNAME_SUFFIX
 
-    /** The credential type name (e.g. `BEARER_TOKEN`), so a script can branch on it. */
-    const val TYPE = "AGENTOS_AUTH_TYPE"
-
-    /** The variables whose value is a secret, redacted from the output. The username and the type are not. */
-    internal val SECRETS: List<String> = listOf(TOKEN, PASSWORD)
+    /**
+     * Why [name] cannot be used as the variable of an Auth Setting, or null when it can. The name of an Auth
+     * Setting is not a secret, so the reason may quote it.
+     */
+    fun problemWith(name: String?): String? =
+        when {
+            name.isNullOrBlank() -> "no Auth Setting name was provided by the service"
+            !VALID_NAME.matches(name) ->
+                "the Auth Setting name '$name' is not a valid environment variable name " +
+                    "(letters, digits and underscores, not starting with a digit), rename the Auth Setting"
+            name in RESERVED_NAMES || RESERVED_PREFIXES.any { name.startsWith(it) } ->
+                "the Auth Setting name '$name' is reserved, rename the Auth Setting"
+            else -> null
+        }
 }
 
 /**
@@ -47,26 +75,21 @@ sealed interface BashAuthEnvironment {
     data object None : BashAuthEnvironment
 
     /**
-     * The variables to add to the process environment.
+     * The variables to add to the process environment; [secretName] is the one holding the secret.
      *
-     * [redact] is a best-effort defence in depth, not a guarantee: it replaces the literal secret values
+     * [redact] is a best-effort defence in depth, not a guarantee: it replaces the literal secret value
      * in text returned to the LLM, but a command is free to encode a value (base64, reversed, split) and
      * the output is truncated before it gets here, which can cut a value in two. The protection that
      * holds is the environment injection itself; do not hand a secret to a command that must not be
      * able to read it.
      */
-    data class Variables(val values: Map<String, String>) : BashAuthEnvironment {
+    data class Variables(val values: Map<String, String>, val secretName: String) : BashAuthEnvironment {
 
-        /** Replaces each secret value found in [text] by [REDACTION]; values under [MIN_REDACTED_LENGTH] chars are left alone. */
+        /** Replaces the secret value found in [text] by [REDACTION]; a value under [MIN_REDACTED_LENGTH] chars is left alone. */
         fun redact(text: String): String {
-            if (text.isEmpty()) return text
-            val secrets =
-                BashAuthVariables.SECRETS
-                    .mapNotNull { values[it] }
-                    .filter { it.length >= MIN_REDACTED_LENGTH }
-                    .distinct()
-                    .sortedByDescending { it.length } // a secret containing another is replaced first
-            return secrets.fold(text) { redacted, secret -> redacted.replace(secret, REDACTION) }
+            val secret = values[secretName]
+            if (text.isEmpty() || secret == null || secret.length < MIN_REDACTED_LENGTH) return text
+            return text.replace(secret, REDACTION)
         }
 
         override fun toString(): String = "Variables(${values.keys.sorted().joinToString()}; values redacted)"
@@ -83,31 +106,27 @@ sealed interface BashAuthEnvironment {
 
         const val NO_CREDENTIAL = "no credential available for the bound Auth Setting"
 
-        /** A provider is bound; [credential] is what it returned. */
-        fun from(credential: Credential?): BashAuthEnvironment {
+        /** A provider is bound under [name] (already validated); [credential] is what it returned. */
+        fun from(name: String, credential: Credential?): BashAuthEnvironment {
             if (credential == null) return Missing(NO_CREDENTIAL)
             val type = credential.credentialType
             val values: Map<String, String> =
                 when (type) {
-                    CredentialType.OAUTH_TOKENS -> token(credential, "accessToken")
-                    CredentialType.BEARER_TOKEN -> token(credential, "token")
-                    CredentialType.API_KEY -> token(credential, "key")
-                    CredentialType.BASIC_AUTH -> basic(credential)
+                    CredentialType.OAUTH_TOKENS -> token(name, credential, "accessToken")
+                    CredentialType.BEARER_TOKEN -> token(name, credential, "token")
+                    CredentialType.API_KEY -> token(name, credential, "key")
+                    CredentialType.BASIC_AUTH -> basic(name, credential)
                 } ?: return Missing("credential of type $type carries no usable material")
-            return Variables(values + (BashAuthVariables.TYPE to type.name))
+            return Variables(values, secretName = name)
         }
 
-        private fun token(credential: Credential, key: String): Map<String, String>? =
-            material(credential, key)?.let { mapOf(BashAuthVariables.TOKEN to it) }
+        private fun token(name: String, credential: Credential, key: String): Map<String, String>? =
+            material(credential, key)?.let { mapOf(name to it) }
 
-        private fun basic(credential: Credential): Map<String, String>? {
+        private fun basic(name: String, credential: Credential): Map<String, String>? {
             val username = material(credential, "username") ?: return null
             val password = material(credential, "password") ?: return null
-            return mapOf(
-                BashAuthVariables.USERNAME to username,
-                BashAuthVariables.PASSWORD to password,
-                BashAuthVariables.TOKEN to password,
-            )
+            return mapOf(name to password, BashAuthVariables.usernameOf(name) to username)
         }
 
         private fun material(credential: Credential, key: String): String? =
@@ -127,14 +146,20 @@ sealed interface BashAuthEnvironment {
  * again (the tools are rebuilt every run). Concurrent commands wait for that single resolution. A resolution
  * that throws is answered as [BashAuthEnvironment.Missing], the detail staying in the logs.
  *
+ * The variable is named after the Auth Setting ([BashAuthVariables]). That name is known up front, so it is
+ * checked before the provider is invoked: a missing, invalid or reserved name answers
+ * [BashAuthEnvironment.Missing] without ever asking the user to authorize.
+ *
  * While the user is asked to authorize, the call holds one `Dispatchers.IO` thread.
  *
+ * @param authSettingName The name of the bound Auth Setting, which names the variable carrying the secret.
  * @param provider The credential provider of the run, null when no Auth Setting is bound (every command then
  *   runs exactly as without this feature). It is not suspending and may block until the user answers, so it
  *   runs on the IO dispatcher, interrupted when the run is cancelled.
  */
 class BashRunAuth(
     private val configName: String?,
+    private val authSettingName: String?,
     private val provider: CredentialProvider?,
 ) {
     private val mutex = Mutex()
@@ -148,15 +173,11 @@ class BashRunAuth(
     }
 
     private suspend fun resolveOnce(provider: CredentialProvider): BashAuthEnvironment {
+        val name = authSettingName
         val environment =
-            try {
-                BashAuthEnvironment.from(runInterruptible(Dispatchers.IO) { provider() })
-            } catch (e: CancellationException) {
-                // The run's own cancellation propagates; any other one is a failed resolution.
-                currentCoroutineContext().ensureActive()
-                failed(e)
-            } catch (e: Exception) {
-                failed(e)
+            when (val problem = BashAuthVariables.problemWith(name)) {
+                null -> resolveCredential(name!!, provider)
+                else -> BashAuthEnvironment.Missing(problem)
             }
         val line = "BASH integration '$configName': auth=$environment for the rest of the run"
         when (environment) {
@@ -165,6 +186,17 @@ class BashRunAuth(
         }
         return environment
     }
+
+    private suspend fun resolveCredential(name: String, provider: CredentialProvider): BashAuthEnvironment =
+        try {
+            BashAuthEnvironment.from(name, runInterruptible(Dispatchers.IO) { provider() })
+        } catch (e: CancellationException) {
+            // The run's own cancellation propagates; any other one is a failed resolution.
+            currentCoroutineContext().ensureActive()
+            failed(e)
+        } catch (e: Exception) {
+            failed(e)
+        }
 
     private fun failed(e: Exception): BashAuthEnvironment {
         logger.error(e) { "BASH integration '$configName': credential resolution failed: ${e.message}" }
@@ -175,6 +207,6 @@ class BashRunAuth(
         const val RESOLUTION_FAILED = "unexpected error while resolving the credential, see the service logs"
 
         /** No Auth Setting bound: the commands run as they always did. */
-        val NONE = BashRunAuth(configName = null, provider = null)
+        val NONE = BashRunAuth(configName = null, authSettingName = null, provider = null)
     }
 }
