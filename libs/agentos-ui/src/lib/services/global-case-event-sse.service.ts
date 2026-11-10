@@ -1,6 +1,6 @@
 import { Injectable, NgZone, inject } from '@angular/core'
 import { Observable } from 'rxjs'
-import { CaseEvent, Configuration } from '@whoz-oss/agentos-api-client'
+import { CaseEvent, Configuration, NAMESPACE_CASE_LIST_UPDATED_EVENT } from '@whoz-oss/agentos-api-client'
 
 /**
  * What the aggregated stream carries. Each message says what it is about, which is what lets
@@ -45,9 +45,6 @@ export class GlobalCaseEventSseService {
     'ErrorEvent',
   ] as const
 
-  /** Name of the frame telling a namespace's case list to reload (GlobalCaseEventSseController). */
-  private static readonly CASE_LIST_UPDATED = 'namespace-case-list-updated'
-
   /**
    * Opens the SSE connection and emits each message as it arrives. Unsubscribing closes the
    * underlying EventSource. The native EventSource auto-reconnects on transport drop; a hard
@@ -79,7 +76,8 @@ export class GlobalCaseEventSseService {
       for (const name of GlobalCaseEventSseService.EVENT_NAMES) {
         eventSource.addEventListener(name, onCaseEvent)
       }
-      eventSource.addEventListener(GlobalCaseEventSseService.CASE_LIST_UPDATED, onCaseListUpdated)
+      // The per-namespace stream's frame, the namespace now in its payload (GlobalCaseEventSseController).
+      eventSource.addEventListener(NAMESPACE_CASE_LIST_UPDATED_EVENT, onCaseListUpdated)
 
       eventSource.onopen = () => this.zone.run(() => subscriber.next({ kind: 'connected' }))
 

@@ -1,7 +1,7 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
-import { firstValueFrom } from 'rxjs'
+import { firstValueFrom, Subscription } from 'rxjs'
 import {
   afterNextRender,
   Component,
@@ -46,7 +46,7 @@ import {
   ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
   ConfirmDialogComponent,
@@ -256,7 +256,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     () =>
       this.canAttach() &&
       !this.isRunning() &&
-      !this.isTerminal() &&
+      !this.composerClosed() &&
       !this.attachments.isUploading() &&
       !this.voice.isBusy()
   )
@@ -342,6 +342,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   protected readonly caseGone = signal(false)
 
+  /** The existence check in flight, dropped when the chat moves to another case or retries. */
+  private caseProbe: Subscription | null = null
+
   /**
    * Derived terminal state — true when the effective case status is KILLED or ERROR.
    * Because this is a computed from `caseStatus` (itself last-writer-wins from `_sseStatus`),
@@ -352,6 +355,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const s = this.caseStatus()
     return s === 'KILLED' || s === 'ERROR'
   })
+
+  /**
+   * Nothing can be posted: the case has ended, or it is confirmed gone. Every way of posting — the
+   * textarea, send, Continue, the mic, staging files — reads this, so that none is left open on a
+   * case that would refuse it.
+   */
+  protected readonly composerClosed = computed(() => this.isTerminal() || this.caseGone())
 
   /** Handle for the debounced terminal-close timer. See TERMINAL_CLOSE_DEBOUNCE_MS. */
   private terminalCloseTimer: ReturnType<typeof setTimeout> | null = null
@@ -848,10 +858,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return (
       (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
       !this.isRunning() &&
-      !this.isTerminal() &&
-      // Only a confirmed 404 closes the composer: a dead stream alone may just be a backend
+      // Only a confirmed deletion closes the composer: a dead stream alone may just be a backend
       // restarting, and a message posted then still reaches a healthy case.
-      !this.caseGone() &&
+      !this.composerClosed() &&
       !this.attachments.isUploading() &&
       !this.voice.isBusy()
     )
@@ -861,7 +870,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected get canRecord(): boolean {
     return (
       !this.isRunning() &&
-      !this.isTerminal() &&
+      !this.composerClosed() &&
       !this.attachments.isUploading() &&
       !this.submitting &&
       !this.voice.isBusy()
@@ -1003,6 +1012,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * after CLOSED, so a backend that has come back up needs this (or a page reload) to be seen.
    */
   protected retryStream(): void {
+    this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
     this.eventSource?.close()
@@ -1011,17 +1021,31 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /**
    * Asks the case itself whether it is still there, the only way to tell a refused stream from a
-   * backend that is restarting. A 404 is the answer that closes the composer.
+   * backend that is restarting.
+   *
+   * Deleting a case only marks it removed, and GET /api/cases/{id} still serves it (with
+   * `removed: true`): that flag is the deletion, and a 404 the case being out of reach, by
+   * absence or by permission. Either closes the composer; any other failure leaves it open.
    */
   private checkCaseStillExists(): void {
-    this.http
-      .get(`${this.config.basePath}/api/cases/${this.caseId}`)
+    this.dropCaseProbe()
+    this.caseProbe = this.http
+      .get<Case>(`${this.config.basePath}/api/cases/${this.caseId}`)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
+        next: (found) => {
+          if (found.removed) this.caseGone.set(true)
+        },
         error: (err: unknown) => {
           if (err instanceof HttpErrorResponse && err.status === 404) this.caseGone.set(true)
         },
       })
+  }
+
+  /** A late answer about the previous case, or from before a Retry, must not close this composer. */
+  private dropCaseProbe(): void {
+    this.caseProbe?.unsubscribe()
+    this.caseProbe = null
   }
 
   private connectSse(): void {
@@ -1339,6 +1363,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.eventSource = null
+    this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
     this.events.set([])
@@ -1414,7 +1439,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** The agent resumes from the history: its tool calls and its summary of the work so far. */
   protected continueAfterLimit(): void {
     // An attachment send in flight is not running yet: posting now would send two messages.
-    if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.isTerminal()) return
+    if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.composerClosed()) return
     this.sendMessage('Continue')
   }
 

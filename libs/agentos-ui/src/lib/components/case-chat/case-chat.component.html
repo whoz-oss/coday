@@ -258,7 +258,10 @@
                     <span class="case-chat__execution-notice-detail">{{ item.notice.detail }}</span>
                   }
                   @if (
-                    item.eventId === continuableStopId() && !isRunning() && !isTerminal() && !attachments.isUploading()
+                    item.eventId === continuableStopId() &&
+                    !isRunning() &&
+                    !composerClosed() &&
+                    !attachments.isUploading()
                   ) {
                     <button type="button" class="case-chat__execution-notice-action" (click)="continueAfterLimit()">
                       Continue
@@ -558,7 +561,7 @@
           rows="3"
           [value]="inputValue()"
           [hidden]="voice.isActive()"
-          [disabled]="isRunning() || isTerminal() || attachments.isUploading()"
+          [disabled]="isRunning() || composerClosed() || attachments.isUploading()"
           (input)="onInput($event)"
           (keydown)="onKeydown($event)"
           (paste)="canStageFiles() && attachments.onPaste($event)"

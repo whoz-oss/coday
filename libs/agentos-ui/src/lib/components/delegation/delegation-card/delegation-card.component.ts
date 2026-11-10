@@ -80,9 +80,11 @@ export class DelegationCardComponent {
   }
   private connect(subCaseId: string): void {
     const source = this.zone.runOutsideAngular(
-      // No history: collapsing closes the stream, so replaying every past event on each expand
-      // would re-download the whole sub-case over a connection taken from the same budget (#1616).
-      () => new EventSource(`${this.config.basePath}/api/cases/${subCaseId}/events?includePreviousEvents=false`)
+      // With its history, even though collapsing closes the stream and expanding replays it: a card
+      // opened on a sub-case already blocked must show what it is waiting on, and EventSource's own
+      // reconnection reuses this URL, so a stream without history would also lose whatever was sent
+      // while it reconnected (#1616).
+      () => new EventSource(`${this.config.basePath}/api/cases/${subCaseId}/events`)
     )
     this.source = source
     source.addEventListener('case-event', (message: MessageEvent<string>) => {

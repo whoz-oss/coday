@@ -51,8 +51,8 @@ class FakeBroadcastChannel {
   }
 }
 
-/** The lock the service claims, spelled out here as the service keeps it private. */
-const STREAM_OWNER_LOCK = 'agentos-companion-stream'
+/** The lock the service claims for user `u-1`, spelled out here as the service keeps its name private. */
+const STREAM_OWNER_LOCK = 'agentos-companion-stream:u-1'
 
 /**
  * In-memory Web Locks: one holder per name, the other claims queued in order, and a lock only
@@ -214,8 +214,8 @@ describe('TabCoordinatorService', () => {
     const b = openTab('ns-b')
     let bOwnsTheStream = false
 
-    await a.service.whenStreamOwner()
-    void b.service.whenStreamOwner().then(() => (bOwnsTheStream = true))
+    await a.service.whenStreamOwner('u-1')
+    void b.service.whenStreamOwner('u-1').then(() => (bOwnsTheStream = true))
     await settle()
 
     expect(a.service.isStreamOwner()).toBe(true)
@@ -229,6 +229,20 @@ describe('TabCoordinatorService', () => {
     expect(b.service.isStreamOwner()).toBe(true)
   })
 
+  it("does not keep a user's tab waiting behind another user's stream", async () => {
+    const previousUser = openTab('ns-a')
+    const newUser = openTab('ns-b')
+
+    await previousUser.service.whenStreamOwner('u-previous')
+    let newUserOwnsTheStream = false
+    void newUser.service.whenStreamOwner('u-1').then(() => (newUserOwnsTheStream = true))
+    await settle()
+
+    // Someone else signed in on this browser: the tab still open as the previous user keeps its
+    // stream, and the new user's tabs elect an owner of their own instead of reading it.
+    expect(newUserOwnsTheStream).toBe(true)
+  })
+
   it('relays a stream message to the other tabs, never to the tab that owns the stream', async () => {
     const owner = openTab('ns-a')
     const other = openTab('ns-b')
@@ -236,12 +250,13 @@ describe('TabCoordinatorService', () => {
     const heardByOther = jest.fn()
     owner.service.onGlobalMessage(heardByOwner)
     other.service.onGlobalMessage(heardByOther)
-    await owner.service.whenStreamOwner()
+    await owner.service.whenStreamOwner('u-1')
 
-    owner.service.broadcastGlobalMessage(message)
+    owner.service.broadcastGlobalMessage(message, 'u-1')
     bus.flush()
 
-    expect(heardByOther).toHaveBeenCalledWith(message)
+    // With the user the stream was opened as, for a tab of another user to drop it.
+    expect(heardByOther).toHaveBeenCalledWith(message, 'u-1')
     expect(heardByOwner).not.toHaveBeenCalled()
   })
 
@@ -251,7 +266,7 @@ describe('TabCoordinatorService', () => {
     const heardByOther = jest.fn()
     other.service.onGlobalMessage(heardByOther)
 
-    notOwner.service.broadcastGlobalMessage(message)
+    notOwner.service.broadcastGlobalMessage(message, 'u-1')
     bus.flush()
 
     // Without an owner every tab reads the stream for itself; relaying on top of that would
@@ -264,10 +279,10 @@ describe('TabCoordinatorService', () => {
     const other = openTab('ns-b')
     const heard = jest.fn()
     const unsubscribe = other.service.onGlobalMessage(heard)
-    await owner.service.whenStreamOwner()
+    await owner.service.whenStreamOwner('u-1')
 
     unsubscribe()
-    owner.service.broadcastGlobalMessage(message)
+    owner.service.broadcastGlobalMessage(message, 'u-1')
     bus.flush()
 
     expect(heard).not.toHaveBeenCalled()
@@ -280,7 +295,7 @@ describe('TabCoordinatorService', () => {
 
     // Resolving is the point: a claim that failed must not leave the caller waiting for a
     // stream nobody will open.
-    await expect(a.service.whenStreamOwner()).resolves.toBeUndefined()
+    await expect(a.service.whenStreamOwner('u-1')).resolves.toBeUndefined()
 
     expect(a.service.isStreamOwner()).toBe(false)
     expect(warn).toHaveBeenCalled()
@@ -293,7 +308,7 @@ describe('TabCoordinatorService', () => {
     const a = openTab('ns-a')
 
     expect(a.service.coordinated).toBe(false)
-    await expect(a.service.whenStreamOwner()).resolves.toBeUndefined()
+    await expect(a.service.whenStreamOwner('u-1')).resolves.toBeUndefined()
   })
 
   it('leaves every tab to its own stream where BroadcastChannel is missing', async () => {
@@ -302,6 +317,22 @@ describe('TabCoordinatorService', () => {
     const a = openTab('ns-a')
 
     expect(a.service.coordinated).toBe(false)
-    await expect(a.service.whenStreamOwner()).resolves.toBeUndefined()
+    await expect(a.service.whenStreamOwner('u-1')).resolves.toBeUndefined()
+  })
+
+  it('still gets a tab id where crypto.randomUUID is missing, as on a plain-http LAN origin', () => {
+    const randomUUID = Object.getOwnPropertyDescriptor(crypto, 'randomUUID')
+    // Insecure contexts expose getRandomValues but not randomUUID.
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })
+    try {
+      const a = openTab('ns-a')
+      const b = openTab('ns-b')
+
+      expect(a.service.tabId).toMatch(/^[0-9a-f]{32}$/)
+      expect(a.service.tabId).not.toBe(b.service.tabId)
+    } finally {
+      if (randomUUID) Object.defineProperty(crypto, 'randomUUID', randomUUID)
+      else Reflect.deleteProperty(crypto, 'randomUUID')
+    }
   })
 })

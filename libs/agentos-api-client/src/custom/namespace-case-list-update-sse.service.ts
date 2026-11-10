@@ -5,6 +5,12 @@ import { Configuration } from '../lib/configuration'
 export type NamespaceCaseListUpdateSignal = 'connected' | 'updated'
 
 /**
+ * Name of the frame telling a namespace's case list to reload, on this stream and on the global
+ * case-event stream alike (NamespaceCaseListUpdateSseController.NAMESPACE_CASE_LIST_UPDATED_EVENT).
+ */
+export const NAMESPACE_CASE_LIST_UPDATED_EVENT = 'namespace-case-list-updated'
+
+/**
  * Metadata-free SSE notifications with a neutral `{}` data payload that indicate
  * a namespace's case list was updated.
  *
@@ -24,7 +30,7 @@ export class NamespaceCaseListUpdateSseService {
       const source = this.zone.runOutsideAngular(() => new EventSource(url))
 
       source.onopen = () => this.zone.run(() => subscriber.next('connected'))
-      source.addEventListener('namespace-case-list-updated', () => this.zone.run(() => subscriber.next('updated')))
+      source.addEventListener(NAMESPACE_CASE_LIST_UPDATED_EVENT, () => this.zone.run(() => subscriber.next('updated')))
       source.onerror = () => {
         // EventSource reconnects automatically. The following `open` triggers a reload.
       }
