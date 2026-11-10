@@ -12,12 +12,8 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  NamespaceCaseListUpdateSseService,
-  NamespaceControllerService,
-  NamespaceListItem,
-} from '@whoz-oss/agentos-api-client'
-import { catchError, debounceTime, map, of, skip } from 'rxjs'
+import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { catchError, debounceTime, filter, map, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import {
@@ -30,6 +26,7 @@ import {
 } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { GlobalStreamService } from '../../services/global-stream.service'
 import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
@@ -73,7 +70,7 @@ export class CaseShellComponent {
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
-  private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
+  private readonly globalStream = inject(GlobalStreamService)
   protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
   private readonly shellContext = inject(ShellContextService)
@@ -234,14 +231,17 @@ export class CaseShellComponent {
       }
     })
 
-    // Load the list and independently watch namespace-level list invalidations.
-    // Effect cleanup closes the previous EventSource on namespace switches.
+    // Load the list, then watch the invalidations of this namespace. They ride the aggregated
+    // stream, which one tab holds for the whole browser: a stream per namespace and per tab spent
+    // a connection out of the six a browser grants per origin (#1616).
     effect((cleanup) => {
       const nsId = this.namespaceId()
       if (!nsId) return
 
       this.caseState.loadCases(nsId)
-      const subscription = this.caseListUpdates.connect(nsId).subscribe(() => this.caseState.refreshCases(nsId))
+      const subscription = this.globalStream.caseListInvalidations$
+        .pipe(filter((invalidated) => invalidated === nsId))
+        .subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
     })
 

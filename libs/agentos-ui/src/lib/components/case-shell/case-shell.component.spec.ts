@@ -2,16 +2,11 @@ import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { ElementRef, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  Case,
-  CaseRoleEnum,
-  NamespaceCaseListUpdateSseService,
-  NamespaceControllerService,
-  NamespaceListItemRoleEnum,
-} from '@whoz-oss/agentos-api-client'
-import { EMPTY, finalize, of, Subject, throwError } from 'rxjs'
+import { Case, CaseRoleEnum, NamespaceControllerService, NamespaceListItemRoleEnum } from '@whoz-oss/agentos-api-client'
+import { EMPTY, of, Subject, throwError } from 'rxjs'
 import { CaseShellComponent } from './case-shell.component'
 import { CaseStateService } from '../../services/case-state.service'
+import { GlobalStreamService } from '../../services/global-stream.service'
 import { UserStateService } from '../../services/user-state.service'
 import { THEME_PORT } from '../../services/theme.service'
 
@@ -33,8 +28,8 @@ describe('CaseShellComponent', () => {
   }
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
-  let caseListUpdates$: Subject<'connected' | 'updated'>
-  let caseListUpdatesMock: { connect: jest.Mock }
+  let caseListUpdates$: Subject<string>
+  let globalStreamMock: { caseListInvalidations$: Subject<string> }
   let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
 
   function makeComponent(
@@ -58,7 +53,7 @@ describe('CaseShellComponent', () => {
       loadMe: jest.fn().mockReturnValue(EMPTY),
     }
     caseListUpdates$ = new Subject()
-    caseListUpdatesMock = { connect: jest.fn().mockReturnValue(caseListUpdates$) }
+    globalStreamMock = { caseListInvalidations$: caseListUpdates$ }
     namespaceControllerMock = {
       listAllNamespace: jest
         .fn()
@@ -90,7 +85,7 @@ describe('CaseShellComponent', () => {
         { provide: CaseStateService, useValue: caseStateMock },
         { provide: UserStateService, useValue: userStateMock },
         { provide: NamespaceControllerService, useValue: namespaceControllerMock },
-        { provide: NamespaceCaseListUpdateSseService, useValue: caseListUpdatesMock },
+        { provide: GlobalStreamService, useValue: globalStreamMock },
         { provide: THEME_PORT, useValue: themeMock },
         { provide: ElementRef, useValue: { nativeElement: document.createElement('div') } },
       ],
@@ -108,31 +103,29 @@ describe('CaseShellComponent', () => {
     TestBed.resetTestingModule()
   })
 
-  it('refreshes the active namespace on case-list connection and update signals', () => {
+  it('refreshes the active namespace on its invalidations, and ignores those of the others', () => {
     makeComponent({ ns: NS_ID })
 
-    expect(caseListUpdatesMock.connect).toHaveBeenCalledWith(NS_ID)
-    caseListUpdates$.next('connected')
-    caseListUpdates$.next('updated')
+    caseListUpdates$.next(NS_ID)
+    caseListUpdates$.next(NS_ID)
+    // The aggregated stream carries every namespace the user can read: only ours concerns us.
+    caseListUpdates$.next('ns-other')
 
     expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(2)
     expect(caseStateMock.refreshCases).toHaveBeenNthCalledWith(1, NS_ID)
     expect(caseStateMock.refreshCases).toHaveBeenNthCalledWith(2, NS_ID)
   })
 
-  it('closes the previous case-list stream when switching namespaces', () => {
+  it('follows the namespace it is switched to, and stops following the previous one', () => {
     makeComponent({ ns: NS_ID })
-    const previousClosed = jest.fn()
-    const previousUpdates$ = new Subject<'connected' | 'updated'>()
-    caseListUpdatesMock.connect.mockReturnValueOnce(previousUpdates$.pipe(finalize(previousClosed)))
 
-    queryParams$.next({ ns: 'ns-2' })
-    TestBed.flushEffects()
     queryParams$.next({ ns: 'ns-3' })
     TestBed.flushEffects()
+    caseListUpdates$.next(NS_ID)
+    caseListUpdates$.next('ns-3')
 
-    expect(previousClosed).toHaveBeenCalled()
-    expect(caseListUpdatesMock.connect).toHaveBeenLastCalledWith('ns-3')
+    expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(1)
+    expect(caseStateMock.refreshCases).toHaveBeenCalledWith('ns-3')
   })
 
   it('opens the sub-case composer for the chosen parent and closes the mobile drawer', () => {
