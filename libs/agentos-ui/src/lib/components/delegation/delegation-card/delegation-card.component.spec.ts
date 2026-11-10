@@ -63,45 +63,60 @@ describe('DelegationCardComponent', () => {
   function line(): Element | null {
     return (fixture.nativeElement as HTMLElement).querySelector('.delegation-card__last-event')
   }
+  function activity(): NodeListOf<Element> {
+    return (fixture.nativeElement as HTMLElement).querySelectorAll('.delegation-card__activity li')
+  }
   function toggle(): void {
     ;(fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.delegation-card__toggle')!.click()
     fixture.detectChanges()
   }
 
-  it('streams automatically while collapsed, independently of toggle', () => {
+  it('streams only while the card is expanded', () => {
     update()
+
+    // Collapsed: no connection at all. The connection budget is shared by every tab (#1616),
+    // and the card still says what the delegation is doing from the parent's own events.
+    expect(MockEventSource.instances).toHaveLength(0)
+    expect(line()?.textContent?.trim()).toBe('Thinking')
+
+    toggle()
     const source = MockEventSource.instances[0]!
     expect(source.url).toBe('/backend/api/cases/c-1/events')
-    expect(line()?.textContent?.trim()).toBe('Thinking')
-    expect((fixture.nativeElement as HTMLElement).querySelector('.delegation-card__activity')).toBeNull()
-    toggle()
-    toggle()
-    expect(MockEventSource.instances).toHaveLength(1)
-    expect(source.close).not.toHaveBeenCalled()
+    expect(activity()).toHaveLength(1)
+
     // Changes unrelated to the stream identity must not reconnect it.
     update({ task: 'Updated task' })
     expect(MockEventSource.instances).toHaveLength(1)
-    fixture.destroy()
+    expect(source.close).not.toHaveBeenCalled()
+
+    toggle()
     expect(source.close).toHaveBeenCalledTimes(1)
+
+    toggle()
+    expect(MockEventSource.instances).toHaveLength(2)
   })
 
   it.each(['WAITING_USER', 'SUCCESS', 'ERROR', 'TIMEOUT', 'KILLED'] as const)(
     'disconnects automatically on %s',
     (status) => {
       update()
+      toggle()
       const source = MockEventSource.instances[0]!
+
       update({ status })
+
       expect(source.close).toHaveBeenCalledTimes(1)
       if (status !== 'WAITING_USER') expect(line()).toBeNull()
-      toggle()
-      expect(MockEventSource.instances).toHaveLength(1)
       update()
       expect(MockEventSource.instances).toHaveLength(2)
     }
   )
 
-  it('does not connect without a sub-case ID or while initially inactive', () => {
+  it('does not connect without a sub-case ID, nor for a delegation that is not working', () => {
     update({ subCaseId: '' })
+    toggle()
+    expect(MockEventSource.instances).toHaveLength(0)
+
     for (const status of ['WAITING_USER', 'SUCCESS', 'ERROR', 'TIMEOUT', 'KILLED'] as DelegationStatus[]) {
       update({ status })
     }
@@ -110,22 +125,25 @@ describe('DelegationCardComponent', () => {
 
   it('switches streams and clears activity when the sub-case changes, ignoring late events', () => {
     update()
+    toggle()
     const old = MockEventSource.instances[0]!
     old.emit({ id: 'q', type: 'QuestionEvent', question: 'Old question?' })
     fixture.detectChanges()
     expect(line()?.textContent).toContain('Old question?')
+
     update({ subCaseId: 'c-2' })
+
     expect(old.close).toHaveBeenCalledTimes(1)
     expect(MockEventSource.instances[1]!.url).toBe('/backend/api/cases/c-2/events')
     old.emit({ id: 'late', type: 'QuestionEvent', question: 'Late question?' })
     fixture.detectChanges()
     expect(line()?.textContent?.trim()).toBe('Thinking')
-    toggle()
-    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.delegation-card__activity li')).toHaveLength(1)
+    expect(activity()).toHaveLength(1)
   })
 
   it('shows rich activity, deduplicates replay and consecutive labels, and keeps the last six steps', () => {
     update()
+    toggle()
     const source = MockEventSource.instances[0]!
     source.raw('{bad json')
     const read = { id: 'read', type: 'ToolRequestEvent', toolName: 'FILES__readFile', args: '{"filePath":"README.md"}' }
@@ -137,13 +155,12 @@ describe('DelegationCardComponent', () => {
     source.emit(read)
     fixture.detectChanges()
     expect(line()?.textContent?.trim()).toBe('Writing the answer')
-    toggle()
-    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.delegation-card__activity li')).toHaveLength(2)
+    expect(activity()).toHaveLength(2)
     for (let i = 0; i < 8; i++) {
       source.emit({ ...read, id: `step-${i}`, args: JSON.stringify({ filePath: `${i % 2}.ts` }) })
     }
     fixture.detectChanges()
-    const entries = (fixture.nativeElement as HTMLElement).querySelectorAll('.delegation-card__activity li')
+    const entries = activity()
     expect(entries).toHaveLength(6)
     expect(entries[0]?.textContent?.trim()).toBe('Reading 0.ts')
     expect(entries[5]?.textContent?.trim()).toBe('Reading 1.ts')
@@ -151,6 +168,7 @@ describe('DelegationCardComponent', () => {
 
   it('shows the streamed question even before WAITING_USER, and preserves it after disconnect', () => {
     update()
+    toggle()
     MockEventSource.instances[0]!.emit({ id: 'q', type: 'QuestionEvent', question: 'Which branch?' })
     fixture.detectChanges()
     expect(line()?.textContent?.trim()).toBe('Question: Which branch?')
@@ -175,6 +193,7 @@ describe('DelegationCardComponent', () => {
 
   it('surfaces pending confirmations and clears the highlight when resolved', () => {
     update()
+    toggle()
     const source = MockEventSource.instances[0]!
     source.emit({ id: 'p', type: 'PendingConfirmationEvent', toolName: 'GIT__git_push', inputJson: '{}' })
     fixture.detectChanges()

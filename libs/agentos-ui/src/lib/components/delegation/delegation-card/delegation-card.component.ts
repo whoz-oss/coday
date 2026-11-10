@@ -36,13 +36,13 @@ export class DelegationCardComponent {
   protected readonly statusLabel = computed(() => this.delegation().status.replace('_', ' '))
   protected readonly lastEventSummary = computed(() => describeDelegationActivity(this.delegation(), this.events()))
   private readonly streamState = computed(
-    () => ({ subCaseId: this.delegation().subCaseId, status: this.delegation().status }),
-    { equal: (a, b) => a.subCaseId === b.subCaseId && a.status === b.status }
+    () => ({ subCaseId: this.delegation().subCaseId, status: this.delegation().status, open: this.open() }),
+    { equal: (a, b) => a.subCaseId === b.subCaseId && a.status === b.status && a.open === b.open }
   )
 
   constructor() {
     effect((onCleanup) => {
-      const { subCaseId, status } = this.streamState()
+      const { subCaseId, status, open } = this.streamState()
       untracked(() => {
         if (this.eventsSubCaseId !== subCaseId) {
           this.eventsSubCaseId = subCaseId
@@ -50,7 +50,14 @@ export class DelegationCardComponent {
           this.eventIds.clear()
           this.activity.set([])
         }
-        if (status === 'WORKING' && subCaseId) this.connect(subCaseId)
+        // Only an expanded card streams its sub-case. A browser allows 6 HTTP/1.1 connections
+        // per origin, shared by every tab, and the per-case streams already need them: a parent
+        // with a handful of parallel delegations would spend the lot on cards nobody opened,
+        // and every request of every tab would then queue behind them (#1616).
+        //
+        // What a collapsed card loses is the live step label; its status, and the question or
+        // confirmation a sub-case is blocked on, come from the parent's own stream.
+        if (open && status === 'WORKING' && subCaseId) this.connect(subCaseId)
       })
       onCleanup(() => this.disconnect())
     })
