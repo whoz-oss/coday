@@ -19,7 +19,7 @@
 name: "PROJECT_SCRIPTS"
 integrationType: "BASH"
 parameters:
-  workingDirectory: "{{NAMESPACE_CONFIG_PATH}}"
+  workingDirectory: "{{CASE_EXCHANGE}}/repo"
   defaultTimeoutSeconds: 60
   tools:
   - name: "nx"
