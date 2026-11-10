@@ -8,6 +8,9 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import io.whozoss.agentos.user.UserService
@@ -50,6 +53,8 @@ class GlobalCaseEventSseController(
     private val userService: UserService,
     private val caseConfig: CaseConfigProperties,
     private val activeCompanionSessionRegistry: ActiveCompanionSessionRegistry,
+    private val namespaceService: NamespaceService,
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) {
     private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
     private val pollIntervalMs get() = caseConfig.globalEventsPollIntervalMs
@@ -71,6 +76,9 @@ class GlobalCaseEventSseController(
             "Server-Sent Events stream fanning in PendingConfirmationEvent, ConfirmationResolvedEvent, " +
                 "QuestionEvent, AnswerEvent, AgentFinishedEvent and ErrorEvent across every case the current " +
                 "user is directly related to and that is currently active. " +
+                "It also carries a 'namespace-case-list-updated' event, payload '{\"namespaceId\":\"...\"}', " +
+                "for every namespace the user can read: reload GET /api/cases/by-parentId/{namespaceId}/mine " +
+                "when it arrives, instead of opening a stream per namespace. " +
                 "Use the browser EventSource API to consume this endpoint, not a regular HTTP client.",
         responses = [
             ApiResponse(
@@ -94,12 +102,13 @@ class GlobalCaseEventSseController(
         val emitter = SseEmitter(0L) // Infinite timeout
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         val childJobs = mutableMapOf<UUID, Job>() // mutated only from the reconciliation coroutine
+        val namespaceJobs = mutableMapOf<UUID, Job>() // same coroutine, same rule
 
         // While this connection is open, the push dispatcher skips this user — they're
         // already watching events live here, a duplicate OS push would be noise.
         activeCompanionSessionRegistry.markConnected(userId)
 
-        startReconciliationJob(scope, userId, authentication, emitter, childJobs)
+        startReconciliationJob(scope, userId, authentication, emitter, childJobs, namespaceJobs)
         startHeartbeatJob(scope, emitter, userId)
 
         emitter.onCompletion {
@@ -139,10 +148,13 @@ class GlobalCaseEventSseController(
         authentication: Authentication,
         emitter: SseEmitter,
         childJobs: MutableMap<UUID, Job>,
+        namespaceJobs: MutableMap<UUID, Job>,
     ) {
         scope.launch {
             while (isActive) {
                 try {
+                    reconcileCaseListNamespaces(scope, userId, authentication, emitter, namespaceJobs)
+
                     val concerningCases =
                         withAuthentication(authentication) {
                             caseService.findConcerningUser(userId)
@@ -175,6 +187,59 @@ class GlobalCaseEventSseController(
             }
         }
     }
+
+    /**
+     * Keeps one collector per namespace the user can read, so that this stream also carries the
+     * "reload your case list" signal of [NamespaceCaseListUpdateSseController].
+     *
+     * A browser allows 6 HTTP/1.1 connections per origin, shared by every tab, and a per-namespace
+     * stream spent one of them in each open tab (#1616). Carrying the signal here costs nothing on
+     * the wire: this stream is already open, and one tab holds it for the whole browser.
+     */
+    private suspend fun reconcileCaseListNamespaces(
+        scope: CoroutineScope,
+        userId: UUID,
+        authentication: Authentication,
+        emitter: SseEmitter,
+        namespaceJobs: MutableMap<UUID, Job>,
+    ) {
+        val visibleIds =
+            withAuthentication(authentication) {
+                namespaceService.findIdsVisibleTo(userId.toString(), Action.READ)
+            }.toSet()
+
+        (namespaceJobs.keys - visibleIds).forEach { staleId -> namespaceJobs.remove(staleId)?.cancel() }
+        visibleIds.forEach { namespaceId ->
+            if (namespaceId !in namespaceJobs) {
+                namespaceJobs[namespaceId] = startCaseListCollectorJob(scope, namespaceId, emitter)
+            }
+        }
+    }
+
+    private fun startCaseListCollectorJob(
+        scope: CoroutineScope,
+        namespaceId: UUID,
+        emitter: SseEmitter,
+    ): Job =
+        scope.launch {
+            try {
+                caseListUpdateBroadcaster.events(namespaceId).collect {
+                    // The namespace travels in the payload: on this stream, unlike the per-namespace
+                    // one, the URL does not say which list went stale.
+                    emitter.send(
+                        SseEmitter
+                            .event()
+                            .name(CASE_LIST_UPDATED_CHANNEL)
+                            .data(mapOf("namespaceId" to namespaceId.toString())),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.debug { "Failed to send the case-list update of namespace $namespaceId: ${e.message}" }
+                scope.cancel()
+            }
+        }
 
     private fun startCaseCollectorJob(
         scope: CoroutineScope,
@@ -234,7 +299,10 @@ class GlobalCaseEventSseController(
             }
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Same event name as the per-namespace stream, so a client reads one protocol, not two. */
+        const val CASE_LIST_UPDATED_CHANNEL = "namespace-case-list-updated"
+    }
 }
 
 /**
