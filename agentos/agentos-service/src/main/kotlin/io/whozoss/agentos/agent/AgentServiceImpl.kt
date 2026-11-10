@@ -98,7 +98,8 @@ class AgentServiceImpl(
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
-    private val loopConfigResolver: LoopConfigResolver,
+    /** Null when no initiator contributes one (scheduler disabled): a loop case then aborts with a warning. */
+    private val loopConfigResolver: LoopConfigResolver? = null,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -584,7 +585,7 @@ class AgentServiceImpl(
                 AgentLoop(
                     metadata = EntityMetadata(id = agentId),
                     name = agentName,
-                    configResolver = loopConfigResolver,
+                    configResolver = loopConfigResolver ?: LoopConfigResolver { null },
                     runner = loopWorkflowRunnerService,
                     resolvedTools = resolvedTools,
                     triggerUser = resolvedUser,
