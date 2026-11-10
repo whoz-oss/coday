@@ -11,12 +11,15 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.time.Clock
 import java.time.Instant
@@ -65,6 +68,36 @@ class SchedulerScannerUnitSpec : StringSpec() {
         every { it.findById(agentId) } returns activeAgent
     }
 
+    private val creatorId: UUID = UUID.randomUUID()
+    private val creator = User(metadata = EntityMetadata(id = creatorId), externalId = "creator@example.com")
+
+    private val defaultNamespaceId: UUID = UUID.randomUUID()
+
+    private fun userService(): UserService = mockk<UserService>(relaxed = true).also {
+        every { it.findById(creatorId) } returns creator
+    }
+
+    private fun permissionService(): PermissionService = mockk<PermissionService>(relaxed = true).also {
+        every { it.hasPermission(any(), any(), any(), any()) } returns true
+    }
+
+    private fun caseService(): CaseService {
+        val cases = mutableMapOf<UUID, Case>()
+        return mockk<CaseService>(relaxed = true).also {
+            every { it.create(any()) } answers {
+                val case = Case(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = defaultNamespaceId,
+                    status = CaseStatus.IDLE,
+                )
+                cases[case.id] = case
+                case
+            }
+            every { it.findActiveRuntime(any()) } returns null
+            every { it.findById(any(), any()) } answers { cases[firstArg()] }
+        }
+    }
+
     private fun makeScheduledPromptRepo() = InMemoryScheduledPromptRepository()
     private fun makeRunRepo() = InMemoryScheduledPromptRunRepository()
 
@@ -80,9 +113,9 @@ class SchedulerScannerUnitSpec : StringSpec() {
             scheduledPromptRepository = scheduledPromptRepo,
             runRepository = runRepo,
             userRunRepository = userRunRepo,
-            caseService = mockk(relaxed = true),
-            permissionService = mockk(relaxed = true),
-            userService = mockk(relaxed = true),
+            caseService = caseService(),
+            permissionService = permissionService(),
+            userService = userService(),
             properties = scannerProperties,
             clock = clock,
         )
@@ -91,8 +124,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
             runRepository = runRepo,
             userRunRepository = userRunRepo,
             agentConfigService = agentConfigService,
-            userService = mockk(relaxed = true),
-            permissionService = mockk(relaxed = true),
+            userService = userService(),
+            permissionService = permissionService(),
             properties = scannerProperties,
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -118,9 +151,9 @@ class SchedulerScannerUnitSpec : StringSpec() {
             scheduledPromptRepository = scheduledPromptRepo,
             runRepository = runRepo,
             userRunRepository = userRunRepo,
-            caseService = mockk(relaxed = true),
-            permissionService = mockk(relaxed = true),
-            userService = mockk(relaxed = true),
+            caseService = caseService(),
+            permissionService = permissionService(),
+            userService = userService(),
             properties = properties,
             clock = clock,
         )
@@ -129,8 +162,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
             runRepository = runRepo,
             userRunRepository = userRunRepo,
             agentConfigService = agentConfigService,
-            userService = mockk(relaxed = true),
-            permissionService = mockk(relaxed = true),
+            userService = userService(),
+            permissionService = permissionService(),
             properties = properties,
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -139,8 +172,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
         )
         return scanner to userRunRepo
     }
-
-    private val defaultNamespaceId: UUID = UUID.randomUUID()
 
     private fun InMemoryScheduledPromptRepository.insertScheduledPrompt(
         nextRunAt: Instant,
@@ -153,7 +184,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
         namespaceId: UUID? = defaultNamespaceId,
     ): ScheduledPrompt {
         val scheduledPrompt = ScheduledPrompt(
-            metadata = EntityMetadata(id = UUID.randomUUID()),
+            metadata = EntityMetadata(id = UUID.randomUUID(), createdBy = creatorId.toString()),
             namespaceId = namespaceId,
             agentConfigId = agentId,
             promptTemplateId = promptId,
@@ -831,9 +862,9 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptRepository = scheduledPromptRepo,
                 runRepository = throwingRunRepo,
                 userRunRepository = userRunRepo,
-                caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
+                caseService = caseService(),
+                permissionService = permissionService(),
+                userService = userService(),
                 properties = properties,
                 clock = clock,
             )
@@ -842,8 +873,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 runRepository = throwingRunRepo,
                 userRunRepository = userRunRepo,
                 agentConfigService = defaultAgentConfigService(),
-                userService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
+                userService = userService(),
+                permissionService = permissionService(),
                 properties = properties,
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -914,9 +945,9 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptRepository = scheduledPromptRepo,
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
-                caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
+                caseService = caseService(),
+                permissionService = permissionService(),
+                userService = userService(),
                 properties = badProperties,
                 clock = clock,
             )
@@ -925,8 +956,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
                 agentConfigService = defaultAgentConfigService(),
-                userService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
+                userService = userService(),
+                permissionService = permissionService(),
                 properties = badProperties,
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -983,9 +1014,9 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptRepository = scheduledPromptRepo,
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
-                caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
+                caseService = caseService(),
+                permissionService = permissionService(),
+                userService = userService(),
                 properties = goodProperties,
                 clock = clock,
             )
@@ -994,8 +1025,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
                 agentConfigService = defaultAgentConfigService(),
-                userService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
+                userService = userService(),
+                permissionService = permissionService(),
                 properties = goodProperties,
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
