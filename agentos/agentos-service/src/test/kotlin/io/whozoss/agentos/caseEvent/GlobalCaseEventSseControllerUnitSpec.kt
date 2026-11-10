@@ -9,10 +9,10 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -53,8 +53,9 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
 
     fun caseWithId(id: UUID) = Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
 
-    /** These tests are about the case collectors; the case-list side has its own test below. */
-    fun namespaceServiceWithNoNamespace() = mockk<NamespaceService> { every { findIdsVisibleTo(any(), any()) } returns emptyList() }
+    /** These tests are about the case collectors; the case-list side has its own tests below. */
+    fun permissionServiceGrantingNothing() =
+        mockk<PermissionService> { every { hasPermission(any(), any(), any(), any()) } returns false }
 
     fun runtimeWithId(
         id: UUID,
@@ -190,7 +191,7 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     userService = userService,
                     caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
                     activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
-                    namespaceService = namespaceServiceWithNoNamespace(),
+                    permissionService = permissionServiceGrantingNothing(),
                     caseListUpdateBroadcaster = NamespaceCaseListUpdateBroadcaster(),
                 )
             val emitter = controller.streamMyEvents()
@@ -234,7 +235,7 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     userService = userService,
                     caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
                     activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
-                    namespaceService = namespaceServiceWithNoNamespace(),
+                    permissionService = permissionServiceGrantingNothing(),
                     caseListUpdateBroadcaster = NamespaceCaseListUpdateBroadcaster(),
                 )
             val emitter = controller.streamMyEvents()
@@ -257,7 +258,7 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
         // Case-list updates — carried here instead of one stream per namespace (#1616)
         // -------------------------------------------------------------------------
 
-        "a readable namespace gets a case-list collector, resolved once at connect" {
+        "the case-list subscription is taken before the handler returns, not on a later dispatch" {
             val userId = UUID.randomUUID()
             val user = User(metadata = EntityMetadata(id = userId), externalId = "u1")
             val userService = mockk<UserService> { every { getCurrentUser() } returns user }
@@ -266,12 +267,14 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     every { findConcerningUser(userId) } returns emptyList()
                     every { getAllActiveCases() } returns emptyList()
                 }
-            val namespaceService =
-                mockk<NamespaceService> {
-                    every { findIdsVisibleTo(userId.toString(), Action.READ) } returns listOf(namespaceId)
+            val subscribedOn = AtomicReference<Thread?>(null)
+            val broadcaster =
+                mockk<NamespaceCaseListUpdateBroadcaster> {
+                    every { allEvents() } answers {
+                        subscribedOn.set(Thread.currentThread())
+                        MutableSharedFlow()
+                    }
                 }
-            val broadcaster = NamespaceCaseListUpdateBroadcaster()
-            val subscribers: StateFlow<Int> = broadcaster.events(namespaceId).subscriptionCount
 
             val controller =
                 GlobalCaseEventSseController(
@@ -279,35 +282,38 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     userService = userService,
                     caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
                     activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
-                    namespaceService = namespaceService,
+                    permissionService = permissionServiceGrantingNothing(),
                     caseListUpdateBroadcaster = broadcaster,
                 )
             val emitter = controller.streamMyEvents()
 
-            subscribers.first { it >= 1 }
-
-            // Resolved once: the permission store answers an empty list when it fails, and a loop
-            // would read that as "access revoked" and cancel the collector mid-connection.
-            verify(timeout = 2000, exactly = 1) { namespaceService.findIdsVisibleTo(userId.toString(), Action.READ) }
+            // Read at once, without waiting. The flow replays nothing and the client reloads its list as
+            // soon as the stream opens: a subscription taken on a later dispatch, on another thread,
+            // leaves a window for an update to fall into. A timing-based test cannot see that window,
+            // the dispatch usually winning the race; the thread the subscription was taken on can.
+            subscribedOn.get() shouldBe Thread.currentThread()
 
             emitter.complete()
         }
 
-        "a super-admin gets a collector for every namespace, having no membership edge to be found by" {
+        "a case-list update of a namespace created after connecting is followed" {
             val userId = UUID.randomUUID()
-            val user = User(metadata = EntityMetadata(id = userId), externalId = "u1", isAdmin = true)
+            val user = User(metadata = EntityMetadata(id = userId), externalId = "u1")
             val userService = mockk<UserService> { every { getCurrentUser() } returns user }
             val caseService =
                 mockk<CaseService> {
                     every { findConcerningUser(userId) } returns emptyList()
                     every { getAllActiveCases() } returns emptyList()
                 }
-            val namespaceService =
-                mockk<NamespaceService> {
-                    every { findAll() } returns listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns"))
+            // Created after the stream opened: nothing about it could have been resolved at connect.
+            val laterNamespaceId = UUID.randomUUID()
+            val permissionService =
+                mockk<PermissionService> {
+                    every {
+                        hasPermission(userId.toString(), EntityType.NAMESPACE, laterNamespaceId.toString(), Action.READ)
+                    } returns true
                 }
             val broadcaster = NamespaceCaseListUpdateBroadcaster()
-            val subscribers: StateFlow<Int> = broadcaster.events(namespaceId).subscriptionCount
 
             val controller =
                 GlobalCaseEventSseController(
@@ -315,14 +321,56 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     userService = userService,
                     caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
                     activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
-                    namespaceService = namespaceService,
+                    permissionService = permissionService,
                     caseListUpdateBroadcaster = broadcaster,
                 )
             val emitter = controller.streamMyEvents()
 
-            subscribers.first { it >= 1 }
+            broadcaster.publishCaseCreated(laterNamespaceId)
 
-            verify(exactly = 0) { namespaceService.findIdsVisibleTo(any(), any()) }
+            verify(timeout = 2000, exactly = 1) {
+                permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, laterNamespaceId.toString(), Action.READ)
+            }
+
+            emitter.complete()
+        }
+
+        "a failing permission check skips that update and keeps the stream following the others" {
+            val userId = UUID.randomUUID()
+            val user = User(metadata = EntityMetadata(id = userId), externalId = "u1")
+            val userService = mockk<UserService> { every { getCurrentUser() } returns user }
+            val caseService =
+                mockk<CaseService> {
+                    every { findConcerningUser(userId) } returns emptyList()
+                    every { getAllActiveCases() } returns emptyList()
+                }
+            val failingNamespaceId = UUID.randomUUID()
+            val permissionService =
+                mockk<PermissionService> {
+                    every {
+                        hasPermission(userId.toString(), EntityType.NAMESPACE, failingNamespaceId.toString(), Action.READ)
+                    } throws IllegalStateException("store down")
+                    every { hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns true
+                }
+            val broadcaster = NamespaceCaseListUpdateBroadcaster()
+
+            val controller =
+                GlobalCaseEventSseController(
+                    caseService = caseService,
+                    userService = userService,
+                    caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
+                    activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
+                    permissionService = permissionService,
+                    caseListUpdateBroadcaster = broadcaster,
+                )
+            val emitter = controller.streamMyEvents()
+
+            broadcaster.publishCaseCreated(failingNamespaceId)
+            broadcaster.publishCaseCreated(namespaceId)
+
+            verify(timeout = 2000, exactly = 1) {
+                permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+            }
 
             emitter.complete()
         }

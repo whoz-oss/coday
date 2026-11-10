@@ -9,14 +9,16 @@ import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
-import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateSseController
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.AgentOsAuthentication
-import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -54,7 +56,7 @@ class GlobalCaseEventSseController(
     private val userService: UserService,
     private val caseConfig: CaseConfigProperties,
     private val activeCompanionSessionRegistry: ActiveCompanionSessionRegistry,
-    private val namespaceService: NamespaceService,
+    private val permissionService: PermissionService,
     private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) {
     private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
@@ -108,7 +110,7 @@ class GlobalCaseEventSseController(
         // already watching events live here, a duplicate OS push would be noise.
         activeCompanionSessionRegistry.markConnected(userId)
 
-        startCaseListCollectors(scope, user, authentication, emitter)
+        startCaseListUpdateJob(scope, userId, authentication, emitter)
         startReconciliationJob(scope, userId, authentication, emitter, childJobs)
         startHeartbeatJob(scope, emitter, userId)
 
@@ -187,51 +189,31 @@ class GlobalCaseEventSseController(
     }
 
     /**
-     * Starts one collector per namespace the user can read, so that this stream also carries the
-     * "reload your case list" signal of [NamespaceCaseListUpdateSseController].
+     * Carries the "reload your case list" signal of [NamespaceCaseListUpdateSseController] for every
+     * namespace the user can read, so that no tab needs a stream per namespace.
      *
      * A browser allows 6 HTTP/1.1 connections per origin, shared by every tab, and a per-namespace
      * stream spent one of them in each open tab (#1616). Carrying the signal here costs nothing on
      * the wire: this stream is already open, and one tab holds it for the whole browser.
      *
-     * Resolved once, at connect, like the per-namespace endpoint resolved its own permission:
-     * [io.whozoss.agentos.permissions.PermissionService.listEntitiesForUser] answers an empty list
-     * when the store fails, so re-resolving on a loop would read one slow Neo4j round-trip as
-     * "access revoked" and cancel every collector, dropping the invalidations published meanwhile.
-     * A namespace shared with the user later is picked up on the next connection.
+     * Subscribed before this handler returns (UNDISPATCHED), hence before the client's `onopen` and
+     * the reload it triggers: the broadcaster replays nothing, so an update published between that
+     * reload and a later subscription would be lost for good.
      *
-     * Super-admins hold no MEMBER edge: the endpoint this replaces went through hasPermission,
-     * which bypasses for them, so the same branch as [NamespaceController] is needed here.
+     * The permission is checked per update rather than resolved once at connect: a namespace created
+     * or shared after the stream opened is followed at once, and a failing permission store costs
+     * that one update, not every update for the life of the connection.
      */
-    private fun startCaseListCollectors(
+    private fun startCaseListUpdateJob(
         scope: CoroutineScope,
-        user: User,
+        userId: UUID,
         authentication: Authentication,
         emitter: SseEmitter,
-    ) {
-        scope.launch {
-            val namespaceIds =
-                withAuthentication(authentication) {
-                    if (user.isAdmin) {
-                        namespaceService.findAll().map { it.id }
-                    } else {
-                        namespaceService.findIdsVisibleTo(user.id.toString(), Action.READ)
-                    }
-                }
-            namespaceIds.distinct().forEach { namespaceId ->
-                startCaseListCollectorJob(scope, namespaceId, emitter)
-            }
-        }
-    }
-
-    private fun startCaseListCollectorJob(
-        scope: CoroutineScope,
-        namespaceId: UUID,
-        emitter: SseEmitter,
     ): Job =
-        scope.launch {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                caseListUpdateBroadcaster.events(namespaceId).collect {
+                caseListUpdateBroadcaster.allEvents().collect { namespaceId ->
+                    if (!canReadNamespace(userId, namespaceId, authentication)) return@collect
                     // The namespace travels in the payload: on this stream, unlike the per-namespace
                     // one, the URL does not say which list went stale.
                     emitter.send(
@@ -247,10 +229,34 @@ class GlobalCaseEventSseController(
                 // Completing the emitter is what lets Spring fire onCompletion, and with it
                 // markDisconnected: cancelling the scope alone kills the heartbeat too, so nothing
                 // would ever write to the socket again and the user would stay marked connected.
-                logger.debug { "Failed to send the case-list update of namespace $namespaceId: ${e.message}" }
+                logger.debug { "Failed to send a case-list update for user $userId: ${e.message}" }
                 emitter.completeWithError(e)
                 scope.cancel()
             }
+        }
+
+    /**
+     * Same check as the per-namespace endpoint's `hasPermission(#namespaceId, 'Namespace', 'READ')`:
+     * cached, bypassed for super-admins (who hold no MEMBER edge), and failing closed. A failure is
+     * caught here all the same, so that it skips this update instead of ending the stream.
+     */
+    private fun canReadNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+        authentication: Authentication,
+    ): Boolean =
+        try {
+            withAuthentication(authentication) {
+                permissionService.hasPermission(
+                    userId = userId.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = namespaceId.toString(),
+                    action = Action.READ,
+                )
+            }
+        } catch (e: Exception) {
+            logger.warn(e) { "Could not check READ on namespace $namespaceId for user $userId; update skipped" }
+            false
         }
 
     private fun startCaseCollectorJob(
@@ -306,15 +312,19 @@ class GlobalCaseEventSseController(
                             .comment("keep-alive"),
                     )
                 } catch (e: Exception) {
+                    // Same as the collectors: without completing the emitter, onCompletion and its
+                    // markDisconnected never run, and an idle user, whose only writer is this
+                    // heartbeat, would stay marked connected and get no OS push.
                     logger.debug { "Heartbeat write failed for user $userId — client likely disconnected" }
+                    emitter.completeWithError(e)
                     scope.cancel()
                 }
             }
         }
 
     companion object : KLogging() {
-        /** Same event name as the per-namespace stream, so a client reads one protocol, not two. */
-        const val CASE_LIST_UPDATED_CHANNEL = "namespace-case-list-updated"
+        /** The per-namespace stream's event name, so a client reads one protocol, not two. */
+        const val CASE_LIST_UPDATED_CHANNEL = NamespaceCaseListUpdateSseController.NAMESPACE_CASE_LIST_UPDATED_EVENT
     }
 }
 

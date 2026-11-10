@@ -242,6 +242,10 @@ export class CaseShellComponent {
       // Reload on this namespace's invalidations, and on every (re)connection of the stream:
       // nothing is replayed on it, so an invalidation published while it was down would be lost
       // and the list would stay stale until a namespace switch or a page reload.
+      //
+      // The first connection included, though it lands right after the load above: that load may
+      // be answered before the server subscribed this stream, and only a reload issued after the
+      // stream opened leaves no window for an update to fall into.
       const subscription = merge(
         this.globalStream.caseListInvalidations$.pipe(filter((invalidated) => invalidated === nsId)),
         this.globalStream.connected$
