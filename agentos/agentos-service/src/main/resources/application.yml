@@ -150,11 +150,12 @@ agentos:
     # integrations map. An agent that lists the key decides for itself; an empty list opts out.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
       case-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT:true}
-    # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
-    # declared, also requires the invoking user to hold Namespace READ; a run without an
-    # identified user is denied. Write access follows the user's Namespace WRITE right.
+    # Same platform default for NAMESPACE_FILE_EXCHANGE, on by default. Every namespace grant,
+    # default or declared, also requires the invoking user to hold Namespace READ; a run without an
+    # identified user is denied. Write access follows the user's Namespace WRITE right. An agent
+    # that lists the key decides for itself; an empty list opts out.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT
-      namespace-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT:false}
+      namespace-enabled-by-default: ${AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT:true}
     # Comma-separated extra patterns blocked for the agent file tools, on top of the plugin's
     # built-in sensitive-file list (.env, *.key, *.pem). Additive only, built-ins always apply.
     # A pattern matches the file or directory NAME only, never the path: *suffix, prefix*,
@@ -334,6 +335,9 @@ agentos:
       # agent, on the model alias BIG, with the built-in AGENTOS_CONFIG (read and propose configuration
       # changes) and CASE_FILE_EXCHANGE (files of the conversation) and NAMESPACE_FILE_EXCHANGE (the
       # shared folder of the namespace, e.g. the files folder of the first-run wizard) integrations.
+      # The two exchange integrations are declared on the agent even though they are on by default
+      # (agentos.exchange.tools.*-enabled-by-default): the declaration keeps the access when an
+      # operator turns those defaults off.
       # The personal namespace deploys it and makes it its default agent. It is namespace-scoped, not a
       # platform agent, so that it can never clash with an agent of the same name in another namespace.
       #

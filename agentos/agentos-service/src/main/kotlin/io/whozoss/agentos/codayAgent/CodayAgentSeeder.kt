@@ -27,13 +27,16 @@ import java.util.UUID
  * built-in `AGENTOS_CONFIG` integration (never applying them itself), and works on files through
  * `CASE_FILE_EXCHANGE` (the files of the conversation) and `NAMESPACE_FILE_EXCHANGE` (the shared folder
  * of the namespace, which for a personal namespace is the files folder the user picked in the first-run
- * wizard). The namespace exchange is granted on the agent itself, not through
- * `agentos.exchange.tools.namespace-enabled-by-default`, which would reach every agent. It still
- * requires the invoking user to hold Namespace READ, and write follows Namespace WRITE. Its instructions
+ * wizard). Both are declared on the agent itself even though
+ * `agentos.exchange.tools.*-enabled-by-default` are on by default: the declaration guarantees the
+ * access when an operator turns those defaults off. The namespace exchange still requires the
+ * invoking user to hold Namespace READ, and write follows Namespace WRITE. Its instructions
  * ship as the classpath resource [INSTRUCTIONS_RESOURCE].
  *
  * An existing `Coday` keeps the integrations it was created with (see "existence, not content"
- * below): an administrator has to add `NAMESPACE_FILE_EXCHANGE` to it through the UI or the API.
+ * below): it is never rewritten to add `NAMESPACE_FILE_EXCHANGE`. While the platform defaults are on, an
+ * older `Coday` that does not mention the key still gets the namespace exchange through the default; if an
+ * operator turns the default off, an administrator has to add the key to it through the UI or the API.
  *
  * Same semantics as [io.whozoss.agentos.queryUser.QueryUserConfigSeeder]:
  * - **existence, not content**: it only acts when the namespace owns no agent named [AGENT_NAME] (case

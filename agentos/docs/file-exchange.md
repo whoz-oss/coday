@@ -46,8 +46,8 @@ agent read cap can never drift from the one the REST path enforces.
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.exchange.tools.case-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT` | `false` | Grants `CASE_FILE_EXCHANGE` to every agent that does not mention it. |
-| `agentos.exchange.tools.namespace-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT` | `false` | Same for `NAMESPACE_FILE_EXCHANGE`; the invoking user must also hold Namespace `READ`, and write follows Namespace `WRITE`. |
+| `agentos.exchange.tools.case-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT` | `true` | Grants `CASE_FILE_EXCHANGE` to every agent that does not mention it. |
+| `agentos.exchange.tools.namespace-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT` | `true` | Same for `NAMESPACE_FILE_EXCHANGE`; the invoking user must also hold Namespace `READ`, and write follows Namespace `WRITE`. |
 | `agentos.exchange.tools.extra-deny-patterns` | `AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS` | empty | Extra patterns blocked on top of the built-in sensitive-file list (additive only). Matched against file names only, see below. |
 | `agentos.exchange.tools.image-max-dimension` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_DIMENSION` | `1024` | Longest edge (px) of images `readAsImage` / `readDocument` send to the LLM. |
 | `agentos.exchange.tools.image-jpeg-quality` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_JPEG_QUALITY` | `0.80` | JPEG re-encoding quality, clamped to `[0, 1]`. |
@@ -110,7 +110,7 @@ boolean flags), with a platform-level fallback for an agent that says nothing:
 
 | `integrations` entry | Result |
 |---|---|
-| key absent | the platform default (`agentos.exchange.tools.*-enabled-by-default`, off by default) decides; when on, every tool is granted |
+| key absent | the platform default (`agentos.exchange.tools.*-enabled-by-default`, on by default) decides; when on, every tool is granted |
 | `CASE_FILE_EXCHANGE:` (null) | granted, every tool |
 | `CASE_FILE_EXCHANGE: [readFile, listFiles]` | granted, restricted to those names (bare or `case-exchange__readFile`) |
 | `CASE_FILE_EXCHANGE: []` | **opt-out** — nothing granted, and no scope directory is created |
@@ -131,9 +131,11 @@ namespace exchange tools.
 
 The default agent `Coday`, created in each personal namespace (a namespace-scoped agent), declares both
 built-in types in its own `integrations` map, so it reaches the shared folder of a personal namespace (the
-files folder picked in the first-run wizard, stored as `sharedExchangePath`) without
-`namespace-enabled-by-default` being switched on for every agent. An existing `Coday` is never rewritten:
-add `NAMESPACE_FILE_EXCHANGE` to it through the UI or the API.
+files folder picked in the first-run wizard, stored as `sharedExchangePath`). Both are on by default for
+every agent anyway; the explicit declaration is what keeps `Coday`'s access when an operator turns
+`namespace-enabled-by-default` (or the case one) off. An existing `Coday` is never rewritten; one that
+predates the declaration is covered by the platform default while it is on, and needs
+`NAMESPACE_FILE_EXCHANGE` added through the UI or the API otherwise.
 
 The three states are what the agent form in `agentos-ui` renders, per built-in type: *Platform
 default*, *Enabled*, *Disabled*. "Platform default" is a state the user can see and keep, not a
@@ -173,7 +175,8 @@ namespace get rewritten by a run that only meant to produce its own.
 | `buildBlock` | a `## File scopes` block in the agent's instructions | the advanced intention prompt explicitly orders the model to reason from `<instructions>`, and prose can afford to say what a case and a namespace are |
 | `CASE_TOOL_GUIDANCE` / `NAMESPACE_TOOL_GUIDANCE` | appended to the description of `editFiles`, `moveFile` and `remove` | restates the decision where the choice is actually made |
 
-Both carriers are written **only when both scopes are granted**: one file surface cannot be confused
+Both carriers are written **only when both scopes are granted**, which with both platform defaults on is
+now the usual case for an agent run by a user holding Namespace `READ`: one file surface cannot be confused
 with another, so a single-scope agent pays neither the tokens nor the risk of being told about a
 scope it does not have, and its write tools keep the file-plugin's own descriptions byte for byte
 — and with them the provider's cached prompt prefix, which a changed description would invalidate
