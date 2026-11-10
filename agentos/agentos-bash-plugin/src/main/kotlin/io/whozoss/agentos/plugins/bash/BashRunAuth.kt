@@ -55,12 +55,12 @@ object BashAuthVariables {
      */
     fun problemWith(name: String?): String? =
         when {
-            name.isNullOrBlank() -> "no Auth Setting name was provided by the service"
+            name.isNullOrBlank() -> "No Auth Setting name was provided by the service, so the command cannot get its credential."
             !VALID_NAME.matches(name) ->
-                "the Auth Setting name '$name' is not a valid environment variable name " +
-                    "(letters, digits and underscores, not starting with a digit), rename the Auth Setting"
+                "Auth Setting '$name' cannot be used: its name is not a valid environment variable name " +
+                    "(letters, digits and underscores, not starting with a digit). Rename the Auth Setting."
             name in RESERVED_NAMES || RESERVED_PREFIXES.any { name.startsWith(it) } ->
-                "the Auth Setting name '$name' is reserved, rename the Auth Setting"
+                "Auth Setting '$name' cannot be used: its name is reserved. Rename the Auth Setting."
             else -> null
         }
 }
@@ -104,11 +104,18 @@ sealed interface BashAuthEnvironment {
         /** Shorter values would mangle ordinary output ("abc" in "abcdef"). */
         const val MIN_REDACTED_LENGTH = 4
 
-        const val NO_CREDENTIAL = "no credential available for the bound Auth Setting"
+        /** The provider returned no credential for the Auth Setting [name]. */
+        fun noCredential(name: String): String =
+            "Auth Setting '$name' gave no credential: its secret is empty, " +
+                "or it is an OAuth setting whose authorization was not completed."
+
+        /** The credential of type [type] has no usable secret for the Auth Setting [name]. */
+        fun noUsableSecret(name: String, type: CredentialType): String =
+            "Auth Setting '$name' ($type) carries no usable secret."
 
         /** A provider is bound under [name] (already validated); [credential] is what it returned. */
         fun from(name: String, credential: Credential?): BashAuthEnvironment {
-            if (credential == null) return Missing(NO_CREDENTIAL)
+            if (credential == null) return Missing(noCredential(name))
             val type = credential.credentialType
             val values: Map<String, String> =
                 when (type) {
@@ -116,7 +123,7 @@ sealed interface BashAuthEnvironment {
                     CredentialType.BEARER_TOKEN -> token(name, credential, "token")
                     CredentialType.API_KEY -> token(name, credential, "key")
                     CredentialType.BASIC_AUTH -> basic(name, credential)
-                } ?: return Missing("credential of type $type carries no usable material")
+                } ?: return Missing(noUsableSecret(name, type))
             return Variables(values, secretName = name)
         }
 
@@ -193,18 +200,23 @@ class BashRunAuth(
         } catch (e: CancellationException) {
             // The run's own cancellation propagates; any other one is a failed resolution.
             currentCoroutineContext().ensureActive()
-            failed(e)
+            failed(name, e)
         } catch (e: Exception) {
-            failed(e)
+            failed(name, e)
         }
 
-    private fun failed(e: Exception): BashAuthEnvironment {
+    /** The exception is logged, never put in the reason: it can carry ids or other data. */
+    private fun failed(name: String, e: Exception): BashAuthEnvironment {
         logger.error(e) { "BASH integration '$configName': credential resolution failed: ${e.message}" }
-        return BashAuthEnvironment.Missing(RESOLUTION_FAILED)
+        return BashAuthEnvironment.Missing(resolutionFailed(name))
     }
 
     companion object : KLogging() {
-        const val RESOLUTION_FAILED = "unexpected error while resolving the credential, see the service logs"
+        /** The provider threw while resolving the Auth Setting [name]. */
+        fun resolutionFailed(name: String): String =
+            "Auth Setting '$name' could not be resolved for this run. Check that a setting with exactly " +
+                "this name (case-sensitive) exists for this namespace, for you, or at platform level. " +
+                "The service log has the detail."
 
         /** No Auth Setting bound: the commands run as they always did. */
         val NONE = BashRunAuth(configName = null, authSettingName = null, provider = null)

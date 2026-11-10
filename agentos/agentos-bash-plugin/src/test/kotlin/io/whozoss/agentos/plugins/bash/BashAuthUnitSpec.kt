@@ -166,9 +166,9 @@ class BashAuthUnitSpec : StringSpec({
 
             result.success shouldBe false
             result.errorType shouldBe "AUTH_MISSING"
-            result.output shouldContain "the command was not run"
-            result.output shouldContain "Auth Setting name '$name' is not a valid environment variable name"
-            result.output shouldContain "rename the Auth Setting"
+            result.output shouldBe "Error: ${BashAuthVariables.problemWith(name)}"
+            result.output shouldContain "Auth Setting '$name' cannot be used: its name is not a valid environment variable name"
+            result.output shouldContain "Rename the Auth Setting"
             calls.get() shouldBe 0
             marker.exists() shouldBe false
         }
@@ -188,8 +188,8 @@ class BashAuthUnitSpec : StringSpec({
 
             result.success shouldBe false
             result.errorType shouldBe "AUTH_MISSING"
-            result.output shouldContain "Auth Setting name '$name' is reserved"
-            result.output shouldContain "rename the Auth Setting"
+            result.output shouldContain "Auth Setting '$name' cannot be used: its name is reserved"
+            result.output shouldContain "Rename the Auth Setting"
             result.output shouldNotContain "bearer-secret"
             calls.get() shouldBe 0
             marker.exists() shouldBe false
@@ -218,7 +218,7 @@ class BashAuthUnitSpec : StringSpec({
             val result = tool.execute(BashTool.Input(), ctx)
 
             result.errorType shouldBe "AUTH_MISSING"
-            result.output shouldContain "no Auth Setting name was provided by the service"
+            result.output shouldContain "No Auth Setting name was provided by the service"
             calls.get() shouldBe 0
             marker.exists() shouldBe false
         }
@@ -234,12 +234,13 @@ class BashAuthUnitSpec : StringSpec({
 
         result.success shouldBe false
         result.errorType shouldBe "AUTH_MISSING"
-        result.output shouldContain "Error"
-        result.output shouldContain "no credential available"
+        result.output shouldBe
+            "Error: Auth Setting 'GITHUB_TOKEN' gave no credential: its secret is empty, " +
+            "or it is an OAuth setting whose authorization was not completed."
         marker.exists() shouldBe false
     }
 
-    "a credential with blank material should answer AUTH_MISSING naming the type" {
+    "a credential with blank material should answer AUTH_MISSING naming the setting and the type" {
         val marker = markerFile()
         val credential = credential(CredentialType.BEARER_TOKEN, "token" to "   ")
         val tool = toolRunning("touch ${marker.absolutePath}", { credential })
@@ -247,7 +248,7 @@ class BashAuthUnitSpec : StringSpec({
         val result = tool.execute(BashTool.Input(), ctx)
 
         result.errorType shouldBe "AUTH_MISSING"
-        result.output shouldContain "BEARER_TOKEN"
+        result.output shouldBe "Error: Auth Setting 'GITHUB_TOKEN' (BEARER_TOKEN) carries no usable secret."
         marker.exists() shouldBe false
     }
 
@@ -258,14 +259,18 @@ class BashAuthUnitSpec : StringSpec({
         tool.execute(BashTool.Input(), ctx).errorType shouldBe "AUTH_MISSING"
     }
 
-    "a provider that throws should answer AUTH_MISSING without leaking the exception" {
+    "a provider that throws should answer AUTH_MISSING naming the setting, without leaking the exception" {
         val marker = markerFile()
-        val tool = toolRunning("touch ${marker.absolutePath}", { error("boom-internal-detail") })
+        val tool = toolRunning("touch ${marker.absolutePath}", { throw IllegalStateException("boom-secret-detail") })
 
         val result = shouldNotThrowAny { tool.execute(BashTool.Input(), ctx) }
 
         result.errorType shouldBe "AUTH_MISSING"
-        result.output shouldNotContain "boom-internal-detail"
+        result.output shouldContain "Error: Auth Setting 'GITHUB_TOKEN' could not be resolved for this run."
+        result.output shouldContain "exactly this name (case-sensitive)"
+        result.output shouldContain "The service log has the detail."
+        result.output shouldNotContain "boom-secret-detail"
+        result.errorMessage shouldNotContain "boom-secret-detail"
         marker.exists() shouldBe false
     }
 
@@ -361,9 +366,20 @@ class BashAuthUnitSpec : StringSpec({
         val result = tool.executeWithJson("{}", ctx)
 
         result.errorType shouldBe "AUTH_MISSING"
-        result.output shouldContain "no Auth Setting name was provided by the service"
+        result.output shouldContain "No Auth Setting name was provided by the service"
         calls.get() shouldBe 0
         marker.exists() shouldBe false
+    }
+
+    "the reason of a missing credential should never contain a secret value" {
+        val environment = BashAuthEnvironment.from(
+            "FORGE",
+            credential(CredentialType.BASIC_AUTH, "username" to "alice", "password" to "  "),
+        )
+
+        environment.shouldBeInstanceOf<BashAuthEnvironment.Missing>()
+        environment.reason shouldBe "Auth Setting 'FORGE' (BASIC_AUTH) carries no usable secret."
+        environment.reason shouldNotContain "alice"
     }
 
     "the tools of one integration should share a single resolution" {
