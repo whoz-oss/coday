@@ -26,7 +26,7 @@ import { VoiceCapabilityStateService } from '../../services/voice-capability-sta
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
@@ -412,13 +412,18 @@ describe('CaseChatComponent — submit with attachments', () => {
   describe('files added from the drawer', () => {
     const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
     const cs = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
+    /** What the drawer reports when a checkbox is clicked. */
+    const toggle = (ref: ComponentRef<CaseChatComponent>, file: ExchangeFileRef, referenced = true): void =>
+      ref.instance['onReferenceToggled']({ ref: file, referenced })
+    const add = (ref: ComponentRef<CaseChatComponent>, ...files: ExchangeFileRef[]): void =>
+      files.forEach((file) => toggle(ref, file))
 
-    it('keeps one chip reference per file, without duplicates, and leaves the draft alone', () => {
+    it('adds a chip reference when a file is checked, once, and leaves the draft alone', () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('compare')
 
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), cs('notes/todo.md')])
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+      add(ref, ns('docs/readme.md'), cs('notes/todo.md'))
+      add(ref, ns('docs/readme.md'))
 
       expect(ref.instance['referencedFiles']()).toEqual([ns('docs/readme.md'), cs('notes/todo.md')])
       expect(ref.instance['inputValue']()).toBe('compare')
@@ -426,19 +431,31 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     it('removes a reference when its chip is removed', () => {
       const ref = makeComponent()
-      ref.instance['onAddFilesToContext']([ns('a.md'), cs('a.md')])
+      add(ref, ns('a.md'), cs('a.md'))
 
       ref.instance['removeReference'](ns('a.md'))
 
       expect(ref.instance['referencedFiles']()).toEqual([cs('a.md')])
     })
 
-    it('does nothing on a terminal case', () => {
+    it('removes the chip reference when the file is unchecked in the drawer', () => {
       const ref = makeComponent()
+      add(ref, ns('a.md'), cs('a.md'))
+
+      toggle(ref, cs('a.md'), false)
+
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+    })
+
+    it('adds nothing on a terminal case, but still lets a file be removed', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'))
       ref.instance['_sseStatus'].set('KILLED')
 
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('b.md'))
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
 
+      toggle(ref, ns('a.md'), false)
       expect(ref.instance['referencedFiles']()).toEqual([])
     })
 
@@ -446,7 +463,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       const ref = makeComponent()
       expect(ref.instance['canSend']).toBe(false)
 
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('a.md'))
 
       expect(ref.instance['canSend']).toBe(true)
     })
@@ -454,7 +471,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     it('sends a references line after the text, uploads nothing, then clears them', async () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('compare')
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), cs('notes/todo.md')])
+      add(ref, ns('docs/readme.md'), cs('notes/todo.md'))
 
       await ref.instance['submit']()
 
@@ -469,7 +486,7 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     it('sends the references alone when there is no text', async () => {
       const ref = makeComponent()
-      ref.instance['onAddFilesToContext']([cs('a.md')])
+      add(ref, cs('a.md'))
 
       await ref.instance['submit']()
 
@@ -483,7 +500,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('compare')
       attachments(ref).addFiles([new File(['x'], 'report.pdf')])
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+      add(ref, ns('docs/readme.md'))
 
       await ref.instance['submit']()
 
@@ -497,7 +514,7 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     it('keeps the references when the send fails, and sends them again on the retry', async () => {
       const ref = makeComponent()
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('a.md'))
       http.post.mockImplementationOnce(() => throwError(() => new Error('network down')))
 
       await ref.instance['submit']()
@@ -517,7 +534,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
       const ref = makeComponent()
       try {
-        ref.instance['onAddFilesToContext']([ns('a.md')])
+        add(ref, ns('a.md'))
 
         ref.instance['reinitialise']()
 

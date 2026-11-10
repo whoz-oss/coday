@@ -23,14 +23,17 @@ import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-l
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
 import { ExchangeItemComponent, ExchangeFileRow } from '../exchange-item/exchange-item.component'
 
-/** Identity of a checked file across both scopes. */
-const selectionKey = (ref: ExchangeFileRef): string => `${ref.scope}:${ref.path}`
-
 /** Pause after the last keystroke before the filter is applied, so typing does not re-render the tree each time. */
 const FILTER_DEBOUNCE_MS = 150
 
 /** Load status of the recursive namespace manifest that feeds the filter. `idle` while no filter is set. */
 export type ExchangeManifestStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+/** A file the user checked (`referenced: true`) or unchecked (`false`) to put it in, or take it out of, the message. */
+export interface ExchangeReferenceToggle {
+  ref: ExchangeFileRef
+  referenced: boolean
+}
 
 /** One line of the filtered namespace tree; files carry the row view-model of `agentos-exchange-item`. */
 export interface FilteredTreeRow extends FileTreeRow {
@@ -108,12 +111,14 @@ export class ExchangeDrawerComponent {
   readonly imageUrl = input<string | null>(null)
   readonly contentStatus = input<'loading' | 'ready' | 'error'>('loading')
   readonly canViewSelected = input<boolean>(true)
-  /** Offers a checkbox on the file rows and the "Add to message" bar. */
+  /** Offers a checkbox on the file rows and the "in message" bar. */
   readonly selectable = input<boolean>(false)
+  /** Files the message being written references: a checkbox is checked exactly when its file is in this list. */
+  readonly referenced = input<ExchangeFileRef[]>([])
 
   readonly fileSelected = output<ExchangeFileRef>()
-  /** The user asked to add the checked files to the message being written. */
-  readonly addToContextRequested = output<ExchangeFileRef[]>()
+  /** The user checked or unchecked a file; the parent owns the list and answers through `referenced`. */
+  readonly referenceToggled = output<ExchangeReferenceToggle>()
   /** A directory was opened, or a breadcrumb level was clicked. Empty path means the scope root. */
   readonly folderOpened = output<{ scope: ExchangeScope; path: string }>()
   readonly loadMoreRequested = output<ExchangeScope>()
@@ -258,35 +263,24 @@ export class ExchangeDrawerComponent {
     this.onFolderOpen(this.NAMESPACE, path)
   }
 
-  // ── Selection (kept across folder navigation and filtering) ─────────────────────────────────────────────
-  private readonly selection = signal<Map<string, ExchangeFileRef>>(new Map())
-  protected readonly selectionCount = computed(() => this.selection().size)
-  protected readonly selectedCasePaths = computed(() => this.selectedPathsOf(this.CASE))
-  protected readonly selectedNamespacePaths = computed(() => this.selectedPathsOf(this.NAMESPACE))
+  // ── Referenced files (owned by the parent: the checkboxes only mirror them) ─────────────────────────────
+  protected readonly referencedCount = computed(() => this.referenced().length)
+  protected readonly referencedCasePaths = computed(() => this.referencedPathsOf(this.CASE))
+  protected readonly referencedNamespacePaths = computed(() => this.referencedPathsOf(this.NAMESPACE))
 
-  protected toggleSelection(ref: ExchangeFileRef): void {
-    const key = selectionKey(ref)
-    this.selection.update((current) => {
-      const next = new Map(current)
-      if (!next.delete(key)) next.set(key, { scope: ref.scope, path: ref.path })
-      return next
-    })
+  protected toggleReference(ref: ExchangeFileRef): void {
+    const referenced = !this.referencedPathsOf(ref.scope).has(ref.path)
+    this.referenceToggled.emit({ ref: { scope: ref.scope, path: ref.path }, referenced })
   }
 
-  protected clearSelection(): void {
-    this.selection.set(new Map())
+  /** Asks the parent to take every referenced file out of the message. */
+  protected clearReferences(): void {
+    for (const ref of this.referenced()) this.referenceToggled.emit({ ref, referenced: false })
   }
 
-  protected addSelectionToContext(): void {
-    const refs = [...this.selection().values()]
-    if (refs.length === 0) return
-    this.addToContextRequested.emit(refs)
-    this.clearSelection()
-  }
-
-  private selectedPathsOf(scope: ExchangeScope): ReadonlySet<string> {
+  private referencedPathsOf(scope: ExchangeScope): ReadonlySet<string> {
     const paths = new Set<string>()
-    for (const ref of this.selection().values()) if (ref.scope === scope) paths.add(ref.path)
+    for (const ref of this.referenced()) if (ref.scope === scope) paths.add(ref.path)
     return paths
   }
 

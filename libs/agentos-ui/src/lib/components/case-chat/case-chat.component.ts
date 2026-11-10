@@ -88,6 +88,7 @@ import { ComposerAutocompleteService } from '../composer-autocomplete/composer-a
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
+import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
 import { findLegitimateAnswer, runningAfter } from './case-chat.utils'
@@ -1272,11 +1273,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.closeFileSuggestions()
   }
 
-  /** Keeps the files checked in the drawer as chips (once each), and puts the caret back in the composer. */
-  protected onAddFilesToContext(refs: ExchangeFileRef[]): void {
-    if (this.isTerminal()) return
-    this.referencedFiles.update((current) => mergeFileReferences(current, refs))
-    afterNextRender(() => this.composerInput()?.nativeElement.focus(), { injector: this.injector })
+  /**
+   * A file was checked or unchecked in the drawer, whose checkboxes mirror [referencedFiles]: the chip follows.
+   * Nothing is added on a terminal case (the checkbox then stays unchecked), but a file can always be removed.
+   * The focus stays where it is, the drawer remains open for the next file.
+   */
+  protected onReferenceToggled(change: ExchangeReferenceToggle): void {
+    if (!change.referenced) {
+      this.removeReference(change.ref)
+    } else if (!this.isTerminal()) {
+      this.referencedFiles.update((current) => mergeFileReferences(current, [change.ref]))
+    }
   }
 
   protected removeReference(ref: ExchangeFileRef): void {

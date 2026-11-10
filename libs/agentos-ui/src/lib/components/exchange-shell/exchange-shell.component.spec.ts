@@ -72,16 +72,24 @@ describe('ExchangeShellComponent', () => {
       expect(state.clear).not.toHaveBeenCalled()
     })
 
-    it('relays the files added to the context', () => {
+    it('relays a checked file up, and the referenced files down', () => {
       const { fixture, el } = setup({ ns: 'ns-1' })
-      const added = jest.fn()
-      fixture.componentInstance.addToContextRequested.subscribe(added)
-      el.querySelector<HTMLInputElement>('input[aria-label="Select readme.md"]')!.click()
+      const ref = { scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/readme.md' }
+      const toggled = jest.fn()
+      fixture.componentInstance.referenceToggled.subscribe(toggled)
+      const box = () => el.querySelector<HTMLInputElement>('input[aria-label="Select readme.md"]')!
+
+      box().click()
+      expect(toggled).toHaveBeenCalledWith({ ref, referenced: true })
+      expect(box().checked).toBe(false)
+
+      fixture.componentRef.setInput('referenced', [ref])
       fixture.detectChanges()
-      Array.from(el.querySelectorAll<HTMLButtonElement>('.exchange-drawer__selection-bar button'))
-        .find((b) => b.textContent?.trim() === 'Add to message')!
-        .click()
-      expect(added).toHaveBeenCalledWith([{ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/readme.md' }])
+      expect(box().checked).toBe(true)
+      expect(el.querySelector('.exchange-drawer__selection-bar')?.textContent).toContain('1 in message')
+
+      box().click()
+      expect(toggled).toHaveBeenLastCalledWith({ ref, referenced: false })
     })
   })
 

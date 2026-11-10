@@ -129,8 +129,8 @@
                     [canWrite]="canWriteCase()"
                     [activeFile]="activeFile()"
                     [selectable]="selectable()"
-                    [selectedPaths]="selectedCasePaths()"
-                    (selectionToggled)="toggleSelection($event)"
+                    [selectedPaths]="referencedCasePaths()"
+                    (selectionToggled)="toggleReference($event)"
                     (fileSelected)="onFileSelected($event)"
                     (diffRequested)="openFileDiff($event)"
                     (downloadRequested)="downloadRequested.emit($event)"
@@ -257,8 +257,8 @@
                                   [active]="isNamespaceFileActive(row.path)"
                                   [canWrite]="canWriteNamespace()"
                                   [selectable]="selectable()"
-                                  [selected]="selectedNamespacePaths().has(row.path)"
-                                  (selectionToggled)="toggleSelection({ scope: NAMESPACE, path: row.path })"
+                                  [selected]="referencedNamespacePaths().has(row.path)"
+                                  (selectionToggled)="toggleReference({ scope: NAMESPACE, path: row.path })"
                                   (viewRequested)="onFileSelected({ scope: NAMESPACE, path: row.path })"
                                   (downloadRequested)="downloadRequested.emit({ scope: NAMESPACE, path: row.path })"
                                   (deleteRequested)="deleteRequested.emit({ scope: NAMESPACE, path: row.path })"
@@ -321,8 +321,8 @@
                       [canWrite]="canWriteNamespace()"
                       [activeFile]="activeFile()"
                       [selectable]="selectable()"
-                      [selectedPaths]="selectedNamespacePaths()"
-                      (selectionToggled)="toggleSelection($event)"
+                      [selectedPaths]="referencedNamespacePaths()"
+                      (selectionToggled)="toggleReference($event)"
                       (fileSelected)="onFileSelected($event)"
                       (downloadRequested)="downloadRequested.emit($event)"
                       (deleteRequested)="deleteRequested.emit($event)"
@@ -350,13 +350,10 @@
       }
     </div>
 
-    @if (selectable() && selectionCount() > 0) {
-      <div class="exchange-drawer__selection-bar" role="region" aria-label="Selected files">
-        <span class="exchange-drawer__selection-count" aria-live="polite">{{ selectionCount() }} selected</span>
-        <button type="button" class="exchange-drawer__selection-add" (click)="addSelectionToContext()">
-          Add to message
-        </button>
-        <button type="button" class="exchange-drawer__retry" (click)="clearSelection()">Clear</button>
+    @if (selectable() && referencedCount() > 0) {
+      <div class="exchange-drawer__selection-bar" role="region" aria-label="Files in the message">
+        <span class="exchange-drawer__selection-count" aria-live="polite">{{ referencedCount() }} in message</span>
+        <button type="button" class="exchange-drawer__retry" (click)="clearReferences()">Clear</button>
       </div>
     }
   }

@@ -10,7 +10,7 @@
       type="checkbox"
       [checked]="selected()"
       [attr.aria-label]="'Select ' + row().filename"
-      (change)="selectionToggled.emit()"
+      (change)="onToggle($event)"
     />
   }
   <button

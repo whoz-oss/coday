@@ -4,7 +4,8 @@
       <agentos-exchange-shell
         [active]="filesOpen()"
         [selectable]="true"
-        (addToContextRequested)="onAddFilesToContext($event)"
+        [referenced]="referencedFiles()"
+        (referenceToggled)="onReferenceToggled($event)"
         (closeRequested)="filesOpen.set(false)"
       />
     }

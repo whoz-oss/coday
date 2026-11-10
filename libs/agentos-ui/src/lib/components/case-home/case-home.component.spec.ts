@@ -29,14 +29,21 @@ import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { CaseHomeComponent } from './case-home.component'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
+import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 
 @Component({ selector: 'agentos-exchange-shell', standalone: true, template: '' })
 class StubExchangeShellComponent {
+  static last: StubExchangeShellComponent | undefined
   readonly active = input(false)
   readonly selectable = input(false)
+  readonly referenced = input<ExchangeFileRef[]>([])
   readonly closeRequested = output<void>()
-  readonly addToContextRequested = output<ExchangeFileRef[]>()
+  readonly referenceToggled = output<ExchangeReferenceToggle>()
+
+  constructor() {
+    StubExchangeShellComponent.last = this
+  }
 }
 
 /**
@@ -161,13 +168,18 @@ describe('CaseHomeComponent — first message with attachments', () => {
 
   describe('files added from the drawer', () => {
     const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
+    /** What the drawer reports when a checkbox is clicked. */
+    const toggle = (ref: ComponentRef<CaseHomeComponent>, file: ExchangeFileRef, referenced = true): void =>
+      ref.instance['onReferenceToggled']({ ref: file, referenced })
+    const add = (ref: ComponentRef<CaseHomeComponent>, ...files: ExchangeFileRef[]): void =>
+      files.forEach((file) => toggle(ref, file))
 
-    it('keeps one chip reference per file, without duplicates, and leaves the draft alone', () => {
+    it('adds a chip reference when a file is checked, once, and leaves the draft alone', () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('summarize')
 
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), ns('notes.md')])
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), ns('other.md')])
+      add(ref, ns('docs/readme.md'), ns('notes.md'))
+      add(ref, ns('docs/readme.md'), ns('other.md'))
 
       expect(ref.instance['referencedFiles']()).toEqual([ns('docs/readme.md'), ns('notes.md'), ns('other.md')])
       expect(ref.instance['inputValue']()).toBe('summarize')
@@ -176,7 +188,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
 
     it('removes a reference when its chip is removed', () => {
       const ref = makeComponent()
-      ref.instance['onAddFilesToContext']([ns('a.md'), ns('b.md')])
+      add(ref, ns('a.md'), ns('b.md'))
 
       ref.instance['removeReference'](ns('a.md'))
 
@@ -184,10 +196,35 @@ describe('CaseHomeComponent — first message with attachments', () => {
       ref.destroy()
     })
 
+    it('removes the chip reference when the file is unchecked in the drawer', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'), ns('b.md'))
+
+      toggle(ref, ns('a.md'), false)
+      toggle(ref, ns('missing.md'), false)
+
+      expect(ref.instance['referencedFiles']()).toEqual([ns('b.md')])
+      ref.destroy()
+    })
+
+    it('does not steal the focus from the drawer when a file is checked', () => {
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.changeDetectorRef.detectChanges()
+      const textarea = (ref.location.nativeElement as HTMLElement).querySelector('textarea')!
+      const focus = jest.spyOn(textarea, 'focus')
+
+      add(ref, ns('a.md'))
+      ref.changeDetectorRef.detectChanges()
+
+      expect(focus).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
     it('renders the references as chips, next to the staged uploads', () => {
       const ref = makeComponent()
       TestBed.inject(ApplicationRef).attachView(ref.hostView)
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+      add(ref, ns('docs/readme.md'))
       ref.changeDetectorRef.detectChanges()
       const host = ref.location.nativeElement as HTMLElement
 
@@ -207,7 +244,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
       const ref = makeComponent()
       expect(ref.instance['canSend']).toBe(false)
 
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('a.md'))
 
       expect(ref.instance['canSend']).toBe(true)
       ref.destroy()
@@ -217,7 +254,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
       const ref = makeComponent()
       expect(ref.instance['canRecord']).toBe(true)
 
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('a.md'))
 
       expect(ref.instance['canRecord']).toBe(false)
       ref.destroy()
@@ -226,7 +263,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     it('sends a references line with the first message of the created case, then clears them', async () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('summarize')
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), ns('notes.md')])
+      add(ref, ns('docs/readme.md'), ns('notes.md'))
 
       await ref.instance['submit']()
 
@@ -241,7 +278,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
 
     it('sends the references alone when there is no text', async () => {
       const ref = makeComponent()
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('a.md'))
 
       await ref.instance['submit']()
 
@@ -253,7 +290,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('compare')
       attachments(ref).addFiles([new File(['x'], 'report.pdf')])
-      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+      add(ref, ns('docs/readme.md'))
 
       await ref.instance['submit']()
 
@@ -267,7 +304,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     it('keeps the references when the send fails, and sends them on the retry with the same case', async () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const ref = makeComponent()
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('a.md'))
       api.addMessageCase.mockReturnValueOnce(throwError(() => new Error('Message not accepted')))
 
       await ref.instance['submit']()
@@ -286,7 +323,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     it('drops the references on a namespace switch, like the staged files', () => {
       const ref = makeComponent()
       ref.instance.ngOnInit()
-      ref.instance['onAddFilesToContext']([ns('a.md')])
+      add(ref, ns('a.md'))
 
       queryParams$.next({ ns: 'ns-2' })
 
@@ -311,6 +348,40 @@ describe('CaseHomeComponent — first message with attachments', () => {
 
       expect(ref.instance['filesOpen']()).toBe(true)
       expect(host.querySelector('agentos-exchange-shell')).not.toBeNull()
+      ref.destroy()
+    })
+
+    it('hands the referenced files to the drawer and follows its checkboxes', () => {
+      TestBed.overrideComponent(CaseHomeComponent, {
+        remove: { imports: [ExchangeShellComponent] },
+        add: { imports: [StubExchangeShellComponent] },
+      })
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.instance['filesOpen'].set(true)
+      ref.changeDetectorRef.detectChanges()
+      const drawer = StubExchangeShellComponent.last!
+      expect(drawer.selectable()).toBe(true)
+      expect(drawer.referenced()).toEqual([])
+
+      drawer.referenceToggled.emit({ ref: ns('docs/readme.md'), referenced: true })
+      ref.changeDetectorRef.detectChanges()
+      expect(drawer.referenced()).toEqual([ns('docs/readme.md')])
+      expect((ref.location.nativeElement as HTMLElement).querySelectorAll('.composer-attachments__chip')).toHaveLength(
+        1
+      )
+
+      // Removing the chip unchecks the file in the drawer: the same list feeds both.
+      ;(ref.location.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('.composer-attachments__chip button')!
+        .click()
+      ref.changeDetectorRef.detectChanges()
+      expect(drawer.referenced()).toEqual([])
+
+      add(ref, ns('a.md'))
+      drawer.referenceToggled.emit({ ref: ns('a.md'), referenced: false })
+      ref.changeDetectorRef.detectChanges()
+      expect(drawer.referenced()).toEqual([])
       ref.destroy()
     })
   })
