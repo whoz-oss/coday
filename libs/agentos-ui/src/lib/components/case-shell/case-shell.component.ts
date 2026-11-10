@@ -13,7 +13,7 @@ import {
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
-import { catchError, debounceTime, filter, map, of, skip } from 'rxjs'
+import { catchError, debounceTime, filter, map, merge, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import {
@@ -239,9 +239,13 @@ export class CaseShellComponent {
       if (!nsId) return
 
       this.caseState.loadCases(nsId)
-      const subscription = this.globalStream.caseListInvalidations$
-        .pipe(filter((invalidated) => invalidated === nsId))
-        .subscribe(() => this.caseState.refreshCases(nsId))
+      // Reload on this namespace's invalidations, and on every (re)connection of the stream:
+      // nothing is replayed on it, so an invalidation published while it was down would be lost
+      // and the list would stay stale until a namespace switch or a page reload.
+      const subscription = merge(
+        this.globalStream.caseListInvalidations$.pipe(filter((invalidated) => invalidated === nsId)),
+        this.globalStream.connected$
+      ).subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
     })
 

@@ -13,6 +13,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.AgentOsAuthentication
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -102,13 +103,13 @@ class GlobalCaseEventSseController(
         val emitter = SseEmitter(0L) // Infinite timeout
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         val childJobs = mutableMapOf<UUID, Job>() // mutated only from the reconciliation coroutine
-        val namespaceJobs = mutableMapOf<UUID, Job>() // same coroutine, same rule
 
         // While this connection is open, the push dispatcher skips this user — they're
         // already watching events live here, a duplicate OS push would be noise.
         activeCompanionSessionRegistry.markConnected(userId)
 
-        startReconciliationJob(scope, userId, authentication, emitter, childJobs, namespaceJobs)
+        startCaseListCollectors(scope, user, authentication, emitter)
+        startReconciliationJob(scope, userId, authentication, emitter, childJobs)
         startHeartbeatJob(scope, emitter, userId)
 
         emitter.onCompletion {
@@ -148,13 +149,10 @@ class GlobalCaseEventSseController(
         authentication: Authentication,
         emitter: SseEmitter,
         childJobs: MutableMap<UUID, Job>,
-        namespaceJobs: MutableMap<UUID, Job>,
     ) {
         scope.launch {
             while (isActive) {
                 try {
-                    reconcileCaseListNamespaces(scope, userId, authentication, emitter, namespaceJobs)
-
                     val concerningCases =
                         withAuthentication(authentication) {
                             caseService.findConcerningUser(userId)
@@ -189,29 +187,39 @@ class GlobalCaseEventSseController(
     }
 
     /**
-     * Keeps one collector per namespace the user can read, so that this stream also carries the
+     * Starts one collector per namespace the user can read, so that this stream also carries the
      * "reload your case list" signal of [NamespaceCaseListUpdateSseController].
      *
      * A browser allows 6 HTTP/1.1 connections per origin, shared by every tab, and a per-namespace
      * stream spent one of them in each open tab (#1616). Carrying the signal here costs nothing on
      * the wire: this stream is already open, and one tab holds it for the whole browser.
+     *
+     * Resolved once, at connect, like the per-namespace endpoint resolved its own permission:
+     * [io.whozoss.agentos.permissions.PermissionService.listEntitiesForUser] answers an empty list
+     * when the store fails, so re-resolving on a loop would read one slow Neo4j round-trip as
+     * "access revoked" and cancel every collector, dropping the invalidations published meanwhile.
+     * A namespace shared with the user later is picked up on the next connection.
+     *
+     * Super-admins hold no MEMBER edge: the endpoint this replaces went through hasPermission,
+     * which bypasses for them, so the same branch as [NamespaceController] is needed here.
      */
-    private suspend fun reconcileCaseListNamespaces(
+    private fun startCaseListCollectors(
         scope: CoroutineScope,
-        userId: UUID,
+        user: User,
         authentication: Authentication,
         emitter: SseEmitter,
-        namespaceJobs: MutableMap<UUID, Job>,
     ) {
-        val visibleIds =
-            withAuthentication(authentication) {
-                namespaceService.findIdsVisibleTo(userId.toString(), Action.READ)
-            }.toSet()
-
-        (namespaceJobs.keys - visibleIds).forEach { staleId -> namespaceJobs.remove(staleId)?.cancel() }
-        visibleIds.forEach { namespaceId ->
-            if (namespaceId !in namespaceJobs) {
-                namespaceJobs[namespaceId] = startCaseListCollectorJob(scope, namespaceId, emitter)
+        scope.launch {
+            val namespaceIds =
+                withAuthentication(authentication) {
+                    if (user.isAdmin) {
+                        namespaceService.findAll().map { it.id }
+                    } else {
+                        namespaceService.findIdsVisibleTo(user.id.toString(), Action.READ)
+                    }
+                }
+            namespaceIds.distinct().forEach { namespaceId ->
+                startCaseListCollectorJob(scope, namespaceId, emitter)
             }
         }
     }
@@ -236,7 +244,11 @@ class GlobalCaseEventSseController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // Completing the emitter is what lets Spring fire onCompletion, and with it
+                // markDisconnected: cancelling the scope alone kills the heartbeat too, so nothing
+                // would ever write to the socket again and the user would stay marked connected.
                 logger.debug { "Failed to send the case-list update of namespace $namespaceId: ${e.message}" }
+                emitter.completeWithError(e)
                 scope.cancel()
             }
         }
@@ -258,10 +270,11 @@ class GlobalCaseEventSseController(
                 // per-case cancel would tear down the whole multi-case stream.
                 throw e
             } catch (e: Exception) {
-                // Write failed — socket is dead. Tear down the whole connection (all
-                // collectors + poll loop + heartbeat share this scope), same failure
-                // path as the heartbeat's below.
+                // Write failed — socket is dead. Complete the emitter so that onCompletion runs
+                // markDisconnected, then tear down the whole connection (all collectors + poll loop
+                // + heartbeat share this scope).
                 logger.debug { "Failed to send event for case ${runtime.id}: ${e.message}" }
+                emitter.completeWithError(e)
                 scope.cancel()
             }
         }

@@ -80,7 +80,9 @@ export class DelegationCardComponent {
   }
   private connect(subCaseId: string): void {
     const source = this.zone.runOutsideAngular(
-      () => new EventSource(`${this.config.basePath}/api/cases/${subCaseId}/events`)
+      // No history: collapsing closes the stream, so replaying every past event on each expand
+      // would re-download the whole sub-case over a connection taken from the same budget (#1616).
+      () => new EventSource(`${this.config.basePath}/api/cases/${subCaseId}/events?includePreviousEvents=false`)
     )
     this.source = source
     source.addEventListener('case-event', (message: MessageEvent<string>) => {

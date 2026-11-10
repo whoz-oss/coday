@@ -36,6 +36,15 @@ export class GlobalStreamService {
     map((message) => message.event)
   )
 
+  /**
+   * Fires whenever the stream (re)connects, in every tab — the owner's and the ones it relays to.
+   * What was published while it was down was not kept, so consumers reload instead of waiting.
+   */
+  readonly connected$: Observable<void> = this.messages.pipe(
+    filter((message) => message.kind === 'connected'),
+    map(() => undefined)
+  )
+
   /** Ids of the namespaces whose case list went stale and should be reloaded. */
   readonly caseListInvalidations$: Observable<string> = this.messages.pipe(
     filter(

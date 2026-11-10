@@ -29,7 +29,8 @@ describe('CaseShellComponent', () => {
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
   let caseListUpdates$: Subject<string>
-  let globalStreamMock: { caseListInvalidations$: Subject<string> }
+  let connected$: Subject<void>
+  let globalStreamMock: { caseListInvalidations$: Subject<string>; connected$: Subject<void> }
   let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
 
   function makeComponent(
@@ -53,7 +54,8 @@ describe('CaseShellComponent', () => {
       loadMe: jest.fn().mockReturnValue(EMPTY),
     }
     caseListUpdates$ = new Subject()
-    globalStreamMock = { caseListInvalidations$: caseListUpdates$ }
+    connected$ = new Subject<void>()
+    globalStreamMock = { caseListInvalidations$: caseListUpdates$, connected$ }
     namespaceControllerMock = {
       listAllNamespace: jest
         .fn()
@@ -114,6 +116,17 @@ describe('CaseShellComponent', () => {
     expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(2)
     expect(caseStateMock.refreshCases).toHaveBeenNthCalledWith(1, NS_ID)
     expect(caseStateMock.refreshCases).toHaveBeenNthCalledWith(2, NS_ID)
+  })
+
+  it('reloads the list on every (re)connection of the stream, which replays nothing', () => {
+    makeComponent({ ns: NS_ID })
+
+    connected$.next()
+    connected$.next()
+
+    // Whatever was published while the stream was down is gone: reloading is the only recovery.
+    expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(2)
+    expect(caseStateMock.refreshCases).toHaveBeenCalledWith(NS_ID)
   })
 
   it('follows the namespace it is switched to, and stops following the previous one', () => {
