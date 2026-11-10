@@ -189,6 +189,28 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
     @Transactional(readOnly = true)
     fun existsActiveByPromptTemplateId(promptTemplateId: String): Boolean
 
+    /** Returns true if at least one non-removed ScheduledPrompt references the given workflow. */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt {workflowId: $workflowId})
+            WHERE NOT COALESCE(sp.removed, false)
+            RETURN count(sp) > 0
+            """,
+    )
+    @Transactional(readOnly = true)
+    fun existsActiveByWorkflowId(workflowId: String): Boolean
+
+    /** Sets workflowId on every scheduled prompt that has none; returns the number updated. */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.workflowId IS NULL
+            SET sp.workflowId = $workflowId
+            RETURN count(sp)
+            """,
+    )
+    fun backfillWorkflowId(workflowId: String): Int
+
     /**
      * Soft-delete all non-removed ScheduledPrompts referencing the given agentConfigId,
      * and soft-delete their linked Prompts in the same query.

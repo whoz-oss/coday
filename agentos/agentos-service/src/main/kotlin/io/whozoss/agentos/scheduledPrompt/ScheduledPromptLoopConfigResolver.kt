@@ -37,7 +37,7 @@ class ScheduledPromptLoopConfigResolver(
         val sp =
             scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId)).firstOrNull()
                 ?: return null
-        val node = sp.loopConfig ?: synthesizeFor(sp, run)
+        val node = synthesizeFor(sp, run)
         return objectMapper.treeToValue(node, LoopConfig::class.java)
     }
 

@@ -1,6 +1,5 @@
 package io.whozoss.agentos.scheduledPrompt
 
-import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.Entity
@@ -107,11 +106,9 @@ data class ScheduledPrompt(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /**
-     * Optional custom loop config for this scheduled prompt's fan-out.
-     *
-     * When null, [io.whozoss.agentos.scheduledPrompt.ScheduledPromptLoopConfigSynthesizer]
-     * synthesizes a two-step default (ListAgentUsers → BatchCaseStarter).
-     * Not exposed in the public API or DTO this sprint.
+     * The [io.whozoss.agentos.workflow.Workflow] run for each occurrence: *how* and *to whom* the
+     * prompt is delivered. Set to the default workflow on create when the caller names none, and
+     * backfilled on existing rows at startup. A null value still means the default workflow.
      */
-    val loopConfig: JsonNode? = null,
+    val workflowId: UUID? = null,
 ) : Entity

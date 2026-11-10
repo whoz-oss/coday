@@ -96,6 +96,15 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
     override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
         delegate.findAll().any { it.promptTemplateId == promptTemplateId && !it.metadata.removed }
 
+    override fun existsActiveByWorkflowId(workflowId: UUID): Boolean =
+        delegate.findAll().any { it.workflowId == workflowId && !it.metadata.removed }
+
+    override fun backfillWorkflowId(defaultWorkflowId: UUID): Int {
+        val missing = delegate.findAll().filter { it.workflowId == null }
+        missing.forEach { delegate.save(it.copy(workflowId = defaultWorkflowId)) }
+        return missing.size
+    }
+
     /**
      * Soft-delete all non-removed scheduled prompts referencing the given agentConfigId.
      * In-memory: only deletes the scheduled prompts (no access to PromptRepository).
