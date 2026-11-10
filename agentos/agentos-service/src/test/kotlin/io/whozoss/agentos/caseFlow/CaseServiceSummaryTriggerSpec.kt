@@ -206,6 +206,11 @@ private class SummaryTriggerFixture(
                 Actor(userId.toString(), "Summary User", ActorRole.USER),
                 listOf(MessageContent.Text("hello")),
             )
-            idle.await()
+            val idleEvent = idle.await()
+            // IDLE is published before run() lets go of the runtime. A message sent in that window finds the run
+            // still in flight and is skipped (see CaseServiceImpl.resumeSubCase), so the next wait would only end
+            // on its timeout. Wait for the release before the next message.
+            withTimeout(8_000) { while (runtime.isRunning()) delay(5) }
+            idleEvent
         }
 }
