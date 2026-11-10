@@ -157,19 +157,28 @@ for `OAUTH_TOKENS`.
 
 ### Using the credential in BASH commands
 
-The `BASH` plugin hands the credential to its commands as environment variables, never as text in the
-command (which is logged and may be echoed). Bind an Auth Setting to the integration (`authSettingName`)
-and every command can reference the secret of the user running the case:
+The `BASH` plugin hands the credential to its commands as an environment variable **named after the Auth
+Setting**, never as text in the command (which is logged and may be echoed). Bind an Auth Setting to the
+integration (`authSettingName`) and every command can reference the secret of the user running the case. With
+`authSettingName: GITHUB_TOKEN`:
 
 ```bash
-curl -H "Authorization: Bearer $AGENTOS_AUTH_TOKEN" https://api.example.com/me
+curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user
 ```
 
 | Variable | Value |
 |---|---|
-| `AGENTOS_AUTH_TOKEN` | OAuth access token, bearer token, API key, or for `BASIC_AUTH` the password |
-| `AGENTOS_AUTH_USERNAME`, `AGENTOS_AUTH_PASSWORD` | `BASIC_AUTH` only |
-| `AGENTOS_AUTH_TYPE` | the credential type name (`BEARER_TOKEN`, ...), to branch on in a script |
+| `<NAME>` | the secret: OAuth access token, bearer token, API key, or for `BASIC_AUTH` the password |
+| `<NAME>_USERNAME` | the username, `BASIC_AUTH` only |
+
+`<NAME>` is `ToolContext.authSettingName`, which the service sets together with the credential provider. It
+must be a valid environment variable name (`^[A-Za-z_][A-Za-z0-9_]*$`: letters, digits and underscores, not
+starting with a digit) and must not be one that changes how the shell or the process behaves: `PATH`, `HOME`,
+`USER`, `SHELL`, `PWD`, `OLDPWD`, `IFS`, `ENV`, `BASH_ENV`, `BASHOPTS`, `SHELLOPTS`, `CDPATH`, `PS4`,
+`PROMPT_COMMAND`, `TMPDIR`, `LANG`, `TERM`, or anything starting with `LD_`, `DYLD_` or `BASH_FUNC_` (compared
+case-sensitively). The name is checked before the provider is called, so a name that is invalid, reserved or
+missing answers `AUTH_MISSING` without asking the user to authorize, and the command is not run: rename the
+Auth Setting.
 
 The provider is not called when the tools are built (an OAuth setting may ask the user to authorize): it is
 called by the first command of the run, once, and the outcome is kept for the rest of the run. If the

@@ -18,8 +18,9 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Tests of the Auth Setting support of the BASH integration: variables injected per credential type,
- * output redaction, failure modes and lazy, once-per-run resolution of the credential provider.
+ * Tests of the Auth Setting support of the BASH integration: the variable named after the Auth Setting,
+ * injected per credential type, name validation, output redaction, failure modes and lazy, once-per-run
+ * resolution of the credential provider.
  *
  * Commands run for real (printf / touch) so that what the shell actually sees is what is asserted.
  */
@@ -39,76 +40,90 @@ class BashAuthUnitSpec : StringSpec({
             data = mapOf(*data),
         )
 
-    fun toolRunning(command: String, provider: CredentialProvider?): BashTool =
+    fun toolRunning(command: String, provider: CredentialProvider?, authSettingName: String? = "GITHUB_TOKEN"): BashTool =
         BashTool(
             toolConfig = BashToolConfig(name = "t", description = "d", command = command),
             integrationConfig = integrationConfig,
-            auth = BashRunAuth("TEST", provider),
+            auth = BashRunAuth("TEST", authSettingName, provider),
         )
 
-    // --- variables per credential type ---
+    fun markerFile() = File(Files.createTempDirectory("bash-auth-spec").toFile(), "must-not-exist")
 
-    "OAUTH_TOKENS should expose the access token, redacted in the output" {
+    // --- variable per credential type ---
+
+    "OAUTH_TOKENS should expose the access token under the Auth Setting name, redacted in the output" {
         val credential = credential(CredentialType.OAUTH_TOKENS, "accessToken" to "oauth-access-secret", "refreshToken" to "oauth-refresh-secret")
-        val tool = toolRunning("printf '%s|%s' \"\$AGENTOS_AUTH_TYPE\" \"\$AGENTOS_AUTH_TOKEN\"", { credential })
+        val tool = toolRunning("printf '%s' \"\$GITHUB_TOKEN\"", { credential })
 
         val result = tool.execute(BashTool.Input(), ctx)
 
         result.success shouldBe true
-        result.output shouldContain "OAUTH_TOKENS|***"
+        result.output shouldContain "***"
         result.output shouldNotContain "oauth-access-secret"
     }
 
-    "OAUTH_TOKENS should not expose the refresh token" {
+    "OAUTH_TOKENS should not expose the refresh token, a username or any AGENTOS_AUTH variable" {
         val credential = credential(CredentialType.OAUTH_TOKENS, "accessToken" to "oauth-access-secret", "refreshToken" to "oauth-refresh-secret")
         val tool = toolRunning("env", { credential })
 
         val result = tool.execute(BashTool.Input(), ctx)
 
+        result.output shouldContain "GITHUB_TOKEN=***"
         result.output shouldNotContain "oauth-refresh-secret"
-        result.output shouldNotContain "AGENTOS_AUTH_USERNAME"
+        result.output shouldNotContain "GITHUB_TOKEN_USERNAME"
+        result.output shouldNotContain "AGENTOS_AUTH"
     }
 
     "BEARER_TOKEN should expose the token" {
         val credential = credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
-        val tool = toolRunning("printf '%s|%s' \"\$AGENTOS_AUTH_TYPE\" \"\$AGENTOS_AUTH_TOKEN\"", { credential })
+        val tool = toolRunning("printf '%s' \"\$GITHUB_TOKEN\"", { credential })
 
         val result = tool.execute(BashTool.Input(), ctx)
 
         result.success shouldBe true
-        result.output shouldContain "BEARER_TOKEN|***"
+        result.output shouldContain "***"
         result.output shouldNotContain "bearer-secret"
     }
 
-    "API_KEY should expose the key as the token" {
+    "API_KEY should expose the key under the Auth Setting name" {
         val credential = credential(CredentialType.API_KEY, "key" to "api-key-secret")
-        val tool = toolRunning("printf '%s|%s' \"\$AGENTOS_AUTH_TYPE\" \"\$AGENTOS_AUTH_TOKEN\"", { credential })
+        val tool = toolRunning("printf '%s' \"\$MY_KEY\"", { credential }, authSettingName = "MY_KEY")
 
         val result = tool.execute(BashTool.Input(), ctx)
 
         result.success shouldBe true
-        result.output shouldContain "API_KEY|***"
+        result.output shouldContain "***"
         result.output shouldNotContain "api-key-secret"
     }
 
-    "BASIC_AUTH should expose username, password and the password as the token" {
+    "BASIC_AUTH should expose the password as NAME and the username as NAME_USERNAME" {
         val credential = credential(CredentialType.BASIC_AUTH, "username" to "alice", "password" to "basic-password-secret")
-        val tool = toolRunning(
-            "printf '%s|%s|%s|%s' \"\$AGENTOS_AUTH_TYPE\" \"\$AGENTOS_AUTH_USERNAME\" \"\$AGENTOS_AUTH_PASSWORD\" \"\$AGENTOS_AUTH_TOKEN\"",
-            { credential },
-        )
+        val tool = toolRunning("printf '%s|%s' \"\$FORGE_USERNAME\" \"\$FORGE\"", { credential }, authSettingName = "FORGE")
 
         val result = tool.execute(BashTool.Input(), ctx)
 
         result.success shouldBe true
-        // The username is not a secret and stays readable; the password, under both names, is masked.
-        result.output shouldContain "BASIC_AUTH|alice|***|***"
+        // The username is not a secret and stays readable; the password is masked.
+        result.output shouldContain "alice|***"
         result.output shouldNotContain "basic-password-secret"
+    }
+
+    "BASIC_AUTH should not expose the old password and type variables" {
+        val credential = credential(CredentialType.BASIC_AUTH, "username" to "alice", "password" to "basic-password-secret")
+        val tool = toolRunning("env", { credential }, authSettingName = "FORGE")
+
+        val result = tool.execute(BashTool.Input(), ctx)
+
+        result.output shouldContain "FORGE=***"
+        result.output shouldContain "FORGE_USERNAME=alice"
+        result.output shouldNotContain "AGENTOS_AUTH"
+        result.output shouldNotContain "FORGE_PASSWORD"
+        result.output shouldNotContain "FORGE_TYPE"
     }
 
     "the secret should be redacted on stderr too" {
         val credential = credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
-        val tool = toolRunning("echo \"leak: \$AGENTOS_AUTH_TOKEN\" >&2", { credential })
+        val tool = toolRunning("echo \"leak: \$GITHUB_TOKEN\" >&2", { credential })
 
         val result = tool.execute(BashTool.Input(), ctx)
 
@@ -119,7 +134,7 @@ class BashAuthUnitSpec : StringSpec({
 
     "the secret should be redacted on a non-zero exit too" {
         val credential = credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
-        val tool = toolRunning("echo \"\$AGENTOS_AUTH_TOKEN\"; exit 3", { credential })
+        val tool = toolRunning("echo \"\$GITHUB_TOKEN\"; exit 3", { credential })
 
         val result = tool.execute(BashTool.Input(), ctx)
 
@@ -135,10 +150,84 @@ class BashAuthUnitSpec : StringSpec({
         tool.execute(BashTool.Input(), ctx).output shouldContain "abcdef"
     }
 
+    // --- Auth Setting name: refused before the provider is invoked ---
+
+    listOf("my-token", "1TOKEN", "Company Jira").forEach { name ->
+        "an invalid Auth Setting name '$name' should answer AUTH_MISSING, without invoking the provider or running the command" {
+            val marker = markerFile()
+            val calls = AtomicInteger()
+            val provider: CredentialProvider = {
+                calls.incrementAndGet()
+                credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
+            }
+            val tool = toolRunning("touch ${marker.absolutePath}", provider, authSettingName = name)
+
+            val result = tool.execute(BashTool.Input(), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "AUTH_MISSING"
+            result.output shouldContain "the command was not run"
+            result.output shouldContain "Auth Setting name '$name' is not a valid environment variable name"
+            result.output shouldContain "rename the Auth Setting"
+            calls.get() shouldBe 0
+            marker.exists() shouldBe false
+        }
+    }
+
+    listOf("PATH", "BASH_ENV", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "BASH_FUNC_foo", "IFS", "HOME").forEach { name ->
+        "a reserved Auth Setting name '$name' should answer AUTH_MISSING, without invoking the provider or running the command" {
+            val marker = markerFile()
+            val calls = AtomicInteger()
+            val provider: CredentialProvider = {
+                calls.incrementAndGet()
+                credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
+            }
+            val tool = toolRunning("touch ${marker.absolutePath}", provider, authSettingName = name)
+
+            val result = tool.execute(BashTool.Input(), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "AUTH_MISSING"
+            result.output shouldContain "Auth Setting name '$name' is reserved"
+            result.output shouldContain "rename the Auth Setting"
+            result.output shouldNotContain "bearer-secret"
+            calls.get() shouldBe 0
+            marker.exists() shouldBe false
+        }
+    }
+
+    "reserved names should be matched exactly and case-sensitively" {
+        BashAuthVariables.problemWith("PATH") shouldContain "reserved"
+        BashAuthVariables.problemWith("path") shouldBe null
+        BashAuthVariables.problemWith("PATH_TOKEN") shouldBe null
+        BashAuthVariables.problemWith("LDAP_TOKEN") shouldBe null
+        BashAuthVariables.problemWith("GITHUB_TOKEN") shouldBe null
+        BashAuthVariables.problemWith("_x1") shouldBe null
+    }
+
+    listOf<String?>(null, "", "   ").forEach { name ->
+        "a provider bound with the Auth Setting name ${name?.let { "'$it'" } ?: "null"} should answer AUTH_MISSING without running the command" {
+            val marker = markerFile()
+            val calls = AtomicInteger()
+            val provider: CredentialProvider = {
+                calls.incrementAndGet()
+                credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
+            }
+            val tool = toolRunning("touch ${marker.absolutePath}", provider, authSettingName = name)
+
+            val result = tool.execute(BashTool.Input(), ctx)
+
+            result.errorType shouldBe "AUTH_MISSING"
+            result.output shouldContain "no Auth Setting name was provided by the service"
+            calls.get() shouldBe 0
+            marker.exists() shouldBe false
+        }
+    }
+
     // --- failure modes: the command is not run ---
 
     "a provider returning null should answer AUTH_MISSING without running the command" {
-        val marker = File(Files.createTempDirectory("bash-auth-spec").toFile(), "must-not-exist")
+        val marker = markerFile()
         val tool = toolRunning("touch ${marker.absolutePath}", { null })
 
         val result = tool.execute(BashTool.Input(), ctx)
@@ -151,7 +240,7 @@ class BashAuthUnitSpec : StringSpec({
     }
 
     "a credential with blank material should answer AUTH_MISSING naming the type" {
-        val marker = File(Files.createTempDirectory("bash-auth-spec").toFile(), "must-not-exist")
+        val marker = markerFile()
         val credential = credential(CredentialType.BEARER_TOKEN, "token" to "   ")
         val tool = toolRunning("touch ${marker.absolutePath}", { credential })
 
@@ -170,7 +259,7 @@ class BashAuthUnitSpec : StringSpec({
     }
 
     "a provider that throws should answer AUTH_MISSING without leaking the exception" {
-        val marker = File(Files.createTempDirectory("bash-auth-spec").toFile(), "must-not-exist")
+        val marker = markerFile()
         val tool = toolRunning("touch ${marker.absolutePath}", { error("boom-internal-detail") })
 
         val result = shouldNotThrowAny { tool.execute(BashTool.Input(), ctx) }
@@ -190,7 +279,7 @@ class BashAuthUnitSpec : StringSpec({
                 parametersDescription = "text",
             ),
             integrationConfig = integrationConfig,
-            auth = BashRunAuth("TEST") { calls.incrementAndGet(); null },
+            auth = BashRunAuth("TEST", "GITHUB_TOKEN") { calls.incrementAndGet(); null },
         )
 
         tool.execute(BashTool.Input(parameters = null), ctx).errorType shouldBe "INVALID_INPUT"
@@ -202,14 +291,15 @@ class BashAuthUnitSpec : StringSpec({
 
     "without a provider the command should run with no auth variable" {
         val tool = toolRunning(
-            "printf '%s|%s|%s' \"\${AGENTOS_AUTH_TOKEN-unset}\" \"\${AGENTOS_AUTH_TYPE-unset}\" \"\${AGENTOS_AUTH_USERNAME-unset}\"",
+            "printf '%s|%s' \"\${FORGE-unset}\" \"\${FORGE_USERNAME-unset}\"",
             provider = null,
+            authSettingName = null,
         )
 
         val result = tool.execute(BashTool.Input(), ctx)
 
         result.success shouldBe true
-        result.output shouldContain "unset|unset|unset"
+        result.output shouldContain "unset|unset"
     }
 
     "a BashTool built without an auth argument should keep running as before" {
@@ -221,12 +311,12 @@ class BashAuthUnitSpec : StringSpec({
         tool.execute(BashTool.Input(), ctx).output shouldContain "hello"
     }
 
-    // --- laziness, once per run ---
+    // --- provideTools: the name comes from the ToolContext; laziness, once per run ---
 
     "provideTools should not invoke the credential provider" {
         val calls = AtomicInteger()
         val provider: CredentialProvider = { calls.incrementAndGet(); null }
-        val context = ctx.copy(credentialProvider = provider)
+        val context = ctx.copy(credentialProvider = provider, authSettingName = "GITHUB_TOKEN")
         val config = jacksonObjectMapper().readTree(
             """{"workingDirectory": "/tmp", "tools": [{"name": "a", "description": "d", "command": "echo a"}]}""",
         )
@@ -236,6 +326,46 @@ class BashAuthUnitSpec : StringSpec({
         calls.get() shouldBe 0
     }
 
+    "provideTools should pass the ToolContext authSettingName through, end to end" {
+        val credential = credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
+        val context = ctx.copy(credentialProvider = { credential }, authSettingName = "GITHUB_TOKEN")
+        val config = jacksonObjectMapper().readTree(
+            """
+            {"workingDirectory": "${System.getProperty("java.io.tmpdir")}", "tools": [
+                {"name": "a", "description": "d", "command": "printf %s \"${'$'}GITHUB_TOKEN\""}
+            ]}
+            """,
+        )
+        val tool = BashToolProvider().provideTools(config, "TEST", context).single()
+
+        val result = tool.executeWithJson("{}", ctx)
+
+        result.success shouldBe true
+        result.output shouldContain "***"
+        result.output shouldNotContain "bearer-secret"
+    }
+
+    "provideTools should refuse a provider bound without an Auth Setting name" {
+        val marker = markerFile()
+        val calls = AtomicInteger()
+        val context = ctx.copy(credentialProvider = { calls.incrementAndGet(); null })
+        val config = jacksonObjectMapper().readTree(
+            """
+            {"workingDirectory": "${System.getProperty("java.io.tmpdir")}", "tools": [
+                {"name": "a", "description": "d", "command": "touch ${marker.absolutePath}"}
+            ]}
+            """,
+        )
+        val tool = BashToolProvider().provideTools(config, "TEST", context).single()
+
+        val result = tool.executeWithJson("{}", ctx)
+
+        result.errorType shouldBe "AUTH_MISSING"
+        result.output shouldContain "no Auth Setting name was provided by the service"
+        calls.get() shouldBe 0
+        marker.exists() shouldBe false
+    }
+
     "the tools of one integration should share a single resolution" {
         val calls = AtomicInteger()
         val credential = credential(CredentialType.BEARER_TOKEN, "token" to "bearer-secret")
@@ -243,12 +373,16 @@ class BashAuthUnitSpec : StringSpec({
         val config = jacksonObjectMapper().readTree(
             """
             {"workingDirectory": "${System.getProperty("java.io.tmpdir")}", "tools": [
-                {"name": "a", "description": "d", "command": "echo \"a:${'$'}AGENTOS_AUTH_TOKEN\""},
-                {"name": "b", "description": "d", "command": "echo \"b:${'$'}AGENTOS_AUTH_TOKEN\""}
+                {"name": "a", "description": "d", "command": "echo \"a:${'$'}GITHUB_TOKEN\""},
+                {"name": "b", "description": "d", "command": "echo \"b:${'$'}GITHUB_TOKEN\""}
             ]}
             """,
         )
-        val tools = BashToolProvider().provideTools(config, "TEST", ctx.copy(credentialProvider = provider))
+        val tools = BashToolProvider().provideTools(
+            config,
+            "TEST",
+            ctx.copy(credentialProvider = provider, authSettingName = "GITHUB_TOKEN"),
+        )
         tools shouldHaveSize 2
 
         val first = tools[0].executeWithJson("{}", ctx)
@@ -263,7 +397,7 @@ class BashAuthUnitSpec : StringSpec({
 
     "a missing credential should be remembered for the rest of the run" {
         val calls = AtomicInteger()
-        val auth = BashRunAuth("TEST") { calls.incrementAndGet(); null }
+        val auth = BashRunAuth("TEST", "GITHUB_TOKEN") { calls.incrementAndGet(); null }
 
         auth.environment().shouldBeInstanceOf<BashAuthEnvironment.Missing>()
         auth.environment().shouldBeInstanceOf<BashAuthEnvironment.Missing>()
@@ -275,10 +409,12 @@ class BashAuthUnitSpec : StringSpec({
 
     "toString of the resolved variables should not contain the secret" {
         val environment = BashAuthEnvironment.from(
+            "FORGE",
             credential(CredentialType.BASIC_AUTH, "username" to "alice", "password" to "basic-password-secret"),
         )
 
         environment.shouldBeInstanceOf<BashAuthEnvironment.Variables>()
         environment.toString() shouldNotContain "basic-password-secret"
+        environment.toString() shouldContain "FORGE_USERNAME"
     }
 })
