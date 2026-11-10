@@ -78,10 +78,10 @@ import {
 } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
-import { FileSuggestion } from '../composer-autocomplete/file-mention'
+import { appendFileReferences, FileSuggestion } from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
@@ -1310,6 +1310,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected closeFileAutocomplete(): void {
     this.autocomplete.closeFileSuggestions()
+  }
+
+  /** Writes the files checked in the drawer into the draft, and puts the caret back in the composer. */
+  protected onAddFilesToContext(refs: ExchangeFileRef[]): void {
+    if (this.isTerminal()) return
+    this.inputValue.update((value) => appendFileReferences(value, refs))
+    afterNextRender(
+      () => {
+        const input = this.composerInput()?.nativeElement
+        input?.focus()
+        this.resizeComposer(input)
+      },
+      { injector: this.injector }
+    )
   }
 
   protected closeSlashAutocomplete(): void {

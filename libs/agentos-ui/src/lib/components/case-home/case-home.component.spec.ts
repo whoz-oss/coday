@@ -1,8 +1,11 @@
 import {
   ApplicationRef,
+  Component,
   ComponentRef,
   createComponent,
   EnvironmentInjector,
+  input,
+  output,
   signal,
   WritableSignal,
 } from '@angular/core'
@@ -18,7 +21,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
@@ -26,6 +29,15 @@ import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { CaseHomeComponent } from './case-home.component'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+
+@Component({ selector: 'agentos-exchange-shell', standalone: true, template: '' })
+class StubExchangeShellComponent {
+  readonly active = input(false)
+  readonly selectable = input(false)
+  readonly closeRequested = output<void>()
+  readonly addToContextRequested = output<ExchangeFileRef[]>()
+}
 
 /**
  * Created WITHOUT rendering (no attachView / detectChanges); ngOnInit is invoked manually
@@ -145,6 +157,52 @@ describe('CaseHomeComponent — first message with attachments', () => {
     const ref = makeComponent()
     ref.instance.ngOnInit()
     expect(exchangeState.initializeForNamespace).toHaveBeenCalledWith('ns-1')
+  })
+
+  describe('files added from the drawer', () => {
+    const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
+
+    it('writes one namespace reference per file into the draft, without duplicates', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('summarize')
+
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md'), ns('notes.md')])
+      expect(ref.instance['inputValue']()).toBe('summarize namespace:docs/readme.md namespace:notes.md ')
+
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+      expect(ref.instance['inputValue']()).toBe('summarize namespace:docs/readme.md namespace:notes.md ')
+      ref.destroy()
+    })
+
+    it('sends the references with the first message of the created case', async () => {
+      const ref = makeComponent()
+      ref.instance['onAddFilesToContext']([ns('docs/readme.md')])
+
+      await ref.instance['submit']()
+
+      expect(api.addMessageCase).toHaveBeenCalledWith('case-9', { content: 'namespace:docs/readme.md' })
+      ref.destroy()
+    })
+
+    it('renders the drawer only while the folder button has opened it', () => {
+      // The real shell reads many signals of the exchange state: a stub keeps this about the host.
+      TestBed.overrideComponent(CaseHomeComponent, {
+        remove: { imports: [ExchangeShellComponent] },
+        add: { imports: [StubExchangeShellComponent] },
+      })
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.changeDetectorRef.detectChanges()
+      const host = ref.location.nativeElement as HTMLElement
+      expect(host.querySelector('agentos-exchange-shell')).toBeNull()
+
+      host.querySelector<HTMLButtonElement>('button[title="Browse namespace files"]')!.click()
+      ref.changeDetectorRef.detectChanges()
+
+      expect(ref.instance['filesOpen']()).toBe(true)
+      expect(host.querySelector('agentos-exchange-shell')).not.toBeNull()
+      ref.destroy()
+    })
   })
 
   it('creates the case, uploads, sends the mention-bearing message, then navigates', async () => {

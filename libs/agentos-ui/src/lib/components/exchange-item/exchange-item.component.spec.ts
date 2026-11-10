@@ -79,3 +79,44 @@ describe('ExchangeItemComponent copy relative path', () => {
     expect(view).not.toHaveBeenCalled()
   })
 })
+
+describe('ExchangeItemComponent selection', () => {
+  const row: ExchangeFileRow = { path: 'docs/guide.md', filename: 'guide.md', meta: '', icon: 'description' }
+
+  function setup(override: Partial<ExchangeFileRow> = {}, selectable = true, selected = false) {
+    TestBed.configureTestingModule({ imports: [ExchangeItemComponent] })
+    const fixture = TestBed.createComponent(ExchangeItemComponent)
+    fixture.componentRef.setInput('row', { ...row, ...override })
+    fixture.componentRef.setInput('selectable', selectable)
+    fixture.componentRef.setInput('selected', selected)
+    const toggled = jest.fn()
+    const view = jest.fn()
+    fixture.componentInstance.selectionToggled.subscribe(toggled)
+    fixture.componentInstance.viewRequested.subscribe(view)
+    fixture.detectChanges()
+    const checkbox = () =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input[type="checkbox"]')
+    return { fixture, checkbox, toggled, view }
+  }
+
+  it('renders no checkbox unless selectable', () => {
+    expect(setup({}, false).checkbox()).toBeNull()
+  })
+
+  it('renders a labelled checkbox that reflects `selected`', () => {
+    const { checkbox } = setup({}, true, true)
+    expect(checkbox()?.getAttribute('aria-label')).toBe('Select guide.md')
+    expect(checkbox()?.checked).toBe(true)
+  })
+
+  it('emits selectionToggled without previewing the file', () => {
+    const { checkbox, toggled, view } = setup()
+    checkbox()!.click()
+    expect(toggled).toHaveBeenCalledTimes(1)
+    expect(view).not.toHaveBeenCalled()
+  })
+
+  it('never offers a checkbox on a missing (deleted) row', () => {
+    expect(setup({ missing: true }).checkbox()).toBeNull()
+  })
+})

@@ -4,6 +4,15 @@
   [class.exchange-item--missing]="row().missing"
   [attr.data-git-status]="row().gitStatus ?? null"
 >
+  @if (selectable() && !row().missing) {
+    <input
+      class="exchange-item__select"
+      type="checkbox"
+      [checked]="selected()"
+      [attr.aria-label]="'Select ' + row().filename"
+      (change)="selectionToggled.emit()"
+    />
+  }
   <button
     class="exchange-item__main"
     type="button"

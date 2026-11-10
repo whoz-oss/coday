@@ -38,7 +38,11 @@ export class ExchangeItemComponent {
   readonly row = input.required<ExchangeFileRow>()
   readonly active = input<boolean>(false)
   readonly canWrite = input<boolean>(false)
+  /** Offers a checkbox to pick the row (never on a missing, i.e. deleted, row). */
+  readonly selectable = input<boolean>(false)
+  readonly selected = input<boolean>(false)
 
+  readonly selectionToggled = output<void>()
   readonly viewRequested = output<void>()
   readonly downloadRequested = output<void>()
   readonly deleteRequested = output<void>()
