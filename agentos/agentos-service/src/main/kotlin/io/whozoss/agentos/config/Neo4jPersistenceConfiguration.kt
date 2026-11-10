@@ -74,6 +74,9 @@ import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.userGroup.Neo4jUserGroupRepository
 import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
+import io.whozoss.agentos.workflow.Neo4jWorkflowRepository
+import io.whozoss.agentos.workflow.WorkflowNodeNeo4jRepository
+import io.whozoss.agentos.workflow.WorkflowRepository
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.CommandLineRunner
@@ -132,6 +135,7 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.credential",
         "io.whozoss.agentos.scheduledPrompt",
         "io.whozoss.agentos.usage",
+        "io.whozoss.agentos.workflow",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -372,6 +376,12 @@ class Neo4jPersistenceConfiguration {
     ): ScheduledPromptRepository {
         logger.info { "[Persistence] Neo4jScheduledPromptRepository active" }
         return Neo4jScheduledPromptRepository(scheduledPromptNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
+    fun neo4jWorkflowRepository(workflowNodeNeo4jRepository: WorkflowNodeNeo4jRepository): WorkflowRepository {
+        logger.info { "[Persistence] Neo4jWorkflowRepository active" }
+        return Neo4jWorkflowRepository(workflowNodeNeo4jRepository)
     }
 
     @Bean
