@@ -33,9 +33,8 @@ import java.util.UUID
  * removed from the production code. All tests covering that removed behaviour have been
  * deleted with it.
  *
- * Tests covering synthesizer behaviour (explicit loopConfig / null loopConfig) have been
- * deleted: the synthesizer was moved to [ScheduledPromptLoopConfigResolver] and is no
- * longer a constructor parameter of [ScheduledPromptExecutor].
+ * Loop config resolution is tested in [ScheduledPromptLoopConfigResolverUnitSpec]: the executor
+ * only starts the loop case.
  *
  * Covers [ScheduledPromptExecutor.materialize]:
  * - creates exactly ONE Case carrying scheduledPromptId
@@ -66,9 +65,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         lastname = "Smith",
     )
 
-    private fun makeScheduledPrompt(
-        loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
-    ) = ScheduledPrompt(
+    private fun makeScheduledPrompt() = ScheduledPrompt(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         namespaceId = namespaceId,
         agentConfigId = agentId,
@@ -83,7 +80,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             endType = io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType.NEVER,
         ),
         nextRunAt = nowInstant,
-        loopConfig = loopConfig,
     )
 
     private fun makeRun(sp: ScheduledPrompt) = ScheduledPromptRun(
