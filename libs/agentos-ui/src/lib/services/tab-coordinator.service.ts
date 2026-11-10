@@ -1,5 +1,6 @@
 import { effect, inject, Injectable, NgZone, OnDestroy, signal } from '@angular/core'
 import { Router } from '@angular/router'
+import { CaseEvent } from '@whoz-oss/agentos-api-client'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 
 // ---------------------------------------------------------------------------
@@ -18,7 +19,16 @@ interface NavigateRequestMessage {
   caseId: string
 }
 
-type TabMessage = TabAnnounceMessage | NavigateRequestMessage
+/** A global-stream event, relayed by the owning tab to every other tab. */
+interface CaseEventMessage {
+  type: 'CASE_EVENT'
+  event: CaseEvent
+}
+
+type TabMessage = TabAnnounceMessage | NavigateRequestMessage | CaseEventMessage
+
+/** Web Lock naming the tab that holds the global case-event stream for the whole browser. */
+const STREAM_OWNER_LOCK = 'agentos-companion-stream'
 
 // ---------------------------------------------------------------------------
 // Service
@@ -70,6 +80,59 @@ export class TabCoordinatorService implements OnDestroy {
 
   /** Known tabs and their namespaces, maintained by listening to TAB_ANNOUNCE. */
   private readonly knownTabs = signal<Map<string, string | null>>(new Map())
+
+  /**
+   * True when this browser can both elect an owner for the global case-event stream
+   * (Web Locks) and relay that stream to the other tabs (BroadcastChannel). Where either
+   * is missing, every tab opens its own stream — correct, just one connection per tab.
+   */
+  readonly coordinated: boolean = this.channel !== null && typeof navigator !== 'undefined' && 'locks' in navigator
+
+  /** Whether this tab is the one holding the global case-event stream. */
+  readonly isStreamOwner = signal(false)
+
+  private readonly caseEventHandlers = new Set<(event: CaseEvent) => void>()
+  private streamOwnership: Promise<void> | null = null
+
+  /**
+   * Resolves once this tab owns the global case-event stream, and stays pending in the tabs
+   * that do not. A browser allows only 6 HTTP/1.1 connections per origin, shared by every
+   * tab, and the app needs several of them for its per-case streams: one global stream for
+   * the whole browser instead of one per tab is what keeps that budget workable (#1616).
+   *
+   * Ownership is a Web Lock held for the lifetime of the tab, never a flag: the browser
+   * releases it when the tab goes away, which hands the stream to the next waiting tab
+   * without any of them having to notice the first one died.
+   */
+  whenStreamOwner(): Promise<void> {
+    if (!this.coordinated) return Promise.resolve()
+    this.streamOwnership ??= new Promise<void>((resolve) => {
+      navigator.locks
+        .request(STREAM_OWNER_LOCK, () => {
+          this.isStreamOwner.set(true)
+          resolve()
+          // Never resolves: returning here would release the lock and let a second tab
+          // open the same stream.
+          return new Promise<void>(() => undefined)
+        })
+        .catch((err) => console.warn('[TabCoordinator] could not claim the stream ownership lock', err))
+    })
+    return this.streamOwnership
+  }
+
+  /**
+   * Relay an event from the owning tab to the others. No-op without a channel, which is
+   * also when [coordinated] is false and every tab reads the stream for itself.
+   */
+  broadcastCaseEvent(event: CaseEvent): void {
+    const msg: CaseEventMessage = { type: 'CASE_EVENT', event }
+    this.channel?.postMessage(msg)
+  }
+
+  /** Register a handler for the events relayed by the owning tab. */
+  onCaseEvent(handler: (event: CaseEvent) => void): void {
+    this.caseEventHandlers.add(handler)
+  }
 
   /**
    * Returns the tabId that owns a given namespaceId, or null if none is known.
@@ -139,6 +202,12 @@ export class TabCoordinatorService implements OnDestroy {
         this.announce()
         break
       }
+
+      case 'CASE_EVENT':
+        // Back into the zone: BroadcastChannel delivery is not patched by zone.js, and the
+        // handlers write the signals the views read.
+        this.zone.run(() => this.caseEventHandlers.forEach((handler) => handler(msg.event)))
+        break
 
       case 'NAVIGATE_REQUEST':
         if (msg.namespaceId === this.currentNamespaceId()) {

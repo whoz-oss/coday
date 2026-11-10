@@ -7,6 +7,7 @@ import { CaseStateService } from './case-state.service'
 import { CompanionPipService } from './companion-pip.service'
 import { CompanionStateService } from './companion-state.service'
 import { GlobalCaseEventSseService } from './global-case-event-sse.service'
+import { TabCoordinatorService } from './tab-coordinator.service'
 
 describe('CompanionStateService', () => {
   let events$: Subject<CaseEvent>
@@ -18,8 +19,16 @@ describe('CompanionStateService', () => {
   let browserClose: jest.Mock
   let browserCloseMany: jest.Mock
   let service: CompanionStateService
+  let connect: jest.Mock
+  let broadcastCaseEvent: jest.Mock
+  let relayEvent: (event: CaseEvent) => void
+  let becomeStreamOwner: () => void
 
-  beforeEach(() => {
+  /**
+   * @param coordinated whether the browser can elect a stream owner and relay its events.
+   *   False is the degraded single-tab mode, where the stream opens straight away.
+   */
+  function configure(coordinated: boolean): void {
     events$ = new Subject<CaseEvent>()
     casesSignal = signal<Case[]>([])
     isOpenSignal = signal<boolean>(false)
@@ -28,11 +37,14 @@ describe('CompanionStateService', () => {
     browserNotify = jest.fn()
     browserClose = jest.fn()
     browserCloseMany = jest.fn()
+    connect = jest.fn(() => events$.asObservable())
+    broadcastCaseEvent = jest.fn()
+    const ownership = new Promise<void>((resolve) => (becomeStreamOwner = resolve))
 
     TestBed.configureTestingModule({
       providers: [
         CompanionStateService,
-        { provide: GlobalCaseEventSseService, useValue: { connect: jest.fn(() => events$.asObservable()) } },
+        { provide: GlobalCaseEventSseService, useValue: { connect } },
         { provide: CaseStateService, useValue: { cases: casesSignal } },
         { provide: CaseControllerService, useValue: { getByIdCase } },
         { provide: CompanionPipService, useValue: { playAlertBeep, isOpen: isOpenSignal } },
@@ -40,12 +52,23 @@ describe('CompanionStateService', () => {
           provide: BrowserNotificationService,
           useValue: { notify: browserNotify, close: browserClose, closeMany: browserCloseMany },
         },
+        {
+          provide: TabCoordinatorService,
+          useValue: {
+            coordinated,
+            whenStreamOwner: () => ownership,
+            broadcastCaseEvent,
+            onCaseEvent: (handler: (event: CaseEvent) => void) => (relayEvent = handler),
+          },
+        },
       ],
     })
 
     service = TestBed.inject(CompanionStateService)
     service.startSse()
-  })
+  }
+
+  beforeEach(() => configure(false))
 
   afterEach(() => TestBed.resetTestingModule())
 
@@ -245,5 +268,57 @@ describe('CompanionStateService', () => {
 
     expect(service.groups()).toHaveLength(1)
     expect(service.groups()[0]?.caseTitle).toBe('12345678')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Stream ownership — one connection per browser, not per tab (#1616)
+  // ---------------------------------------------------------------------------
+
+  const errorEvent = {
+    id: 'err-relay',
+    type: 'ErrorEvent',
+    caseId: 'case-1',
+    namespaceId: 'ns-1',
+    message: 'Boom',
+  } as unknown as CaseEvent
+
+  it('relays the events of the stream it owns to the other tabs', async () => {
+    TestBed.resetTestingModule()
+    configure(true)
+    becomeStreamOwner()
+    await Promise.resolve()
+    casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
+
+    events$.next(errorEvent)
+
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(broadcastCaseEvent).toHaveBeenCalledWith(errorEvent)
+    expect(service.groups()).toHaveLength(1)
+  })
+
+  it('consumes the relay of the owning tab without opening a stream of its own', () => {
+    TestBed.resetTestingModule()
+    configure(true)
+    casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Main Case', status: 'RUNNING' } as Case])
+
+    expect(connect).not.toHaveBeenCalled()
+
+    relayEvent(errorEvent)
+
+    expect(service.groups()).toHaveLength(1)
+    expect(service.groups()[0]?.notifications[0]?.id).toBe('err-relay')
+    // A relayed event must not be relayed again: that is the owner's job alone.
+    expect(broadcastCaseEvent).not.toHaveBeenCalled()
+  })
+
+  it('opens the stream as soon as this tab becomes the owner', async () => {
+    TestBed.resetTestingModule()
+    configure(true)
+    expect(connect).not.toHaveBeenCalled()
+
+    becomeStreamOwner()
+    await Promise.resolve()
+
+    expect(connect).toHaveBeenCalledTimes(1)
   })
 })
