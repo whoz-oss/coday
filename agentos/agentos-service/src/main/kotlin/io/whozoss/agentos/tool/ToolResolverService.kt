@@ -149,6 +149,7 @@ class ToolResolverService(
                     toolName = tool.name,
                     integrationKey = config.name,
                     allowedNames = allowedNames,
+                    requiresExplicitGrant = tool is RequiresExplicitGrant,
                 )
             }.also { tools ->
                 logger.debug {
@@ -161,8 +162,9 @@ class ToolResolverService(
         toolName: String,
         integrationKey: String,
         allowedNames: List<String>?,
+        requiresExplicitGrant: Boolean = false,
     ): Boolean {
-        if (allowedNames == null) return true
+        if (allowedNames == null) return !requiresExplicitGrant
         return allowedNames.any { allowed ->
             toolName == allowed || toolName == "${integrationKey}__$allowed"
         }

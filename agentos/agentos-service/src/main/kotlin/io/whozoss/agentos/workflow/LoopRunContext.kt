@@ -9,7 +9,8 @@ import java.util.UUID
  * Everything an [io.whozoss.agentos.agent.AgentLoop] run needs from its case and agent definition.
  *
  * @param triggerUser  The user who triggered the run, or null when it cannot be resolved.
- * @param tools        Tools resolved for the loop agent — the Search tool is looked up here.
+ * @param tools        Tools resolved for the loop agent — the step tools are looked up here.
+ * @param emitEvent    Suspending function to emit [CaseEvent]s into the case transcript.
  */
 data class LoopRunContext(
     val namespaceId: UUID,
@@ -18,4 +19,5 @@ data class LoopRunContext(
     val triggerUser: User?,
     val tools: Collection<StandardTool<*>>,
     val caseEvents: List<CaseEvent>,
+    val emitEvent: suspend (CaseEvent) -> Unit,
 )

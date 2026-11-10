@@ -269,6 +269,21 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     ): Long
 
     /**
+     * Find a non-deleted case by its [CaseNode.dispatchKey], or null if none exists.
+     *
+     * Used by [Neo4jCaseRepository.findByDispatchKey] to support idempotency checks
+     * in [io.whozoss.agentos.casePlugin.CaseStarterService].
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH (c:Case {dispatchKey: $dispatchKey})
+            WHERE c.removed IS NULL OR c.removed = false
+            RETURN c LIMIT 1
+            """,
+    )
+    fun findByDispatchKey(dispatchKey: String): CaseNode?
+
+    /**
      * Returns one entry per case the user has a direct `[:ADMIN]`/`[:MEMBER]` edge on.
      * Each map holds:
      * - `caseId` (String) — the case id

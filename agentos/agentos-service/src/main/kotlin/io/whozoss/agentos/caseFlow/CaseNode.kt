@@ -29,6 +29,7 @@ data class CaseNode(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    val dispatchKey: String? = null,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     var namespace: NamespaceNode? = null,
 ) {
@@ -50,6 +51,7 @@ data class CaseNode(
             scheduledPromptId = scheduledPromptId?.let { UUID.fromString(it) },
             originCaseId = originCaseId?.let { UUID.fromString(it) },
             runCostThreshold = runCostThreshold,
+            dispatchKey = dispatchKey,
         )
 
     companion object {
@@ -68,6 +70,7 @@ data class CaseNode(
                 modified = case.metadata.modified,
                 modifiedBy = case.metadata.modifiedBy,
                 removed = case.metadata.removed.takeIf { it },
+                dispatchKey = case.dispatchKey,
             )
     }
 }

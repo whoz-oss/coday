@@ -9,6 +9,9 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.prompt.PromptTranslationService
+import io.whozoss.agentos.prompt.TextKind
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -17,6 +20,7 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.context.annotation.Lazy
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -84,6 +88,8 @@ class CaseStarterService(
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
     private val userSessionContextResolver: UserSessionContextResolver,
+    private val promptTranslationService: PromptTranslationService,
+    private val promptService: PromptService,
 ) {
     /**
      * Starts the case and returns it.
@@ -96,6 +102,14 @@ class CaseStarterService(
             refuse(
                 CaseStarterRefusal.START_DEPTH_EXCEEDED,
                 "The current case was itself started by another case, so it cannot start a new one.",
+            )
+        }
+        // Pre-check: if a dispatchKey is set and a non-deleted case already carries it,
+        // refuse immediately before any expensive operations (no user resolution, no LLM).
+        if (request.dispatchKey != null && caseService.findByDispatchKey(request.dispatchKey) != null) {
+            refuse(
+                CaseStarterRefusal.ALREADY_DISPATCHED,
+                "A case with dispatchKey '${request.dispatchKey}' already exists — this dispatch was already delivered.",
             )
         }
         val targetUser = resolveTargetUser(request)
@@ -111,13 +125,15 @@ class CaseStarterService(
 
         val sessionContext = resolveSessionContext(targetUser = targetUser, request = request)
 
-        val case = createCase(request)
+        val (effectivePrompt, effectiveTitle) = resolveMessage(request, targetUser)
+
+        val case = createCase(request, effectiveTitle?.takeIf { it.isNotBlank() } ?: effectivePrompt)
         startConversation(
             case = case,
             targetUser = targetUser,
             agentName = agentName,
             sessionContext = sessionContext,
-            request = request,
+            prompt = effectivePrompt,
         )
 
         logger.info {
@@ -134,25 +150,32 @@ class CaseStarterService(
      * reads a few cases at most.
      */
     private fun isInStartedCase(callerCaseId: UUID): Boolean {
-        val callerCase = checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
+        val callerCase =
+            checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
         return generateSequence(callerCase, ::findParent).any { ancestor -> ancestor.originCaseId != null }
     }
 
     /** The case [case] was delegated from, deleted or not, or null for a top-level case. */
-    private fun findParent(case: Case): Case? =
-        case.parentCaseId?.let { parentId -> caseService.findById(parentId, withRemoved = true) }
+    private fun findParent(case: Case): Case? = case.parentCaseId?.let { parentId -> caseService.findById(parentId, withRemoved = true) }
 
     private fun resolveTargetUser(request: CaseStarterRequest): User {
         // Null when the case runs for the caller: no userId, or the caller's own.
         val otherUserId = request.targetUserId?.takeIf { it != request.callerUserId }
         return when {
-            otherUserId == null -> resolveCaller(request.callerUserId)
-            !hasNamespacePermission(request.callerUserId, request.callerNamespaceId, Action.WRITE) ->
+            otherUserId == null -> {
+                resolveCaller(request.callerUserId)
+            }
+
+            !hasNamespacePermission(request.callerUserId, request.callerNamespaceId, Action.WRITE) -> {
                 refuse(
                     CaseStarterRefusal.FORBIDDEN,
                     "Only an administrator of the namespace can start a case for another user.",
                 )
-            else -> resolveOtherUser(userId = otherUserId, namespaceId = request.callerNamespaceId)
+            }
+
+            else -> {
+                resolveOtherUser(userId = otherUserId, namespaceId = request.callerNamespaceId)
+            }
         }
     }
 
@@ -251,27 +274,170 @@ class CaseStarterService(
         return ((request.sessionContext ?: emptyMap()) + (resolved ?: emptyMap())).takeIf { it.isNotEmpty() }
     }
 
-    /** Creates the case, tracing the calling one as its origin. */
-    private fun createCase(request: CaseStarterRequest): Case =
-        caseService.create(
-            Case(
-                namespaceId = request.callerNamespaceId,
-                title = (request.title?.takeIf { it.isNotBlank() } ?: request.prompt).take(MAX_TITLE_LENGTH),
-                originCaseId = request.callerCaseId,
-            ),
-        )
+    /**
+     * Resolves the prompt text and optional title to use when creating the case.
+     *
+     * Resolution order:
+     * 1. When [CaseStarterRequest.promptId] is set, delegate to [resolveStoredPrompt], which reads the
+     *    persisted [io.whozoss.agentos.prompt.Prompt] and reuses its curated translations via
+     *    `PromptService.translate(...)`. A missing or empty prompt refuses the start.
+     * 2. Otherwise fall through to [maybeTranslate] (the existing free-text LLM path), which translates
+     *    [CaseStarterRequest.prompt] on-the-fly when the target user speaks a different language.
+     */
+    private fun resolveMessage(
+        request: CaseStarterRequest,
+        targetUser: User,
+    ): Pair<String, String?> {
+        val targetLanguage = targetUser.preferredLanguage?.takeIf { it.isNotBlank() }
+        return when (val promptId = request.promptId) {
+            null -> maybeTranslate(request, targetLanguage, request.callerNamespaceId)
+            else -> resolveStoredPrompt(promptId, targetLanguage, request)
+        }
+    }
+
+    /**
+     * Resolves content and title from a persisted [io.whozoss.agentos.prompt.Prompt].
+     *
+     * When [targetLanguage] is null the source-language content is used directly.
+     * Otherwise `PromptService.translate(...)` is called, which reuses persisted translations
+     * before falling back to an LLM.
+     *
+     * A [NoSuchElementException] from `translate` (prompt not found) and a missing/blank content
+     * both surface as [CaseStarterRefusal.PROMPT_NOT_FOUND]. Any other translation exception
+     * degrades gracefully to the source-language content rather than failing the start.
+     */
+    private fun resolveStoredPrompt(
+        promptId: UUID,
+        targetLanguage: String?,
+        request: CaseStarterRequest,
+    ): Pair<String, String?> {
+        if (targetLanguage == null) {
+            val prompt =
+                promptService.findById(promptId)
+                    ?: refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId not found.")
+            val content =
+                prompt.content.firstOrNull { it.isNotBlank() }
+                    ?: refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId has no usable content.")
+            return content to (prompt.title ?: request.title)
+        }
+        // Try translated path; NoSuchElementException = prompt not found → refuse.
+        val translation =
+            try {
+                promptService.translate(
+                    id = promptId,
+                    targetLanguage = targetLanguage,
+                    callerNamespaceId = request.callerNamespaceId,
+                )
+            } catch (e: NoSuchElementException) {
+                refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId not found: ${e.message}")
+            } catch (e: Exception) {
+                // Degrade to source-language content rather than failing the start.
+                logger.warn(e) { "[CaseStarter] translation of stored prompt $promptId failed — using source content" }
+                val prompt =
+                    promptService.findById(promptId)
+                        ?: refuse(
+                            CaseStarterRefusal.PROMPT_NOT_FOUND,
+                            "Prompt $promptId not found after translation failure.",
+                        )
+                val content =
+                    prompt.content.firstOrNull { it.isNotBlank() }
+                        ?: refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId has no usable content.")
+                return content to (prompt.title ?: request.title)
+            }
+        val content =
+            translation.content.firstOrNull { it.isNotBlank() }
+                ?: refuse(
+                    CaseStarterRefusal.PROMPT_NOT_FOUND,
+                    "Prompt $promptId has no usable content after translation.",
+                )
+        return content to (translation.title ?: request.title)
+    }
+
+    /**
+     * Translates [CaseStarterRequest.prompt] and [CaseStarterRequest.title] when translation is opted in.
+     * Returns originals unchanged on any failure or when conditions are not met.
+     */
+    private fun maybeTranslate(
+        request: CaseStarterRequest,
+        targetLanguage: String?,
+        namespaceId: UUID,
+    ): Pair<String, String?> {
+        val sourceLanguage = request.translateFrom
+        if (sourceLanguage == null ||
+            targetLanguage == null ||
+            targetLanguage.equals(sourceLanguage, ignoreCase = true)
+        ) {
+            return request.prompt to request.title
+        }
+        val translatedPrompt =
+            runCatching {
+                promptTranslationService.translateText(
+                    text = request.prompt,
+                    sourceLanguage = sourceLanguage,
+                    targetLanguage = targetLanguage,
+                    namespaceId = namespaceId,
+                    kind = TextKind.CONTENT,
+                )
+            }.onFailure { e ->
+                logger.warn(e) { "[CaseStarter] translation failed for prompt — using original" }
+            }.getOrElse { request.prompt }
+
+        val translatedTitle =
+            request.title?.let { titleText ->
+                runCatching {
+                    promptTranslationService.translateText(
+                        text = titleText,
+                        sourceLanguage = sourceLanguage,
+                        targetLanguage = targetLanguage,
+                        namespaceId = namespaceId,
+                        kind = TextKind.TITLE,
+                    )
+                }.onFailure { e ->
+                    logger.warn(e) { "[CaseStarter] translation failed for title — using original" }
+                }.getOrElse { titleText }
+            }
+        return translatedPrompt to translatedTitle
+    }
+
+    /** Creates the case, tracing the calling one as its origin. [effectiveTitle] is already translated. */
+    private fun createCase(
+        request: CaseStarterRequest,
+        effectiveTitle: String,
+    ): Case =
+        try {
+            caseService.create(
+                Case(
+                    namespaceId = request.callerNamespaceId,
+                    title = effectiveTitle.take(MAX_TITLE_LENGTH),
+                    originCaseId = request.callerCaseId,
+                    scheduledPromptId = request.scheduledPromptId,
+                    dispatchKey = request.dispatchKey,
+                ),
+            )
+        } catch (e: DataIntegrityViolationException) {
+            // Race backstop: the pre-check is not atomic. A concurrent create with the same
+            // dispatchKey can race past the pre-check and collide at the constraint level.
+            // Translate the constraint violation into the same ALREADY_DISPATCHED refusal.
+            logger.info { "[CaseStarter] dispatchKey constraint violation (race) for key '${request.dispatchKey}': ${e.message}" }
+            refuse(
+                CaseStarterRefusal.ALREADY_DISPATCHED,
+                "A case with dispatchKey '${request.dispatchKey}' already exists — this dispatch was already delivered (concurrent create).",
+            )
+        }
 
     /**
      * Gives the target user ADMIN on [case] and sends the first message as them. The case exists by now, so
      * a failure soft-deletes it rather than leaving an empty conversation, then is rethrown for the caller
      * to report. An ADMIN grant already made is not revoked.
+     *
+     * [prompt] is the already-translated (or original) prompt text.
      */
     private fun startConversation(
         case: Case,
         targetUser: User,
         agentName: String,
         sessionContext: Map<String, Any?>?,
-        request: CaseStarterRequest,
+        prompt: String,
     ) {
         try {
             permissionService.grantPermission(
@@ -283,8 +449,13 @@ class CaseStarterService(
             // The @mention routes the message to the agent through the normal agent selection.
             caseService.addMessage(
                 caseId = case.id,
-                actor = Actor(id = targetUser.id.toString(), displayName = targetUser.displayName(), role = ActorRole.USER),
-                content = listOf(MessageContent.Text("@$agentName ${request.prompt}")),
+                actor =
+                    Actor(
+                        id = targetUser.id.toString(),
+                        displayName = targetUser.displayName(),
+                        role = ActorRole.USER,
+                    ),
+                content = listOf(MessageContent.Text("@$agentName $prompt")),
                 sessionContext = sessionContext,
             )
         } catch (e: Exception) {

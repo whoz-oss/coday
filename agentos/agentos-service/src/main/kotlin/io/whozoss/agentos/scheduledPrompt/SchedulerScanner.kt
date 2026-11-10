@@ -1,7 +1,11 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -11,30 +15,24 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 
 /**
  * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them.
  *
- * ### Scheduled entry points
+ * ### Scheduled entry point
  *
  * **[tickClaim]** (Phase A, every `agentos.prompt.scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
  *    window between Run insert and [ScheduledPromptExecutor.materialize] in [claim].
- * 2. Query [ScheduledPromptRepository.findDue] for all prompts whose `nextRunAt <= now`.
- * 3. For each prompt, call [claim] — which inserts a CLAIMED or SKIPPED Run and then
- *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
- * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
- *
- * **[tickWatchdog]** (every `agentos.prompt.scheduler.tick-interval-ms`):
- * Checks [ScheduledPromptExecutor.isRunning] and calls [ScheduledPromptExecutor.restart]
- * if the consumer loop has died unexpectedly. Runs on the same interval as [tickClaim]
- * so a dead producer is detected within one tick.
- *
- * Phase B (UserRun consumption) is handled by [ScheduledPromptExecutor], which runs a
- * continuous DB poller + worker-pool loop started by `@PostConstruct`. There is no consume
- * tick in this scanner.
+ * 2. Sweep orphaned TARGETING runs via [recoverOrphanedTargetingRuns] — handles the crash
+ *    window where the loop case outcome was never observed.
+ * 3. Query [ScheduledPromptRepository.findDue] for all prompts whose `nextRunAt <= now`.
+ * 4. For each prompt, call [claim] — which inserts a CLAIMED or SKIPPED Run and then
+ *    calls [ScheduledPromptExecutor.materialize] to create the loop case.
+ * 5. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
  * [tickClaim] uses Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
  * own successor. No fire-and-forget coroutines are used at the Scanner level.
@@ -44,7 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * For a given [ScheduledPrompt]:
  * - If [ScheduledPromptRunRepository.hasActive] is true → insert a SKIPPED run (audit record).
  * - Otherwise → insert a CLAIMED Run, then call [ScheduledPromptExecutor.materialize]
- *   (MERGE + RUNNING transition in a single `@Transactional` boundary).
+ *   (MERGE + TARGETING transition in a single `@Transactional` boundary).
  * - Catch [DuplicateRunException] for both SKIPPED and CLAIMED (concurrent tick won the race).
  * - After the insert (or on duplicate), advance `nextRunAt` optimistically.
  *
@@ -53,6 +51,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * A CLAIMED Run older than [ORPHAN_THRESHOLD] is presumed orphaned (crash between insert
  * and materialize). [recoverOrphanedClaimedRuns] marks such runs FAILED at the start of
  * each tick, unblocking the [ScheduledPromptRunRepository.hasActive] overlap guard.
+ *
+ * A TARGETING Run older than [TARGETING_ORPHAN_THRESHOLD] is presumed orphaned (crash
+ * during loop case execution). [recoverOrphanedTargetingRuns] marks such runs FAILED.
  *
  * A RUNNING Run whose UserRuns are all terminal but whose completion check was never
  * called is handled by [recoverOrphanedRunningRuns], also called at the start of each
@@ -71,6 +72,8 @@ class SchedulerScanner(
     private val runRepository: ScheduledPromptRunRepository,
     private val userRunRepository: ScheduledPromptUserRunRepository,
     private val agentConfigService: AgentConfigService,
+    private val userService: UserService,
+    private val permissionService: PermissionService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
     private val nextRunCalculatorService: NextRunCalculatorService,
@@ -126,13 +129,6 @@ class SchedulerScanner(
      * not advanced — they accumulate and are processed at the next window open, including
      * after a service restart (state is not persisted; the window is re-evaluated from
      * config + current time on every tick).
-     *
-     * Note: the time-window guard applies only to this tick (Phase A). Phase B (UserRun
-     * consumption) runs continuously via [ScheduledPromptExecutor]'s internal loop — already
-     * materialised UserRuns are always consumed to completion even after the window closes.
-     * The volume of in-flight work is bounded by [SchedulerProperties.batchSize] (max UserRuns
-     * claimed per poller iteration) and [SchedulerProperties.channelCapacity] (max UserRuns
-     * buffered in the handoff channel between the poller and the workers).
      */
     @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
@@ -199,6 +195,11 @@ class SchedulerScanner(
             logger.error(e) { "[SchedulerScanner] recoverOrphanedRunningRuns failed — continuing tick" }
         }
 
+        // Sweep: abandon orphaned TARGETING runs whose loop case outcome was never observed.
+        runCatching { recoverOrphanedTargetingRuns(now) }.onFailure { e ->
+            logger.error(e) { "[SchedulerScanner] recoverOrphanedTargetingRuns failed — continuing tick" }
+        }
+
         scheduledPromptRepository.findDue(now)
             .also { due ->
                 if (due.isEmpty()) logger.debug { "[SchedulerScanner] tickClaim: no due prompts" }
@@ -243,6 +244,30 @@ class SchedulerScanner(
     }
 
     /**
+     * Mark orphaned TARGETING runs as FAILED.
+     *
+     * A Run stays TARGETING while the loop case is executing. If the instance crashes or the
+     * loop case runs beyond [TARGETING_ORPHAN_THRESHOLD], the Run is presumed orphaned.
+     * Marking it FAILED unblocks the hasActive() overlap guard.
+     */
+    private fun recoverOrphanedTargetingRuns(now: Instant) {
+        val threshold = now.minus(TARGETING_ORPHAN_THRESHOLD)
+        val orphans = runRepository.findOrphanedTargeting(threshold)
+        orphans.forEach { run ->
+            logger.warn {
+                "[SchedulerScanner] Orphaned TARGETING run=${run.id} sp=${run.scheduledPromptId} " +
+                    "created=${run.metadata.created} — marking FAILED (crash recovery)"
+            }
+            runRepository.updateStatus(
+                id = run.id,
+                status = RunStatus.FAILED,
+                finishedAt = now,
+                error = "Orphaned TARGETING — loop case outcome unknown (crash recovery)",
+            )
+        }
+    }
+
+    /**
      * Close RUNNING Runs whose UserRuns are all settled but whose completion check was missed.
      *
      * This handles the crash window where the last [ScheduledPromptUserRunRepository.markTerminal]
@@ -273,32 +298,69 @@ class SchedulerScanner(
         }
     }
 
-    /**
-     * Watchdog: restarts the consumer loop if it died unexpectedly.
-     * Runs on the same interval as [tickClaim] so a dead producer is detected within one tick.
-     * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
-     * so executor.scope is always initialized when this first runs.
-     */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
-    fun tickWatchdog() {
-        if (!executor.isRunning()) {
-            logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
-            executor.restart()
-        }
-    }
-
     private fun claim(scheduledPrompt: ScheduledPrompt) {
-        val slot = scheduledPrompt.nextRunAt
-        val correlationId = "sp-${scheduledPrompt.id.toString().take(8)}-${slot.epochSecond}"
+        val sp = scheduledPrompt
+        val slot = sp.nextRunAt
+        val correlationId = "sp-${sp.id.toString().take(8)}-${slot.epochSecond}"
 
         // Guard: disable the ScheduledPrompt if its AgentConfig is gone or disabled.
-        val agentConfig = agentConfigService.findById(scheduledPrompt.agentConfigId)
+        val agentConfig = agentConfigService.findById(sp.agentConfigId)
         if (agentConfig == null || !agentConfig.enabled) {
             logger.warn {
-                "[SchedulerScanner] AgentConfig ${scheduledPrompt.agentConfigId} is ${if (agentConfig == null) "deleted" else "disabled"} " +
-                    "— disabling sp=${scheduledPrompt.id} to prevent further zombie ticks"
+                "[SchedulerScanner] AgentConfig ${sp.agentConfigId} is ${if (agentConfig == null) "deleted" else "disabled"} " +
+                    "— disabling sp=${sp.id} to prevent further zombie ticks"
             }
-            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
+            scheduledPromptRepository.updateEnabled(sp.id, false)
+            return
+        }
+
+        // Guard: resolve the execution identity (creator) before proceeding.
+        // A ScheduledPrompt without a resolvable creator cannot safely start cases.
+        val creatorId: UUID = run {
+            val raw = sp.metadata.createdBy
+            if (raw == null) {
+                logger.warn {
+                    "[SchedulerScanner] sp=${sp.id} has no createdBy — cannot resolve execution identity, disabling"
+                }
+                scheduledPromptRepository.updateEnabled(sp.id, false)
+                return
+            }
+            try {
+                UUID.fromString(raw)
+            } catch (e: IllegalArgumentException) {
+                logger.warn {
+                    "[SchedulerScanner] sp=${sp.id} createdBy='$raw' is not a valid UUID — cannot resolve execution identity, disabling"
+                }
+                scheduledPromptRepository.updateEnabled(sp.id, false)
+                return
+            }
+        }
+
+        val user = userService.findById(creatorId)
+        if (user == null || user.metadata.removed) {
+            logger.warn {
+                "[SchedulerScanner] sp=${sp.id} creator=$creatorId is ${if (user == null) "not found" else "removed"} " +
+                    "— cannot resolve execution identity, disabling"
+            }
+            scheduledPromptRepository.updateEnabled(sp.id, false)
+            return
+        }
+
+        // Guard: platform-scope (null namespaceId) is not supported on the converged path.
+        if (sp.namespaceId == null) {
+            logger.warn {
+                "[SchedulerScanner] sp=${sp.id} has no namespaceId (platform scope) " +
+                    "— converged path requires a namespace, skipping"
+            }
+            return
+        }
+
+        // Guard: creator must have WRITE on the namespace to start cases on behalf of users.
+        if (!permissionService.hasPermission(creatorId.toString(), EntityType.NAMESPACE, sp.namespaceId.toString(), Action.WRITE)) {
+            logger.warn {
+                "[SchedulerScanner] sp=${sp.id} creator=$creatorId lacks WRITE on namespace=${sp.namespaceId} " +
+                    "— creator cannot start cases for other users in this namespace, skipping (grant WRITE to recover)"
+            }
             return
         }
 
@@ -310,25 +372,25 @@ class SchedulerScanner(
         // tick would keep creating SKIPPED or CLAIMED runs indefinitely.
         // In multi-instance deployments, only one instance needs to win the disable — the
         // others will see enabled=false on their next findDue() and skip naturally.
-        if (isEndConditionReached(scheduledPrompt)) {
+        if (isEndConditionReached(sp)) {
             logger.info {
-                "[SchedulerScanner] End condition already reached for sp=${scheduledPrompt.id} " +
-                    "(${scheduledPrompt.planning.endType}) \u2014 disabling without execution"
+                "[SchedulerScanner] End condition already reached for sp=${sp.id} " +
+                    "(${sp.planning.endType}) \u2014 disabling without execution"
             }
-            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
+            scheduledPromptRepository.updateEnabled(sp.id, false)
             return
         }
 
         val status = when {
-            runRepository.hasActive(scheduledPrompt.id) -> {
-                logger.warn { "[SchedulerScanner] OVERLAP sp=${scheduledPrompt.id} has active run → SKIPPED" }
+            runRepository.hasActive(sp.id) -> {
+                logger.warn { "[SchedulerScanner] OVERLAP sp=${sp.id} has active run → SKIPPED" }
                 RunStatus.SKIPPED
             }
             else -> RunStatus.CLAIMED
         }
 
         val run = ScheduledPromptRun(
-            scheduledPromptId = scheduledPrompt.id,
+            scheduledPromptId = sp.id,
             scheduledFor = slot,
             status = status,
             correlationId = correlationId,
@@ -338,28 +400,28 @@ class SchedulerScanner(
             runRepository.insert(run)
                 .also { logger.info { "[SchedulerScanner] Inserted run correlationId=$correlationId status=$status" } }
         } catch (e: DuplicateRunException) {
-            logger.info { "[SchedulerScanner] Duplicate slot for sp=${scheduledPrompt.id} slot=$slot — another tick won the race" }
+            logger.info { "[SchedulerScanner] Duplicate slot for sp=${sp.id} slot=$slot — another tick won the race" }
             null
         }
 
         // Always advance nextRunAt — auto-repairing even on duplicate or skip.
-        val nextSlot = nextRunCalculatorService.nextAfter(recurrence = scheduledPrompt.recurrence, planning = scheduledPrompt.planning, after = slot)
-        val advanced = scheduledPromptRepository.advanceNextRunAt(scheduledPrompt.id, slot, nextSlot)
+        val nextSlot = nextRunCalculatorService.nextAfter(recurrence = sp.recurrence, planning = sp.planning, after = slot)
+        val advanced = scheduledPromptRepository.advanceNextRunAt(sp.id, slot, nextSlot)
         if (advanced) {
-            logger.debug { "[SchedulerScanner] Advanced sp=${scheduledPrompt.id} nextRunAt=$nextSlot" }
+            logger.debug { "[SchedulerScanner] Advanced sp=${sp.id} nextRunAt=$nextSlot" }
         } else {
-            logger.debug { "[SchedulerScanner] Optimistic advance miss for sp=${scheduledPrompt.id} (another tick advanced first)" }
+            logger.debug { "[SchedulerScanner] Optimistic advance miss for sp=${sp.id} (another tick advanced first)" }
         }
 
         // Check if the end condition will be reached after this run.
         // If so, disable the ScheduledPrompt — no future run should fire.
-        checkEndConditionAfterAdvance(scheduledPrompt, nextSlot)
+        checkEndConditionAfterAdvance(sp, nextSlot)
 
         if (status == RunStatus.CLAIMED && insertedRun != null) {
-            runCatching { executor.materialize(insertedRun, scheduledPrompt) }
+            runCatching { executor.materialize(insertedRun, sp, creatorId) }
                 .onFailure { e ->
                     logger.error(e) {
-                        "[SchedulerScanner] materialize failed for run=${insertedRun.id} sp=${scheduledPrompt.id} — marking FAILED"
+                        "[SchedulerScanner] materialize failed for run=${insertedRun.id} sp=${sp.id} — marking FAILED"
                     }
                     runCatching {
                         runRepository.updateStatus(
@@ -446,5 +508,10 @@ class SchedulerScanner(
     companion object : KLogging() {
         /** CLAIMED Runs older than this are presumed orphaned (crash between insert and materialize). */
         private val ORPHAN_THRESHOLD = Duration.ofMinutes(5)
+
+        /** TARGETING runs older than this are presumed orphaned. Deliberately longer than
+         *  ORPHAN_THRESHOLD: a loop case legitimately runs for minutes, whereas the CLAIMED
+         *  window is seconds. */
+        private val TARGETING_ORPHAN_THRESHOLD = Duration.ofMinutes(30)
     }
 }

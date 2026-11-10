@@ -6,6 +6,8 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.util.coRunCatching
+import io.whozoss.agentos.workflow.WorkflowTarget
+import io.whozoss.agentos.workflow.WorkflowTargets
 import mu.KLogging
 import java.util.UUID
 
@@ -24,6 +26,13 @@ import java.util.UUID
  *
  * A null return is mapped to NOT_FOUND / access-denied.
  *
+ * ## Output
+ *
+ * The structured output follows the workflow targets contract ([WorkflowTargets]), so this tool can
+ * be step 1 of the platform user-group workflow:
+ * `{ "targets": [{ "userExternalId" }], "members": [<UserGroupMember>] }`. `members` keeps the full
+ * member rows (role, email, names) for LLM callers.
+ *
  * @param configName IntegrationConfig name used as tool-name prefix. Null for bare name.
  * @param usersByAgentLoader Lambda: (agentConfigId, namespaceId, userId) → members, or null.
  */
@@ -35,7 +44,7 @@ class ListAgentUsersTool(
         val agentConfigId: UUID,
     )
 
-    override val name: String = configName?.let { "${it}__listAgentUsers" } ?: "listAgentUsers"
+    override val name: String = configName?.let { "${it}__$TOOL_NAME" } ?: TOOL_NAME
 
     override val description: String =
         """
@@ -70,7 +79,7 @@ class ListAgentUsersTool(
     override val version: String = "1.0.0"
     override val paramType: Class<Input> = Input::class.java
 
-    override fun outputSchema(): JsonNode = MEMBER_ARRAY_SCHEMA
+    override fun outputSchema(): JsonNode = OUTPUT_SCHEMA
 
     override suspend fun execute(
         input: Input?,
@@ -93,7 +102,11 @@ class ListAgentUsersTool(
                     errorType = "NOT_FOUND",
                 )
 
-        val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
+        val structuredOutput =
+            WorkflowTargets.toStructuredOutput(
+                targets = members.map { WorkflowTarget(userExternalId = it.externalId) },
+                extra = mapOf("members" to members.toStructuredList()),
+            )
         val summary =
             if (members.isEmpty()) {
                 "Agent ${input.agentConfigId} has no users deployed through any UserGroup in this namespace."
@@ -105,6 +118,9 @@ class ListAgentUsersTool(
     }
 
     companion object : KLogging() {
+        /** Bare tool name, before the integration config prefix. */
+        const val TOOL_NAME = "listAgentUsers"
+
         private val mapper = jacksonObjectMapper()
 
         /** Shared output schema for all USER_GROUP member-listing tools. */
@@ -128,5 +144,16 @@ class ListAgentUsersTool(
                 }
                 """.trimIndent(),
             )
+
+        /** `{ targets, members }`: the workflow targets contract plus the member rows. */
+        val OUTPUT_SCHEMA: JsonNode =
+            mapper.createObjectNode().apply {
+                put("type", "object")
+                putObject("properties").apply {
+                    set<JsonNode>(WorkflowTargets.FIELD, WorkflowTargets.ARRAY_SCHEMA)
+                    set<JsonNode>("members", MEMBER_ARRAY_SCHEMA)
+                }
+                putArray("required").add(WorkflowTargets.FIELD).add("members")
+            }
     }
 }

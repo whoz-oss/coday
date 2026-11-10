@@ -31,7 +31,7 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
     override fun hasActive(scheduledPromptId: UUID): Boolean =
         store.values.any {
             it.scheduledPromptId == scheduledPromptId &&
-                (it.status == RunStatus.CLAIMED || it.status == RunStatus.RUNNING)
+                (it.status == RunStatus.CLAIMED || it.status == RunStatus.TARGETING || it.status == RunStatus.RUNNING)
         }
 
     override fun updateStatus(
@@ -61,6 +61,11 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
             it.status == RunStatus.CLAIMED && it.metadata.created.isBefore(olderThan)
         }.sortedBy { it.metadata.created }
 
+    override fun findOrphanedTargeting(olderThan: Instant): List<ScheduledPromptRun> =
+        store.values.filter {
+            it.status == RunStatus.TARGETING && it.metadata.created.isBefore(olderThan)
+        }.sortedBy { it.metadata.created }
+
     override fun findSettledRunning(): List<ScheduledPromptRun> {
         val urRepo = userRunRepository ?: return emptyList()
         return store.values
@@ -71,6 +76,16 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
                 pending == 0 && running == 0
             }
             .sortedBy { it.metadata.created }
+    }
+
+    override fun findByLoopCaseId(loopCaseId: UUID): ScheduledPromptRun? =
+        store.values.firstOrNull { it.loopCaseId == loopCaseId }
+
+    override fun updateStatusAndLoopCase(id: UUID, status: RunStatus, loopCaseId: UUID): Boolean {
+        val entry = store.entries.firstOrNull { it.value.id == id } ?: return false
+        if (entry.value.status == RunStatus.DONE || entry.value.status == RunStatus.FAILED) return false
+        store[entry.key] = entry.value.copy(status = status, loopCaseId = loopCaseId)
+        return true
     }
 
     /** Test helper: all stored runs. */

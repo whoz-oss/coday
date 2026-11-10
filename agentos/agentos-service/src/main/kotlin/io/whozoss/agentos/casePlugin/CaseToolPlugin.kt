@@ -2,10 +2,12 @@ package io.whozoss.agentos.casePlugin
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.stringList
 import mu.KLogging
 import java.util.UUID
@@ -18,6 +20,9 @@ import java.util.UUID
  * - [FreeCaseStarterTool] (`FreeCaseStarter`): starts a new, independent case with another agent, for the
  *   current user.
  * - [FreeCaseStarterForUserTool] (`FreeCaseStarterForUser`): the same, for a user named by the caller.
+ * - [BatchCaseStarterTool] (`BatchCaseStarter`): one case per user of a list, for backend workflows. It is
+ *   [io.whozoss.agentos.tool.RequiresExplicitGrant]: an agent receives it only by naming it
+ *   (`CASE: [BatchCaseStarter]`), never through a grant of the whole integration.
  *
  * Like [io.whozoss.agentos.redirect.RedirectToolPlugin], this class is NOT annotated
  * with `@Component`: it is instantiated as a `@Bean` in [CasePluginConfiguration], so that the
@@ -27,14 +32,14 @@ import java.util.UUID
  *
  * An admin creates an [io.whozoss.agentos.integrationConfig.IntegrationConfig] of type `CASE` and
  * assigns it to the relevant [io.whozoss.agentos.agentConfig.AgentConfig] via `integrations`.
- * The three tools are provided by every config. To grant only some of them, the agent names them in its
+ * The first three tools are provided by every config. To grant only some of them, the agent names them in its
  * `integrations` map (`CASE_x: [ReadCase, FreeCaseStarter]`); an agent that maps the config to `null` receives
- * all three.
+ * those three, and `BatchCaseStarter` only when named.
  *
  * ## Configuration
  *
  * - `includesTechnicalEvents`: read side, shape of the transcript returned by `ReadCase`.
- * - `agents` / `deniedAgents`: start side, shared by both starter tools. They have no effect on `ReadCase`.
+ * - `agents` / `deniedAgents`: start side, shared by the three starter tools. They have no effect on `ReadCase`.
  *
  * Starting a case for another user is not a parameter: it is a tool of its own, which an agent has to be
  * granted, and the service additionally requires the calling user to be ADMIN of the namespace.
@@ -52,6 +57,8 @@ import java.util.UUID
 class CaseToolPlugin(
     private val caseEventsLoader: (caseId: UUID, namespaceId: UUID, userId: UUID?) -> List<CaseEvent>?,
     private val caseStarterService: CaseStarterService,
+    private val userService: UserService,
+    private val limitsConfig: LimitsConfigProperties,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
     override val configSchema: JsonNode = CONFIG_SCHEMA
@@ -89,6 +96,14 @@ class CaseToolPlugin(
             FreeCaseStarterForUserTool(
                 configName = configName,
                 caseStarterService = caseStarterService,
+                allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
+                deniedAgents = config.stringList("deniedAgents").toSet(),
+            ),
+            BatchCaseStarterTool(
+                configName = configName,
+                caseStarterService = caseStarterService,
+                userService = userService,
+                limitsConfig = limitsConfig,
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
                 deniedAgents = config.stringList("deniedAgents").toSet(),
             ),

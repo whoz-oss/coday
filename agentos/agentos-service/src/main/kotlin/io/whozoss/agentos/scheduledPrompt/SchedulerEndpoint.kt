@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import mu.KLogging
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation
 import org.springframework.boot.actuate.endpoint.annotation.Selector
@@ -19,7 +20,7 @@ import org.springframework.stereotype.Component
  *
  * ### Operations
  *
- * **Read** — returns the current paused/active state of each scheduler phase.
+ * **Read** — returns the current paused/active state of the claim phase.
  *
  * **Write** — pause or resume a phase:
  * - `phase`: `"claim"`, `"consume"`, or `"all"`
@@ -28,16 +29,15 @@ import org.springframework.stereotype.Component
  * The `claim` phase is managed by [SchedulerScanner]: pausing it causes the
  * `@Scheduled` tick to return immediately without claiming new runs.
  *
- * The `consume` phase is managed by [ScheduledPromptExecutor]: pausing it causes the
- * producer loop to skip `claimBatch` calls and delay instead. Workers continue
- * to drain items already in the channel, then block on receive until resumed.
+ * The `consume` phase has been removed from the converged path. Callers passing
+ * `"consume"` receive a logged no-op so existing JMX/HTTP integrations remain
+ * compatible without returning a 400.
  */
 @Component
 @ConditionalOnProperty(name = ["agentos.prompt.scheduler.enabled"], havingValue = "true")
 @Endpoint(id = "scheduler")
 class SchedulerEndpoint(
     private val schedulerScanner: SchedulerScanner,
-    private val executor: ScheduledPromptExecutor,
     private val executionWindowService: ExecutionWindowService
 ) {
     /**
@@ -50,7 +50,6 @@ class SchedulerEndpoint(
     fun status(): Map<String, Any> =
         mapOf(
             "claimPaused" to schedulerScanner.isClaimPaused(),
-            "consumePaused" to executor.isConsumePaused(),
             "withinExecutionWindow" to executionWindowService.isWithinExecutionWindow()
         )
 
@@ -83,13 +82,13 @@ class SchedulerEndpoint(
                 "pause" -> { p ->
                     when (p) {
                         "claim" -> schedulerScanner.pauseClaim()
-                        else -> executor.pauseConsume()
+                        else -> logger.info { "[SchedulerEndpoint] 'consume' pause is a no-op on the converged path" }
                     }
                 }
                 "resume" -> { p ->
                     when (p) {
                         "claim" -> schedulerScanner.resumeClaim()
-                        else -> executor.resumeConsume()
+                        else -> logger.info { "[SchedulerEndpoint] 'consume' resume is a no-op on the converged path" }
                     }
                 }
                 else -> throw IllegalArgumentException(
@@ -99,4 +98,6 @@ class SchedulerEndpoint(
         phases.forEach(apply)
         return status()
     }
+
+    companion object : KLogging()
 }

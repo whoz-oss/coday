@@ -61,17 +61,17 @@ class ListAgentUsersToolSpec : StringSpec({
     // Happy path
     // -------------------------------------------------------------------------
 
-    "execute returns empty structured output when no users are deployed" {
+    "execute returns empty targets when no users are deployed" {
         val agentId = UUID.randomUUID()
         every { loader(agentId, NAMESPACE_ID, USER_ID) } returns emptyList()
         val result = tool().execute(ListAgentUsersTool.Input(agentId), CONTEXT)
         result.success shouldBe true
-        result.structuredOutput!!.isArray shouldBe true
-        result.structuredOutput!!.size() shouldBe 0
+        result.structuredOutput!!["targets"].size() shouldBe 0
+        result.structuredOutput!!["members"].size() shouldBe 0
         result.output shouldContain "no users"
     }
 
-    "execute returns all users across deployed groups" {
+    "execute returns all users across deployed groups, as workflow targets and as member rows" {
         val agentId = UUID.randomUUID()
         val alice = member("alice@example.com", "ADMIN")
         val bob = member("bob@example.com")
@@ -79,10 +79,12 @@ class ListAgentUsersToolSpec : StringSpec({
 
         val result = tool().execute(ListAgentUsersTool.Input(agentId), CONTEXT)
         result.success shouldBe true
-        val arr = result.structuredOutput!!
-        arr.size() shouldBe 2
-        arr[0]["externalId"].asText() shouldBe "alice@example.com"
-        arr[1]["externalId"].asText() shouldBe "bob@example.com"
+        val targets = result.structuredOutput!!["targets"]
+        targets.map { it["userExternalId"].asText() } shouldBe listOf("alice@example.com", "bob@example.com")
+        targets[0].has("entityId") shouldBe false
+        val members = result.structuredOutput!!["members"]
+        members[0]["externalId"].asText() shouldBe "alice@example.com"
+        members[0]["role"].asText() shouldBe "ADMIN"
         result.output shouldContain "2 user"
     }
 

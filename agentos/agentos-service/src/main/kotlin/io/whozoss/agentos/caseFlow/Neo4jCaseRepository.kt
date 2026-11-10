@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.casePlugin.DispatchKey
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
@@ -76,8 +77,12 @@ open class Neo4jCaseRepository(
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
-                caseNodeNeo4jRepository.save(node.copy(removed = true))
-                logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id" }
+                // Tombstone the dispatchKey so the unique constraint slot is freed for re-use.
+                // A soft-deleted node still binds the constraint; rewriting to tombstone:<id>
+                // lets a re-run create a new case with the same dispatchKey.
+                val tombstonedDispatchKey = node.dispatchKey?.let { DispatchKey.tombstone(UUID.fromString(node.id)) }
+                caseNodeNeo4jRepository.save(node.copy(removed = true, dispatchKey = tombstonedDispatchKey))
+                logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id (dispatchKey tombstoned: ${tombstonedDispatchKey != null})" }
                 true
             } ?: false
 
@@ -97,6 +102,9 @@ open class Neo4jCaseRepository(
         parentCaseId: UUID,
         childCaseId: UUID,
     ) = caseNodeNeo4jRepository.linkParentToChild(parentCaseId.toString(), childCaseId.toString())
+
+    override fun findByDispatchKey(dispatchKey: String): Case? =
+        caseNodeNeo4jRepository.findByDispatchKey(dispatchKey)?.toDomain()
 
     @Transactional
     override fun deleteByParent(parentId: UUID): Int {

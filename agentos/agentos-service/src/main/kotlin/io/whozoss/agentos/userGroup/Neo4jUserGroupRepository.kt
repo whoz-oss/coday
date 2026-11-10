@@ -190,22 +190,43 @@ open class Neo4jUserGroupRepository(
     }
 
     /**
-     * Single-query implementation: deduplication of users across multiple deployed groups
-     * is handled inside Cypher with `WITH DISTINCT u` rather than in the JVM.
+     * Widened implementation: covers BOTH deployment paths for an agent within a namespace.
+     *
+     * 1. **UserGroup deployment**: `AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User`,
+     *    where the UserGroup `[:BELONGS_TO]` the namespace.
+     * 2. **Namespace deployment**: `AgentConfig -[:DEPLOYED_TO]-> Namespace <-[:MEMBER|ADMIN]- User`.
+     *
+     * The CALL { UNION } subquery deduplicates users found via both paths and merges their
+     * relationship types so that ADMIN wins over MEMBER across branches.
      * Scoped to [namespaceId] so cross-namespace leakage is impossible at the query level.
-     * A user who is ADMIN in one group and MEMBER in another gets ADMIN (ADMIN wins in collect).
+     *
+     * IMPORTANT: both UNION branches must return identical column names (`u`, `rel`) for
+     * Neo4j to accept the subquery. Role resolution (`ADMIN` wins) happens in the outer
+     * query via `collect(DISTINCT rel)`.
      */
     override fun findUsersByAgentId(agentConfigId: UUID, namespaceId: UUID): List<UserGroupMember> =
         neo4jClient
             .query(
                 $$"""
-                    MATCH (a:AgentConfig {id: $agentConfigId})-[:DEPLOYED_TO]->(g:UserGroup)
-                    WHERE NOT COALESCE(a.removed, false)
-                      AND NOT COALESCE(g.removed, false)
-                      AND g.namespaceId = $namespaceId
-                    MATCH (u:User)-[r:MEMBER|ADMIN]->(g)
-                    WHERE NOT COALESCE(u.removed, false)
-                    WITH u, collect(DISTINCT type(r)) AS rels
+                    MATCH (a:AgentConfig {id: $agentConfigId})
+                      WHERE NOT COALESCE(a.removed, false)
+                    MATCH (ns:Namespace {id: $namespaceId})
+                      WHERE NOT COALESCE(ns.removed, false)
+                    CALL {
+                        WITH a, ns
+                        MATCH (a)-[:DEPLOYED_TO]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+                          WHERE NOT COALESCE(g.removed, false)
+                        MATCH (u:User)-[r:MEMBER|ADMIN]->(g)
+                          WHERE NOT COALESCE(u.removed, false)
+                        RETURN u, type(r) AS rel
+                        UNION
+                        WITH a, ns
+                        MATCH (a)-[:DEPLOYED_TO]->(ns)
+                        MATCH (u:User)-[r:MEMBER|ADMIN]->(ns)
+                          WHERE NOT COALESCE(u.removed, false)
+                        RETURN u, type(r) AS rel
+                    }
+                    WITH u, collect(DISTINCT rel) AS rels
                     RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
                            u.firstname AS firstname, u.lastname AS lastname,
                            CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role

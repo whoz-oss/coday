@@ -71,6 +71,7 @@ import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.IdCompressorService
+import io.whozoss.agentos.workflow.LoopConfigResolver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.springframework.ai.chat.client.ChatClient
@@ -101,11 +102,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
     // Strict: the static fallback must only run on the exact path under test (non-OAuth type, no
     // per-user row). A relaxed mock would silently return a Credential and mask a wrong dispatch.
     private val staticCredentialFactory: StaticCredentialFactory = mockk()
-    private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
+    private val loopConfigResolver: LoopConfigResolver = mockk(relaxed = true)
     private val skillService: SkillService = mockk(relaxed = true)
     private val skillToolGrantService: SkillToolGrantService = SkillToolGrantService()
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
+    private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
 
     // Default resolution, which a test can replace with a directory owned by another case.
     private var sharedRoot: ResolvedExchangeRoot? = null
@@ -152,6 +154,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             limitsConfig = LimitsConfigProperties(),
             exchangeRootResolver = exchangeRootResolver,
             loopWorkflowRunnerService = mockk(relaxed = true),
+            loopConfigResolver = loopConfigResolver,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -804,6 +807,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     limitsConfig = LimitsConfigProperties(),
                     exchangeRootResolver = exchangeRootResolver,
                     loopWorkflowRunnerService = mockk(relaxed = true),
+                    loopConfigResolver = mockk(relaxed = true),
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -1152,6 +1156,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     limitsConfig = LimitsConfigProperties(),
                     exchangeRootResolver = exchangeRootResolver,
                     loopWorkflowRunnerService = mockk(relaxed = true),
+                    loopConfigResolver = mockk(relaxed = true),
                 )
             val configs =
                 listOf(

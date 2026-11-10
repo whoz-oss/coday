@@ -14,6 +14,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
@@ -24,6 +25,8 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.workflow.Workflow
+import io.whozoss.agentos.workflow.WorkflowService
 import java.time.Clock
 import java.time.DayOfWeek
 import java.time.Instant
@@ -36,6 +39,9 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private val promptService = mockk<PromptService>(relaxed = true)
     private val namespaceService = mockk<NamespaceService>(relaxed = true)
+    private val defaultWorkflowId: UUID = UUID.randomUUID()
+    private val workflowService = mockk<WorkflowService>()
+    private val workflowInputValidator = mockk<WorkflowInputValidator>(relaxed = true)
 
     // Fixed clock: 2026-01-01 07:00 UTC — before the default timeUtc of 08:00
     private val fixedNow = Instant.parse("2026-01-01T07:00:00Z")
@@ -48,6 +54,8 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             promptService = promptService,
             namespaceService = namespaceService,
             nextRunCalculatorService = NextRunCalculatorService(clock = fixedClock),
+            workflowService = workflowService,
+            workflowInputValidator = workflowInputValidator,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -125,6 +133,38 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
                 it.invocation.args[0] as Prompt
             }
             every { promptService.delete(any()) } returns true
+            every { workflowService.resolveForScheduledPrompt(any(), any()) } answers {
+                Workflow(metadata = EntityMetadata(id = firstArg<UUID?>() ?: defaultWorkflowId), name = "wf", steps = emptyList())
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Workflow link
+        // -------------------------------------------------------------------------
+
+        "create links the default workflow when none is given" {
+            newService().create(sp()).workflowId shouldBe defaultWorkflowId
+        }
+
+        "create keeps the workflow it was given, validated against its namespace" {
+            val chosen = UUID.randomUUID()
+            newService().create(sp().copy(workflowId = chosen)).workflowId shouldBe chosen
+            verify { workflowService.resolveForScheduledPrompt(chosen, namespaceId) }
+        }
+
+        "create is refused when the workflow is not usable in its namespace" {
+            val foreign = UUID.randomUUID()
+            every { workflowService.resolveForScheduledPrompt(foreign, namespaceId) } throws BadRequestException("another namespace")
+            shouldThrow<BadRequestException> { newService().create(sp().copy(workflowId = foreign)) }
+        }
+
+        "create validates workflowInput against the resolved workflow, and is refused when it does not fit" {
+            val criteria = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree("""{"x":1}""")
+            newService().create(sp().copy(workflowInput = criteria))
+            verify { workflowInputValidator.requireValid(match { it.id == defaultWorkflowId }, criteria, namespaceId) }
+
+            every { workflowInputValidator.requireValid(any(), criteria, any()) } throws BadRequestException("bad input")
+            shouldThrow<BadRequestException> { newService().create(sp(name = "other").copy(workflowInput = criteria)) }
         }
 
         // -------------------------------------------------------------------------

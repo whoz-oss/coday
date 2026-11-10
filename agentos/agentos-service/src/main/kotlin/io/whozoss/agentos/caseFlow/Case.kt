@@ -55,4 +55,12 @@ data class Case(
      *   any platform or namespace configuration that may change later.
      */
     val runCostThreshold: Double? = null,
+    /**
+     * Optional idempotency key supplied by the caller that created this case.
+     *
+     * When set, it is unique among non-deleted cases, so a caller replaying the same logical
+     * dispatch does not create a duplicate. Null for ordinary interactive cases.
+     * Format is the caller's business; the scheduler uses `runId:userId[:entityId]`.
+     */
+    val dispatchKey: String? = null,
 ) : Entity

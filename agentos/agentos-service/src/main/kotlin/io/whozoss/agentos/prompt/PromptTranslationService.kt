@@ -5,6 +5,10 @@ import java.util.UUID
 /**
  * Translates prompt content and title via a namespace's default AI model.
  *
+ * Also exposes a text-level translation capability ([translateText]) that does not require
+ * a persisted [Prompt] entity — for use by callers such as [io.whozoss.agentos.casePlugin.CaseStarterService]
+ * that have free text, not a Prompt UUID.
+ *
  * The two methods are intentionally separate because [Prompt.content] is a `List<String>`
  * (translated element-by-element to preserve index alignment) while [Prompt.title] is a
  * single `String`. Keeping them apart avoids implicit shape assumptions and lets callers
@@ -46,5 +50,22 @@ interface PromptTranslationService {
         sourceLanguage: String,
         targetLanguage: String,
         namespaceId: UUID,
+    ): String
+
+    /**
+     * Translates a single [text] string from [sourceLanguage] to [targetLanguage] using the
+     * namespace's default AI model. [kind] drives the translation context prompt (TITLE vs CONTENT).
+     *
+     * Results are cached on `(text, sourceLanguage, targetLanguage, modelId, kind)`.
+     *
+     * **Never throws**: returns [text] unchanged when no model is configured, when the LLM call
+     * fails, or on any other error. Translation is best-effort and must not break the caller's flow.
+     */
+    fun translateText(
+        text: String,
+        sourceLanguage: String,
+        targetLanguage: String,
+        namespaceId: UUID,
+        kind: TextKind,
     ): String
 }

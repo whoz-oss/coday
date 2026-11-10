@@ -18,6 +18,8 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.prompt.PromptTranslationService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -72,6 +74,8 @@ class CaseStarterServiceUnitSpec :
 
         class Fixture(
             userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
+            promptTranslationService: PromptTranslationService = mockk(relaxed = true),
+            promptService: PromptService = mockk(relaxed = true),
         ) {
             val created = mutableListOf<Case>()
             val sent = mutableListOf<Sent>()
@@ -116,6 +120,8 @@ class CaseStarterServiceUnitSpec :
                     agentConfigService = agentConfigService,
                     permissionService = permissionService,
                     userSessionContextResolver = userSessionContextResolver,
+                    promptTranslationService = promptTranslationService,
+                    promptService = promptService,
                 )
 
             init {

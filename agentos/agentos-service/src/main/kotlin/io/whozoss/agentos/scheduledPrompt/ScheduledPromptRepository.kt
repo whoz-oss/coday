@@ -72,6 +72,15 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      */
     fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean
 
+    /** Returns true if at least one non-removed ScheduledPrompt references the given workflow. */
+    fun existsActiveByWorkflowId(workflowId: UUID): Boolean
+
+    /**
+     * Sets [ScheduledPrompt.workflowId] to [defaultWorkflowId] on every scheduled prompt that has
+     * none, removed ones included. Idempotent; returns the number of rows updated.
+     */
+    fun backfillWorkflowId(defaultWorkflowId: UUID): Int
+
     /**
      * Disable all non-removed [ScheduledPrompt]s that reference the given [agentConfigId].
      *

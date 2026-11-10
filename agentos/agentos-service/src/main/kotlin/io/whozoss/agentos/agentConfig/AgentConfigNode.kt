@@ -48,7 +48,6 @@ data class AgentConfigNode(
     val subAgentsJson: String? = null,
     val delegationTimeoutSeconds: Int? = null,
     val skillSelectorsJson: String? = null,
-    val loopConfigJson: String? = null,
     // EntityMetadata fields
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -92,7 +91,6 @@ data class AgentConfigNode(
             subAgents = subAgentsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
             delegationTimeoutSeconds = delegationTimeoutSeconds,
             skillSelectors = skillSelectorsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
-            loopConfig = loopConfigJson?.let { MAPPER.readTree(it) },
         )
 
     companion object : KLogging() {
@@ -116,7 +114,6 @@ data class AgentConfigNode(
                 subAgentsJson = config.subAgents?.let { MAPPER.writeValueAsString(it) },
                 delegationTimeoutSeconds = config.delegationTimeoutSeconds,
                 skillSelectorsJson = config.skillSelectors?.let { MAPPER.writeValueAsString(it) },
-                loopConfigJson = config.loopConfig?.let { MAPPER.writeValueAsString(it) },
                 version = config.metadata.version,
                 enabled = config.enabled,
                 created = config.metadata.created,

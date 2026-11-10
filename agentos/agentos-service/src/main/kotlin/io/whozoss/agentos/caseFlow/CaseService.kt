@@ -159,6 +159,14 @@ interface CaseService : EntityService<Case, UUID> {
     fun killCase(caseId: UUID)
 
     /**
+     * Find a non-deleted case by its [Case.dispatchKey], or null if none exists.
+     *
+     * Used by [io.whozoss.agentos.casePlugin.CaseStarterService] to check for duplicate
+     * dispatches before creating a new case.
+     */
+    fun findByDispatchKey(dispatchKey: String): Case?
+
+    /**
      * Reopen a terminal case by transitioning it back to [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE].
      *
      * The case must currently be in a terminal status ([io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED]

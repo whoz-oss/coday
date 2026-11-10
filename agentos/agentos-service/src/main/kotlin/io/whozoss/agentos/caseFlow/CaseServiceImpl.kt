@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -720,6 +721,8 @@ class CaseServiceImpl(
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agent = agentService.findAgentByName(agentName, context, this)
+        // Narrow to Agent only if it is LLM-backed; AgentLoop and other non-LLM workers return null.
+        val llmAgent = agent as? Agent
         var outcome = UsageOutcome.COMPLETED
         val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         try {
@@ -730,8 +733,8 @@ class CaseServiceImpl(
                         caseId = caseId,
                         agentId = agent.id,
                         agentName = agent.name,
-                        llmProvider = agent.llmProvider,
-                        llmModel = agent.llmModel,
+                        llmProvider = llmAgent?.llmProvider,
+                        llmModel = llmAgent?.llmModel,
                     )
                 storeEvent(runningEvent).also { saved ->
                     runtime.pushEvents(listOf(saved))
@@ -804,12 +807,13 @@ class CaseServiceImpl(
                 outcome = UsageOutcome.INTERRUPTED
             }
             val persistUsage: () -> Unit = {
-                // Write an analytical UsageRecord only when the accumulator has data.
-                // A run with no LLM calls must not produce a zero-cost record.
+                // Write an analytical UsageRecord only when the accumulator has data AND the worker
+                // is an LLM-backed Agent. A non-LLM worker (e.g. AgentLoop) produces no LLM usage,
+                // so writing no record is correct, not a workaround.
                 // The write is wrapped in runCatching so that a Neo4j failure or constraint
                 // violation never propagates into the agent execution path — observability
                 // must not bring down the domain.
-                if (usageAccumulator?.hasData == true) {
+                if (usageAccumulator?.hasData == true && llmAgent != null) {
                     runCatching {
                         usageAccumulator.recordGroups().forEach { group ->
                             usageRecordService.create(
@@ -821,8 +825,8 @@ class CaseServiceImpl(
                                     outcome = outcome,
                                     userId = userId,
                                     agentConfigId = agent.id,
-                                    providerName = agent.llmProvider,
-                                    apiModelName = agent.llmModel,
+                                    providerName = llmAgent.llmProvider,
+                                    apiModelName = llmAgent.llmModel,
                                 ),
                             )
                         }
@@ -1214,6 +1218,12 @@ class CaseServiceImpl(
             }
         }
     }
+
+    // ======================================================
+    // Dispatch-key lookup (idempotency support)
+    // ======================================================
+
+    override fun findByDispatchKey(dispatchKey: String): Case? = caseRepository.findByDispatchKey(dispatchKey)
 
     companion object : KLogging() {
         /**

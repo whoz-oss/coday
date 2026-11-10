@@ -1,6 +1,7 @@
 package io.whozoss.agentos.user
 
 import io.whozoss.agentos.entity.EntityService
+import java.util.UUID
 
 /**
  * Service for managing [User] entities.
@@ -44,6 +45,14 @@ interface UserService : EntityService<User, String> {
     fun resolveOrCreateByExternalId(externalId: String): User
 
     fun createByExternalIds(externalIds: Set<String>): List<User>
+
+    /**
+     * Find a non-removed user by their internal UUID.
+     *
+     * @param id The internal AgentOS UUID of the user.
+     * @return The matching user, or null if not found or soft-deleted.
+     */
+    fun findById(id: UUID): User? = findByIds(listOf(id)).firstOrNull()
 
     /**
      * Resolve the [User] for the current HTTP request.

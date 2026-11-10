@@ -73,6 +73,8 @@ data class ScheduledPromptNode(
     @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
     val externalMetadataJson: String? = null,
+    val workflowId: String? = null,
+    val workflowInputJson: String? = null,
 ) {
     fun toDomain(): ScheduledPrompt =
         ScheduledPrompt(
@@ -106,6 +108,8 @@ data class ScheduledPromptNode(
             nextRunAt = nextRunAt,
             lastRunAt = lastRunAt,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
+            workflowId = workflowId?.let { UUID.fromString(it) },
+            workflowInput = workflowInputJson?.let { MAPPER.readTree(it) },
         )
 
     companion object {
@@ -144,6 +148,8 @@ data class ScheduledPromptNode(
                 modifiedBy = scheduledPrompt.metadata.modifiedBy,
                 removed = scheduledPrompt.metadata.removed.takeIf { it },
                 externalMetadataJson = scheduledPrompt.externalMetadata?.let { MAPPER.writeValueAsString(it) },
+                workflowId = scheduledPrompt.workflowId?.toString(),
+                workflowInputJson = scheduledPrompt.workflowInput?.let { MAPPER.writeValueAsString(it) },
             )
     }
 }

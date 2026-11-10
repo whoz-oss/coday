@@ -1,10 +1,8 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.agent.CaseWorker
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -14,66 +12,49 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
-import io.whozoss.agentos.workflow.AgentLoopPayload
+import io.whozoss.agentos.workflow.LoopConfig
+import io.whozoss.agentos.workflow.LoopConfigResolver
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import mu.KLogging
 import java.util.UUID
 
 /**
- * A zero-LLM agent that runs a hardcoded SEARCH → ACT workflow: one child case per entity
- * returned by a Search tool.
+ * A zero-LLM agent that runs a resolved list of tool steps. Its case is the observable transcript
+ * of the run (one tool request/response pair per step).
  *
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunnerService]:
  *
- * 1. Resolve the [AgentLoopPayload] from [loopConfig] stored on the [AgentConfig].
- * 2. Delegate the workflow to [LoopWorkflowRunnerService].
+ * 1. Resolve the [LoopConfig] via the injected [LoopConfigResolver], contributed by whatever
+ *    initiated the run (today only the scheduler:
+ *    [io.whozoss.agentos.scheduledPrompt.ScheduledPromptLoopConfigResolver]).
+ * 2. Delegate the steps to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
- *    when the run could not proceed. Always ends with [AgentFinishedEvent].
+ *    when the run could not proceed (including any unexpected error). Always ends with
+ *    [AgentFinishedEvent].
  *
- * The triggering message content is not read — configuration lives entirely in [loopConfig].
+ * The agent carries no configuration of its own and does not read the triggering message.
  *
- * ## Expected loopConfig format
- *
- * ```json
- * {
- *   "search": {
- *     "tool": "SearchTalents",
- *     "params": { "endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"] }
- *   },
- *   "act": { "agentName": "talent-analyzer", "prompt": "Analyse this entity: {entityId}" }
- * }
- * ```
- *
- * @param metadata      Agent identity, inherited from [Entity].
- * @param name          Display name of this agent instance.
- * @param objectMapper  Used to parse [loopConfig].
- * @param runner        Executes the workflow.
- * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
- * @param triggerUser   The user who triggered the run.
- * @param loopConfig    The [AgentLoopPayload] persisted on [AgentConfig]. Must be non-null
- *                      and parseable for the run to proceed.
+ * @param metadata        Agent identity, inherited from [Entity].
+ * @param name            Display name of this agent instance.
+ * @param configResolver  Supplies the [LoopConfig] for the running case.
+ * @param runner          Executes the workflow.
+ * @param resolvedTools   Tools available to this agent.
+ * @param triggerUser     The user who triggered the run.
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
-    private val objectMapper: ObjectMapper,
+    private val configResolver: LoopConfigResolver,
     private val runner: LoopWorkflowRunnerService,
     private val resolvedTools: Collection<StandardTool<*>> = emptyList(),
     private val triggerUser: User? = null,
-    private val loopConfig: JsonNode? = null,
-) : Agent {
-    /**
-     * AgentLoop does not call any LLM — these fields satisfy the [Agent] contract
-     * but carry no runtime meaning for this implementation.
-     */
-    override val llmProvider: String = PROVIDER_NAME
-    override val llmModel: String = MODEL_NAME
-
+) : CaseWorker {
     override fun run(
         events: List<CaseEvent>,
         shouldContinue: () -> Boolean,
@@ -107,12 +88,12 @@ class AgentLoop(
 
             val outcome =
                 try {
-                    val payload = resolvePayload()
+                    val config = resolveConfig(caseId)
                     logger.info {
-                        "[AgentLoop] '$name' starting — tool=${payload.search.tool}, actAgent=${payload.act.agentName} (caseId=$caseId)"
+                        "[AgentLoop] '$name' starting — ${config.steps.size} step(s) (caseId=$caseId)"
                     }
                     runner.run(
-                        payload = payload,
+                        config = config,
                         context =
                             LoopRunContext(
                                 namespaceId = namespaceId,
@@ -121,12 +102,19 @@ class AgentLoop(
                                 triggerUser = triggerUser,
                                 tools = resolvedTools,
                                 caseEvents = events,
+                                emitEvent = { emit(it) },
                             ),
                         shouldContinue = shouldContinue,
                     )
                 } catch (e: InvalidLoopPayloadException) {
-                    logger.error(e) { "[AgentLoop] '$name' invalid loopConfig (caseId=$caseId): ${e.message}" }
+                    logger.error(e) { "[AgentLoop] '$name' invalid loop config (caseId=$caseId): ${e.message}" }
                     LoopRunOutcome.Aborted(e.message ?: "Invalid AgentLoop payload")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Make an unexpected failure visible in the transcript rather than ending the case in ERROR silently.
+                    logger.error(e) { "[AgentLoop] '$name' failed unexpectedly (caseId=$caseId)" }
+                    LoopRunOutcome.Aborted("Unexpected error: ${e.message}")
                 }
 
             when (outcome) {
@@ -142,9 +130,14 @@ class AgentLoop(
                 }
 
                 is LoopRunOutcome.Completed -> {
-                    val summary = outcome.summary()
-                    logger.info { "[AgentLoop] '$name' completed: $summary (caseId=$caseId)" }
+                    val summary = outcome.lastStepOutput ?: "All steps completed."
+                    logger.info { "[AgentLoop] '$name' completed (caseId=$caseId)" }
                     emit(summaryMessage(namespaceId, caseId, summary))
+                }
+
+                is LoopRunOutcome.Interrupted -> {
+                    logger.info { "[AgentLoop] '$name' interrupted (caseId=$caseId)" }
+                    // No extra event on interrupt.
                 }
             }
 
@@ -180,27 +173,22 @@ class AgentLoop(
     )
 
     /**
-     * Resolves the [AgentLoopPayload] from [loopConfig].
+     * Resolves the [LoopConfig] for [caseId] via the injected [LoopConfigResolver].
      *
-     * @throws InvalidLoopPayloadException when [loopConfig] is null or cannot be parsed.
+     * @throws InvalidLoopPayloadException when the resolver returns null (unrecognised case),
+     *   throws an exception, or the config fails validation.
      */
-    private fun resolvePayload(): AgentLoopPayload {
-        if (loopConfig == null) {
-            throw InvalidLoopPayloadException("No loopConfig is configured on this agent.")
-        }
-        return try {
-            val payload = objectMapper.treeToValue(loopConfig, AgentLoopPayload::class.java)
-            if (payload.search.tool.isBlank()) throw InvalidLoopPayloadException("loopConfig has a blank 'search.tool' field.")
-            logger.info { "[AgentLoop] '$name': payload resolved from loopConfig (tool=${payload.search.tool})" }
-            payload
-        } catch (e: InvalidLoopPayloadException) {
-            throw e
+    private fun resolveConfig(caseId: UUID): LoopConfig {
+        val config = try {
+            configResolver.resolve(caseId)
         } catch (e: Exception) {
-            throw InvalidLoopPayloadException(
-                "loopConfig could not be parsed as a valid AgentLoopPayload: ${e.message}",
-                e,
-            )
-        }
+            throw InvalidLoopPayloadException("Could not resolve the loop configuration: ${e.message}", e)
+        } ?: throw InvalidLoopPayloadException(
+            "No loop configuration is available for this case. A loop case must be started by an " +
+                "initiator that registers its configuration (e.g. a scheduled prompt).",
+        )
+        if (config.steps.isEmpty()) throw InvalidLoopPayloadException("Loop config must declare at least one step.")
+        return config
     }
 
     private class InvalidLoopPayloadException(
@@ -208,12 +196,5 @@ class AgentLoop(
         cause: Exception? = null,
     ) : IllegalArgumentException(message, cause)
 
-    companion object : KLogging() {
-        /**
-         * Sentinel values satisfying the [Agent.llmProvider] and [Agent.llmModel] contract.
-         * AgentLoop never calls an LLM — these values identify the implementation, not a provider.
-         */
-        const val PROVIDER_NAME = "none"
-        const val MODEL_NAME = "agent-loop"
-    }
+    companion object : KLogging()
 }

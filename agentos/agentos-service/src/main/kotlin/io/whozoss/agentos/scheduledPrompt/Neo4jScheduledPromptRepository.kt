@@ -109,6 +109,12 @@ open class Neo4jScheduledPromptRepository(
     override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
         neo4jRepository.existsActiveByPromptTemplateId(promptTemplateId.toString())
 
+    override fun existsActiveByWorkflowId(workflowId: UUID): Boolean =
+        neo4jRepository.existsActiveByWorkflowId(workflowId.toString())
+
+    override fun backfillWorkflowId(defaultWorkflowId: UUID): Int =
+        neo4jRepository.backfillWorkflowId(defaultWorkflowId.toString())
+
     override fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int =
         neo4jRepository.softDeleteWithPromptsByAgentConfigId(agentConfigId.toString())
             .also { count -> logger.debug { "[Neo4jScheduledPromptRepository] Soft-deleted $count scheduled prompt(s) and their linked prompts for agentConfigId=$agentConfigId" } }

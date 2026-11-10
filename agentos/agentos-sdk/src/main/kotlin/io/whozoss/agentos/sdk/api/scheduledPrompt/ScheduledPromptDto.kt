@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.scheduledPrompt
 import com.fasterxml.jackson.annotation.JsonFormat
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -146,4 +147,25 @@ data class ScheduledPromptDto(
      * External consumers store their own metadata here (e.g. `isStandard`).
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * The workflow run for each occurrence (who receives the prompt, and how), by id. Optional on
+     * POST/PUT: when neither [workflowId] nor [workflowName] is given, the platform `user-group`
+     * workflow is used (the target agent's audience, one case per user). Must be a platform workflow
+     * or one of the scheduled prompt's namespace. Always set in responses.
+     */
+    @field:Schema(types = ["string", "null"], format = "uuid")
+    val workflowId: UUID? = null,
+    /**
+     * The same reference by stable name (e.g. `user-group`), as used by clients that know the
+     * predefined workflows by name. **Input only**, mutually exclusive with [workflowId]; resolved
+     * to the namespace's workflow of that name, else the platform one. Not returned in responses.
+     */
+    @field:Schema(nullable = true)
+    val workflowName: String? = null,
+    /**
+     * Runtime input of the workflow's first step (e.g. search criteria), a JSON object. Omit for the
+     * default user-group workflow. Validated against the first step's tool input schema.
+     */
+    @field:Schema(type = "object", nullable = true)
+    val workflowInput: JsonNode? = null,
 )

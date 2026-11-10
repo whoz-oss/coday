@@ -10,6 +10,7 @@ import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.util.toSlug
+import io.whozoss.agentos.workflow.WorkflowService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -25,6 +26,8 @@ import java.util.UUID
  * - [promptId] must reference an existing generic Prompt (agentConfigId = null).
  * - The AgentConfig's namespace must be compatible with the ScheduledPrompt's namespace.
  * - Name uniqueness per scope enforced by the `scheduled_prompt_triple_key_unique` UNIQUE constraint.
+ * - The workflow must be usable in the namespace, and `workflowInput` must fit its step-1 tool
+ *   ([WorkflowInputValidator]). When none is named, the platform `user-group` workflow is used.
  *
  * Cross-field consistency of [Planning] (endDate/maxOccurrenceCount vs endType) is validated
  * as Bean Validation on [io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto] and enforced
@@ -45,6 +48,8 @@ class ScheduledPromptServiceImpl(
     private val promptService: PromptService,
     private val namespaceService: NamespaceService,
     private val nextRunCalculatorService: NextRunCalculatorService,
+    private val workflowService: WorkflowService,
+    private val workflowInputValidator: WorkflowInputValidator,
 ) : ScheduledPromptService {
 
     // -------------------------------------------------------------------------
@@ -74,7 +79,10 @@ class ScheduledPromptServiceImpl(
             throw ConflictException(conflictMessage(entity))
         }
 
-        val withNextRun = entity.copy(nextRunAt = nextRunCalculatorService.compute(entity))
+        val withNextRun = entity.copy(
+            nextRunAt = nextRunCalculatorService.compute(entity),
+            workflowId = resolveWorkflowId(entity),
+        )
         return saveOrConflict(withNextRun)
     }
 
@@ -87,7 +95,10 @@ class ScheduledPromptServiceImpl(
             ?.let { throw ConflictException(conflictMessage(entity)) }
 
         // Recalculate nextRunAt whenever recurrence or planning may have changed.
-        val withNextRun = entity.copy(nextRunAt = nextRunCalculatorService.compute(entity))
+        val withNextRun = entity.copy(
+            nextRunAt = nextRunCalculatorService.compute(entity),
+            workflowId = resolveWorkflowId(entity),
+        )
         return saveOrConflict(withNextRun)
     }
 
@@ -218,6 +229,17 @@ class ScheduledPromptServiceImpl(
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * The workflow the scheduled prompt runs: the one it names, or the default one. Rejected (400)
+     * when it is not usable in the prompt's namespace, or when `workflowInput` does not fit its
+     * step-1 tool.
+     */
+    private fun resolveWorkflowId(entity: ScheduledPrompt): UUID {
+        val workflow = workflowService.resolveForScheduledPrompt(entity.workflowId, entity.namespaceId)
+        workflowInputValidator.requireValid(workflow, entity.workflowInput, entity.namespaceId)
+        return workflow.id
+    }
 
     /** Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars. */
     private fun promptName(name: String): String = "scheduled--${name.toSlug()}".take(100)

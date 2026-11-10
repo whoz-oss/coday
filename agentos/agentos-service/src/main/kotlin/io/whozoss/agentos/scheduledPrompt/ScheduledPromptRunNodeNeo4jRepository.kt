@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 /**
@@ -11,13 +12,16 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
 
     /**
      * Returns true if there is at least one run for [scheduledPromptId] in an active status
-     * (CLAIMED or RUNNING).
+     * (CLAIMED, TARGETING, or RUNNING).
+     *
+     * TARGETING is included because the converged path holds the run in TARGETING while the
+     * loop case executes — without it, a second tick would claim a new run concurrently.
      */
     @Query(
         $$"""
         MATCH (r:ScheduledPromptRun)
         WHERE r.scheduledPromptId = $scheduledPromptId
-        AND r.status IN ['CLAIMED', 'RUNNING']
+        AND r.status IN ['CLAIMED', 'TARGETING', 'RUNNING']
         AND NOT COALESCE(r.removed, false)
         RETURN count(r) > 0
         """,
@@ -70,6 +74,26 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     fun findByStatusAndCreatedBefore(status: String, before: Instant): List<ScheduledPromptRunNode>
 
     /**
+     * Find a run by its associated loop case id.
+     */
+    @Transactional(readOnly = true)
+    @Query($$"""MATCH (r:ScheduledPromptRun {loopCaseId: $loopCaseId}) RETURN r LIMIT 1""")
+    fun findByLoopCaseId(loopCaseId: String): ScheduledPromptRunNode?
+
+    /**
+     * Atomically update status and loopCaseId on a run.
+     * Used by the executor to record the loop case before injecting the trigger message.
+     */
+    @Query(
+        $$"""
+        MATCH (r:ScheduledPromptRun {id: $id})
+        SET r.status = $status, r.loopCaseId = $loopCaseId, r.modified = $now
+        RETURN count(r)
+        """,
+    )
+    fun updateStatusAndLoopCase(id: String, status: String, loopCaseId: String, now: Instant): Int
+
+    /**
      * Find RUNNING Runs whose UserRuns are all terminal (none in PENDING or RUNNING).
      *
      * Terminal UserRun statuses: DONE, TIMEOUT, FAILED. TIMEOUT is terminal — monitoring
@@ -79,6 +103,12 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
      *
      * Runs with zero UserRuns never reach RUNNING status (they are transitioned directly
      * to DONE in [ScheduledPromptExecutor.materialize]).
+     *
+     * **TARGETING is excluded by design and must never be added to this query.**
+     * The converged path writes NO UserRun rows, so the NOT EXISTS sub-query is always
+     * true for TARGETING runs — adding them here would close every live converged run
+     * as DONE within ~30s of starting. Orphaned TARGETING runs are swept by
+     * [SchedulerScanner.recoverOrphanedTargetingRuns] using its own threshold.
      */
     @Query(
         """
