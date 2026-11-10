@@ -250,7 +250,7 @@ class CaseServiceImplSpec :
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 },
             coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
-            prompts: PromptService = promptService,
+            promptService: PromptService = promptService,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -274,7 +274,7 @@ class CaseServiceImplSpec :
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 limitsConfig = LimitsConfigProperties(),
                 permissionService = permissionService,
-                promptService = prompts,
+                promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
                 usageRecordService = UsageRecordServiceImpl(usageRecordRepository),
                 usageConfig = usageConfig,
@@ -2415,7 +2415,13 @@ class CaseServiceImplSpec :
                 val prompts =
                     mockk<PromptService>(relaxed = true) {
                         every { findEffective(any(), any()) } returns
-                            listOf(Prompt(name = "starter", agentConfigId = starterConfigId, content = listOf(promptContent)))
+                            listOf(
+                                Prompt(
+                                    name = "starter",
+                                    agentConfigId = starterConfigId,
+                                    content = listOf(promptContent),
+                                ),
+                            )
                     }
                 val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
                 val ran = mutableListOf<String>()
@@ -2424,7 +2430,7 @@ class CaseServiceImplSpec :
                         caseEventService = events,
                         agentConfigService = agentConfigService,
                         agentService = agentServiceKnowing(namedAgent(agentName, ran)),
-                        prompts = prompts,
+                        promptService = prompts,
                     )
                 val case = service.create(Case(namespaceId = namespaceId))
 
@@ -2909,9 +2915,9 @@ class CaseServiceImplSpec :
                 object : CaseLaunchGate {
                     override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Admit
 
-                    override fun requireReopenable(caseId: UUID) {
-                        throw io.whozoss.agentos.exception.ConflictException("The workspace is being removed or has been removed")
-                    }
+                    override fun requireReopenable(caseId: UUID): Unit =
+                        throw io.whozoss.agentos.exception
+                            .ConflictException("The workspace is being removed or has been removed")
                 }
             val service = buildService(caseEventService = caseEventService, caseLaunchGate = blockingGate)
             val case = service.create(Case(namespaceId = namespaceId))
@@ -3863,8 +3869,12 @@ class CaseServiceImplSpec :
 
         "interruptCase cancels the running turns of the parent and its sub-cases" {
             runTest {
-                val started = java.util.concurrent.atomic.AtomicInteger()
-                val cancelled = java.util.concurrent.atomic.AtomicInteger()
+                val started =
+                    java.util.concurrent.atomic
+                        .AtomicInteger()
+                val cancelled =
+                    java.util.concurrent.atomic
+                        .AtomicInteger()
                 val agent =
                     mockk<Agent> {
                         every { metadata } returns EntityMetadata(id = agentId)
@@ -3913,7 +3923,9 @@ class CaseServiceImplSpec :
                         every { resolveAgentName(any(), any(), any()) } returns agentName
                         // The LLM was called before the Stop: the accumulator has data to record.
                         coEvery { findAgentByName(agentName, any(), any()) } answers {
-                            secondArg<AgentExecutionContext>().usageAccumulator.shouldNotBeNull()
+                            secondArg<AgentExecutionContext>()
+                                .usageAccumulator
+                                .shouldNotBeNull()
                                 .record(LlmUsage(totalTokens = 80L, estimatedCostUsd = 0.002))
                             agent
                         }
@@ -3977,7 +3989,9 @@ class CaseServiceImplSpec :
                         every { resolveAgentName(any(), any(), any()) } returns agentName
                         // The LLM was called before the Kill: the accumulator has data to record.
                         coEvery { findAgentByName(agentName, any(), any()) } answers {
-                            secondArg<AgentExecutionContext>().usageAccumulator.shouldNotBeNull()
+                            secondArg<AgentExecutionContext>()
+                                .usageAccumulator
+                                .shouldNotBeNull()
                                 .record(LlmUsage(totalTokens = 80L, estimatedCostUsd = 0.002))
                             agent
                         }
