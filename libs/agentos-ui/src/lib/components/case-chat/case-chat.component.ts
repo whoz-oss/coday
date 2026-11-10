@@ -1,5 +1,5 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
-import { HttpClient } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
 import { firstValueFrom } from 'rxjs'
 import {
@@ -332,6 +332,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * A mere transport hiccup leaves this false, since EventSource reconnects by itself.
    */
   protected readonly streamUnavailable = signal(false)
+
+  /**
+   * True once the case itself has been confirmed gone, which only a 404 on the case says.
+   *
+   * EventSource reports no status, so a dead stream alone cannot tell a deleted case from a
+   * backend restarting behind the proxy. Closing the composer on the stream alone would refuse
+   * a message to a perfectly healthy case for as long as the backend is coming back up.
+   */
+  protected readonly caseGone = signal(false)
 
   /**
    * Derived terminal state — true when the effective case status is KILLED or ERROR.
@@ -840,9 +849,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
       !this.isRunning() &&
       !this.isTerminal() &&
-      // Nothing would come back: the case the stream was refused for may not even exist, and
-      // the answer to a message posted here would arrive on the stream that is gone.
-      !this.streamUnavailable() &&
+      // Only a confirmed 404 closes the composer: a dead stream alone may just be a backend
+      // restarting, and a message posted then still reaches a healthy case.
+      !this.caseGone() &&
       !this.attachments.isUploading() &&
       !this.voice.isBusy()
     )
@@ -995,8 +1004,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   protected retryStream(): void {
     this.streamUnavailable.set(false)
+    this.caseGone.set(false)
     this.eventSource?.close()
     this.connectSse()
+  }
+
+  /**
+   * Asks the case itself whether it is still there, the only way to tell a refused stream from a
+   * backend that is restarting. A 404 is the answer that closes the composer.
+   */
+  private checkCaseStillExists(): void {
+    this.http
+      .get(`${this.config.basePath}/api/cases/${this.caseId}`)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err: unknown) => {
+          if (err instanceof HttpErrorResponse && err.status === 404) this.caseGone.set(true)
+        },
+      })
   }
 
   private connectSse(): void {
@@ -1196,13 +1221,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     this.eventSource.onerror = () => {
       const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
-      if (closed) console.warn('[AgentOS SSE] stream refused for case', this.caseId)
+      if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
         this.isRunning.set(false)
         // Do not mark terminal on transport error: EventSource may reconnect.
         // CLOSED is the exception — the browser will not retry, so say the stream is gone
         // rather than leave a chat that silently never updates again.
-        if (closed) this.streamUnavailable.set(true)
+        if (closed) {
+          this.streamUnavailable.set(true)
+          this.checkCaseStillExists()
+        }
       })
     }
   }
@@ -1312,6 +1340,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.eventSource?.close()
     this.eventSource = null
     this.streamUnavailable.set(false)
+    this.caseGone.set(false)
     this.events.set([])
     this.messageHtmlCache.clear()
     this.inputValue.set('')

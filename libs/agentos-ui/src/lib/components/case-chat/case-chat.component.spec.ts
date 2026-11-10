@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
@@ -42,7 +42,7 @@ import { CaseChatComponent } from './case-chat.component'
  * ExchangeStateService.
  */
 describe('CaseChatComponent — submit with attachments', () => {
-  let http: { post: jest.Mock }
+  let http: { post: jest.Mock; get: jest.Mock }
   let exchangeState: {
     uploadFile: jest.Mock
     canWriteCase: ReturnType<typeof signal<boolean>>
@@ -72,6 +72,8 @@ describe('CaseChatComponent — submit with attachments', () => {
         calls.push('post')
         return of({})
       }),
+      // The case is probed when the stream dies; by default it is still there.
+      get: jest.fn().mockImplementation(() => of({})),
     }
     exchangeState = {
       uploadFile: jest.fn().mockImplementation(async () => {
@@ -322,9 +324,19 @@ describe('CaseChatComponent — submit with attachments', () => {
       source.onerror!(new Event('error'))
       expect(ref.instance['streamUnavailable']()).toBe(true)
 
-      // Nothing would come back, so the composer is closed even with a message typed.
+      // A dead stream alone may be a backend restarting: the case is probed, it answers, and the
+      // composer stays usable.
       ref.instance['inputValue'].set('hello')
+      expect(http.get).toHaveBeenCalledWith('/api/cases/c-1')
+      expect(ref.instance['caseGone']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+
+      // A case that answers 404 is gone for good: the composer closes.
+      http.get.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 404 })))
+      source.onerror!(new Event('error'))
+      expect(ref.instance['caseGone']()).toBe(true)
       expect(ref.instance['canSend']).toBe(false)
+      ref.instance['caseGone'].set(false)
 
       // Retry reopens the stream, since EventSource will not do it after CLOSED.
       ref.instance['retryStream']()
