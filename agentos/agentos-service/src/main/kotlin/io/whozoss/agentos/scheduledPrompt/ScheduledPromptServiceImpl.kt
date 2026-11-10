@@ -10,6 +10,7 @@ import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.util.toSlug
+import io.whozoss.agentos.workflow.WorkflowService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -45,6 +46,7 @@ class ScheduledPromptServiceImpl(
     private val promptService: PromptService,
     private val namespaceService: NamespaceService,
     private val nextRunCalculatorService: NextRunCalculatorService,
+    private val workflowService: WorkflowService,
 ) : ScheduledPromptService {
 
     // -------------------------------------------------------------------------
@@ -74,7 +76,10 @@ class ScheduledPromptServiceImpl(
             throw ConflictException(conflictMessage(entity))
         }
 
-        val withNextRun = entity.copy(nextRunAt = nextRunCalculatorService.compute(entity))
+        val withNextRun = entity.copy(
+            nextRunAt = nextRunCalculatorService.compute(entity),
+            workflowId = resolveWorkflowId(entity),
+        )
         return saveOrConflict(withNextRun)
     }
 
@@ -87,7 +92,10 @@ class ScheduledPromptServiceImpl(
             ?.let { throw ConflictException(conflictMessage(entity)) }
 
         // Recalculate nextRunAt whenever recurrence or planning may have changed.
-        val withNextRun = entity.copy(nextRunAt = nextRunCalculatorService.compute(entity))
+        val withNextRun = entity.copy(
+            nextRunAt = nextRunCalculatorService.compute(entity),
+            workflowId = resolveWorkflowId(entity),
+        )
         return saveOrConflict(withNextRun)
     }
 
@@ -218,6 +226,10 @@ class ScheduledPromptServiceImpl(
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /** The workflow the scheduled prompt runs: the one it names (validated), or the default one. */
+    private fun resolveWorkflowId(entity: ScheduledPrompt): UUID =
+        workflowService.resolveForScheduledPrompt(entity.workflowId, entity.namespaceId).id
 
     /** Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars. */
     private fun promptName(name: String): String = "scheduled--${name.toSlug()}".take(100)

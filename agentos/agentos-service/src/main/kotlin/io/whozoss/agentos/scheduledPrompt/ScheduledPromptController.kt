@@ -181,6 +181,7 @@ class ScheduledPromptController(
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
             externalMetadata = resource.externalMetadata,
+            workflowId = resource.workflowId,
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -244,6 +245,8 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             externalMetadata = resource.externalMetadata,
+            // Omitted on PUT means "back to the default workflow", same as on POST.
+            workflowId = resource.workflowId,
         )
 
     companion object : KLogging()
@@ -295,4 +298,5 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         updatedOn = entity.metadata.modified,
         removed = entity.metadata.removed,
         externalMetadata = entity.externalMetadata,
+        workflowId = entity.workflowId,
     )
