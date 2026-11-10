@@ -491,8 +491,34 @@
               (action)="submit()"
             />
           }
+          <ds-icon-button
+            icon="cancel"
+            variant="danger"
+            title="Stop case — terminates the agent and all running sub-cases"
+            [disabled]="isTerminal()"
+            (action)="confirmingKill.set(true)"
+          />
         </div>
+
+        @if (isTerminal()) {
+          <div class="case-chat__reopen-bar">
+            <span class="case-chat__reopen-label"
+              >This case has ended. You can reopen it to continue the conversation.</span
+            >
+            <button type="button" class="case-chat__reopen-btn" (click)="reopen()">Reopen</button>
+          </div>
+        }
       </div>
     </div>
   </div>
 </ds-drawer>
+
+<ds-confirm-dialog
+  [open]="confirmingKill()"
+  title="Stop this case?"
+  message="The agent will be stopped immediately. Any running sub-cases will also be terminated and the current turn will be lost. The case history and files are preserved — you can reopen the case afterwards."
+  confirmLabel="Stop case"
+  cancelLabel="Cancel"
+  (confirmed)="kill()"
+  (cancelled)="confirmingKill.set(false)"
+/>

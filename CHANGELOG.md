@@ -1,3 +1,42 @@
+## 3.41.0 (2026-11-09)
+
+### 🚀 Features
+
+- wz-35528 - add 50000 member limit to user groups ([84e0639cc](https://github.com/whoz-oss/coday/commit/84e0639cc))
+- wz-35528 - add 50000 member limit to user groups ([#1601](https://github.com/whoz-oss/coday/pull/1601))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
+## 3.40.1 (2026-10-26)
+
+### 🩹 Fixes
+
+- trigger release for WZ-35787 ([11e62cc7d](https://github.com/whoz-oss/coday/commit/11e62cc7d))
+- trigger release for WZ-35787 ([#1491](https://github.com/whoz-oss/coday/pull/1491))
+
+### 🔥 Performance
+
+- WZ-35787 - anchor unread count query on User ([c6dcd2f77](https://github.com/whoz-oss/coday/commit/c6dcd2f77))
+- WZ-35787 - anchor unread count query on User ([#1489](https://github.com/whoz-oss/coday/pull/1489))
+
+### ❤️ Thank You
+
+- mbarroux @mickael-barroux-whoz
+- Mickaël Barroux @mickael-barroux-whoz
+
+## 3.40.0 (2026-10-22)
+
+### 🚀 Features
+
+- reopen a terminated case (service + API) ([#1476](https://github.com/whoz-oss/coday/pull/1476))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.39.0 (2026-10-21)
 
 ### 🚀 Features

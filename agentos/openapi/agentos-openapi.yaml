@@ -1354,6 +1354,29 @@ paths:
       summary: Mark case as read
       tags:
       - case-controller
+  /api/cases/{caseId}/reopen:
+    post:
+      description: "POST /api/cases/{caseId}/reopen — reopen a terminated case by\
+        \ transitioning it back to IDLE. Only cases in a terminal status (KILLED or\
+        \ ERROR) can be reopened. Returns the updated Case DTO."
+      operationId: reopenCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Reopen a case
+      tags:
+      - case-controller
   /api/cases/{caseId}/run-cost:
     get:
       operationId: getRunCost
