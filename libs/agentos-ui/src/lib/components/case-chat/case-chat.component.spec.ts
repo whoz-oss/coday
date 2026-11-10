@@ -321,6 +321,16 @@ describe('CaseChatComponent — submit with attachments', () => {
       source.readyState = 2
       source.onerror!(new Event('error'))
       expect(ref.instance['streamUnavailable']()).toBe(true)
+
+      // Nothing would come back, so the composer is closed even with a message typed.
+      ref.instance['inputValue'].set('hello')
+      expect(ref.instance['canSend']).toBe(false)
+
+      // Retry reopens the stream, since EventSource will not do it after CLOSED.
+      ref.instance['retryStream']()
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+      expect(globalThis.EventSource).toHaveBeenCalledTimes(2)
+      expect(ref.instance['canSend']).toBe(true)
     } finally {
       ref.destroy()
       globalThis.EventSource = original

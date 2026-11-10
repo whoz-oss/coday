@@ -59,10 +59,13 @@ const STREAM_OWNER_LOCK = 'agentos-companion-stream'
  * ever released by its holder's tab going away — exactly how the app uses them.
  */
 class FakeLockManager {
+  /** Set to make every claim fail, as an inactive document or an embedded context does. */
+  rejectWith: Error | null = null
   private readonly held = new Set<string>()
   private readonly queues = new Map<string, Array<() => void>>()
 
   async request(name: string, callback: () => Promise<void>): Promise<void> {
+    if (this.rejectWith) throw this.rejectWith
     if (this.held.has(name)) {
       await new Promise<void>((resolve) => {
         const queue = this.queues.get(name) ?? []
@@ -226,19 +229,62 @@ describe('TabCoordinatorService', () => {
     expect(b.service.isStreamOwner()).toBe(true)
   })
 
-  it('relays a case event to the other tabs, never to the tab that owns the stream', () => {
+  it('relays a case event to the other tabs, never to the tab that owns the stream', async () => {
     const owner = openTab('ns-a')
     const other = openTab('ns-b')
     const heardByOwner = jest.fn()
     const heardByOther = jest.fn()
     owner.service.onCaseEvent(heardByOwner)
     other.service.onCaseEvent(heardByOther)
+    await owner.service.whenStreamOwner()
 
     owner.service.broadcastCaseEvent(caseEvent)
     bus.flush()
 
     expect(heardByOther).toHaveBeenCalledWith(caseEvent)
     expect(heardByOwner).not.toHaveBeenCalled()
+  })
+
+  it('relays nothing from a tab that does not own the stream', () => {
+    const notOwner = openTab('ns-a')
+    const other = openTab('ns-b')
+    const heardByOther = jest.fn()
+    other.service.onCaseEvent(heardByOther)
+
+    notOwner.service.broadcastCaseEvent(caseEvent)
+    bus.flush()
+
+    // Without an owner every tab reads the stream for itself; relaying on top of that would
+    // have each tab handle every event once per open tab.
+    expect(heardByOther).not.toHaveBeenCalled()
+  })
+
+  it('drops a handler once its unsubscribe is called', async () => {
+    const owner = openTab('ns-a')
+    const other = openTab('ns-b')
+    const heard = jest.fn()
+    const unsubscribe = other.service.onCaseEvent(heard)
+    await owner.service.whenStreamOwner()
+
+    unsubscribe()
+    owner.service.broadcastCaseEvent(caseEvent)
+    bus.flush()
+
+    expect(heard).not.toHaveBeenCalled()
+  })
+
+  it('leaves a tab to its own stream when the lock claim fails outright', async () => {
+    locks.rejectWith = new Error('document is not fully active')
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const a = openTab('ns-a')
+
+    // Resolving is the point: a claim that failed must not leave the caller waiting for a
+    // stream nobody will open.
+    await expect(a.service.whenStreamOwner()).resolves.toBeUndefined()
+
+    expect(a.service.isStreamOwner()).toBe(false)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 
   it('leaves every tab to its own stream where Web Locks are missing', async () => {

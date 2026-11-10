@@ -46,18 +46,25 @@ export class DelegationCardComponent {
       untracked(() => {
         if (this.eventsSubCaseId !== subCaseId) {
           this.eventsSubCaseId = subCaseId
-          this.events.set([])
-          this.eventIds.clear()
-          this.activity.set([])
+          this.resetEvents()
+        }
+        if (!open) {
+          // Collapsing drops the stream, and with it the resolution of whatever was seen while
+          // the card was open: a kept PendingConfirmationEvent would read "Confirmation needed"
+          // for ever. Reset, so a collapsed card shows what the parent's stream says and no more.
+          this.resetEvents()
+          return
         }
         // Only an expanded card streams its sub-case. A browser allows 6 HTTP/1.1 connections
         // per origin, shared by every tab, and the per-case streams already need them: a parent
         // with a handful of parallel delegations would spend the lot on cards nobody opened,
         // and every request of every tab would then queue behind them (#1616).
         //
-        // What a collapsed card loses is the live step label; its status, and the question or
-        // confirmation a sub-case is blocked on, come from the parent's own stream.
-        if (open && status === 'WORKING' && subCaseId) this.connect(subCaseId)
+        // A collapsed card is therefore down to what the parent's own stream carries: the
+        // delegation's status, and the question a sub-case is waiting on. A confirmation a
+        // sub-case is blocked on is not in there — that one reaches the user through the
+        // companion's global stream.
+        if (status === 'WORKING' && subCaseId) this.connect(subCaseId)
       })
       onCleanup(() => this.disconnect())
     })
@@ -89,6 +96,11 @@ export class DelegationCardComponent {
   private disconnect(): void {
     this.source?.close()
     this.source = null
+  }
+  private resetEvents(): void {
+    this.events.set([])
+    this.eventIds.clear()
+    this.activity.set([])
   }
   private addActivity(event: CaseEvent): void {
     if (this.eventIds.has(event.id)) return
