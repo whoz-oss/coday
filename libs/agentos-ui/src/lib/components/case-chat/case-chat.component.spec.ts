@@ -409,6 +409,33 @@ describe('CaseChatComponent — submit with attachments', () => {
     })
   })
 
+  describe('files added from the drawer', () => {
+    const refs = [
+      { scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/readme.md' },
+      { scope: ExchangeFileEntryScopeEnum.CASE, path: 'notes/todo.md' },
+    ]
+
+    it('writes one scope-qualified reference per file into the draft, without duplicates', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+
+      ref.instance['onAddFilesToContext'](refs)
+      expect(ref.instance['inputValue']()).toBe('compare namespace:docs/readme.md case:notes/todo.md ')
+
+      ref.instance['onAddFilesToContext'](refs)
+      expect(ref.instance['inputValue']()).toBe('compare namespace:docs/readme.md case:notes/todo.md ')
+    })
+
+    it('does nothing on a terminal case', () => {
+      const ref = makeComponent()
+      ref.instance['_sseStatus'].set('KILLED')
+
+      ref.instance['onAddFilesToContext'](refs)
+
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+  })
+
   it('sends a plain message untouched when nothing is attached', async () => {
     const ref = makeComponent()
     ref.instance['inputValue'].set('hello')

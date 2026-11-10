@@ -128,6 +128,9 @@
                     [scope]="CASE"
                     [canWrite]="canWriteCase()"
                     [activeFile]="activeFile()"
+                    [selectable]="selectable()"
+                    [selectedPaths]="selectedCasePaths()"
+                    (selectionToggled)="toggleSelection($event)"
                     (fileSelected)="onFileSelected($event)"
                     (diffRequested)="openFileDiff($event)"
                     (downloadRequested)="downloadRequested.emit($event)"
@@ -253,6 +256,9 @@
                                   [row]="row"
                                   [active]="isNamespaceFileActive(row.path)"
                                   [canWrite]="canWriteNamespace()"
+                                  [selectable]="selectable()"
+                                  [selected]="selectedNamespacePaths().has(row.path)"
+                                  (selectionToggled)="toggleSelection({ scope: NAMESPACE, path: row.path })"
                                   (viewRequested)="onFileSelected({ scope: NAMESPACE, path: row.path })"
                                   (downloadRequested)="downloadRequested.emit({ scope: NAMESPACE, path: row.path })"
                                   (deleteRequested)="deleteRequested.emit({ scope: NAMESPACE, path: row.path })"
@@ -314,6 +320,9 @@
                       [scope]="NAMESPACE"
                       [canWrite]="canWriteNamespace()"
                       [activeFile]="activeFile()"
+                      [selectable]="selectable()"
+                      [selectedPaths]="selectedNamespacePaths()"
+                      (selectionToggled)="toggleSelection($event)"
                       (fileSelected)="onFileSelected($event)"
                       (downloadRequested)="downloadRequested.emit($event)"
                       (deleteRequested)="deleteRequested.emit($event)"
@@ -340,6 +349,16 @@
         <p class="exchange-drawer__no-access">No files available.</p>
       }
     </div>
+
+    @if (selectable() && selectionCount() > 0) {
+      <div class="exchange-drawer__selection-bar" role="region" aria-label="Selected files">
+        <span class="exchange-drawer__selection-count" aria-live="polite">{{ selectionCount() }} selected</span>
+        <button type="button" class="exchange-drawer__selection-add" (click)="addSelectionToContext()">
+          Add to message
+        </button>
+        <button type="button" class="exchange-drawer__retry" (click)="clearSelection()">Clear</button>
+      </div>
+    }
   }
 
   <input

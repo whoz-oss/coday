@@ -217,6 +217,131 @@ describe('ExchangeDrawerComponent namespace filter', () => {
   }))
 })
 
+describe('ExchangeDrawerComponent selection', () => {
+  const NS = ExchangeFileEntryScopeEnum.NAMESPACE
+  const CASE = ExchangeFileEntryScopeEnum.CASE
+  const entry = (path: string) => ({ path, name: path.split('/').pop() as string, directory: false, size: 1 })
+
+  function setup(selectable = true) {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    fixture.componentRef.setInput('caseStatus', 'ready')
+    fixture.componentRef.setInput('caseSectionVisible', true)
+    fixture.componentRef.setInput('caseFiles', [entry('notes/todo.md')])
+    fixture.componentRef.setInput('namespaceStatus', 'ready')
+    fixture.componentRef.setInput('namespaceSectionVisible', true)
+    fixture.componentRef.setInput('namespaceFiles', [entry('readme.md'), entry('guide.md')])
+    fixture.componentRef.setInput('selectable', selectable)
+    const added = jest.fn()
+    fixture.componentInstance.addToContextRequested.subscribe(added)
+    fixture.detectChanges()
+    const el = fixture.nativeElement as HTMLElement
+    const box = (label: string) => el.querySelector<HTMLInputElement>(`input[aria-label="Select ${label}"]`)!
+    const check = (label: string) => {
+      box(label).click()
+      fixture.detectChanges()
+    }
+    const bar = () => el.querySelector<HTMLElement>('.exchange-drawer__selection-bar')
+    const button = (label: string) =>
+      Array.from(bar()!.querySelectorAll('button')).find((b) => b.textContent?.trim() === label)!
+    return { fixture, el, added, box, check, bar, button }
+  }
+
+  it('shows neither checkboxes nor bar unless selectable', () => {
+    const { el, bar } = setup(false)
+    expect(el.querySelector('input[type="checkbox"]')).toBeNull()
+    expect(bar()).toBeNull()
+  })
+
+  it('counts the files checked in both scopes in the bar', () => {
+    const { bar, check, box } = setup()
+    expect(bar()).toBeNull()
+    check('readme.md')
+    expect(bar()!.textContent).toContain('1 selected')
+    check('todo.md')
+    expect(bar()!.textContent).toContain('2 selected')
+    expect(box('readme.md').checked).toBe(true)
+    expect(box('todo.md').checked).toBe(true)
+    expect(box('guide.md').checked).toBe(false)
+    check('readme.md')
+    expect(bar()!.textContent).toContain('1 selected')
+  })
+
+  it('emits the scope-qualified refs on Add to message, then clears the selection', () => {
+    const { fixture, added, bar, check, button, box } = setup()
+    check('readme.md')
+    check('todo.md')
+    button('Add to message').click()
+    fixture.detectChanges()
+    expect(added).toHaveBeenCalledWith([
+      { scope: NS, path: 'readme.md' },
+      { scope: CASE, path: 'notes/todo.md' },
+    ])
+    expect(bar()).toBeNull()
+    expect(box('readme.md').checked).toBe(false)
+  })
+
+  it('empties the selection on Clear without emitting', () => {
+    const { fixture, added, bar, check, button } = setup()
+    check('readme.md')
+    button('Clear').click()
+    fixture.detectChanges()
+    expect(bar()).toBeNull()
+    expect(added).not.toHaveBeenCalled()
+  })
+
+  it('keeps the selection across folder navigation', () => {
+    const { fixture, bar, check, box } = setup()
+    check('readme.md')
+    fixture.componentRef.setInput('namespaceFiles', [entry('docs/other.md')])
+    fixture.componentRef.setInput('namespaceBreadcrumb', [{ label: 'docs', path: 'docs' }])
+    fixture.detectChanges()
+    expect(bar()!.textContent).toContain('1 selected')
+    expect(box('other.md').checked).toBe(false)
+    fixture.componentRef.setInput('namespaceFiles', [entry('readme.md')])
+    fixture.componentRef.setInput('namespaceBreadcrumb', [])
+    fixture.detectChanges()
+    expect(box('readme.md').checked).toBe(true)
+  })
+
+  it('selects from the filtered tree, and keeps it when the filter is cleared', fakeAsync(() => {
+    const { fixture, el, bar, check, box } = setup()
+    fixture.componentRef.setInput('namespaceManifest', [
+      { path: 'docs/api/spec.yaml', filename: 'spec.yaml', size: 1, lastModified: '2026-01-01T00:00:00Z', scope: NS },
+    ])
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    const input = el.querySelector<HTMLInputElement>('input[type="search"]')!
+    input.value = 'spec'
+    input.dispatchEvent(new Event('input'))
+    tick(150)
+    fixture.detectChanges()
+    expect(el.querySelector('.exchange-drawer__tree')).not.toBeNull()
+    check('spec.yaml')
+    expect(bar()!.textContent).toContain('1 selected')
+    expect(box('spec.yaml').checked).toBe(true)
+    const added = jest.fn()
+    fixture.componentInstance.addToContextRequested.subscribe(added)
+    el.querySelector<HTMLButtonElement>('.exchange-drawer__filter-clear')!.click()
+    fixture.detectChanges()
+    expect(bar()!.textContent).toContain('1 selected')
+    Array.from(bar()!.querySelectorAll('button'))
+      .find((b) => b.textContent?.trim() === 'Add to message')!
+      .click()
+    expect(added).toHaveBeenCalledWith([{ scope: NS, path: 'docs/api/spec.yaml' }])
+  }))
+
+  it('hides the bar in the viewer, and shows it again on return', () => {
+    const { fixture, bar, check } = setup()
+    check('readme.md')
+    fixture.componentRef.setInput('activeFile', { scope: NS, path: 'readme.md' })
+    fixture.detectChanges()
+    expect(bar()).toBeNull()
+    fixture.componentRef.setInput('activeFile', null)
+    fixture.detectChanges()
+    expect(bar()!.textContent).toContain('1 selected')
+  })
+})
+
 describe('ExchangeDrawerComponent directory controls', () => {
   it('distinguishes workspace preparation from file loading errors', () => {
     TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })

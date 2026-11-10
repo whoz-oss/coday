@@ -41,14 +41,15 @@ import {
   Prompt,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
-import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
+import { BlueprintDirective, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
-import { FileSuggestion } from '../composer-autocomplete/file-mention'
+import { appendFileReferences, FileSuggestion } from '../composer-autocomplete/file-mention'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -79,6 +80,9 @@ const GIT_INTEGRATION_TYPE = 'GIT'
  * When this instance has Git workspaces and the GIT plugin, and the namespace creates a worktree
  * for every top-level case, the composer offers it unchecked: checking it creates the case with a worktree.
  *
+ * The folder button opens the file drawer on the namespace files (no case yet). The files checked there are
+ * written into the draft as `namespace:<path>` references, the same text as the `#` mention.
+ *
  * The first message is never stored in router state to avoid re-sending on refresh.
  * The created case id is remembered in [pendingCaseId] so a failed upload/send retries
  * against the same case instead of creating a duplicate.
@@ -87,6 +91,8 @@ const GIT_INTEGRATION_TYPE = 'GIT'
   selector: 'agentos-case-home',
   imports: [
     BlueprintDirective,
+    DrawerComponent,
+    ExchangeShellComponent,
     IconButtonComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
@@ -136,6 +142,8 @@ export class CaseHomeComponent implements OnInit {
   private readonly creationChanged = new Subject<void>()
 
   protected readonly inputValue = signal('')
+  /** Right-side file drawer (namespace files only: there is no case yet). */
+  protected readonly filesOpen = signal(false)
   protected readonly isCreating = signal(false)
   protected readonly submitError = signal('')
 
@@ -375,6 +383,19 @@ export class CaseHomeComponent implements OnInit {
 
     input.style.height = 'auto'
     input.style.height = `${input.scrollHeight}px`
+  }
+
+  /** Writes the files checked in the drawer into the draft, and puts the caret back in the composer. */
+  protected onAddFilesToContext(refs: ExchangeFileRef[]): void {
+    this.inputValue.update((value) => appendFileReferences(value, refs))
+    afterNextRender(
+      () => {
+        const input = this.composerInput()?.nativeElement
+        input?.focus()
+        this.resizeComposer(input)
+      },
+      { injector: this.injector }
+    )
   }
 
   protected onWorktreeChange(event: Event): void {

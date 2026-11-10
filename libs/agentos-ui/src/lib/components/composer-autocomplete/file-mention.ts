@@ -1,4 +1,9 @@
-import { ExchangeManifest, ExchangeManifestCapabilityEnum } from '@whoz-oss/agentos-api-client'
+import {
+  ExchangeFileEntryScopeEnum,
+  ExchangeManifest,
+  ExchangeManifestCapabilityEnum,
+} from '@whoz-oss/agentos-api-client'
+import type { ExchangeFileRef, ExchangeScope } from '../../services/exchange-state.service'
 
 /**
  * Pure helpers for the `#` file mention of the chat composer (no Angular, no HTTP).
@@ -36,6 +41,38 @@ export function fileMentionPrefix(value: string): string | null {
 /** Text inserted for a file, with the trailing space that ends the mention. */
 export function fileReference(file: Pick<FileSuggestion, 'scope' | 'path'>): string {
   return `${file.scope}:${file.path} `
+}
+
+/** Mention scope of an exchange scope. */
+export function scopeOfRef(scope: ExchangeScope): FileMentionScope {
+  return scope === ExchangeFileEntryScopeEnum.CASE ? 'case' : 'namespace'
+}
+
+/** True when [token] stands in [value] as a whole word (delimited by the edges or whitespace). */
+function hasToken(value: string, token: string): boolean {
+  for (let from = value.indexOf(token); from >= 0; from = value.indexOf(token, from + 1)) {
+    const end = from + token.length
+    if ((from === 0 || /\s/.test(value[from - 1]!)) && (end === value.length || /\s/.test(value[end]!))) return true
+  }
+  return false
+}
+
+/**
+ * Appends one reference per file at the end of [value], skipping those already in it (or earlier in the batch).
+ * Returns [value] itself when nothing is new.
+ */
+export function appendFileReferences(value: string, refs: ExchangeFileRef[]): string {
+  const seen = new Set<string>()
+  let added = ''
+  for (const ref of refs) {
+    const reference = fileReference({ scope: scopeOfRef(ref.scope), path: ref.path })
+    const token = reference.trim()
+    if (seen.has(token) || hasToken(value, token)) continue
+    seen.add(token)
+    added += reference
+  }
+  if (!added) return value
+  return value === '' || /\s$/.test(value) ? value + added : `${value} ${added}`
 }
 
 /** Replaces the trailing `#<prefix>` word of the value with [reference]. */

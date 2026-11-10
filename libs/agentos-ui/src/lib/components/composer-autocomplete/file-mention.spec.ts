@@ -4,6 +4,7 @@ import {
   ExchangeManifestCapabilityEnum,
 } from '@whoz-oss/agentos-api-client'
 import {
+  appendFileReferences,
   applyFileMention,
   directoryOf,
   FileSuggestion,
@@ -12,6 +13,7 @@ import {
   manifestToSuggestions,
   MAX_FILE_SUGGESTIONS,
   rankFiles,
+  scopeOfRef,
 } from './file-mention'
 
 const file = (path: string, scope: FileSuggestion['scope'] = 'namespace'): FileSuggestion => ({
@@ -55,6 +57,49 @@ describe('fileReference / applyFileMention', () => {
 
   it('does not read a $ of the path as a replacement pattern', () => {
     expect(applyFileMention('#a', 'case:$&-$1.md ')).toBe('case:$&-$1.md ')
+  })
+})
+
+describe('scopeOfRef / appendFileReferences', () => {
+  const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
+  const cs = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
+
+  it('maps the exchange scope to the mention scope', () => {
+    expect(scopeOfRef(ExchangeFileEntryScopeEnum.CASE)).toBe('case')
+    expect(scopeOfRef(ExchangeFileEntryScopeEnum.NAMESPACE)).toBe('namespace')
+  })
+
+  it('writes the # mention format, one reference per file', () => {
+    expect(appendFileReferences('', [ns('docs/readme.md'), cs('notes/todo.md')])).toBe(
+      'namespace:docs/readme.md case:notes/todo.md '
+    )
+  })
+
+  it('separates from the draft with one space, unless it already ends with whitespace', () => {
+    expect(appendFileReferences('see', [ns('a.md')])).toBe('see namespace:a.md ')
+    expect(appendFileReferences('see ', [ns('a.md')])).toBe('see namespace:a.md ')
+    expect(appendFileReferences('see\n', [ns('a.md')])).toBe('see\nnamespace:a.md ')
+  })
+
+  it('skips a reference already in the draft, as a whole token only', () => {
+    expect(appendFileReferences('read namespace:a.md now', [ns('a.md'), ns('b.md')])).toBe(
+      'read namespace:a.md now namespace:b.md '
+    )
+    expect(appendFileReferences('namespace:a.md.bak', [ns('a.md')])).toBe('namespace:a.md.bak namespace:a.md ')
+    expect(appendFileReferences('xnamespace:a.md', [ns('a.md')])).toBe('xnamespace:a.md namespace:a.md ')
+  })
+
+  it('does not confuse the two scopes', () => {
+    expect(appendFileReferences('case:a.md ', [ns('a.md')])).toBe('case:a.md namespace:a.md ')
+  })
+
+  it('skips a file repeated inside the batch', () => {
+    expect(appendFileReferences('', [ns('a.md'), ns('a.md')])).toBe('namespace:a.md ')
+  })
+
+  it('returns the value untouched when nothing is new', () => {
+    expect(appendFileReferences('see namespace:a.md', [ns('a.md')])).toBe('see namespace:a.md')
+    expect(appendFileReferences('draft', [])).toBe('draft')
   })
 })
 
