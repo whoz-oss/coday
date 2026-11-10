@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.tool.RequiresExplicitGrant
 import java.util.UUID
 
 class CaseToolPluginUnitSpec :
@@ -65,13 +66,29 @@ class CaseToolPluginUnitSpec :
             plugin().integrationType shouldBe "CASE"
         }
 
-        "provides the three tools, ReadCase and the two starters, when context is provided" {
+        "provides ReadCase, the two starters and the batch starter when context is provided" {
             val tools = plugin().provideTools(config = null, context = context())
 
-            tools shouldHaveSize 3
+            tools shouldHaveSize 4
             tools.readCase()
             tools.starter()
             tools.starterForUser()
+            tools.filterIsInstance<BatchCaseStarterTool>().single()
+        }
+
+        "the batch starter is the only tool that requires an explicit grant" {
+            plugin().provideTools(config = null, context = context()).filter { it is RequiresExplicitGrant }.map { it.name } shouldBe
+                listOf("BatchCaseStarter")
+        }
+
+        "agents and deniedAgents from the config bound the batch starter too" {
+            val config = mapper.readTree("""{"agents": ["Profile*"], "deniedAgents": ["ProfileAdmin"]}""")
+            val ctx = runContext()
+            val batch = plugin().provideTools(config, "CASE_x", ctx).filterIsInstance<BatchCaseStarterTool>().single()
+
+            listOf("ProfileAdmin", "Reporter").forEach { agent ->
+                batch.execute(BatchCaseStarterTool.Input(agentName = agent, prompt = "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
+            }
         }
 
         "the configSchema declares the read and the start parameters, and refuses anything else" {
@@ -97,7 +114,7 @@ class CaseToolPluginUnitSpec :
         "defaults includesTechnicalEvents to true when config has no 'includesTechnicalEvents' key" {
             val config = mapper.readTree("{\"someOtherKey\": 42}")
             val tools = plugin().provideTools(config = config, context = context())
-            tools shouldHaveSize 3
+            tools shouldHaveSize 4
         }
 
         // -------------------------------------------------------------------------
@@ -109,7 +126,7 @@ class CaseToolPluginUnitSpec :
             // here we only verify that the plugin reads the config value without breaking the tool set.
             val config = mapper.readTree("{\"includesTechnicalEvents\": false}")
             val tools = plugin().provideTools(config = config, context = context())
-            tools shouldHaveSize 3
+            tools shouldHaveSize 4
             // The flag value is tested in ReadCaseToolUnitSpec and CaseTranscriptFormatterUnitSpec.
             tools.readCase()
         }
@@ -117,7 +134,7 @@ class CaseToolPluginUnitSpec :
         "propagates includesTechnicalEvents=true from config" {
             val config = mapper.readTree("{\"includesTechnicalEvents\": true}")
             val tools = plugin().provideTools(config = config, context = context())
-            tools shouldHaveSize 3
+            tools shouldHaveSize 4
             tools.readCase()
         }
 
@@ -138,7 +155,8 @@ class CaseToolPluginUnitSpec :
 
         "uses default tool names when configName is null" {
             val tools = plugin().provideTools(config = null, configName = null, context = context())
-            tools.map { it.name } shouldContainExactlyInAnyOrder listOf("ReadCase", "FreeCaseStarter", "FreeCaseStarterForUser")
+            tools.map { it.name } shouldContainExactlyInAnyOrder
+                listOf("ReadCase", "FreeCaseStarter", "FreeCaseStarterForUser", "BatchCaseStarter")
         }
 
         // -------------------------------------------------------------------------

@@ -3,9 +3,11 @@ package io.whozoss.agentos.casePlugin
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.tool.RequiresExplicitGrant
 import kotlinx.coroutines.CancellationException
 import mu.KLogging
 import java.util.UUID
@@ -39,7 +41,12 @@ class BatchCaseStarterTool(
     configName: String?,
     private val caseStarterService: CaseStarterService,
     private val limitsConfig: LimitsConfigProperties,
-) : StandardTool<BatchCaseStarterTool.Input> {
+    allowedAgents: List<String> = listOf("*"),
+    deniedAgents: Set<String> = emptySet(),
+) : StandardTool<BatchCaseStarterTool.Input>,
+    RequiresExplicitGrant {
+    private val allowedRegexes = allowedAgents.map { globToRegex(it) }
+    private val deniedNames = deniedAgents.map { it.lowercase() }.toSet()
 
     /**
      * @param agentName Name of the agent to start for each user.
@@ -99,6 +106,12 @@ class BatchCaseStarterTool(
         if (input == null || input.agentName.isBlank()) {
             return ToolExecutionResult.error("agentName and prompt (or promptId) are required.", errorType = "MISSING_INPUT")
         }
+        if (input.agentName.lowercase() in deniedNames || allowedRegexes.none { it.matches(input.agentName) }) {
+            return ToolExecutionResult.error(
+                "Agent '${input.agentName}' cannot be started by this tool.",
+                errorType = "UNAUTHORIZED_AGENT",
+            )
+        }
         val hasPrompt = !input.prompt.isNullOrBlank()
         val hasPromptId = !input.promptId.isNullOrBlank()
         if (!hasPrompt && !hasPromptId) {
@@ -107,13 +120,11 @@ class BatchCaseStarterTool(
                 errorType = "MISSING_INPUT",
             )
         }
-        val promptUuid = input.promptId?.takeIf { it.isNotBlank() }?.let {
-            runCatching { UUID.fromString(it) }.getOrNull()
-                ?: return ToolExecutionResult.error(
-                    "promptId '${input.promptId}' is not a valid UUID.",
-                    errorType = "INVALID_INPUT",
-                )
-        }
+        val promptUuid =
+            parseOptionalUuid("promptId", input.promptId).getOrElse { return it.asInvalidInput() }
+        val scheduledPromptUuid =
+            parseOptionalUuid("scheduledPromptId", input.scheduledPromptId).getOrElse { return it.asInvalidInput() }
+        val runUuid = parseOptionalUuid("runId", input.runId).getOrElse { return it.asInvalidInput() }
 
         val array = input.previousStepOutput
         if (array == null || !array.isArray || array.size() == 0) {
@@ -144,13 +155,6 @@ class BatchCaseStarterTool(
                     "BatchCaseStarter requires the calling case (the tool context has no case id).",
                     errorType = "MISSING_CASE_CONTEXT",
                 )
-
-        val scheduledPromptUuid = input.scheduledPromptId?.takeIf { it.isNotBlank() }?.let {
-            runCatching { UUID.fromString(it) }.getOrNull()
-        }
-        val runUuid = input.runId?.takeIf { it.isNotBlank() }?.let {
-            runCatching { UUID.fromString(it) }.getOrNull()
-        }
 
         var started = 0
         var unknownUser = 0
@@ -259,6 +263,19 @@ class BatchCaseStarterTool(
         return ToolExecutionResult.success(output = summary, structuredOutput = structuredOutput)
     }
 
+    /** Null when [value] is null or blank; a failure naming [field] when it is not a UUID. */
+    private fun parseOptionalUuid(
+        field: String,
+        value: String?,
+    ): Result<UUID?> {
+        val text = value?.takeIf { it.isNotBlank() } ?: return Result.success(null)
+        return runCatching { UUID.fromString(text) }
+            .recoverCatching { throw IllegalArgumentException("$field '$text' is not a valid UUID.") }
+    }
+
+    private fun Throwable.asInvalidInput(): ToolExecutionResult =
+        ToolExecutionResult.error(message ?: "Invalid input.", errorType = "INVALID_INPUT")
+
     /**
      * Builds an `activeContext` session context when the element carries both `entityId` and `entityType`.
      * Returns null otherwise, letting [CaseStarterService] resolve the user's own context.
@@ -315,6 +332,7 @@ class BatchCaseStarterTool(
             """
             {
               "type": "object",
+              "description": "Meant for backend workflows: granted only when an agent's CASE integration names it explicitly.",
               "properties": {
                 "agentName": {
                   "type": "string",
@@ -322,11 +340,30 @@ class BatchCaseStarterTool(
                 },
                 "prompt": {
                   "type": "string",
-                  "description": "Full, self-contained first message for the agent, sent on behalf of each user."
+                  "description": "Full, self-contained first message for the agent, sent on behalf of each user. Required unless promptId is given."
+                },
+                "promptId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Id of a stored prompt whose content and title are sent, translated to each user's language. Takes precedence over prompt."
                 },
                 "title": {
                   "type": "string",
-                  "description": "Conversation title. Omit to derive from prompt."
+                  "description": "Conversation title. Omit to derive from the prompt."
+                },
+                "translateFrom": {
+                  "type": "string",
+                  "description": "Language of prompt and title (BCP-47). When set, they are translated to each user's language. Ignored with promptId."
+                },
+                "scheduledPromptId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Scheduled prompt that triggered the batch, recorded on each started case."
+                },
+                "runId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Run that triggered the batch. Makes delivery idempotent: re-running the same run never starts a case twice."
                 },
                 "previousStepOutput": {
                   "type": "array",
@@ -338,11 +375,12 @@ class BatchCaseStarterTool(
                       "entityId":   { "type": "string" },
                       "entityType": { "type": "string" }
                     },
-                    "required": ["userId"]
+                    "required": ["userId"],
+                    "additionalProperties": true
                   }
                 }
               },
-              "required": ["agentName", "prompt", "previousStepOutput"],
+              "required": ["agentName", "previousStepOutput"],
               "additionalProperties": false
             }
             """.trimIndent()

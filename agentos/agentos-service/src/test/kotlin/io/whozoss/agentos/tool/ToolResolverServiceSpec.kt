@@ -316,6 +316,43 @@ class ToolResolverServiceSpec :
             buildService().isToolAllowed("JIRA_STAGING__GetIssue", "JIRA_PROD", listOf("GetIssue")) shouldBe false
         }
 
+        "a tool requiring an explicit grant is withheld by a whole-integration grant" {
+            buildService().isToolAllowed("CASE__BatchCaseStarter", "CASE", null, requiresExplicitGrant = true) shouldBe false
+        }
+
+        "a tool requiring an explicit grant is given when the grant names it" {
+            buildService().isToolAllowed("CASE__BatchCaseStarter", "CASE", listOf("BatchCaseStarter"), requiresExplicitGrant = true) shouldBe
+                true
+        }
+
+        "resolveToolsForRun withholds explicit-grant tools unless named" {
+            val nsId = UUID.randomUUID()
+            val plugin =
+                object : ToolPlugin {
+                    override val integrationType = "CASE"
+                    override val configSchema: JsonNode? = null
+
+                    override fun provideTools(
+                        config: JsonNode?,
+                        configName: String?,
+                        context: ToolContext?,
+                    ): List<StandardTool<*>> {
+                        val batch =
+                            object : StandardTool<Nothing> by makeTool("BatchCaseStarter", configName), RequiresExplicitGrant {}
+                        return listOf(makeTool("ReadCase", configName), batch)
+                    }
+                }
+            val service = buildService(plugins = listOf(plugin))
+            val config = integrationConfig(namespaceId = nsId, name = "CASE", integrationType = "CASE")
+
+            service
+                .resolveToolsForRun(mapOf("CASE" to null), ctx(nsId), listOf(config))
+                .map { it.name } shouldBe listOf("CASE__ReadCase")
+            service
+                .resolveToolsForRun(mapOf("CASE" to listOf("BatchCaseStarter")), ctx(nsId), listOf(config))
+                .map { it.name } shouldBe listOf("CASE__BatchCaseStarter")
+        }
+
         // -------------------------------------------------------------------------
         // dedupToolsByName — ordering guarantee (prompt-cache stability)
         // -------------------------------------------------------------------------
