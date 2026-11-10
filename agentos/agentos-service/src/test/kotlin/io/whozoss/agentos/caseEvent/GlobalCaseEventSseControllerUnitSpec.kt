@@ -4,10 +4,12 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -255,7 +257,7 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
         // Case-list updates — carried here instead of one stream per namespace (#1616)
         // -------------------------------------------------------------------------
 
-        "a readable namespace gets a case-list collector, and loses it when it stops being readable" {
+        "a readable namespace gets a case-list collector, resolved once at connect" {
             val userId = UUID.randomUUID()
             val user = User(metadata = EntityMetadata(id = userId), externalId = "u1")
             val userService = mockk<UserService> { every { getCurrentUser() } returns user }
@@ -264,10 +266,9 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
                     every { findConcerningUser(userId) } returns emptyList()
                     every { getAllActiveCases() } returns emptyList()
                 }
-            val readableNamespaces = AtomicReference(listOf(namespaceId))
             val namespaceService =
                 mockk<NamespaceService> {
-                    every { findIdsVisibleTo(userId.toString(), Action.READ) } answers { readableNamespaces.get() }
+                    every { findIdsVisibleTo(userId.toString(), Action.READ) } returns listOf(namespaceId)
                 }
             val broadcaster = NamespaceCaseListUpdateBroadcaster()
             val subscribers: StateFlow<Int> = broadcaster.events(namespaceId).subscriptionCount
@@ -285,9 +286,43 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
 
             subscribers.first { it >= 1 }
 
-            // Access revoked, or the namespace removed: the collector goes with it.
-            readableNamespaces.set(emptyList())
-            subscribers.first { it == 0 }
+            // Resolved once: the permission store answers an empty list when it fails, and a loop
+            // would read that as "access revoked" and cancel the collector mid-connection.
+            verify(timeout = 2000, exactly = 1) { namespaceService.findIdsVisibleTo(userId.toString(), Action.READ) }
+
+            emitter.complete()
+        }
+
+        "a super-admin gets a collector for every namespace, having no membership edge to be found by" {
+            val userId = UUID.randomUUID()
+            val user = User(metadata = EntityMetadata(id = userId), externalId = "u1", isAdmin = true)
+            val userService = mockk<UserService> { every { getCurrentUser() } returns user }
+            val caseService =
+                mockk<CaseService> {
+                    every { findConcerningUser(userId) } returns emptyList()
+                    every { getAllActiveCases() } returns emptyList()
+                }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findAll() } returns listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns"))
+                }
+            val broadcaster = NamespaceCaseListUpdateBroadcaster()
+            val subscribers: StateFlow<Int> = broadcaster.events(namespaceId).subscriptionCount
+
+            val controller =
+                GlobalCaseEventSseController(
+                    caseService = caseService,
+                    userService = userService,
+                    caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
+                    activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
+                    namespaceService = namespaceService,
+                    caseListUpdateBroadcaster = broadcaster,
+                )
+            val emitter = controller.streamMyEvents()
+
+            subscribers.first { it >= 1 }
+
+            verify(exactly = 0) { namespaceService.findIdsVisibleTo(any(), any()) }
 
             emitter.complete()
         }

@@ -14,12 +14,17 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * MVC-layer test for [CaseEventSseController]: the status a browser actually receives.
+ * MVC-layer test for [CaseEventSseController]: the status the exception rendering produces.
  *
  * Refusing the stream of a case that is gone (#1616) only works through its status code —
  * EventSource reconnects every three seconds for as long as it is given a 200, whatever the
  * body — and that status comes out of exception rendering on a handler that produces nothing
  * but `text/event-stream`, which a unit test calling the method directly cannot observe.
+ *
+ * MockMvc stops at the first response and performs no servlet ERROR dispatch, so this pins the
+ * status this handler resolves to, not what a container finally writes after /error has
+ * renegotiated the content type. A running instance was checked by hand and answers 404 as well
+ * (2026-11-10); a RANDOM_PORT test would be the way to hold that end of the contract too.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
