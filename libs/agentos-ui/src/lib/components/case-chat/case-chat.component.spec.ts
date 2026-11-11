@@ -821,15 +821,6 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.destroy()
     })
 
-    it('names the model of the case in the chip, "agent default" without override', () => {
-      loadCase()
-      const ref = makeComponent()
-      expect(ref.instance['caseModelLabel']()).toBe('agent default')
-
-      loadCase({ modelName: 'SMALL' })
-      expect(ref.instance['caseModelLabel']()).toBe('SMALL')
-    })
-
     it('lets the user choose a model, then address an agent: the case model applies to the next message', async () => {
       loadCase()
       const ref = open()

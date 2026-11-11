@@ -1,0 +1,38 @@
+@if (autocomplete.effortSuggestions().length > 0) {
+  <div class="case-settings__picker">
+    <agentos-effort-autocomplete
+      [options]="autocomplete.effortSuggestions()"
+      [current]="effort()"
+      (selected)="effortSelected.emit($event)"
+      (dismissed)="closeEffortPicker()"
+    />
+  </div>
+}
+@if (autocomplete.modelSuggestions().length > 0) {
+  <div class="case-settings__picker">
+    <agentos-model-autocomplete
+      [options]="autocomplete.modelSuggestions()"
+      [current]="model()"
+      (selected)="modelSelected.emit($event)"
+      (dismissed)="closeModelPicker()"
+    />
+  </div>
+}
+<button
+  type="button"
+  class="case-settings__chip case-settings__chip--model"
+  title="AI model of this case. Click, or type /model, to change it; the agent entry goes back to each agent's own model."
+  [disabled]="disabled()"
+  (click)="openModelPicker()"
+>
+  model: {{ modelText() }}
+</button>
+<button
+  type="button"
+  class="case-settings__chip case-settings__chip--effort"
+  title="Reasoning effort of this case. Click, or type /effort, to change it; the default entry goes back to the effort of each model. Not applied to Anthropic and Gemini providers."
+  [disabled]="disabled()"
+  (click)="openEffortPicker()"
+>
+  effort: {{ effortText() }}
+</button>

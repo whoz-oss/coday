@@ -131,29 +131,13 @@
                   <span>Create a worktree</span>
                 </label>
               }
-              @if (modelOptions().length > 0) {
-                <label
-                  class="case-home__model"
-                  title="The AI model this case runs on. Leave it on Agent default to let each agent use its own model."
-                >
-                  <span>Model</span>
-                  <select
-                    dsControl
-                    aria-label="AI model"
-                    [value]="modelName()"
-                    [disabled]="isCreating() || !!pendingCaseId()"
-                    (change)="onModelChange($event)"
-                  >
-                    <option value="">Agent default</option>
-                    @for (option of modelOptions(); track option.value) {
-                      <option [value]="option.value" [selected]="option.value === modelName()">
-                        {{ option.label }}
-                      </option>
-                    }
-                  </select>
-                </label>
-              }
-              <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+              <agentos-case-settings
+                [model]="modelName()"
+                [effort]="reasoningEffort()"
+                [disabled]="!canChangeSettings()"
+                (modelSelected)="onModelSelected($event)"
+                (effortSelected)="onEffortSelected($event)"
+              />
             </div>
             <!-- Mic (or cancel while recording) right next to the send button, on its left -->
             <div class="case-home__footer-right">

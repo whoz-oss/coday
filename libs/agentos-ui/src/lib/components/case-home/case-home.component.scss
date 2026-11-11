@@ -227,27 +227,6 @@
     }
   }
 
-  &__model {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 12px;
-    color: var(--color-neutral-600);
-
-    select {
-      // A compact select: the right padding stays clear of the drawn arrow (see select.ds-control).
-      width: auto;
-      max-width: 14rem;
-      padding: 0.25rem 2.25rem 0.25rem 0.5rem;
-      font-size: 12px;
-    }
-  }
-
-  &__hint {
-    font-size: 12px;
-    color: var(--color-neutral-500);
-  }
-
   &__spacer {
     flex: 1;
   }
