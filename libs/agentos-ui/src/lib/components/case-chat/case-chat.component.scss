@@ -1058,9 +1058,9 @@
     padding-left: 6px;
   }
 
-  // ── Reopen bar (shown when case is terminal) ────────────────────────────────
+  // ── Notice bar (case ended, or its event stream was refused) ───────────────
 
-  &__reopen-bar {
+  &__notice-bar {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1073,14 +1073,14 @@
     background: color-mix(in srgb, var(--color-warning) 6%, transparent);
   }
 
-  &__reopen-label {
+  &__notice-label {
     flex: 1;
     font-size: 12px;
     color: var(--color-text-secondary);
     font-family: var(--font-body);
   }
 
-  &__reopen-btn {
+  &__notice-btn {
     flex: none;
     display: inline-flex;
     align-items: center;

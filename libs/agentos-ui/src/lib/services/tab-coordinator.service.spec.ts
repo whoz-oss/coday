@@ -1,6 +1,7 @@
 import { createEnvironmentInjector, EnvironmentInjector, runInInjectionContext, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { Router } from '@angular/router'
+import { GlobalStreamMessage } from './global-case-event-sse.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { TabCoordinatorService } from './tab-coordinator.service'
 
@@ -50,6 +51,44 @@ class FakeBroadcastChannel {
   }
 }
 
+/** The lock the service claims for user `u-1`, spelled out here as the service keeps its name private. */
+const STREAM_OWNER_LOCK = 'agentos-companion-stream:u-1'
+
+/**
+ * In-memory Web Locks: one holder per name, the other claims queued in order, and a lock only
+ * ever released by its holder's tab going away — exactly how the app uses them.
+ */
+class FakeLockManager {
+  /** Set to make every claim fail, as an inactive document or an embedded context does. */
+  rejectWith: Error | null = null
+  private readonly held = new Set<string>()
+  private readonly queues = new Map<string, Array<() => void>>()
+
+  async request(name: string, callback: () => Promise<void>): Promise<void> {
+    if (this.rejectWith) throw this.rejectWith
+    if (this.held.has(name)) {
+      await new Promise<void>((resolve) => {
+        const queue = this.queues.get(name) ?? []
+        queue.push(resolve)
+        this.queues.set(name, queue)
+      })
+    }
+    this.held.add(name)
+    await callback()
+  }
+
+  /** The holder's tab goes away: the browser releases its lock and hands it to the next claim. */
+  closeHolder(name: string): void {
+    this.held.delete(name)
+    this.queues.get(name)?.shift()?.()
+  }
+}
+
+/** Lets the pending lock claims and `whenStreamOwner` continuations run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 interface Tab {
   service: TabCoordinatorService
   namespace: ReturnType<typeof signal<string | null>>
@@ -59,11 +98,15 @@ describe('TabCoordinatorService', () => {
   const originalBroadcastChannel = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel
   /** The injectors of the tabs a test opened: destroyed after it, which closes their channels and stops their effects. */
   let tabInjectors: EnvironmentInjector[]
+  const originalLocks = Object.getOwnPropertyDescriptor(navigator, 'locks')
+  let locks: FakeLockManager
 
   beforeEach(() => {
     bus = new FakeBus()
     tabInjectors = []
+    locks = new FakeLockManager()
     ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = FakeBroadcastChannel
+    Object.defineProperty(navigator, 'locks', { value: locks, configurable: true })
     TestBed.configureTestingModule({ providers: [{ provide: Router, useValue: { navigate: jest.fn() } }] })
   })
 
@@ -71,6 +114,8 @@ describe('TabCoordinatorService', () => {
     for (const injector of tabInjectors) injector.destroy()
     TestBed.resetTestingModule()
     ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = originalBroadcastChannel
+    if (originalLocks) Object.defineProperty(navigator, 'locks', originalLocks)
+    else Reflect.deleteProperty(navigator, 'locks')
   })
 
   /** One browser tab: its own coordinator and namespace state, started like app.config does it. */
@@ -156,5 +201,138 @@ describe('TabCoordinatorService', () => {
 
     expect(heardByOlderBuild).not.toHaveBeenCalled()
     expect(a.service.findTabForNamespace('ns-old')).toBeNull()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Global stream ownership — one connection per browser, not per tab (#1616)
+  // ---------------------------------------------------------------------------
+
+  const message: GlobalStreamMessage = { kind: 'case-list-invalidated', namespaceId: 'ns-a' }
+
+  it('gives the global stream to one tab, and to the next one when that tab goes away', async () => {
+    const a = openTab('ns-a')
+    const b = openTab('ns-b')
+    let bOwnsTheStream = false
+
+    await a.service.whenStreamOwner('u-1')
+    void b.service.whenStreamOwner('u-1').then(() => (bOwnsTheStream = true))
+    await settle()
+
+    expect(a.service.isStreamOwner()).toBe(true)
+    expect(bOwnsTheStream).toBe(false)
+    expect(b.service.isStreamOwner()).toBe(false)
+
+    locks.closeHolder(STREAM_OWNER_LOCK)
+    await settle()
+
+    expect(bOwnsTheStream).toBe(true)
+    expect(b.service.isStreamOwner()).toBe(true)
+  })
+
+  it("does not keep a user's tab waiting behind another user's stream", async () => {
+    const previousUser = openTab('ns-a')
+    const newUser = openTab('ns-b')
+
+    await previousUser.service.whenStreamOwner('u-previous')
+    let newUserOwnsTheStream = false
+    void newUser.service.whenStreamOwner('u-1').then(() => (newUserOwnsTheStream = true))
+    await settle()
+
+    // Someone else signed in on this browser: the tab still open as the previous user keeps its
+    // stream, and the new user's tabs elect an owner of their own instead of reading it.
+    expect(newUserOwnsTheStream).toBe(true)
+  })
+
+  it('relays a stream message to the other tabs, never to the tab that owns the stream', async () => {
+    const owner = openTab('ns-a')
+    const other = openTab('ns-b')
+    const heardByOwner = jest.fn()
+    const heardByOther = jest.fn()
+    owner.service.onGlobalMessage(heardByOwner)
+    other.service.onGlobalMessage(heardByOther)
+    await owner.service.whenStreamOwner('u-1')
+
+    owner.service.broadcastGlobalMessage(message, 'u-1')
+    bus.flush()
+
+    // With the user the stream was opened as, for a tab of another user to drop it.
+    expect(heardByOther).toHaveBeenCalledWith(message, 'u-1')
+    expect(heardByOwner).not.toHaveBeenCalled()
+  })
+
+  it('relays nothing from a tab that does not own the stream', () => {
+    const notOwner = openTab('ns-a')
+    const other = openTab('ns-b')
+    const heardByOther = jest.fn()
+    other.service.onGlobalMessage(heardByOther)
+
+    notOwner.service.broadcastGlobalMessage(message, 'u-1')
+    bus.flush()
+
+    // Without an owner every tab reads the stream for itself; relaying on top of that would
+    // have each tab handle every event once per open tab.
+    expect(heardByOther).not.toHaveBeenCalled()
+  })
+
+  it('drops a handler once its unsubscribe is called', async () => {
+    const owner = openTab('ns-a')
+    const other = openTab('ns-b')
+    const heard = jest.fn()
+    const unsubscribe = other.service.onGlobalMessage(heard)
+    await owner.service.whenStreamOwner('u-1')
+
+    unsubscribe()
+    owner.service.broadcastGlobalMessage(message, 'u-1')
+    bus.flush()
+
+    expect(heard).not.toHaveBeenCalled()
+  })
+
+  it('leaves a tab to its own stream when the lock claim fails outright', async () => {
+    locks.rejectWith = new Error('document is not fully active')
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const a = openTab('ns-a')
+
+    // Resolving is the point: a claim that failed must not leave the caller waiting for a
+    // stream nobody will open.
+    await expect(a.service.whenStreamOwner('u-1')).resolves.toBeUndefined()
+
+    expect(a.service.isStreamOwner()).toBe(false)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('leaves every tab to its own stream where Web Locks are missing', async () => {
+    Reflect.deleteProperty(navigator, 'locks')
+
+    const a = openTab('ns-a')
+
+    expect(a.service.coordinated).toBe(false)
+    await expect(a.service.whenStreamOwner('u-1')).resolves.toBeUndefined()
+  })
+
+  it('leaves every tab to its own stream where BroadcastChannel is missing', async () => {
+    ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = undefined
+
+    const a = openTab('ns-a')
+
+    expect(a.service.coordinated).toBe(false)
+    await expect(a.service.whenStreamOwner('u-1')).resolves.toBeUndefined()
+  })
+
+  it('still gets a tab id where crypto.randomUUID is missing, as on a plain-http LAN origin', () => {
+    const randomUUID = Object.getOwnPropertyDescriptor(crypto, 'randomUUID')
+    // Insecure contexts expose getRandomValues but not randomUUID.
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })
+    try {
+      const a = openTab('ns-a')
+      const b = openTab('ns-b')
+
+      expect(a.service.tabId).toMatch(/^[0-9a-f]{32}$/)
+      expect(a.service.tabId).not.toBe(b.service.tabId)
+    } finally {
+      if (randomUUID) Object.defineProperty(crypto, 'randomUUID', randomUUID)
+      else Reflect.deleteProperty(crypto, 'randomUUID')
+    }
   })
 })

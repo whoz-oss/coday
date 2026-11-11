@@ -1,7 +1,7 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
-import { HttpClient } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
-import { firstValueFrom } from 'rxjs'
+import { firstValueFrom, Subscription } from 'rxjs'
 import {
   afterNextRender,
   Component,
@@ -46,7 +46,7 @@ import {
   ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
   ConfirmDialogComponent,
@@ -161,6 +161,15 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 const TERMINAL_CLOSE_DEBOUNCE_MS = 300
 
+/**
+ * `EventSource.CLOSED`, spelled out: the browser gave up and will not reconnect.
+ *
+ * Read as a literal rather than off the constructor, which the specs replace with a fake that
+ * carries none of the statics — comparing against an undefined constant would call every
+ * transport hiccup a dead stream.
+ */
+const EVENT_SOURCE_CLOSED = 2
+
 /** True when the user has an active text selection (e.g. preparing to copy). */
 function hasActiveSelection(): boolean {
   const selection = window.getSelection()
@@ -247,7 +256,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     () =>
       this.canAttach() &&
       !this.isRunning() &&
-      !this.isTerminal() &&
+      !this.composerClosed() &&
       !this.attachments.isUploading() &&
       !this.voice.isBusy()
   )
@@ -315,6 +324,28 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isRunning = signal(false)
 
   /**
+   * True once the browser gave up on the event stream for good — EventSource reaching CLOSED.
+   *
+   * A deleted or no longer readable case is refused with a 404 and lands here (#1616), but so
+   * does any other answer that is not a 200 `text/event-stream`: a backend being restarted, a
+   * session that expired. Hence a notice that does not swear the case is gone, and a Retry.
+   * A mere transport hiccup leaves this false, since EventSource reconnects by itself.
+   */
+  protected readonly streamUnavailable = signal(false)
+
+  /**
+   * True once the case itself has been confirmed gone, which only a 404 on the case says.
+   *
+   * EventSource reports no status, so a dead stream alone cannot tell a deleted case from a
+   * backend restarting behind the proxy. Closing the composer on the stream alone would refuse
+   * a message to a perfectly healthy case for as long as the backend is coming back up.
+   */
+  protected readonly caseGone = signal(false)
+
+  /** The existence check in flight, dropped when the chat moves to another case or retries. */
+  private caseProbe: Subscription | null = null
+
+  /**
    * Derived terminal state — true when the effective case status is KILLED or ERROR.
    * Because this is a computed from `caseStatus` (itself last-writer-wins from `_sseStatus`),
    * it self-corrects the moment the final replayed status frame lands: a KILLED frame
@@ -324,6 +355,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const s = this.caseStatus()
     return s === 'KILLED' || s === 'ERROR'
   })
+
+  /**
+   * Nothing can be posted: the case has ended, or it is confirmed gone. Every way of posting — the
+   * textarea, send, Continue, the mic, staging files — reads this, so that none is left open on a
+   * case that would refuse it.
+   */
+  protected readonly composerClosed = computed(() => this.isTerminal() || this.caseGone())
 
   /** Handle for the debounced terminal-close timer. See TERMINAL_CLOSE_DEBOUNCE_MS. */
   private terminalCloseTimer: ReturnType<typeof setTimeout> | null = null
@@ -820,7 +858,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return (
       (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
       !this.isRunning() &&
-      !this.isTerminal() &&
+      // Only a confirmed deletion closes the composer: a dead stream alone may just be a backend
+      // restarting, and a message posted then still reaches a healthy case.
+      !this.composerClosed() &&
       !this.attachments.isUploading() &&
       !this.voice.isBusy()
     )
@@ -830,7 +870,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected get canRecord(): boolean {
     return (
       !this.isRunning() &&
-      !this.isTerminal() &&
+      !this.composerClosed() &&
       !this.attachments.isUploading() &&
       !this.submitting &&
       !this.voice.isBusy()
@@ -967,33 +1007,57 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   // ---------------------------------------------------------------------------
 
+  /**
+   * Reopens a stream the browser gave up on, at the user's request. EventSource does not retry
+   * after CLOSED, so a backend that has come back up needs this (or a page reload) to be seen.
+   */
+  protected retryStream(): void {
+    this.dropCaseProbe()
+    this.streamUnavailable.set(false)
+    this.caseGone.set(false)
+    this.eventSource?.close()
+    this.connectSse()
+  }
+
+  /**
+   * Asks the case itself whether it is still there, the only way to tell a refused stream from a
+   * backend that is restarting.
+   *
+   * Deleting a case only marks it removed, and GET /api/cases/{id} still serves it (with
+   * `removed: true`): that flag is the deletion, and a 404 the case being out of reach, by
+   * absence or by permission. Either closes the composer; any other failure leaves it open.
+   */
+  private checkCaseStillExists(): void {
+    this.dropCaseProbe()
+    this.caseProbe = this.http
+      .get<Case>(`${this.config.basePath}/api/cases/${this.caseId}`)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (found) => {
+          if (found.removed) this.caseGone.set(true)
+        },
+        error: (err: unknown) => {
+          if (err instanceof HttpErrorResponse && err.status === 404) this.caseGone.set(true)
+        },
+      })
+  }
+
+  /** A late answer about the previous case, or from before a Retry, must not close this composer. */
+  private dropCaseProbe(): void {
+    this.caseProbe?.unsubscribe()
+    this.caseProbe = null
+  }
+
   private connectSse(): void {
     const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
-
-    console.log('[AgentOS SSE] connecting', {
-      url,
-      basePath: this.config.basePath,
-      caseId: this.caseId,
-      namespaceId: this.namespaceId,
-      now: new Date().toISOString(),
-    })
 
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
     // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
     // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
     const handler = (msg: globalThis.MessageEvent<string>) => {
-      const receivedAt = performance.now()
       const sseEventName = (msg as unknown as { type?: string }).type
-
-      // Log first bytes + sizes to detect batching.
       const raw = msg.data
-      console.log('[AgentOS SSE] frame received', {
-        sseEventName,
-        dataLength: raw?.length ?? 0,
-        dataPreview: raw?.slice(0, 120),
-        receivedAtMs: receivedAt,
-      })
 
       try {
         const event = JSON.parse(raw) as CaseEvent
@@ -1011,7 +1075,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             }
             return
           }
-          const beforeLen = this.events().length
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
           if (event.type === 'MessageEvent') {
@@ -1026,17 +1089,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
-          const afterLen = this.events().length
-
-          console.log('[AgentOS SSE] event processed', {
-            sseEventName,
-            eventType: event.type,
-            eventId: event.id,
-            beforeLen,
-            afterLen,
-            running: this.isRunning(),
-            terminal: this.isTerminal(),
-          })
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1188,26 +1240,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     // handle the different event names we see in the SSE stream
     for (const name of eventNames) {
-      console.log('[AgentOS SSE] addEventListener', name)
       this.eventSource.addEventListener(name, handler)
     }
 
-    this.eventSource.onopen = () => {
-      console.log('[AgentOS SSE] connection open', {
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
-    }
-
-    this.eventSource.onerror = (err) => {
-      console.warn('[AgentOS SSE] connection error', {
-        err,
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
+    this.eventSource.onerror = () => {
+      const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
+      if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
         this.isRunning.set(false)
         // Do not mark terminal on transport error: EventSource may reconnect.
+        // CLOSED is the exception — the browser will not retry, so say the stream is gone
+        // rather than leave a chat that silently never updates again.
+        if (closed) {
+          this.streamUnavailable.set(true)
+          this.checkCaseStillExists()
+        }
       })
     }
   }
@@ -1316,6 +1363,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.eventSource = null
+    this.dropCaseProbe()
+    this.streamUnavailable.set(false)
+    this.caseGone.set(false)
     this.events.set([])
     this.messageHtmlCache.clear()
     this.inputValue.set('')
@@ -1389,7 +1439,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** The agent resumes from the history: its tool calls and its summary of the work so far. */
   protected continueAfterLimit(): void {
     // An attachment send in flight is not running yet: posting now would send two messages.
-    if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.isTerminal()) return
+    if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.composerClosed()) return
     this.sendMessage('Continue')
   }
 

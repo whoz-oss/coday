@@ -1,13 +1,16 @@
 package io.whozoss.agentos.caseEvent
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -35,7 +38,7 @@ import java.util.concurrent.TimeUnit
  * Validates the three connection scenarios:
  * 1. Active case  — history replayed, then live flow subscribed.
  * 2. Past case    — history replayed, emitter completed immediately (no live flow).
- * 3. Unknown case — history is empty and no active instance; emitter completed immediately.
+ * 3. Unknown case — refused with a 404, never served as an empty stream (#1616).
  */
 class CaseEventSseControllerUnitSpec : StringSpec() {
     val namespaceId: UUID = UUID.randomUUID()
@@ -67,12 +70,39 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Unknown case — refused, so that the client gives up instead of reconnecting
+        // -------------------------------------------------------------------------
+
+        "unknown case: refuses the stream instead of completing an empty one" {
+            val caseId = UUID.randomUUID()
+            val caseService = mockk<CaseService> { every { findById(caseId, any()) } returns null }
+            val caseEventService = mockk<CaseEventService>()
+
+            val controller =
+                CaseEventSseController(
+                    caseService = caseService,
+                    caseEventService = caseEventService,
+                    caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE),
+                )
+
+            shouldThrow<ResourceNotFoundException> { controller.streamEvents(caseId) }
+
+            // Refused before any work: no history read, no runtime looked up.
+            verify(exactly = 0) { caseEventService.findByParent(caseId) }
+            verify(exactly = 0) { caseService.findActiveRuntime(caseId) }
+        }
+
+        // -------------------------------------------------------------------------
         // Past / completed case — only history, no live instance
         // -------------------------------------------------------------------------
 
         "omitted includePreviousEvents replays persisted events" {
             val caseId = UUID.randomUUID()
-            val caseService = mockk<CaseService> { every { findActiveRuntime(caseId) } returns null }
+            val caseService =
+                mockk<CaseService> {
+                    every { findById(caseId, any()) } returns mockk<Case>()
+                    every { findActiveRuntime(caseId) } returns null
+                }
             val caseEventService = mockk<CaseEventService> { every { findByParent(caseId) } returns emptyList() }
             val controller = CaseEventSseController(caseService, caseEventService, CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE))
 
@@ -88,6 +118,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
 
             val caseService =
                 mockk<CaseService> {
+                    every { findById(caseId, any()) } returns mockk<Case>()
                     every { findActiveRuntime(caseId) } returns null
                 }
             val caseEventService =
@@ -117,6 +148,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
 
             val caseService =
                 mockk<CaseService> {
+                    every { findById(caseId, any()) } returns mockk<Case>()
                     every { findActiveRuntime(caseId) } returns null
                 }
             val caseEventService =
@@ -156,6 +188,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
                 }
             val caseService =
                 mockk<CaseService> {
+                    every { findById(caseId, any()) } returns mockk<Case>()
                     every { findActiveRuntime(caseId) } answers {
                         latch.countDown()
                         activeCase
@@ -191,6 +224,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
                 }
             val caseService =
                 mockk<CaseService> {
+                    every { findById(caseId, any()) } returns mockk<Case>()
                     every { findActiveRuntime(caseId) } answers {
                         latch.countDown()
                         activeCase
@@ -241,7 +275,11 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
                     every { events } returns liveFlow
                     every { deliveryFailureCount } returns MutableStateFlow(0L)
                 }
-            val caseService = mockk<CaseService> { every { findActiveRuntime(caseId) } returns activeCase }
+            val caseService =
+                mockk<CaseService> {
+                    every { findById(caseId, any()) } returns mockk<Case>()
+                    every { findActiveRuntime(caseId) } returns activeCase
+                }
             val caseEventService = mockk<CaseEventService> { every { findByParent(caseId) } returns emptyList() }
 
             // Use a short heartbeat interval to confirm the config is wired through.

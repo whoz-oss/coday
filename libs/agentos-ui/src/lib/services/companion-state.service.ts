@@ -6,7 +6,7 @@ import { catchError, map, switchMap } from 'rxjs/operators'
 import { CaseStateService } from './case-state.service'
 import { BrowserNotificationService } from './browser-notification.service'
 import { CompanionPipService } from './companion-pip.service'
-import { GlobalCaseEventSseService } from './global-case-event-sse.service'
+import { GlobalStreamService } from './global-stream.service'
 
 // ---------------------------------------------------------------------------
 // Notification types (shared with CompanionComponent)
@@ -95,7 +95,7 @@ function truncate(text: string, maxChars: number): string {
 @Injectable({ providedIn: 'root' })
 export class CompanionStateService {
   private readonly destroyRef = inject(DestroyRef)
-  private readonly sse = inject(GlobalCaseEventSseService)
+  private readonly globalStream = inject(GlobalStreamService)
   private readonly caseController = inject(CaseControllerService)
   private readonly caseState = inject(CaseStateService)
   private readonly companionPip = inject(CompanionPipService)
@@ -111,20 +111,17 @@ export class CompanionStateService {
   private sseStarted = false
 
   /**
-   * Start the SSE subscription. Idempotent — safe to call multiple times.
-   * Called at app startup so the stream is active regardless of whether the PiP window is open.
+   * Subscribe to the notifiable events of the aggregated stream. Idempotent — safe to call more
+   * than once. Called at app startup so notifications work whether the PiP window is open or not.
+   *
+   * The stream itself belongs to [GlobalStreamService]: one connection for the whole browser,
+   * relayed to every tab (#1616).
    */
   startSse(): void {
     if (this.sseStarted) return
     this.sseStarted = true
 
-    this.sse
-      .connect()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (event) => this.onEvent(event),
-        error: (err) => console.error('[CompanionState] event stream error', err),
-      })
+    this.globalStream.caseEvents$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => this.onEvent(event))
   }
 
   // ---------------------------------------------------------------------------

@@ -820,7 +820,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             // integrations map would surface here as the opted-out agent regaining tools.
             val realGrantService =
                 ExchangeToolGrantService(
-                    properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true),
+                    // Namespace default off on purpose: this test is about the case scope, and the
+                    // namespace one is separately gated on an identified user and Namespace READ.
+                    properties =
+                        ExchangeToolsConfigProperties(
+                            caseEnabledByDefault = true,
+                            namespaceEnabledByDefault = false,
+                        ),
                     storageProperties = ExchangeStorageConfigProperties(),
                     reservedEntries = listOf(GitMetadataEntries()),
                     toolRegistryService = toolRegistryService,
