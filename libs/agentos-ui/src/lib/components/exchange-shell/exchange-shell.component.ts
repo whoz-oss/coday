@@ -14,9 +14,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
-import { canViewFile } from '../../services/exchange-content.utils'
+import { canViewFile, ensureImageBlob, isFormatViewable, isImageFile } from '../../services/exchange-content.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { ExchangeDrawerComponent, ExchangeManifestStatus } from '../exchange-drawer/exchange-drawer.component'
+import { ExchangeDrawerComponent, ExchangeManifestStatus, ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 
 /** Poll only while a visible filter is in use; slow scans may extend this interval. */
 const FILTER_REFRESH_INTERVAL_MS = 3000
@@ -45,11 +45,18 @@ export class ExchangeShellComponent {
   protected readonly state = inject(ExchangeStateService)
 
   readonly active = input(false)
+  /** Lets the user check files to put them in the message being written (relayed to the drawer). */
+  readonly selectable = input(false)
+  /** Files the message references: the drawer checks exactly these. */
+  readonly referenced = input<ExchangeFileRef[]>([])
   readonly closeRequested = output<void>()
+  readonly referenceToggled = output<ExchangeReferenceToggle>()
 
   // ── Current selection / viewer content ────────────────────────────────────────
   protected readonly selectedFile = signal<ExchangeFileRef | null>(null)
   protected readonly selectedContent = signal<string | null>(null)
+  /** Object URL of the previewed image; owned here so it can be revoked when the selection changes. */
+  protected readonly selectedImageUrl = signal<string | null>(null)
   protected readonly contentStatus = signal<'loading' | 'ready' | 'error'>('loading')
   protected readonly canViewSelected = signal<boolean>(true)
   protected readonly actionError = signal<string | null>(null)
@@ -81,6 +88,8 @@ export class ExchangeShellComponent {
   protected readonly environmentCaseId = signal<string | null>(null)
 
   constructor() {
+    // An object URL keeps its blob in memory until revoked.
+    this.destroyRef.onDestroy(() => this.revokeImageUrl())
     // The case view is rendered directly by the case-shell (not through a router-outlet with
     // `:namespaceId/cases/:caseId` path params), so the active case/namespace come through query
     // params (`?ns=..&case=..`), mirroring case-chat. Subscribing (not reading the snapshot once)
@@ -105,18 +114,18 @@ export class ExchangeShellComponent {
         this.caseManifest.set(null)
         this.caseManifestStatus.set(this.caseQuery() ? 'loading' : 'idle')
         this.state.initializeForCase(namespaceId, caseId)
-      } else if (this.activeCaseId !== null) {
+      } else if (this.activeCaseId !== null || this.activeNamespaceId !== (namespaceId ?? null)) {
         this.contextGeneration.update((value) => value + 1)
+        if (this.activeCaseId !== null) this.state.clear()
         this.activeCaseId = null
-        this.activeNamespaceId = null
+        this.activeNamespaceId = namespaceId ?? null
         this.resetSelection()
         this.caseManifest.set(null)
         this.namespaceManifest.set(null)
-        this.state.clear()
       }
     })
-    // Release the shared exchange state when this shell is torn down.
-    effect((onCleanup) => onCleanup(() => this.state.clear()))
+    // A namespace-only drawer borrows the state from its home composer.
+    effect((onCleanup) => onCleanup(() => { if (this.activeCaseId !== null) this.state.clear() }))
     // Revoke only the selected scope; the other scope and its filter remain untouched.
     effect(() => {
       const ref = this.selectedFile()
@@ -133,7 +142,7 @@ export class ExchangeShellComponent {
       const visible = isCase ? this.state.caseSectionVisible : this.state.namespaceSectionVisible
       const pollingEnabled = computed(() => {
         this.contextGeneration()
-        return this.active() && !!query() && (visible() || accessUnavailable()) && !!this.activeCaseId
+        return this.active() && !!query() && (visible() || accessUnavailable()) && !!(isCase ? this.activeCaseId : this.activeNamespaceId)
       })
       let inFlight = false
       let backgroundRefresh = false
@@ -142,7 +151,7 @@ export class ExchangeShellComponent {
         const generation = version()
         this.contextGeneration()
         retry()
-        if (!active || !this.activeCaseId) { inFlight = false; backgroundRefresh = false; files.set(null); status.set('idle'); return }
+        if (!active || !(isCase ? this.activeCaseId : this.activeNamespaceId)) { inFlight = false; backgroundRefresh = false; files.set(null); status.set('idle'); return }
         const keepResults = backgroundRefresh && untracked(status) === 'ready'
         backgroundRefresh = false
         if (!keepResults) { files.set(null); status.set('loading') }
@@ -211,14 +220,21 @@ export class ExchangeShellComponent {
     const generation = ++this.selectionGeneration
     this.selectedFile.set(ref)
     this.selectedContent.set(null)
+    this.revokeImageUrl()
     const file = this.findFile(ref)
-    const viewable = file ? canViewFile(file) : false
+    // A file reached through the filter lives deeper than the directory being browsed: judge it by its
+    // manifest entry, or by its name alone when even that is unknown.
+    const viewable = file ? canViewFile(file) : this.canViewUnlisted(ref)
     this.canViewSelected.set(viewable)
     if (!viewable) {
       this.contentStatus.set('ready')
       return
     }
     this.contentStatus.set('loading')
+    if (isImageFile(ref.path)) {
+      this.loadImage(ref, generation)
+      return
+    }
     this.state
       .getContent(ref.scope, ref.path)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -312,15 +328,48 @@ export class ExchangeShellComponent {
     this.closeRequested.emit()
   }
 
+  /** Without a case in the route, only the namespace is browsed: the case section has nothing to show. */
+  protected readonly caseSectionVisible = computed(() => this.state.caseSectionVisible() && !!this.environmentCaseId())
+
   /** Viewer back button: clear the active file so the drawer returns to the list. */
   protected onViewerClosed(): void {
     this.clearSelection()
+  }
+
+  /**
+   * Images cannot go through the text endpoint: fetch the raw bytes via the download endpoint and
+   * preview them from an object URL.
+   */
+  private loadImage(ref: ExchangeFileRef, generation: number): void {
+    this.state
+      .getBlob(ref.scope, ref.path)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (blob) => {
+          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope)) return
+          const typed = ensureImageBlob(blob instanceof Blob ? blob : new Blob([blob]), ref.path)
+          this.revokeImageUrl()
+          this.selectedImageUrl.set(URL.createObjectURL(typed))
+          this.contentStatus.set('ready')
+        },
+        error: () => {
+          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope)) return
+          this.contentStatus.set('error')
+        },
+      })
+  }
+
+  private revokeImageUrl(): void {
+    const url = this.selectedImageUrl()
+    if (url) URL.revokeObjectURL(url)
+    this.selectedImageUrl.set(null)
   }
 
   private clearSelection(): void {
     this.selectionGeneration++
     this.selectedFile.set(null)
     this.selectedContent.set(null)
+    this.revokeImageUrl()
     this.contentStatus.set('loading')
     this.canViewSelected.set(true)
   }
@@ -346,6 +395,11 @@ export class ExchangeShellComponent {
       ? this.state.caseBrowseUnavailable()
       : this.state.namespaceBrowseUnavailable()
     return status === 'forbidden' || unavailable
+  }
+
+  private canViewUnlisted(ref: ExchangeFileRef): boolean {
+    if (ref.scope !== ExchangeFileEntryScopeEnum.NAMESPACE) return false
+    return isImageFile(ref.path) || isFormatViewable(ref.path)
   }
 
   private isStillSelected(ref: ExchangeFileRef): boolean {

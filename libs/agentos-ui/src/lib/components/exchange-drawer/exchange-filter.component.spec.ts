@@ -14,6 +14,7 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.componentRef.setInput('caseStatus', 'ready')
     fixture.componentRef.setInput('namespaceStatus', 'ready')
     fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+    fixture.componentRef.setInput(`${scope}Files`, [{ path: 'root.txt', name: 'root.txt', directory: false }])
     fixture.componentRef.setInput(`${scope}ManifestStatus`, 'loading')
     fixture.detectChanges()
     const host = fixture.nativeElement as HTMLElement
@@ -89,6 +90,7 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.componentRef.setInput('caseStatus', 'ready')
     fixture.componentRef.setInput('namespaceStatus', 'ready')
     fixture.componentRef.setInput(`${section}SectionVisible`, true)
+    fixture.componentRef.setInput(`${section}Files`, [{ path: 'root.txt', name: 'root.txt', directory: false }])
     fixture.componentRef.setInput(`${section}ManifestStatus`, 'ready')
     fixture.componentRef.setInput(`${section}Manifest`, [{ path: 'deep/file.txt', filename: 'file.txt' }])
     fixture.detectChanges()
@@ -129,7 +131,9 @@ describe('ExchangeDrawerComponent file filters', () => {
     host.querySelector<HTMLButtonElement>(`[data-track="ExchangeItem-file_${scope}:gone.txt"]`)!.click()
     host.querySelector<HTMLButtonElement>('[data-track="ExchangeContentViewer-back"]')!.click()
     flushMicrotasks()
-    expect(document.activeElement).toBe(host.querySelector('input[type=search]'))
+    const fallback = scope === ExchangeFileEntryScopeEnum.NAMESPACE
+      ? host.querySelector('.exchange-drawer__section-title') : host.querySelector('input[type=search]')
+    expect(document.activeElement).toBe(fallback)
     fixture.destroy()
     host.remove()
   }))
@@ -220,6 +224,7 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.componentRef.setInput('caseStatus', 'ready')
     fixture.componentRef.setInput('namespaceStatus', 'ready')
     fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+    fixture.componentRef.setInput(`${scope}Files`, [{ path: 'root.txt', name: 'root.txt', directory: false }])
     fixture.detectChanges()
     const el = fixture.nativeElement as HTMLElement
     const input = el.querySelector<HTMLInputElement>('input[type=search]')!
@@ -269,7 +274,7 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.destroy()
   }))
 
-  it.each(['case', 'namespace'])('distinguishes empty %s browse from an empty search', fakeAsync((scope: string) => {
+  it.each(['case', 'namespace'])('distinguishes %s browse from an empty search', fakeAsync((scope: string) => {
     TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
     const fixture = TestBed.createComponent(ExchangeDrawerComponent)
     fixture.componentRef.setInput('caseStatus', 'ready')
@@ -279,6 +284,8 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.detectChanges()
     const el = fixture.nativeElement as HTMLElement
     expect(el.textContent).toContain(scope === 'case' ? 'No case files' : 'No namespace files')
+    fixture.componentRef.setInput(`${scope}Files`, [{ path: 'root.txt', name: 'root.txt', directory: false }])
+    fixture.detectChanges()
     const input = el.querySelector<HTMLInputElement>('input[type=search]')!
     input.value = 'absent'
     input.dispatchEvent(new Event('input'))
@@ -295,6 +302,7 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.componentRef.setInput('caseStatus', 'ready')
     fixture.componentRef.setInput('namespaceStatus', 'ready')
     fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+    fixture.componentRef.setInput(`${scope}Files`, [{ path: 'root.txt', name: 'root.txt', directory: false }])
     fixture.detectChanges()
     const changed = jest.fn()
     fixture.componentInstance.filterChanged.subscribe(changed)
@@ -328,6 +336,7 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.componentRef.setInput('caseStatus', 'ready')
     fixture.componentRef.setInput('namespaceStatus', 'ready')
     fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+    fixture.componentRef.setInput(`${scope}Files`, [{ path: 'root.txt', name: 'root.txt', directory: false }])
     fixture.componentRef.setInput(`${scope}ManifestStatus`, 'ready')
     fixture.componentRef.setInput(`${scope}Manifest`, [{ path: 'deep/a.md', filename: 'a.md', size: 1 }])
     fixture.detectChanges()
@@ -350,6 +359,7 @@ describe('ExchangeDrawerComponent file filters', () => {
     for (const scope of ['case', 'namespace']) {
       fixture.componentRef.setInput(`${scope}Status`, 'ready')
       fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+      fixture.componentRef.setInput(`${scope}Files`, [{ path: 'root.txt', name: 'root.txt', directory: false }])
       fixture.componentRef.setInput(`${scope}ManifestStatus`, 'ready')
       fixture.componentRef.setInput(`${scope}Manifest`, [{ path: 'deep/a.md', filename: 'a.md', size: 1 }])
     }

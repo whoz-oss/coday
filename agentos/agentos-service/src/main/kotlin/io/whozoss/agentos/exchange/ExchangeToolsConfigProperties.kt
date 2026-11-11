@@ -44,6 +44,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   exchange:
  *     tools:
  *       case-enabled-by-default: true
+ *       namespace-enabled-by-default: true
  *       image-max-dimension: 1568
  *       extra-deny-patterns: "*.bak,*confidential*"
  * ```
@@ -61,12 +62,16 @@ data class ExchangeToolsConfigProperties(
      */
     val caseEnabledByDefault: Boolean = true,
     /**
-     * Same platform default for [ExchangeIntegrationTypes.NAMESPACE]. Every namespace grant, this
-     * default included, additionally requires the invoking user to hold Namespace READ; a run
-     * without an identified user is denied (fail-closed). Write access follows the user's
-     * Namespace WRITE right.
+     * Same platform default for [ExchangeIntegrationTypes.NAMESPACE].
+     *
+     * On by default so agents receive namespace exchange tools unless they explicitly decide
+     * otherwise. A default grant is not a blanket access: every namespace grant, this default
+     * included, additionally requires the invoking user to hold Namespace READ, and a run without an
+     * identified user is denied (fail-closed). Write access follows the user's Namespace WRITE right,
+     * a plain member getting read-only tools. An agent that declares the key always wins, including
+     * with an empty list — the explicit opt-out.
      */
-    val namespaceEnabledByDefault: Boolean = false,
+    val namespaceEnabledByDefault: Boolean = true,
     /**
      * Patterns blocked on top of the plugin's built-in sensitive-file list (`.env`, `*.key`,
      * `*.pem`, ...). Additive only: an instance can harden the deny-list for its own naming

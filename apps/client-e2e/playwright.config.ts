@@ -2,9 +2,24 @@ import { defineConfig, devices } from '@playwright/test'
 import { nxE2EPreset } from '@nx/playwright/preset'
 import { workspaceRoot } from '@nx/devkit'
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+// The port scheme is read from its single source of truth (a data file, so no cross-project TS import and no ESM/CJS
+// JSON import problem in this `type: module` package). No port literal here: dev base + role offset.
+const scheme = JSON.parse(
+  readFileSync(join(workspaceRoot, 'apps/server/src/lib/runtime/port-scheme.json'), 'utf8')
+) as { offsets: Record<string, number>; profiles: Record<string, { base: number }> }
+const devPort = (role: string): number => (scheme.profiles['dev']?.base ?? 0) + (scheme.offsets[role] ?? 0)
+
+// The `webServer` below starts `nx run client:serve`, the Angular dev server ALONE (the specs mock the backend at the
+// network layer), so the default baseURL is that dev server (dev base + client offset), not Express, which this config
+// does not start: waiting for Express would time out unless the whole dev stack is already up. With the stack up
+// (`pnpm web:serve:dev`), set BASE_URL to Express (dev base + server offset) to test through it like a user does.
+const devClientUrl = `http://localhost:${devPort('client')}`
 
 // For CI, you may want to set BASE_URL to the deployed application.
-const baseURL = process.env['BASE_URL'] || 'http://localhost:4200'
+const baseURL = process.env['BASE_URL'] || devClientUrl
 
 /**
  * Read environment variables from file.
@@ -27,7 +42,7 @@ export default defineConfig({
   /* Run your local dev server before starting the tests */
   webServer: {
     command: 'pnpm nx run client:serve',
-    url: 'http://localhost:4200',
+    url: devClientUrl,
     reuseExistingServer: true,
     cwd: workspaceRoot,
   },

@@ -6,7 +6,7 @@ import { SetupStatus } from './setup.models'
 
 const status = (patch: Partial<SetupStatus> = {}): SetupStatus =>
   ({
-    mode: 'laptop',
+    mode: 'unmanaged',
     setupEnabled: true,
     setupDone: false,
     steps: {},
@@ -15,7 +15,7 @@ const status = (patch: Partial<SetupStatus> = {}): SetupStatus =>
   }) as SetupStatus
 
 describe('wizardRequired', () => {
-  it('is required on a laptop first run', () => {
+  it('is required on an unmanaged first run', () => {
     expect(wizardRequired(status())).toBe(true)
   })
 
@@ -52,7 +52,7 @@ describe('setup guards', () => {
     expect(TestBed.inject(Router).serializeUrl(result as UrlTree)).toBe('/welcome')
   })
 
-  it('lets everything through for non-laptop modes and unreadable status', async () => {
+  it('lets everything through for non-unmanaged modes and unreadable status', async () => {
     refreshStatus.mockResolvedValue(status({ mode: 'managed', setupEnabled: false }))
     expect(await run(setupGuard)).toBe(true)
     refreshStatus.mockResolvedValue(null)

@@ -29,6 +29,12 @@ import { FilteredFileTree } from '../../services/exchange-file-filter.utils'
 
 export type ExchangeManifestStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+/** The parent owns the referenced-file selection. */
+export interface ExchangeReferenceToggle {
+  ref: ExchangeFileRef
+  referenced: boolean
+}
+
 /**
  * ExchangeDrawerComponent — presentational panel content for the file-exchange drawer.
  *
@@ -93,10 +99,14 @@ export class ExchangeDrawerComponent {
   // ── Current selection / viewer ────────────────────────────────────────────────
   readonly activeFile = input<ExchangeFileRef | null>(null)
   readonly selectedContent = input<string | null>(null)
+  readonly imageUrl = input<string | null>(null)
+  readonly selectable = input<boolean>(false)
+  readonly referenced = input<ExchangeFileRef[]>([])
   readonly contentStatus = input<'loading' | 'ready' | 'error'>('loading')
   readonly canViewSelected = input<boolean>(true)
 
   readonly fileSelected = output<ExchangeFileRef>()
+  readonly referenceToggled = output<ExchangeReferenceToggle>()
   /** A directory was opened, or a breadcrumb level was clicked. Empty path means the scope root. */
   readonly folderOpened = output<{ scope: ExchangeScope; path: string }>()
   readonly loadMoreRequested = output<ExchangeScope>()
@@ -118,6 +128,11 @@ export class ExchangeDrawerComponent {
   protected readonly namespaceInput = signal('')
   protected readonly caseQuery = signal('')
   protected readonly namespaceQuery = signal('')
+  /** Keep an active query accessible even if the current directory becomes empty. */
+  protected readonly showNamespaceFilter: Signal<boolean> = computed(() =>
+    !!this.namespaceInput() || !!this.namespaceQuery() || this.namespaceFiles().length > 0 ||
+    this.namespaceFolders().length > 0 || this.namespaceBreadcrumb().length > 0
+  )
   protected readonly maxFilterMatches = MAX_FILTER_MATCHES
   protected readonly caseTree = computed(() => this.tree(this.caseManifest(), this.caseQuery(), true))
   protected readonly namespaceTree = computed(() => this.tree(this.namespaceManifest(), this.namespaceQuery(), false))
@@ -191,7 +206,7 @@ export class ExchangeDrawerComponent {
     if (event.key !== 'Escape' || !(scope === this.CASE ? this.caseInput() : this.namespaceInput())) return
     event.stopPropagation()
     event.preventDefault()
-    this.clearFilter(scope)
+    this.clearFilterAndFocus(scope, event.target as HTMLInputElement)
   }
 
   protected clearFilter(scope: ExchangeScope): void {
@@ -204,7 +219,11 @@ export class ExchangeDrawerComponent {
 
   protected clearFilterAndFocus(scope: ExchangeScope, input: HTMLInputElement): void {
     this.clearFilter(scope)
-    input.focus()
+    if (scope === this.NAMESPACE && !this.showNamespaceFilter()) {
+      this.host.nativeElement.querySelector<HTMLElement>('[data-track="ExchangeDrawer-namespaceSection"] h3')?.focus()
+    } else {
+      input.focus()
+    }
   }
 
   private applyFilter(scope: ExchangeScope, value: string): void {
@@ -279,6 +298,22 @@ export class ExchangeDrawerComponent {
     this.folderOpened.emit({ scope, path })
   }
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))
+  protected readonly referencedCount = computed(() => this.referenced().length)
+  protected readonly referencedCasePaths = computed(() => this.referencedPathsOf(this.CASE))
+  protected readonly referencedNamespacePaths = computed(() => this.referencedPathsOf(this.NAMESPACE))
+
+  protected toggleReference(ref: ExchangeFileRef): void {
+    const referenced = !this.referencedPathsOf(ref.scope).has(ref.path)
+    this.referenceToggled.emit({ ref, referenced })
+  }
+
+  protected clearReferences(): void {
+    for (const ref of this.referenced()) this.referenceToggled.emit({ ref, referenced: false })
+  }
+
+  private referencedPathsOf(scope: ExchangeScope): ReadonlySet<string> {
+    return new Set(this.referenced().filter((ref) => ref.scope === scope).map((ref) => ref.path))
+  }
 
   /** Scope and path of the row that opened the viewer, for focus restoration. */
   private lastSelectedFile: ExchangeFileRef | null = null

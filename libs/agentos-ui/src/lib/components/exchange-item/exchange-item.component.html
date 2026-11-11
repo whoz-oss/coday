@@ -4,12 +4,22 @@
   [class.exchange-item--missing]="row().missing"
   [attr.data-git-status]="row().gitStatus ?? null"
 >
+  @if (selectable() && !row().missing) {
+    <input
+      class="exchange-item__select"
+      type="checkbox"
+      [checked]="selected()"
+      [attr.aria-label]="'Select ' + row().filename"
+      (change)="onToggle($event)"
+    />
+  }
   <button
     class="exchange-item__main"
     type="button"
     [attr.data-exchange-path]="row().path"
     [attr.data-exchange-scope]="scope()"
     [attr.data-track]="'ExchangeItem-file_' + scope() + ':' + row().path"
+    [title]="row().filename"
     [attr.aria-current]="active() ? 'true' : null"
     [attr.aria-label]="(row().missing ? 'View deletion diff for ' : 'View ') + row().filename"
     (click)="viewRequested.emit()"
@@ -40,6 +50,12 @@
 
   <div class="exchange-item__actions" [class.exchange-item__actions--hidden]="row().missing">
     <ds-icon-button
+      [icon]="copyState() === 'copied' ? 'check' : 'content_copy'"
+      variant="default"
+      [title]="copyState() === 'copied' ? 'Copied' : copyState() === 'failed' ? 'Copy failed' : 'Copy relative path'"
+      (action)="copyPath()"
+    />
+    <ds-icon-button
       icon="download"
       variant="default"
       [title]="'Download ' + row().filename"
@@ -54,4 +70,6 @@
       />
     }
   </div>
+
+  <span class="exchange-item__sr-only" aria-live="polite">{{ copyState() === 'copied' ? 'Path copied' : '' }}</span>
 </div>

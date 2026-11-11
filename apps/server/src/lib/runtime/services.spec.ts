@@ -10,9 +10,9 @@ const secrets: RuntimeSecrets = {
 }
 const base = { configDir: '/c', version: '1.0.0', baseEnv: { PATH: '/bin' } as NodeJS.ProcessEnv }
 const agentos = (over = {}) =>
-  buildAgentosSpec({ ...base, profile: 'laptop', port: 3001, boltPort: 3002, expressPort: 3000, ...over })
+  buildAgentosSpec({ ...base, profile: 'unmanaged', port: 3001, boltPort: 3002, expressPort: 3000, ...over })
 
-describe('buildAgentosSpec (laptop profile)', () => {
+describe('buildAgentosSpec (unmanaged profile)', () => {
   const spec = agentos({ identityEmail: 'me@acme.com', secrets })
 
   it('binds to loopback and runs in auth mode with the typed email as bootstrap admin', () => {
@@ -65,11 +65,11 @@ describe('buildAgentosSpec (managed profile)', () => {
 })
 
 describe('buildFactorySpec', () => {
-  const factory = (profile: 'laptop' | 'managed') =>
+  const factory = (profile: 'unmanaged' | 'managed') =>
     buildFactorySpec({ ...base, profile, port: 3003, agentosUrl: 'http://127.0.0.1:3001', secrets })
 
   it('uses FACTORY_SECURITY_MODE (not AGENTOS_SECURITY_MODE), loopback bind and its own secrets', () => {
-    const spec = factory('laptop')
+    const spec = factory('unmanaged')
     expect(spec.env['FACTORY_SECURITY_MODE']).toBe('auth')
     expect(spec.env['AGENTOS_SECURITY_MODE']).toBeUndefined()
     expect(spec.env['FACTORY_BIND_HOST']).toBe('127.0.0.1')

@@ -1,0 +1,20 @@
+<ul class="file-autocomplete" role="listbox" aria-label="Files">
+  @for (file of files(); track file.scope + ':' + file.path; let i = $index) {
+    <li
+      #fileItem
+      class="file-autocomplete__item"
+      [class.file-autocomplete__item--active]="isActive(i)"
+      role="option"
+      tabindex="-1"
+      [attr.aria-selected]="isActive(i)"
+      (click)="onItemClick(file)"
+      (keydown.enter)="onItemClick(file)"
+      (mouseenter)="activeIndex.set(i)"
+    >
+      <span class="file-autocomplete__icon material-icons" aria-hidden="true">{{ iconFor(file) }}</span>
+      <span class="file-autocomplete__name">{{ file.filename }}</span>
+      <span class="file-autocomplete__path" [title]="file.path">{{ directoryOf(file.path) }}</span>
+      <span class="file-autocomplete__scope">{{ file.scope }}</span>
+    </li>
+  }
+</ul>

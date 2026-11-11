@@ -8,7 +8,7 @@ Defined in `apps/client/project.json`.
 |---|---|---|
 | `build` | `pnpm nx build client` | Runs `build-angular` then copies `package.json` to `dist/` |
 | `build-angular` | (called by `build`) | `@angular/build:application`, output to `apps/client/dist/` |
-| `serve` | `pnpm nx serve client` | Dev server on port 4200, proxies `/api/agentos` to port 8123 |
+| `serve` | `pnpm nx serve client` | Dev server on the dev client port (4001, internal: open Express on 4000), proxies `/api/agentos` to the dev AgentOS (4005) through `proxy.conf.mjs`, which derives the ports from `port-scheme.json` (DEV port scheme, see `apps/web/README.md`) |
 | `test` | `pnpm nx test client` | Jest via `@nx/jest:jest` |
 | `lint` | `pnpm nx lint client` | ESLint |
 

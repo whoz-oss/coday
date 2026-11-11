@@ -28,14 +28,17 @@
  *   --fresh          delete `config/` and `files/` first: a brand-new first run (the wizard shows again)
  *   --managed        run everything in one process, without the Nx TUI (what the desktop apps get; used by e2e)
  *   --no-open        do not open the browser when the server is up (Nx mode opens it; also CODAY_NO_OPEN=1)
- *   --port <n>       Express port (default 3001: 3000 is left to the `coday-web` package, 3001 is taken strictly)
- *                    AgentOS / Factory / Bolt prefer 8324 / 8341 / 7888 (the `coday-web` package prefers 8224 / 8241 / 7788)
+ *   --port <n>       Express port, STRICT (an explicit choice: taken, the run fails). Without it the stack always takes the
+ *                    first block of the LOCAL profile (3010; the prod block 3000 never collides) and FAILS when one of
+ *                    its ports is taken, naming the process holding it; see
+ *                    apps/server/src/lib/runtime/port-scheme.json and apps/web/README.md
  *   --prepare-only   prepare everything, print the paths as JSON on the last line and exit (no server)
  *   --clean          delete the WHOLE root (config included) when the server stops
  *
  * Env:
  *   CODAY_LOCAL_DIR=<dir>      use another root than ~/.coday-local
  *   CODAY_FIRST_RUN_DIR=<dir>  deprecated alias of CODAY_LOCAL_DIR
+ *   CODAY_PORT_BASE=<n>        use this port block instead of the default one of the profile (taken: the run fails)
  */
 
 import { execFileSync, spawn } from 'child_process'
@@ -43,6 +46,10 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
+// Leaf module (imports only port-scheme.json: the single definition of the port scheme): a relative import is the only
+// way for this tooling project to share it, hence the exception to the module boundaries rule.
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { parsePortBase, PORT_BASES, portsFor } from '../apps/server/src/lib/runtime/port-scheme'
 import {
   builtJarGlob,
   devJarTarget,
@@ -58,18 +65,14 @@ import {
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-/** Express port of the local stack. 3000 belongs to the `coday-web` package, so both can run side by side. */
-const DEFAULT_PORT = '3001'
-
 /**
- * Preferred ports of the services of the local stack: neither the packaged ones (8224 / 8241 / 7788, `coday-web`) nor
- * the dev ones (8124 / 8141 / 7688). They are only preferences: a taken port falls back to the next free one.
+ * Port scheme of the local stack (apps/server/src/lib/runtime/port-scheme.json): the LOCAL profile owns the block 3010
+ * (prod has 3000: never the same block). The ports are ALWAYS the same (OAuth redirect URI allowlists are tied to
+ * them): when one is taken the server refuses to start and names the process holding it. `--port` or a
+ * `CODAY_PORT_BASE` of the caller are the explicit ways to choose other ports.
  */
-const LOCAL_SERVICE_PORTS = {
-  CODAY_AGENTOS_PORT: '8324',
-  CODAY_FACTORY_PORT: '8341',
-  CODAY_AGENTOS_BOLT_PORT: '7888',
-}
+const EXPLICIT_BASE = parsePortBase(process.env['CODAY_PORT_BASE'])
+const EXPECTED_PORT = portsFor(EXPLICIT_BASE ?? PORT_BASES.local).server
 
 const log = (message: string) => console.log(`[web-local] ${message}`)
 
@@ -223,16 +226,17 @@ async function main(): Promise<void> {
     ...(flag('--managed') ? ['--managed'] : []),
     ...(flag('--no-open') ? ['--no-open'] : []),
   ]
-  const port = value('--port') ?? DEFAULT_PORT
+  const port = value('--port')
   const env = {
     ...process.env,
     CODAY_AGENTOS_VERSION: 'dev',
     CODAY_FACTORY_VERSION: 'dev',
     // The wizard proposes this folder instead of ~/Coday: the local stack never writes in the real home.
     CODAY_DEFAULT_FILES_DIR: filesFolder,
-    ...LOCAL_SERVICE_PORTS,
-    // Always forced (strict): never silently fall back onto 3000, which belongs to the coday-web package.
-    PORT: port,
+    // The LOCAL profile: default block 3010. A taken port makes the start fail; CODAY_PORT_BASE or --port of the caller,
+    // below, choose other ports explicitly.
+    CODAY_PORT_PROFILE: 'local',
+    ...(port ? { PORT: port } : {}),
   }
 
   if (flag('--prepare-only')) {
@@ -243,9 +247,14 @@ async function main(): Promise<void> {
         configDir,
         bin,
         args: launchArgs,
-        port,
+        port: port ?? null,
         firstRun,
-        env: { CODAY_AGENTOS_VERSION: 'dev', CODAY_FACTORY_VERSION: 'dev', ...LOCAL_SERVICE_PORTS },
+        env: {
+          CODAY_AGENTOS_VERSION: 'dev',
+          CODAY_FACTORY_VERSION: 'dev',
+          CODAY_PORT_PROFILE: 'local',
+          ...(EXPLICIT_BASE ? { CODAY_PORT_BASE: String(EXPLICIT_BASE) } : {}),
+        },
       })
     )
     return
@@ -253,10 +262,9 @@ async function main(): Promise<void> {
   const note = javaNote()
   if (note) log(`NOTE: ${note}`)
   log(`running: ${bin} ${launchArgs.join(' ')}`)
+  const where = port ? `http://localhost:${port}/` : `http://localhost:${EXPECTED_PORT}/`
   log(
-    firstRun
-      ? `Open http://localhost:${port} (or the URL printed below) and walk through the wizard.`
-      : `Open http://localhost:${port} (or the URL printed below): you are back in your configured instance.`
+    firstRun ? `Open ${where} and walk through the wizard.` : `Open ${where}: you are back in your configured instance.`
   )
 
   const child = spawn(bin, launchArgs, { cwd: install, env, stdio: 'inherit', shell: process.platform === 'win32' })

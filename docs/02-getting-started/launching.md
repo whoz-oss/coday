@@ -11,11 +11,38 @@ From any directory:
 ```
 
 This will:
-1. Start the Coday server on an available port (typically 3000-3010)
+1. Start the Coday server on `http://localhost:3000`. The ports are always the same (the redirect URIs registered at OAuth providers are tied to them): if one is already taken by another program, Coday refuses to start and names the program holding it. Stop it and start again
 2. Display the URL in your terminal
 3. Use the current directory as the default project
 
-Open your browser and navigate to the displayed URL (usually `http://localhost:3000`).
+Open your browser and navigate to the displayed URL (`http://localhost:3000`).
+
+## Preflight
+
+Before starting, Coday checks the few things it needs and prints a short report:
+
+```
+Coday preflight
+  ok  node     v24.4.0
+  ok  java     openjdk 25 2025-09-16
+  ok  config   /home/me/.coday
+  !!  ripgrep  not found
+               Agents search files with it. Install it with: brew install ripgrep
+  XX  ports    Port 3000 is already in use (by node, pid 42). Stop what uses it or choose another port (PORT=<n>, or CODAY_PORT_BASE=<n> for a whole block).
+```
+
+- `ok` nothing to do.
+- `!!` a warning: Coday starts anyway.
+- `XX` a blocker: Coday stops there and says what to install or fix. For `ports`, it names the program holding a port
+  Coday needs (often a Coday you already have running): stop it and start again.
+
+A missing Java only blocks a start that needs one right away. On a first run it is a warning: Coday comes up, the
+setup wizard explains how to install it and waits. With an external AgentOS and Factory, no JVM is started at all
+and the check passes.
+
+Run the preflight on its own with `npx --yes @whoz-oss/coday-web doctor`, which reports and exits without starting
+anything, and skip it with `--skip-doctor` (or `CODAY_SKIP_DOCTOR=1`). The desktop applications do not run it: their
+installer handles the prerequisites and their first-run wizard reports the same facts.
 
 ## Command Line Options
 
@@ -33,11 +60,12 @@ Open your browser and navigate to the displayed URL (usually `http://localhost:3
 
 ### Server Options
 
-- `--port <number>` - Specify server port (default: 3000, auto-increments if occupied)
+- `--port <number>` - Choose the address port yourself (default: Coday uses 3000, always). Either way it is strict: if it is taken, Coday stops and names the program holding it. `PORT=<number>` does the same. The redirect URIs registered at OAuth providers are tied to the default ports
 - `--auth` - Enable authentication. Supports two identity sources (tried in order):
   1. **Cloudflare Access** — decodes the `Cf-Access-Jwt-Assertion` header JWT and uses its `email` claim.
   2. **Reverse-proxy header** — falls back to the `x-forwarded-email` header set by an upstream auth proxy.
 - `--debug` - Enable debug logging for troubleshooting
+- `--skip-doctor` - Skip the preflight checks (see above). `CODAY_SKIP_DOCTOR=1` does the same
 
 ### Execution Options
 
@@ -65,7 +93,7 @@ npx --yes @whoz-oss/coday-web --local
 npx --yes @whoz-oss/coday-web --multi
 
 # Debug mode with custom port
-npx --yes @whoz-oss/coday-web --debug --port 3005
+npx --yes @whoz-oss/coday-web --debug --port 3100
 
 # Execute a prompt immediately
 npx --yes @whoz-oss/coday-web --prompt "Explain this project"

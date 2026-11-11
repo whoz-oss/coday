@@ -13,6 +13,14 @@
 @if (deletion.error()) {
   <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
 }
+@if (actionMessage(); as message) {
+  <p
+    [class]="message.kind === 'error' ? 'settings-table__error' : 'settings-table__status'"
+    [attr.role]="message.kind === 'error' ? 'alert' : 'status'"
+  >
+    {{ message.text }}
+  </p>
+}
 @if (isLoading()) {
   <p class="settings-table__status" role="status">Loading auth settings…</p>
 } @else if (rows().length === 0) {
@@ -27,6 +35,7 @@
           <th role="columnheader">Name</th>
           <th role="columnheader">Authentication type</th>
           <th role="columnheader">Scope</th>
+          <th role="columnheader">Connection</th>
           <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
@@ -50,9 +59,71 @@
                 }
               </div>
             </td>
+            <td role="cell" data-label="Connection">
+              @if (isOAuth(row) && connectionOf(row) === 'connected') {
+                <ds-tag variant="accent">Connected</ds-tag>
+              } @else if (isOAuth(row) && connectionOf(row) === 'disconnected') {
+                <ds-tag variant="outline">Not connected</ds-tag>
+              } @else {
+                <span class="settings-table__secondary">—</span>
+              }
+            </td>
             <td role="cell" data-label="Actions" data-actions>
               <div class="settings-table__actions">
-                @if (deletion.confirmingId() !== row.key) {
+                @if (isOAuth(row)) {
+                  @if (connectingKey() === row.key) {
+                    <span class="settings-table__confirm-label" role="status">Waiting for authorization…</span>
+                    <button
+                      type="button"
+                      [attr.aria-label]="'Stop waiting for the authorization of ' + row.config.name"
+                      (click)="cancelConnect()"
+                    >
+                      Cancel
+                    </button>
+                  } @else if (resetConfirmingKey() === row.key) {
+                    <span class="settings-table__confirm-label">Disconnect?</span>
+                    <button
+                      type="button"
+                      [attr.aria-label]="'Confirm disconnecting ' + row.config.name"
+                      [disabled]="resettingKey() === row.key"
+                      (click)="confirmReset(row)"
+                    >
+                      {{ resettingKey() === row.key ? 'Disconnecting…' : 'Confirm' }}
+                    </button>
+                    <button
+                      type="button"
+                      [attr.aria-label]="'Cancel disconnecting ' + row.config.name"
+                      [disabled]="resettingKey() === row.key"
+                      (click)="cancelReset()"
+                    >
+                      Cancel
+                    </button>
+                  } @else if (deletion.confirmingId() !== row.key) {
+                    <button
+                      type="button"
+                      [attr.aria-label]="
+                        (connectionOf(row) === 'connected' ? 'Reconnect ' : 'Connect ') + row.config.name
+                      "
+                      [disabled]="connectingKey() !== null || resettingKey() !== null"
+                      (click)="connect(row)"
+                    >
+                      {{ connectionOf(row) === 'connected' ? 'Reconnect' : 'Connect' }}
+                    </button>
+                    @if (connectionOf(row) === 'connected') {
+                      <button
+                        type="button"
+                        [attr.aria-label]="'Disconnect ' + row.config.name"
+                        [disabled]="connectingKey() !== null"
+                        (click)="requestReset(row)"
+                      >
+                        Disconnect
+                      </button>
+                    }
+                  }
+                }
+                @if (
+                  deletion.confirmingId() !== row.key && resetConfirmingKey() !== row.key && connectingKey() !== row.key
+                ) {
                   <button type="button" [attr.aria-label]="'Duplicate ' + row.config.name" (click)="duplicate(row)">
                     Duplicate
                   </button>

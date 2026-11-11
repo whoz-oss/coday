@@ -38,3 +38,56 @@ describe('filterFileTree', () => {
     expect(filterFileTree(['a.txt'], 'missing').rows).toEqual([])
   })
 })
+
+// Preserve the independently added base-branch examples as well as the PR boundary tests.
+describe('filterFileTree base branch examples', () => {
+  const paths = ['README.md', 'docs/api/guide.md', 'docs/api/spec.yaml', 'docs/intro.md', 'src/app/main.ts', 'notes.txt']
+  const view = (items: string[], query: string) => filterFileTree(items, query).rows.map(
+    (row) => `${'  '.repeat(row.depth)}${row.kind === 'folder' ? row.name + '/' : row.name}`
+  )
+
+  it('returns nothing for blank queries', () => {
+    expect(filterFileTree(paths, '')).toEqual({ rows: [], matchCount: 0, truncated: false })
+    expect(filterFileTree(paths, '   ').rows).toEqual([])
+  })
+  it('keeps matching files and expanded ancestors', () => {
+    expect(view(paths, 'guide')).toEqual(['docs/', '  api/', '    guide.md'])
+  })
+  it('matches filenames case-insensitively', () => {
+    expect(view(paths, 'readme')).toEqual(['README.md'])
+    expect(view(paths, 'MAIN.TS')).toEqual(['src/', '  app/', '    main.ts'])
+  })
+  it('matches full paths and folder segments', () => {
+    expect(view(paths, 'docs/api')).toEqual(['docs/', '  api/', '    guide.md', '    spec.yaml'])
+    expect(view(paths, 'docs')).toEqual(['docs/', '  api/', '    guide.md', '    spec.yaml', '  intro.md'])
+  })
+  it('lists folders first and sorts each level', () => {
+    expect(view(['b.md', 'z/x.md', 'a/y.md', 'a.md'], '.md')).toEqual(['a/', '  y.md', 'z/', '  x.md', 'a.md', 'b.md'])
+  })
+  it('reports path and depth for each row', () => {
+    expect(filterFileTree(paths, 'spec').rows).toEqual([
+      { kind: 'folder', path: 'docs', name: 'docs', depth: 0 },
+      { kind: 'folder', path: 'docs/api', name: 'api', depth: 1 },
+      { kind: 'file', path: 'docs/api/spec.yaml', name: 'spec.yaml', depth: 2 },
+    ])
+  })
+  it('returns no rows for an unmatched query', () => {
+    expect(filterFileTree(paths, 'zzz')).toEqual({ rows: [], matchCount: 0, truncated: false })
+  })
+  it('tolerates duplicates, leading slashes and empty paths', () => {
+    expect(view(['/a/b.md', 'a/b.md', ''], 'b')).toEqual(['a/', '  b.md'])
+  })
+  it('cuts a large tree without a trailing orphan folder', () => {
+    const many = Array.from({ length: MAX_FILTER_MATCHES + 20 }, (_, i) => `dir${i % 2}/f${String(i).padStart(4, '0')}.txt`)
+    const result = filterFileTree(many, 'f0')
+    expect(result.matchCount).toBe(MAX_FILTER_MATCHES + 20)
+    expect(result.truncated).toBe(true)
+    expect(result.rows.filter((row) => row.kind === 'file')).toHaveLength(MAX_FILTER_MATCHES)
+    expect(result.rows.at(-1)?.kind).toBe('file')
+  })
+  it('does not mark exactly the limit as truncated', () => {
+    const result = filterFileTree(['f0.txt', 'f1.txt', 'f2.txt'], 'f', 3)
+    expect(result.truncated).toBe(false)
+    expect(result.rows).toHaveLength(3)
+  })
+})

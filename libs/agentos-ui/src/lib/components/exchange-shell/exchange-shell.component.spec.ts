@@ -38,6 +38,91 @@ describe('ExchangeShellComponent filters', () => {
     return { fixture, shell, state, api, route }
   }
 
+  it('reveals the namespace filter after an external file is reported by the existing refresh', () => {
+    const { fixture, api, state } = setup()
+    const host = fixture.nativeElement as HTMLElement
+    const namespaceInput = () => host.querySelector('[data-track="ExchangeDrawer-namespaceFilterInput"]')
+    expect(namespaceInput()).toBeNull()
+    api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, totalEntries: 1, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }] }))
+    state.refreshNamespace()
+    fixture.detectChanges()
+    expect(namespaceInput()).not.toBeNull()
+    fixture.destroy()
+  })
+
+  it('shows both sections and owns the case state until destruction', () => {
+    const { fixture, state, api } = setup()
+    const clear = jest.spyOn(state, 'clear')
+    const host = fixture.nativeElement as HTMLElement
+    expect(api.browseCaseFilesExchange).toHaveBeenCalledWith('c-1', '', 0)
+    expect(api.browseNamespaceFilesExchange).toHaveBeenCalledWith('ns-1', '', 0)
+    expect(host.querySelector('[data-track="ExchangeDrawer-caseSection"]')).not.toBeNull()
+    expect(host.querySelector('[data-track="ExchangeDrawer-namespaceSection"]')).not.toBeNull()
+    fixture.destroy()
+    expect(clear).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears its case state once when leaving the case route', () => {
+    const { fixture, state, route } = setup()
+    const clear = jest.spyOn(state, 'clear')
+    route.next({ ns: 'ns-1' })
+    expect(clear).toHaveBeenCalledTimes(1)
+    fixture.destroy()
+    expect(clear).toHaveBeenCalledTimes(1)
+  })
+
+  it('relays normal namespace row selection in home mode, including unchecking', () => {
+    const { fixture, state, api, route } = setup()
+    route.next({ ns: 'ns-1' })
+    api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, totalEntries: 1, entries: [{ path: 'docs/readme.md', name: 'readme.md', directory: false, size: 1 }] }))
+    state.initializeForNamespace('ns-1')
+    fixture.componentRef.setInput('selectable', true)
+    fixture.detectChanges()
+    const host = fixture.nativeElement as HTMLElement
+    const toggle = jest.fn()
+    fixture.componentInstance.referenceToggled.subscribe(toggle)
+    const ref = { scope: NAMESPACE, path: 'docs/readme.md' }
+    const checkbox = host.querySelector<HTMLInputElement>('input[aria-label="Select readme.md"]')!
+    checkbox.click()
+    expect(toggle).toHaveBeenLastCalledWith({ ref, referenced: true })
+    expect(checkbox.checked).toBe(false)
+    fixture.componentRef.setInput('referenced', [ref])
+    fixture.detectChanges()
+    expect(checkbox.checked).toBe(true)
+    expect(host.querySelector('.exchange-drawer__selection-bar')?.textContent).toContain('1 in message')
+    checkbox.click()
+    expect(toggle).toHaveBeenLastCalledWith({ ref, referenced: false })
+    fixture.destroy()
+  })
+
+  it('keeps namespace-only state and relays checked filtered files in the home composer', fakeAsync(() => {
+    const { fixture, state, api, route } = setup()
+    route.next({ ns: 'ns-1' })
+    api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, totalEntries: 1, entries: [{ path: 'docs', name: 'docs', directory: true }] }))
+    state.initializeForNamespace('ns-1')
+    api.getNamespaceFilesManifestExchange.mockReturnValue(of({ files: [file('docs/guide.md')] }))
+    fixture.componentRef.setInput('active', true)
+    fixture.componentRef.setInput('selectable', true)
+    fixture.detectChanges()
+    const host = fixture.nativeElement as HTMLElement
+    expect(host.querySelector('[data-track="ExchangeDrawer-caseSection"]')).toBeNull()
+    const input = host.querySelector<HTMLInputElement>('[data-track="ExchangeDrawer-namespaceFilterInput"]')!
+    input.value = 'guide'
+    input.dispatchEvent(new Event('input'))
+    tick(150)
+    fixture.detectChanges()
+    const event = jest.fn()
+    fixture.componentInstance.referenceToggled.subscribe(event)
+    const checkbox = host.querySelector<HTMLInputElement>('input[aria-label="Select guide.md"]')!
+    checkbox.click()
+    expect(event).toHaveBeenCalledWith({ ref: { scope: NAMESPACE, path: 'docs/guide.md' }, referenced: true })
+    fixture.componentRef.setInput('referenced', [{ scope: NAMESPACE, path: 'docs/guide.md' }])
+    fixture.detectChanges()
+    expect(checkbox.checked).toBe(true)
+    fixture.destroy()
+    expect(state.namespaceStatus()).toBe('ready')
+  }))
+
   it.each([CASE, NAMESPACE])('allows a slow %s access revalidation to complete across successive polls', fakeAsync((scope) => {
     const { fixture, shell, state, api } = setup()
     const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
@@ -650,7 +735,12 @@ describe('ExchangeShellComponent filters', () => {
   })
 
   it.each([CASE, NAMESPACE])('routes %s search failure and retry through the drawer', fakeAsync((scope) => {
-    const { fixture, api } = setup()
+    const { fixture, api, state } = setup()
+    if (scope === NAMESPACE) {
+      api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, entries: [{ path: 'root.txt', name: 'root.txt', directory: false }], totalEntries: 1 }))
+      state.refreshNamespace()
+      fixture.detectChanges()
+    }
     const request = new Subject<{ files: ReturnType<typeof file>[] }>()
     const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
     get.mockReturnValueOnce(request).mockReturnValue(of({ files: [file('deep/result.txt')] }))
@@ -936,9 +1026,44 @@ describe('ExchangeShellComponent filters', () => {
     expect(api.getCaseFileContentExchange).toHaveBeenCalledWith('c-1', 'deep/readme.md')
     expect(shell['canViewSelected']()).toBe(true)
     shell['onFileSelected']({ scope: CASE, path: 'deep/large.md' })
-    shell['onFileSelected']({ scope: CASE, path: 'deep/image.png' })
-    expect(shell['canViewSelected']()).toBe(false)
     expect(api.getCaseFileContentExchange).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([CASE, NAMESPACE])('previews and revokes an image URL for %s', () => {
+    const { fixture, shell, state } = setup()
+    const create = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    jest.spyOn(state, 'getBlob').mockReturnValue(of(new Blob(['image'], { type: 'image/png' })))
+    const ref = { scope, path: 'deep/image.png' }
+    if (scope === CASE) shell['caseManifest'].set([file(ref.path)])
+    else shell['namespaceManifest'].set([{ ...file(ref.path), scope: NAMESPACE }])
+    shell['onFileSelected'](ref)
+    expect(state.getBlob).toHaveBeenCalledWith(scope, ref.path)
+    expect(shell['selectedImageUrl']()).toBe('blob:preview')
+    shell['onViewerClosed']()
+    expect(revoke).toHaveBeenCalledWith('blob:preview')
+    fixture.destroy()
+    create.mockRestore()
+    revoke.mockRestore()
+  })
+
+  it.each([CASE, NAMESPACE])('ignores stale %s image responses after a newer selection of the same path', () => {
+    const { fixture, shell, state } = setup()
+    const old = new Subject<Blob>()
+    const create = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:new')
+    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    jest.spyOn(state, 'getBlob').mockReturnValueOnce(old).mockReturnValue(of(new Blob(['new'], { type: 'image/png' })))
+    const ref = { scope, path: 'image.png' }
+    if (scope === CASE) shell['caseManifest'].set([file(ref.path)])
+    else shell['namespaceManifest'].set([{ ...file(ref.path), scope: NAMESPACE }])
+    shell['onFileSelected'](ref)
+    shell['onFileSelected'](ref)
+    old.next(new Blob(['old'], { type: 'image/png' }))
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(shell['selectedImageUrl']()).toBe('blob:new')
+    fixture.destroy()
+    create.mockRestore()
+    revoke.mockRestore()
   })
 
   it('ignores a late preview for the same path after switching cases', () => {

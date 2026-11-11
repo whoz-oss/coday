@@ -33,6 +33,8 @@ on:
     branches:
       - 'integration/**'
 
+  workflow_dispatch:
+
 # Serialise builds per workstream slug.
 # cancel-in-progress: false is mandatory -- cancelling mid-publish can leave a
 # partial artifact set that appears coherent but is missing packages.
@@ -80,7 +82,12 @@ defaults:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Job 1: Version, stamp, npm publish.
+  # Job 1: Compute the version and reserve the tag. Publishes NOTHING.
+  #
+  # npm is deliberately published by the final job (publish-npm): the npm dist-tag is
+  # what consumers install, and coday-web downloads its AgentOS/Factory JARs from the
+  # GitHub prerelease of the same version at startup. Publishing npm first opened a
+  # window where the dist-tag pointed at a version whose JARs did not exist yet.
   #
   # Outputs consumed by all downstream jobs:
   #   version  -- 0.0.0-workstream-<slug>.<n>
@@ -91,7 +98,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # push the reservation tag
-      id-token: write   # npm OIDC trusted publishing
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag:     ${{ steps.version.outputs.tag }}
@@ -112,21 +118,9 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT }}
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-
-      # registry-url is required for npm OIDC trusted publishing.
-      # npm auth uses OIDC (id-token: write above), matching release.yml exactly.
-      # No static NPM_TOKEN / NODE_AUTH_TOKEN secret is required or used.
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-          cache: 'pnpm'
-          registry-url: 'https://${{ vars.NPM_REGISTRY }}'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # No node/pnpm setup here: this job only computes and reserves the version.
+      # npm publishing happens in the LAST job (publish-npm), once every other
+      # artifact is available.
 
       # github.ref_name is the short branch name, e.g. "integration/talent-portal".
       # Strip the "integration/" prefix to get the slug.
@@ -197,21 +191,6 @@ jobs:
           git tag "$TAG" "$SHA"
           git push origin "refs/tags/${TAG}"
           echo "::notice::Reserved tag ${TAG} at ${SHA}."
-
-      # workstream-release.ts stamps ALL package.json files and
-      # agentos/gradle/libs.versions.toml with the exact version, then publishes
-      # npm packages with dist-tag workstream-<slug>.
-      #
-      # It performs NO git operations -- version stamps live only in the working tree.
-      # (Rule 2: never commit version bumps on an integration branch.)
-      # (Rule 3: npm packages are published with --tag workstream-<slug>, never latest.)
-      - name: Stamp versions and publish npm packages
-        run: |
-          npx tsx scripts/workstream-release.ts \
-            --version "${{ steps.version.outputs.version }}" \
-            --slug "${{ steps.slug.outputs.slug }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
 
       - name: Write job summary
         if: always()
@@ -666,3 +645,68 @@ jobs:
             /tmp/checksums.sha256
 
           echo "::notice::Prerelease published: ${TAG}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 6: Stamp versions and publish the npm packages. LAST ON PURPOSE.
+  #
+  # Runs only once the whole artifact set exists: JARs built, GitHub Packages
+  # published and the GitHub prerelease (with JARs + checksums) created. The npm
+  # dist-tag `workstream-<slug>` is the entry point for consumers, so it must only
+  # move when everything it depends on can already be downloaded.
+  #
+  # If an earlier job fails, npm is never published and the reserved tag is left
+  # dangling (see "Reserve workstream tag"). If only this job fails, re-running it is
+  # safe: the nx publish executor treats an already-published version as success.
+  #
+  # workstream-release.ts stamps ALL package.json files and the Gradle catalogs with
+  # the exact version (the stamp is needed here because the npm packages are built in
+  # this job), then publishes with dist-tag workstream-<slug>.
+  # It performs NO git operations -- version stamps live only in the working tree.
+  # (Rule 2: never commit version bumps on an integration branch.)
+  # (Rule 3: npm packages are published with --tag workstream-<slug>, never latest.)
+  #
+  # npm OIDC trusted publishing: id-token: write + registry-url on setup-node, exactly
+  # as release.yml. The trusted publisher is bound to this workflow FILE, not to a job,
+  # so moving the publish to another job needs no npm-side change.
+  # No static NPM_TOKEN / NODE_AUTH_TOKEN secret is required or used.
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-npm:
+    runs-on: ubuntu-latest
+    needs: [prepare, prerelease]
+    permissions:
+      contents: read
+      id-token: write   # npm OIDC trusted publishing
+    steps:
+      # fetch-depth: 0 is MANDATORY here too. nx releaseVersion resolves each project's
+      # current version from the release/* git tags BEFORE applying the exact specifier
+      # (READ ONLY: this workflow still never writes a release/* tag). A shallow clone has
+      # no tags and fails with 'No git tags matching pattern "release/{version}"'.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          registry-url: 'https://${{ vars.NPM_REGISTRY }}'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stamp versions and publish npm packages
+        run: |
+          npx tsx scripts/workstream-release.ts \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --slug "${{ needs.prepare.outputs.slug }}"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## npm publish: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Dist-tag: workstream-${{ needs.prepare.outputs.slug }}" >> $GITHUB_STEP_SUMMARY

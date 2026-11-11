@@ -1,10 +1,12 @@
 # Model tier shared by every checkout. Requires an AI provider named `requesty` in the
 # namespace (or at platform level) holding your own Requesty key; without it this model is
-# ignored. Prices are Requesty's, in USD per million tokens.
+# ignored. Existing limits and USD-per-million-token prices are retained estimates;
+# the policy's backing model, limits and actual rates may change in Requesty.
+# Configure policies claude-haiku, claude-sonnet and claude-opus in your Requesty account before use.
 alias: SMALL
-apiModelName: anthropic/claude-haiku-4-5
+apiModelName: policy/claude-haiku
 provider: requesty
-description: Fast Anthropic tier via Requesty
+description: Claude Haiku tier via your Requesty policy; backing model may change
 priority: 10
 contextWindow: 200000
 pricing:

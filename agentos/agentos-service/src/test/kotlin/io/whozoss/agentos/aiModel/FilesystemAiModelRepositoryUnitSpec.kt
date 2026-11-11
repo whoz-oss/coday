@@ -149,7 +149,7 @@ class FilesystemAiModelRepositoryUnitSpec :
         "returns only persisted models when the namespace has no configPath" {
             repo(null, namespaceProviders = listOf(provider("requesty"))).findAllForNamespace(namespaceId).shouldBeEmpty()
         }
-    
+
         "the ai-models committed at the repository root all load" {
             // Gradle runs tests from agentos/agentos-service; the namespace configPath is the repository root.
             val repositoryRoot = Path.of("../..").toAbsolutePath().normalize()
@@ -158,5 +158,22 @@ class FilesystemAiModelRepositoryUnitSpec :
 
             models shouldHaveSize committed.toInt()
             models.forEach { it.pricing?.isEmpty shouldBe false }
+            val byAlias = models.associateBy { it.alias }
+            byAlias["SMALL"]?.apiModelName shouldBe "policy/claude-haiku"
+            byAlias["default"]?.apiModelName shouldBe "policy/claude-haiku"
+            byAlias["BIG"]?.apiModelName shouldBe "policy/claude-sonnet"
+            byAlias["BIGGEST"]?.apiModelName shouldBe "policy/claude-opus"
+            byAlias["default"]?.pricing shouldBe byAlias["SMALL"]?.pricing
+            byAlias["default"]?.contextWindow shouldBe byAlias["SMALL"]?.contextWindow
+            byAlias["OPENAI-SMALL"]?.apiModelName shouldBe "openai/gpt-6-luna"
+            byAlias["OPENAI-BIG"]?.apiModelName shouldBe "openai/gpt-5.6-terra"
+            byAlias["OPENAI-BIGGEST"]?.apiModelName shouldBe "openai/gpt-6.1-sol"
+
+            // Exercise the conventional default lookup, not just YAML parsing.
+            val repository = mockk<AiModelRepository> {
+                every { findAllForNamespace(namespaceId) } returns models
+            }
+            val service = AiModelServiceImpl(repository, mockk())
+            service.findAiModel(namespaceId)?.apiModelName shouldBe "policy/claude-haiku"
         }
     })

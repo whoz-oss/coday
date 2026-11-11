@@ -24,7 +24,11 @@ export class ExchangeFileListComponent {
   readonly scope = input.required<ExchangeScope>()
   readonly activeFile = input<ExchangeFileRef | null>(null)
   readonly canWrite = input<boolean>(false)
+  /** Paths (of this scope) currently checked by the parent. */
+  readonly selectedPaths = input<ReadonlySet<string>>(new Set())
+  readonly selectable = input<boolean>(false)
 
+  readonly selectionToggled = output<ExchangeFileRef>()
   readonly fileSelected = output<ExchangeFileRef>()
   readonly downloadRequested = output<ExchangeFileRef>()
   readonly deleteRequested = output<ExchangeFileRef>()
@@ -38,6 +42,10 @@ export class ExchangeFileListComponent {
   protected onView(row: ExchangeFileRow): void {
     if (row.missing) this.onDiff(row)
     else this.fileSelected.emit({ scope: this.scope(), path: row.path })
+  }
+
+  protected onToggle(row: ExchangeFileRow): void {
+    this.selectionToggled.emit({ scope: this.scope(), path: row.path })
   }
 
   protected onDiff(row: ExchangeFileRow): void {

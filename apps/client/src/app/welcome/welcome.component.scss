@@ -21,8 +21,9 @@
       radial-gradient(40% 40% at 20% 25%, color-mix(in srgb, var(--color-primary) 28%, transparent), transparent 70%),
       radial-gradient(35% 35% at 80% 20%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 70%),
       radial-gradient(45% 45% at 60% 85%, color-mix(in srgb, var(--color-info) 18%, transparent), transparent 70%);
-    filter: blur(40px);
-    animation: drift 24s ease-in-out infinite alternate;
+    // Static on purpose: the gradients already fade out, so no `filter: blur()` and no endless animation. An animated,
+    // blurred layer this big sits under the card's `backdrop-filter`, which makes the GPU re-blur both on every frame,
+    // and this page can stay open for a long time (AgentOS download and boot).
     pointer-events: none;
   }
 
@@ -185,18 +186,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .welcome__aurora,
   .welcome__card,
   .welcome__step {
     animation: none;
   }
 }
 
-@keyframes drift {
-  to {
-    transform: translate3d(3%, -2%, 0) scale(1.08);
-  }
-}
 @keyframes rise {
   from {
     opacity: 0;

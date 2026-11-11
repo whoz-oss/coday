@@ -76,10 +76,10 @@ object ExchangeScopeGuidance {
      *
      * Returns null as soon as one scope is missing: an agent with a single file surface cannot
      * choose the wrong one, so it pays neither the tokens nor the risk of being told about a scope
-     * it does not have. That is what keeps this change inert for every single-scope agent, the
-     * namespace scope being off by default
-     * ([ExchangeToolsConfigProperties.namespaceEnabledByDefault]) and additionally gated on the
-     * invoking user's Namespace READ.
+     * it does not have. That is what keeps this change inert for every single-scope agent: one that
+     * opted out of a scope ([ExchangeToolsConfigProperties.namespaceEnabledByDefault] and its case
+     * sibling are on by default, so most agents now get both), or whose invoking user lacks
+     * Namespace READ, which the namespace scope is additionally gated on.
      */
     fun buildBlock(
         case: Access?,

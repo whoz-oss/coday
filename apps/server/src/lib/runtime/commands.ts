@@ -12,9 +12,10 @@
  * All the real logic lives in provision.ts / orchestrator.ts / web-server.ts; this file is glue.
  */
 
+import { accessSync, constants, mkdirSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { Server } from 'http'
 import { CodayOptions, parseCodayOptions } from '../coday-options-utils'
-import { findAvailablePort } from '../find-available-port'
 import { debugLog } from '../log'
 import { createWebApp } from '../web-server'
 import { teeConsoleToFile } from './console-tee'
@@ -38,28 +39,65 @@ import { Command } from './command-names'
 import { hideBin } from 'yargs/helpers'
 import { decideProfile } from './profile'
 import { provision } from './provision'
-import { parsePreferredPorts } from './ports'
+import { buildReport, ConfigDirFacts, DOCTOR_BLOCKED_EXIT, JavaNeed, PortsFacts, renderReport } from './doctor'
+import { inspectJava } from './java'
+import { chooseStackPorts, PickedPorts, stackRequestFromEnv, StackChoice, StackRequest } from './ports'
+import { portsFor, profileBase } from './port-scheme'
+import { startupLines } from './startup-info'
 import { readState } from './state'
 
 export { COMMANDS, parseCommand } from './command-names'
 
-/** Honour a forced PORT (strict), otherwise fall back to the next free ports. */
-async function chooseExpressPort(): Promise<number> {
-  const preferred = process.env.PORT
-    ? parseInt(process.env.PORT)
-    : process.env.BUILD_ENV === 'development'
-      ? 4100
-      : 3000
-  const forced = !!process.env.PORT
+/**
+ * The ports of the stack, one block for all of it (see ports.ts). Every profile is strict: the block is the first of
+ * the profile (prod 3000, local 3010, dev 4000), or the one of `CODAY_PORT_BASE`, with `--port` / `PORT` for Express.
+ * A taken port makes the start fail, so the ports stay the same on every start (OAuth redirect URI allowlists).
+ */
+function stackRequest(options: CodayOptions): StackRequest {
+  return stackRequestFromEnv(process.env, {
+    port: options.port,
+    managed: {
+      agentos: !process.env.AGENTOS_URL,
+      factory: !process.env.FACTORY_URL && !isManagedFactoryDisabled(),
+    },
+  })
+}
+
+async function chooseStack(options: CodayOptions): Promise<StackChoice> {
   try {
-    return await findAvailablePort(preferred, forced ? 0 : 10, forced)
+    return await chooseStackPorts(stackRequest(options))
   } catch (error) {
-    if (error instanceof Error && error.message.includes('already in use')) {
+    if (error instanceof Error && error.message.includes('is already in use')) {
       // Parsed by the desktop apps (server-lifecycle.ts).
       process.stderr.write(`PORT_IN_USE: ${error.message}\n`)
     }
     throw error
   }
+}
+
+/**
+ * The addresses of a start, printed once Express listens: Express is the only one to open, the other ports are
+ * internal (see startup-info.ts).
+ */
+function printStartup(
+  ports: Pick<PickedPorts, 'express'> & Partial<PickedPorts>,
+  env: NodeJS.ProcessEnv = process.env
+): void {
+  const dev = env['BUILD_ENV'] === 'development'
+  const block = portsFor(profileBase(env))
+  const lines = startupLines({
+    dev,
+    express: ports.express,
+    agentos: ports.agentos,
+    factory: ports.factory,
+    bolt: ports.agentosBolt,
+    client: Number(env['ANGULAR_CLIENT_PORT']) || block.client,
+    cockpit: Number(env['FACTORY_COCKPIT_PORT']) || block.factoryCockpit,
+    externalAgentos: env['AGENTOS_URL'],
+    externalFactory: env['FACTORY_URL'],
+    factoryDisabled: isManagedFactoryDisabled(env),
+  })
+  for (const line of lines) console.log(line)
 }
 
 function listen(app: ReturnType<typeof createWebApp>, options: CodayOptions, port: number): Promise<Server> {
@@ -75,7 +113,7 @@ function listen(app: ReturnType<typeof createWebApp>, options: CodayOptions, por
 
 /** Where the wizard is, for the "waiting for first-run setup" message (always /welcome, whatever the setup state). */
 const welcomeUrlOf = (state: { ports: { express?: number } }): string =>
-  `http://localhost:${state.ports.express ?? 3000}/welcome`
+  `http://localhost:${state.ports.express ?? portsFor(profileBase()).server}/welcome`
 
 function profileInput(options: CodayOptions) {
   return {
@@ -89,17 +127,92 @@ function profileInput(options: CodayOptions) {
 }
 
 // ---------------------------------------------------------------------------
+// Preflight
+// ---------------------------------------------------------------------------
+
+/** `<configDir>` must exist and be writable: the runtime, the logs and the service data all go there. */
+function inspectConfigDir(dir: string): ConfigDirFacts {
+  try {
+    mkdirSync(dir, { recursive: true })
+    accessSync(dir, constants.W_OK)
+    return { path: dir, writable: true }
+  } catch (error) {
+    return { path: dir, writable: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/** First line of `rg --version`, undefined when ripgrep is not installed. Never throws. */
+function inspectRipgrep(): string | undefined {
+  try {
+    // A probe on the critical startup path: a binary on a stale mount or behind a slow wrapper must not hang it.
+    const out = execFileSync('rg', ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2_000,
+    })
+    return out.split('\n')[0]?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The ports a start would take, or why it would fail (a taken port). Probing is cheap and releases the ports right
+ * away, so running it here and again in `provision` costs nothing.
+ */
+async function inspectPorts(options: CodayOptions): Promise<PortsFacts> {
+  try {
+    const choice = await chooseStackPorts(stackRequest(options))
+    return { express: choice.ports.express, base: choice.base }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/**
+ * What a missing Java would actually cost here. `required` mirrors the services the runtime really spawns (an
+ * external AgentOS or Factory needs none), `awaited` mirrors the `patient` flag of `requireJava`: in the unmanaged
+ * profile the wizard is up and polls every few seconds while the user installs it.
+ */
+function inspectJavaNeed(options: CodayOptions): JavaNeed {
+  const { managed } = stackRequest(options)
+  return {
+    required: managed?.agentos !== false || managed?.factory !== false,
+    awaited: decideProfile(profileInput(options)).profile === 'unmanaged',
+  }
+}
+
+/**
+ * `doctor`: the preflight the launcher runs BEFORE the Nx TUI takes the terminal (apps/web/index.js). Gathers the
+ * facts; the checks themselves are in doctor.ts. Exits `DOCTOR_BLOCKED_EXIT` when one of them blocks the start —
+ * any other non-zero code means the preflight itself failed, which never stops a start.
+ */
+export async function runDoctor(): Promise<number> {
+  const options = parseCodayOptions()
+  const report = buildReport({
+    node: process.versions.node,
+    java: inspectJava(),
+    javaNeed: inspectJavaNeed(options),
+    configDir: inspectConfigDir(options.configDir),
+    ripgrep: inspectRipgrep(),
+    ports: await inspectPorts(options),
+  })
+  for (const line of renderReport(report)) console.log(line)
+  return report.blocked ? DOCTOR_BLOCKED_EXIT : 0
+}
+
+// ---------------------------------------------------------------------------
 // Nx tasks
 // ---------------------------------------------------------------------------
 
 export async function runProvision(): Promise<number> {
   const options = parseCodayOptions()
-  const expressPort = await chooseExpressPort()
+  const choice = await chooseStack(options)
   await provision({
     ...profileInput(options),
     orchestrator: 'nx',
-    expressPort,
-    preferredPorts: parsePreferredPorts(),
+    ports: choice.ports,
+    portBlock: choice.base,
     log: (m) => console.log(`[provision] ${m}`),
   })
   console.log('[provision] done')
@@ -229,9 +342,10 @@ export async function runServerTask(): Promise<number> {
   try {
     const app = createWebApp({
       codayOptions: options,
-      setupEnabled: decision.setupEnabled && state.profile === 'laptop',
+      setupEnabled: decision.setupEnabled && state.profile === 'unmanaged',
     })
     server = await listen(app, options, port)
+    printStartup({ ...state.ports, express: port })
   } catch (error) {
     return stayUpAfterFailure(
       'server',
@@ -300,16 +414,18 @@ export async function runManaged(): Promise<number> {
   teeConsoleToFile(logFilePath(options.configDir, 'server'))
   debugLog('INIT', 'Coday options:', options)
 
-  const expressPort = await chooseExpressPort()
+  const choice = await chooseStack(options)
+  const expressPort = choice.ports.express
   const { decision } = await provision({
     ...profileInput(options),
     orchestrator: 'in-process',
-    expressPort,
-    preferredPorts: parsePreferredPorts(),
+    ports: choice.ports,
+    portBlock: choice.base,
     log: (m) => debugLog('PROVISION', m),
   })
   const app = createWebApp({ codayOptions: options, setupEnabled: decision.setupEnabled })
   const server = await listen(app, options, expressPort)
+  printStartup(choice.ports)
 
   // Every JVM this process spawned, healthy or still starting; adopted instances are never in it.
   const spawned: RunningService[] = []
@@ -377,6 +493,8 @@ export async function runCommand(command: Command | undefined): Promise<number> 
   switch (command) {
     case 'workspace':
       return runWorkspace()
+    case 'doctor':
+      return runDoctor()
     case 'provision':
       return runProvision()
     case 'agentos':

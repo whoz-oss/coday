@@ -555,6 +555,16 @@ export class ExchangeStateService {
   }
 
   // ── Reads ───────────────────────────────────────────────────────────────────
+  /**
+   * Every file of the namespace, at any depth (the recursive manifest, not the directory being browsed).
+   *
+   * Shared and replayed per namespace until the namespace scope changes, so repeated filtering costs one
+   * request. A failure is not cached: shareReplay resets on error, so the next subscription asks again.
+   */
+  namespaceManifest(): Observable<ExchangeFileEntry[]> {
+    return this.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE)
+  }
+
   getContent(scope: ExchangeScope, path: string): Observable<ExchangeFileContent> {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const id = isCase ? this.caseId : this.namespaceId
@@ -562,6 +572,27 @@ export class ExchangeStateService {
     return isCase
       ? this.controller.getCaseFileContentExchange(id, path)
       : this.controller.getNamespaceFileContentExchange(id, path)
+  }
+
+  /**
+   * Binary content of a file, for previews the text endpoint cannot serve (images).
+   *
+   * Goes through the download endpoints, which stream the raw bytes.
+   */
+  getBlob(scope: ExchangeScope, path: string): Observable<Blob> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return throwError(() => new Error('No active scope for blob request'))
+    return this.downloadStream(scope, id, path)
+  }
+
+  /** Download endpoint of a scope. Typed Observable<string> but requests responseType:'blob', so it yields a Blob. */
+  private downloadStream(scope: ExchangeScope, id: string, path: string): Observable<Blob> {
+    const download$ =
+      scope === ExchangeFileEntryScopeEnum.CASE
+        ? this.controller.downloadCaseFileExchange(id, path)
+        : this.controller.downloadNamespaceFileExchange(id, path)
+    return download$ as unknown as Observable<Blob>
   }
 
   // ── Writes (case + namespace, gated per scope by the server-computed capability) ──
@@ -634,14 +665,8 @@ export class ExchangeStateService {
   }
 
   private downloadFrom(scope: ExchangeScope, id: string, path: string): Promise<{ success: boolean; error?: string }> {
-    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const filename = path.split('/').pop() ?? path
-    const download$ = isCase
-      ? this.controller.downloadCaseFileExchange(id, path)
-      : this.controller.downloadNamespaceFileExchange(id, path)
-    // The generated method is typed Observable<string> but requests responseType:'blob'
-    // (Accept '*/*'), so at runtime it yields a Blob.
-    const downloadBlob$ = download$ as unknown as Observable<Blob>
+    const downloadBlob$ = this.downloadStream(scope, id, path)
     return new Promise((resolve) => {
       downloadBlob$.subscribe({
         next: (body) => {

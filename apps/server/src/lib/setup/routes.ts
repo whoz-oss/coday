@@ -8,7 +8,13 @@
  *   POST /api/setup/mkdir     { path, name } (disabled once setup is done)
  *   POST /api/setup/apply     { providers: [{ id, apiKey, rank }], sharedExchangePath }
  *
- * Every mutating route and the folder browser only answer when `setupEnabled` (laptop profile, no
+ * Once AgentOS is healthy, the server itself (no browser needed) adds the platform models the platform lacks: `default`
+ * (the smallest model of each provider) and WHISPER (transcription), see ensure-platform-models.ts. A relaunch of an
+ * older install catches up. It runs in the wizard
+ * setup AND with an external AgentOS (`AGENTOS_URL`) or an existing install, as the identity the proxies use
+ * (`AGENTOS_EXTERNAL_USERID`, else the wizard email). Never behind `--auth`: no single identity to act as.
+ *
+ * Every mutating route and the folder browser only answer when `setupEnabled` (unmanaged profile, no
  * `--auth`) AND the caller is a page of this machine on loopback: this API can read the filesystem and
  * receives API keys.
  */
@@ -27,6 +33,7 @@ import {
 } from '../runtime/web-setup'
 import { AgentosClient } from './agentos-client'
 import { ApplyValidationError, runApply, validateApplyInput } from './apply'
+import { ensurePlatformModels } from './ensure-platform-models'
 import { browse, BrowseError, defaultCodayFolder, mkdir } from './browse'
 import { MODEL_CATALOGUE } from './model-catalogue'
 import { ApplyTracker, buildSetupStatus, decideIdentityChange } from './progress'
@@ -34,12 +41,17 @@ import { isManagedFactoryDisabled } from '../runtime/factory-option'
 
 export interface SetupRouterOptions {
   configDir: string
-  /** Laptop profile and no `--auth`: the wizard and its mutations apply. */
+  /** Unmanaged profile and no `--auth`: the wizard and its mutations apply. */
   setupEnabled: boolean
   fetchFn?: typeof fetch
   /** `AGENTOS_URL` / `FACTORY_URL`: services Coday does not run. The status probes them instead of the managed ports. */
   externalAgentosUrl?: string
   externalFactoryUrl?: string
+  /**
+   * Identity to act as for the platform models catch-up outside the wizard (external AgentOS, existing install). Absent
+   * (`--auth`): the catch-up only runs for the wizard setup.
+   */
+  catchUpIdentity?: () => string | undefined
   /** Overridable for tests. */
   homeDir?: string
   tracker?: ApplyTracker
@@ -81,6 +93,54 @@ export function createSetupRouter(options: SetupRouterOptions): Router {
   const router = Router()
   // Own JSON parser: this router is mounted before the app-wide express.json().
   router.use(express.json({ limit: '100kb' }))
+
+  // Platform models catch-up (default, WHISPER): driven by the server, so it does not depend on a browser calling
+  // /status after a restart.
+  // Waits for AgentOS to be healthy (and, in the wizard setup, for the setup to be done), runs once, retries a few
+  // times on error.
+  if (setupEnabled || options.catchUpIdentity) {
+    let finished = false
+    let running = false
+    let failures = 0
+    let waitingLogged = false
+    const MAX_FAILURES = 3
+    const catchUp = async (): Promise<void> => {
+      if (finished || running) return
+      if (setupEnabled && !readWebSetup(configDir).setupDone) return
+      const email = options.catchUpIdentity?.() ?? (setupEnabled ? readWebSetup(configDir).identity?.email : undefined)
+      const agentosUrl = options.externalAgentosUrl ? trimSlash(options.externalAgentosUrl) : agentosBase(configDir)
+      const healthy = !!agentosUrl && (await isHealthy(`${agentosUrl}/management/health`, fetchFn))
+      if (!email || !healthy) {
+        if (!waitingLogged) {
+          waitingLogged = true
+          console.log(
+            `[setup] Platform models catch-up waiting for ${email ? '' : 'an identity and '}AgentOS to be healthy (${agentosUrl ?? 'no AgentOS port yet'}).`
+          )
+        }
+        return
+      }
+      running = true
+      try {
+        const created = await ensurePlatformModels(new AgentosClient(agentosUrl, email, fetchFn))
+        finished = true
+        console.log(
+          created > 0
+            ? `[setup] Added ${created} missing platform model(s) (default, WHISPER).`
+            : '[setup] Platform models (default, WHISPER): nothing to add.'
+        )
+      } catch (err) {
+        if (++failures >= MAX_FAILURES) finished = true
+        console.warn(`[setup] Could not check the platform models (attempt ${failures}): ${err}`)
+      } finally {
+        running = false
+      }
+    }
+    const timer = setInterval(() => void catchUp(), 5_000)
+    timer.unref()
+    void catchUp()
+  } else {
+    console.log('[setup] Platform models catch-up not running: --auth deployment (no single identity to act as).')
+  }
 
   const guard: express.RequestHandler = (req, res, next) => {
     if (!setupEnabled) {

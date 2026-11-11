@@ -1,4 +1,4 @@
-import { AnswerEvent, CaseEvent, QuestionEvent } from '@whoz-oss/agentos-api-client'
+import { AnswerEvent, CaseEvent, CaseStatusEventStatusEnum, QuestionEvent } from '@whoz-oss/agentos-api-client'
 
 /**
  * Finds the legitimate answer of a question, mirroring the backend rule
@@ -18,4 +18,48 @@ export function findLegitimateAnswer(question: QuestionEvent, events: readonly C
       event.questionId === question.id &&
       (!question.userId || event.actor.id.toLowerCase() === question.userId.toLowerCase())
   )
+}
+
+/**
+ * Whether the case runs after [event], or null when the event does not tell.
+ *
+ * Mirrors the backend's own run-state reader (`CaseRuntime.closeAgentLeftOpenByCurrentTurn`), which
+ * scans back for the same three orchestration events and groups `AgentSelectedEvent` with
+ * `AgentRunningEvent`: an agent selected but not yet started still leaves the turn open. A turn can
+ * change agent without the case changing status - a redirect, a command-queue drain, a question
+ * resumption each emit `AgentFinishedEvent`, then `AgentSelectedEvent`, then `AgentRunningEvent` -
+ * so only the whole triple tells the truth about a handoff.
+ *
+ * PENDING counts as running: the launch gate has taken the turn and will admit it once the case's
+ * workspace is ready, so the case is no more idle than a RUNNING one. Reading it as idle cancelled
+ * the optimistic flag the composer sets on submit, and let a second message be posted into the
+ * queued turn - which then runs with two consecutive user messages, a shape providers reject.
+ *
+ * An unrecognised status returns null rather than false, leaving the previous telling event to
+ * stand: frames are parsed without validation, and a status this UI does not know must never
+ * unlock the composer on a case that may be mid-run.
+ */
+export function runningAfter(event: CaseEvent): boolean | null {
+  switch (event.type) {
+    case 'CaseStatusEvent':
+      switch (event.status) {
+        case CaseStatusEventStatusEnum.RUNNING:
+        case CaseStatusEventStatusEnum.PENDING:
+          return true
+        case CaseStatusEventStatusEnum.CREATED:
+        case CaseStatusEventStatusEnum.IDLE:
+        case CaseStatusEventStatusEnum.KILLED:
+        case CaseStatusEventStatusEnum.ERROR:
+          return false
+        default:
+          return null
+      }
+    case 'AgentRunningEvent':
+    case 'AgentSelectedEvent':
+      return true
+    case 'AgentFinishedEvent':
+      return false
+    default:
+      return null
+  }
 }

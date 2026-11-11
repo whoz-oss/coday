@@ -36,6 +36,10 @@ export interface Case {
   runCostThreshold?: number
   scheduledPromptId?: string
   status: CaseStatusEnum
+  /**
+   * Short server-generated summary of the case, refreshed after agent turns and matched by the case search. Null until the first one. Read-only: ignored on create and update.
+   */
+  summary?: string
   title?: string
   /**
    * Create only. Whether a new top-level case gets the worktree its namespace creates for every case. Null leaves it to the namespace\'s settings, false creates an ordinary case, true requires it and refuses the creation when the namespace does not create one or cannot. Must be null for a sub-case.

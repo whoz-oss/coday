@@ -1,7 +1,10 @@
 # GitHub access through the gh CLI, scoped by default to whoz-oss/coday
 # (replaces the former Docker-based github-mcp-server).
-# Requires `gh` on the PATH of the AgentOS process, authenticated either via `gh auth login`
-# or via GH_TOKEN / GITHUB_PERSONAL_ACCESS_TOKEN in the server environment.
+# Requires `gh` on the PATH of the AgentOS process. The token comes from the Auth Setting named
+# GITHUB_TOKEN, resolved for the user running the case (the most specific layer wins) and injected
+# by the BASH plugin as $GITHUB_TOKEN. A BEARER_TOKEN setting holding a GitHub PAT fits; API_KEY
+# works too, and BASIC_AUTH gives its password. Without a usable credential the tool answers
+# AUTH_MISSING and gh does not run.
 #
 # The default repository is set with GH_REPO, so no git worktree is needed for gh to know
 # which repository to use. The -R owner/repo flag still overrides it.
@@ -11,32 +14,35 @@
 name: "GITHUB"
 integrationType: "BASH"
 description: "GitHub access to whoz-oss/coday through the gh CLI (no Docker / MCP server needed)."
+authSettingName: "GITHUB_TOKEN"
 parameters:
-  workingDirectory: "{{NAMESPACE_CONFIG_PATH}}"
+  workingDirectory: "{{CASE_EXCHANGE}}/repo"
   defaultTimeoutSeconds: 60
   tools:
-  - name: "gh"
-    description: |
-      Runs the GitHub CLI (gh) on the whoz-oss/coday repository. All commands target
-      whoz-oss/coday by default; pass -R owner/repo only to target another repository.
+    - name: "gh"
+      description: |
+        Runs the GitHub CLI (gh) on the whoz-oss/coday repository. All commands target
+        whoz-oss/coday by default; pass -R owner/repo only to target another repository.
 
-      Common commands:
-      - pull requests: pr list / view / diff / checks / create / edit / review / comment / merge
-      - issues: issue list / view / create / edit / comment
-      - CI: run list, run view <id> --log-failed, workflow list
-      - repo and code: repo view, search code / issues / prs (add --repo whoz-oss/coday)
-      - raw REST and GraphQL: api repos/whoz-oss/coday/pulls/123/comments
+        Common commands:
+        - pull requests: pr list / view / diff / checks / create / edit / review / comment / merge
+        - issues: issue list / view / create / edit / comment
+        - CI: run list, run view <id> --log-failed, workflow list
+        - repo and code: repo view, search code / issues / prs (add --repo whoz-oss/coday)
+        - raw REST and GraphQL: api repos/whoz-oss/coday/pulls/123/comments
 
-      Prefer --json <fields> with --jq '<filter>' for compact, structured output.
-      Never run interactive commands: always pass --title and --body (or --body-file)
-      to create and edit commands.
-    command: "GH_REPO=whoz-oss/coday GH_PROMPT_DISABLED=1 GH_PAGER=cat GH_TOKEN=\"${GH_TOKEN:-$GITHUB_PERSONAL_ACCESS_TOKEN}\" gh PARAMETERS"
-    parametersDescription: |
-      The arguments to pass to gh, without the leading 'gh'. Examples:
-      - pr view 123 --json title,body,state,reviews
-      - pr diff 123
-      - issue create --title "Bug: ..." --body "..."
-      - api repos/whoz-oss/coday/pulls/123/comments
-      - search issues "label:bug is:open" --repo whoz-oss/coday
-    path: null
-    timeoutSeconds: 120
+        Prefer --json <fields> with --jq '<filter>' for compact, structured output.
+        Never run interactive commands: always pass --title and --body (or --body-file)
+        to create and edit commands.
+      # GH_TOKEN wins over GITHUB_TOKEN in gh: setting it from the injected value keeps the Auth Setting
+      # authoritative even if the server environment has a GH_TOKEN.
+      command: "GH_REPO=whoz-oss/coday GH_PROMPT_DISABLED=1 GH_PAGER=cat GH_TOKEN=\"$GITHUB_TOKEN\" gh PARAMETERS"
+      parametersDescription: |
+        The arguments to pass to gh, without the leading 'gh'. Examples:
+        - pr view 123 --json title,body,state,reviews
+        - pr diff 123
+        - issue create --title "Bug: ..." --body "..."
+        - api repos/whoz-oss/coday/pulls/123/comments
+        - search issues "label:bug is:open" --repo whoz-oss/coday
+      path: null
+      timeoutSeconds: 120

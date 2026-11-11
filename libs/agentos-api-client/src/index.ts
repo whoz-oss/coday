@@ -4,6 +4,7 @@ export * from './lib/index'
 // Custom — hand-written, safe from regeneration
 export { CaseEventSseService } from './custom/case-event-sse.service'
 export {
+  NAMESPACE_CASE_LIST_UPDATED_EVENT,
   NamespaceCaseListUpdateSseService,
   type NamespaceCaseListUpdateSignal,
 } from './custom/namespace-case-list-update-sse.service'

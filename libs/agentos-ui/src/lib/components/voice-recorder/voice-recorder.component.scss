@@ -1,0 +1,108 @@
+// The recorder sits in the composer where the textarea is (the host hides the textarea while recording): same
+// padding, same minimum height, text aligned to the left like the typed text. No border, margin or gap of its own.
+:host {
+  display: block;
+}
+
+.voice-recorder {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  padding: 13px 16px 4px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-text);
+  // The composer already shows that it has the focus (border): no second ring on the bar.
+  outline: none;
+
+  &__pulse {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    // Centered on the first line of text (line-height 1.55 * 14px = 21.7px).
+    margin-top: 7px;
+    border-radius: 50%;
+    background: var(--color-error, #d13438);
+    animation: voice-recorder-pulse 1.2s ease-in-out infinite;
+  }
+
+  &__time {
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__hint {
+    font-size: 12px;
+    line-height: 21px;
+    color: var(--color-neutral-700);
+  }
+
+  // A ring with one coloured quarter, centered on the first line of text like the recording dot.
+  &__spinner {
+    flex: none;
+    box-sizing: border-box;
+    width: 14px;
+    height: 14px;
+    margin-top: 4px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+    border-top-color: var(--color-accent);
+    animation: voice-recorder-spin 0.8s linear infinite;
+  }
+
+  // The hint breathes while the recording is uploaded and transcribed, so the wait reads as progress.
+  &--sending &__hint {
+    animation: voice-recorder-breathe 1.6s ease-in-out infinite;
+  }
+
+  // One line, like the limit error of the attachments row.
+  &__error {
+    margin: 0;
+    padding: 0 16px 4px;
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    color: var(--color-error, #d13438);
+  }
+}
+
+@keyframes voice-recorder-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+@keyframes voice-recorder-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes voice-recorder-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-recorder__pulse,
+  .voice-recorder__spinner,
+  .voice-recorder--sending .voice-recorder__hint {
+    animation-duration: 2.4s;
+  }
+}

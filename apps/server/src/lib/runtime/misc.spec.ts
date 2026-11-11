@@ -1,10 +1,9 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { inspectJava, javaInstallHint, parseJavaVersionOutput } from './java'
+import { findJavaHome, inspectJava, javaHomeHint, javaInstallHint, parseJavaVersionOutput } from './java'
 import { agentosDataDir } from './paths'
 import { borrowsRuntime, decideProfile, parseForcedProfile } from './profile'
-import { parsePreferredPorts, pickPorts } from './ports'
 import { initialState, mergeState, overallDownload, readState, updateState } from './state'
 import {
   agentosDatabaseExists,
@@ -26,8 +25,8 @@ afterEach(() => fs.rmSync(configDir, { recursive: true, force: true }))
 describe('decideProfile', () => {
   const base = () => ({ auth: false, configDir })
 
-  it('is laptop on a fresh install', () => {
-    expect(decideProfile(base())).toMatchObject({ profile: 'laptop', setupEnabled: true })
+  it('is unmanaged on a fresh install', () => {
+    expect(decideProfile(base())).toMatchObject({ profile: 'unmanaged', setupEnabled: true })
   })
 
   it.each([
@@ -43,24 +42,26 @@ describe('decideProfile', () => {
     expect(decideProfile(base())).toMatchObject({ profile: 'managed', setupEnabled: false })
   })
 
-  it('goes laptop once the wizard identity exists, even with data', () => {
+  it('goes unmanaged once the wizard identity exists, even with data', () => {
     fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
     saveIdentity(configDir, 'me@acme.com')
-    expect(decideProfile(base()).profile).toBe('laptop')
+    expect(decideProfile(base()).profile).toBe('unmanaged')
   })
 
   describe('CODAY_PROFILE', () => {
-    it('forces laptop over an external AgentOS, without the wizard', () => {
-      expect(decideProfile({ ...base(), agentosUrl: 'http://localhost:8224', forcedProfile: 'laptop' })).toMatchObject({
-        profile: 'laptop',
+    it('forces unmanaged over an external AgentOS, without the wizard', () => {
+      expect(
+        decideProfile({ ...base(), agentosUrl: 'http://localhost:8224', forcedProfile: 'unmanaged' })
+      ).toMatchObject({
+        profile: 'unmanaged',
         setupEnabled: false,
       })
     })
 
-    it('forces laptop with the wizard when nothing else prevents it', () => {
+    it('forces unmanaged with the wizard when nothing else prevents it', () => {
       fs.mkdirSync(agentosDataDir(configDir), { recursive: true })
-      expect(decideProfile({ ...base(), forcedProfile: 'Laptop' })).toMatchObject({
-        profile: 'laptop',
+      expect(decideProfile({ ...base(), forcedProfile: 'Unmanaged' })).toMatchObject({
+        profile: 'unmanaged',
         setupEnabled: true,
       })
     })
@@ -75,7 +76,7 @@ describe('decideProfile', () => {
     it('ignores an unknown value', () => {
       expect(parseForcedProfile('whatever')).toBeUndefined()
       expect(parseForcedProfile(undefined)).toBeUndefined()
-      expect(decideProfile({ ...base(), forcedProfile: 'whatever' })).toMatchObject({ profile: 'laptop' })
+      expect(decideProfile({ ...base(), forcedProfile: 'whatever' })).toMatchObject({ profile: 'unmanaged' })
     })
   })
 })
@@ -99,7 +100,7 @@ describe('state', () => {
   it('merges ports and downloads one level deep and stamps updatedAt', () => {
     const t = new Date('2030-01-01T00:00:00Z')
     const merged = mergeState(
-      { ...initialState('nx', 'laptop'), ports: { express: 1 }, downloads: { agentos: { state: 'running' } } },
+      { ...initialState('nx', 'unmanaged'), ports: { express: 1 }, downloads: { agentos: { state: 'running' } } },
       { ports: { agentos: 2 }, downloads: { factory: { state: 'done' } } },
       () => t
     )
@@ -109,13 +110,19 @@ describe('state', () => {
   })
 
   it('lets each writer update its own keys without clobbering the others', () => {
-    updateState(configDir, { ports: { express: 1 } }, initialState('nx', 'laptop'))
+    updateState(configDir, { ports: { express: 1 } }, initialState('nx', 'unmanaged'))
     updateState(configDir, { downloads: { agentos: { state: 'running', percent: 10 } } })
     updateState(configDir, { downloads: { factory: { state: 'done' } } })
     expect(readState(configDir)).toMatchObject({
       ports: { express: 1 },
       downloads: { agentos: { state: 'running', percent: 10 }, factory: { state: 'done' } },
     })
+  })
+
+  it('remembers the port block of the last start next to the ports', () => {
+    updateState(configDir, { ports: { express: 3020 }, portBlock: 3020 }, initialState('nx', 'unmanaged'))
+    updateState(configDir, { downloads: { agentos: { state: 'running' } } })
+    expect(readState(configDir)).toMatchObject({ ports: { express: 3020 }, portBlock: 3020 })
   })
 
   it('combines downloads: done only when all done, error wins', () => {
@@ -196,104 +203,78 @@ describe('java', () => {
   it('has a hint per platform', () => {
     expect(javaInstallHint('win32')).toContain('winget')
   })
-})
 
-describe('pickPorts', () => {
-  const identityFind = async (start: number) => start
+  describe('JAVA_HOME shadowing a usable JDK', () => {
+    const noHome = () => undefined
 
-  it('prefers the packaged-mode ports: AgentOS 8224, Bolt 7788, Factory 8241', async () => {
-    expect(await pickPorts(3000, identityFind)).toEqual({
-      express: 3000,
-      agentos: 8224,
-      agentosBolt: 7788,
-      factory: 8241,
+    /** `run` per binary: JAVA_HOME holds an old JDK (or nothing), the PATH and /jdk25 hold a good one. */
+    const runner =
+      (versions: Record<string, string | undefined>) =>
+      (bin: string): string => {
+        const version = versions[bin]
+        if (!version) throw new Error(`ENOENT: ${bin}`)
+        return version
+      }
+
+    it('points at the PATH java instead of telling the user to install one', () => {
+      const status = inspectJava(
+        runner({ java: 'openjdk 25 2025-09-16' }), // $JAVA_HOME/bin/java is absent
+        { JAVA_HOME: '/old-jdk' },
+        'darwin',
+        noHome
+      )
+      expect(status.state).toBe('missing')
+      expect(status).toMatchObject({ alternative: { version: 'openjdk 25 2025-09-16' } })
+      expect(status.state !== 'ok' && status.hint).toContain('unset JAVA_HOME')
+      expect(status.state !== 'ok' && status.hint).not.toContain('brew install')
+    })
+
+    it('gives the export command when only a lookup finds the JDK (macOS)', () => {
+      const status = inspectJava(
+        runner({
+          [path.join('/old-jdk', 'bin', 'java')]: 'openjdk 21.0.3 2024-04-16',
+          [path.join('/jdk25', 'bin', 'java')]: 'openjdk 25 2025-09-16',
+        }),
+        { JAVA_HOME: '/old-jdk' },
+        'darwin',
+        () => '/jdk25'
+      )
+      expect(status).toMatchObject({ state: 'too-old', alternative: { home: '/jdk25' } })
+      expect(status.state !== 'ok' && status.hint).toContain('/usr/libexec/java_home -v25')
+    })
+
+    it('still says to install when nothing usable exists anywhere', () => {
+      const status = inspectJava(
+        runner({ [path.join('/old-jdk', 'bin', 'java')]: 'openjdk 21.0.3 2024-04-16' }),
+        { JAVA_HOME: '/old-jdk' },
+        'darwin',
+        noHome
+      )
+      expect(status).toMatchObject({ state: 'too-old' })
+      expect(status.state === 'too-old' && status.alternative).toBeUndefined()
+      expect(status.state !== 'ok' && status.hint).toContain('brew install')
+    })
+
+    it('does not look for an alternative when JAVA_HOME is not what failed', () => {
+      const probed: string[] = []
+      inspectJava((bin) => (probed.push(bin), 'openjdk 21.0.3 2024-04-16'), {}, 'linux', noHome)
+      expect(probed).toEqual(['java'])
     })
   })
 
-  it('never prefers the dev ports (AgentOS 8124, Factory 8141, Bolt 7688), reserved for dev mode', async () => {
-    const ports = await pickPorts(3000, identityFind)
-    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(8124)
-    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(8141)
-    expect([ports.agentos, ports.factory, ports.agentosBolt]).not.toContain(7688)
+  it('names the JDK found and the variable to fix', () => {
+    expect(javaHomeHint({ version: 'openjdk 25' }, '/old', 'win32')).toContain('Clear JAVA_HOME')
+    expect(javaHomeHint({ version: 'openjdk 25', home: '/jdk25' }, '/old', 'win32')).toContain('/jdk25')
   })
 
-  it('leaves the dev ports alone: a dev stack on 8124/8141/7688 changes nothing', async () => {
-    const busy = new Set([8124, 8141, 7688])
-    const find = async (start: number) => {
-      let port = start
-      while (busy.has(port)) port++
-      return port
-    }
-    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8224, agentosBolt: 7788, factory: 8241 })
-  })
-
-  it('falls back to the next free port when the preferred one is taken', async () => {
-    const busy = new Set([8224, 7788])
-    const find = async (start: number) => {
-      let port = start
-      while (busy.has(port)) port++
-      return port
-    }
-    expect(await pickPorts(3000, find)).toEqual({ express: 3000, agentos: 8225, agentosBolt: 7789, factory: 8241 })
-  })
-
-  it('never gives two services the same port (Express on the AgentOS default)', async () => {
-    const ports = await pickPorts(8224, identityFind)
-    expect(ports).toEqual({ express: 8224, agentos: 8225, agentosBolt: 7788, factory: 8241 })
-    expect(new Set(Object.values(ports)).size).toBe(4)
-  })
-
-  it('never gives two services the same port (Express on the Factory default)', async () => {
-    const ports = await pickPorts(8241, identityFind)
-    expect(ports).toEqual({ express: 8241, agentos: 8224, agentosBolt: 7788, factory: 8242 })
-    expect(new Set(Object.values(ports)).size).toBe(4)
-  })
-
-  it('bumps past a port already assigned to another service', async () => {
-    // Express on 7788: Bolt cannot take it; AgentOS on 8224 and Factory on 8241 are unaffected.
-    const ports = await pickPorts(7788, identityFind)
-    expect(ports).toEqual({ express: 7788, agentos: 8224, agentosBolt: 7789, factory: 8241 })
-    expect(new Set(Object.values(ports)).size).toBe(4)
-  })
-})
-
-describe('preferred ports (web:local next to coday-web)', () => {
-  const identityFind = async (start: number) => start
-
-  it('parses the env vars and ignores invalid values', () => {
-    expect(parsePreferredPorts({ CODAY_AGENTOS_PORT: '8324', CODAY_FACTORY_PORT: '8341' })).toEqual({
-      agentos: 8324,
-      factory: 8341,
-    })
-    expect(parsePreferredPorts({ CODAY_AGENTOS_BOLT_PORT: '7888' })).toEqual({ agentosBolt: 7888 })
+  it('only asks the system for a JDK home on macOS', () => {
+    expect(findJavaHome('linux', () => '/never')).toBeUndefined()
+    expect(findJavaHome('darwin', () => '/jdk25\n')).toBe('/jdk25')
     expect(
-      parsePreferredPorts({ CODAY_AGENTOS_PORT: 'abc', CODAY_FACTORY_PORT: '0', CODAY_AGENTOS_BOLT_PORT: '70000' })
-    ).toEqual({})
-    expect(parsePreferredPorts({})).toEqual({})
-  })
-
-  it('replaces the packaged defaults', async () => {
-    expect(await pickPorts(3001, identityFind, { agentos: 8324, agentosBolt: 7888, factory: 8341 })).toEqual({
-      express: 3001,
-      agentos: 8324,
-      agentosBolt: 7888,
-      factory: 8341,
-    })
-  })
-
-  it('keeps the default for a service without preference, and still falls back when a preferred port is taken', async () => {
-    const busy = new Set([8324])
-    const find = async (start: number) => {
-      let port = start
-      while (busy.has(port)) port++
-      return port
-    }
-    expect(await pickPorts(3001, find, { agentos: 8324 })).toEqual({
-      express: 3001,
-      agentos: 8325,
-      agentosBolt: 7788,
-      factory: 8241,
-    })
+      findJavaHome('darwin', () => {
+        throw new Error('no such JDK')
+      })
+    ).toBeUndefined()
   })
 })
 

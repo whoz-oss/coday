@@ -1,5 +1,11 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { Case, CaseControllerService, MessageEvent, ReasoningEffort } from '@whoz-oss/agentos-api-client'
+import {
+  Case,
+  CaseControllerService,
+  CaseStatusEnum,
+  MessageEvent,
+  ReasoningEffort,
+} from '@whoz-oss/agentos-api-client'
 import {
   catchError,
   concatMap,
@@ -123,6 +129,15 @@ export class CaseStateService {
    */
   deleteCase(caseId: string): Observable<void> {
     return this.caseController.deleteCase(caseId).pipe(tap(() => this.reloadCurrent()))
+  }
+
+  /**
+   * Stop (kill) a case: the agent and its running sub-cases are terminated, the history and files are kept
+   * and the case can be reopened. The status is patched in the list at once; the case's own event stream
+   * confirms it for an open chat.
+   */
+  killCase(caseId: string): Observable<void> {
+    return this.caseController.killCase(caseId).pipe(tap(() => this.updateCaseStatus(caseId, CaseStatusEnum.KILLED)))
   }
 
   /**

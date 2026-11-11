@@ -3,6 +3,7 @@
     <agentos-exchange-content-viewer
       [file]="ref"
       [content]="selectedContent()"
+      [imageUrl]="imageUrl()"
       [status]="contentStatus()"
       [canView]="canViewSelected()"
       (closeRequested)="onViewerClose()"
@@ -131,6 +132,9 @@
                     [scope]="CASE"
                     [canWrite]="canWriteCase()"
                     [activeFile]="activeFile()"
+                    [selectable]="selectable()"
+                    [selectedPaths]="referencedCasePaths()"
+                    (selectionToggled)="toggleReference($event)"
                     (fileSelected)="onFileSelected($event)"
                     (diffRequested)="openFileDiff($event)"
                     (downloadRequested)="downloadRequested.emit($event)"
@@ -193,7 +197,9 @@
                 </div>
               }
               @default {
-                <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: NAMESPACE, value: namespaceInput(), status: namespaceAnnouncement() }" />
+                @if (showNamespaceFilter()) {
+                  <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: NAMESPACE, value: namespaceInput(), status: namespaceAnnouncement() }" />
+                }
                 @if (namespaceQuery()) {
                   <ng-container [ngTemplateOutlet]="filterResults" [ngTemplateOutletContext]="{ scope: NAMESPACE, query: namespaceQuery(), status: namespaceManifestStatus(), tree: namespaceTree() }" />
                 } @else {
@@ -239,6 +245,9 @@
                     [scope]="NAMESPACE"
                     [canWrite]="canWriteNamespace()"
                     [activeFile]="activeFile()"
+                    [selectable]="selectable()"
+                    [selectedPaths]="referencedNamespacePaths()"
+                    (selectionToggled)="toggleReference($event)"
                     (fileSelected)="onFileSelected($event)"
                     (downloadRequested)="downloadRequested.emit($event)"
                     (deleteRequested)="deleteRequested.emit($event)"
@@ -265,6 +274,12 @@
         <p class="exchange-drawer__no-access">No files available.</p>
       }
     </div>
+    @if (selectable() && referencedCount() > 0) {
+      <div class="exchange-drawer__selection-bar" role="region" aria-label="Files in the message">
+        <span class="exchange-drawer__selection-count" aria-live="polite">{{ referencedCount() }} in message</span>
+        <button type="button" class="exchange-drawer__retry" (click)="clearReferences()">Clear</button>
+      </div>
+    }
   }
 
   <ng-template #filterField let-scope="scope" let-value="value" let-status="status">
@@ -312,6 +327,9 @@
                 } @else if (node.row; as row) {
                   <agentos-exchange-item [row]="row" [scope]="scope" [canWrite]="scope === CASE ? canWriteCase() : canWriteNamespace()"
                     [active]="activeFile()?.scope === scope && activeFile()?.path === row.path"
+                    [selectable]="selectable()"
+                    [selected]="(scope === CASE ? referencedCasePaths() : referencedNamespacePaths()).has(row.path)"
+                    (selectionToggled)="toggleReference({ scope: scope, path: row.path })"
                     (viewRequested)="onFileSelected({ scope: scope, path: row.path })"
                     (diffRequested)="openFileDiff({ scope: scope, path: row.path })"
                     (downloadRequested)="downloadRequested.emit({ scope: scope, path: row.path })"

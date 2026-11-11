@@ -1,6 +1,8 @@
 import {
   canViewFile,
   detectFormat,
+  ensureImageBlob,
+  isImageFile,
   exchangeMutationScope,
   formatSize,
   getFileIcon,
@@ -20,6 +22,30 @@ describe('exchange-content.utils', () => {
       expect(detectFormat('a.html')).toBe('html')
       expect(detectFormat('a.log')).toBe('text')
     })
+    it.each(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'])('detects .%s as image', (ext) => {
+      expect(detectFormat(`a.${ext}`)).toBe('image')
+      expect(detectFormat(`A.${ext.toUpperCase()}`)).toBe('image')
+      expect(isImageFile(`dir/a.${ext}`)).toBe(true)
+    })
+    it('does not treat pdf, zip or text as image', () => {
+      expect(isImageFile('a.pdf')).toBe(false)
+      expect(isImageFile('a.zip')).toBe(false)
+      expect(detectFormat('a.pdf')).toBe('text')
+    })
+  })
+
+  describe('ensureImageBlob', () => {
+    it('re-wraps a generic blob with the SVG MIME type', () => {
+      const wrapped = ensureImageBlob(new Blob(['<svg/>'], { type: 'application/octet-stream' }), 'a.svg')
+      expect(wrapped.type).toBe('image/svg+xml')
+    })
+    it('re-wraps an untyped blob with the extension MIME type', () => {
+      expect(ensureImageBlob(new Blob(['x']), 'a.jpg').type).toBe('image/jpeg')
+    })
+    it('keeps a blob that already has an image type', () => {
+      const blob = new Blob(['x'], { type: 'image/png' })
+      expect(ensureImageBlob(blob, 'a.png')).toBe(blob)
+    })
   })
 
   describe('isFormatViewable', () => {
@@ -28,6 +54,7 @@ describe('exchange-content.utils', () => {
       expect(isFormatViewable('a.png')).toBe(false)
       expect(isFormatViewable('a.zip')).toBe(false)
       expect(isFormatViewable('a.xlsx')).toBe(false)
+      expect(isFormatViewable('a.svg')).toBe(false)
     })
     it('accepts text-ish extensions', () => {
       expect(isFormatViewable('a.md')).toBe(true)
@@ -46,7 +73,11 @@ describe('exchange-content.utils', () => {
   describe('canViewFile', () => {
     it('requires both viewable format and size within limit', () => {
       expect(canViewFile({ filename: 'a.md', size: 100 })).toBe(true)
-      expect(canViewFile({ filename: 'a.png', size: 100 })).toBe(false)
+      expect(canViewFile({ filename: 'a.png', size: 100 })).toBe(true)
+      expect(canViewFile({ name: 'a.svg', size: 100 })).toBe(true)
+      expect(canViewFile({ filename: 'a.png', size: MAX_VIEWABLE_SIZE + 1 })).toBe(false)
+      expect(canViewFile({ filename: 'a.pdf', size: 100 })).toBe(false)
+      expect(canViewFile({ filename: 'a.zip', size: 100 })).toBe(false)
       expect(canViewFile({ filename: 'a.md', size: MAX_VIEWABLE_SIZE + 1 })).toBe(false)
     })
   })
@@ -55,6 +86,8 @@ describe('exchange-content.utils', () => {
     it('maps by extension with a fallback', () => {
       expect(getFileIcon('a.pdf')).toBe('picture_as_pdf')
       expect(getFileIcon('a.png')).toBe('image')
+      expect(getFileIcon('a.svg')).toBe('image')
+      expect(getFileIcon('a.bmp')).toBe('image')
       expect(getFileIcon('a.zip')).toBe('folder_zip')
       expect(getFileIcon('a.md')).toBe('description')
       expect(getFileIcon('a.unknown')).toBe('insert_drive_file')
