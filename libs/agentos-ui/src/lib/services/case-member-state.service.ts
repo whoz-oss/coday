@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core'
 import {
   CaseMembershipControllerService,
   MemberItem,
+  NamespaceMembershipControllerService,
   UserControllerService,
   UserMembershipRole,
   UserMembershipRoleRoleEnum,
@@ -26,10 +27,13 @@ export interface CaseMemberUpdateEntry {
  *
  * `listAllUsers()` wraps `UserControllerService.listAllUser()`, which is SUPER_ADMIN-only on
  * the backend — callers must only invoke it when the current user is a super-admin.
+ * `listNamespaceMembers()` is the candidate pool for everyone else: the members of the case's
+ * namespace (Namespace READ), the only users a non-super-admin case admin may invite.
  */
 @Injectable({ providedIn: 'root' })
 export class CaseMemberStateService {
   private readonly membership = inject(CaseMembershipControllerService)
+  private readonly namespaceMembership = inject(NamespaceMembershipControllerService)
   private readonly userController = inject(UserControllerService)
 
   /** Current members (and their role) of a case. */
@@ -43,6 +47,14 @@ export class CaseMemberStateService {
    */
   listAllUsers() {
     return this.userController.listAllUser()
+  }
+
+  /**
+   * Members (ADMIN or MEMBER) of a namespace — the invitation candidates of a non-super-admin.
+   * Fails (404) when the caller cannot read the namespace.
+   */
+  listNamespaceMembers(namespaceId: string): Observable<MemberItem[]> {
+    return this.namespaceMembership.getMembersNamespaceMembership(namespaceId)
   }
 
   /**

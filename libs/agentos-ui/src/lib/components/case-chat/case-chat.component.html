@@ -1,7 +1,7 @@
 <ds-drawer position="end" [(open)]="exchangeOpen" drawerWidth="400px" [mobileFullWidth]="true">
   <div dsDrawerSide class="case-chat__drawer-side">
     @if (drawerPanel() === 'members') {
-      <agentos-case-members [caseId]="caseId" (closeRequested)="exchangeOpen.set(false)" />
+      <agentos-case-members [caseId]="caseId" [namespaceId]="namespaceId" (closeRequested)="exchangeOpen.set(false)" />
     } @else {
       <agentos-exchange-shell [active]="exchangeOpen()" (closeRequested)="exchangeOpen.set(false)" />
     }
