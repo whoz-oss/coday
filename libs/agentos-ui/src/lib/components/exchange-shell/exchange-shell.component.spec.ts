@@ -13,6 +13,22 @@ const file = (path: string, size = 10) => ({ path, filename: path.split('/').pop
 const listing = { path: '', entries: [], totalEntries: 0, page: 0, pageSize: 100, hasMore: false, capability: 'READ' }
 
 describe('ExchangeShellComponent filters', () => {
+  const originalCreate = URL.createObjectURL
+  const originalRevoke = URL.revokeObjectURL
+
+  function mockObjectUrls() {
+    const create = jest.fn().mockReturnValue('blob:preview')
+    const revoke = jest.fn()
+    URL.createObjectURL = create
+    URL.revokeObjectURL = revoke
+    return { create, revoke }
+  }
+
+  function restoreObjectUrls() {
+    URL.createObjectURL = originalCreate
+    URL.revokeObjectURL = originalRevoke
+  }
+
   function setup() {
     const route = new BehaviorSubject<Record<string, string>>({ ns: 'ns-1', case: 'c-1' })
     const api = {
@@ -1029,10 +1045,9 @@ describe('ExchangeShellComponent filters', () => {
     expect(api.getCaseFileContentExchange).toHaveBeenCalledTimes(1)
   })
 
-  it.each([CASE, NAMESPACE])('previews and revokes an image URL for %s', () => {
+  it.each([CASE, NAMESPACE])('previews and revokes an image URL for %s', (scope) => {
     const { fixture, shell, state } = setup()
-    const create = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
-    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    const { create, revoke } = mockObjectUrls()
     jest.spyOn(state, 'getBlob').mockReturnValue(of(new Blob(['image'], { type: 'image/png' })))
     const ref = { scope, path: 'deep/image.png' }
     if (scope === CASE) shell['caseManifest'].set([file(ref.path)])
@@ -1043,15 +1058,14 @@ describe('ExchangeShellComponent filters', () => {
     shell['onViewerClosed']()
     expect(revoke).toHaveBeenCalledWith('blob:preview')
     fixture.destroy()
-    create.mockRestore()
-    revoke.mockRestore()
+    restoreObjectUrls()
   })
 
-  it.each([CASE, NAMESPACE])('ignores stale %s image responses after a newer selection of the same path', () => {
+  it.each([CASE, NAMESPACE])('ignores stale %s image responses after a newer selection of the same path', (scope) => {
     const { fixture, shell, state } = setup()
     const old = new Subject<Blob>()
-    const create = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:new')
-    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    const { create, revoke } = mockObjectUrls()
+    create.mockReturnValue('blob:new')
     jest.spyOn(state, 'getBlob').mockReturnValueOnce(old).mockReturnValue(of(new Blob(['new'], { type: 'image/png' })))
     const ref = { scope, path: 'image.png' }
     if (scope === CASE) shell['caseManifest'].set([file(ref.path)])
@@ -1062,8 +1076,8 @@ describe('ExchangeShellComponent filters', () => {
     expect(create).toHaveBeenCalledTimes(1)
     expect(shell['selectedImageUrl']()).toBe('blob:new')
     fixture.destroy()
-    create.mockRestore()
-    revoke.mockRestore()
+    expect(revoke).toHaveBeenCalledWith('blob:new')
+    restoreObjectUrls()
   })
 
   it('ignores a late preview for the same path after switching cases', () => {

@@ -6,13 +6,33 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { unsafeRootReason } from '../../../scripts/utils/web-local-helpers'
 
 type Identity = { id: string; externalId: string; isAdmin: boolean }
 type RealInstance = { baseURL: string; reader: string; caseId: string; namespaceId: string; content: string }
 type State = { profile: string; ports: { express: number; agentos: number; agentosBolt: number } }
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+const isInside = (child: string, parent: string): boolean => {
+  const relative = path.relative(parent, child)
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
+function unsafeRootReason(root: string, home: string, extraProtected: string[] = []): string | undefined {
+  const resolved = path.resolve(root)
+  if (path.parse(resolved).root === resolved) return 'it is the filesystem root'
+  const protectedPaths = [
+    [home, 'your home directory'],
+    [path.join(home, '.coday'), '~/.coday'],
+    [path.join(home, 'Coday'), '~/Coday'],
+    ...extraProtected.map((protectedPath): [string, string] => [protectedPath, protectedPath]),
+  ] as const
+  for (const [protectedPath, label] of protectedPaths) {
+    if (isInside(resolved, protectedPath) && protectedPath !== home) return `it is ${label} or inside it`
+    if (isInside(protectedPath, resolved)) return `it is, or contains, ${label}`
+  }
+  return undefined
+}
 
 export function ownedRoot(root: string, temp: string): void {
   const stat = fs.lstatSync(root)
@@ -223,9 +243,12 @@ export const test = base.extend<{ realInstance: RealInstance }>({
       }
       for (const scope of [`/api/cases/${createdCase.id}/files`, `/api/namespaces/${namespace.id}/files`]) {
         const manifest = await json<{ capability: string; files: Array<{ path: string }> }>(reader, `${scope}/manifest`)
+        // eslint-disable-next-line playwright/no-standalone-expect -- fixture setup verifies API permissions before use.
         expect(manifest.capability).toBe('READ')
+        // eslint-disable-next-line playwright/no-standalone-expect -- fixture setup verifies API permissions before use.
         expect(manifest.files.length).toBeGreaterThan(0)
         const denied = await api(reader, `${scope}?path=${encodeURIComponent(manifest.files[0]!.path)}`, { method: 'DELETE' })
+        // eslint-disable-next-line playwright/no-standalone-expect -- fixture setup verifies API permissions before use.
         expect(denied.status).toBe(403)
       }
       console.log('TC-010 permissions: both manifests READ; DELETE denied 403 on both scopes')
