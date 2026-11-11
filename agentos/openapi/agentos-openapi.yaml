@@ -5988,8 +5988,8 @@ components:
       properties:
         adminCanListAllCases:
           type: boolean
-          description: "Whether the administrators of this namespace get a 'Mine / All\
-            \ cases' switch in the case drawer. Null means inherit from the platform\
+          description: "Whether the administrators of this namespace get a 'Mine /\
+            \ All cases' switch in the case drawer. Null means inherit from the platform\
             \ default (agentos.case.admin-list-all-cases-default). On PUT, null clears\
             \ an existing override."
         configPath:
