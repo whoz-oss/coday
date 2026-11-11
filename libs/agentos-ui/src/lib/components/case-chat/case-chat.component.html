@@ -258,7 +258,10 @@
                     <span class="case-chat__execution-notice-detail">{{ item.notice.detail }}</span>
                   }
                   @if (
-                    item.eventId === continuableStopId() && !isRunning() && !isTerminal() && !attachments.isUploading()
+                    item.eventId === continuableStopId() &&
+                    !isRunning() &&
+                    !composerClosed() &&
+                    !attachments.isUploading()
                   ) {
                     <button type="button" class="case-chat__execution-notice-action" (click)="continueAfterLimit()">
                       Continue
@@ -558,7 +561,7 @@
           rows="3"
           [value]="inputValue()"
           [hidden]="voice.isActive()"
-          [disabled]="isRunning() || isTerminal() || attachments.isUploading()"
+          [disabled]="isRunning() || composerClosed() || attachments.isUploading()"
           (input)="onInput($event)"
           (keydown)="onKeydown($event)"
           (paste)="canStageFiles() && attachments.onPaste($event)"
@@ -617,11 +620,18 @@
         </div>
 
         @if (isTerminal()) {
-          <div class="case-chat__reopen-bar">
-            <span class="case-chat__reopen-label"
+          <div class="case-chat__notice-bar">
+            <span class="case-chat__notice-label"
               >This case has ended. You can reopen it to continue the conversation.</span
             >
-            <button type="button" class="case-chat__reopen-btn" (click)="reopen()">Reopen</button>
+            <button type="button" class="case-chat__notice-btn" (click)="reopen()">Reopen</button>
+          </div>
+        } @else if (streamUnavailable()) {
+          <div class="case-chat__notice-bar">
+            <span class="case-chat__notice-label"
+              >Live updates stopped: the case may no longer exist, or the connection was refused.</span
+            >
+            <button type="button" class="case-chat__notice-btn" (click)="retryStream()">Retry</button>
           </div>
         }
       </div>

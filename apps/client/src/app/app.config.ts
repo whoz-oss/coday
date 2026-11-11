@@ -52,11 +52,13 @@ function initializeCurrentUser(injector: Injector) {
 function initializeCompanion(injector: Injector) {
   return async () => {
     try {
-      const { CompanionStateService, TabCoordinatorService } = await import('@whoz-oss/agentos-ui')
+      const { CompanionStateService, GlobalStreamService, TabCoordinatorService } = await import('@whoz-oss/agentos-ui')
       runInInjectionContext(injector, () => {
         // TabCoordinatorService.start() creates an effect, hence the injection context.
         injector.get(TabCoordinatorService).start()
       })
+      // The stream first, its consumers after: they subscribe, they do not connect.
+      injector.get(GlobalStreamService).start()
       injector.get(CompanionStateService).startSse()
     } catch (err) {
       console.warn('Failed to start the companion notification stream', err)

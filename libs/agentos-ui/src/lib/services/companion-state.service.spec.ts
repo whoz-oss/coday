@@ -6,8 +6,13 @@ import { BrowserNotificationService } from './browser-notification.service'
 import { CaseStateService } from './case-state.service'
 import { CompanionPipService } from './companion-pip.service'
 import { CompanionStateService } from './companion-state.service'
-import { GlobalCaseEventSseService } from './global-case-event-sse.service'
+import { GlobalStreamService } from './global-stream.service'
 
+/**
+ * The aggregated stream itself — its ownership, relay and retry — is covered by
+ * global-stream.service.spec.ts. Here it is a plain subject: this service only routes what
+ * comes out of it.
+ */
 describe('CompanionStateService', () => {
   let events$: Subject<CaseEvent>
   let casesSignal: ReturnType<typeof signal<Case[]>>
@@ -19,7 +24,8 @@ describe('CompanionStateService', () => {
   let browserCloseMany: jest.Mock
   let service: CompanionStateService
 
-  beforeEach(() => {
+  function configure(): void {
+    TestBed.resetTestingModule()
     events$ = new Subject<CaseEvent>()
     casesSignal = signal<Case[]>([])
     isOpenSignal = signal<boolean>(false)
@@ -32,7 +38,7 @@ describe('CompanionStateService', () => {
     TestBed.configureTestingModule({
       providers: [
         CompanionStateService,
-        { provide: GlobalCaseEventSseService, useValue: { connect: jest.fn(() => events$.asObservable()) } },
+        { provide: GlobalStreamService, useValue: { caseEvents$: events$.asObservable() } },
         { provide: CaseStateService, useValue: { cases: casesSignal } },
         { provide: CaseControllerService, useValue: { getByIdCase } },
         { provide: CompanionPipService, useValue: { playAlertBeep, isOpen: isOpenSignal } },
@@ -45,7 +51,9 @@ describe('CompanionStateService', () => {
 
     service = TestBed.inject(CompanionStateService)
     service.startSse()
-  })
+  }
+
+  beforeEach(() => configure())
 
   afterEach(() => TestBed.resetTestingModule())
 
