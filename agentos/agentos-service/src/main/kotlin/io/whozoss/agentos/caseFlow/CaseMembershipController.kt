@@ -32,10 +32,10 @@ import java.util.UUID
  * Authorization:
  * - GET: Case READ; `@HideOnAccessDenied` converts 403 → 404
  * - PATCH: Case WRITE (case ADMIN); self-modification entries are silently filtered to prevent
- *   callers from revoking or demoting themselves. A non-super-admin caller may only invite
- *   users who already hold a relation (ADMIN or MEMBER) on the case's namespace; changing the
- *   role of an existing case member or revoking one needs no namespace check. Super-admins
- *   may invite any user. Violations are rejected with 422.
+ *   callers from revoking or demoting themselves. Invitees must already hold a relation
+ *   (ADMIN or MEMBER) on the case's namespace, whoever the caller (super-admins included);
+ *   changing the role of an existing case member or revoking one needs no namespace check.
+ *   Violations are rejected with 422.
  *
  * Delta semantics: only listed users are affected; users absent from the list are
  * untouched. A null role means revoke. Non-existent userIds are silently skipped
@@ -76,8 +76,7 @@ class CaseMembershipController(
     ): List<MemberItem> {
         requireNoDuplicateUserIds(members)
         val case = caseService.getById(entityId)
-        val currentUser = userService.getCurrentUser()
-        val currentUserId = currentUser.id
+        val currentUserId = userService.getCurrentUser().id
         val caseIdStr = entityId.toString()
 
         val filtered = members.filter { it.userId != currentUserId }
@@ -89,9 +88,7 @@ class CaseMembershipController(
             entry.userId.toString() to entry.role?.let { PermissionRelation.valueOf(it) }
         }
 
-        if (!currentUser.isAdmin) {
-            requireInviteesInNamespace(case, caseIdStr, entries)
-        }
+        requireInviteesInNamespace(case, caseIdStr, entries)
 
         if (entries.isNotEmpty()) {
             permissionService.applyShareBatch(EntityType.CASE, caseIdStr, entries)
@@ -112,15 +109,17 @@ class CaseMembershipController(
         entries: List<Pair<String, PermissionRelation?>>,
     ) {
         val grantedIds = entries.filter { it.second != null }.map { it.first }
-        if (grantedIds.isEmpty()) return
-
-        val existingCaseMembers = permissionService.listRelationsForUsers(EntityType.CASE, caseIdStr, grantedIds).keys
-        val newIds = grantedIds.filterNot { it in existingCaseMembers }
-        if (newIds.isEmpty()) return
-
-        val namespaceMembers =
-            permissionService.listRelationsForUsers(EntityType.NAMESPACE, case.namespaceId.toString(), newIds).keys
-        val outsiders = newIds.filterNot { it in namespaceMembers }
+        val newIds =
+            grantedIds
+                .takeIf { it.isNotEmpty() }
+                ?.let { ids -> ids - permissionService.listRelationsForUsers(EntityType.CASE, caseIdStr, ids).keys }
+                .orEmpty()
+        val outsiders =
+            newIds
+                .takeIf { it.isNotEmpty() }
+                ?.let { ids ->
+                    ids - permissionService.listRelationsForUsers(EntityType.NAMESPACE, case.namespaceId.toString(), ids).keys
+                }.orEmpty()
         if (outsiders.isNotEmpty()) {
             throw UnprocessableEntityException(
                 "Only members of the case's namespace can be invited: ${outsiders.joinToString()}",
