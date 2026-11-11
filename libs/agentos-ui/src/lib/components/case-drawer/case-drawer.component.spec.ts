@@ -7,6 +7,7 @@ const adminNode = (overrides: Partial<CaseTreeItem> = {}): CaseTreeItem => ({
   id: 'x',
   name: 'x',
   favorite: false,
+  canStar: true,
   canDelete: true,
   canRename: true,
   canCreateSubCase: true,
@@ -91,7 +92,14 @@ describe('CaseDrawerComponent', () => {
     const emitted: Array<{ id: string; starred: boolean }> = []
     component.starToggled.subscribe((e) => emitted.push(e))
 
-    component['onStarToggled']({ id: 'case-9', name: 'case-9', favorite: false, canDelete: false, canRename: false })
+    component['onStarToggled']({
+      id: 'case-9',
+      name: 'case-9',
+      favorite: false,
+      canStar: true,
+      canDelete: false,
+      canRename: false,
+    })
 
     expect(emitted).toEqual([{ id: 'case-9', starred: true }])
   })
@@ -101,14 +109,21 @@ describe('CaseDrawerComponent', () => {
     const emitted: Array<{ id: string; starred: boolean }> = []
     component.starToggled.subscribe((e) => emitted.push(e))
 
-    component['onStarToggled']({ id: 'case-9', name: 'case-9', favorite: true, canDelete: false, canRename: false })
+    component['onStarToggled']({
+      id: 'case-9',
+      name: 'case-9',
+      favorite: true,
+      canStar: true,
+      canDelete: false,
+      canRename: false,
+    })
 
     expect(emitted).toEqual([{ id: 'case-9', starred: false }])
   })
 
   it('does not mutate the node on toggle (optimism lives in CaseStateService)', () => {
     const component = makeComponent()
-    const item = { id: 'case-9', name: 'case-9', favorite: false, canDelete: false, canRename: false }
+    const item = { id: 'case-9', name: 'case-9', favorite: false, canStar: true, canDelete: false, canRename: false }
 
     component['onStarToggled'](item)
 
@@ -244,6 +259,65 @@ describe('CaseDrawerComponent', () => {
 
     expect(stars).toEqual([{ id: 'case-1', starred: true }])
     expect(deletes).toEqual(['case-1'])
+  })
+
+  describe('cases without a direct relation (namespace admin, All cases)', () => {
+    // No role: the caller reaches the case through namespace-ADMIN transitivity only.
+    const NO_ROLE = { id: 'n', namespaceId: 'ns', title: 'Not mine', favorite: false } as unknown as Case
+    const MEMBER = { id: 'm', namespaceId: 'ns', title: 'Member', favorite: false, role: CaseRoleEnum.MEMBER } as Case
+    const ADMIN = { id: 'a', namespaceId: 'ns', title: 'Admin', favorite: false, role: CaseRoleEnum.ADMIN } as Case
+
+    it('can star only a case the caller has a direct relation on', () => {
+      const component = makeComponent([NO_ROLE, MEMBER, ADMIN])
+
+      const byId = (id: string) => component['rootItems']().find((i) => i.id === id)!
+      expect(byId('n').canStar).toBe(false)
+      expect(byId('m').canStar).toBe(true)
+      expect(byId('a').canStar).toBe(true)
+    })
+
+    it('hides the star action of a case with no role, keeps it for the others', () => {
+      const ref = makeComponentRef([NO_ROLE, MEMBER])
+      render(ref)
+
+      const rows = Array.from(host(ref).querySelectorAll<HTMLElement>('.case-tree-node__row'))
+      const rowOf = (name: string) => rows.find((row) => row.textContent?.includes(name))!
+      expect(rowOf('Not mine').querySelector('[title="Add to favorites"]')).toBeNull()
+      expect(rowOf('Member').querySelector('[title="Add to favorites"]')).not.toBeNull()
+    })
+
+    it('offers no rename, delete, stop or sub-case on a case with no role', () => {
+      const ref = makeComponentRef([NO_ROLE])
+      render(ref)
+
+      const root = host(ref)
+      expect(root.querySelector('[title="Rename case"]')).toBeNull()
+      expect(root.querySelector('[title="Delete case"]')).toBeNull()
+      expect(root.querySelector('[title^="Stop case"]')).toBeNull()
+      expect(root.querySelector('[title="Create sub-case"]')).toBeNull()
+    })
+
+    it('still lets the caller open such a case', () => {
+      const ref = makeComponentRef([NO_ROLE])
+      const selected: string[] = []
+      ref.instance.caseSelected.subscribe((id) => selected.push(id))
+      render(ref)
+
+      host(ref).querySelector<HTMLButtonElement>('.case-tree-node__select')!.click()
+
+      expect(selected).toEqual(['n'])
+    })
+
+    it('does not emit a star for such a case through the menu action', () => {
+      const component = makeComponent()
+      const stars: Array<{ id: string; starred: boolean }> = []
+      component.starToggled.subscribe((e) => stars.push(e))
+
+      component['onMenuAction'](adminNode({ canStar: false }), 'star')
+
+      expect(stars).toEqual([])
+      expect(component['menuItemsFor'](adminNode({ canStar: false })).map((i) => i.key)).toEqual(['delete'])
+    })
   })
 
   it('lets the user collapse an auto-expanded ancestor of the active case', () => {

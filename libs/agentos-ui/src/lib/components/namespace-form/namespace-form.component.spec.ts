@@ -467,6 +467,103 @@ describe('NamespaceFormComponent (maximum tool rounds)', () => {
     })
   })
 
+  describe('admins can list all cases', () => {
+    const select = (): HTMLSelectElement =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('#ns-admin-list-all-cases')!
+    const choice = () =>
+      (component as unknown as { adminCanListAllCasesControl: { value: string; setValue: (v: string) => void } })
+        .adminCanListAllCasesControl
+    const sent = () => controller.updateNamespace.mock.calls[0][1]
+
+    it.each([
+      [undefined, 'inherit'],
+      [true, 'yes'],
+      [false, 'no'],
+    ])('shows a stored %s as %s', (stored, expected) => {
+      editing({ adminCanListAllCases: stored })
+
+      expect(choice().value).toBe(expected)
+    })
+
+    it('renders the three choices, inherit first', () => {
+      fixture.detectChanges()
+
+      const options = Array.from(select().options).map((option) => [option.value, option.textContent?.trim()])
+      expect(options).toEqual([
+        ['inherit', 'Inherit platform default'],
+        ['yes', 'Yes'],
+        ['no', 'No'],
+      ])
+      expect(select().value).toBe('inherit')
+    })
+
+    it('sends true for Yes', () => {
+      editing()
+      choice().setValue('yes')
+
+      internals().submit()
+
+      expect(sent().adminCanListAllCases).toBe(true)
+    })
+
+    it('sends false for No, which must not be mistaken for inherit', () => {
+      editing()
+      choice().setValue('no')
+
+      internals().submit()
+
+      expect(sent().adminCanListAllCases).toBe(false)
+      expect(JSON.parse(JSON.stringify(sent()))).toHaveProperty('adminCanListAllCases', false)
+    })
+
+    it('sends the field as absent for inherit, which clears an existing override', () => {
+      editing({ adminCanListAllCases: true })
+      choice().setValue('inherit')
+
+      internals().submit()
+
+      expect(sent().adminCanListAllCases).toBeUndefined()
+      expect(JSON.parse(JSON.stringify(sent()))).not.toHaveProperty('adminCanListAllCases')
+    })
+
+    it('keeps a stored override when another field is edited', () => {
+      editing({ adminCanListAllCases: false })
+      internals().nameControl.setValue('renamed')
+
+      internals().submit()
+
+      expect(sent().name).toBe('renamed')
+      expect(sent().adminCanListAllCases).toBe(false)
+    })
+
+    it('sends the choice made on create', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-namespace')
+      choice().setValue('yes')
+
+      internals().submit()
+
+      expect(controller.createNamespace.mock.calls[0][0].adminCanListAllCases).toBe(true)
+    })
+
+    it('leaves a new namespace inheriting by default', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-namespace')
+
+      internals().submit()
+
+      expect(controller.createNamespace.mock.calls[0][0].adminCanListAllCases).toBeUndefined()
+    })
+
+    it('routes a pick in the select to the control', () => {
+      fixture.detectChanges()
+      select().value = 'no'
+      select().dispatchEvent(new Event('change'))
+
+      expect(choice().value).toBe('no')
+    })
+  })
+
   describe('template', () => {
     const input = (): HTMLInputElement => {
       const el = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('#ns-max-tool-rounds')

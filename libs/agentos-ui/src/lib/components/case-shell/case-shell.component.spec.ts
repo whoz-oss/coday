@@ -30,6 +30,8 @@ describe('CaseShellComponent', () => {
     deleteCase: jest.Mock
     setStarred: jest.Mock
     renameCase: jest.Mock
+    listMode: ReturnType<typeof signal<'mine' | 'all'>>
+    setListMode: jest.Mock
   }
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
@@ -40,7 +42,13 @@ describe('CaseShellComponent', () => {
   function makeComponent(
     queryParams: Record<string, string> = {},
     cases: Case[] = [],
-    access: { isAdmin?: boolean; namespaceRole?: NamespaceListItemRoleEnum; namespacesError?: boolean } = {}
+    access: {
+      isAdmin?: boolean
+      namespaceRole?: NamespaceListItemRoleEnum
+      namespacesError?: boolean
+      adminCanListAllCasesEffective?: boolean
+      listMode?: 'mine' | 'all'
+    } = {}
   ): CaseShellComponent {
     queryParams$ = new Subject()
     routerMock = { navigate: jest.fn(), events: EMPTY }
@@ -52,6 +60,8 @@ describe('CaseShellComponent', () => {
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
       setStarred: jest.fn().mockReturnValue(of(undefined)),
       renameCase: jest.fn().mockReturnValue(of(undefined)),
+      listMode: signal<'mine' | 'all'>(access.listMode ?? 'mine'),
+      setListMode: jest.fn(),
     }
     userStateMock = {
       currentUser: jest.fn().mockReturnValue(access.isAdmin ? { isAdmin: true } : null),
@@ -60,13 +70,22 @@ describe('CaseShellComponent', () => {
     caseListUpdates$ = new Subject()
     caseListUpdatesMock = { connect: jest.fn().mockReturnValue(caseListUpdates$) }
     namespaceControllerMock = {
-      listAllNamespace: jest
-        .fn()
-        .mockReturnValue(
-          access.namespacesError
-            ? throwError(() => new Error('502'))
-            : of(access.namespaceRole ? [{ id: NS_ID, name: 'Namespace', role: access.namespaceRole }] : [])
-        ),
+      listAllNamespace: jest.fn().mockReturnValue(
+        access.namespacesError
+          ? throwError(() => new Error('502'))
+          : of(
+              access.namespaceRole
+                ? [
+                    {
+                      id: NS_ID,
+                      name: 'Namespace',
+                      role: access.namespaceRole,
+                      adminCanListAllCasesEffective: access.adminCanListAllCasesEffective,
+                    },
+                  ]
+                : []
+            )
+      ),
     }
     themeMock = {
       theme: jest.fn().mockReturnValue('light'),
@@ -174,6 +193,104 @@ describe('CaseShellComponent', () => {
   it('allows platform admins to manage workspaces', () => {
     const component = makeComponent({ ns: NS_ID, case: 'root' }, [], { isAdmin: true })
     expect(component['canWriteActiveCase']()).toBe(true)
+  })
+
+  describe('Mine / All cases switch', () => {
+    const R = NamespaceListItemRoleEnum
+
+    it.each([
+      { role: R.ADMIN, enabled: true, expected: true },
+      { role: R.SUPER_ADMIN, enabled: true, expected: true },
+      { role: R.MEMBER, enabled: true, expected: false },
+      { role: R.ADMIN, enabled: false, expected: false },
+      { role: R.SUPER_ADMIN, enabled: false, expected: false },
+      { role: R.ADMIN, enabled: undefined, expected: false },
+    ])('is offered only to an admin of a namespace that enables it: %j', ({ role, enabled, expected }) => {
+      const component = makeComponent({ ns: NS_ID }, [], {
+        namespaceRole: role,
+        adminCanListAllCasesEffective: enabled,
+      })
+
+      expect(component['canListAllCases']()).toBe(expected)
+    })
+
+    it('is not offered to a platform admin who has no role in the namespace list', () => {
+      const component = makeComponent({ ns: NS_ID }, [], { isAdmin: true })
+
+      expect(component['canListAllCases']()).toBe(false)
+    })
+
+    it('is not offered before the namespaces have loaded', () => {
+      const component = makeComponent({ ns: NS_ID }, [], { namespacesError: true })
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+
+      expect(component['canListAllCases']()).toBe(false)
+    })
+
+    it('forwards a pick to the state service when the switch is offered', () => {
+      const component = makeComponent({ ns: NS_ID }, [], {
+        namespaceRole: R.ADMIN,
+        adminCanListAllCasesEffective: true,
+      })
+
+      component['onListModeChanged']('all')
+
+      expect(caseStateMock.setListMode).toHaveBeenCalledWith('all')
+    })
+
+    it('refuses to switch to all when the switch is not offered', () => {
+      const component = makeComponent({ ns: NS_ID }, [], {
+        namespaceRole: R.MEMBER,
+        adminCanListAllCasesEffective: true,
+      })
+
+      component['onListModeChanged']('all')
+
+      expect(caseStateMock.setListMode).not.toHaveBeenCalled()
+    })
+
+    it('shows mine when the switch is not offered, whatever the state holds', () => {
+      const component = makeComponent({ ns: NS_ID }, [], {
+        namespaceRole: R.MEMBER,
+        adminCanListAllCasesEffective: true,
+        listMode: 'all',
+      })
+
+      expect(component['effectiveListMode']()).toBe('mine')
+    })
+
+    it('falls back to mine when the toggle is turned off while all is selected', () => {
+      makeComponent({ ns: NS_ID }, [], {
+        namespaceRole: R.ADMIN,
+        adminCanListAllCasesEffective: false,
+        listMode: 'all',
+      })
+
+      expect(caseStateMock.setListMode).toHaveBeenCalledWith('mine')
+    })
+
+    it('keeps all selected while the switch is offered', () => {
+      const component = makeComponent({ ns: NS_ID }, [], {
+        namespaceRole: R.ADMIN,
+        adminCanListAllCasesEffective: true,
+        listMode: 'all',
+      })
+
+      expect(caseStateMock.setListMode).not.toHaveBeenCalled()
+      expect(component['effectiveListMode']()).toBe('all')
+    })
+
+    it('still refreshes through the state service on a live update (which follows the mode)', () => {
+      makeComponent({ ns: NS_ID }, [], {
+        namespaceRole: R.ADMIN,
+        adminCanListAllCasesEffective: true,
+        listMode: 'all',
+      })
+
+      caseListUpdates$.next('updated')
+
+      expect(caseStateMock.refreshCases).toHaveBeenCalledWith(NS_ID)
+    })
   })
 
   describe('theme', () => {

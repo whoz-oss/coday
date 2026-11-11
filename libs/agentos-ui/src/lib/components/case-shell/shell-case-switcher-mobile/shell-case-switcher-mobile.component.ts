@@ -3,7 +3,8 @@ import { WorkspaceView } from '../../../services/case-workspace.service'
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
 import { Case } from '@whoz-oss/agentos-api-client'
 import { CaseStatusGlyphComponent } from '../../case-status-glyph/case-status-glyph.component'
-import { AvatarComponent } from '@whoz-oss/design-system'
+import { AvatarComponent, SegmentedComponent, SegmentedOption } from '@whoz-oss/design-system'
+import { CaseListMode } from '../../../services/case-state.service'
 
 interface CaseGroup {
   label: string
@@ -16,7 +17,7 @@ interface CaseGroup {
  */
 @Component({
   selector: 'agentos-shell-case-switcher-mobile',
-  imports: [CaseStatusGlyphComponent, CaseGitBadgeComponent, AvatarComponent],
+  imports: [CaseStatusGlyphComponent, CaseGitBadgeComponent, AvatarComponent, SegmentedComponent],
   templateUrl: './shell-case-switcher-mobile.component.html',
   styleUrl: './shell-case-switcher-mobile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,6 +38,14 @@ export class ShellCaseSwitcherMobileComponent {
   /** False for a light-only variant: the light/dark entry is then hidden. */
   readonly canToggleMode = input(true)
   readonly showToolCalls = input.required<boolean>()
+  /** Whether the "Mine / All cases" switch is offered (namespace toggle on AND caller is a namespace admin). */
+  readonly canListAllCases = input(false)
+  readonly listMode = input<CaseListMode>('mine')
+
+  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = [
+    { value: 'mine', label: 'Mine' },
+    { value: 'all', label: 'All cases' },
+  ]
 
   // ── Internal state ────────────────────────────────────────
   protected readonly filterQuery = signal('')
@@ -69,6 +78,7 @@ export class ShellCaseSwitcherMobileComponent {
 
   // ── Outputs ────────────────────────────────────────────
   readonly closed = output<void>()
+  readonly listModeChanged = output<CaseListMode>()
   readonly caseSelected = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()

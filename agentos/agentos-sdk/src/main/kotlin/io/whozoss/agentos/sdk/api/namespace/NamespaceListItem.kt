@@ -37,5 +37,5 @@ data class NamespaceListItem(
                 "default): whether this namespace's administrators get a 'Mine / All cases' switch in the case drawer. " +
                 "Read-only.",
     )
-    val adminCanListAllCasesEffective: Boolean = false,
+    val adminCanListAllCasesEffective: Boolean? = null,
 )

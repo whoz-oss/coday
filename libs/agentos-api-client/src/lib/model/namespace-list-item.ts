@@ -10,7 +10,7 @@
 
 export interface NamespaceListItem {
   /**
-   * Resolved value of the namespace setting \'adminCanListAllCases\' (the namespace override, else the platform default) whether this namespace\'s administrators get a \'Mine / All cases\' switch in the case drawer. Read-only.
+   * Resolved value of the namespace setting \'adminCanListAllCases\' (the namespace override, else the platform default): whether this namespace\'s administrators get a \'Mine / All cases\' switch in the case drawer. Read-only.
    */
   adminCanListAllCasesEffective?: boolean
   configPath?: string
