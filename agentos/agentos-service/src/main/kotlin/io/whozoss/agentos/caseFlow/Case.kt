@@ -66,6 +66,16 @@ data class Case(
      */
     val reasoningEffort: ReasoningEffort? = null,
     /**
+     * Per-case override of the AI model of the agents that run in this case: an alias or an API model name,
+     * resolved like [io.whozoss.agentos.agentConfig.AgentConfig.modelName] (alias first, then API name).
+     *
+     * **`null` means "use the model of each agent"** ([io.whozoss.agentos.agentConfig.AgentConfig.modelName], else the
+     * namespace default). Read at the start of each agent run, never during one. Replaces the model of every agent
+     * that runs in the case; a name that no longer resolves falls back to the agent's own model. The reasoning effort
+     * of the case, when set, still applies on top of the chosen model. Sub-cases do not inherit it.
+     */
+    val modelName: String? = null,
+    /**
      * Short LLM-written summary of what the case is about and where it stands, kept up to date by
      * [CaseSummaryService] and used by the case search. Null until the first summary is generated.
      *

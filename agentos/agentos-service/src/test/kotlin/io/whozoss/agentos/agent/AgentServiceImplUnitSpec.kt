@@ -1089,6 +1089,132 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Case-level model override: context.modelName -> agent modelName -> default
+        // -------------------------------------------------------------------------
+
+        "findAgentByName runs on the case model override instead of the agent's own model" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val overrideModel = modelConfig(apiName = "claude-opus-4-5", alias = "opus")
+            val provider = providerConfig()
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "opus") } returns overrideModel
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            val agent = agentService.findAgentByName("my-agent", context.copy(modelName = "opus"))
+
+            agent.llmModel shouldBe "claude-opus-4-5"
+            verify(exactly = 1) { chatClientProvider.getChatClient(overrideModel, provider, any()) }
+            // The agent's own model is not even looked up.
+            verify(exactly = 0) { aiModelService.findAiModel(namespaceId, "sonnet") }
+        }
+
+        "findAgentByName keeps the agent's own model when the case has no model override" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context.copy(modelName = null))
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
+        }
+
+        "findAgentByName falls back to the agent's own model when the case model override no longer resolves" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "deleted-model") } returns null
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            val agent = agentService.findAgentByName("my-agent", context.copy(modelName = "deleted-model"))
+
+            agent.name shouldBe "my-agent"
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
+        }
+
+        "findAgentByName falls back to the default model when the override is gone and the agent names none" {
+            val config = agentConfig(name = "my-agent", modelName = null)
+            val defaultModel = modelConfig(alias = "default")
+            val provider = providerConfig()
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "deleted-model") } returns null
+            every { aiModelService.findAiModel(namespaceId) } returns defaultModel
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context.copy(modelName = "deleted-model"))
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(defaultModel, provider, any()) }
+        }
+
+        "findAgentByName uses the case model override for an agent that names no model" {
+            val config = agentConfig(name = "my-agent", modelName = null)
+            val overrideModel = modelConfig(apiName = "claude-opus-4-5", alias = "opus")
+            val provider = providerConfig()
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "opus") } returns overrideModel
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            agentService.findAgentByName("my-agent", context.copy(modelName = "opus"))
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(overrideModel, provider, any()) }
+        }
+
+        "findAgentByName applies the case reasoning effort on top of the case model override" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val overrideModel =
+                modelConfig(apiName = "openai/gpt-6-astra", alias = "astra", reasoningEffort = ReasoningEffort.LOW)
+            val provider = providerConfig(apiType = AiApiType.OpenAI)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "astra") } returns overrideModel
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(any(), provider, any()) } returns mockk(relaxed = true)
+
+            val agent =
+                agentService.findAgentByName(
+                    "my-agent",
+                    context.copy(modelName = "astra", reasoningEffort = ReasoningEffort.XHIGH),
+                )
+
+            agent.llmModel shouldBe "openai/gpt-6-astra"
+            agent.reasoningEffort shouldBe ReasoningEffort.XHIGH
+            verify(exactly = 1) {
+                chatClientProvider.getChatClient(
+                    overrideModel.copy(reasoningEffort = ReasoningEffort.XHIGH),
+                    provider,
+                    any(),
+                )
+            }
+        }
+
+        "an ADVANCED agent still needs the case model override to support advanced execution" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet").copy(executionMode = ExecutionMode.ADVANCED)
+            val overrideModel = modelConfig(alias = "small", supportsAdvancedExecution = false)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "small") } returns overrideModel
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            shouldThrow<AdvancedExecutionNotSupportedException> {
+                agentService.findAgentByName("my-agent", context.copy(modelName = "small"))
+            }.message shouldContain "'small'"
+        }
+
+        // -------------------------------------------------------------------------
         // Maximum tool rounds: the namespace override wins, the platform value is the fallback
         // -------------------------------------------------------------------------
 

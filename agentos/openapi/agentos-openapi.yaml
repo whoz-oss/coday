@@ -1911,6 +1911,38 @@ paths:
           description: OK
       tags:
       - case-controller
+  /api/cases/{id}/model:
+    put:
+      description: "PUT /api/cases/{id}/model — set the case-level override of the\
+        \ AI model (an alias or an API model name) of the agents running in the case,\
+        \ or remove it with a null value so each agent uses its own model again. An\
+        \ unknown name is refused with 400. Read at the start of each agent run. Replaces\
+        \ the model of every agent of the case; sub-cases do not inherit it. Returns\
+        \ the updated Case DTO."
+      operationId: setModelCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseModelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Set the AI model of a case
+      tags:
+      - case-controller
   /api/cases/{id}/reasoning-effort:
     put:
       description: "PUT /api/cases/{id}/reasoning-effort — set the case-level override\
@@ -4800,6 +4832,12 @@ components:
         lastMessageAt:
           type: string
           format: date-time
+        modelName:
+          type: string
+          description: Per-case override of the AI model of the agents running in
+            the case (an alias or an API model name). Null means each agent uses its
+            own model. Replaces the model of every agent of the case; sub-cases do
+            not inherit it.
         modified:
           type: string
           format: date-time
@@ -4915,6 +4953,11 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseModelRequest:
+      type: object
+      properties:
+        modelName:
+          type: string
     CaseReasoningEffortRequest:
       type: object
       properties:

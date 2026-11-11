@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.CaseModelRequest
 import io.whozoss.agentos.sdk.api.case.CaseReasoningEffortRequest
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
@@ -200,6 +201,7 @@ class CaseController(
                 title = resource.title ?: "Case ${metadata.id}",
                 runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
                 reasoningEffort = resource.reasoningEffort,
+                modelName = resource.modelName?.trim()?.takeIf { it.isNotEmpty() },
                 parentCaseId = resource.parentCaseId,
             )
         val saved = caseService.create(domain, resource.worktree)
@@ -251,6 +253,7 @@ class CaseController(
                     runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                     // reasoningEffort is not changed here: an absent field must not erase the
                     // override, and null is a meaningful value. See setReasoningEffort.
+                    // modelName is not changed here for the same reason. See setModel.
                     // summary and summaryMessageCount are not changed here either: they belong to
                     // CaseSummaryService, a client cannot overwrite them.
                 )
@@ -270,6 +273,21 @@ class CaseController(
     ): CaseDto {
         val updated = caseService.setReasoningEffort(id, request.reasoningEffort)
         logger.info { "Case $id reasoning effort set to ${request.reasoningEffort}" }
+        return updated.withCallerMeta(userService.getCurrentUser().id.toString())
+    }
+
+    /**
+     * PUT /api/cases/{id}/model — set the case-level AI model override, or remove it with a null value. An unknown
+     * model name is refused with 400. Same permission as renaming the case.
+     */
+    @PutMapping("/{id}/model", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
+    override fun setModel(
+        @PathVariable id: UUID,
+        @RequestBody request: CaseModelRequest,
+    ): CaseDto {
+        val updated = caseService.setModel(id, request.modelName)
+        logger.info { "Case $id model set to ${request.modelName}" }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 
@@ -488,6 +506,7 @@ internal fun toDto(entity: Case) =
         scheduledPromptId = entity.scheduledPromptId,
         runCostThreshold = entity.runCostThreshold,
         reasoningEffort = entity.reasoningEffort,
+        modelName = entity.modelName,
         summary = entity.summary,
         created = entity.metadata.created,
         modified = entity.metadata.modified,

@@ -542,6 +542,16 @@
             />
           </div>
         }
+        @if (autocomplete.modelSuggestions().length > 0) {
+          <div class="case-chat__autocomplete">
+            <agentos-model-autocomplete
+              [options]="autocomplete.modelSuggestions()"
+              [current]="activeCase()?.modelName ?? null"
+              (selected)="onModelSelected($event)"
+              (dismissed)="closeModelAutocomplete()"
+            />
+          </div>
+        }
         @if (autocomplete.slashSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-prompt-autocomplete
@@ -592,6 +602,15 @@
             />
           }
           @if (activeCase()) {
+            <button
+              type="button"
+              class="case-chat__model"
+              title="AI model of this case. Click, or type /model, to change it; /model agent goes back to each agent's own model."
+              [disabled]="isTerminal()"
+              (click)="openModelPicker()"
+            >
+              model: {{ caseModelLabel() }}
+            </button>
             <span
               class="case-chat__effort"
               title="Type /effort to change it. Not applied to Anthropic and Gemini providers."

@@ -21,6 +21,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
+import { AiModelStateService } from '../../services/ai-model-state.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
@@ -64,6 +65,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     canWriteNamespace: ReturnType<typeof signal<boolean>>
   }
   let queryParams$: Subject<Record<string, string>>
+  let aiModels: { listAvailable: jest.Mock }
   let calls: string[]
   let voiceApi: { postVoiceMessage: jest.Mock; capabilityVoiceMessage: jest.Mock }
   const track = { stop: jest.fn() }
@@ -94,6 +96,15 @@ describe('CaseHomeComponent — first message with attachments', () => {
       }),
     }
     router = { navigate: jest.fn() }
+    aiModels = {
+      listAvailable: jest.fn().mockReturnValue(
+        of([
+          { aiProviderId: 'p', apiModelName: 'claude-opus', alias: 'BIG', priority: 0 },
+          { aiProviderId: 'p', apiModelName: 'claude-haiku', alias: 'SMALL', priority: 0 },
+          { aiProviderId: 'p', apiModelName: 'whisper-1', alias: 'WHISPER', priority: 0 },
+        ])
+      ),
+    }
     track.stop.mockClear()
     voiceApi = {
       postVoiceMessage: jest.fn().mockImplementation(() => {
@@ -139,6 +150,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
         { provide: CaseWorkspaceService, useValue: workspaces },
         { provide: NamespaceGitControllerService, useValue: gitApi },
         { provide: IntegrationTypeControllerService, useValue: integrationTypes },
+        { provide: AiModelStateService, useValue: aiModels },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: { ns: 'ns-1' } }, queryParams: queryParams$ } },
         { provide: ExchangeStateService, useValue: exchangeState },
@@ -740,6 +752,125 @@ describe('CaseHomeComponent — first message with attachments', () => {
     expect(integrationTypes.listTypesIntegrationType).toHaveBeenCalledTimes(2)
     expect(ref.instance['worktreeOffered']()).toBe(true)
     ref.destroy()
+  })
+
+  describe('model of the new case', () => {
+    it('lists the chat models of the namespace, without the transcription model', () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+
+      expect(aiModels.listAvailable).toHaveBeenCalledWith('ns-1')
+      expect(ref.instance['modelOptions']().map((o) => o.value)).toEqual([
+        'BIG',
+        'SMALL',
+        'claude-haiku',
+        'claude-opus',
+      ])
+      ref.destroy()
+    })
+
+    it('defaults to the agents own models and sends no modelName', async () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      expect(ref.instance['modelName']()).toBe('')
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('modelName')
+      ref.destroy()
+    })
+
+    it('sends the chosen model when the case is created', async () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      ref.instance['onModelChange']({ target: { value: 'BIG' } } as unknown as Event)
+      ref.instance['inputValue'].set('@reviewer look at this')
+
+      await ref.instance['submit']()
+
+      expect(api.createCase).toHaveBeenCalledWith(expect.objectContaining({ namespaceId: 'ns-1', modelName: 'BIG' }))
+      ref.destroy()
+    })
+
+    it('sends the chosen model with a voice message as well', async () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      ref.instance['onModelChange']({ target: { value: 'SMALL' } } as unknown as Event)
+      ref.instance['startRecording']()
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+      ref.instance['sendRecording']()
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+
+      expect(api.createCase).toHaveBeenCalledWith(expect.objectContaining({ modelName: 'SMALL' }))
+      ref.destroy()
+    })
+
+    it('goes back to the agent default when the empty entry is picked again', async () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      ref.instance['onModelChange']({ target: { value: 'BIG' } } as unknown as Event)
+      ref.instance['onModelChange']({ target: { value: '' } } as unknown as Event)
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('modelName')
+      ref.destroy()
+    })
+
+    it('offers nothing and sends nothing when the models cannot be read', async () => {
+      aiModels.listAvailable.mockReturnValue(of([]))
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(ref.instance['modelOptions']()).toEqual([])
+      expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('modelName')
+      ref.destroy()
+    })
+
+    it('resets the choice and lists the models of the new namespace when the composer switches namespace', () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      ref.instance['onModelChange']({ target: { value: 'BIG' } } as unknown as Event)
+      aiModels.listAvailable.mockReturnValue(
+        of([{ aiProviderId: 'p', apiModelName: 'gpt-4o', alias: 'OTHER', priority: 0 }])
+      )
+
+      queryParams$.next({ ns: 'ns-2' })
+
+      expect(aiModels.listAvailable).toHaveBeenLastCalledWith('ns-2')
+      expect(ref.instance['modelName']()).toBe('')
+      expect(ref.instance['modelOptions']().map((o) => o.value)).toEqual(['OTHER', 'gpt-4o'])
+      ref.destroy()
+    })
+
+    it('renders the select only when there is a model to choose from', () => {
+      const render = (): HTMLElement => {
+        const ref = makeComponent()
+        TestBed.inject(ApplicationRef).attachView(ref.hostView)
+        ref.instance.ngOnInit()
+        ref.changeDetectorRef.detectChanges()
+        return ref.location.nativeElement as HTMLElement
+      }
+
+      const withModels = render()
+      const select = withModels.querySelector('select[aria-label="AI model"]')
+      expect(select).not.toBeNull()
+      expect(Array.from(select!.querySelectorAll('option')).map((o) => o.textContent?.trim())).toEqual([
+        'Agent default',
+        'BIG (claude-opus)',
+        'SMALL (claude-haiku)',
+        'claude-haiku',
+        'claude-opus',
+      ])
+
+      aiModels.listAvailable.mockReturnValue(of([]))
+      expect(render().querySelector('select[aria-label="AI model"]')).toBeNull()
+    })
   })
 
   describe('first message as a voice message', () => {

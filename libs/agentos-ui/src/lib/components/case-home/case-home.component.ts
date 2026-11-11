@@ -41,7 +41,7 @@ import {
   Prompt,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
-import { BlueprintDirective, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { BlueprintDirective, ControlDirective, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
@@ -63,6 +63,9 @@ import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case
 import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
+import { AiModelStateService } from '../../services/ai-model-state.service'
+import { chatModelOptions } from '../../services/chat-model.utils'
+import { ModelOption } from '../agent-config-form/model-options'
 
 const GIT_INTEGRATION_TYPE = 'GIT'
 
@@ -98,6 +101,7 @@ const GIT_INTEGRATION_TYPE = 'GIT'
   selector: 'agentos-case-home',
   imports: [
     BlueprintDirective,
+    ControlDirective,
     DrawerComponent,
     ExchangeShellComponent,
     IconButtonComponent,
@@ -117,6 +121,7 @@ export class CaseHomeComponent implements OnInit {
   private readonly workspaces = inject(CaseWorkspaceService)
   private readonly gitApi = inject(NamespaceGitControllerService)
   private readonly integrationTypeApi = inject(IntegrationTypeControllerService)
+  private readonly aiModels = inject(AiModelStateService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly caseState = inject(CaseStateService)
@@ -164,6 +169,12 @@ export class CaseHomeComponent implements OnInit {
   /** True once the creator opts in to the worktree the namespace can give the new case. Unchecked by default. */
   protected readonly worktree = signal(false)
   private readonly worktreeNamespace = new Subject<string>()
+
+  /** The chat models the first message can run on, for the namespace in use (empty until loaded, or on failure). */
+  protected readonly modelOptions = signal<ModelOption[]>([])
+  /** The model chosen for the new case; '' keeps each agent's own model (the default). */
+  protected readonly modelName = signal('')
+  private readonly modelNamespace = new Subject<string>()
   /**
    * Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows.
    * A failure is not kept: the next namespace asks again.
@@ -192,6 +203,7 @@ export class CaseHomeComponent implements OnInit {
     // (namespace-intent badge and upload target) needs the namespace manifest.
     this.exchangeState.initializeForNamespace(this.namespaceId)
     this.worktreeNamespace.next(this.namespaceId)
+    this.modelNamespace.next(this.namespaceId)
 
     // The composer is reused when switching namespaces or the parent of a new sub-case.
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -214,6 +226,9 @@ export class CaseHomeComponent implements OnInit {
         this.exchangeState.initializeForNamespace(newNs)
         this.worktreeOffered.set(false)
         this.worktreeNamespace.next(newNs)
+        this.modelName.set('')
+        this.modelOptions.set([])
+        this.modelNamespace.next(newNs)
       }
     })
   }
@@ -223,6 +238,15 @@ export class CaseHomeComponent implements OnInit {
     this.autocomplete.init(this.namespaceId)
     // No case yet: `#` lists the namespace exchange only.
     this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: null }))
+
+    // The models of the namespace, for the optional model of the new case. A namespace switch drops the answer
+    // still pending for the previous one; a failed read leaves the select with its single "Agent default" entry.
+    this.modelNamespace
+      .pipe(
+        switchMap((namespaceId) => this.aiModels.listAvailable(namespaceId)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((models) => this.modelOptions.set(chatModelOptions(models)))
 
     // A namespace switch drops the answer still pending for the previous one. A sub-case shares its
     // root's worktree, so its composer asks nothing.
@@ -418,6 +442,10 @@ export class CaseHomeComponent implements OnInit {
     this.worktree.set((event.target as HTMLInputElement).checked)
   }
 
+  protected onModelChange(event: Event): void {
+    this.modelName.set((event.target as HTMLSelectElement).value)
+  }
+
   protected onKeydown(event: KeyboardEvent): void {
     const consumed = this.autocomplete.onKeydown(
       event,
@@ -584,6 +612,8 @@ export class CaseHomeComponent implements OnInit {
           // When the box is offered for a top-level case, the creator's explicit choice is sent (true or false).
           // Nothing is sent otherwise: the backend rejects a worktree choice on a sub-case.
           ...(this.worktreeOffered() && !parentCaseId ? { worktree: this.worktree() } : {}),
+          // Only a chosen model is sent: nothing keeps each agent on its own model.
+          ...(this.modelName() ? { modelName: this.modelName() } : {}),
           status: CaseStatusEnum.PENDING,
           favorite: false,
           removed: false,

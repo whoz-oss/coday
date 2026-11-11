@@ -1036,7 +1036,8 @@
     padding: 6px 10px 10px;
   }
 
-  &__effort {
+  &__effort,
+  &__model {
     flex-shrink: 0;
     padding: 2px 6px;
     border: 1px solid var(--color-divider);
@@ -1045,6 +1046,24 @@
     font-family: var(--font-body);
     font-size: 11px;
     white-space: nowrap;
+  }
+
+  // The model chip is a button (it opens the /model picker): drop the native button look.
+  &__model {
+    background: transparent;
+    cursor: pointer;
+    max-width: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover:not(:disabled) {
+      border-color: var(--color-accent);
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
   }
 
   &__actions-hint {
