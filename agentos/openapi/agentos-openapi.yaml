@@ -10,6 +10,22 @@ tags:
 - description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
   name: sse
 paths:
+  /api/admin/configuration:
+    get:
+      operationId: listEffectiveConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigurationEntry"
+          description: OK
+      summary: List the effective configuration (environment variables and Spring
+        properties) of the service
+      tags:
+      - effective-configuration-controller
   /api/agent-configs:
     post:
       operationId: createAgentConfig
@@ -387,8 +403,8 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
+        "204":
+          description: No Content
       tags:
       - ai-model-controller
     get:
@@ -771,6 +787,92 @@ paths:
           description: OK
       tags:
       - auth-setting-controller
+  /api/auth-settings/{id}/connect:
+    post:
+      description: Starts an OAuth authorization for the caller and returns the URL
+        to open. Only OAuth settings can be connected (400 otherwise); 422 when the
+        instance has no OAuth redirect URI configured or the authorization could not
+        start. A new authorization replaces an existing connection only once it completes.
+      operationId: connectAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSettingConnectResponse"
+          description: OK
+      summary: Connect my account to an AuthSetting
+      tags:
+      - auth-setting-controller
+  /api/auth-settings/{id}/connection:
+    get:
+      description: "Tells whether the caller holds a stored connection that can still\
+        \ serve a run. Pass the namespaceId the setting is used from: a connection\
+        \ belongs to the layer the runtime resolves the setting name to, which depends\
+        \ on the namespace."
+      operationId: getConnectionAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSettingConnection"
+          description: OK
+      summary: Get my connection state for an AuthSetting
+      tags:
+      - auth-setting-controller
+  /api/auth-settings/{id}/credential:
+    delete:
+      description: "Deletes the caller's own stored credential for this AuthSetting\
+        \ (OAuth tokens), so the next use of an integration bound to it asks for a\
+        \ new authorization. Other users' credentials are never touched. Requires\
+        \ READ on the AuthSetting; idempotent (204 even when the caller had no credential)."
+      operationId: resetMyCredentialAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: Reset my connection to an AuthSetting
+      tags:
+      - auth-setting-controller
   /api/case-events/by-ids:
     post:
       operationId: getByIdsCaseEventRest
@@ -1052,6 +1154,27 @@ paths:
       summary: List cases by user
       tags:
       - case-controller
+  /api/cases/events/mine:
+    get:
+      description: "Server-Sent Events stream fanning in PendingConfirmationEvent,\
+        \ ConfirmationResolvedEvent, QuestionEvent, AnswerEvent, AgentFinishedEvent\
+        \ and ErrorEvent across every case the current user is directly related to\
+        \ and that is currently active. It also carries a 'namespace-case-list-updated'\
+        \ event, payload '{\"namespaceId\":\"...\"}', for every namespace the user\
+        \ can read: reload GET /api/cases/by-parentId/{namespaceId}/mine when it arrives,\
+        \ instead of opening a stream per namespace. Use the browser EventSource API\
+        \ to consume this endpoint, not a regular HTTP client."
+      operationId: streamMyEventsGlobalCaseEventSse
+      responses:
+        "200":
+          content:
+            text/event-stream: {}
+          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
+            \ (PendingConfirmationEvent, QuestionEvent, AgentFinishedEvent, etc.)\
+            \ with a \"type\" discriminant field and its own \"caseId\"."
+      summary: Stream notifiable events across all of my active cases via SSE
+      tags:
+      - sse
   /api/cases/unread-count:
     get:
       description: GET /api/cases/unread-count?namespaceId= — number of unread cases
@@ -1523,6 +1646,54 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/voice-messages:
+    post:
+      operationId: postVoiceMessage
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: answerToEventId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: durationMs
+        required: false
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                answerToEventId:
+                  type: string
+                  format: uuid
+                audio:
+                  type: string
+                  format: binary
+                durationMs:
+                  type: integer
+                  format: int64
+              required:
+              - audio
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceMessageResponse"
+          description: OK
+      tags:
+      - voice-message-controller
   /api/cases/{caseId}/workspace:
     get:
       operationId: getCaseWorkspace
@@ -4045,6 +4216,18 @@ paths:
       summary: "Revoke a user's UserGroup and Namespace access, scoped to one namespace"
       tags:
       - user-controller
+  /api/voice-messages/capability:
+    get:
+      operationId: capabilityVoiceMessage
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceMessageCapabilityResponse"
+          description: OK
+      tags:
+      - voice-message-controller
 components:
   schemas:
     Actor:
@@ -4131,6 +4314,7 @@ components:
             agents.
         modelName:
           type: string
+          minLength: 1
         name:
           type: string
           minLength: 1
@@ -4153,10 +4337,15 @@ components:
           items:
             type: string
             description: "Glob patterns controlling which agents this agent may delegate\
-              \ to. When null or empty, no delegation capability is provided. '*'\
-              \ matches any sequence of characters (anchored, case-insensitive). Examples:\
-              \ ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
-              \ matches FixerHelper/FixerV2."
+              \ to, matched against each agent's name — never its id. An id matches\
+              \ no agent and silently leaves this agent with no way to delegate, so\
+              \ writing one is refused: on create, and on update for an id the stored\
+              \ value did not already hold. An id already stored is carried through\
+              \ unchanged, so an agent in that state stays editable. When null or\
+              \ empty, no delegation capability is provided. '*' matches any sequence\
+              \ of characters (anchored, case-insensitive). Examples: ['*'] allows\
+              \ all agents, ['Reviewer', 'Fixer'] names two of them, ['*Fixer'] matches\
+              \ BugFixer/StoryFixer, ['Fixer*'] matches FixerHelper/FixerV2."
             minLength: 1
         updatedBy:
           type: string
@@ -4164,6 +4353,7 @@ components:
           type: string
           format: date-time
       required:
+      - modelName
       - name
     AgentConfigDefaultsDto:
       type: object
@@ -4286,6 +4476,9 @@ components:
             type: string
           llmUsage:
             $ref: "#/components/schemas/LlmUsage"
+          maxIterationsReached:
+            type: integer
+            format: int32
       required:
       - agentId
       - agentName
@@ -4372,6 +4565,8 @@ components:
           format: int32
         reasoningEffort:
           $ref: "#/components/schemas/ReasoningEffort"
+        supportsAdvancedExecution:
+          type: boolean
         temperature:
           type: number
           format: double
@@ -4467,6 +4662,45 @@ components:
       required:
       - authType
       - name
+    Audio:
+      allOf:
+      - $ref: "#/components/schemas/MessageContent"
+      - type: object
+        properties:
+          durationMs:
+            type: integer
+            format: int64
+          mimeType:
+            type: string
+          path:
+            type: string
+      required:
+      - mimeType
+      - path
+    AuthSettingConnectResponse:
+      type: object
+      properties:
+        authorizationUrl:
+          type: string
+          description: Authorization URL to open in a popup; the flow waits for its
+            callback.
+      required:
+      - authorizationUrl
+    AuthSettingConnection:
+      type: object
+      properties:
+        connected:
+          type: boolean
+          description: "True when the caller holds a stored connection that can still\
+            \ serve a run (valid access token, or expired but refreshable)."
+        connectedAt:
+          type: string
+          format: date-time
+          description: "When the stored connection was last written, null when not\
+            \ connected. A new authorization always moves it forward, which is how\
+            \ a client sees a reconnection complete."
+      required:
+      - connected
     AuthSettingDto:
       type: object
       discriminator:
@@ -4607,6 +4841,11 @@ components:
           - IDLE
           - KILLED
           - ERROR
+        summary:
+          type: string
+          description: "Short server-generated summary of the case, refreshed after\
+            \ agent turns and matched by the case search. Null until the first one.\
+            \ Read-only: ignored on create and update."
         title:
           type: string
         worktree:
@@ -4940,6 +5179,8 @@ components:
           - INTEGRATION
           - AUTH_SETTING
           - NAMESPACE
+          - AI_PROVIDER
+          - AI_MODEL
         name:
           type: string
           description: Name of the entity created or targeted.
@@ -5001,6 +5242,29 @@ components:
       - key
       - label
       - path
+    ConfigurationEntry:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        description:
+          type: string
+        key:
+          type: string
+        sensitive:
+          type: boolean
+        source:
+          type: string
+          enum:
+          - ENVIRONMENT
+          - PROPERTY
+        value:
+          type: string
+      required:
+      - configured
+      - key
+      - sensitive
+      - source
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -5675,6 +5939,7 @@ components:
             type: array
             items:
               oneOf:
+              - $ref: "#/components/schemas/Audio"
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
           llmModel:
@@ -5737,6 +6002,13 @@ components:
         id:
           type: string
           format: uuid
+        maxToolRounds:
+          type: integer
+          format: int32
+          description: "Maximum number of tool rounds of one agent run in this namespace.\
+            \ Null means inherit from the platform default (agentos.limits.agent-max-iterations).\
+            \ On PUT, null clears an existing override."
+          minimum: 1
         name:
           type: string
           minLength: 1
@@ -5748,6 +6020,11 @@ components:
             \ Applies to all cases in this namespace that do not declare their own\
             \ threshold."
           minimum: 0
+        sharedExchangePath:
+          type: string
+          description: Optional absolute path of a directory on the server host that
+            replaces the default directory of the namespace-shared file exchange.
+            Only super-admins may set or change it. Created on first use.
       required:
       - name
     NamespaceAgentDeployRequest:
@@ -6775,6 +7052,7 @@ components:
               $ref: "#/components/schemas/Image"
           output:
             oneOf:
+            - $ref: "#/components/schemas/Audio"
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
           structuredOutput:
@@ -6892,6 +7170,12 @@ components:
       properties:
         enabled:
           type: boolean
+        runCostThreshold:
+          type: number
+          format: double
+          description: "Platform default of the run cost threshold, in the platform\
+            \ currency unit (agentos.limits.run-cost-threshold). Inherited by a namespace\
+            \ or case that sets none. Null when the platform sets no limit."
       required:
       - enabled
     UsageRecord:
@@ -7152,6 +7436,23 @@ components:
           description: Internal user id.
       required:
       - userId
+    VoiceMessageCapabilityResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+      required:
+      - available
+    VoiceMessageResponse:
+      type: object
+      properties:
+        path:
+          type: string
+        transcript:
+          type: string
+      required:
+      - path
+      - transcript
     WarnEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

@@ -1,19 +1,41 @@
-@if (attachments().length > 0 || limitError()) {
+@if (references().length > 0 || attachments().length > 0 || limitError()) {
   <div class="composer-attachments">
-    @if (attachments().length > 0) {
+    @if (references().length > 0 || attachments().length > 0) {
       <div class="composer-attachments__chips">
+        @for (reference of references(); track reference.scope + ':' + reference.path) {
+          <div class="composer-attachments__chip">
+            <span class="composer-attachments__icon material-icons" aria-hidden="true">{{
+              referenceIcon(reference)
+            }}</span>
+            <span class="composer-attachments__name" [title]="referenceTitle(reference)">{{
+              middleTruncate(referenceName(reference))
+            }}</span>
+            <span class="composer-attachments__kind">{{ kindLabel(referenceName(reference)) }}</span>
+            <span class="composer-attachments__badge">{{ scopeOfRef(reference.scope) }}</span>
+            <ds-icon-button
+              icon="close"
+              [title]="'Remove ' + referenceName(reference)"
+              [disabled]="disabled()"
+              (action)="referenceRemoved.emit(reference)"
+            />
+          </div>
+        }
         @for (attachment of attachments(); track attachment.id) {
           <div
             class="composer-attachments__chip"
             [class.composer-attachments__chip--error]="attachment.status === 'error'"
             [class.composer-attachments__chip--uploaded]="attachment.status === 'uploaded'"
           >
-            <span
-              class="composer-attachments__icon material-icons"
-              [class.composer-attachments__icon--spinning]="attachment.status === 'uploading'"
-              aria-hidden="true"
-              >{{ chipIcon(attachment) }}</span
-            >
+            @if (thumbnail(attachment); as thumbnailUrl) {
+              <img class="composer-attachments__thumbnail" [src]="thumbnailUrl" alt="" aria-hidden="true" />
+            } @else {
+              <span
+                class="composer-attachments__icon material-icons"
+                [class.composer-attachments__icon--spinning]="attachment.status === 'uploading'"
+                aria-hidden="true"
+                >{{ chipIcon(attachment) }}</span
+              >
+            }
             <span class="composer-attachments__name" [title]="attachment.file.name">{{
               middleTruncate(attachment.file.name)
             }}</span>

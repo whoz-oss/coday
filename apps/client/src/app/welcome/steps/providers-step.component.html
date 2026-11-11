@@ -1,0 +1,107 @@
+<section class="step">
+  <h2 class="step__title">Which models do you want to use?</h2>
+  <p class="step__lead">
+    Pick at least one provider and paste its API key. With several, drag the cards (or use the arrows) to say which one
+    you prefer for shared model aliases. The default alias for utility calls is currently provided only by Requesty,
+    regardless of this order.
+  </p>
+
+  <ul class="cards" role="list">
+    @for (card of cards(); track card.draft.id) {
+      <li
+        class="card"
+        [class.card--on]="card.draft.enabled"
+        [class.card--dragging]="dragging() === card.draft.id"
+        [class.card--over]="dragOver() === card.draft.id && dragging() !== card.draft.id"
+        [attr.draggable]="card.draft.enabled && enabledCount() > 1 ? 'true' : null"
+        [attr.data-testid]="'provider-' + card.draft.id"
+        (dragstart)="onDragStart(card.draft.id, $event)"
+        (dragover)="onDragOver(card.draft.id, $event)"
+        (drop)="onDrop(card.draft.id, $event)"
+        (dragend)="onDragEnd()"
+      >
+        <div class="card__head">
+          <label class="card__toggle">
+            <input
+              type="checkbox"
+              [checked]="card.draft.enabled"
+              [attr.data-testid]="'provider-toggle-' + card.draft.id"
+              (change)="state.toggleProvider(card.draft.id)"
+              (keydown)="onCardKeydown(card.draft.id, $event)"
+            />
+            <span class="card__name">{{ card.info.label }}</span>
+          </label>
+
+          @if (card.rank !== null) {
+            <span class="card__rank" [attr.aria-label]="'Rank ' + card.rank">#{{ card.rank }}</span>
+            @if (enabledCount() > 1) {
+              <span class="card__move">
+                <button
+                  type="button"
+                  class="card__arrow"
+                  aria-label="Prefer this provider more"
+                  [disabled]="card.rank === 1"
+                  (click)="state.moveProvider(card.draft.id, -1)"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="card__arrow"
+                  aria-label="Prefer this provider less"
+                  [disabled]="card.rank === enabledCount()"
+                  (click)="state.moveProvider(card.draft.id, 1)"
+                >
+                  ↓
+                </button>
+              </span>
+            }
+          }
+        </div>
+
+        <p class="card__desc">{{ card.info.description }}</p>
+
+        @if (card.draft.enabled) {
+          <label class="field">
+            <span class="field__label">API key</span>
+            <input
+              class="field__input"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Paste your key"
+              [attr.data-testid]="'provider-key-' + card.draft.id"
+              [value]="card.draft.apiKey"
+              [attr.aria-invalid]="keyTooShort(card.draft.id) ? 'true' : null"
+              (input)="onKey(card.draft.id, $event)"
+              (keydown)="onCardKeydown(card.draft.id, $event)"
+            />
+            <span class="field__hint">
+              Stored on this machine only.
+              <a [href]="card.info.keyUrl" target="_blank" rel="noopener noreferrer">Get a key</a>
+            </span>
+          </label>
+        }
+      </li>
+    }
+  </ul>
+
+  @if (state.error()) {
+    <p class="step__error" role="alert">{{ state.error() }}</p>
+  }
+
+  <div class="step__actions">
+    @if (!state.emailLocked()) {
+      <button class="btn btn--ghost" type="button" (click)="state.back()">Back</button>
+    }
+    <button
+      class="btn btn--primary"
+      type="button"
+      data-testid="providers-next"
+      [disabled]="!state.providersValid()"
+      (click)="state.submitProviders()"
+    >
+      Continue
+    </button>
+  </div>
+</section>

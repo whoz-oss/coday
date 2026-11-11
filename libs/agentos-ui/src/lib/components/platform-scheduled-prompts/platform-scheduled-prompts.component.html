@@ -1,24 +1,70 @@
-<ds-entity-list
-  title="Platform Scheduled Prompts"
-  [items]="promptItems()"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No platform scheduled prompts defined yet. Add one above."
-  cardMinWidth="420px"
-  [itemTemplate]="scheduledPromptItemTpl"
-  (createRequested)="openCreateForm()"
->
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<ng-template #scheduledPromptItemTpl let-item>
-  @if (resolvePrompt(item.id); as definition) {
-    <agentos-scheduled-prompt-item
-      [definition]="definition"
-      [platformMode]="true"
-      (enableRequested)="enablePrompt($event)"
-      (disableRequested)="disablePrompt($event)"
-      (deleteRequested)="deletePrompt($event)"
-    />
-  }
-</ng-template>
+<ds-section-header title="Platform scheduled prompts" description="Scheduled prompts shared across every namespace.">
+  <agentos-table-filter
+    label="Filter scheduled prompts"
+    placeholder="Filter scheduled prompts…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New scheduled prompt</button>
+</ds-section-header>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading scheduled prompts…</p>
+} @else if (prompts().length === 0) {
+  <p class="settings-table__status">No platform scheduled prompts defined yet.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No scheduled prompts match the current filter.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Platform scheduled prompts">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Schedule</th>
+          <th role="columnheader">Status</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (prompt of rowFilter.filteredRows(); track prompt.id ?? prompt.name) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title>
+              <span class="settings-table__name settings-table__stacked">{{ prompt.name }}</span>
+              @if (prompt.description) {
+                <span class="settings-table__secondary settings-table__stacked">{{ prompt.description }}</span>
+              }
+            </td>
+            <td role="cell" data-label="Schedule">{{ scheduleLabel(prompt) }}</td>
+            <td role="cell" data-label="Status">
+              <ds-tag [variant]="prompt.enabled ? 'accent' : 'outline'">{{
+                prompt.enabled ? 'Enabled' : 'Disabled'
+              }}</ds-tag>
+            </td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (deletion.confirmingId() !== prompt.id) {
+                  <button type="button" (click)="toggle(prompt)">{{ prompt.enabled ? 'Disable' : 'Enable' }}</button>
+                  <button type="button" [attr.aria-label]="'Edit ' + prompt.name" (click)="edit(prompt)">Edit</button>
+                }
+                @if (prompt.id) {
+                  <agentos-row-delete-action
+                    [rowKey]="prompt.id"
+                    [rowLabel]="prompt.name"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (deleteRequested)="deletion.request(prompt.id)"
+                    (deleteConfirmed)="confirmDelete(prompt)"
+                    (deleteCancelled)="deletion.cancel()"
+                  />
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

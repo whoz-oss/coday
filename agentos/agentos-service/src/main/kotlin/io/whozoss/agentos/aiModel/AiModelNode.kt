@@ -51,6 +51,8 @@ data class AiModelNode(
     val pricingCacheRead: Double? = null,
     val pricingCacheWrite: Double? = null,
     val reasoningEffort: String? = null,
+    // Nullable on purpose: nodes persisted before this property existed have none, and read as false.
+    val supportsAdvancedExecution: Boolean? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -96,6 +98,7 @@ data class AiModelNode(
             contextWindow = contextWindow,
             pricing = pricing,
             reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
+            supportsAdvancedExecution = supportsAdvancedExecution ?: false,
         )
     }
 
@@ -118,6 +121,7 @@ data class AiModelNode(
                 pricingCacheRead = model.pricing?.cacheRead,
                 pricingCacheWrite = model.pricing?.cacheWrite,
                 reasoningEffort = model.reasoningEffort?.name,
+                supportsAdvancedExecution = model.supportsAdvancedExecution,
                 created = model.metadata.created,
                 createdBy = model.metadata.createdBy,
                 modified = model.metadata.modified,

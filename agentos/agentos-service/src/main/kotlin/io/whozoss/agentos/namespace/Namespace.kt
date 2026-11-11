@@ -38,4 +38,21 @@ data class Namespace(
      * **`null` means "inherit from the platform default", never "no limit" or "zero".**
      */
     val runCostThreshold: Double? = null,
+    /**
+     * Optional absolute path replacing the default namespace-shared exchange directory
+     * (`<mountRoot>/<namespaceId>/shared`). Resolved by
+     * [io.whozoss.agentos.exchange.ExchangeStorageService.namespaceRoot], so the REST endpoints, the
+     * agent file tools and the `{{NAMESPACE_EXCHANGE}}` token all follow it. Containment, symlink,
+     * reserved-entry and deny-pattern rules are unchanged, only the root moves. Only a super-admin
+     * may set or change it (see [NamespaceController]). Null keeps the default location.
+     */
+    val sharedExchangePath: String? = null,
+    /**
+     * Namespace-level override of the maximum number of tool rounds of one agent run
+     * (`agentos.limits.agent-max-iterations` at platform level).
+     *
+     * **`null` means "inherit from the platform default"**, never "no limit". Read when an agent
+     * is built, so a change applies from the next run on, never during one.
+     */
+    val maxToolRounds: Int? = null,
 ) : Entity

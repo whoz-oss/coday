@@ -12,17 +12,22 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  NamespaceCaseListUpdateSseService,
-  NamespaceControllerService,
-  NamespaceListItem,
-} from '@whoz-oss/agentos-api-client'
-import { debounceTime, map, skip } from 'rxjs'
+import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { catchError, debounceTime, filter, map, merge, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
-import { THEME_PORT, ThemeMode, ThemeVariant } from '../../services/theme.service'
+import {
+  isThemeVariant,
+  prefersDarkScheme,
+  resolveEffectiveMode,
+  supportsModeSwitch,
+  THEME_PORT,
+  ThemeMode,
+} from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { GlobalStreamService } from '../../services/global-stream.service'
+import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
@@ -34,7 +39,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
  * Responsibilities (after refactor):
  * - Owns data: case list, namespace list, query params
  * - Owns routing: namespace switching, case selection, navigation
- * - Owns UI state: sidebar width, menus open/closed, theme, technical logs
+ * - Owns UI state: sidebar width, menus open/closed, theme, tool calls
  * - Delegates rendering to ShellSidebarComponent, ShellTopbarMobileComponent,
  *   ShellCaseSwitcherMobileComponent
  *
@@ -65,9 +70,10 @@ export class CaseShellComponent {
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
-  private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
+  private readonly globalStream = inject(GlobalStreamService)
   protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
+  private readonly shellContext = inject(ShellContextService)
   private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
@@ -84,6 +90,8 @@ export class CaseShellComponent {
     return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
   })
 
+  protected readonly userAvatarUrl = this.userState.avatarUrl
+
   protected readonly userName = computed(() => {
     const user = this.userState.currentUser()
     if (!user) return ''
@@ -94,16 +102,19 @@ export class CaseShellComponent {
   // Theme
   // ---------------------------------------------------------------------------
 
+  /**
+   * Whether the rendered theme is dark. Derived from the effective mode, not the chosen one: a variant that does
+   * not support the chosen mode (a light-only one) renders its own mode whatever the stored choice.
+   */
   protected readonly isDark = computed(() => {
-    const { mode } = this.themePort.theme()
-    if (mode === 'dark') return true
-    if (mode === 'light') return false
-    return (
-      typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')?.includes('dark') === true
-    )
+    const { variant, mode } = this.themePort.theme()
+    return resolveEffectiveMode(variant, mode, prefersDarkScheme()) === 'dark'
   })
 
   protected readonly themeVariant = computed(() => this.themePort.theme().variant)
+
+  /** Whether the active variant has both light and dark, i.e. whether a light/dark switch is meaningful. */
+  protected readonly canToggleMode = computed(() => supportsModeSwitch(this.themeVariant()))
 
   // ---------------------------------------------------------------------------
   // UI state
@@ -124,11 +135,7 @@ export class CaseShellComponent {
   /** Whether the mobile case drawer is open */
   protected readonly mobileDrawerOpen = signal(false)
 
-  private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
   private static readonly SHOW_TOOL_CALLS_KEY = 'agentos.case-chat.showToolCalls'
-
-  /** Global toggle for technical log events — persisted in localStorage. */
-  protected readonly showTechnical = signal(localStorage.getItem(CaseShellComponent.SHOW_TECHNICAL_KEY) === 'true')
 
   /** Global toggle for tool calls — visible by default and persisted in localStorage. */
   protected readonly showToolCalls = signal(localStorage.getItem(CaseShellComponent.SHOW_TOOL_CALLS_KEY) !== 'false')
@@ -155,16 +162,33 @@ export class CaseShellComponent {
   /** Cases from the state service (loaded via /mine — direct ADMIN/MEMBER edge only). */
   protected readonly cases = this.caseState.cases
 
-  protected readonly namespaces = toSignal(this.namespaceController.listAllNamespace(), {
-    initialValue: [] as NamespaceListItem[],
-  })
+  /**
+   * A toSignal over a source that errors makes the signal THROW on read, and the template reads it: one failed
+   * request (AgentOS booting, a 401/502 through the proxy) would abort the whole shell render, i.e. a blank page.
+   * Degrade to an empty list instead (the home composer still renders).
+   */
+  protected readonly namespaces = toSignal(
+    this.namespaceController.listAllNamespace().pipe(
+      catchError((err) => {
+        console.error('[CaseShell] Failed to load namespaces', err)
+        return of([] as NamespaceListItem[])
+      })
+    ),
+    { initialValue: [] as NamespaceListItem[] }
+  )
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
-  protected readonly canWriteActiveCase = computed(() => {
+  /** Admin of the platform or of the current namespace: allowed to open the namespace settings. */
+  protected readonly canConfigureNamespace = computed(() => {
+    if (this.isAdmin()) return true
     const namespaceRole = this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.role
+    return namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN'
+  })
+
+  protected readonly canWriteActiveCase = computed(() => {
     const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
-    return this.isAdmin() || namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN' || caseRole === 'ADMIN'
+    return this.canConfigureNamespace() || caseRole === 'ADMIN'
   })
 
   constructor() {
@@ -191,6 +215,7 @@ export class CaseShellComponent {
       const nsList = this.namespaces()
       const nsId = this.namespaceId()
       if (!nsList.length) return
+      this.shellContext.rememberNamespaceNames(nsList)
 
       if (nsId) {
         const found = nsList.find((ns) => ns.id === nsId)
@@ -206,15 +231,31 @@ export class CaseShellComponent {
       }
     })
 
-    // Load the list and independently watch namespace-level list invalidations.
-    // Effect cleanup closes the previous EventSource on namespace switches.
+    // Load the list, then watch the invalidations of this namespace. They ride the aggregated
+    // stream, which one tab holds for the whole browser: a stream per namespace and per tab spent
+    // a connection out of the six a browser grants per origin (#1616).
     effect((cleanup) => {
       const nsId = this.namespaceId()
       if (!nsId) return
 
       this.caseState.loadCases(nsId)
-      const subscription = this.caseListUpdates.connect(nsId).subscribe(() => this.caseState.refreshCases(nsId))
+      // Reload on this namespace's invalidations, and on every (re)connection of the stream:
+      // nothing is replayed on it, so an invalidation published while it was down would be lost
+      // and the list would stay stale until a namespace switch or a page reload.
+      //
+      // The first connection included, though it lands right after the load above: that load may
+      // be answered before the server subscribed this stream, and only a reload issued after the
+      // stream opened leaves no window for an update to fall into.
+      const subscription = merge(
+        this.globalStream.caseListInvalidations$.pipe(filter((invalidated) => invalidated === nsId)),
+        this.globalStream.connected$
+      ).subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
+    })
+
+    // Remember the open case so the settings pages can bring the user back to it.
+    effect(() => {
+      this.shellContext.rememberCase(this.namespaceId(), this.activeCaseId())
     })
   }
 
@@ -226,6 +267,13 @@ export class CaseShellComponent {
     this.selectedNamespace.set(ns)
     this.nsMenuOpen.set(false)
     this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
+  }
+
+  protected onConfigureNamespace(): void {
+    const nsId = this.selectedNamespace()?.id ?? this.namespaceId()
+    this.nsMenuOpen.set(false)
+    if (!nsId) return
+    void this.router.navigate(['/agentos', nsId, 'edit'])
   }
 
   protected toggleNsMenu(event?: Event): void {
@@ -274,6 +322,19 @@ export class CaseShellComponent {
         },
         error: (err) => {
           console.error(`[CaseShell] Failed to delete case ${caseId}:`, err)
+        },
+      })
+  }
+
+  /** Stop (kill) a case from the list. The case stays in the list as KILLED and can be reopened. */
+  protected onKillRequested(caseId: string): void {
+    this.caseState
+      .killCase(caseId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to stop case ${caseId}:`, err)
+          alert('Could not stop the case. Please try again.')
         },
       })
   }
@@ -368,23 +429,17 @@ export class CaseShellComponent {
 
   protected onMenuToggleTheme(): void {
     this.menuOpen.set(false)
+    // A light-only variant has nothing to switch to: leave the stored mode alone.
+    if (!this.canToggleMode()) return
     const next: ThemeMode = this.isDark() ? 'light' : 'dark'
     this.themePort.setTheme({ variant: this.themeVariant(), mode: next })
   }
 
   protected onMenuThemeVariantChanged(variant: string): void {
     this.menuOpen.set(false)
+    if (!isThemeVariant(variant)) return
     const current = this.themePort.theme()
-    this.themePort.setTheme({ variant: variant as ThemeVariant, mode: current.mode })
-  }
-
-  protected onMenuToggleLogs(): void {
-    this.menuOpen.set(false)
-    this.showTechnical.update((v) => {
-      const next = !v
-      localStorage.setItem(CaseShellComponent.SHOW_TECHNICAL_KEY, String(next))
-      return next
-    })
+    this.themePort.setTheme({ variant, mode: current.mode })
   }
 
   protected onMenuToggleToolCalls(): void {

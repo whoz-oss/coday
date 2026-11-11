@@ -14,7 +14,10 @@ import java.util.UUID
  * HTTP DTO for AgentConfig entities — used as both request body and response body on
  * the `/api/agent-configs` endpoints.
  *
- * [namespaceId] and [name] are required on create. All other fields are optional.
+ * [name] and [modelName] are required on create and update. All other fields are optional.
+ *
+ * [modelName] stays nullable in the type because agents stored before it became required have none and are
+ * still read back as is: the constraint only refuses a write that leaves it null or blank.
  *
  * [integrations] maps integration type names to an optional list of allowed tool names.
  * A null list means all tools from that integration are allowed.
@@ -40,6 +43,7 @@ data class AgentConfigDto(
     val name: String,
     val description: String? = null,
     val instructions: String? = null,
+    @field:NotBlank(message = "modelName must not be blank")
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     /**
@@ -73,11 +77,15 @@ data class AgentConfigDto(
                 minLength = 1,
                 implementation = String::class,
                 description =
-                    "Glob patterns controlling which agents this agent may delegate to. " +
+                    "Glob patterns controlling which agents this agent may delegate to, matched against " +
+                        "each agent's name — never its id. An id matches no agent and silently leaves this " +
+                        "agent with no way to delegate, so writing one is refused: on create, and on update " +
+                        "for an id the stored value did not already hold. An id already stored is carried " +
+                        "through unchanged, so an agent in that state stays editable. " +
                         "When null or empty, no delegation capability is provided. " +
                         "'*' matches any sequence of characters (anchored, case-insensitive). " +
-                        "Examples: ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, " +
-                        "['Fixer*'] matches FixerHelper/FixerV2.",
+                        "Examples: ['*'] allows all agents, ['Reviewer', 'Fixer'] names two of them, " +
+                        "['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*'] matches FixerHelper/FixerV2.",
             ),
     )
     val subAgents: List<String>? = null,

@@ -1,18 +1,49 @@
-import { DestroyRef, ElementRef, inject, Injectable, Signal, signal } from '@angular/core'
+import { DestroyRef, ElementRef, inject, Injectable, Injector, Signal, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
-import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
+import { AgentConfig, ExchangeControllerService, ExchangeManifest, Prompt } from '@whoz-oss/agentos-api-client'
+import {
+  catchError,
+  debounceTime,
+  finalize,
+  forkJoin,
+  map,
+  Observable,
+  of,
+  shareReplay,
+  Subject,
+  switchMap,
+  tap,
+} from 'rxjs'
 import { AgentStateService } from '../../services/agent-state.service'
 import { filterAndSortAgents } from '../../services/agent.utils'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
+import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EFFORT_OPTIONS, EffortOption, effortOptionsFor } from './effort-command'
+import {
+  applyFileMention,
+  FileMentionScope,
+  fileMentionPrefix,
+  FileSuggestion,
+  fileReference,
+  manifestToSuggestions,
+  rankFiles,
+} from './file-mention'
+
+/** How long the files fetched on a `#` stay valid: past it, the next `#` fetches them again. */
+export const FILE_CACHE_TTL_MS = 30_000
+
+/** Where the composer is: the exchanges the agent can reach from there. `caseId` is null outside a case. */
+export interface FileMentionScopes {
+  namespaceId: string
+  caseId: string | null
+}
 
 /**
- * ComposerAutocompleteService — component-scoped service centralising slash-command (/)
- * and agent @-mention (@) autocomplete logic.
+ * ComposerAutocompleteService — component-scoped service centralising slash-command (/),
+ * agent @-mention (@) and file `#` autocomplete logic.
  *
  * Must be provided at component level (not root) so each composer instance gets its
  * own isolated state:
@@ -28,6 +59,13 @@ import { EFFORT_OPTIONS, EffortOption, effortOptionsFor } from './effort-command
  *
  * A host that can change the reasoning effort (an open case) also calls `enableEffortCommand`:
  * "/effort" then lists the levels in `effortSuggestions` instead of the matching prompts.
+ *
+ * A host that wants file references calls `enableFileMentions`: typing `#` (at the start or after a
+ * whitespace) then lists in `fileSuggestions` the files the agent can reach through its exchange tools
+ * — the namespace exchange and, inside a case, the case exchange. Selecting one inserts plain text,
+ * qualified by the scope so the agent knows which tool to read it with: `namespace:docs/readme.md ` or
+ * `case:notes/todo.md `. `#` never conflicts with `@` (agents); the dropdown only opens when a file
+ * matches, so an issue reference such as `#123` stays silent.
  */
 @Injectable()
 export class ComposerAutocompleteService {
@@ -48,6 +86,9 @@ export class ComposerAutocompleteService {
   /** /effort levels matching the current value. Empty = dropdown closed. */
   readonly effortSuggestions = signal<EffortOption[]>([])
 
+  /** Accessible files matching the current `#` prefix, best first. Empty = dropdown closed. */
+  readonly fileSuggestions = signal<FileSuggestion[]>([])
+
   // ---------------------------------------------------------------------------
   // Internal state
   // ---------------------------------------------------------------------------
@@ -64,6 +105,23 @@ export class ComposerAutocompleteService {
 
   /** Null until the host enables /effort; then tells whether the effort can be changed right now. */
   private effortCommandAvailable: (() => boolean) | null = null
+
+  /** Null until the host enables `#` file mentions; then tells where the composer is. */
+  private fileScopes: (() => FileMentionScopes) | null = null
+  /** True while the word being typed is a `#` mention: a late answer must not open another dropdown then. */
+  private fileMentionActive = false
+  private readonly filePrefix$ = new Subject<string>()
+  /** Files fetched for one (namespace, case) pair, valid for [FILE_CACHE_TTL_MS]. */
+  private fileCache: { key: string; files: FileSuggestion[]; loadedAt: number } | null = null
+  /** The fetch in flight, shared so a burst of keystrokes does not start one request per key. */
+  private fileRequest: { key: string; files$: Observable<FileSuggestion[]> } | null = null
+  /** Bumped by [reset]: a fetch started before it must not fill the cache afterwards. */
+  private fileGeneration = 0
+  /**
+   * Used to resolve the exchange API on the first `#` only: no other composer feature needs it, and a
+   * composer that never asks for a file never instantiates it.
+   */
+  private readonly injector = inject(Injector)
 
   constructor() {
     // Slash-command pipeline: debounce → lazy-load prompts on first `/` → filter locally.
@@ -83,8 +141,8 @@ export class ComposerAutocompleteService {
       .subscribe(({ prefix, prompts }) => {
         this.effectivePrompts = prompts
         this.promptsLoaded = true
-        // A late answer must not open the prompt list over the /effort picker the user has reached since.
-        if (this.effortSuggestions().length) return
+        // A late answer must not open the prompt list over the /effort picker or the file list the user has reached since.
+        if (this.effortSuggestions().length || this.fileMentionActive) return
         this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
       })
 
@@ -103,7 +161,22 @@ export class ComposerAutocompleteService {
       .subscribe(({ prefix, agents }) => {
         this.effectiveAgents = agents
         this.agentsLoaded = true
+        // Same for a late answer: the user may have moved on to a `#` mention since.
+        if (this.fileMentionActive) return
         this.atSuggestions.set(filterAndSortAgents(agents, prefix))
+      })
+
+    // File `#` pipeline: debounce → lazy-fetch the manifests on the first `#` (cached, see loadFiles) → rank locally.
+    this.filePrefix$
+      .pipe(
+        debounceTime(60),
+        switchMap((prefix) => this.loadFiles().pipe(map((files) => ({ prefix, files })))),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(({ prefix, files }) => {
+        // The word may have stopped being a mention while the manifests were loading.
+        if (!this.fileMentionActive) return
+        this.fileSuggestions.set(rankFiles(files, prefix))
       })
   }
 
@@ -127,11 +200,20 @@ export class ComposerAutocompleteService {
     this.effortCommandAvailable = available
   }
 
+  /**
+   * Offer `#` file references in this composer. [scopes] is read when files are needed, so a host whose case
+   * changes under the same composer always asks for the current one.
+   */
+  enableFileMentions(scopes: () => FileMentionScopes): void {
+    this.fileScopes = scopes
+  }
+
   /** Open the /effort picker on every level, e.g. after a level the command does not know. */
   showEffortLevels(): void {
     if (!this.effortCommandAvailable?.()) return
     this.slashSuggestions.set([])
     this.atSuggestions.set([])
+    this.closeFileSuggestions()
     this.effortSuggestions.set([...EFFORT_OPTIONS])
   }
 
@@ -148,6 +230,10 @@ export class ComposerAutocompleteService {
     this.effectiveAgents = []
     this.agentsLoaded = false
     this.effortSuggestions.set([])
+    this.closeFileSuggestions()
+    this.fileCache = null
+    this.fileRequest = null
+    this.fileGeneration++
   }
 
   // ---------------------------------------------------------------------------
@@ -173,7 +259,8 @@ export class ComposerAutocompleteService {
     event: KeyboardEvent,
     promptRef: Signal<PromptAutocompleteComponent | undefined>,
     agentRef: Signal<AgentAutocompleteComponent | undefined>,
-    effortRef?: Signal<EffortAutocompleteComponent | undefined>
+    effortRef?: Signal<EffortAutocompleteComponent | undefined>,
+    fileRef?: Signal<FileAutocompleteComponent | undefined>
   ): boolean {
     if (this.effortSuggestions().length > 0) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -189,6 +276,24 @@ export class ComposerAutocompleteService {
       if (event.key === 'Tab' || event.key === 'Enter') {
         event.preventDefault()
         effortRef?.()?.navigate('Enter')
+        return true
+      }
+    }
+
+    if (this.fileSuggestions().length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        fileRef?.()?.navigate(event.key)
+        return true
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        this.closeFileSuggestions()
+        return true
+      }
+      if (event.key === 'Tab' || event.key === 'Enter') {
+        event.preventDefault()
+        fileRef?.()?.navigate('Enter')
         return true
       }
     }
@@ -287,6 +392,96 @@ export class ComposerAutocompleteService {
     this.atSuggestions.set([])
   }
 
+  /**
+   * Apply a file selection: replace the trailing `#<prefix>` in the composer with the scope-qualified
+   * reference (`namespace:<path> ` or `case:<path> `).
+   *
+   * @param file         The selected file.
+   * @param fileRef      The FileAutocompleteComponent (for completionFor()).
+   * @param composerRef  The textarea ElementRef (for DOM value + cursor sync).
+   * @param inputValue   The signal holding the composer value (read + write).
+   */
+  onFileSelected(
+    file: FileSuggestion,
+    fileRef: Signal<FileAutocompleteComponent | undefined>,
+    composerRef: Signal<ElementRef<HTMLTextAreaElement> | undefined>,
+    inputValue: { set: (v: string) => void; (): string }
+  ): void {
+    const completion = fileRef()?.completionFor(file) ?? fileReference(file)
+    const replaced = applyFileMention(inputValue(), completion)
+    inputValue.set(replaced)
+    queueMicrotask(() => {
+      const el = composerRef()?.nativeElement
+      if (!el) return
+      el.value = replaced
+      el.setSelectionRange(replaced.length, replaced.length)
+      el.focus()
+    })
+    this.closeFileSuggestions()
+  }
+
+  /** Close the `#` dropdown, and ignore any file answer still on its way. */
+  closeFileSuggestions(): void {
+    this.fileMentionActive = false
+    if (this.fileSuggestions().length) this.fileSuggestions.set([])
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal — file `#` mention data
+  // ---------------------------------------------------------------------------
+
+  private fileCacheKey(scopes: FileMentionScopes): string {
+    return `${scopes.namespaceId}|${scopes.caseId ?? ''}`
+  }
+
+  /** The cached files of the current scope, while they are younger than [FILE_CACHE_TTL_MS]. */
+  private freshFiles(): FileSuggestion[] | null {
+    const scopes = this.fileScopes?.()
+    const cache = this.fileCache
+    if (!scopes || !cache || cache.key !== this.fileCacheKey(scopes)) return null
+    return Date.now() - cache.loadedAt < FILE_CACHE_TTL_MS ? cache.files : null
+  }
+
+  /**
+   * Every file the agent can reach from here: the recursive manifest of the namespace exchange and, inside a
+   * case, of the case exchange. A scope that answers an error (403/404/409…) contributes nothing: fail-closed
+   * and silent, the mention simply does not list it.
+   */
+  private loadFiles(): Observable<FileSuggestion[]> {
+    const scopes = this.fileScopes?.()
+    if (!scopes?.namespaceId) return of([])
+    const cached = this.freshFiles()
+    if (cached) return of(cached)
+    const key = this.fileCacheKey(scopes)
+    if (this.fileRequest?.key === key) return this.fileRequest.files$
+
+    const controller = this.injector.get(ExchangeControllerService)
+    const generation = this.fileGeneration
+    const fetchScope = (scope: FileMentionScope, manifest$: Observable<ExchangeManifest>) =>
+      manifest$.pipe(
+        map((manifest) => manifestToSuggestions(manifest, scope)),
+        catchError(() => of([] as FileSuggestion[]))
+      )
+    const files$ = forkJoin([
+      fetchScope('namespace', controller.getNamespaceFilesManifestExchange(scopes.namespaceId)),
+      scopes.caseId
+        ? fetchScope('case', controller.getCaseFilesManifestExchange(scopes.caseId))
+        : of([] as FileSuggestion[]),
+    ]).pipe(
+      map(([namespaceFiles, caseFiles]) => [...caseFiles, ...namespaceFiles]),
+      tap((files) => {
+        if (generation === this.fileGeneration) this.fileCache = { key, files, loadedAt: Date.now() }
+      }),
+      finalize(() => {
+        if (generation === this.fileGeneration && this.fileRequest?.key === key) this.fileRequest = null
+      }),
+      // Not refCounted: a keystroke that supersedes this answer must not cancel the request itself.
+      shareReplay({ bufferSize: 1, refCount: false })
+    )
+    this.fileRequest = { key, files$ }
+    return files$
+  }
+
   // ---------------------------------------------------------------------------
   // Internal — autocomplete dispatch
   // ---------------------------------------------------------------------------
@@ -297,6 +492,7 @@ export class ComposerAutocompleteService {
     if (effortOptions?.length) {
       this.slashSuggestions.set([])
       this.atSuggestions.set([])
+      this.closeFileSuggestions()
       this.effortSuggestions.set(effortOptions)
       return
     }
@@ -307,6 +503,7 @@ export class ComposerAutocompleteService {
       const withoutSlash = value.slice(1)
       if (!withoutSlash.includes(' ')) {
         if (this.atSuggestions().length) this.atSuggestions.set([])
+        this.closeFileSuggestions()
         if (this.promptsLoaded) {
           this.slashSuggestions.set(
             this.effectivePrompts.filter((p) => p.name.toLowerCase().startsWith(withoutSlash.toLowerCase()))
@@ -317,6 +514,19 @@ export class ComposerAutocompleteService {
       }
     }
     if (this.slashSuggestions().length) this.slashSuggestions.set([])
+
+    // File mention (#): the word being typed starts with # (at the start or after a whitespace). It only
+    // opens once a file matches, so `#123` with no such file stays silent. Mutually exclusive with the others.
+    const filePrefix = this.fileScopes ? fileMentionPrefix(value) : null
+    if (filePrefix !== null) {
+      this.fileMentionActive = true
+      if (this.atSuggestions().length) this.atSuggestions.set([])
+      const cached = this.freshFiles()
+      if (cached) this.fileSuggestions.set(rankFiles(cached, filePrefix))
+      this.filePrefix$.next(filePrefix)
+      return
+    }
+    this.closeFileSuggestions()
 
     // Agent @-mention (@): detects the last @ not followed by a space.
     const atMatch = value.match(/@(\w*)$/)

@@ -3,7 +3,13 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { MemberItem, MemberItemRoleEnum, User, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
-import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
+import {
+  AutocompleteInputComponent,
+  AutocompleteItem,
+  DS_PAGE_KIT,
+  MemberRoleOption,
+  MemberRowComponent,
+} from '@whoz-oss/design-system'
 import { forkJoin, of } from 'rxjs'
 import { catchError } from 'rxjs/operators'
 import { MemberUpdateEntry, NamespaceMemberStateService } from '../../services/namespace-member-state.service'
@@ -42,9 +48,8 @@ interface SelectedMember {
  */
 @Component({
   selector: 'agentos-namespace-members',
-  imports: [AutocompleteInputComponent],
+  imports: [AutocompleteInputComponent, DS_PAGE_KIT, MemberRowComponent],
   templateUrl: './namespace-members.component.html',
-  styleUrl: './namespace-members.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceMembersComponent implements OnInit {
@@ -62,6 +67,10 @@ export class NamespaceMembersComponent implements OnInit {
   /** Whether the current user is a platform super-admin — gates the "add member" autocomplete. */
   protected readonly isSuperAdmin = signal(false)
 
+  protected readonly memberRoleOptions: ReadonlyArray<MemberRoleOption> = [
+    { value: 'MEMBER', label: 'Member' },
+    { value: 'ADMIN', label: 'Admin' },
+  ]
   protected readonly selectedMembers = signal<SelectedMember[]>([])
   private originalMembers: MemberRoleEntry[] = []
 

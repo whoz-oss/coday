@@ -1,7 +1,7 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
-import { HttpClient } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
-import { firstValueFrom } from 'rxjs'
+import { firstValueFrom, Subscription } from 'rxjs'
 import {
   afterNextRender,
   Component,
@@ -17,6 +17,7 @@ import {
   OnInit,
   output,
   signal,
+  Signal,
   viewChild,
   ChangeDetectionStrategy,
 } from '@angular/core'
@@ -28,6 +29,7 @@ import {
   AgentRunningEvent,
   AgentSelectedEvent,
   AnswerEvent,
+  Audio as AudioContent,
   CaseEvent,
   CaseStatusEnum,
   CaseStatusEvent,
@@ -44,7 +46,7 @@ import {
   ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
   ConfirmDialogComponent,
@@ -75,17 +77,32 @@ import {
   parseEffortCommand,
 } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
+import {
+  buildReferenceMention,
+  FileSuggestion,
+  mergeFileReferences,
+  withoutFileReferences,
+} from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
+import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
-import { findLegitimateAnswer } from './case-chat.utils'
+import { findLegitimateAnswer, runningAfter } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 import { configChangeQuestionIds } from './config-change-questions'
+import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
+import { CostPipe } from '../../pipes/cost.pipe'
+import { TokenCountPipe } from '../../pipes/token-count.pipe'
+import { AudioMessageComponent } from '../audio-message/audio-message.component'
+import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
+import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
+import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 
 export interface ToolCall {
   requestId: string
@@ -99,10 +116,12 @@ export interface ToolCall {
   enrichmentPhases?: EnrichmentPhaseTrace[] | null
 }
 
-/** A technical event displayed only when showTechnical is enabled. */
+/** A technical event, displayed only when the technical logs preference is enabled. */
 export interface TechnicalItem {
   label: string
   detail?: string
+  /** ISO timestamp of the source event. */
+  timestamp?: string
 }
 
 export interface ExecutionNotice {
@@ -118,6 +137,14 @@ export type TimelineItem =
       html: SafeHtml
       isFirstInGroup: boolean
       isLastInGroup: boolean
+      /**
+       * What the agent turn this message closes cost, when the turn reported any usage.
+       *
+       * Set on the last agent message before the turn's `AgentFinishedEvent`, which is where the
+       * reader looks for it: the answer is on screen, the question "what did that cost" is about
+       * that answer.
+       */
+      metrics?: TurnMetrics
     }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming' }
@@ -139,6 +166,15 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  * a history/live boundary.
  */
 const TERMINAL_CLOSE_DEBOUNCE_MS = 300
+
+/**
+ * `EventSource.CLOSED`, spelled out: the browser gave up and will not reconnect.
+ *
+ * Read as a literal rather than off the constructor, which the specs replace with a fake that
+ * carries none of the statics — comparing against an undefined constant would call every
+ * transport hiccup a dead stream.
+ */
+const EVENT_SOURCE_CLOSED = 2
 
 /** True when the user has an active text selection (e.g. preparing to copy). */
 function hasActiveSelection(): boolean {
@@ -171,6 +207,7 @@ function hasActiveSelection(): boolean {
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
     EffortAutocompleteComponent,
+    FileAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
     CopyButtonComponent,
@@ -180,8 +217,12 @@ function hasActiveSelection(): boolean {
     DelegationCardComponent,
     ConfirmDialogComponent,
     AgentActivityComponent,
+    AudioMessageComponent,
+    VoiceRecorderComponent,
+    CostPipe,
+    TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -202,11 +243,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
+  /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the next message. */
+  protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly exchangeFileCount = this.exchangeState.fileCount
 
   /** Files staged on the next message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
   protected readonly autocomplete = inject(ComposerAutocompleteService)
+  /** Voice messages: the recorder is component-scoped (microphone released with the host), the capability is app-wide. */
+  protected readonly voice = inject(VoiceRecorderService)
+  protected readonly voiceCapability = inject(VoiceCapabilityStateService)
   /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
   protected readonly canAttach = this.exchangeState.canWriteCase
   /**
@@ -215,7 +261,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * silently skipped by the in-flight loop.
    */
   protected readonly canStageFiles = computed(
-    () => this.canAttach() && !this.isRunning() && !this.isTerminal() && !this.attachments.isUploading()
+    () =>
+      this.canAttach() &&
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.voice.isBusy()
   )
 
   protected toggleExchange(): void {
@@ -267,6 +318,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
+  private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
 
@@ -280,6 +332,28 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isRunning = signal(false)
 
   /**
+   * True once the browser gave up on the event stream for good — EventSource reaching CLOSED.
+   *
+   * A deleted or no longer readable case is refused with a 404 and lands here (#1616), but so
+   * does any other answer that is not a 200 `text/event-stream`: a backend being restarted, a
+   * session that expired. Hence a notice that does not swear the case is gone, and a Retry.
+   * A mere transport hiccup leaves this false, since EventSource reconnects by itself.
+   */
+  protected readonly streamUnavailable = signal(false)
+
+  /**
+   * True once the case itself has been confirmed gone, which only a 404 on the case says.
+   *
+   * EventSource reports no status, so a dead stream alone cannot tell a deleted case from a
+   * backend restarting behind the proxy. Closing the composer on the stream alone would refuse
+   * a message to a perfectly healthy case for as long as the backend is coming back up.
+   */
+  protected readonly caseGone = signal(false)
+
+  /** The existence check in flight, dropped when the chat moves to another case or retries. */
+  private caseProbe: Subscription | null = null
+
+  /**
    * Derived terminal state — true when the effective case status is KILLED or ERROR.
    * Because this is a computed from `caseStatus` (itself last-writer-wins from `_sseStatus`),
    * it self-corrects the moment the final replayed status frame lands: a KILLED frame
@@ -289,6 +363,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const s = this.caseStatus()
     return s === 'KILLED' || s === 'ERROR'
   })
+
+  /**
+   * Nothing can be posted: the case has ended, or it is confirmed gone. Every way of posting — the
+   * textarea, send, Continue, the mic, staging files — reads this, so that none is left open on a
+   * case that would refuse it.
+   */
+  protected readonly composerClosed = computed(() => this.isTerminal() || this.caseGone())
 
   /** Handle for the debounced terminal-close timer. See TERMINAL_CLOSE_DEBOUNCE_MS. */
   private terminalCloseTimer: ReturnType<typeof setTimeout> | null = null
@@ -335,7 +416,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // Header action outputs — handled by CaseShellComponent
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()
-  readonly logsToggled = output<void>()
   readonly updateRequested = output<{ id: string; title?: string; runCostThreshold?: number | null }>()
 
   // ---------------------------------------------------------------------------
@@ -388,8 +468,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
-  readonly showTechnicalOverride = input(false)
-  protected readonly showTechnical = computed(() => this.showTechnicalOverride())
+  /** Technical logs visibility: a user preference (My profile), shown by default. */
+  protected readonly showTechnical: Signal<boolean> = this.preferences.showTechnical
 
   readonly showToolCallsOverride = input(true)
   protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
@@ -425,6 +505,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
+    // `#` lists what the agent reaches through its exchange tools: the namespace and this case.
+    this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: this.caseId }))
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent)
@@ -492,6 +574,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly delegations = computed(() => buildDelegations(this.events()))
 
   /**
+   * What each agent turn cost, keyed by the id of its `AgentFinishedEvent`.
+   *
+   * Keyed on `events()` alone, like [delegations]: the timeline also depends on the technical-log
+   * and tool-call toggles, and walking the whole stream again on every flip of a checkbox buys
+   * nothing.
+   */
+  private readonly turnMetrics = computed(() => buildTurnMetrics(this.events()))
+
+  /**
    * What the agent is doing right now — shown in place of a spinner while the turn runs.
    * Derived from the event stream and from the delegation pairing above, so it follows the turn
    * without any extra bookkeeping.
@@ -545,18 +636,44 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
+    const turnMetrics = this.turnMetrics()
+
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     const emittedDelegationIds = new Set<string>()
+    // One integration failure is warned once per agent run of a message — delegates included — and again by a
+    // resume, and the events are persisted, so the copies also come back on every reload. The first warning of
+    // a turn carries everything the user needs; the identical ones until their next message are dropped.
+    const warningsThisTurn = new Set<string>()
     // Track the last role to detect group boundaries (consecutive same-role messages).
     // Any non-message item (tool call, technical event) resets the group.
     let lastMessageRole: string | null = null
+    // Index of the agent message the current turn's footer belongs to, if the turn produced one.
+    let lastAgentMessageIndex: number | null = null
     for (const e of allEvents) {
+      // A run opening closes whatever the previous one left behind: a turn killed mid-flight emits
+      // no finished event, and without this its answer would still be waiting to receive the next
+      // turn's figures.
+      if (e.type === 'AgentRunningEvent') lastAgentMessageIndex = null
+      if (e.type === 'AgentFinishedEvent') {
+        const metrics = turnMetrics.get(e.id)
+        const item = lastAgentMessageIndex === null ? undefined : items[lastAgentMessageIndex]
+        // A turn that answered nothing — interrupted, or pure tool calls — has no message to carry
+        // its figures. They stay in the usage panel rather than being moved onto someone else's answer.
+        if (metrics && item?.kind === 'message') item.metrics = metrics
+        lastAgentMessageIndex = null
+      }
       if (e.type === 'MessageEvent') {
         const msg = e as CaseMessageEvent
         const role = msg.actor.role
         const isFirstInGroup = role !== lastMessageRole
         lastMessageRole = role
+        // A new user message opens a turn: a failure that persists is worth warning about again,
+        // and no answer from before it may still collect figures.
+        if (role === 'USER') {
+          warningsThisTurn.clear()
+          lastAgentMessageIndex = null
+        }
         items.push({
           kind: 'message',
           event: msg,
@@ -564,6 +681,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           isFirstInGroup,
           isLastInGroup: false,
         })
+        if (role === 'AGENT') lastAgentMessageIndex = items.length - 1
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
@@ -594,8 +712,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const qe = e as QuestionEvent
         // A question is answered when a legitimate AnswerEvent exists in the stream (same rule as the backend).
         items.push({ kind: 'question', event: qe, answer: findLegitimateAnswer(qe, allEvents) })
+      } else if (e.type === 'AgentFinishedEvent' && (e as AgentFinishedEvent).maxIterationsReached != null) {
+        // Not a diagnostic: the run stopped before finishing, and only the user can let it continue.
+        items.push({ kind: 'notice', notice: this.toIterationLimitNotice(e as AgentFinishedEvent), eventId: e.id })
+        lastMessageRole = null
+      } else if (e.type === 'WarnEvent') {
+        // Not a diagnostic either: a warning tells the user something they must know about their run
+        // (an integration that failed to load, an agent not found), whatever the technical logs preference.
+        const warning = e as WarnEvent
+        if (!warningsThisTurn.has(warning.message)) {
+          warningsThisTurn.add(warning.message)
+          items.push({ kind: 'notice', notice: this.toWarningNotice(warning), eventId: e.id })
+          lastMessageRole = null
+        }
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
-        // Execution notices and the generic fallback are diagnostics: keep them entirely
+        // The other execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
         const notice = this.toExecutionNotice(e, lastCaseStatusEventId)
         if (notice) {
@@ -616,6 +747,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
 
     return items
+  })
+
+  /** Id of the latest run stopped at its iteration limit, while no user message has followed it. */
+  protected readonly continuableStopId = computed<string | null>(() => {
+    const events = this.events()
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]
+      if (e?.type === 'MessageEvent' && (e as CaseMessageEvent).actor.role === 'USER') return null
+      if (e?.type === 'AgentFinishedEvent') return (e as AgentFinishedEvent).maxIterationsReached != null ? e.id : null
+    }
+    return null
   })
 
   /** Questions answered through a configuration card: see {@link configChangeQuestionIds}. */
@@ -722,14 +864,95 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected get canSend(): boolean {
     return (
-      (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
+      (!!this.inputValue().trim() || this.attachments.hasAttachments() || this.referencedFiles().length > 0) &&
       !this.isRunning() &&
-      !this.isTerminal() &&
-      !this.attachments.isUploading()
+      // Only a confirmed deletion closes the composer: a dead stream alone may just be a backend
+      // restarting, and a message posted then still reaches a healthy case.
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.voice.isBusy()
     )
   }
 
+  /** The mic is usable under the conditions that enable the textarea, and while no recording is under way. */
+  protected get canRecord(): boolean {
+    return (
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.submitting &&
+      !this.voice.isBusy()
+    )
+  }
+
+  /** Asks for the microphone, then records until the user sends or cancels (or the length limit sends). */
+  protected startRecording(): void {
+    if (!this.canRecord) return
+    void this.voice.start(this.caseId, {
+      // The recording is uploaded and transcribed before the agent sees it: the case goes running like on a
+      // normal send, so the activity indicator behaves the same.
+      onSending: () => {
+        this.isRunning.set(true)
+        this.streamingText.set('')
+      },
+      onSendFailed: () => this.isRunning.set(false),
+      // The message and the agent turn come through the event stream.
+      onSent: () => undefined,
+    })
+  }
+
+  protected sendRecording(): void {
+    void this.voice.stopAndSend()
+  }
+
+  protected cancelRecording(): void {
+    this.voice.cancel()
+    // The recording bar leaves: the focus goes back to the textarea, once it is shown again.
+    afterNextRender(() => this.composerInput()?.nativeElement.focus(), { injector: this.injector })
+  }
+
+  /** The send button of the action bar: while recording it sends the recording, otherwise the typed message. */
+  protected onSendClick(): void {
+    if (this.voice.isRecording()) {
+      this.sendRecording()
+    } else {
+      void this.submit()
+    }
+  }
+
+  /** A recording can be sent as soon as it runs; the typed message follows the usual rules. */
+  protected get canSendNow(): boolean {
+    return this.voice.isRecording() || this.canSend
+  }
+
+  /** The key that sends, for the recording hint: the Enter preference decides whether it needs Ctrl/Cmd. */
+  protected get sendKeyLabel(): string {
+    return this.preferences.enterKeyBehavior() === 'newline' ? 'Ctrl/Cmd+Enter' : 'Enter'
+  }
+
+  /**
+   * Keys of the recording bar (the textarea is hidden while recording, so it cannot read them): Enter sends the
+   * recording under the same preference as a typed message, Escape discards it. A key held down, or pressed again
+   * once the recording is on its way (the length limit may have sent it), does nothing.
+   */
+  protected onRecordingKeydown(event: KeyboardEvent): void {
+    if (!this.voice.isRecording()) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelRecording()
+    } else if (this.preferences.shouldSend(event)) {
+      event.preventDefault()
+      if (!event.repeat) this.sendRecording()
+    }
+  }
+
+  /** The recording of a voice message, when this message is one. */
+  protected audioOf(event: CaseMessageEvent): AudioContent | undefined {
+    return event.content?.find((part): part is AudioContent => (part as { type?: string }).type === 'Audio')
+  }
+
   ngOnInit(): void {
+    this.voiceCapability.load()
     this.connectSse()
 
     // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
@@ -792,52 +1015,74 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   // ---------------------------------------------------------------------------
 
+  /**
+   * Reopens a stream the browser gave up on, at the user's request. EventSource does not retry
+   * after CLOSED, so a backend that has come back up needs this (or a page reload) to be seen.
+   */
+  protected retryStream(): void {
+    this.dropCaseProbe()
+    this.streamUnavailable.set(false)
+    this.caseGone.set(false)
+    this.eventSource?.close()
+    this.connectSse()
+  }
+
+  /**
+   * Asks the case itself whether it is still there, the only way to tell a refused stream from a
+   * backend that is restarting.
+   *
+   * Deleting a case only marks it removed, and GET /api/cases/{id} still serves it (with
+   * `removed: true`): that flag is the deletion, and a 404 the case being out of reach, by
+   * absence or by permission. Either closes the composer; any other failure leaves it open.
+   */
+  private checkCaseStillExists(): void {
+    this.dropCaseProbe()
+    this.caseProbe = this.http
+      .get<Case>(`${this.config.basePath}/api/cases/${this.caseId}`)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (found) => {
+          if (found.removed) this.caseGone.set(true)
+        },
+        error: (err: unknown) => {
+          if (err instanceof HttpErrorResponse && err.status === 404) this.caseGone.set(true)
+        },
+      })
+  }
+
+  /** A late answer about the previous case, or from before a Retry, must not close this composer. */
+  private dropCaseProbe(): void {
+    this.caseProbe?.unsubscribe()
+    this.caseProbe = null
+  }
+
   private connectSse(): void {
     const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
-
-    console.log('[AgentOS SSE] connecting', {
-      url,
-      basePath: this.config.basePath,
-      caseId: this.caseId,
-      namespaceId: this.namespaceId,
-      now: new Date().toISOString(),
-    })
 
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
     // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
     // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
     const handler = (msg: globalThis.MessageEvent<string>) => {
-      const receivedAt = performance.now()
       const sseEventName = (msg as unknown as { type?: string }).type
-
-      // Log first bytes + sizes to detect batching.
       const raw = msg.data
-      console.log('[AgentOS SSE] frame received', {
-        sseEventName,
-        dataLength: raw?.length ?? 0,
-        dataPreview: raw?.slice(0, 120),
-        receivedAtMs: receivedAt,
-      })
 
       try {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
-          // Reconnection replays persisted history. The last known status restores the
-          // running indicator after a transport error; older statuses must not undo it.
-          // Timeline rows, file refreshes and streamed text remain deduplicated.
+          // Reconnection replays persisted history. The last event that tells whether the case runs
+          // restores the running indicator after a transport error; older ones must not undo it.
+          // This deliberately skips the terminal-close debounce the live branch applies: deciding on
+          // the LAST telling event already collapses a replayed KILLED-then-IDLE burst, which is all
+          // that debounce is for. Timeline rows, file refreshes and streamed text stay deduplicated.
           if (this.events().some((previous) => previous.id === event.id)) {
-            if (event.type === 'CaseStatusEvent') {
-              const latestStatus = [...this.events()]
-                .reverse()
-                .find((previous) => previous.type === 'CaseStatusEvent' || previous.type === 'AgentFinishedEvent')
-              if (latestStatus?.id === event.id) {
-                this.isRunning.set((event as CaseStatusEvent).status === 'RUNNING')
-              }
+            const running = runningAfter(event)
+            if (running !== null) {
+              const latest = this.events().findLast((previous) => runningAfter(previous) !== null)
+              if (latest?.id === event.id) this.isRunning.set(running)
             }
             return
           }
-          const beforeLen = this.events().length
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
           if (event.type === 'MessageEvent') {
@@ -852,17 +1097,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
-          const afterLen = this.events().length
-
-          console.log('[AgentOS SSE] event processed', {
-            sseEventName,
-            eventType: event.type,
-            eventId: event.id,
-            beforeLen,
-            afterLen,
-            running: this.isRunning(),
-            terminal: this.isTerminal(),
-          })
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -883,7 +1117,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
-            const status = (event as CaseStatusEvent).status as string
+            const status = event.status as string
             // _sseStatus is last-writer-wins: the final frame in a replay batch wins,
             // so isTerminal (a computed from caseStatus) self-corrects automatically.
             this._sseStatus.set(status)
@@ -897,10 +1131,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
                 clearTimeout(this.terminalCloseTimer)
                 this.terminalCloseTimer = null
               }
-              const running = status === 'RUNNING'
-              this.isRunning.set(running)
-              if (!running) {
-                // End of turn / idle: reset streaming buffer.
+              // One table, two call sites: the dedup branch above decides from the same function,
+              // so a status added to it lands on both paths. An unrecognised status leaves isRunning
+              // as it stands rather than unlocking the composer on a case that may be mid-run.
+              const running = runningAfter(event)
+              if (running !== null) {
+                this.isRunning.set(running)
+              }
+              // End of turn: reset the streaming buffer. Keyed on IDLE rather than on "not running",
+              // so adding a status to the table never silently changes what clears the buffer.
+              if (status === 'IDLE') {
                 this.streamingText.set('')
               }
             } else {
@@ -923,8 +1163,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
-          // In practice, the SSE stream currently does NOT emit CaseStatusEvent.
-          // So we treat AgentFinishedEvent as the end-of-turn signal.
+          // A turn can change agent without the case changing status: a redirect, a command-queue
+          // drain, a question resumption. The next agent being selected, then starting, means the
+          // case still runs - see runningAfter, which mirrors the backend's own reader. Guarded on
+          // the terminal state so a mid-history frame replayed on a killed case does not flash the
+          // indicator before the debounced close fires.
+          // No early return on purpose: this is a cross-cutting rule rather than a per-type branch,
+          // and the branches below must keep running for the types they handle.
+          if ((event.type === 'AgentRunningEvent' || event.type === 'AgentSelectedEvent') && !this.isTerminal()) {
+            this.isRunning.set(true)
+          }
+
+          // AgentFinishedEvent ends the turn. A handoff emits one too, for the agent handing over;
+          // the rule above restores the running state when the next agent is selected.
           if (event.type === 'AgentFinishedEvent') {
             this.isRunning.set(false)
             // End-of-turn: reset streaming buffer.
@@ -997,26 +1248,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     // handle the different event names we see in the SSE stream
     for (const name of eventNames) {
-      console.log('[AgentOS SSE] addEventListener', name)
       this.eventSource.addEventListener(name, handler)
     }
 
-    this.eventSource.onopen = () => {
-      console.log('[AgentOS SSE] connection open', {
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
-    }
-
-    this.eventSource.onerror = (err) => {
-      console.warn('[AgentOS SSE] connection error', {
-        err,
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
+    this.eventSource.onerror = () => {
+      const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
+      if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
         this.isRunning.set(false)
         // Do not mark terminal on transport error: EventSource may reconnect.
+        // CLOSED is the exception — the browser will not retry, so say the stream is gone
+        // rather than leave a chat that silently never updates again.
+        if (closed) {
+          this.streamUnavailable.set(true)
+          this.checkCaseStillExists()
+        }
       })
     }
   }
@@ -1048,7 +1294,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       event,
       this.promptAutocompleteRef,
       this.agentAutocompleteRef,
-      this.effortAutocompleteRef
+      this.effortAutocompleteRef,
+      this.fileAutocompleteRef
     )
     if (consumed) return
     if (this.preferences.shouldSend(event)) {
@@ -1063,6 +1310,31 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected onAgentSelected(agent: AgentConfig): void {
     this.autocomplete.onAgentSelected(agent, this.agentAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected onFileSelected(file: FileSuggestion): void {
+    this.autocomplete.onFileSelected(file, this.fileAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected closeFileAutocomplete(): void {
+    this.autocomplete.closeFileSuggestions()
+  }
+
+  /**
+   * A file was checked or unchecked in the drawer, whose checkboxes mirror [referencedFiles]: the chip follows.
+   * Nothing is added on a terminal case (the checkbox then stays unchecked), but a file can always be removed.
+   * The focus stays where it is, the drawer remains open for the next file.
+   */
+  protected onReferenceToggled(change: ExchangeReferenceToggle): void {
+    if (!change.referenced) {
+      this.removeReference(change.ref)
+    } else if (!this.isTerminal()) {
+      this.referencedFiles.update((current) => mergeFileReferences(current, [change.ref]))
+    }
+  }
+
+  protected removeReference(ref: ExchangeFileRef): void {
+    this.referencedFiles.update((current) => withoutFileReferences(current, [ref]))
   }
 
   protected closeSlashAutocomplete(): void {
@@ -1116,6 +1388,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.eventSource = null
+    this.dropCaseProbe()
+    this.streamUnavailable.set(false)
+    this.caseGone.set(false)
     this.events.set([])
     this.messageHtmlCache.clear()
     this.inputValue.set('')
@@ -1130,6 +1405,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.isEditing.set(false)
     this.autocomplete.reset()
     this.attachments.reset()
+    this.referencedFiles.set([])
+    this.voice.reset()
     this.connectSse()
   }
 
@@ -1156,21 +1433,32 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
       return
     }
-    if (this.attachments.hasAttachments()) {
+    // Referenced files are sent like uploaded ones (awaited, kept on a failed send), but have nothing to upload.
+    const references = this.referencedFiles()
+    if (this.attachments.hasAttachments() || references.length > 0) {
       this.submitting = true
       try {
         const caseIdAtSubmit = this.caseId
-        const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
-        const mention = await this.attachments.uploadAllAndBuildMention(scope)
+        const mentions: string[] = []
+        if (this.attachments.hasAttachments()) {
+          const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
+          const mention = await this.attachments.uploadAllAndBuildMention(scope)
+          if (mention === null) return
+          mentions.push(mention)
+        }
+        const referenceMention = buildReferenceMention(references)
+        if (referenceMention) mentions.push(referenceMention)
+        const mentionBlock = mentions.join('\n')
         // An upload failure or a mid-flight case switch blocks the send: failed chips carry
         // the mapped errors (or the switch reset the batch), the input stays intact.
-        if (mention === null || this.caseId !== caseIdAtSubmit) return
-        const sent = await this.postMessage(content ? `${content}\n\n${mention}` : mention)
+        if (this.caseId !== caseIdAtSubmit) return
+        const sent = await this.postMessage(content ? `${content}\n\n${mentionBlock}` : mentionBlock)
         // Only a confirmed send clears the composer: on failure the text and the uploaded
         // chips stay, and a retry rebuilds the mention without re-uploading anything.
         if (sent && this.caseId === caseIdAtSubmit) {
           this.inputValue.set('')
           this.attachments.reset()
+          this.referencedFiles.update((current) => withoutFileReferences(current, references))
         }
       } finally {
         this.submitting = false
@@ -1183,6 +1471,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private sendMessage(content: string): void {
     void this.postMessage(content)
+  }
+
+  /** The agent resumes from the history: its tool calls and its summary of the work so far. */
+  protected continueAfterLimit(): void {
+    // An attachment send in flight is not running yet: posting now would send two messages.
+    if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.composerClosed()) return
+    this.sendMessage('Continue')
   }
 
   private postMessage(content: string): Promise<boolean> {
@@ -1230,6 +1525,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected extractText(event: CaseMessageEvent): string {
+    // Only parts that carry text: the Audio part of a voice message has none, its transcript is the Text part.
     return (
       event.content
         ?.filter((c): c is import('@whoz-oss/agentos-api-client').Text => 'content' in c)
@@ -1345,6 +1641,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString()
   }
 
+  /** Local date and time for technical log lines, which can be days apart; the full timestamp stays in the title. */
+  protected formatMessageDateTime(timestamp: string): string {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date)
+  }
+
   protected toggleToolCall(requestId: string): void {
     this.collapsedTools.update((set) => {
       const next = new Set(set)
@@ -1362,13 +1673,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.collapsedTools().has(requestId)
   }
 
-  protected toggleShowTechnical(): void {
-    this.logsToggled.emit()
-  }
-
   /** Extract plain text from a message item for clipboard copy. */
   protected messageText(item: TimelineItem & { kind: 'message' }): string {
     return this.extractText(item.event)
+  }
+
+  /** How long the turn took, in the shortest form that still carries the information. */
+  protected turnDuration(metrics: TurnMetrics): string | null {
+    return metrics.durationMs === undefined ? null : formatTurnDuration(metrics.durationMs)
+  }
+
+  /**
+   * The exact token count, for the cell that shows it rounded.
+   *
+   * Only the count: the provider and model are already on screen for the turn, beside the agent's
+   * name ([agentModelAttribution]), so repeating them in a tooltip that only a mouse can reach
+   * hides nothing and says it twice.
+   */
+  protected turnTokensTitle(metrics: TurnMetrics): string {
+    return `${metrics.totalTokens.toLocaleString()} tokens`
   }
 
   /** Durable provider/model/effort attribution carried by the agent MessageEvent itself. */
@@ -1414,10 +1737,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  private toIterationLimitNotice(event: AgentFinishedEvent): ExecutionNotice {
+    return {
+      severity: 'warning',
+      title: 'Iteration limit reached',
+      detail:
+        `${event.agentName} stopped after ${event.maxIterationsReached} iterations, before finishing. ` +
+        'Its last message sums up the progress.',
+    }
+  }
+
+  private toWarningNotice(event: WarnEvent): ExecutionNotice {
+    return { severity: 'warning', title: 'Warning', detail: event.message }
+  }
+
   /**
-   * Map a CaseEvent to an ExecutionNotice for display in the timeline.
+   * Map a CaseEvent to an ExecutionNotice for display in the timeline. WarnEvent has its own
+   * notice, shown outside technical mode (see toWarningNotice).
    *
-   * WarnEvent and ErrorEvent are immutable historical facts and always produce a notice.
+   * ErrorEvent is an immutable historical fact and always produces a notice.
    * CaseStatusEvent notices are assertions about the PRESENT state: only the LATEST
    * CaseStatusEvent (identified by lastCaseStatusEventId) may emit a terminal banner.
    * A superseded KILLED/ERROR falls through to the generic technical log item instead,
@@ -1425,8 +1763,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   private toExecutionNotice(event: CaseEvent, lastCaseStatusEventId: string | null = null): ExecutionNotice | null {
     switch (event.type) {
-      case 'WarnEvent':
-        return { severity: 'warning', title: 'Warning', detail: (event as WarnEvent).message }
       case 'ErrorEvent':
         return { severity: 'error', title: 'Execution error', detail: (event as ErrorEvent).message }
       case 'CaseStatusEvent': {
@@ -1443,6 +1779,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private toTechnicalItem(event: CaseEvent): TechnicalItem {
+    return { ...this.describeTechnicalEvent(event), timestamp: event.timestamp }
+  }
+
+  private describeTechnicalEvent(event: CaseEvent): Pick<TechnicalItem, 'label' | 'detail'> {
     switch (event.type) {
       case 'CaseStatusEvent':
         return { label: `Status: ${(event as CaseStatusEvent).status}` }

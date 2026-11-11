@@ -2,11 +2,13 @@ package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.NamespaceAgentDeployRequest
 import io.whozoss.agentos.sdk.api.namespace.NamespaceApi
 import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
 import io.whozoss.agentos.sdk.api.namespace.NamespaceListItem
@@ -17,6 +19,7 @@ import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.nio.file.Path
 import java.util.UUID
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 
@@ -63,6 +67,9 @@ class NamespaceController(
                     externalId = resource.externalId?.takeIf { it.isNotBlank() },
                     defaultAgentName = resource.defaultAgentName?.takeIf { it.isNotBlank() },
                     runCostThreshold = resource.runCostThreshold,
+                    // Creation is super-admin only (see create), which is the rule for this field too.
+                    sharedExchangePath = requireAbsolutePath(resource.sharedExchangePath),
+                    maxToolRounds = resource.maxToolRounds,
                 )
             },
         )
@@ -139,6 +146,8 @@ class NamespaceController(
                     defaultAgentName = resource.defaultAgentName?.takeIf { it.isNotBlank() },
                     externalId = existing.externalId, // immutable post-create
                     runCostThreshold = resource.runCostThreshold,
+                    sharedExchangePath = resolveSharedExchangePath(existing, resource),
+                    maxToolRounds = resource.maxToolRounds,
                 ),
             ).toDto()
     }
@@ -174,7 +183,7 @@ class NamespaceController(
     @PostMapping("/{namespaceId}/deploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
-    fun deployAgents(
+    override fun deployAgents(
         @PathVariable namespaceId: UUID,
         @RequestBody request: NamespaceAgentDeployRequest,
     ) {
@@ -184,12 +193,44 @@ class NamespaceController(
     @PostMapping("/{namespaceId}/undeploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
-    fun undeployAgents(
+    override fun undeployAgents(
         @PathVariable namespaceId: UUID,
         @RequestBody request: NamespaceAgentDeployRequest,
     ) {
         namespaceService.undeployAgents(namespaceId, request.agentIds)
     }
+
+    /**
+     * The path to store after an update.
+     *
+     * Where the shared files of a namespace live is a host-level decision (it can point at any directory
+     * the service user can read and write), so only a super-admin may set or change it: any other caller
+     * sending a different value is refused with 403, whatever their rights on the namespace. Sending the
+     * stored value back unchanged is always fine, since a form round-trips the whole resource.
+     *
+     * An omitted (null) value keeps the stored one, so a client that does not know the field cannot erase
+     * it by accident; a blank value clears it, for a super-admin.
+     */
+    private fun resolveSharedExchangePath(
+        existing: Namespace,
+        resource: NamespaceDto,
+    ): String? {
+        val requested = resource.sharedExchangePath
+        return when {
+            requested == null -> existing.sharedExchangePath
+            requested.trim() == existing.sharedExchangePath.orEmpty() -> existing.sharedExchangePath
+            !userService.getCurrentUser().isAdmin ->
+                throw AccessDeniedException("Only a super-admin can set or change the shared exchange path of a namespace")
+            else -> requireAbsolutePath(requested)
+        }
+    }
+
+    /** A blank value means no path. A relative one would name a different place per process, so it is refused. */
+    private fun requireAbsolutePath(raw: String?): String? =
+        raw?.trim()?.takeIf { it.isNotEmpty() }?.also { path ->
+            val valid = runCatching { Path.of(path).isAbsolute }.getOrDefault(false)
+            if (!valid) throw BadRequestException("sharedExchangePath must be an absolute path")
+        }
 
     private fun cascadeRevokeNamespacePermissions(namespaceId: UUID): Int {
         val nsStr = namespaceId.toString()
@@ -226,6 +267,8 @@ fun Namespace.toDto() =
         externalId = externalId,
         defaultAgentName = defaultAgentName,
         runCostThreshold = runCostThreshold,
+        sharedExchangePath = sharedExchangePath,
+        maxToolRounds = maxToolRounds,
     )
 
 // runCostThreshold is intentionally absent from NamespaceListItem — it is an admin-configuration

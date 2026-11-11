@@ -1,77 +1,78 @@
-<div class="integration-form">
-  <header class="integration-form__header">
-    <h1 class="integration-form__title">{{ isEditMode() ? 'Edit integration' : 'New integration' }}</h1>
-  </header>
+<ds-page>
+  <ds-section-header [title]="isEditMode() ? 'Edit integration' : 'New integration'">
+    <button dsButton variant="ghost" type="button" title="Back to integrations" (click)="cancel()">
+      &larr; Integrations
+    </button>
+  </ds-section-header>
 
   @if (isLoading()) {
-    <p class="integration-form__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <form class="integration-form__form" [formGroup]="form" (ngSubmit)="submit()">
-      <fieldset class="integration-form__field integration-form__scope" [disabled]="isEditMode()">
-        <legend class="integration-form__label">Scope</legend>
+    <form class="ds-form" [formGroup]="form" (ngSubmit)="submit()">
+      <ds-fieldset legend="Scope" [disabled]="isEditMode()">
         @for (opt of scopeOptions; track trackByScope($index, opt)) {
-          <label class="integration-form__scope-option">
+          <label dsCheck>
             <input
               type="radio"
               [value]="opt.value"
               [formControl]="scopeControl"
               [disabled]="opt.value === 'namespace' && !isAdmin()"
             />
-            <span>{{ opt.label }}</span>
+            {{ opt.label }}
           </label>
         }
-      </fieldset>
+      </ds-fieldset>
 
-      <div class="integration-form__field">
-        <label class="integration-form__label" for="integration-type">Type <span aria-hidden="true">*</span></label>
-        <select id="integration-type" class="integration-form__select" [formControl]="typeControl">
+      <ds-form-field label="Type" controlId="integration-type" required>
+        <select dsControl id="integration-type" [formControl]="typeControl">
           <option value="" disabled>Select type</option>
           @for (descriptor of integrationTypes(); track trackByType($index, descriptor)) {
             <option [value]="descriptor.type">{{ descriptor.displayName }}</option>
           }
         </select>
-      </div>
+      </ds-form-field>
 
-      <div class="integration-form__field">
-        <label class="integration-form__label" for="integration-name">Name <span aria-hidden="true">*</span></label>
+      <ds-form-field label="Name" controlId="integration-name" required>
         <input
+          dsControl
           id="integration-name"
-          class="integration-form__input"
           type="text"
           placeholder="Integration name"
           [formControl]="nameControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="integration-form__field">
-        <label class="integration-form__label" for="integration-description">Description</label>
+      <ds-form-field label="Description" controlId="integration-description">
         <textarea
+          dsControl
           id="integration-description"
-          class="integration-form__textarea"
           placeholder="Optional description"
           rows="3"
           [formControl]="descriptionControl"
         ></textarea>
-      </div>
+      </ds-form-field>
 
-      <div class="integration-form__field">
-        <label class="integration-form__label" for="integration-auth-setting">Auth Setting</label>
-        <select id="integration-auth-setting" class="integration-form__select" [formControl]="authSettingNameControl">
+      <ds-form-field
+        label="Auth Setting"
+        controlId="integration-auth-setting"
+        hint="Only the name is saved. It is resolved at run time for the user running the case, the most specific layer winning (user on this namespace > namespace > user > platform), so a shared integration can rely on each user's own auth setting of that name."
+      >
+        <select dsControl id="integration-auth-setting" [formControl]="authSettingNameControl">
           <option [ngValue]="null">None</option>
-          @for (name of availableAuthSettings(); track name) {
-            <option [value]="name">{{ name }}</option>
+          @for (option of authSettingOptions(); track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
           }
         </select>
-      </div>
+      </ds-form-field>
 
       @if (isAutoGrantable()) {
-        <div class="integration-form__field">
-          <label class="integration-form__checkbox-row">
+        <div class="ds-stack ds-stack--sm">
+          <label dsCheck>
             <input type="checkbox" [formControl]="autoGrantControl" />
-            <span class="integration-form__label">Grant automatically</span>
+            Grant automatically
           </label>
-          <p class="integration-form__hint">
+          <p class="ds-hint">
             Give this integration to {{ autoGrantReach() }}, without each agent having to declare it. An agent can still
             opt out by mapping this configuration to an empty tool list.
           </p>
@@ -79,31 +80,27 @@
       }
 
       @if (schema(); as s) {
-        <div class="integration-form__schema-form">
+        <ds-card>
           <ds-json-schema-form [schema]="s" [value]="initialParams()" (valueChange)="onParamsChange($event)" />
-        </div>
+        </ds-card>
       }
 
-      <div class="integration-form__actions">
+      <ds-form-actions>
         <button
-          class="integration-form__btn integration-form__btn--primary"
+          dsButton
+          variant="primary"
           type="submit"
           [disabled]="nameControl.invalid || typeControl.invalid || isSubmitting()"
         >
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
         @if (isEditMode()) {
-          <button
-            class="integration-form__btn integration-form__btn--export"
-            type="button"
-            [disabled]="isExporting()"
-            (click)="exportYaml()"
-          >
+          <button dsButton type="button" [disabled]="isExporting()" (click)="exportYaml()">
             {{ isExporting() ? 'Exporting…' : 'Export as YAML' }}
           </button>
         }
-        <button class="integration-form__btn" type="button" (click)="cancel()">Cancel</button>
-      </div>
+        <button dsButton type="button" (click)="cancel()">Cancel</button>
+      </ds-form-actions>
     </form>
   }
-</div>
+</ds-page>

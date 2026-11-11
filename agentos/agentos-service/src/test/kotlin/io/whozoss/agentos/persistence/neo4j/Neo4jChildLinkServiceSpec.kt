@@ -35,6 +35,11 @@ class Neo4jChildLinkServiceSpec(
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
 
+        // The embedded database is shared with the other specs of the run. The nodes seeded here are bare
+        // (an AgentConfig without a name cannot be mapped back), so they must not outlive this spec: a later
+        // spec listing platform agents would fail to load them.
+        afterSpec { Neo4jContainerSupport.clearDatabase(driver) }
+
         "creates a BELONGS_TO edge between two existing nodes" {
             seedNode("Namespace", "ns-1", "name" to "Engineering")
             seedNode("AgentConfig", "agent-1")

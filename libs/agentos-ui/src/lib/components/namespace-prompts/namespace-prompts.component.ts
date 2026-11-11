@@ -2,10 +2,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 interface PromptRow {
   key: string
@@ -14,9 +16,15 @@ interface PromptRow {
 }
 @Component({
   selector: 'agentos-namespace-prompts',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './namespace-prompts.component.html',
-  styleUrl: './namespace-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespacePromptsComponent {
@@ -27,6 +35,7 @@ export class NamespacePromptsComponent {
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   protected readonly isLoading = signal(true)
+  protected readonly deletion = createRowDeletionState()
   protected readonly rows = signal<PromptRow[]>([])
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.prompt.name, row.prompt.description, row.scope].filter(Boolean).join(' ')
@@ -67,11 +76,12 @@ export class NamespacePromptsComponent {
     if (row.scope === 'platform' || !row.prompt.id) return
     void this.router.navigate(['/agentos', this.namespaceId, 'prompts', row.prompt.id, 'edit'])
   }
-  protected delete(row: PromptRow): void {
-    if (row.scope === 'platform' || !row.prompt.id || !confirm(`Delete prompt “${row.prompt.name}”?`)) return
-    this.promptState
-      .delete(row.prompt.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+  protected confirmDelete(row: PromptRow): void {
+    if (row.scope === 'platform' || !row.prompt.id) return
+    this.deletion.execute(row.key, {
+      request$: this.promptState.delete(row.prompt.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${row.prompt.name}" failed. Try again.`,
+    })
   }
 }

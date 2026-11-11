@@ -5,12 +5,16 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.authSetting.AuthSettingApi
 import io.whozoss.agentos.authSetting.AuthSettingDto
 import io.whozoss.agentos.exception.BadRequestException
-import io.whozoss.agentos.namespace.NamespaceAgentDeployRequest
-import io.whozoss.agentos.namespace.NamespaceController
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
+import io.whozoss.agentos.sdk.api.aiProvider.AiModelApi
+import io.whozoss.agentos.sdk.api.aiProvider.AiModelDto
+import io.whozoss.agentos.sdk.api.aiProvider.AiProviderApi
+import io.whozoss.agentos.sdk.api.aiProvider.AiProviderDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
+import io.whozoss.agentos.sdk.api.namespace.NamespaceAgentDeployRequest
 import io.whozoss.agentos.sdk.api.namespace.NamespaceApi
 import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
 import io.whozoss.agentos.sdk.api.prompt.PromptApi
@@ -34,8 +38,6 @@ import java.util.UUID
  * request first, so a future asynchronous caller fails with a clear message rather than with an
  * authentication error from the proxy.
  *
- * Deployment has no `*Api` method yet, so it goes through [NamespaceController], the same proxy,
- * until `NamespaceApi` declares it (#1519).
  * `@Valid` does not apply to in-process calls, so every DTO is validated here with the same Bean
  * Validation constraints before it reaches the controller, and refused as a 400 would be.
  */
@@ -47,7 +49,8 @@ class ApiBeanConfigWriter(
     private val integrationConfigApi: IntegrationConfigApi,
     private val authSettingApi: AuthSettingApi,
     private val namespaceApi: NamespaceApi,
-    private val namespaceController: NamespaceController,
+    private val aiProviderApi: AiProviderApi,
+    private val aiModelApi: AiModelApi,
     private val objectMapper: ObjectMapper,
     private val validator: Validator,
 ) : ConfigWriter {
@@ -64,6 +67,8 @@ class ApiBeanConfigWriter(
                 ConfigKind.INTEGRATION -> integrationConfigApi.create(validated(dto, IntegrationConfigDto::class.java)).id
                 ConfigKind.AUTH_SETTING -> authSettingApi.create(validated(dto, AuthSettingDto::class.java)).id
                 ConfigKind.NAMESPACE -> namespaceApi.create(validated(dto, NamespaceDto::class.java)).id
+                ConfigKind.AI_PROVIDER -> aiProviderApi.create(validated(dto, AiProviderDto::class.java)).id
+                ConfigKind.AI_MODEL -> aiModelApi.create(validated(dto, AiModelDto::class.java)).id
             } ?: throw IllegalStateException("The REST API created a $kind without returning its id")
         }
 
@@ -80,6 +85,8 @@ class ApiBeanConfigWriter(
                     ConfigKind.INTEGRATION -> integrationConfigApi.getById(id)
                     ConfigKind.AUTH_SETTING -> authSettingApi.getById(id)
                     ConfigKind.NAMESPACE -> namespaceApi.getById(id)
+                    ConfigKind.AI_PROVIDER -> aiProviderApi.getById(id)
+                    ConfigKind.AI_MODEL -> aiModelApi.getById(id)
                 },
             )
         }
@@ -97,6 +104,8 @@ class ApiBeanConfigWriter(
             ConfigKind.INTEGRATION -> integrationConfigApi.update(id, validated(current, IntegrationConfigDto::class.java))
             ConfigKind.AUTH_SETTING -> authSettingApi.update(id, validated(current, AuthSettingDto::class.java))
             ConfigKind.NAMESPACE -> namespaceApi.update(id, validated(current, NamespaceDto::class.java))
+            ConfigKind.AI_PROVIDER -> aiProviderApi.update(id, validated(current, AiProviderDto::class.java))
+            ConfigKind.AI_MODEL -> aiModelApi.update(id, validated(current, AiModelDto::class.java))
         }
     }
 
@@ -114,7 +123,7 @@ class ApiBeanConfigWriter(
         deployed: Boolean,
     ): Unit = asRequestUser {
         val request = NamespaceAgentDeployRequest(listOf(agentId))
-        if (deployed) namespaceController.deployAgents(namespaceId, request) else namespaceController.undeployAgents(namespaceId, request)
+        if (deployed) namespaceApi.deployAgents(namespaceId, request) else namespaceApi.undeployAgents(namespaceId, request)
     }
 
     /** Runs [block] once sure to act as the user of the current HTTP request, whose identity the proxies read. */

@@ -15,7 +15,7 @@
 name: "FILES"
 integrationType: "FILE_ACCESS"
 parameters:
-  rootPath: "{{NAMESPACE_CONFIG_PATH}}"
+  rootPath: "{{CASE_EXCHANGE}}/repo"
   readOnly: false
   readMaxSizeMb: 10
   extraDenyPatterns: []

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import java.util.UUID
 
 /**
@@ -17,4 +18,7 @@ data class ConfigEntity(
     val enabled: Boolean? = null,
     val integrationType: String? = null,
     val fromFilesystem: Boolean = false,
+    /** AI models only: the provider they belong to, and its name. */
+    val aiProviderId: UUID? = null,
+    val aiProviderName: String? = null,
 )

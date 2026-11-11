@@ -24,6 +24,9 @@ data class NamespaceNode(
     val externalId: String? = null,
     val defaultAgentName: String? = null,
     val runCostThreshold: Double? = null,
+    // Nullable and absent on existing nodes: no migration needed.
+    val sharedExchangePath: String? = null,
+    val maxToolRounds: Int? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -48,6 +51,8 @@ data class NamespaceNode(
             externalId = externalId,
             defaultAgentName = defaultAgentName,
             runCostThreshold = runCostThreshold,
+            sharedExchangePath = sharedExchangePath,
+            maxToolRounds = maxToolRounds,
         )
 
     companion object {
@@ -60,6 +65,8 @@ data class NamespaceNode(
                 externalId = ns.externalId,
                 defaultAgentName = ns.defaultAgentName,
                 runCostThreshold = ns.runCostThreshold,
+                sharedExchangePath = ns.sharedExchangePath,
+                maxToolRounds = ns.maxToolRounds,
                 created = ns.metadata.created,
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,

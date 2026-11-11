@@ -133,6 +133,7 @@ class FilesystemAiModelRepository(
             maxCompletionTokens = yaml.maxCompletionTokens,
             contextWindow = yaml.contextWindow,
             pricing = yaml.pricing,
+            supportsAdvancedExecution = yaml.supportsAdvancedExecution,
         )
     }
 
@@ -159,6 +160,7 @@ class FilesystemAiModelRepository(
  *   outputMTokens: 10
  *   cacheRead: 0.2
  *   cacheWrite: 2.5
+ * supportsAdvancedExecution: true   # optional, default false: capability required by agents configured in ADVANCED mode; never changes an agent's mode
  * ```
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -172,4 +174,5 @@ private data class AiModelYamlModel(
     val maxCompletionTokens: Int? = null,
     val contextWindow: Long? = null,
     val pricing: ModelPricing? = null,
+    val supportsAdvancedExecution: Boolean = false,
 )

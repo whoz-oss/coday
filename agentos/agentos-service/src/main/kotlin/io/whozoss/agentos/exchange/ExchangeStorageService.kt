@@ -3,6 +3,7 @@ package io.whozoss.agentos.exchange
 import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
+import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -31,7 +32,8 @@ import java.util.UUID
  * The exchange is split into two physically separate roots per namespace so that
  * the namespace-shared manifest never sees case-private folders:
  * - [caseRoot]      = `<mountRoot>/<namespaceId>/cases/<YYYY>/<MM>/<DD>/<caseId>` (sharded by creation date)
- * - [namespaceRoot] = `<mountRoot>/<namespaceId>/shared`
+ * - [namespaceRoot] = `<mountRoot>/<namespaceId>/shared`, or the namespace's own
+ *   [io.whozoss.agentos.namespace.Namespace.sharedExchangePath] when a super-admin set one
  *
  * Relative-path resolution only guards against traversal (the resolved path must stay within the
  * scope root). Unlike the LLM-facing file tools, the user-driven exchange applies no sensitive-file
@@ -41,6 +43,11 @@ import java.util.UUID
 class ExchangeStorageService(
     private val config: ExchangeStorageConfigProperties,
     private val reservedEntries: List<ExchangeReservedEntries>,
+    /**
+     * Where a namespace's own shared directory is read from. Absent in the specs that only exercise the
+     * default layout; every running service has it.
+     */
+    private val namespaceRepository: NamespaceRepository? = null,
 ) {
     companion object : KLogging() {
         private const val MAX_SEGMENT_LENGTH = 255
@@ -93,8 +100,46 @@ class ExchangeStorageService(
             .resolve(caseId.toString())
     }
 
-    /** Root holding files shared across [namespaceId]. */
-    fun namespaceRoot(namespaceId: UUID): Path = mountRoot.resolve(namespaceId.toString()).resolve("shared")
+    /**
+     * The namespace's own directory under the mount root, parent of everything the service keeps for it
+     * (its default shared root, its cases, its internal Git repository). It never follows
+     * [io.whozoss.agentos.namespace.Namespace.sharedExchangePath]: that setting moves the shared
+     * documents only, and the layout built on this directory must not move with it.
+     */
+    fun namespaceDirectory(namespaceId: UUID): Path = mountRoot.resolve(namespaceId.toString())
+
+    /** The shared root a namespace has when nobody configured another one. */
+    fun defaultNamespaceRoot(namespaceId: UUID): Path = namespaceDirectory(namespaceId).resolve("shared")
+
+    /**
+     * Root holding files shared across [namespaceId]: the directory its super-admin configured as
+     * [io.whozoss.agentos.namespace.Namespace.sharedExchangePath] when there is one, else
+     * [defaultNamespaceRoot].
+     *
+     * Every consumer resolves the shared root through this method (REST endpoints, agent tools, the
+     * `{{NAMESPACE_EXCHANGE}}` token), so they cannot disagree. The directory is not created here: like
+     * the default one it is created by the first writer or grant.
+     */
+    fun namespaceRoot(namespaceId: UUID): Path = configuredSharedRoot(namespaceId) ?: defaultNamespaceRoot(namespaceId)
+
+    /**
+     * The configured path, or null when none is set or it cannot be used. A relative path would name a
+     * different place for every process working directory, so it is refused rather than guessed: the
+     * service layer rejects it on save, which makes this a guard against data written by other means.
+     */
+    private fun configuredSharedRoot(namespaceId: UUID): Path? =
+        namespaceRepository
+            ?.findByIds(listOf(namespaceId))
+            ?.firstOrNull()
+            ?.sharedExchangePath
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching { Path.of(raw) }.getOrNull()?.takeIf { it.isAbsolute }?.normalize()
+                    ?: run {
+                        logger.warn { "Namespace $namespaceId has an unusable sharedExchangePath, using the default root" }
+                        null
+                    }
+            }
 
     /**
      * List every regular file under [root].

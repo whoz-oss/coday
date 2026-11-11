@@ -1,5 +1,6 @@
 package io.whozoss.agentos.configAgent
 
+import io.whozoss.agentos.sdk.api.configChange.ConfigOperationStatus
 import java.util.UUID
 
 /**

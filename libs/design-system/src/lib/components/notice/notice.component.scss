@@ -1,0 +1,30 @@
+@use '../../../styles/scale' as t;
+
+:host {
+  display: block;
+  box-sizing: border-box;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-md, 0);
+  color: var(--color-text, #1d1f20);
+  font-size: t.$text-body;
+  line-height: 1.4;
+}
+
+:host(.ds-notice--error) {
+  border-color: var(--color-error, #ec3013);
+  background: color-mix(in srgb, var(--color-error, #ec3013) 8%, transparent);
+  color: var(--color-error, #ec3013);
+}
+
+:host(.ds-notice--warning) {
+  border-color: var(--color-warning, #ff9500);
+  background: color-mix(in srgb, var(--color-warning, #ff9500) 10%, transparent);
+  color: var(--color-warning, #ff9500);
+}
+
+:host(.ds-notice--success) {
+  border-color: var(--color-success, #34c759);
+  background: var(--color-success-bg, color-mix(in srgb, var(--color-success, #34c759) 10%, transparent));
+  color: var(--color-success, #34c759);
+}

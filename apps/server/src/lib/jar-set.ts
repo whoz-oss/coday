@@ -27,6 +27,9 @@
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
+import { Readable, Transform } from 'stream'
+import { pipeline } from 'stream/promises'
+import type { ReadableStream as NodeReadableStream } from 'stream/web'
 import { debugLog } from './log'
 import { releaseBaseUrl } from './release-url'
 
@@ -58,6 +61,22 @@ export interface ManifestEntry {
   hash: string
   filename: string
 }
+
+/** Progress of one artifact download, plus the weighted progress of the whole set. */
+export interface DownloadProgress {
+  kind: JarSetKind
+  artifactId: string
+  /** 0-based position of the artifact in the download order. */
+  index: number
+  count: number
+  receivedBytes: number
+  /** Content-Length of the current artifact when the server announced it. */
+  totalBytes?: number
+  /** 0..100, weighted by artifact size (sizes come from HEAD requests, estimated when unknown). */
+  overallPercent: number
+}
+
+export type DownloadProgressListener = (progress: DownloadProgress) => void
 
 export interface SelectedArtifact {
   artifactId: string
@@ -176,14 +195,78 @@ export function cleanDirectory(dir: string, allowedFilenames: Set<string>, logCo
 // Download
 // ---------------------------------------------------------------------------
 
-async function fetchWithTimeout(url: string): Promise<Response> {
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
-    return await fetch(url, { signal: controller.signal })
+    return await fetch(url, { ...init, signal: controller.signal })
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Stream a response body to `<dest>.tmp`, hashing it on the way, then rename it to `dest` once the checksum matches.
+ * The JARs are hundreds of MB: nothing is held in memory (a few KB at a time) and the event loop is never blocked by a
+ * single big hash or write. The temp file is removed on any failure. Returns the number of bytes written.
+ */
+async function downloadVerified(
+  res: Response,
+  dest: string,
+  expectedHash: string,
+  filename: string,
+  onBytes?: (received: number) => void
+): Promise<number> {
+  const tmp = `${dest}.tmp`
+  const hash = crypto.createHash('sha256')
+  let received = 0
+  try {
+    if (!res.body) throw new Error(`Empty response body for '${filename}'`)
+    const meter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        hash.update(chunk)
+        received += chunk.length
+        onBytes?.(received)
+        callback(null, chunk)
+      },
+    })
+    await pipeline(Readable.fromWeb(res.body as unknown as NodeReadableStream), meter, fs.createWriteStream(tmp))
+    if (hash.digest('hex') !== expectedHash) throw new Error(`Checksum mismatch for '${filename}'`)
+    fs.renameSync(tmp, dest)
+    return received
+  } catch (err) {
+    fs.rmSync(tmp, { force: true })
+    throw err
+  }
+}
+
+/** Best-effort artifact sizes (Content-Length of a HEAD request); unknown sizes are left out. */
+async function fetchSizes(baseUrl: string, filenames: string[]): Promise<Map<string, number>> {
+  const sizes = new Map<string, number>()
+  await Promise.all(
+    filenames.map(async (filename) => {
+      try {
+        const res = await fetchWithTimeout(`${baseUrl}/${filename}`, { method: 'HEAD' })
+        const length = Number(res.headers.get('content-length'))
+        if (res.ok && Number.isFinite(length) && length > 0) sizes.set(filename, length)
+      } catch {
+        /* progress only: ignore */
+      }
+    })
+  )
+  return sizes
+}
+
+/**
+ * Weighted overall percentage of a set download: `weights[i]` is the expected size of artifact i,
+ * `done` the number of finished artifacts, `currentFraction` the 0..1 progress of the current one.
+ */
+export function overallPercent(weights: number[], done: number, currentFraction: number): number {
+  const total = weights.reduce((a, b) => a + b, 0)
+  if (total <= 0) return 0
+  const finished = weights.slice(0, done).reduce((a, b) => a + b, 0)
+  const current = (weights[done] ?? 0) * Math.min(1, Math.max(0, currentFraction))
+  return Math.min(100, Math.round(((finished + current) / total) * 100))
 }
 
 function writeAtomically(dest: string, data: Buffer | string): void {
@@ -211,7 +294,12 @@ function writeAtomically(dest: string, data: Buffer | string): void {
  *
  * Callers must wait for this to finish, then start `version` (never an older installed one).
  */
-export async function ensureJarSet(configDir: string, kind: JarSetKind, version: string): Promise<DownloadResult> {
+export async function ensureJarSet(
+  configDir: string,
+  kind: JarSetKind,
+  version: string,
+  onProgress?: DownloadProgressListener
+): Promise<DownloadResult> {
   const ctx = kind.toUpperCase()
   const baseDir = path.join(configDir, kind)
   const pluginsDir = path.join(baseDir, 'plugins')
@@ -247,15 +335,52 @@ export async function ensureJarSet(configDir: string, kind: JarSetKind, version:
     const artifacts = selectArtifacts(parseManifest(await manifestRes.text()), kind, version)
     debugLog(ctx, `[DOWNLOAD] Release provides: ${artifacts.map((a) => a.artifactId).join(', ')}`)
 
-    for (const { artifactId, entry } of artifacts) {
+    // Sizes are only needed to weight the progress: skipped when nobody listens.
+    const sizes = onProgress
+      ? await fetchSizes(
+          baseUrl,
+          artifacts.map((a) => a.entry.filename)
+        )
+      : new Map<string, number>()
+    const knownSizes = [...sizes.values()]
+    const averageSize = knownSizes.length ? knownSizes.reduce((a, b) => a + b, 0) / knownSizes.length : 1
+    const weights = artifacts.map((a) => sizes.get(a.entry.filename) ?? averageSize)
+
+    for (const [index, { artifactId, entry }] of artifacts.entries()) {
       debugLog(ctx, `[DOWNLOAD] ${entry.filename}`)
+      const report = (receivedBytes: number, totalBytes?: number) =>
+        onProgress?.({
+          kind,
+          artifactId,
+          index,
+          count: artifacts.length,
+          receivedBytes,
+          totalBytes,
+          overallPercent: overallPercent(weights, index, totalBytes ? receivedBytes / totalBytes : 0),
+        })
+      report(0)
       const jarRes = await fetchWithTimeout(`${baseUrl}/${entry.filename}`)
       if (!jarRes.ok) throw new Error(`JAR HTTP ${jarRes.status} for '${entry.filename}'`)
-      const buffer = Buffer.from(await jarRes.arrayBuffer())
-      if (sha256hex(buffer) !== entry.hash) throw new Error(`Checksum mismatch for '${entry.filename}'`)
+      const announced = Number(jarRes.headers.get('content-length'))
+      const totalBytes = Number.isFinite(announced) && announced > 0 ? announced : sizes.get(entry.filename)
       const dest = jarPathIn(baseDir, kind, artifactId, version)
-      writeAtomically(dest, buffer)
-      debugLog(ctx, `[DOWNLOAD]   written ${dest} (${buffer.length} bytes)`)
+      const writtenBytes = await downloadVerified(
+        jarRes,
+        dest,
+        entry.hash,
+        entry.filename,
+        onProgress ? (received) => report(received, totalBytes) : undefined
+      )
+      debugLog(ctx, `[DOWNLOAD]   written ${dest} (${writtenBytes} bytes)`)
+      onProgress?.({
+        kind,
+        artifactId,
+        index,
+        count: artifacts.length,
+        receivedBytes: writtenBytes,
+        totalBytes: writtenBytes,
+        overallPercent: overallPercent(weights, index + 1, 0),
+      })
     }
 
     // Strict cleanup: only the installed set may remain. Also drop the next/ staging directory

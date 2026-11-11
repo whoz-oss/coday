@@ -53,6 +53,7 @@ export function classifyLane(step: unknown): LaneDescriptor {
 /** Preserve the authoritative Factory step status for truthful rendering. */
 export function resolveStepState(step: unknown): StepState {
   const status = getString(asObject(step), 'status') ?? 'pending'
+  if (status === 'needs_research') return 'waiting_human'
   return (
     ['pending', 'ready', 'running', 'waiting_human', 'completed', 'failed', 'indeterminate', 'cancelled'] as const
   ).includes(status as TimelineStepStatus)

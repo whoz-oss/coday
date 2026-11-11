@@ -68,18 +68,18 @@ data class AgentConfig(
      * only, an **empty list is an explicit opt-out** rather than an empty allow-list, and an
      * **absent key does not mean "never granted"**: the platform defaults
      * `agentos.exchange.tools.case-enabled-by-default` and
-     * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
+     * `...namespace-enabled-by-default` (both on by default) decide for an agent that stays silent.
      * The namespace key is further gated at run time: whatever this map says, the scope is only
      * granted when the invoking user holds Namespace READ.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**
      * Execution mode for this agent. When non-null, takes precedence over [advancedExecution].
-     * - [ExecutionMode.SIMPLE]: single LLM call per turn (default).
+     * - [ExecutionMode.SIMPLE]: single LLM call per turn.
      * - [ExecutionMode.ADVANCED]: multi-step LLM orchestration loop.
      * - [ExecutionMode.LOOP]: zero LLM calls, programmatic tool sequence.
      *
-     * Null means: fall back to [advancedExecution] for backward compatibility.
+     * Null means: fall back to [advancedExecution] for backward compatibility (see [resolvedExecutionMode]).
      */
     val executionMode: ExecutionMode? = null,
     /**
@@ -189,6 +189,10 @@ data class AgentConfig(
      * Resolves the effective [ExecutionMode] for this agent, applying backward-compatibility
      * fallback: when [executionMode] is null, [advancedExecution] is used
      * (`true` → [ExecutionMode.ADVANCED], `false` → [ExecutionMode.SIMPLE]).
+     *
+     * The agent alone decides its mode; the model never changes it. An ADVANCED agent additionally
+     * requires a model with [io.whozoss.agentos.sdk.aiProvider.AiModel.supportsAdvancedExecution],
+     * which is checked when the agent is instantiated.
      */
     val resolvedExecutionMode: ExecutionMode
         get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE

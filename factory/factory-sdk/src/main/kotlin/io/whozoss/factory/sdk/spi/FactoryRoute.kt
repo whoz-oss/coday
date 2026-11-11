@@ -3,6 +3,18 @@ package io.whozoss.factory.sdk.spi
 import com.fasterxml.jackson.annotation.JsonInclude
 
 /**
+ * Spring-agnostic caller identity admitted by the Factory HTTP boundary and
+ * passed to plugin route handlers via [FactoryRouteRequest.caller].
+ */
+data class FactoryCallerIdentity(
+    val userId: String,
+    val organizationId: String,
+    val email: String? = null,
+    val workstreamId: String? = null,
+    val roles: Set<String> = emptySet(),
+)
+
+/**
  * Spring-agnostic HTTP request handed to a plugin route handler.
  *
  * The host is responsible for mapping its native request object onto this
@@ -21,6 +33,11 @@ data class FactoryRouteRequest(
      * re-parsing raw headers. Contents are host-defined and stable per request.
      */
     val attributes: Map<String, Any?> = emptyMap(),
+    /**
+     * Authenticated caller identity resolved by the host HTTP boundary, or
+     * `null` if the request was not authenticated.
+     */
+    val caller: FactoryCallerIdentity? = null,
 )
 
 /**

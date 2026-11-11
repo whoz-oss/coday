@@ -1,29 +1,93 @@
-@if (errorMessage()) {
-  <p class="namespace-skills__error" role="alert">{{ errorMessage() }}</p>
-}
-
-<ds-entity-list
+<ds-section-header
   title="Skills"
-  [items]="(skillItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No skills defined yet. Add one above, or drop a SKILL.md under the namespace config path."
-  cardMinWidth="400px"
-  [itemTemplate]="skillItemTpl"
-  (createRequested)="openCreateForm()"
+  description="Skills available in this namespace, including skills inherited from the platform."
 >
-  <button toolbar-start class="namespace-skills__back" type="button" (click)="goBack()">&#8592; Namespaces</button>
-</ds-entity-list>
-
-<!-- Item template: renders SkillItemComponent for each entity-list card slot -->
-<ng-template #skillItemTpl let-item>
-  @if (resolveSkill(item.id); as skill) {
-    <agentos-skill-item
-      [skill]="skill"
-      [namespaceId]="namespaceId"
-      [readOnly]="isPlatformSkill(item.id)"
-      [namedByAgents]="namedByAgents(skill)"
-      (deleteRequested)="deleteSkill($event)"
-    />
-  }
-</ng-template>
+  <agentos-table-filter
+    label="Filter skills"
+    placeholder="Filter skills…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New skill</button>
+</ds-section-header>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading skills…</p>
+} @else if (rows().length === 0) {
+  <p class="settings-table__status">
+    No skills defined yet. Add one above, or drop a SKILL.md under the namespace config path.
+  </p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No skills match the current filter.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Skills">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Description</th>
+          <th role="columnheader">Resources</th>
+          <th role="columnheader">Scope</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (row of rowFilter.filteredRows(); track row.key) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title>
+              <span class="settings-table__name settings-table__stacked">{{ row.skill.name }}</span>
+              @if (row.namedByAgents > 0) {
+                <span class="settings-table__secondary settings-table__stacked">
+                  named by {{ row.namedByAgents }} {{ row.namedByAgents === 1 ? 'agent' : 'agents' }}
+                </span>
+              }
+            </td>
+            <td role="cell" data-label="Description" class="settings-table__secondary">
+              {{ row.skill.description || '—' }}
+            </td>
+            <td role="cell" data-label="Resources">{{ resourceCount(row.skill) }}</td>
+            <td role="cell" data-label="Scope">
+              <div class="settings-table__tags">
+                <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
+                  row.scope === 'platform' ? 'Platform' : 'Namespace'
+                }}</ds-tag>
+                @if (row.scope === 'platform') {
+                  <ds-tag variant="outline">Read-only</ds-tag>
+                }
+                @if (row.skill.readOnly) {
+                  <ds-tag variant="neutral">SKILL.md</ds-tag>
+                }
+              </div>
+            </td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (deletion.confirmingId() !== row.key) {
+                  <button type="button" [attr.aria-label]="'View ' + row.skill.name" (click)="inspect(row)">
+                    View
+                  </button>
+                  @if (isMutable(row)) {
+                    <button type="button" [attr.aria-label]="'Edit ' + row.skill.name" (click)="edit(row)">Edit</button>
+                  }
+                }
+                @if (isMutable(row)) {
+                  <agentos-row-delete-action
+                    [rowKey]="row.key"
+                    [rowLabel]="row.skill.name"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (deleteRequested)="requestDelete(row)"
+                    (deleteConfirmed)="confirmDelete(row)"
+                    (deleteCancelled)="deletion.cancel()"
+                  />
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

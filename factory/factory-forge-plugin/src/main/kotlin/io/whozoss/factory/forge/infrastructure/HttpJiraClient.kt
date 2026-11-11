@@ -138,6 +138,76 @@ class HttpJiraClient(
         )
     }
 
+    override fun postComment(ticketId: String, markdownBody: String): Boolean {
+        if (!isConfigured() || ticketId.isBlank() || markdownBody.isBlank()) return false
+        val uri = "${base()}/rest/api/3/issue/$ticketId/comment"
+        val adfBody = mapOf(
+            "body" to mapOf(
+                "type" to "doc",
+                "version" to 1,
+                "content" to listOf(
+                    mapOf(
+                        "type" to "paragraph",
+                        "content" to listOf(
+                            mapOf("type" to "text", "text" to markdownBody),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        return try {
+            client.post()
+                .uri(uri)
+                .header("Authorization", authorizationHeader())
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .body(adfBody)
+                .retrieve()
+                .toBodilessEntity()
+            true
+        } catch (error: Exception) {
+            throw JiraUnavailableException("Jira comment POST failure pour $ticketId", error)
+        }
+    }
+
+    override fun transitionTicket(ticketId: String, targetStatusOrTransitionName: String): Boolean {
+        if (!isConfigured() || ticketId.isBlank() || targetStatusOrTransitionName.isBlank()) return false
+        val transitionsUri = "${base()}/rest/api/3/issue/$ticketId/transitions"
+        val transitionsPage = try {
+            client.get()
+                .uri(transitionsUri)
+                .header("Authorization", authorizationHeader())
+                .header("Accept", "application/json")
+                .retrieve()
+                .body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+        } catch (error: Exception) {
+            throw JiraUnavailableException("Jira transitions GET failure pour $ticketId", error)
+        }
+        val transitions = (transitionsPage?.get("transitions") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()
+        val matched = transitions.firstOrNull { tr ->
+            val id = tr["id"] as? String
+            val name = tr["name"] as? String
+            val toStatus = (tr["to"] as? Map<*, *>)?.get("name") as? String
+            id.equals(targetStatusOrTransitionName, ignoreCase = true) ||
+                name.equals(targetStatusOrTransitionName, ignoreCase = true) ||
+                toStatus.equals(targetStatusOrTransitionName, ignoreCase = true)
+        } ?: return false
+        val transitionId = matched["id"] as? String ?: return false
+        return try {
+            client.post()
+                .uri(transitionsUri)
+                .header("Authorization", authorizationHeader())
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .body(mapOf("transition" to mapOf("id" to transitionId)))
+                .retrieve()
+                .toBodilessEntity()
+            true
+        } catch (error: Exception) {
+            throw JiraUnavailableException("Jira transition POST failure pour $ticketId", error)
+        }
+    }
+
     private fun formatCommentsSection(comments: List<JiraComment>, omitted: Int): String {
         val parts = comments.map { comment ->
             val date = if (comment.created.isNotEmpty()) formatDate(comment.created) else ""

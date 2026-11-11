@@ -112,13 +112,19 @@
     flex-direction: column;
     gap: 8px;
 
+    // Side by side: the button keeps its natural width, the filter takes all the remaining space.
     &--wide {
       flex-direction: row;
 
-      .shell-sidebar__new-case-btn,
+      .shell-sidebar__new-case-btn {
+        flex: none;
+        width: auto;
+      }
+
       .shell-sidebar__search {
-        flex: 1;
+        flex: 1 1 0;
         min-width: 0;
+        width: auto;
       }
     }
   }
@@ -172,6 +178,7 @@
     gap: 6px;
     padding: 5px 8px;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     background: var(--color-surface);
     color: var(--color-text);
     transition: border-color 150ms;
@@ -191,6 +198,7 @@
     flex: none;
     display: grid;
     place-items: center;
+    border-radius: var(--radius-sm, 0);
     background: var(--color-accent-900);
     color: var(--color-accent-100);
     font-family: var(--font-heading);
@@ -229,6 +237,7 @@
     z-index: 100;
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-lg);
     padding: 4px;
   }
@@ -243,6 +252,7 @@
     padding: 7px 8px;
     color: var(--color-text);
     font-size: 14px;
+    border-radius: var(--radius-sm, 0);
     transition: background 100ms;
 
     &:hover {
@@ -262,6 +272,7 @@
     display: grid;
     place-items: center;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm, 0);
     background: var(--color-surface-secondary);
     color: var(--color-neutral-600);
     font-family: var(--font-heading);
@@ -275,6 +286,56 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  &__ns-menu-separator {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--color-divider);
+  }
+
+  &__ns-item--config {
+    color: var(--color-neutral-600);
+
+    &:hover {
+      color: var(--color-accent);
+    }
+  }
+
+  &__ns-config-icon {
+    width: 18px;
+    flex: none;
+    font-size: 16px;
+    text-align: center;
+  }
+
+  // Direct shortcut to the settings of the selected namespace, next to the picker
+  &__ns-config-btn {
+    @include ds.button-reset;
+
+    width: 32px;
+    height: 32px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
+    background: var(--color-surface);
+    color: var(--color-neutral-600);
+    cursor: pointer;
+    transition:
+      border-color 140ms,
+      color 140ms;
+
+    .material-icons {
+      font-size: 18px;
+    }
+
+    &:hover {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
   }
 
   &__ns-item-check {
@@ -344,6 +405,7 @@
     gap: 9px;
     padding: 5px 6px;
     border: 1px solid transparent;
+    border-radius: var(--radius-md, 0);
     background: transparent;
     color: var(--color-text);
     transition:
@@ -364,11 +426,13 @@
     display: grid;
     place-items: center;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm, 0);
     background: var(--color-surface);
     font-family: var(--font-heading);
     font-weight: 600;
     font-size: 12px;
     color: var(--color-accent-700);
+    overflow: hidden;
   }
 
   // Name/role text block
@@ -401,11 +465,13 @@
     display: grid;
     place-items: center;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     background: var(--color-surface);
     font-family: var(--font-heading);
     font-weight: 600;
     font-size: 12px;
     color: var(--color-accent-700);
+    overflow: hidden;
     cursor: pointer;
     transition: border-color 140ms;
 
@@ -425,6 +491,7 @@
     display: grid;
     place-items: center;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm, 0);
     background: var(--color-accent-900);
     color: var(--color-accent-100);
     font-family: var(--font-heading);
@@ -447,6 +514,7 @@
     overflow-y: auto;
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-lg);
     padding: 4px;
   }
@@ -462,6 +530,7 @@
     display: grid;
     place-items: center;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm, 0);
     background: transparent;
     color: var(--color-neutral-600);
     cursor: pointer;
@@ -482,6 +551,7 @@
     width: 220px;
     background: var(--color-surface);
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
     box-shadow: var(--shadow-lg);
     padding: 6px;
     transform: translateY(-50%);
@@ -501,6 +571,7 @@
 
     display: grid;
     place-items: center;
+    border-radius: var(--radius-sm, 0);
     width: 24px;
     height: 24px;
     flex-shrink: 0;
@@ -529,6 +600,7 @@
     align-items: center;
     justify-content: center;
     border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm, 0);
     background: transparent;
     color: var(--color-neutral-600);
     cursor: pointer;

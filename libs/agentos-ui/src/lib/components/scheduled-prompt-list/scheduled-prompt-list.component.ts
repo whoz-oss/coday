@@ -2,10 +2,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { DAY_OF_WEEK_FULL_LABELS, ScheduledPrompt, SchedulerUnit } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { catchError, forkJoin, of } from 'rxjs'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 interface ScheduledPromptRow {
   key: string
@@ -14,9 +16,15 @@ interface ScheduledPromptRow {
 }
 @Component({
   selector: 'agentos-scheduled-prompt-list',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './scheduled-prompt-list.component.html',
-  styleUrl: './scheduled-prompt-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ScheduledPromptListComponent {
@@ -27,6 +35,7 @@ export class ScheduledPromptListComponent {
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   protected readonly rows = signal<ScheduledPromptRow[]>([])
   protected readonly isLoading = signal(true)
+  protected readonly deletion = createRowDeletionState()
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [
       row.prompt.name,
@@ -83,12 +92,13 @@ export class ScheduledPromptListComponent {
         )
       )
   }
-  protected delete(row: ScheduledPromptRow): void {
-    if (row.scope === 'platform' || !row.prompt.id || !confirm(`Delete scheduled prompt “${row.prompt.name}”?`)) return
-    this.state
-      .delete(row.prompt.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.rows.update((rows) => rows.filter((current) => current.key !== row.key)))
+  protected confirmDelete(row: ScheduledPromptRow): void {
+    if (row.scope === 'platform' || !row.prompt.id) return
+    this.deletion.execute(row.key, {
+      request$: this.state.delete(row.prompt.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.rows.update((rows) => rows.filter((current) => current.key !== row.key)),
+      errorMessage: `Deleting "${row.prompt.name}" failed. Try again.`,
+    })
   }
   protected scheduleLabel(prompt: ScheduledPrompt): string {
     const recurrence = prompt.recurrence

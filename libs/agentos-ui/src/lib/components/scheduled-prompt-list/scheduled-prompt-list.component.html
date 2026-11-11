@@ -1,49 +1,53 @@
 <ds-section-header
   title="Scheduled prompts"
   description="Scheduled prompts for this namespace, including schedules inherited from the platform."
-  ><button class="scheduled-prompts__new" type="button" (click)="openCreateForm()">
-    New scheduled prompt
-  </button></ds-section-header
 >
-@if (isLoading()) {
-  <p class="scheduled-prompts__status" role="status">Loading scheduled prompts…</p>
-} @else if (rows().length === 0) {
-  <p class="scheduled-prompts__status">No scheduled prompts available.</p>
-} @else {
   <agentos-table-filter
     label="Filter scheduled prompts"
     placeholder="Filter scheduled prompts…"
     [query]="rowFilter.query()"
     (queryChange)="rowFilter.query.set($event)"
   />
-  <div class="scheduled-prompts__table-wrap">
-    <table dsTable>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Schedule</th>
-          <th>Status</th>
-          <th>Scope</th>
-          <th><span class="sr-only">Actions</span></th>
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New scheduled prompt</button>
+</ds-section-header>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading scheduled prompts…</p>
+} @else if (rows().length === 0) {
+  <p class="settings-table__status">No scheduled prompts available.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No scheduled prompts match the current filter.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Scheduled prompts">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Schedule</th>
+          <th role="columnheader">Status</th>
+          <th role="columnheader">Scope</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody role="rowgroup">
         @for (row of rowFilter.filteredRows(); track row.key) {
-          <tr>
-            <td>
-              <span class="scheduled-prompts__name">{{ row.prompt.name }}</span>
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title>
+              <span class="settings-table__name settings-table__stacked">{{ row.prompt.name }}</span>
               @if (row.prompt.description) {
-                <span class="scheduled-prompts__description">{{ row.prompt.description }}</span>
+                <span class="settings-table__secondary settings-table__stacked">{{ row.prompt.description }}</span>
               }
             </td>
-            <td>{{ scheduleLabel(row.prompt) }}</td>
-            <td>
+            <td role="cell" data-label="Schedule">{{ scheduleLabel(row.prompt) }}</td>
+            <td role="cell" data-label="Status">
               <ds-tag [variant]="row.prompt.enabled ? 'accent' : 'outline'">{{
                 row.prompt.enabled ? 'Enabled' : 'Disabled'
               }}</ds-tag>
             </td>
-            <td>
-              <div class="scheduled-prompts__tags">
+            <td role="cell" data-label="Scope">
+              <div class="settings-table__tags">
                 <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{
                   row.scope === 'platform' ? 'Platform' : 'Namespace'
                 }}</ds-tag>
@@ -52,14 +56,29 @@
                 }
               </div>
             </td>
-            <td class="scheduled-prompts__actions">
-              @if (row.scope === 'namespace') {
-                <button type="button" (click)="toggle(row)">{{ row.prompt.enabled ? 'Disable' : 'Enable' }}</button
-                ><button type="button" (click)="edit(row)">Edit</button
-                ><button class="scheduled-prompts__delete" type="button" (click)="delete(row)">Delete</button>
-              } @else {
-                <button type="button" disabled>Inherited</button>
-              }
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (row.scope === 'namespace') {
+                  @if (deletion.confirmingId() !== row.key) {
+                    <button type="button" (click)="toggle(row)">{{ row.prompt.enabled ? 'Disable' : 'Enable' }}</button>
+                    <button type="button" [attr.aria-label]="'Edit ' + row.prompt.name" (click)="edit(row)">
+                      Edit
+                    </button>
+                  }
+                  <agentos-row-delete-action
+                    [rowKey]="row.key"
+                    [rowLabel]="row.prompt.name"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (deleteRequested)="deletion.request(row.key)"
+                    (deleteConfirmed)="confirmDelete(row)"
+                    (deleteCancelled)="deletion.cancel()"
+                  />
+                } @else {
+                  <button type="button" disabled>Inherited</button>
+                }
+              </div>
             </td>
           </tr>
         }

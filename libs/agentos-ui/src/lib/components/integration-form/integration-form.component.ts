@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
-import { Observable, of } from 'rxjs'
+import { Observable, Subject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
@@ -9,12 +9,18 @@ import {
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
 } from '@whoz-oss/agentos-api-client'
-import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
+import { DS_PAGE_KIT, JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
 const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['platform', 'namespace', 'userOnNs', 'userGlobal'])
+
+/** One entry of the auth-setting dropdown: the option value is the bare name, the label tells where it is defined. */
+interface AuthSettingOption {
+  value: string
+  label: string
+}
 
 const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
   platform: 'Configuration plateforme',
@@ -43,9 +49,8 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-integration-form',
-  imports: [ReactiveFormsModule, JsonSchemaFormComponent],
+  imports: [DS_PAGE_KIT, ReactiveFormsModule, JsonSchemaFormComponent],
   templateUrl: './integration-form.component.html',
-  styleUrl: './integration-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IntegrationFormComponent implements OnInit {
@@ -126,8 +131,25 @@ export class IntegrationFormComponent implements OnInit {
   /** Standalone control for authSettingName — kept outside the FormGroup, same pattern as paramsValue. */
   protected readonly authSettingNameControl = new FormControl<string | null>(null)
 
-  /** Auth setting names available at the current scope — drives the dropdown options. */
-  protected readonly availableAuthSettings = signal<string[]>([])
+  /** Auth setting names that can resolve for the current scope, with the layer(s) defining them. */
+  private readonly loadedAuthSettings = signal<AuthSettingOption[]>([])
+
+  /** False while the layers are being fetched, so a saved name is not flagged "not found" prematurely. */
+  private readonly authSettingsLoaded = signal(false)
+
+  /** The auth setting name saved on the loaded config, kept visible even if no layer defines it. */
+  private readonly savedAuthSettingName = signal<string | null>(null)
+
+  /** Scope changes feed this subject; `switchMap` drops the answer of a superseded load. */
+  private readonly authSettingsScope$ = new Subject<IntegrationScope>()
+
+  /** Dropdown options: loaded names, plus the saved one when no visible layer defines it. */
+  protected readonly authSettingOptions = computed<AuthSettingOption[]>(() => {
+    const options = this.loadedAuthSettings()
+    const saved = this.savedAuthSettingName()
+    if (!saved || !this.authSettingsLoaded() || options.some((o) => o.value === saved)) return options
+    return [...options, { value: saved, label: `${saved} (not found)` }]
+  })
 
   /** Parsed parameters value from ds-json-schema-form */
   protected readonly paramsValue = signal<Record<string, unknown> | null>(null)
@@ -194,6 +216,16 @@ export class IntegrationFormComponent implements OnInit {
   private existingConfig: IntegrationConfig | null = null
 
   constructor() {
+    this.authSettingsScope$
+      .pipe(
+        switchMap((scope) => this.loadAuthSettingLayers(scope)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((layers) => {
+        this.loadedAuthSettings.set(this.toAuthSettingOptions(layers))
+        this.authSettingsLoaded.set(true)
+      })
+
     // URL-forging defence: in create-mode, if a non-admin lands on a privileged scope
     // (`platform` or `namespace`, the default or via a hand-crafted URL), bounce the radio
     // to `userOnNs` once the role lookup resolves. We watch `isAdmin` reactively rather
@@ -334,38 +366,55 @@ export class IntegrationFormComponent implements OnInit {
     this.initialParams.set(config.parameters as Record<string, unknown> | null)
     this.paramsValue.set(config.parameters as Record<string, unknown> | null)
     this.authSettingNameControl.setValue(config.authSettingName ?? null)
+    this.savedAuthSettingName.set(config.authSettingName ?? null)
     this.autoGrantControl.setValue(config.autoGrant ?? false)
   }
 
-  /**
-   * Fetches available AuthSettings for the given scope and populates `availableAuthSettings`.
-   * The dropdown shows what exists at the same tier as the IntegrationConfig being edited/created.
-   * The backend resolves by name with 4-tier shadowing at runtime, so even an auth setting
-   * defined at a different tier will still resolve — same-scope is a sound UX default.
-   */
   private loadAuthSettingsForScope(scope: IntegrationScope): void {
-    let obs$: Observable<AuthSettingDto[]>
-    switch (scope) {
-      case 'platform':
-        obs$ = this.authSettingState.loadPlatformSettings()
-        break
-      case 'namespace':
-        obs$ = this.authSettingState.loadNamespaceSettings(this.namespaceId!)
-        break
-      case 'userOnNs':
-        obs$ = this.authSettingState.loadUserSettings(this.namespaceId!)
-        break
-      case 'userGlobal':
-        obs$ = this.authSettingState.loadUserSettings('global')
-        break
+    this.authSettingsLoaded.set(false)
+    this.authSettingsScope$.next(scope)
+  }
+
+  /**
+   * Loads, in parallel, every layer whose auth settings can resolve for an integration of `scope`.
+   *
+   * `authSettingName` is resolved BY NAME at run time through the overlay layers (platform <
+   * user-global < namespace-shared < user x namespace, the most specific winning), so a name
+   * defined at a different layer than the integration still resolves — e.g. a shared integration
+   * relying on each user's own auth setting. Layers are listed from most to least specific;
+   * one failing layer yields no names but never blanks the others.
+   */
+  private loadAuthSettingLayers(scope: IntegrationScope): Observable<{ label: string; settings: AuthSettingDto[] }[]> {
+    const safe = (label: string, settings$: Observable<AuthSettingDto[]>) =>
+      settings$.pipe(
+        catchError(() => of([] as AuthSettingDto[])),
+        map((settings) => ({ label, settings }))
+      )
+    const platform = safe('platform', this.authSettingState.loadPlatformSettings())
+    const userGlobal = safe('mine', this.authSettingState.loadUserSettings('global'))
+    if (scope === 'platform' || scope === 'userGlobal') {
+      return forkJoin([userGlobal, platform])
     }
-    obs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (settings) => {
-        const names = settings.map((s) => s.name).filter(Boolean)
-        this.availableAuthSettings.set([...new Set(names)])
-      },
-      error: () => this.availableAuthSettings.set([]),
-    })
+    return forkJoin([
+      safe('mine', this.authSettingState.loadUserSettings(this.namespaceId!)),
+      safe('namespace', this.authSettingState.loadNamespaceSettings(this.namespaceId!)),
+      userGlobal,
+      platform,
+    ])
+  }
+
+  /** One option per name (sorted), labelled with the distinct layers defining it. */
+  private toAuthSettingOptions(layers: { label: string; settings: AuthSettingDto[] }[]): AuthSettingOption[] {
+    const labelsByName = new Map<string, Set<string>>()
+    for (const { label, settings } of layers) {
+      for (const { name } of settings) {
+        if (!name) continue
+        labelsByName.set(name, (labelsByName.get(name) ?? new Set<string>()).add(label))
+      }
+    }
+    return [...labelsByName.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, labels]) => ({ value: name, label: `${name} (${[...labels].join(', ')})` }))
   }
 
   protected onParamsChange(value: Record<string, unknown> | null): void {

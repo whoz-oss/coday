@@ -1,0 +1,142 @@
+<div class="companion">
+  @if (groups().length === 0) {
+    <div class="companion__empty">No pending notifications</div>
+  }
+
+  @for (group of groups(); track group.caseId) {
+    <div class="companion__group">
+      <!-- Group header: case title + dismiss-all cross -->
+      <div class="companion__group-header">
+        <span
+          class="companion__group-title"
+          (click)="jumpToCase(group)"
+          role="button"
+          tabindex="0"
+          (keydown.enter)="jumpToCase(group)"
+        >
+          {{ group.caseTitle }}
+        </span>
+        <button
+          type="button"
+          class="companion__close-btn"
+          title="Dismiss all"
+          (click)="dismissGroup(group.caseId)"
+          aria-label="Dismiss all notifications for {{ group.caseTitle }}"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Individual notification cards -->
+      @for (n of group.notifications; track n.id) {
+        <div
+          class="companion__card"
+          [class.companion__card--blocking]="n.blocking"
+          [class.companion__card--error]="n.kind === 'error'"
+          role="article"
+        >
+          @switch (n.kind) {
+            @case ('confirmation') {
+              <div class="companion__card-header">
+                <div class="companion__title">Confirmation needed — {{ n.toolName }}</div>
+                <button
+                  type="button"
+                  class="companion__close-btn"
+                  title="Dismiss"
+                  (click)="dismissOne(group.caseId, n.id, $event)"
+                  aria-label="Dismiss"
+                >
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </button>
+              </div>
+              <div class="companion__detail">{{ n.inputPreview }}</div>
+              <div class="companion__actions">
+                <button type="button" class="companion__btn companion__btn--approve" (click)="approve(n)">
+                  Approve
+                </button>
+                <button type="button" class="companion__btn companion__btn--deny" (click)="deny(n)">Deny</button>
+              </div>
+            }
+            @case ('question') {
+              <div class="companion__card-header">
+                <div class="companion__title">{{ n.agentName }} asks</div>
+                <button
+                  type="button"
+                  class="companion__close-btn"
+                  title="Dismiss"
+                  (click)="dismissOne(group.caseId, n.id, $event)"
+                  aria-label="Dismiss"
+                >
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </button>
+              </div>
+              <div class="companion__detail">{{ n.question }}</div>
+              @if (n.options.length) {
+                <div class="companion__actions">
+                  @for (opt of n.options; track opt) {
+                    <button type="button" class="companion__btn" (click)="answerQuestion(n, opt)">
+                      {{ opt }}
+                    </button>
+                  }
+                </div>
+              }
+            }
+            @case ('finished') {
+              <div class="companion__card-header">
+                <div class="companion__title companion__title--success">{{ n.agentName }} finished</div>
+                <button
+                  type="button"
+                  class="companion__close-btn"
+                  title="Dismiss"
+                  (click)="dismissOne(group.caseId, n.id, $event)"
+                  aria-label="Dismiss"
+                >
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </button>
+              </div>
+            }
+            @case ('error') {
+              <div class="companion__card-header">
+                <div class="companion__title companion__title--error">Error</div>
+                <button
+                  type="button"
+                  class="companion__close-btn"
+                  title="Dismiss"
+                  (click)="dismissOne(group.caseId, n.id, $event)"
+                  aria-label="Dismiss"
+                >
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </button>
+              </div>
+              <div class="companion__detail">{{ n.message }}</div>
+            }
+          }
+        </div>
+      }
+
+      <!-- Jump to case footer -->
+      <button type="button" class="companion__jump-btn" (click)="jumpToCase(group)">
+        Open case
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path
+            d="M2 10L10 2M10 2H5M10 2v5"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
+  }
+</div>

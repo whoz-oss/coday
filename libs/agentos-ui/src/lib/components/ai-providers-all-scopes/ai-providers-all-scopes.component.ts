@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
   AiProviderConfigStateService,
@@ -12,6 +12,8 @@ import {
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { defaultCreateScope } from '../_shared/default-create-scope'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 interface AiProviderRow {
@@ -24,9 +26,15 @@ interface AiProviderRow {
 
 @Component({
   selector: 'agentos-ai-providers-all-scopes',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './ai-providers-all-scopes.component.html',
-  styleUrl: './ai-providers-all-scopes.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiProvidersAllScopesComponent implements OnInit {
@@ -39,6 +47,7 @@ export class AiProvidersAllScopesComponent implements OnInit {
   protected readonly isAdmin = signal(false)
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<AiProviderRow[]>([])
+  protected readonly deletion = createRowDeletionState()
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.config.name, row.config.apiType, row.scopeLabel].join(' ')
   )
@@ -75,9 +84,12 @@ export class AiProvidersAllScopesComponent implements OnInit {
       queryParams: { scope: row.scope },
     })
   }
-  protected delete(row: AiProviderRow): void {
-    if (!row.canMutate || !row.config.id || !confirm(`Delete AI provider “${row.config.name}”?`)) return
-    this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+  protected confirmDelete(row: AiProviderRow): void {
+    if (!row.canMutate || !row.config.id) return
+    this.deletion.execute(row.key, {
+      request$: this.state.delete(row.config.id, row.scope).pipe(takeUntilDestroyed(this.destroyRef)),
+      errorMessage: `Deleting "${row.config.name}" failed. Try again.`,
+    })
   }
   protected duplicate(row: AiProviderRow): void {
     if (!row.config.id) return

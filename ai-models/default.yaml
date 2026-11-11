@@ -1,0 +1,16 @@
+# Explicit default alias for utility calls; keep aligned with SMALL.
+# Requires a provider named `requesty` in the namespace or at platform level.
+# Limits and USD-per-million-token prices retain SMALL's existing estimates;
+# the policy's backing model, limits and actual rates may change in Requesty.
+# Configure policies claude-haiku, claude-sonnet and claude-opus in your Requesty account before use.
+alias: default
+apiModelName: policy/claude-haiku
+provider: requesty
+description: Claude Haiku tier via your Requesty policy; backing model may change
+priority: 10
+contextWindow: 200000
+pricing:
+  inputMTokens: 1
+  outputMTokens: 5
+  cacheRead: 0.1
+  cacheWrite: 1.25

@@ -1,95 +1,142 @@
-<div class="namespace-form">
-  <header class="namespace-form__header">
-    <h1 class="namespace-form__title">{{ isEditMode() ? 'Edit namespace' : 'New namespace' }}</h1>
-  </header>
+<ds-page [framed]="!isEditMode()">
+  <ds-section-header [title]="isEditMode() ? 'Edit namespace' : 'New namespace'" />
 
   @if (isLoading()) {
-    <p class="namespace-form__loading">Loading&hellip;</p>
+    <p class="ds-hint">Loading&hellip;</p>
   } @else {
-    <form class="namespace-form__form" [formGroup]="form" (ngSubmit)="submit()">
-      <div class="namespace-form__field">
-        <label class="namespace-form__label" for="ns-name">Name <span aria-hidden="true">*</span></label>
+    <form class="ds-form" [formGroup]="form" (ngSubmit)="submit()">
+      <ds-form-field label="Name" controlId="ns-name" required>
         <input
+          dsControl
           id="ns-name"
-          class="namespace-form__input"
           type="text"
           placeholder="Namespace name"
           [formControl]="nameControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="namespace-form__field">
-        <label class="namespace-form__label" for="ns-description">Description</label>
+      <ds-form-field label="Description" controlId="ns-description">
         <textarea
+          dsControl
           id="ns-description"
-          class="namespace-form__textarea"
           rows="4"
           placeholder="Optional description"
           [formControl]="descriptionControl"
         ></textarea>
-      </div>
+      </ds-form-field>
 
-      <div class="namespace-form__field">
-        <label class="namespace-form__label" for="ns-external-id">External ID</label>
+      <ds-form-field label="External ID" controlId="ns-external-id">
         <input
+          dsControl
           id="ns-external-id"
-          class="namespace-form__input"
           type="text"
           placeholder="Optional federation ID from an external system"
           [formControl]="externalIdControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="namespace-form__field">
-        <label class="namespace-form__label" for="ns-default-agent">Default agent</label>
+      <ds-form-field label="Default agent" controlId="ns-default-agent">
         <input
+          dsControl
           id="ns-default-agent"
-          class="namespace-form__input"
           type="text"
           placeholder="Logical name of the default agent (e.g. coday)"
           [formControl]="defaultAgentNameControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="namespace-form__field">
-        <label class="namespace-form__label" for="ns-config-path">Config path</label>
+      <ds-form-field label="Config path" controlId="ns-config-path">
         <input
+          dsControl
           id="ns-config-path"
-          class="namespace-form__input"
           type="text"
           placeholder="Optional path to base configuration directory"
           [formControl]="configPathControl"
           autocomplete="off"
         />
-      </div>
+      </ds-form-field>
 
-      <div class="namespace-form__field">
-        <label class="namespace-form__label" for="ns-run-cost-threshold">Run cost threshold</label>
+      <ds-form-field
+        label="Shared files folder"
+        controlId="ns-shared-exchange-path"
+        hintId="ns-shared-exchange-path-hint"
+        errorId="ns-shared-exchange-path-error"
+        [hint]="sharedExchangePathHint()"
+        [error]="
+          canEditSharedExchangePath() &&
+          sharedExchangePathControl.invalid &&
+          (sharedExchangePathControl.dirty || sharedExchangePathControl.touched)
+            ? 'Enter an absolute path (e.g. /home/me/Coday or C:\\Coday), or leave the field empty.'
+            : null
+        "
+      >
         <input
+          dsControl
+          id="ns-shared-exchange-path"
+          type="text"
+          placeholder="Default location managed by AgentOS"
+          aria-describedby="ns-shared-exchange-path-hint"
+          [attr.aria-invalid]="canEditSharedExchangePath() && sharedExchangePathControl.invalid"
+          [readOnly]="!canEditSharedExchangePath()"
+          [formControl]="sharedExchangePathControl"
+          autocomplete="off"
+        />
+      </ds-form-field>
+
+      <ds-form-field
+        label="Run cost threshold"
+        controlId="ns-run-cost-threshold"
+        hintId="ns-run-cost-threshold-hint"
+        [hint]="runCostThresholdHint()"
+      >
+        <input
+          dsControl
           id="ns-run-cost-threshold"
-          class="namespace-form__input"
           type="number"
           min="0"
           step="0.01"
-          placeholder="Optional maximum cost per run (e.g. 0.50)"
+          aria-describedby="ns-run-cost-threshold-hint"
+          [placeholder]="runCostThresholdPlaceholder()"
           [formControl]="runCostThresholdControl"
         />
-        <span class="namespace-form__hint">Leave empty to inherit the platform default.</span>
-      </div>
+      </ds-form-field>
 
-      <div class="namespace-form__actions">
-        <button
-          class="namespace-form__btn namespace-form__btn--primary"
-          type="submit"
-          [disabled]="nameControl.invalid || isSubmitting()"
-        >
+      <ds-form-field
+        label="Maximum tool rounds"
+        controlId="ns-max-tool-rounds"
+        hintId="ns-max-tool-rounds-hint"
+        errorId="ns-max-tool-rounds-error"
+        hint="Most tool rounds one agent run may take. Leave empty to inherit the server default. A change applies from the next agent run."
+        [error]="
+          maxToolRoundsUnparsable() ||
+          (maxToolRoundsControl.invalid && (maxToolRoundsControl.dirty || maxToolRoundsControl.touched))
+            ? 'Enter a whole number of at least 1, or leave the field empty.'
+            : null
+        "
+      >
+        <input
+          dsControl
+          id="ns-max-tool-rounds"
+          type="number"
+          min="1"
+          step="1"
+          placeholder="Server default"
+          aria-describedby="ns-max-tool-rounds-hint"
+          [attr.aria-invalid]="maxToolRoundsControl.invalid || maxToolRoundsUnparsable()"
+          [formControl]="maxToolRoundsControl"
+          (input)="onMaxToolRoundsInput($event)"
+        />
+      </ds-form-field>
+
+      <ds-form-actions>
+        <button dsButton variant="primary" type="submit" [disabled]="form.invalid || isSubmitting()">
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
-        <button class="namespace-form__btn" type="button" (click)="cancel()">Cancel</button>
-      </div>
+        <button dsButton type="button" (click)="cancel()">Cancel</button>
+      </ds-form-actions>
     </form>
   }
-</div>
+</ds-page>

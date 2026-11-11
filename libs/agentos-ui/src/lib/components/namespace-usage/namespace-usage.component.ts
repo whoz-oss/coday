@@ -1,16 +1,17 @@
 import { DecimalPipe } from '@angular/common'
+import { CostPipe } from '../../pipes/cost.pipe'
 import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { UsageAggregateByKey, UsageRecordControllerService } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT, TableDirective } from '@whoz-oss/design-system'
 import { catchError, EMPTY, forkJoin, startWith, Subject, switchMap } from 'rxjs'
 import { UsageConfigurationService } from '../../services/usage-configuration.service'
 
 @Component({
   selector: 'agentos-namespace-usage',
-  imports: [DecimalPipe, FormsModule],
+  imports: [DecimalPipe, FormsModule, CostPipe, DS_PAGE_KIT, TableDirective],
   templateUrl: './namespace-usage.component.html',
-  styleUrl: './namespace-usage.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceUsageComponent {

@@ -2,32 +2,33 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { MemberItem, Namespace, NamespaceMembershipControllerService, User } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, TableDirective } from '@whoz-oss/design-system'
 import { catchError, map, of, switchMap } from 'rxjs'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
+import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { NamespaceSelectComponent } from '../namespace-select/namespace-select.component'
-import { UserItemComponent } from '../user-item/user-item.component'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
- * UserListComponent — admin view for listing and managing all users.
+ * UserListComponent — admin table of all users.
  *
- * Loaded at /agentos/admin/users. Responsibilities:
- * - Load and display all users via ds-entity-list
+ * Embedded in the admin Users & Groups console (/agentos/admin/users). Responsibilities:
+ * - Load and display all users in a table (name, email) with a local text filter
  * - Navigate to the create form (/agentos/admin/users/new)
  * - Navigate to the edit form (/agentos/admin/users/:userId/edit)
- * - Delete with confirmation (delegated to UserItemComponent)
+ * - Delete with an inline two-step confirmation
  *
- * When embedded in the admin Users & Groups console, a [namespaces] list adds a namespace picker to
- * the toolbar and the list is filtered to that namespace's members; the back button and title can be
- * hidden so the host owns the chrome.
+ * A [namespaces] list adds a namespace picker to the toolbar and the list is filtered to that
+ * namespace's members. The host owns the page chrome (title, tabs).
  *
  * Create and edit logic live in UserFormComponent on dedicated routes.
  */
 @Component({
   selector: 'agentos-user-list',
-  imports: [EntityListComponent, UserItemComponent, IconButtonComponent, NamespaceSelectComponent],
+  imports: [ButtonDirective, TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
   templateUrl: './user-list.component.html',
-  styleUrl: './user-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserListComponent implements OnInit {
@@ -36,18 +37,15 @@ export class UserListComponent implements OnInit {
   private readonly userAdminState = inject(UserAdminStateService)
   private readonly namespaceMembership = inject(NamespaceMembershipControllerService)
 
-  /** Toolbar back button (hidden when the host owns navigation). */
-  readonly showBackButton = input<boolean>(true)
   /** When provided (admin console), a namespace `<select>` is shown in the toolbar. */
   readonly namespaces = input<Namespace[] | undefined>(undefined)
   /** Namespace to filter by; null = all namespaces. */
   readonly selectedNamespaceId = input<string | null>(null)
-  /** Hide the list title (the tab already labels the section). */
-  readonly hideTitle = input<boolean>(false)
 
   readonly namespaceFilterChange = output<string | null>()
 
   protected readonly isLoading = this.userAdminState.isLoading
+  protected readonly deletion = createRowDeletionState()
 
   /** Ids of the users belonging to the selected namespace, or null when unfiltered. */
   private readonly namespaceUserIds = toSignal(
@@ -70,54 +68,41 @@ export class UserListComponent implements OnInit {
     { initialValue: null as Set<string> | null }
   )
 
-  /** Mapped to EntityListItem[] for ds-entity-list, filtered to the selected namespace when set. */
-  protected readonly userItems = computed<EntityListItem[]>(() => {
+  /** Users of the selected namespace (or all users when unfiltered). */
+  protected readonly users = computed<User[]>(() => {
     const filterIds = this.namespaceUserIds()
-    return this.userAdminState
-      .users()
-      .filter((u) => filterIds === null || filterIds.has(u.id ?? ''))
-      .map(
-        (u): EntityListItem => ({
-          id: u.id ?? '',
-          name: [u.firstname, u.lastname].filter(Boolean).join(' ') || u.email || '—',
-          description: u.email,
-        })
-      )
+    return this.userAdminState.users().filter((u) => filterIds === null || filterIds.has(u.id ?? ''))
   })
 
-  /** Full user objects indexed by id — used to resolve itemTemplate events. */
-  private get usersById(): Map<string, User> {
-    return new Map(this.userAdminState.users().map((u) => [u.id ?? '', u]))
-  }
+  protected readonly rowFilter = createRowFilter(this.users, (user) =>
+    [this.displayName(user), user.email, user.externalId].filter(Boolean).join(' ')
+  )
 
   ngOnInit(): void {
     this.userAdminState.loadAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+  }
+
+  protected displayName(user: User): string {
+    return [user.firstname, user.lastname].filter(Boolean).join(' ') || user.email || '—'
   }
 
   protected onNamespaceChange(namespaceId: string | null): void {
     this.namespaceFilterChange.emit(namespaceId)
   }
 
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
-  }
-
   protected navigateToCreate(): void {
-    this.router.navigate(['/agentos/admin/users/new'])
+    void this.router.navigate(['/agentos/admin/users/new'])
   }
 
   protected navigateToEdit(user: User): void {
-    this.router.navigate(['/agentos/admin/users', user.id ?? '', 'edit'])
+    void this.router.navigate(['/agentos/admin/users', user.id ?? '', 'edit'])
   }
 
-  protected deleteUser(user: User): void {
-    this.userAdminState
-      .deleteUser(user.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe()
-  }
-
-  protected resolveUser(id: string): User | null {
-    return this.usersById.get(id) ?? null
+  protected confirmDelete(user: User): void {
+    if (!user.id) return
+    this.deletion.execute(user.id, {
+      request$: this.userAdminState.deleteUser(user.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      errorMessage: `Deleting "${this.displayName(user)}" failed. Try again.`,
+    })
   }
 }

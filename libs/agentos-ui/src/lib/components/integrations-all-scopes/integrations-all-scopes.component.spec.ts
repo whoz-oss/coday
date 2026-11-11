@@ -1,7 +1,11 @@
 import { ChangeDetectorRef } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router'
-import { IntegrationConfig, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  IntegrationConfig,
+  IntegrationConfigSourceEnum,
+  NamespaceControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of } from 'rxjs'
 import {
   IntegrationConfigStateService,
@@ -18,7 +22,7 @@ describe('IntegrationsAllScopesComponent', () => {
     namespaceId: NS_ID,
     name: 'YAML config',
     integrationType: 'git',
-    source: 'FILESYSTEM',
+    source: IntegrationConfigSourceEnum.FILESYSTEM,
   } as IntegrationConfig
   const nsConfig: IntegrationConfig = { id: 'ns-1', namespaceId: NS_ID, name: 'Slack NS', integrationType: 'slack' }
   const userOnNsConfig: IntegrationConfig = {
@@ -149,12 +153,25 @@ describe('IntegrationsAllScopesComponent', () => {
     })
   })
 
-  it('confirms and dispatches deletion only for mutable rows', () => {
-    const confirmSpy = jest.spyOn(globalThis, 'confirm').mockReturnValue(true)
-    component['delete']({ config: userGlobalConfig, scope: 'userGlobal', canDelete: true } as never)
+  it('dispatches a confirmed deletion only for mutable rows', () => {
+    const mutableRow = {
+      key: 'userGlobal:u-g-1',
+      config: userGlobalConfig,
+      scope: 'userGlobal',
+      canDelete: true,
+    } as never
+    component['deletion'].request('userGlobal:u-g-1')
+    component['confirmDelete'](mutableRow)
     expect(stateMock.delete).toHaveBeenCalledWith('u-g-1', 'userGlobal')
-    component['delete']({ config: platformConfig, scope: 'platform', canDelete: false } as never)
+
+    const readOnlyRow = {
+      key: 'platform:p-1',
+      config: platformConfig,
+      scope: 'platform',
+      canDelete: false,
+    } as never
+    component['deletion'].request('platform:p-1')
+    component['confirmDelete'](readOnlyRow)
     expect(stateMock.delete).toHaveBeenCalledTimes(1)
-    confirmSpy.mockRestore()
   })
 })

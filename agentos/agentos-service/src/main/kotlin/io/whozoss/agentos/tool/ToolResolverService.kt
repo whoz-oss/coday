@@ -45,13 +45,16 @@ class ToolResolverService(
      * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
      * @param credentialProviderFactory Builds the [CredentialProvider] for a config's
      *   `authSettingName`; a `null` result leaves the context without a provider.
+     * @return The resolved tools and the names of the integrations whose plugin threw (see [ToolResolution]).
+     *   A failing integration never fails the run: its tools are missing and its name is reported, its full
+     *   error is logged here.
      */
     fun resolveToolsForRun(
         agentIntegrations: Map<String, List<String>?>? = null,
         context: ToolContext,
         allIntegrationConfigs: List<IntegrationConfig>,
         credentialProviderFactory: (String) -> CredentialProvider? = { null },
-    ): Collection<StandardTool<*>> {
+    ): ToolResolution {
         // Sovereign opt-out: the agent explicitly mapped this integration to an empty tool list.
         // This is never mutated back into AgentConfig.integrations; it is purely local to this resolver.
         val optedOutNames =
@@ -65,6 +68,7 @@ class ToolResolverService(
                 config.name !in optedOutNames &&
                     (config.name in explicitlyNamedNames || config.autoGrant)
             }
+        val failedIntegrations = mutableListOf<String>()
         val allTools =
             integrationConfigs
                 .mapNotNull { config ->
@@ -78,11 +82,15 @@ class ToolResolverService(
                                 plugin = plugin,
                                 context = context,
                                 credentialProviderFactory = credentialProviderFactory,
+                                onFailure = { failedIntegrations.add(config.name) },
                             )
                         }
                 }.flatten()
 
-        return dedupToolsByName(allTools)
+        return ToolResolution(
+            tools = dedupToolsByName(allTools),
+            failedIntegrations = failedIntegrations.distinct(),
+        )
     }
 
     /**
@@ -110,12 +118,17 @@ class ToolResolverService(
                 duplicates.first()
             }.sortedBy { it.name }
 
+    /**
+     * Asks [plugin] for the tools of [config]. A plugin exception is logged in full and reported through
+     * [onFailure], then yields no tools; it never propagates.
+     */
     private fun extractTools(
         allowedNames: List<String>?,
         config: IntegrationConfig,
         plugin: ToolPlugin,
         context: ToolContext,
         credentialProviderFactory: (String) -> CredentialProvider?,
+        onFailure: () -> Unit,
     ): List<StandardTool<*>>? {
         val enrichedContext =
             config.authSettingName?.let { name ->
@@ -135,6 +148,7 @@ class ToolResolverService(
                     "[ToolResolver] Error instantiating tools for integration '${config.name}' " +
                         "(type '${config.integrationType}'): ${e.message}"
                 }
+                onFailure()
                 emptyList()
             }
         logger.debug {

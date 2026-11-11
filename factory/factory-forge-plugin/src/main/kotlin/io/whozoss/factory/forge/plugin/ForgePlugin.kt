@@ -21,6 +21,7 @@ class ForgePlugin(private val pluginWrapper: PluginWrapper) : SpringPlugin(plugi
         val context = AnnotationConfigApplicationContext()
         context.setClassLoader(pluginWrapper.pluginClassLoader)
         (pluginWrapper.pluginManager as? SpringPluginManager)?.applicationContext?.let { context.parent = it }
+        context.register(ForgePluginConfiguration::class.java)
         context.scan("io.whozoss.factory.forge")
         context.refresh()
         return context

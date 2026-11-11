@@ -22,4 +22,5 @@ export interface AgentFinishedEvent {
   llmModel?: string
   llmProvider?: string
   llmUsage?: LlmUsage
+  maxIterationsReached?: number
 }

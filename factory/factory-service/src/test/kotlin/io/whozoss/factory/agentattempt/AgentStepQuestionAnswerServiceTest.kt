@@ -85,10 +85,7 @@ class AgentStepQuestionAnswerServiceTest {
         every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns predecessor()
         every { attempts.nextAttemptNumber(scope, namespace, workflowId, stepId) } returns 2
         every { interactions.update(scope, namespace, workflowId, interactionId, 5, any()) } returns true
-        every {
-            attempts.supersede(scope, namespace, workflowId, stepId, attemptId, 5, now)
-        } returns predecessor(AgentAttemptStatus.SUPERSEDED, revision = 6)
-        every { attempts.registerRetry(scope, any(), now) } answers { secondArg() }
+        every { attempts.supersedeAndRegisterSuccessor(scope, any(), any(), now) } answers { thirdArg() }
         every { interactions.appendEvent(scope, namespace, workflowId, any()) } returns Unit
     }
 
@@ -104,11 +101,10 @@ class AgentStepQuestionAnswerServiceTest {
         assertThat(answered.successorAttemptId).isEqualTo(successorId)
         assertThat(answered.successorAttemptNumber).isEqualTo(2)
 
-        // Attempt N is superseded (terminal), fenced on its current revision.
-        verify(exactly = 1) { attempts.supersede(scope, namespace, workflowId, stepId, attemptId, 5, now) }
-        // Attempt N is NEVER reactivated: resumption is a brand-new attempt N+1.
+        // Attempt N is NEVER reactivated: one transactional operation supersedes it, registers
+        // N+1 and transfers any exact durable occupancy handle.
         val registered = slot<DurableAgentAttempt>()
-        verify(exactly = 1) { attempts.registerRetry(scope, capture(registered), now) }
+        verify(exactly = 1) { attempts.supersedeAndRegisterSuccessor(scope, match { it.attemptId == attemptId }, capture(registered), now) }
         val successor = registered.captured
         assertThat(successor.attemptId).isEqualTo(successorId)
         assertThat(successor.attemptNumber).isEqualTo(2)
@@ -180,8 +176,7 @@ class AgentStepQuestionAnswerServiceTest {
         }
 
         assertThat(error.errorCode).isEqualTo("QUESTION_ALREADY_ANSWERED")
-        verify(exactly = 0) { attempts.supersede(any(), any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { attempts.registerRetry(any(), any(), any()) }
+        verify(exactly = 0) { attempts.supersedeAndRegisterSuccessor(any(), any(), any(), any()) }
         verify(exactly = 0) { attempts.nextAttemptNumber(any(), any(), any(), any()) }
     }
 
@@ -192,8 +187,7 @@ class AgentStepQuestionAnswerServiceTest {
         assertThrows(RevisionConflictException::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 4, "yes", "alice", now)
         }
-        verify(exactly = 0) { attempts.supersede(any(), any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { attempts.registerRetry(any(), any(), any()) }
+        verify(exactly = 0) { attempts.supersedeAndRegisterSuccessor(any(), any(), any(), any()) }
     }
 
     @Test
@@ -206,8 +200,7 @@ class AgentStepQuestionAnswerServiceTest {
         assertThrows(RevisionConflictException::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 5, "yes", "alice", now)
         }
-        verify(exactly = 0) { attempts.supersede(any(), any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { attempts.registerRetry(any(), any(), any()) }
+        verify(exactly = 0) { attempts.supersedeAndRegisterSuccessor(any(), any(), any(), any()) }
     }
 
     @Test
@@ -248,7 +241,22 @@ class AgentStepQuestionAnswerServiceTest {
             service.answer(scope, namespace, workflowId, interactionId, 5, "   ", "alice", now)
         }.errorCode).isEqualTo("QUESTION_ANSWER_INVALID")
 
-        verify(exactly = 0) { attempts.registerRetry(any(), any(), any()) }
+        verify(exactly = 0) { attempts.supersedeAndRegisterSuccessor(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a transfer failure escapes so the answer transaction can roll every mutation back`() {
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns interaction()
+        every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns predecessor()
+        every { attempts.nextAttemptNumber(scope, namespace, workflowId, stepId) } returns 2
+        every { interactions.update(scope, namespace, workflowId, interactionId, 5, any()) } returns true
+        every { attempts.supersedeAndRegisterSuccessor(scope, any(), any(), now) } throws
+            io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStaleRelease("stale predecessor handle")
+
+        assertThrows(io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStaleRelease::class.java) {
+            service.answer(scope, namespace, workflowId, interactionId, 5, "yes", "alice", now)
+        }
+        verify(exactly = 0) { interactions.appendEvent(any(), any(), any(), any()) }
     }
 
     @Test

@@ -2,16 +2,11 @@ import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { ElementRef, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  Case,
-  CaseRoleEnum,
-  NamespaceCaseListUpdateSseService,
-  NamespaceControllerService,
-  NamespaceListItemRoleEnum,
-} from '@whoz-oss/agentos-api-client'
-import { EMPTY, finalize, of, Subject, throwError } from 'rxjs'
+import { Case, CaseRoleEnum, NamespaceControllerService, NamespaceListItemRoleEnum } from '@whoz-oss/agentos-api-client'
+import { EMPTY, of, Subject, throwError } from 'rxjs'
 import { CaseShellComponent } from './case-shell.component'
 import { CaseStateService } from '../../services/case-state.service'
+import { GlobalStreamService } from '../../services/global-stream.service'
 import { UserStateService } from '../../services/user-state.service'
 import { THEME_PORT } from '../../services/theme.service'
 
@@ -33,14 +28,15 @@ describe('CaseShellComponent', () => {
   }
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
-  let caseListUpdates$: Subject<'connected' | 'updated'>
-  let caseListUpdatesMock: { connect: jest.Mock }
+  let caseListUpdates$: Subject<string>
+  let connected$: Subject<void>
+  let globalStreamMock: { caseListInvalidations$: Subject<string>; connected$: Subject<void> }
   let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
 
   function makeComponent(
     queryParams: Record<string, string> = {},
     cases: Case[] = [],
-    access: { isAdmin?: boolean; namespaceRole?: NamespaceListItemRoleEnum } = {}
+    access: { isAdmin?: boolean; namespaceRole?: NamespaceListItemRoleEnum; namespacesError?: boolean } = {}
   ): CaseShellComponent {
     queryParams$ = new Subject()
     routerMock = { navigate: jest.fn(), events: EMPTY }
@@ -58,12 +54,15 @@ describe('CaseShellComponent', () => {
       loadMe: jest.fn().mockReturnValue(EMPTY),
     }
     caseListUpdates$ = new Subject()
-    caseListUpdatesMock = { connect: jest.fn().mockReturnValue(caseListUpdates$) }
+    connected$ = new Subject<void>()
+    globalStreamMock = { caseListInvalidations$: caseListUpdates$, connected$ }
     namespaceControllerMock = {
       listAllNamespace: jest
         .fn()
         .mockReturnValue(
-          of(access.namespaceRole ? [{ id: NS_ID, name: 'Namespace', role: access.namespaceRole }] : [])
+          access.namespacesError
+            ? throwError(() => new Error('502'))
+            : of(access.namespaceRole ? [{ id: NS_ID, name: 'Namespace', role: access.namespaceRole }] : [])
         ),
     }
     themeMock = {
@@ -88,7 +87,7 @@ describe('CaseShellComponent', () => {
         { provide: CaseStateService, useValue: caseStateMock },
         { provide: UserStateService, useValue: userStateMock },
         { provide: NamespaceControllerService, useValue: namespaceControllerMock },
-        { provide: NamespaceCaseListUpdateSseService, useValue: caseListUpdatesMock },
+        { provide: GlobalStreamService, useValue: globalStreamMock },
         { provide: THEME_PORT, useValue: themeMock },
         { provide: ElementRef, useValue: { nativeElement: document.createElement('div') } },
       ],
@@ -106,31 +105,40 @@ describe('CaseShellComponent', () => {
     TestBed.resetTestingModule()
   })
 
-  it('refreshes the active namespace on case-list connection and update signals', () => {
+  it('refreshes the active namespace on its invalidations, and ignores those of the others', () => {
     makeComponent({ ns: NS_ID })
 
-    expect(caseListUpdatesMock.connect).toHaveBeenCalledWith(NS_ID)
-    caseListUpdates$.next('connected')
-    caseListUpdates$.next('updated')
+    caseListUpdates$.next(NS_ID)
+    caseListUpdates$.next(NS_ID)
+    // The aggregated stream carries every namespace the user can read: only ours concerns us.
+    caseListUpdates$.next('ns-other')
 
     expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(2)
     expect(caseStateMock.refreshCases).toHaveBeenNthCalledWith(1, NS_ID)
     expect(caseStateMock.refreshCases).toHaveBeenNthCalledWith(2, NS_ID)
   })
 
-  it('closes the previous case-list stream when switching namespaces', () => {
+  it('reloads the list on every (re)connection of the stream, which replays nothing', () => {
     makeComponent({ ns: NS_ID })
-    const previousClosed = jest.fn()
-    const previousUpdates$ = new Subject<'connected' | 'updated'>()
-    caseListUpdatesMock.connect.mockReturnValueOnce(previousUpdates$.pipe(finalize(previousClosed)))
 
-    queryParams$.next({ ns: 'ns-2' })
-    TestBed.flushEffects()
+    connected$.next()
+    connected$.next()
+
+    // Whatever was published while the stream was down is gone: reloading is the only recovery.
+    expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(2)
+    expect(caseStateMock.refreshCases).toHaveBeenCalledWith(NS_ID)
+  })
+
+  it('follows the namespace it is switched to, and stops following the previous one', () => {
+    makeComponent({ ns: NS_ID })
+
     queryParams$.next({ ns: 'ns-3' })
     TestBed.flushEffects()
+    caseListUpdates$.next(NS_ID)
+    caseListUpdates$.next('ns-3')
 
-    expect(previousClosed).toHaveBeenCalled()
-    expect(caseListUpdatesMock.connect).toHaveBeenLastCalledWith('ns-3')
+    expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(1)
+    expect(caseStateMock.refreshCases).toHaveBeenCalledWith('ns-3')
   })
 
   it('opens the sub-case composer for the chosen parent and closes the mobile drawer', () => {
@@ -157,6 +165,13 @@ describe('CaseShellComponent', () => {
     expect(component['canWriteActiveCase']()).toBe(expected)
   })
 
+  it('does not throw on read when the namespace list fails to load (would render a blank page)', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const component = makeComponent({ ns: NS_ID }, [], { namespacesError: true })
+    expect(component['namespaces']()).toEqual([])
+    expect(component['showNsPicker']()).toBe(false)
+  })
+
   it('keeps workspace actions unavailable without a known permission', () => {
     const component = makeComponent({ ns: NS_ID, case: 'root' })
     expect(component['canWriteActiveCase']()).toBe(false)
@@ -165,6 +180,55 @@ describe('CaseShellComponent', () => {
   it('allows platform admins to manage workspaces', () => {
     const component = makeComponent({ ns: NS_ID, case: 'root' }, [], { isAdmin: true })
     expect(component['canWriteActiveCase']()).toBe(true)
+  })
+
+  describe('theme', () => {
+    // The mocked port is not a signal: the computed values below are read once, after the mock is set.
+    it('is dark for a dark industry theme', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'industry', mode: 'dark' })
+
+      expect(component['isDark']()).toBe(true)
+      expect(component['canToggleMode']()).toBe(true)
+    })
+
+    it('is dark for a dark whoz-oss theme and offers the light/dark switch', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'whoz-oss', mode: 'dark' })
+
+      expect(component['isDark']()).toBe(true)
+      expect(component['canToggleMode']()).toBe(true)
+    })
+
+    it('switches the mode from the menu under a variant that supports both', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'industry', mode: 'light' })
+
+      component['onMenuToggleTheme']()
+
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'industry', mode: 'dark' })
+    })
+
+    it('switches the mode from the menu under whoz-oss, which now has both', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'whoz-oss', mode: 'light' })
+
+      component['onMenuToggleTheme']()
+
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'whoz-oss', mode: 'dark' })
+    })
+
+    it('keeps the stored mode when changing variant, and ignores an unknown variant id', () => {
+      const component = makeComponent({ ns: NS_ID })
+      themeMock.theme.mockReturnValue({ variant: 'industry', mode: 'dark' })
+
+      component['onMenuThemeVariantChanged']('whoz-oss')
+      expect(themeMock.setTheme).toHaveBeenCalledWith({ variant: 'whoz-oss', mode: 'dark' })
+
+      themeMock.setTheme.mockClear()
+      component['onMenuThemeVariantChanged']('rainbow')
+      expect(themeMock.setTheme).not.toHaveBeenCalled()
+    })
   })
 
   describe('soft-delete', () => {

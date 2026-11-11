@@ -14,6 +14,7 @@ api/case-event-rest-controller.service.ts
 api/case-membership-controller.service.ts
 api/case-workspace-controller.service.ts
 api/config-change-controller.service.ts
+api/effective-configuration-controller.service.ts
 api/exchange-controller.service.ts
 api/feedback-controller.service.ts
 api/git-workspaces-configuration-controller.service.ts
@@ -35,6 +36,7 @@ api/usage-configuration-controller.service.ts
 api/usage-record-controller.service.ts
 api/user-controller.service.ts
 api/user-group-controller.service.ts
+api/voice-message-controller.service.ts
 configuration.ts
 encoder.ts
 git_push.sh
@@ -53,6 +55,9 @@ model/ai-model.ts
 model/ai-provider.ts
 model/answer-event.ts
 model/api-key-auth-setting.ts
+model/audio.ts
+model/auth-setting-connect-response.ts
+model/auth-setting-connection.ts
 model/auth-setting-dto.ts
 model/basic-auth-auth-setting.ts
 model/bearer-token-auth-setting.ts
@@ -70,6 +75,7 @@ model/config-field-change-dto.ts
 model/config-operation-result-dto.ts
 model/config-operation-view-dto.ts
 model/config-secret-input-dto.ts
+model/configuration-entry.ts
 model/confirmation-resolved-event.ts
 model/continue-cost-request.ts
 model/enrichment-phase-trace.ts
@@ -164,6 +170,8 @@ model/user-group-summary.ts
 model/user-group-update-request.ts
 model/user-membership-role.ts
 model/user.ts
+model/voice-message-capability-response.ts
+model/voice-message-response.ts
 model/warn-event.ts
 model/workspace-retry-request.ts
 param.ts

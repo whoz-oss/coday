@@ -1,15 +1,17 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { ButtonDirective, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { BehaviorSubject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
-import { PromptItemComponent } from '../prompt-item/prompt-item.component'
+import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
- * PlatformPromptsComponent — list view for platform-level prompts.
+ * PlatformPromptsComponent — table view for platform-level prompts.
  *
  * Loaded at /agentos/admin/prompts. Accessible to super-admins only
  * (backend enforces via 403; frontend shows the link only when user.isAdmin).
@@ -19,9 +21,8 @@ import { PromptItemComponent } from '../prompt-item/prompt-item.component'
  */
 @Component({
   selector: 'agentos-platform-prompts',
-  imports: [AsyncPipe, EntityListComponent, PromptItemComponent, IconButtonComponent],
+  imports: [ButtonDirective, SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-prompts.component.html',
-  styleUrl: './platform-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformPromptsComponent {
@@ -32,57 +33,45 @@ export class PlatformPromptsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-
-  /** Raw platform prompts, kept for delete lookups. */
-  private readonly prompts$ = this.refresh$.pipe(
-    switchMap(() => {
-      this.isLoading.set(true)
-      return this.promptState.listPlatform()
-    })
+  protected readonly deletion = createRowDeletionState()
+  protected readonly prompts = signal<Prompt[]>([])
+  protected readonly rowFilter = createRowFilter(this.prompts, (prompt) =>
+    [prompt.name, prompt.description].filter(Boolean).join(' ')
   )
-
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly promptItems$ = this.prompts$.pipe(
-    map((prompts) =>
-      prompts.map(
-        (p: Prompt): EntityListItem => ({
-          id: p.id ?? '',
-          name: p.name,
-          description: p.description,
-        })
-      )
-    )
-  )
-
-  /** Full prompt objects indexed by id — used to resolve itemTemplate events. */
-  private promptsById = new Map<string, Prompt>()
 
   constructor() {
-    this.prompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (prompts) => {
-        this.promptsById = new Map(prompts.map((p: Prompt) => [p.id ?? '', p]))
-        this.isLoading.set(false)
-      },
-      error: () => this.isLoading.set(false),
-    })
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
+    this.refresh$
+      .pipe(
+        switchMap(() => {
+          this.isLoading.set(true)
+          return this.promptState.listPlatform()
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: (prompts) => {
+          this.prompts.set(prompts)
+          this.isLoading.set(false)
+        },
+        error: () => this.isLoading.set(false),
+      })
   }
 
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', 'admin', 'prompts', 'new'])
+    void this.router.navigate(['/agentos', 'admin', 'prompts', 'new'])
   }
 
-  protected deletePrompt(prompt: Prompt): void {
-    this.promptState
-      .delete(prompt.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+  protected edit(prompt: Prompt): void {
+    if (!prompt.id) return
+    void this.router.navigate(['/agentos', 'admin', 'prompts', prompt.id, 'edit'])
   }
 
-  protected resolvePrompt(id: string): Prompt | null {
-    return this.promptsById.get(id) ?? null
+  protected confirmDelete(prompt: Prompt): void {
+    if (!prompt.id) return
+    this.deletion.execute(prompt.id, {
+      request$: this.promptState.delete(prompt.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${prompt.name}" failed. Try again.`,
+    })
   }
 }

@@ -6,7 +6,11 @@
       <script value="coday" />
     </scripts>
     <node-interpreter value="project" />
-    <envs />
+    <envs>
+      <!-- No PORT: the packaged scheme picks a free prod block (3000, 3020...), see apps/web/README.md. DEV AgentOS / Factory below: apps/server/src/lib/runtime/port-scheme-consistency.spec.ts -->
+      <env name="AGENTOS_URL" value="http://localhost:4005" />
+      <env name="FACTORY_URL" value="http://localhost:4006" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>

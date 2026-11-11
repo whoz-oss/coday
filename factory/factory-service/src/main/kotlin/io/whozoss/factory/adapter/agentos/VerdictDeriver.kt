@@ -61,6 +61,18 @@ object VerdictDeriver {
         val interruptReason: String? = null,
     )
 
+    data class RuntimeCaseTerminationProof(
+        val caseId: String,
+        val attemptId: String,
+        val eventId: String,
+        val status: String,
+    )
+
+    data class DerivedVerdict(
+        val verdict: AgentOsExecutionVerdict?,
+        val runtimeProof: RuntimeCaseTerminationProof?,
+    )
+
     /** A `QuestionEvent` still waiting for its `AnswerEvent`. */
     data class PendingQuestion(
         val questionRef: String,
@@ -74,8 +86,32 @@ object VerdictDeriver {
      * the case is not yet in a quiescent/terminal status (caller keeps
      * observing).
      */
-    fun derive(events: List<CaseEventView>, context: DerivationContext): AgentOsExecutionVerdict? {
-        val durable = events.filter { !it.isTransient() }
+    fun derive(events: List<CaseEventView>, context: DerivationContext): AgentOsExecutionVerdict? =
+        deriveVerdict(events.filter { !it.isTransient() && (it.caseId == null || it.caseId == context.caseId) }, context)
+
+    fun deriveWithProof(
+        events: List<CaseEventView>,
+        context: DerivationContext,
+        attemptId: String,
+        baseline: HighWaterMark?,
+    ): DerivedVerdict {
+        val sameCase = events.filter { !it.isTransient() && it.caseId == context.caseId }
+        val postBaseline = if (baseline != null && baseline.isPositioned()) {
+            sameCase.filterNot { EventCheckpoint.covers(baseline, it) }
+        } else if (baseline != null) {
+            // Explicitly captured empty history: every subsequent durable event is fresh.
+            sameCase
+        } else {
+            emptyList()
+        }
+        val lastStatus = postBaseline.lastOrNull { it.type == CaseEventView.CASE_STATUS_EVENT }
+        val proof = lastStatus?.takeIf { it.status in CaseEventView.QUIESCENT_STATUSES }?.let {
+            RuntimeCaseTerminationProof(context.caseId, attemptId, it.eventId, it.status!!)
+        }
+        return DerivedVerdict(deriveVerdict(postBaseline, context), proof)
+    }
+
+    private fun deriveVerdict(durable: List<CaseEventView>, context: DerivationContext): AgentOsExecutionVerdict? {
         val status = durable.lastOrNull { it.type == CaseEventView.CASE_STATUS_EVENT }?.status
         if (status !in CaseEventView.QUIESCENT_STATUSES) return null
         val facts = turnFacts(context.caseId, durable, status!!)

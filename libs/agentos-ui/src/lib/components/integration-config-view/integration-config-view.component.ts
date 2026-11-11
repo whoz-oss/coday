@@ -2,10 +2,10 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
-import { TagComponent } from '@whoz-oss/design-system'
+import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
+import { IntegrationConfigSource, sourceOf } from '../../utils/integration-config-source'
 
-type IntegrationConfigSource = 'NEO4J' | 'FILESYSTEM'
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 const REDACTED_VALUE = '••••••'
@@ -14,9 +14,8 @@ const SENSITIVE_KEY =
 
 @Component({
   selector: 'agentos-integration-config-view',
-  imports: [TagComponent],
+  imports: [DS_PAGE_KIT, TagComponent],
   templateUrl: './integration-config-view.component.html',
-  styleUrl: './integration-config-view.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IntegrationConfigViewComponent implements OnInit {
@@ -38,7 +37,7 @@ export class IntegrationConfigViewComponent implements OnInit {
       .subscribe({
         next: (config) => {
           this.config.set(config)
-          this.source.set(this.sourceOf(config))
+          this.source.set(sourceOf(config))
           this.parameters.set(JSON.stringify(this.redact(config.parameters), null, 2))
           this.isLoading.set(false)
         },
@@ -63,10 +62,6 @@ export class IntegrationConfigViewComponent implements OnInit {
       userOnNs: 'Personal on namespace',
       userGlobal: 'Personal global',
     }[scope]
-  }
-
-  private sourceOf(config: IntegrationConfig): IntegrationConfigSource {
-    return (config as IntegrationConfig & { source?: IntegrationConfigSource }).source ?? 'NEO4J'
   }
 
   private redact(value: unknown, key = ''): JsonValue {

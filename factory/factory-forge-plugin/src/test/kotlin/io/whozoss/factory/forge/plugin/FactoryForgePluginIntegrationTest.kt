@@ -1,103 +1,157 @@
 package io.whozoss.factory.forge.plugin
 
-import io.whozoss.factory.FactoryServiceApplication
-import io.whozoss.factory.config.FactoryPluginsDirectory
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.sdk.spi.FactoryBriefContributor
+import io.whozoss.factory.sdk.spi.FactoryCallerIdentity
+import io.whozoss.factory.sdk.spi.FactoryFlowCatalogContributor
+import io.whozoss.factory.sdk.spi.FactoryFlowSelector
 import io.whozoss.factory.sdk.spi.FactoryRouteContributor
+import io.whozoss.factory.sdk.spi.FactoryRouteRequest
+import io.whozoss.factory.sdk.spi.FactoryRunLifecycleObserver
+import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
+import io.whozoss.factory.sdk.spi.FactoryWorkflowExecutionPolicy
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.pf4j.PluginManager
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.boot.test.web.client.TestRestTemplate
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
-import org.springframework.context.annotation.Primary
-import org.springframework.http.HttpStatus
-import org.springframework.test.context.ActiveProfiles
+import org.pf4j.DefaultPluginManager
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
 /**
- * "Core WITH plugin" integration test (W7.3 Step F.3).
+ * Standalone PF4J integration test of `factory-forge-plugin`.
  *
- * It boots the real `factory-service` application with the freshly built
- * `factory-forge-plugin` JAR deployed into a temporary PF4J runtime directory,
- * then asserts the plugin's contributed routes behave exactly like the W6a
- * Surfaces:
- *   - `GET /api/forge/runs` → `400 MISSING_NAMESPACE_ID` (route mounted, query
- *     validated) instead of the `404` observed without the plugin;
- *   - `GET /api/jira/{ticketId}` → `501 JIRA_NOT_CONFIGURED` with the exact Node
- *     message.
- *
- * The plugin JAR path is provided by the Gradle `test` task as the
- * `factory.forge.plugin.jar` system property (the `test` task depends on `jar`).
- * The H2-backed `openapi` profile is used so the test does not need a database:
- * neither route touches persistence.
- *
- * This test lives in the plugin module because factory-service cannot depend on
- * the plugin (the plugin compiles against factory-service), so this is the only
- * module that can both build the JAR and boot the host.
+ * Verifies that:
+ * 1. The plugin compiles and loads purely against `factory-sdk` (no dependency on
+ *    `factory-service`).
+ * 2. All PF4J extensions (`ForgeRouteContributor`, `ForgeWorkflowExecutionPolicy`,
+ *    `ForgeBmadCatalogContributor`, `ForgeBmadFlowSelector`,
+ *    `ForgeBmadStepResultValidator`, `ForgeBmadBriefContributor`,
+ *    `ForgeBmadLifecycleObserver`) are discovered from the built JAR and
+ *    instantiated via the plugin's own `ForgePlugin` Spring child context.
+ * 3. Dead `/api/forge/runs` routes are gone, while `/api/jira/{ticketId}` and
+ *    `/api/factory/jira/{ticketId}` are contributed and return the expected
+ *    `501 JIRA_NOT_CONFIGURED` / `401 UNAUTHENTICATED` envelopes through
+ *    `FactoryCallerIdentity`.
  */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    classes = [FactoryServiceApplication::class],
-)
-@ActiveProfiles("openapi")
-@Import(FactoryForgePluginTestConfiguration::class)
 class FactoryForgePluginIntegrationTest {
 
-    @Autowired
-    private lateinit var restTemplate: TestRestTemplate
+    private val mapper = ObjectMapper()
+    private lateinit var pluginsDir: Path
+    private lateinit var pluginManager: DefaultPluginManager
 
-    @Autowired
-    private lateinit var pluginManager: PluginManager
+    @BeforeEach
+    fun setUp() {
+        pluginsDir = Files.createTempDirectory("factory-forge-plugin-it")
+        val jarPath = System.getProperty("factory.forge.plugin.jar")
+            ?: error("System property 'factory.forge.plugin.jar' must point at the built plugin JAR")
+        val jar = Path.of(jarPath)
+        require(Files.exists(jar)) { "Plugin JAR not found at $jar; the Gradle `jar` task must run first" }
+        Files.copy(jar, pluginsDir.resolve(jar.fileName), StandardCopyOption.REPLACE_EXISTING)
 
-    @Test
-    fun `the plugin is discovered and its route contributor is registered`() {
-        assertThat(pluginManager.plugins).isNotEmpty()
-        val contributors = pluginManager.getExtensions(FactoryRouteContributor::class.java)
-        assertThat(contributors).isNotEmpty()
-        val paths = contributors.flatMap { it.getRoutes() }.map { it.path }
-        assertThat(paths).contains("/api/forge/runs", "/api/jira/{ticketId}")
+        pluginManager = ForgeTestPluginManager(pluginsDir)
+        pluginManager.loadPlugins()
+        pluginManager.startPlugins()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        runCatching { pluginManager.stopPlugins() }
+        runCatching { pluginManager.unloadPlugins() }
     }
 
     @Test
-    fun `the forge runs route responds like W6a once the plugin is deployed`() {
-        val response = restTemplate.getForEntity("/api/forge/runs", Map::class.java)
+    fun `the plugin JAR loads and registers Jira routes, execution policy and all 5 BMAD flow SPIs`() {
+        assertThat(pluginManager.plugins).hasSize(1)
 
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        val error = response.body?.get("error") as? Map<*, *>
-        assertThat(error?.get("code")).isEqualTo("MISSING_NAMESPACE_ID")
+        val policies = pluginManager.getExtensions(
+            FactoryWorkflowExecutionPolicy::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(policies.map { it.getPluginId() }).containsExactly("forge")
+
+        val catalogContributors = pluginManager.getExtensions(
+            FactoryFlowCatalogContributor::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(catalogContributors).hasSize(1)
+        assertThat(catalogContributors.single().flows()).hasSize(10)
+
+        val selectors = pluginManager.getExtensions(
+            FactoryFlowSelector::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(selectors).hasSize(1)
+        assertThat(selectors.single().runTypes()).contains("forge-controller-v1")
+
+        val validators = pluginManager.getExtensions(
+            FactoryStepResultValidator::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(validators).hasSize(1)
+        assertThat(validators.single().supports("forge.product-spec", "product-specification", "ForgeProductWorker")).isTrue()
+
+        val briefContributors = pluginManager.getExtensions(
+            FactoryBriefContributor::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(briefContributors).hasSize(1)
+
+        val observers = pluginManager.getExtensions(
+            FactoryRunLifecycleObserver::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(observers).hasSize(1)
+
+        val contributors = pluginManager.getExtensions(
+            FactoryRouteContributor::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(contributors).hasSize(1)
+        val routes = contributors.flatMap { it.getRoutes() }
+        val paths = routes.map { it.path }
+
+        assertThat(paths).containsExactlyInAnyOrder(
+            "/api/jira/{ticketId}",
+            "/api/factory/jira/{ticketId}",
+        )
+        assertThat(paths).doesNotContain("/api/forge/runs")
     }
 
     @Test
-    fun `the jira relay returns the unconfigured contract once the plugin is deployed`() {
-        val response = restTemplate.getForEntity("/api/jira/PROJ-1", Map::class.java)
+    fun `the Jira route enforces caller identity and returns 501 JIRA_NOT_CONFIGURED when unconfigured`() {
+        val route = pluginManager
+            .getExtensions(FactoryRouteContributor::class.java, "factory-forge-plugin")
+            .flatMap { it.getRoutes() }
+            .first { it.path == "/api/jira/{ticketId}" }
 
-        assertThat(response.statusCode).isEqualTo(HttpStatus.valueOf(501))
-        val error = response.body?.get("error") as? Map<*, *>
-        assertThat(error?.get("code")).isEqualTo("JIRA_NOT_CONFIGURED")
+        // Unauthenticated request -> 401 UNAUTHENTICATED
+        val unauthResponse = route.handler.handle(
+            FactoryRouteRequest(
+                method = "GET",
+                path = "/api/jira/PROJ-1",
+                pathVariables = mapOf("ticketId" to "PROJ-1"),
+                caller = null,
+            ),
+        )
+        assertThat(unauthResponse.status).isEqualTo(401)
+        val unauthBody = mapper.readValue(unauthResponse.body, Map::class.java)
+        val unauthError = unauthBody["error"] as Map<*, *>
+        assertThat(unauthError["code"]).isEqualTo("UNAUTHENTICATED")
+
+        // Authenticated request with no Jira credentials -> 501 JIRA_NOT_CONFIGURED
+        val response = route.handler.handle(
+            FactoryRouteRequest(
+                method = "GET",
+                path = "/api/jira/PROJ-1",
+                pathVariables = mapOf("ticketId" to "PROJ-1"),
+                caller = FactoryCallerIdentity(userId = "user-1", organizationId = "org-1"),
+            ),
+        )
+        assertThat(response.status).isEqualTo(501)
+        val body = mapper.readValue(response.body, Map::class.java)
+        val error = body["error"] as Map<*, *>
+        assertThat(error["code"]).isEqualTo("JIRA_NOT_CONFIGURED")
     }
-
-    companion object {
-        internal val pluginsDir: Path = Files.createTempDirectory("factory-forge-plugin-it")
-
-        init {
-            val jarPath = System.getProperty("factory.forge.plugin.jar")
-                ?: error("System property 'factory.forge.plugin.jar' must point at the built plugin JAR")
-            val jar = Path.of(jarPath)
-            require(Files.exists(jar)) { "Plugin JAR not found at $jar; the Gradle `jar` task must run first" }
-            Files.copy(jar, pluginsDir.resolve(jar.fileName), StandardCopyOption.REPLACE_EXISTING)
-        }
-    }
-}
-
-@TestConfiguration(proxyBeanMethods = false)
-class FactoryForgePluginTestConfiguration {
-    @Bean
-    @Primary
-    fun isolatedFactoryPluginsDirectory(): FactoryPluginsDirectory =
-        FactoryPluginsDirectory { FactoryForgePluginIntegrationTest.pluginsDir }
 }

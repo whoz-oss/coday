@@ -1,5 +1,6 @@
 import { inject } from '@angular/core'
 import { CanActivateFn, Route, Router, UrlMatchResult, UrlSegment } from '@angular/router'
+import { setupGuard, welcomeGuard } from './welcome/setup.guard'
 
 /**
  * Temporary compatibility shim: the AgentOS UI used to live under `/agentos` and `libs/agentos-ui`
@@ -21,8 +22,23 @@ export const appRoutes: Route[] = [
     children: [],
   },
   {
-    // agentos-ui is lazy — a static import would bloat the eager bundle.
+    // First-run wizard. Lazy: it is only ever loaded once per install.
+    path: 'welcome',
+    canActivate: [welcomeGuard],
+    loadComponent: () => import('./welcome/welcome.component').then((m) => m.WelcomeComponent),
+  },
+  {
+    // The root has no page of its own: the welcome page decides where the user lands (wizard, or straight to their
+    // personal namespace once the services are up).
     path: '',
+    pathMatch: 'full',
+    redirectTo: 'welcome',
+  },
+  {
+    // agentos-ui is lazy — a static import would bloat the eager bundle.
+    // setupGuard redirects everything to /welcome until the first-run setup is done.
+    path: '',
+    canActivate: [setupGuard],
     loadChildren: () => import('@whoz-oss/agentos-ui').then((m) => m.AGENTOS_ROUTES),
   },
   { path: '**', redirectTo: '' },

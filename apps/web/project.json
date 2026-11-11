@@ -1,6 +1,7 @@
 {
   "name": "web",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "// dev ports": "The dev-agentos / dev-factory / dev-server env values below are the DEV block of apps/server/src/lib/runtime/port-scheme.json (base 4000: AgentOS +5, Factory +6, Bolt +7) that Nx cannot compute: guarded by apps/server/src/lib/runtime/port-scheme-consistency.spec.ts. dev-server has no PORT: BUILD_ENV=development means the dev base.",
   "projectType": "application",
   "sourceRoot": "{projectRoot}",
   "tags": ["web-bundle", "platform:npm"],
@@ -13,14 +14,90 @@
         "cwd": "{projectRoot}"
       }
     },
-    "serve:dev": {
+    "dev-server": {
+      "continuous": true,
       "executor": "nx:run-commands",
+      "cache": false,
       "options": {
-        "commands": [
-          "nx run client:serve",
-          "nx run server:serve"
-        ],
-        "parallel": true
+        "command": "tsx watch apps/server/src/server.ts",
+        "cwd": "{workspaceRoot}",
+        "env": {
+          "BUILD_ENV": "development",
+          "AGENTOS_URL": "http://localhost:4005",
+          "FACTORY_URL": "http://localhost:4006"
+        }
+      }
+    },
+    "dev-agentos": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :agentos-service:bootRun",
+        "cwd": "{workspaceRoot}/agentos",
+        "env": {
+          "SERVER_PORT": "4005",
+          "AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT": "4007",
+          "SPRING_NEO4J_URI": "bolt://localhost:4007"
+        }
+      }
+    },
+    "dev-factory": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-service:bootRun",
+        "cwd": "{workspaceRoot}/factory",
+        "env": {
+          "SERVER_PORT": "4006",
+          "AGENTOS_URL": "http://localhost:4005"
+        }
+      }
+    },
+    "serve:dev": {
+      "continuous": true,
+      "executor": "nx:noop",
+      "dependsOn": [
+        { "target": "serve", "projects": ["client", "factory-cockpit"] },
+        "dev-server",
+        "dev-agentos",
+        "dev-factory"
+      ]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["default"],
+      "options": {
+        "command": "node --test launcher.test.js",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build-first-run-jars": {
+      "executor": "nx:noop",
+      "cache": false,
+      "dependsOn": [
+        { "target": "bootJar", "projects": ["agentos-service", "factory-service"] },
+        { "target": "assemble", "projects": "tag:scope:plugin" }
+      ]
+    },
+    "local": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build", "build-first-run-jars"],
+      "options": {
+        "command": "tsx scripts/web-local.ts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "first-run": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build", "build-first-run-jars"],
+      "options": {
+        "command": "tsx scripts/web-local.ts --fresh",
+        "cwd": "{workspaceRoot}"
       }
     },
     "nx-release-publish": {

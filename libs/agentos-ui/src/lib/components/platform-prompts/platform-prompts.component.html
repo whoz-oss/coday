@@ -1,19 +1,60 @@
-<ds-entity-list
-  title="Platform Prompts"
-  [items]="(promptItems$ | async) ?? []"
-  [loading]="isLoading()"
-  [showCreate]="true"
-  emptyMessage="No platform prompts defined yet. Add one above."
-  cardMinWidth="400px"
-  [itemTemplate]="promptItemTpl"
-  (createRequested)="openCreateForm()"
->
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
-</ds-entity-list>
-
-<!-- Item template: renders PromptItemComponent for each entity-list card slot -->
-<ng-template #promptItemTpl let-item>
-  @if (resolvePrompt(item.id); as prompt) {
-    <agentos-prompt-item [prompt]="prompt" [platformMode]="true" (deleteRequested)="deletePrompt($event)" />
-  }
-</ng-template>
+<ds-section-header title="Platform prompts" description="Prompts shared across every namespace.">
+  <agentos-table-filter
+    label="Filter prompts"
+    placeholder="Filter prompts…"
+    [query]="rowFilter.query()"
+    (queryChange)="rowFilter.query.set($event)"
+  />
+  <button dsButton variant="primary" type="button" (click)="openCreateForm()">New prompt</button>
+</ds-section-header>
+@if (deletion.error()) {
+  <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
+}
+@if (isLoading()) {
+  <p class="settings-table__status" role="status">Loading prompts…</p>
+} @else if (prompts().length === 0) {
+  <p class="settings-table__status">No platform prompts defined yet.</p>
+} @else if (rowFilter.filteredRows().length === 0) {
+  <p class="settings-table__status" role="status">No prompts match the current filter.</p>
+} @else {
+  <div class="settings-table__wrap">
+    <table dsTable role="table" aria-label="Platform prompts">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Name</th>
+          <th role="columnheader">Description</th>
+          <th role="columnheader"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        @for (prompt of rowFilter.filteredRows(); track prompt.id ?? prompt.name) {
+          <tr role="row">
+            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ prompt.name }}</td>
+            <td role="cell" data-label="Description" class="settings-table__secondary">
+              {{ prompt.description || '—' }}
+            </td>
+            <td role="cell" data-label="Actions" data-actions>
+              <div class="settings-table__actions">
+                @if (deletion.confirmingId() !== prompt.id) {
+                  <button type="button" [attr.aria-label]="'Edit ' + prompt.name" (click)="edit(prompt)">Edit</button>
+                }
+                @if (prompt.id) {
+                  <agentos-row-delete-action
+                    [rowKey]="prompt.id"
+                    [rowLabel]="prompt.name"
+                    [state]="deletion"
+                    deleteClass="settings-table__delete"
+                    confirmLabelClass="settings-table__confirm-label"
+                    (deleteRequested)="deletion.request(prompt.id)"
+                    (deleteConfirmed)="confirmDelete(prompt)"
+                    (deleteCancelled)="deletion.cancel()"
+                  />
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

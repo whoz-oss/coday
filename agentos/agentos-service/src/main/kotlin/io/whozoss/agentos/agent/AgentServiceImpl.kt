@@ -40,6 +40,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -378,7 +379,7 @@ class AgentServiceImpl(
                 case = resolveCaseScope(agentConfig.integrations, context),
                 namespace = resolveNamespaceScope(agentConfig.integrations, context),
             )
-        val instructions =
+        val baseInstructions =
             buildInstructions(
                 baseInstructions = agentConfig.instructions,
                 agentIntegrations = agentConfig.integrations,
@@ -392,13 +393,25 @@ class AgentServiceImpl(
                         namespace = exchangeScopes.namespace?.access,
                     ),
             )
-        val baseTools =
+        val toolResolution =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
                 credentialProviderFactory = credentialProviderFactory,
             )
+        val baseTools = toolResolution.tools
+        // Only names circulate from here on, never the plugin's exception, so a secret in its message cannot
+        // reach the model (instructions) or the case (WarnEvent) by construction. The full error is in the logs.
+        val instructions =
+            IntegrationLoadFailureNotice.appendTo(
+                instructions = baseInstructions,
+                failedIntegrationNames = toolResolution.failedIntegrations,
+            )
+        warnCaseOfFailedIntegrations(
+            failedIntegrationNames = toolResolution.failedIntegrations,
+            context = context,
+        )
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
         // collision (e.g. a user FILE_ACCESS integration named "case-exchange") crashing downstream.
@@ -456,7 +469,63 @@ class AgentServiceImpl(
             userId = context.userId,
             redirectGuideline = redirectGuideline,
             loopConfig = agentConfig.loopConfig,
+            maxToolRounds = namespace?.maxToolRounds,
         )
+    }
+
+    /**
+     * Fails when [definition] asks for ADVANCED execution on a model that does not support it.
+     *
+     * The agent decides its mode and the model only constrains it: there is no silent downgrade to SIMPLE.
+     * SIMPLE and LOOP are never concerned (LOOP makes no LLM call). Deliberately not part of
+     * [resolveAgentDefinition]: the definition inspection endpoint must keep working so that an admin
+     * can see the misconfiguration.
+     *
+     * The message is shown to case participants: it names the agent and the model label only, never the
+     * provider or the API model name. The failure is logged by the caller, which knows the case id.
+     *
+     * @throws AdvancedExecutionNotSupportedException naming the agent, the model and the fix
+     */
+    private fun requireModelSupportsExecutionMode(definition: ResolvedAgentDefinition) {
+        val model = definition.resolvedModel
+        if (definition.executionMode == ExecutionMode.ADVANCED && !model.supportsAdvancedExecution) {
+            throw AdvancedExecutionNotSupportedException(
+                "Agent '${definition.name}' is configured in ADVANCED execution mode but its model " +
+                    "'${model.alias ?: model.apiModelName}' does not support advanced execution. " +
+                    "Ask an administrator to enable supportsAdvancedExecution on the model, " +
+                    "or to switch the agent to SIMPLE.",
+            )
+        }
+    }
+
+    /**
+     * Persists and emits one [WarnEvent] per failed integration into the live case, with a fixed text that
+     * carries the integration name only.
+     *
+     * Does nothing outside a live case (no [AgentExecutionContext.caseId] or [AgentExecutionContext.emitEvent]),
+     * e.g. a definition preview. A failure to emit never fails the run: the notice is best effort.
+     */
+    private fun warnCaseOfFailedIntegrations(
+        failedIntegrationNames: List<String>,
+        context: AgentExecutionContext,
+    ) {
+        val caseId = context.caseId
+        val emitEvent = context.emitEvent
+        if (caseId != null && emitEvent != null) {
+            failedIntegrationNames.sorted().forEach { integrationName ->
+                runCatching {
+                    emitEvent(
+                        WarnEvent(
+                            namespaceId = context.namespaceId,
+                            caseId = caseId,
+                            message = IntegrationLoadFailureNotice.warnMessage(integrationName = integrationName),
+                        ),
+                    )
+                }.onFailure { error ->
+                    logger.warn(error) { "Could not emit the load failure notice of integration '$integrationName' for case $caseId" }
+                }
+            }
+        }
     }
 
     /**
@@ -504,12 +573,16 @@ class AgentServiceImpl(
      * Constructs the Spring AI chat client and the appropriate agent type
      * ([AgentSimple] or [AgentAdvanced]). Requires the original [context] for
      * the case-scoped providers that cannot be captured in the definition.
+     *
+     * @throws AdvancedExecutionNotSupportedException when the agent is ADVANCED and its model does not
+     *   support it (see [requireModelSupportsExecutionMode])
      */
     private fun instantiateAgent(
         definition: ResolvedAgentDefinition,
         context: AgentExecutionContext,
         resolvedUser: User?,
     ): Agent {
+        requireModelSupportsExecutionMode(definition)
         val modelConfig = definition.resolvedModel
         val providerConfig = definition.resolvedProvider
 
@@ -526,6 +599,7 @@ class AgentServiceImpl(
             resolvedUser = resolvedUser,
             redirectGuideline = definition.redirectGuideline,
             loopConfig = definition.loopConfig,
+            maxToolRounds = definition.maxToolRounds,
         )
     }
 
@@ -602,6 +676,7 @@ class AgentServiceImpl(
         resolvedUser: User?,
         redirectGuideline: String? = null,
         loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
+        maxToolRounds: Int? = null,
     ): Agent {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
@@ -629,6 +704,7 @@ class AgentServiceImpl(
                         providerConfig,
                         context.caseId?.toString(),
                         context.usageAccumulator,
+                        maxToolRounds,
                     )
                 val advancedContext =
                     AgentAdvancedContext(
@@ -651,7 +727,7 @@ class AgentServiceImpl(
                     userId = resolvedUser?.metadata?.id,
                     userExternalId = resolvedUser?.externalId,
                     caseEventsProvider = context.caseEventsProvider,
-                    maxIterations = limitsConfig.agentMaxIterations,
+                    maxIterations = maxToolRounds ?: limitsConfig.agentMaxIterations,
                     llmProvider = providerConfig.name,
                     llmModel = modelConfig.apiModelName,
                     reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
@@ -667,6 +743,7 @@ class AgentServiceImpl(
                         providerConfig,
                         context.caseId?.toString(),
                         context.usageAccumulator,
+                        maxToolRounds,
                     )
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
@@ -897,7 +974,20 @@ class AgentServiceImpl(
         val allowedAgents = accessibleNames.filter { name -> regexes.any { it.matches(name) } }
 
         if (allowedAgents.isEmpty()) {
-            logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
+            // The agent is about to run with no delegation tool and no way to say why: to the model,
+            // a missing tool and a configuration that resolves to nobody look the same. Name the
+            // consequence and the candidates, so this line alone explains a run that answers
+            // "I cannot delegate" — the symptom the selectors were misconfigured for.
+            logger.warn {
+                "DelegationTool: agent '${config.name}' gets no delegation tool — none of the agents it can " +
+                    "reach matched its subAgents selectors $patterns. Selectors match agent names, not ids. " +
+                    "Reachable names: ${accessibleNames.take(DELEGATION_CANDIDATES_LOGGED)}" +
+                    if (accessibleNames.size > DELEGATION_CANDIDATES_LOGGED) {
+                        " (+${accessibleNames.size - DELEGATION_CANDIDATES_LOGGED} more)"
+                    } else {
+                        ""
+                    }
+            }
             return null
         }
 
@@ -1162,5 +1252,8 @@ class AgentServiceImpl(
                 AuthType.OAUTH_CUSTOM,
                 AuthType.OAUTH_MCP_DISCOVERABLE,
             )
+
+        /** Enough reachable names to correct a selector by hand; a large namespace must not flood the log. */
+        private const val DELEGATION_CANDIDATES_LOGGED = 20
     }
 }

@@ -4,18 +4,23 @@ Agent execution now connects model pricing (#1305), usage persistence and aggreg
 
 ## Platform switch
 
-Usage tracking and cost confirmation are **disabled by default**, including in the Whoz profile.
-Enable them explicitly at process startup:
+Usage tracking and cost confirmation are **enabled by default**, in every profile including
+Whoz. Disable them explicitly at process startup:
 
 ```yaml
 agentos:
   usage:
-    enabled: true
+    enabled: false
 ```
 
-The equivalent environment variable is `AGENTOS_USAGE_ENABLED=true`. Set it to `false`
-and restart the service to disable the feature during an incident. This switch takes
+The equivalent environment variable is `AGENTOS_USAGE_ENABLED=false`. Set it and restart
+the service to disable the feature, for instance during an incident. This switch takes
 precedence over every platform, namespace and case cost threshold.
+
+The default lives in the shipped `application.yml`. The Kotlin class `UsageConfigProperties`
+stays `false` in code, so a service built by hand (a unit test, for instance) is inert
+unless it is given `enabled = true`, like `agentos.limits.run-cost-threshold`, which is
+null in code and 2 in the yml.
 
 When disabled, agent execution creates no `UsageAccumulator`, registers no live cost
 session, and neither reads nor writes usage records. The chat model uses its native
@@ -35,10 +40,16 @@ and loses uncommitted live usage; it does not transparently resume suspended cal
 After re-enabling, collection starts with new agent invocations; the disabled period
 cannot be reconstructed from missing usage metadata.
 
+Because it is on by default, the platform threshold of 2 applies out of the box: a run
+asks for a confirmation once its known cost reaches it. Cost is a lower bound, or unknown,
+for a model with no `pricing`, and AgentSimple's tool-round limit applies as well.
+
 ## Setup
 
-1. Enable the platform switch, then configure model prices using the existing `AiModel.pricing` fields, per million tokens: input, output, cache read and cache write. Use one consistent currency across the platform. Historical records retain the estimate calculated when the call ran.
-2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace → platform. When the threshold environment variable is absent, the platform threshold is `null`; if the entire chain is unset, the monetary gate is disabled while enabled usage tracking continues. A positive value enables the check at that threshold. `0` is a zero threshold and therefore stops for confirmation immediately; it does not disable the check. Negative values are unsupported and do not mean unlimited. Existing iteration guards remain independent.
+1. Leave the platform switch on (it is by default), then configure model prices using the existing `AiModel.pricing` fields, per million tokens: input, output, cache read and cache write. Use one consistent currency across the platform. Historical records retain the estimate calculated when the call ran.
+2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace → platform. The shipped platform default is **2**, in the platform's currency unit, so every deployment has a limit unless it says otherwise. To run without a platform limit, set the variable to an empty value (`AGENTOS_LIMITS_RUN_COST_THRESHOLD=`): the platform threshold is then `null`, and if the entire chain is unset the monetary gate is disabled while enabled usage tracking continues. A positive value enables the check at that threshold. `0` is a zero threshold and therefore stops for confirmation immediately; it does not disable the check. Negative values are unsupported and do not mean unlimited. Existing iteration guards remain independent.
+
+   The default is written on a case when the case is created (see below), so changing it never reaches an existing case, and a namespace or case that sets its own value keeps it. Like the rest of the monetary gate it does nothing when the platform switch has been turned off.
 3. Deploy the matching SDK, service and generated API client/UI together. No additional Copilot provider configuration shape is introduced by this PR; prices and thresholds must be populated through the configuration introduced by the prerequisite PRs.
 
 ## Runtime behavior
@@ -52,6 +63,8 @@ Before another provider request or an automatic tool round, the runtime checks k
 Stop interrupts the case and its active descendants and releases their cost waits. Stopping one child does not release an ancestor confirmation for its siblings. Time spent awaiting cost confirmation does not count against the delegation budget. Read permission permits monitoring; write permission is required to continue or stop. Each paused descendant is listed in the parent conversation. A child also displays the ancestor limits blocking its next request, without listing sibling pauses. Each listed limit requires read permission on its own case, and its Continue action requires write permission on that same case. If a blocking ancestor is not readable, the child shows a generic pause message without exposing the ancestor's identifier or costs. Stop from the child view still targets the child and requires write permission on the child.
 
 These are estimates checked **between requests**, not a hard billing cap: a request already running, concurrent delegated calls or unknown prices can exceed the displayed threshold. The threshold is snapshotted for an active run; an edit is otherwise picked up by the next run. Monetary confirmation does not alter the separate iteration guards.
+
+The same tracked chat client also bounds AgentSimple's automatic tool rounds with `agentos.limits.agent-max-iterations`. At that bound the model is asked once more, without running any tool, to summarize what it has done and what remains; its answer becomes the agent's message. The finished event carries `maxIterationsReached`: the conversation shows the stop with a Continue action, and a delegating agent receives the flag with the summary so it can resume the sub-case.
 
 When usage tracking is enabled and no threshold applies to a run or its ancestors, a failed historical cost query does not prevent execution. Live usage is still collected and persisted, but the affected run-cost endpoint returns an unavailable error rather than an incomplete total. It can recover after the active session ends and historical queries succeed again. If any applicable threshold is configured, including zero, unavailable history still prevents execution so that the limit cannot be bypassed.
 

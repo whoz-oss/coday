@@ -1,13 +1,16 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { ScheduledPrompt } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { DAY_OF_WEEK_FULL_LABELS, ScheduledPrompt, SchedulerUnit } from '@whoz-oss/agentos-api-client'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
-import { ScheduledPromptItemComponent } from '../scheduled-prompt-item/scheduled-prompt-item.component'
+import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
- * PlatformScheduledPromptsComponent — list view for platform-level scheduled prompts.
+ * PlatformScheduledPromptsComponent — table view for platform-level scheduled prompts.
  *
  * Loaded at /agentos/admin/scheduled-prompts. Accessible to super-admins only
  * (backend enforces via 403; frontend shows the link only when user.isAdmin).
@@ -21,9 +24,15 @@ import { ScheduledPromptItemComponent } from '../scheduled-prompt-item/scheduled
  */
 @Component({
   selector: 'agentos-platform-scheduled-prompts',
-  imports: [EntityListComponent, ScheduledPromptItemComponent, IconButtonComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './platform-scheduled-prompts.component.html',
-  styleUrl: './platform-scheduled-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformScheduledPromptsComponent {
@@ -32,25 +41,13 @@ export class PlatformScheduledPromptsComponent {
   private readonly state = inject(ScheduledPromptStateService)
 
   /** Single source of truth for platform scheduled prompts, loaded once in the constructor. */
-  private readonly prompts = signal<ScheduledPrompt[]>([])
-
+  protected readonly prompts = signal<ScheduledPrompt[]>([])
   protected readonly isLoading = signal(true)
-
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly promptItems = computed<EntityListItem[]>(() =>
-    this.prompts().map(
-      (d): EntityListItem => ({
-        id: d.id ?? '',
-        name: d.name,
-        description: d.description,
-        badges: [
-          {
-            label: d.enabled ? 'Enabled' : 'Disabled',
-            variant: d.enabled ? 'success' : 'warning',
-          },
-        ],
-      })
-    )
+  protected readonly deletion = createRowDeletionState()
+  protected readonly rowFilter = createRowFilter(this.prompts, (prompt) =>
+    [prompt.name, prompt.description, this.scheduleLabel(prompt), prompt.enabled ? 'Enabled' : 'Disabled']
+      .filter(Boolean)
+      .join(' ')
   )
 
   constructor() {
@@ -66,38 +63,40 @@ export class PlatformScheduledPromptsComponent {
       })
   }
 
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
+  /** e.g. "Every week (Monday, Wednesday) at 09:00 UTC". */
+  protected scheduleLabel(prompt: ScheduledPrompt): string {
+    const { recurrence } = prompt
+    const unit = recurrence.unit === SchedulerUnit.WEEK ? 'week' : 'month'
+    const days =
+      recurrence.unit === SchedulerUnit.WEEK && recurrence.days?.length
+        ? ` (${recurrence.days.map((day) => DAY_OF_WEEK_FULL_LABELS[day] ?? day).join(', ')})`
+        : ''
+    return `Every ${unit}${days} at ${recurrence.timeUtc} UTC`
   }
 
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', 'admin', 'scheduled-prompts', 'new'])
+    void this.router.navigate(['/agentos', 'admin', 'scheduled-prompts', 'new'])
   }
 
-  protected enablePrompt(definition: ScheduledPrompt): void {
-    this.state
-      .enable(definition.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((updated) => this.patchPrompt(updated))
+  protected edit(prompt: ScheduledPrompt): void {
+    if (!prompt.id) return
+    void this.router.navigate(['/agentos', 'admin', 'scheduled-prompts', prompt.id, 'edit'])
   }
 
-  protected disablePrompt(definition: ScheduledPrompt): void {
-    this.state
-      .disable(definition.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((updated) => this.patchPrompt(updated))
+  /** Explicit target state, derived from the current one — never a blind flip. */
+  protected toggle(prompt: ScheduledPrompt): void {
+    const request = prompt.enabled ? this.state.disable(prompt.id ?? '') : this.state.enable(prompt.id ?? '')
+    request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((updated) => this.patchPrompt(updated))
   }
 
-  protected deletePrompt(definition: ScheduledPrompt): void {
-    const id = definition.id ?? ''
-    this.state
-      .delete(id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.prompts.update((list) => list.filter((p) => p.id !== id)))
-  }
-
-  protected resolvePrompt(id: string): ScheduledPrompt | null {
-    return this.prompts().find((p) => p.id === id) ?? null
+  protected confirmDelete(prompt: ScheduledPrompt): void {
+    if (!prompt.id) return
+    const id = prompt.id
+    this.deletion.execute(id, {
+      request$: this.state.delete(id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.prompts.update((list) => list.filter((p) => p.id !== id)),
+      errorMessage: `Deleting "${prompt.name}" failed. Try again.`,
+    })
   }
 
   private patchPrompt(updated: ScheduledPrompt): void {

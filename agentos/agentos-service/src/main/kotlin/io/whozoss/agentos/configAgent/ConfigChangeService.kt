@@ -7,6 +7,20 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.sdk.api.configChange.ConfigAction
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeApplyRequest
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeDecision
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeReportDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeState
+import io.whozoss.agentos.sdk.api.configChange.ConfigChangeViewDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigDeployTarget
+import io.whozoss.agentos.sdk.api.configChange.ConfigFieldChangeDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
+import io.whozoss.agentos.sdk.api.configChange.ConfigOperationResultDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigOperationStatus
+import io.whozoss.agentos.sdk.api.configChange.ConfigOperationViewDto
+import io.whozoss.agentos.sdk.api.configChange.ConfigResultStatus
+import io.whozoss.agentos.sdk.api.configChange.ConfigSecretInputDto
 import io.whozoss.agentos.user.User
 import mu.KLogging
 import org.springframework.http.HttpStatus
@@ -350,7 +364,7 @@ class ConfigChangeService(
             order = index + 1,
             kind = op.kind,
             action = op.action,
-            name = op.target?.name ?: op.value?.path("name")?.asText().orEmpty(),
+            name = op.target?.name ?: ConfigJson.nameOf(op.kind, op.value),
             targetId = op.target?.id ?: evaluation.entityId,
             namespaceId = op.target?.namespaceId ?: op.scope?.namespaceIn(createdIds),
             userId = op.target?.userId ?: op.scope?.userId,

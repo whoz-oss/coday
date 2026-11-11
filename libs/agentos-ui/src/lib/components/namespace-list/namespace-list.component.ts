@@ -2,129 +2,98 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { switchMap, BehaviorSubject, map } from 'rxjs'
-import { AsyncPipe } from '@angular/common'
-import { NamespaceItemComponent } from '../namespace-item/namespace-item.component'
+import { ButtonDirective, PageComponent, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { BehaviorSubject, switchMap } from 'rxjs'
+import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { ShellContextService } from '../../services/shell-context.service'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
+
+/** Alphabetical, regardless of case and accents, with numbers in numeric order ("ns 2" before "ns 10"). */
+const byName = (a: Namespace, b: Namespace): number =>
+  a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
 
 /**
- * NamespaceListComponent — smart container for namespace listing.
+ * NamespaceListComponent — table view of the namespaces the user can reach.
  *
  * Responsibilities:
- * - Load and display the list of namespaces via ds-entity-list
- * - Navigate to the create page and to namespace settings
- * - Delete with immediate list refresh (confirmation handled by NamespaceItemComponent)
+ * - Load and display the namespaces in alphabetical order, with a local filter
+ * - Open a namespace (its cases) from its row or its Open action, configure it (its settings shell) or create one
+ * - Delete with the inline two-step confirmation shared by every list
  *
  * Create and edit logic live in NamespaceFormComponent (edit is reached from the namespace settings).
  */
 @Component({
   selector: 'agentos-namespace-list',
-  imports: [AsyncPipe, NamespaceItemComponent, EntityListComponent],
+  imports: [
+    ButtonDirective,
+    PageComponent,
+    SectionHeaderComponent,
+    TableDirective,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './namespace-list.component.html',
-  styleUrl: './namespace-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceListComponent {
   private readonly router = inject(Router)
   private readonly namespaceController = inject(NamespaceControllerService)
+  private readonly shellContext = inject(ShellContextService)
   private readonly destroyRef = inject(DestroyRef)
 
   /** Trigger to refresh the list (emitting a new value forces re-subscription). */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-
-  /** Raw namespaces, kept for delete lookups. */
-  private readonly namespaces$ = this.refresh$.pipe(
-    switchMap(() => {
-      this.isLoading.set(true)
-      return this.namespaceController.listAllNamespace()
-    })
+  protected readonly deletion = createRowDeletionState()
+  protected readonly namespaces = signal<Namespace[]>([])
+  protected readonly rowFilter = createRowFilter(this.namespaces, (ns) =>
+    [ns.name, ns.description, ns.defaultAgentName].filter(Boolean).join(' ')
   )
-
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly namespaceItems$ = this.namespaces$.pipe(
-    map((namespaces) =>
-      namespaces.map(
-        (ns): EntityListItem => ({
-          id: ns.id ?? '',
-          name: ns.name,
-          description: ns.description,
-          badges: ns.defaultAgentName ? [{ label: ns.defaultAgentName, variant: 'info' }] : undefined,
-        })
-      )
-    )
-  )
-
-  /** Full namespace objects indexed by id — used to resolve itemTemplate events. */
-  protected readonly namespacesById = signal(new Map<string, Namespace>())
 
   constructor() {
-    this.namespaces$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (namespaces) => {
-        this.namespacesById.set(new Map(namespaces.map((ns) => [ns.id ?? '', ns])))
-        this.isLoading.set(false)
-      },
-      error: () => this.isLoading.set(false),
-    })
+    this.refresh$
+      .pipe(
+        switchMap(() => {
+          this.isLoading.set(true)
+          return this.namespaceController.listAllNamespace()
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: (namespaces) => {
+          this.namespaces.set([...namespaces].sort(byName))
+          this.shellContext.rememberNamespaceNames(namespaces)
+          this.isLoading.set(false)
+        },
+        error: () => this.isLoading.set(false),
+      })
   }
 
   // --- Navigation ---
 
-  protected navigateToHome(id: string): void {
-    this.router.navigate(['/agentos/home'], { queryParams: { ns: id } })
+  protected open(ns: Namespace): void {
+    void this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
   }
 
-  protected navigateToCreate(): void {
-    this.router.navigate(['/agentos/namespaces/new'])
+  protected openCreateForm(): void {
+    void this.router.navigate(['/agentos/namespaces/new'])
   }
 
-  protected openIntegrations(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'integrations'])
-  }
-
-  protected openAiProviders(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'ai-providers'])
-  }
-
-  protected openAiModels(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'ai-models'])
-  }
-
-  protected openAgentConfigs(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'agent-configs'])
-  }
-
-  protected openPrompts(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'prompts'])
-  }
-
-  protected openSkills(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'skills'])
-  }
-
-  protected openScheduledPrompts(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'scheduled-prompts'])
-  }
-
-  protected openUserGroups(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'user-groups'])
-  }
-
-  protected openAuthSettings(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'auth-settings'])
-  }
-
-  protected openToolInvoke(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'tool-invoke'])
+  protected configure(ns: Namespace): void {
+    void this.router.navigate(['/agentos', ns.id, 'edit'])
   }
 
   // --- Delete ---
 
-  protected deleteNamespace(ns: Namespace): void {
-    this.namespaceController
-      .deleteNamespace(ns.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+  protected confirmDelete(ns: Namespace): void {
+    if (!ns.id) return
+    this.deletion.execute(ns.id, {
+      request$: this.namespaceController.deleteNamespace(ns.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${ns.name}" failed. Try again.`,
+    })
   }
 }

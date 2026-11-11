@@ -1,15 +1,17 @@
-import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { ButtonDirective, SectionHeaderComponent, TableDirective } from '@whoz-oss/design-system'
+import { BehaviorSubject, switchMap } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
-import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
+import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
+import { TableFilterComponent } from '../table-filter/table-filter.component'
 
 /**
- * PlatformIntegrationConfigsComponent — list view for platform-level integration configs.
+ * PlatformIntegrationConfigsComponent — table view for platform-level integration configs.
  *
  * Loaded at /agentos/admin/integration-configs. Accessible to super-admins only
  * (the admin UI is restricted; backend platform writes require super-admin).
@@ -20,9 +22,8 @@ import { IntegrationConfigItemComponent } from '../integration-config-item/integ
  */
 @Component({
   selector: 'agentos-platform-integration-configs',
-  imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent, IconButtonComponent],
+  imports: [ButtonDirective, SectionHeaderComponent, TableDirective, TableFilterComponent, RowDeleteActionComponent],
   templateUrl: './platform-integration-configs.component.html',
-  styleUrl: './platform-integration-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformIntegrationConfigsComponent {
@@ -34,61 +35,46 @@ export class PlatformIntegrationConfigsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
-
-  /** Raw platform configs, kept for delete lookups. */
-  private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => {
-      this.isLoading.set(true)
-      return this.state.loadPlatformConfigs()
-    })
+  protected readonly deletion = createRowDeletionState()
+  protected readonly configs = signal<IntegrationConfig[]>([])
+  protected readonly rowFilter = createRowFilter(this.configs, (config) =>
+    [config.name, config.integrationType].filter(Boolean).join(' ')
   )
-
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly configItems$ = this.configs$.pipe(
-    map((configs) =>
-      configs.map(
-        (c: IntegrationConfig): EntityListItem => ({
-          id: c.id ?? '',
-          name: c.name,
-          description: c.integrationType,
-        })
-      )
-    )
-  )
-
-  /** Full config objects indexed by id — used to resolve itemTemplate events. */
-  private configsById = new Map<string, IntegrationConfig>()
 
   constructor() {
-    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (configs) => {
-        this.configsById = new Map(configs.map((c: IntegrationConfig) => [c.id ?? '', c]))
-        this.isLoading.set(false)
-      },
-      error: () => this.isLoading.set(false),
-    })
-  }
-
-  protected goBack(): void {
-    this.router.navigate(['/agentos', 'admin'])
+    this.refresh$
+      .pipe(
+        switchMap(() => {
+          this.isLoading.set(true)
+          return this.state.loadPlatformConfigs()
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: (configs) => {
+          this.configs.set(configs)
+          this.isLoading.set(false)
+        },
+        error: () => this.isLoading.set(false),
+      })
   }
 
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', 'admin', 'integration-configs', 'new'])
+    void this.router.navigate(['/agentos', 'admin', 'integration-configs', 'new'])
   }
 
-  protected deleteConfig(config: IntegrationConfig): void {
-    this.integrationConfigController
-      .deleteIntegrationConfig(config.id ?? '')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+  protected edit(config: IntegrationConfig): void {
+    void this.router.navigate(['/agentos', 'admin', 'integration-configs', config.id ?? '', 'edit'])
   }
 
-  protected onEdit(config: IntegrationConfig): void {
-    this.router.navigate(['/agentos', 'admin', 'integration-configs', config.id ?? '', 'edit'])
-  }
-
-  protected resolveConfig(id: string): IntegrationConfig | null {
-    return this.configsById.get(id) ?? null
+  protected confirmDelete(config: IntegrationConfig): void {
+    if (!config.id) return
+    this.deletion.execute(config.id, {
+      request$: this.integrationConfigController
+        .deleteIntegrationConfig(config.id)
+        .pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${config.name}" failed. Try again.`,
+    })
   }
 }

@@ -12,6 +12,7 @@ import {
   OAuthMcpDiscoverableAuthSetting,
   OAuthRegisteredAuthSetting,
 } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import {
   AUTH_SETTING_TYPE_LABEL,
   AUTH_SETTING_TYPES,
@@ -171,9 +172,8 @@ const CREDENTIAL_FIELDS: Readonly<Record<AuthSettingType, ReadonlyArray<Credenti
  */
 @Component({
   selector: 'agentos-auth-setting-form',
-  imports: [ReactiveFormsModule],
+  imports: [DS_PAGE_KIT, ReactiveFormsModule],
   templateUrl: './auth-setting-form.component.html',
-  styleUrl: './auth-setting-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AuthSettingFormComponent implements OnInit {

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.databind.node.TextNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 
 /**
  * Masks the secrets of a configuration entity before it leaves the server through the config
@@ -27,6 +28,14 @@ internal object ConfigSecretMasker {
                 ConfigSecretPolicy.AUTH_SETTING_SECRET_FIELDS.forEach { field ->
                     if (copy.hasNonNull(field)) copy.put(field, ConfigJson.MASK)
                 }
+            ConfigKind.AI_PROVIDER -> {
+                if (copy.hasNonNull("apiKey")) copy.put("apiKey", ConfigJson.MASK)
+                (copy.get("headers") as? ObjectNode)?.let { headers ->
+                    headers.properties().toList().forEach { (name, value) ->
+                        if (value.isTextual && ConfigSecretPolicy.isCredentialHeader(name)) headers.put(name, ConfigJson.MASK)
+                    }
+                }
+            }
             else -> Unit
         }
         return copy

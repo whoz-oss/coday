@@ -1,6 +1,7 @@
 package io.whozoss.agentos.configAgent
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 
 /**
  * Where the config agent's secrets may live, in one place for the planner (what a plan may declare
@@ -43,7 +44,19 @@ internal object ConfigSecretPolicy {
 
     private const val PARAMETERS = "parameters"
 
-    /** Whether a plan may declare [path] as a secret of a [kind]: a credential field of an auth setting, a parameter of an integration. */
+    private const val AI_PROVIDER_API_KEY = "apiKey"
+    private const val AI_PROVIDER_HEADERS = "headers"
+
+    /** Header names that carry a credential, compared in lower case. */
+    private val CREDENTIAL_HEADER_NAMES = setOf("authorization", "x-api-key", "api-key", "apikey", "token", "proxy-authorization")
+
+    /** Whether an AI provider header named [name] looks like it holds a credential. */
+    fun isCredentialHeader(name: String): Boolean =
+        name.lowercase().let { lower ->
+            lower in CREDENTIAL_HEADER_NAMES || listOf("token", "secret", "password").any { it in lower }
+        }
+
+    /** Whether a plan may declare [path] as a secret of a [kind]: a credential field of an auth setting, a parameter of an integration, an AI provider's key or header. */
     fun canHoldSecret(
         kind: ConfigKind,
         path: String,
@@ -51,6 +64,8 @@ internal object ConfigSecretPolicy {
         when (kind) {
             ConfigKind.AUTH_SETTING -> ConfigJson.segments(path).let { it.size == 1 && it.single() in AUTH_SETTING_SECRET_FIELDS }
             ConfigKind.INTEGRATION -> ConfigJson.segments(path).let { it.size > 1 && it.first() == PARAMETERS }
+            ConfigKind.AI_PROVIDER ->
+                ConfigJson.segments(path).let { (it.size == 1 && it.single() == AI_PROVIDER_API_KEY) || (it.size == 2 && it.first() == AI_PROVIDER_HEADERS) }
             else -> false
         }
 
@@ -58,6 +73,7 @@ internal object ConfigSecretPolicy {
         when (kind) {
             ConfigKind.AUTH_SETTING -> "use one of ${AUTH_SETTING_SECRET_FIELDS.joinToString { "/$it" }}"
             ConfigKind.INTEGRATION -> "use a path under /$PARAMETERS/"
+            ConfigKind.AI_PROVIDER -> "use /$AI_PROVIDER_API_KEY or /$AI_PROVIDER_HEADERS/<header name>"
             else -> "this kind has no secret field"
         }
 
@@ -92,6 +108,13 @@ internal object ConfigSecretPolicy {
             ConfigKind.INTEGRATION ->
                 secretLeaves(node, path) { pointer ->
                     ConfigJson.segments(pointer).let { it.size > 1 && it.first() == PARAMETERS && it.last().lowercase() in SECRET_PARAMETER_KEYS }
+                }
+            ConfigKind.AI_PROVIDER ->
+                secretLeaves(node, path) { pointer ->
+                    ConfigJson.segments(pointer).let {
+                        (it.size == 1 && it.single() == AI_PROVIDER_API_KEY) ||
+                            (it.size == 2 && it.first() == AI_PROVIDER_HEADERS && isCredentialHeader(it.last()))
+                    }
                 }
             else -> emptyList()
         }

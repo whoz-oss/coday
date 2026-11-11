@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -56,8 +57,10 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
@@ -69,6 +72,7 @@ import io.whozoss.agentos.skill.Skill
 import io.whozoss.agentos.skill.SkillService
 import io.whozoss.agentos.skill.SkillToolGrantService
 import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.tool.ToolResolution
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -160,6 +164,41 @@ class AgentServiceImplUnitSpec : StringSpec() {
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
+    private val noToolResolution = ToolResolution(tools = emptyList(), failedIntegrations = emptyList())
+
+    /** An [AgentServiceImpl] wired like [agentService] but with the REAL [ToolResolverService] over [toolRegistryService]. */
+    private fun realToolResolverAgentService(): AgentServiceImpl =
+        AgentServiceImpl(
+            chatClientProvider = chatClientProvider,
+            toolResolverService = ToolResolverService(toolRegistryService),
+            aiModelService = aiModelService,
+            aiProviderService = aiProviderService,
+            namespaceService = namespaceService,
+            integrationConfigService = integrationConfigService,
+            userService = userService,
+            agentConfigService = agentConfigService,
+            intentionGenerator = intentionGenerator,
+            confirmationManager = confirmationManager,
+            objectMapper = testObjectMapper,
+            toolRegistryService = toolRegistryService,
+            toolMetricsService = toolMetricsService,
+            caseEventService = caseEventService,
+            authServiceFactory = authServiceFactory,
+            oAuthFlowService = oAuthFlowService,
+            staticCredentialFactory = staticCredentialFactory,
+            exchangeStorageService = exchangeStorageService,
+            exchangeCapabilityService = exchangeCapabilityService,
+            exchangeToolGrantService = exchangeToolGrantService,
+            agentDocumentResolver = agentDocumentResolver,
+            skillService = skillService,
+            skillToolGrantService = skillToolGrantService,
+            configToolGrantService = configToolGrantService,
+            idCompressorService = IdCompressorService(),
+            agentConfigProperties = AgentConfigProperties(),
+            limitsConfig = LimitsConfigProperties(),
+            exchangeRootResolver = exchangeRootResolver,
+            loopWorkflowRunnerService = mockk(relaxed = true),
+        )
     private val aiProviderId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
     private val caseCreatedAt: Instant = Instant.parse("2025-12-15T10:30:00Z")
@@ -191,6 +230,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         temperature: Double? = null,
         maxCompletionTokens: Int? = null,
         reasoningEffort: ReasoningEffort? = null,
+        supportsAdvancedExecution: Boolean = false,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -201,6 +241,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         temperature = temperature,
         maxCompletionTokens = maxCompletionTokens,
         reasoningEffort = reasoningEffort,
+        supportsAdvancedExecution = supportsAdvancedExecution,
     )
 
     private fun agentConfig(
@@ -231,7 +272,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 allIntegrationConfigs = any(),
                 credentialProviderFactory = capture(factorySlot),
             )
-        } returns emptyList()
+        } returns noToolResolution
         val config = agentConfig(name = agentName, modelName = "sonnet")
         val userId = context.userId
         if (userId != null) {
@@ -261,8 +302,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 allIntegrationConfigs = any(),
                 credentialProviderFactory = any(),
             )
-        } returns
-            emptyList()
+        } returns noToolResolution
         // dedupToolsByName is the shared collision-reconciler; identity is fine (no collisions in these tests).
         every { toolResolverService.dedupToolsByName(any()) } answers { firstArg() }
         // Both exchange scopes are denied unless a test says otherwise, mirroring the shipped defaults.
@@ -780,7 +820,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             // integrations map would surface here as the opted-out agent regaining tools.
             val realGrantService =
                 ExchangeToolGrantService(
-                    properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true),
+                    // Namespace default off on purpose: this test is about the case scope, and the
+                    // namespace one is separately gated on an identified user and Namespace READ.
+                    properties =
+                        ExchangeToolsConfigProperties(
+                            caseEnabledByDefault = true,
+                            namespaceEnabledByDefault = false,
+                        ),
                     storageProperties = ExchangeStorageConfigProperties(),
                     reservedEntries = listOf(GitMetadataEntries()),
                     toolRegistryService = toolRegistryService,
@@ -863,7 +909,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // confirmation flow throw IllegalStateException at runtime.
         "findAgentByName with advancedExecution=true wires confirmationManager into AgentAdvancedContext" {
             val config = agentConfig(name = "advanced-agent", modelName = "sonnet").copy(advancedExecution = true)
-            val model = modelConfig(alias = "sonnet")
+            val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
@@ -888,7 +934,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { impostor.name } returns "AGENTOS_CONFIG__propose"
             every {
                 toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any())
-            } returns listOf(impostor)
+            } returns ToolResolution(tools = listOf(impostor), failedIntegrations = emptyList())
             every { configToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns listOf(builtIn)
             val combinedTools = mutableListOf<List<StandardTool<*>>>()
             every { toolResolverService.dedupToolsByName(capture(combinedTools)) } answers { firstArg() }
@@ -1040,6 +1086,111 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agent.reasoningEffort shouldBe null
             agent.requestedReasoningEffort shouldBe ReasoningEffort.XHIGH
+        }
+
+        // -------------------------------------------------------------------------
+        // Maximum tool rounds: the namespace override wins, the platform value is the fallback
+        // -------------------------------------------------------------------------
+
+        "findAgentByName gives a simple agent's chat client the namespace tool rounds" {
+            every { namespaceService.findById(namespaceId) } returns namespace.copy(maxToolRounds = 250)
+            every { agentConfigService.findByName(namespaceId, "rounds-simple") } returns
+                agentConfig(name = "rounds-simple", modelName = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            try {
+                agentService.findAgentByName("rounds-simple", context)
+
+                verify(exactly = 1) { chatClientProvider.getChatClient(any(), any(), any(), any(), 250) }
+            } finally {
+                every { namespaceService.findById(namespaceId) } returns namespace
+            }
+        }
+
+        "findAgentByName caps an advanced agent at the namespace tool rounds" {
+            every { namespaceService.findById(namespaceId) } returns namespace.copy(maxToolRounds = 250)
+            every { agentConfigService.findByName(namespaceId, "rounds-advanced") } returns
+                agentConfig(name = "rounds-advanced", modelName = "sonnet").copy(advancedExecution = true)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            try {
+                val agent = agentService.findAgentByName("rounds-advanced", context) as AgentAdvanced
+
+                val field = AgentAdvanced::class.java.getDeclaredField("maxIterations").apply { isAccessible = true }
+                field.get(agent) shouldBe 250
+                verify(exactly = 1) { chatClientProvider.getChatClient(any(), any(), any(), any(), 250) }
+            } finally {
+                every { namespaceService.findById(namespaceId) } returns namespace
+            }
+        }
+
+        "findAgentByName falls back to the platform tool rounds when the namespace sets none" {
+            val localService =
+                AgentServiceImpl(
+                    chatClientProvider = chatClientProvider,
+                    toolResolverService = toolResolverService,
+                    aiModelService = aiModelService,
+                    aiProviderService = aiProviderService,
+                    namespaceService = namespaceService,
+                    integrationConfigService = integrationConfigService,
+                    userService = userService,
+                    agentConfigService = agentConfigService,
+                    intentionGenerator = intentionGenerator,
+                    confirmationManager = confirmationManager,
+                    objectMapper = testObjectMapper,
+                    toolRegistryService = toolRegistryService,
+                    toolMetricsService = toolMetricsService,
+                    caseEventService = caseEventService,
+                    authServiceFactory = authServiceFactory,
+                    oAuthFlowService = oAuthFlowService,
+                    staticCredentialFactory = staticCredentialFactory,
+                    exchangeStorageService = exchangeStorageService,
+                    exchangeCapabilityService = exchangeCapabilityService,
+                    exchangeToolGrantService = exchangeToolGrantService,
+                    agentDocumentResolver = agentDocumentResolver,
+                    skillService = skillService,
+                    skillToolGrantService = skillToolGrantService,
+                    configToolGrantService = configToolGrantService,
+                    idCompressorService = IdCompressorService(),
+                    agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(agentMaxIterations = 7),
+                    exchangeRootResolver = exchangeRootResolver,
+                    loopWorkflowRunnerService = mockk(relaxed = true),
+                )
+            every { agentConfigService.findByName(namespaceId, "rounds-fallback") } returns
+                agentConfig(name = "rounds-fallback", modelName = "sonnet").copy(advancedExecution = true)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val agent = localService.findAgentByName("rounds-fallback", context) as AgentAdvanced
+
+            val field = AgentAdvanced::class.java.getDeclaredField("maxIterations").apply { isAccessible = true }
+            field.get(agent) shouldBe 7
+            // The provider receives no override: it applies the platform value itself.
+            verify(exactly = 1) { chatClientProvider.getChatClient(any(), any(), any(), any(), null) }
+        }
+
+        "resolveDefinition exposes the namespace tool rounds override, null when none" {
+            val config = agentConfig(name = "rounds-definition", modelName = "sonnet")
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null).maxToolRounds shouldBe null
+
+            every { namespaceService.findById(namespaceId) } returns namespace.copy(maxToolRounds = 250)
+            try {
+                agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null).maxToolRounds shouldBe 250
+            } finally {
+                every { namespaceService.findById(namespaceId) } returns namespace
+            }
         }
 
         "findAgentByName falls back to namespace default model when AgentConfig has no modelName" {
@@ -1959,7 +2110,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allIntegrationConfigs = any(),
                     credentialProviderFactory = capture(factories),
                 )
-            } returns emptyList()
+            } returns noToolResolution
 
             agentService.findAgentByName("my-agent", context)
             agentService.findAgentByName("my-agent", context)
@@ -1975,7 +2126,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         //   if (setting.authType in OAUTH_AUTH_TYPES && caseId != null && emitEvent != null) → OAuthFlowService
         //   else → AuthService.resolveCredential
         //
-        // toolResolverService.resolveToolsForRun is stubbed to return emptyList() in these tests,
+        // toolResolverService.resolveToolsForRun is stubbed to return no tools in these tests,
         // which means the factory is never invoked as a side-effect of resolveAgentDefinition.
         // We capture the factory via a slot and invoke it directly so the dispatch branch
         // is actually exercised.
@@ -2037,7 +2188,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allIntegrationConfigs = any(),
                     credentialProviderFactory = capture(factorySlot),
                 )
-            } returns emptyList()
+            } returns noToolResolution
 
             val config = agentConfig(name = "oauth-agent", modelName = "sonnet")
             every {
@@ -2118,7 +2269,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allIntegrationConfigs = any(),
                     credentialProviderFactory = capture(factorySlot),
                 )
-            } returns emptyList()
+            } returns noToolResolution
 
             val config = agentConfig(name = "apikey-agent", modelName = "sonnet")
             every {
@@ -2532,7 +2683,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 agentConfig(name = "advanced-no-dup-agent", modelName = "sonnet")
                     .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
             every { agentConfigService.findByName(namespaceId, "advanced-no-dup-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
             every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
@@ -2561,6 +2713,109 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // redirectGuideline wiring seam — findAgentByName → AgentAdvancedContext
         // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // Execution mode: the agent decides, the model only constrains ADVANCED
+        // -------------------------------------------------------------------------
+
+        /** Stubs [config] running on a model whose supportsAdvancedExecution is [modelFlag]; returns that model. */
+        fun stubAgentOnModel(
+            config: AgentConfig,
+            modelFlag: Boolean,
+        ): AiModel {
+            val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = modelFlag)
+            val provider = providerConfig()
+            every { agentConfigService.findByName(namespaceId, config.name) } returns config
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns mockk<ChatClient>(relaxed = true)
+            return model
+        }
+
+        "a SIMPLE agent runs as AgentSimple on a model that does not support advanced execution" {
+            val config = agentConfig(name = "simple-no-support").copy(executionMode = ExecutionMode.SIMPLE)
+            stubAgentOnModel(config, modelFlag = false)
+
+            (agentService.findAgentByName("simple-no-support", context) is AgentSimple) shouldBe true
+        }
+
+        "a SIMPLE agent stays AgentSimple on a model that supports advanced execution: the model never upgrades the agent" {
+            val config = agentConfig(name = "simple-with-support").copy(executionMode = ExecutionMode.SIMPLE)
+            stubAgentOnModel(config, modelFlag = true)
+
+            (agentService.findAgentByName("simple-with-support", context) is AgentSimple) shouldBe true
+        }
+
+        "an agent with no execution mode set is SIMPLE, even on a model that supports advanced execution" {
+            // executionMode = null and advancedExecution = false: nothing is set on the agent.
+            val config = agentConfig(name = "no-mode-with-support")
+            stubAgentOnModel(config, modelFlag = true)
+
+            (agentService.findAgentByName("no-mode-with-support", context) is AgentSimple) shouldBe true
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null).executionMode shouldBe
+                ExecutionMode.SIMPLE
+        }
+
+        "an ADVANCED agent runs as AgentAdvanced on a model that supports advanced execution" {
+            val config = agentConfig(name = "advanced-with-support").copy(executionMode = ExecutionMode.ADVANCED)
+            stubAgentOnModel(config, modelFlag = true)
+
+            (agentService.findAgentByName("advanced-with-support", context) is AgentAdvanced) shouldBe true
+        }
+
+        "an ADVANCED agent on a model that does not support advanced execution fails, naming the agent, the model and the fix" {
+            val config = agentConfig(name = "big-advanced").copy(executionMode = ExecutionMode.ADVANCED)
+            stubAgentOnModel(config, modelFlag = false)
+
+            val error =
+                shouldThrow<AdvancedExecutionNotSupportedException> {
+                    agentService.findAgentByName("big-advanced", context)
+                }
+
+            error.message shouldContain "Agent 'big-advanced'"
+            error.message shouldContain "ADVANCED"
+            error.message shouldContain "'sonnet'"
+            // The message is shown to case participants: no provider nor API model name.
+            error.message shouldNotContain "anthropic-prod"
+            error.message shouldNotContain "claude-sonnet-4-5"
+            error.message shouldContain "Ask an administrator to enable supportsAdvancedExecution on the model"
+            error.message shouldContain "switch the agent to SIMPLE"
+            // No silent downgrade: no chat client is built for the agent.
+            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any(), any()) }
+        }
+
+        "the legacy advancedExecution=true flag on a model that does not support it fails the same way" {
+            val config = agentConfig(name = "legacy-advanced").copy(advancedExecution = true)
+            stubAgentOnModel(config, modelFlag = false)
+
+            val error =
+                shouldThrow<AdvancedExecutionNotSupportedException> {
+                    agentService.findAgentByName("legacy-advanced", context)
+                }
+
+            error.message shouldContain "Agent 'legacy-advanced'"
+        }
+
+        "a LOOP agent is unaffected by the model's advanced execution support" {
+            val config = agentConfig(name = "loop-any-model").copy(executionMode = ExecutionMode.LOOP)
+
+            for (flag in listOf(true, false)) {
+                stubAgentOnModel(config, modelFlag = flag)
+                (agentService.findAgentByName("loop-any-model", context) is AgentLoop) shouldBe true
+            }
+        }
+
+        "resolveDefinition still returns the definition of an ADVANCED agent on a model without support" {
+            // The /definition inspection endpoint must keep working so an admin can see the misconfiguration.
+            val config = agentConfig(name = "inspectable-advanced").copy(executionMode = ExecutionMode.ADVANCED)
+            stubAgentOnModel(config, modelFlag = false)
+
+            val definition = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            definition.executionMode shouldBe ExecutionMode.ADVANCED
+            definition.resolvedModel.supportsAdvancedExecution shouldBe false
+        }
 
         // -------------------------------------------------------------------------
         // ExecutionMode.LOOP wiring — AgentLoop instantiation
@@ -2598,7 +2853,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 agentConfig(name = "advanced-redirect-agent", modelName = "sonnet")
                     .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
             every { agentConfigService.findByName(namespaceId, "advanced-redirect-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns
+                modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
             every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
@@ -2608,6 +2864,146 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
             val advancedCtx = contextField.get(agent) as AgentAdvancedContext
             advancedCtx.redirectGuideline shouldBe "Always redirect to TRSharing when finished."
+        }
+
+        // -------------------------------------------------------------------------
+        // Integration load failure notice: only names reach the model and the case, never the exception.
+        // The REAL ToolResolverService is used so the whole path plugin -> resolver -> instructions/WarnEvent
+        // is exercised: a mock would hide a leak between the layers.
+        // -------------------------------------------------------------------------
+
+        /** Runs one agent on a live case whose integration `ATLASSIAN` is served by [plugin]; returns the agent and the emitted events. */
+        suspend fun runWithIntegration(
+            agentName: String,
+            plugin: ToolPlugin,
+            emitEventAvailable: Boolean = true,
+        ): Pair<AgentSimple, List<CaseEvent>> {
+            val emitted = mutableListOf<CaseEvent>()
+            val integration =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "ATLASSIAN",
+                    integrationType = "ATLASSIAN_TYPE",
+                    description = "Atlassian workspace",
+                )
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(integration)
+            every { toolRegistryService.findPlugin("ATLASSIAN_TYPE") } returns plugin
+            every { agentConfigService.findByName(namespaceId, agentName) } returns
+                agentConfig(name = agentName, instructions = "Base instructions", modelName = "sonnet")
+                    .copy(integrations = mapOf("ATLASSIAN" to null))
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val realResolverService = realToolResolverAgentService()
+            val recordingEmit: ((CaseEvent) -> CaseEvent)? =
+                if (emitEventAvailable) {
+                    { event: CaseEvent ->
+                        emitted.add(event)
+                        event
+                    }
+                } else {
+                    null
+                }
+            return try {
+                val liveCase = context.copy(emitEvent = recordingEmit)
+                (realResolverService.findAgentByName(agentName, liveCase) as AgentSimple) to emitted
+            } finally {
+                every { toolRegistryService.findPlugin(any()) } returns null
+            }
+        }
+
+        val failingPlugin =
+            object : ToolPlugin {
+                override val integrationType = "ATLASSIAN_TYPE"
+                override val configSchema: JsonNode? = null
+
+                override fun provideTools(
+                    config: JsonNode?,
+                    configName: String?,
+                    context: ToolContext?,
+                ): List<StandardTool<*>> = throw Exception("secret=XYZ")
+            }
+
+        "a failing integration is named in the instructions and in a WarnEvent, and its secret is in neither" {
+            val (agent, emitted) = runWithIntegration(agentName = "failing-agent", plugin = failingPlugin)
+
+            val instructions = agent.instructions ?: ""
+            instructions shouldContain "Integrations that failed to load in this run, their tools are missing: ATLASSIAN."
+            // Only when the request needs it: the block also reaches agents that never use the integration.
+            instructions shouldContain "Mention it only when the user's request needs one of them"
+            instructions shouldContain "Do not guess a cause."
+            // The block comes last, so the cached prefix of the prompt is unchanged.
+            instructions.indexOf("Base instructions") shouldBe 0
+            instructions.trimEnd().endsWith("Do not guess a cause.") shouldBe true
+            instructions shouldNotContain "XYZ"
+            (agent.systemPrompt ?: "") shouldNotContain "XYZ"
+
+            val warnings = emitted.filterIsInstance<WarnEvent>()
+            warnings.map { it.message } shouldBe
+                listOf(
+                    "Integration ATLASSIAN could not be loaded for this message. " +
+                        "An administrator can find the cause in the server logs.",
+                )
+            warnings.single().caseId shouldBe caseId
+            warnings.single().namespaceId shouldBe namespaceId
+            emitted.forEach { it.toString() shouldNotContain "XYZ" }
+        }
+
+        "the failed integrations are listed sorted, once each, in the instructions" {
+            val zulu = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "ZULU", integrationType = "ATLASSIAN_TYPE")
+            val alpha = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "ALPHA", integrationType = "ATLASSIAN_TYPE")
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(zulu, alpha)
+            every { toolRegistryService.findPlugin("ATLASSIAN_TYPE") } returns failingPlugin
+            every { agentConfigService.findByName(namespaceId, "two-failures") } returns
+                agentConfig(name = "two-failures", modelName = "sonnet").copy(integrations = mapOf("ZULU" to null, "ALPHA" to null))
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            val emitted = mutableListOf<CaseEvent>()
+
+            try {
+                val agent =
+                    realToolResolverAgentService().findAgentByName(
+                        "two-failures",
+                        context.copy(emitEvent = { event -> event.also { emitted.add(it) } }),
+                    ) as AgentSimple
+
+                agent.instructions shouldContain "their tools are missing: ALPHA, ZULU."
+                emitted.filterIsInstance<WarnEvent>().map { it.message } shouldBe
+                    listOf("ALPHA", "ZULU").map { IntegrationLoadFailureNotice.warnMessage(integrationName = it) }
+            } finally {
+                every { toolRegistryService.findPlugin(any()) } returns null
+            }
+        }
+
+        "a run outside a live case still names the failed integration in the instructions, without emitting" {
+            val (agent, emitted) =
+                runWithIntegration(agentName = "no-emit-agent", plugin = failingPlugin, emitEventAvailable = false)
+
+            agent.instructions shouldContain "their tools are missing: ATLASSIAN."
+            emitted.shouldBeEmpty()
+        }
+
+        "nothing is appended and nothing is emitted when every integration loads" {
+            val healthyPlugin =
+                object : ToolPlugin {
+                    override val integrationType = "ATLASSIAN_TYPE"
+                    override val configSchema: JsonNode? = null
+
+                    override fun provideTools(
+                        config: JsonNode?,
+                        configName: String?,
+                        context: ToolContext?,
+                    ): List<StandardTool<*>> = emptyList()
+                }
+
+            val (agent, emitted) = runWithIntegration(agentName = "healthy-agent", plugin = healthyPlugin)
+
+            (agent.instructions ?: "") shouldNotContain "failed to load"
+            (agent.instructions ?: "") shouldNotContain "Integration load failures"
+            emitted.shouldBeEmpty()
         }
     }
 }

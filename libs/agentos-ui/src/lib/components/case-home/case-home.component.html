@@ -1,106 +1,162 @@
-<div
-  class="case-home"
-  (dragenter)="!isCreating() && attachments.onDragEnter($event)"
-  (dragover)="!isCreating() && attachments.onDragOver($event)"
-  (dragleave)="attachments.onDragLeave()"
-  (drop)="!isCreating() && attachments.onDrop($event)"
->
-  @if (attachments.isDragOver()) {
-    <div class="case-home__drop-overlay" aria-hidden="true">
-      <span class="material-icons">upload_file</span>
-      <span>Drop files to attach</span>
-    </div>
-  }
-  <div class="case-home__hero">
-    <!-- Namespace label above headline -->
-    <div class="case-home__ns-block">
-      @if (namespaceId) {
-        <div class="case-home__ns-label">Namespace · {{ namespaceName() ?? namespaceId }}</div>
-      }
-      @if (parentCaseId()) {
-        <button type="button" class="case-home__parent" title="Back to parent case" (click)="returnToParent()">
-          <span class="material-icons" aria-hidden="true">subdirectory_arrow_right</span>
-          Parent case: {{ parentCaseTitle() }}
-        </button>
-      }
-      <h1 class="case-home__headline">{{ parentCaseId() ? 'New sub-case' : 'What can I help you with?' }}</h1>
-    </div>
-
-    <div class="case-home__composer" dsBlueprint>
-      @if (submitError()) {
-        <p role="alert">{{ submitError() }}</p>
-      }
-      @if (autocomplete.atSuggestions().length > 0) {
-        <div class="case-home__autocomplete">
-          <agentos-agent-autocomplete
-            [agents]="autocomplete.atSuggestions()"
-            (selected)="onAgentSelected($event)"
-            (dismissed)="closeAtAutocomplete()"
-          />
-        </div>
-      }
-      @if (autocomplete.slashSuggestions().length > 0) {
-        <div class="case-home__autocomplete">
-          <agentos-prompt-autocomplete
-            [prompts]="autocomplete.slashSuggestions()"
-            (selected)="onPromptSelected($event)"
-            (dismissed)="closeSlashAutocomplete()"
-          />
-        </div>
-      }
-      <agentos-composer-attachments
-        #attachmentsUi
-        class="case-home__attachments"
-        [attachments]="attachments.attachments()"
-        [namespaceBadge]="namespaceTargeted()"
-        [limitError]="attachments.limitError()"
-        [disabled]="attachments.isUploading()"
-        (removed)="attachments.remove($event)"
-        (filesSelected)="attachments.addFiles($event)"
+<ds-drawer position="end" [(open)]="filesOpen" drawerWidth="400px" [mobileFullWidth]="true">
+  <div dsDrawerSide class="case-home__drawer-side">
+    @if (filesOpen()) {
+      <agentos-exchange-shell
+        [active]="filesOpen()"
+        [selectable]="true"
+        [referenced]="referencedFiles()"
+        (referenceToggled)="onReferenceToggled($event)"
+        (closeRequested)="filesOpen.set(false)"
       />
-      <textarea
-        #composerInput
-        class="case-home__input"
-        placeholder="Describe your task or ask a question…"
-        rows="4"
-        [value]="inputValue()"
-        [disabled]="isCreating()"
-        (input)="onInput($event)"
-        (keydown)="onKeydown($event)"
-      ></textarea>
-      <div class="case-home__composer-footer">
-        <div class="case-home__footer-left">
-          <ds-icon-button
-            icon="add"
-            variant="default"
-            title="Attach files"
-            [disabled]="isCreating()"
-            (action)="attachmentsUi.openPicker()"
-          />
-          @if (worktreeOffered() && !parentCaseId()) {
-            <label
-              class="case-home__worktree"
-              title="This case and its sub-cases work in their own Git worktree. Uncheck it for a case without Git."
-            >
-              <input
-                type="checkbox"
-                [checked]="worktree()"
-                [disabled]="isCreating() || !!pendingCaseId()"
-                (change)="onWorktreeChange($event)"
-              />
-              <span>Create a worktree</span>
-            </label>
-          }
-          <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+    }
+  </div>
+
+  <div dsDrawerContent class="case-home__host">
+    <div
+      class="case-home"
+      (dragenter)="canStageFiles && attachments.onDragEnter($event)"
+      (dragover)="canStageFiles && attachments.onDragOver($event)"
+      (dragleave)="attachments.onDragLeave()"
+      (drop)="canStageFiles && attachments.onDrop($event)"
+    >
+      @if (attachments.isDragOver()) {
+        <div class="case-home__drop-overlay" aria-hidden="true">
+          <span class="material-icons">upload_file</span>
+          <span>Drop files to attach</span>
         </div>
-        <ds-icon-button
-          icon="send"
-          variant="primary"
-          [title]="parentCaseId() ? 'Start sub-case' : 'Start case'"
-          [disabled]="!canSend"
-          (action)="submit()"
-        />
+      }
+      <div class="case-home__hero">
+        <!-- Namespace label above headline -->
+        <div class="case-home__ns-block">
+          @if (namespaceId) {
+            <div class="case-home__ns-label">Namespace · {{ namespaceName() ?? namespaceId }}</div>
+          }
+          @if (parentCaseId()) {
+            <button type="button" class="case-home__parent" title="Back to parent case" (click)="returnToParent()">
+              <span class="material-icons" aria-hidden="true">subdirectory_arrow_right</span>
+              Parent case: {{ parentCaseTitle() }}
+            </button>
+          }
+          <h1 class="case-home__headline">{{ parentCaseId() ? 'New sub-case' : 'What can I help you with?' }}</h1>
+        </div>
+
+        <div class="case-home__composer" dsBlueprint>
+          @if (submitError()) {
+            <p role="alert">{{ submitError() }}</p>
+          }
+          @if (autocomplete.atSuggestions().length > 0) {
+            <div class="case-home__autocomplete">
+              <agentos-agent-autocomplete
+                [agents]="autocomplete.atSuggestions()"
+                (selected)="onAgentSelected($event)"
+                (dismissed)="closeAtAutocomplete()"
+              />
+            </div>
+          }
+          @if (autocomplete.fileSuggestions().length > 0) {
+            <div class="case-home__autocomplete">
+              <agentos-file-autocomplete
+                [files]="autocomplete.fileSuggestions()"
+                (selected)="onFileSelected($event)"
+                (dismissed)="closeFileAutocomplete()"
+              />
+            </div>
+          }
+          @if (autocomplete.slashSuggestions().length > 0) {
+            <div class="case-home__autocomplete">
+              <agentos-prompt-autocomplete
+                [prompts]="autocomplete.slashSuggestions()"
+                (selected)="onPromptSelected($event)"
+                (dismissed)="closeSlashAutocomplete()"
+              />
+            </div>
+          }
+          <agentos-composer-attachments
+            #attachmentsUi
+            class="case-home__attachments"
+            [attachments]="attachments.attachments()"
+            [namespaceBadge]="namespaceTargeted()"
+            [limitError]="attachments.limitError()"
+            [disabled]="attachments.isUploading()"
+            [references]="referencedFiles()"
+            (removed)="attachments.remove($event)"
+            (referenceRemoved)="removeReference($event)"
+            (filesSelected)="attachments.addFiles($event)"
+          />
+          <textarea
+            #composerInput
+            class="case-home__input"
+            placeholder="Describe your task or ask a question…"
+            rows="4"
+            [value]="inputValue()"
+            [hidden]="voice.isActive()"
+            [disabled]="isCreating()"
+            (input)="onInput($event)"
+            (keydown)="onKeydown($event)"
+            (paste)="!isCreating() && attachments.onPaste($event)"
+          ></textarea>
+          <agentos-voice-recorder
+            [state]="voice.state()"
+            [elapsedMs]="voice.elapsedMs()"
+            [error]="voice.error()"
+            [sendKey]="sendKeyLabel"
+            (keyPressed)="onRecordingKeydown($event)"
+          />
+          <div class="case-home__composer-footer">
+            <div class="case-home__footer-left">
+              <ds-icon-button
+                icon="add"
+                variant="default"
+                title="Attach files"
+                [disabled]="!canStageFiles"
+                (action)="attachmentsUi.openPicker()"
+              />
+              <ds-icon-button
+                icon="folder"
+                variant="default"
+                title="Browse namespace files"
+                (action)="filesOpen.set(true)"
+              />
+              @if (worktreeOffered() && !parentCaseId()) {
+                <label
+                  class="case-home__worktree"
+                  title="This case and its sub-cases work in their own Git worktree. Leave it unchecked for a case without Git."
+                >
+                  <input
+                    type="checkbox"
+                    [checked]="worktree()"
+                    [disabled]="isCreating() || !!pendingCaseId()"
+                    (change)="onWorktreeChange($event)"
+                  />
+                  <span>Create a worktree</span>
+                </label>
+              }
+              <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+            </div>
+            <!-- Mic (or cancel while recording) right next to the send button, on its left -->
+            <div class="case-home__footer-right">
+              @if (voice.isRecording()) {
+                <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
+              } @else if (voiceCapability.available()) {
+                <ds-icon-button
+                  icon="mic"
+                  variant="default"
+                  title="Record a voice message"
+                  [disabled]="!canRecord"
+                  (action)="startRecording()"
+                />
+              }
+              <ds-icon-button
+                icon="send"
+                variant="primary"
+                [title]="voice.isRecording() ? 'Send voice message' : parentCaseId() ? 'Start sub-case' : 'Start case'"
+                [disabled]="!canSendNow"
+                (action)="onSendClick()"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-</div>
+</ds-drawer>

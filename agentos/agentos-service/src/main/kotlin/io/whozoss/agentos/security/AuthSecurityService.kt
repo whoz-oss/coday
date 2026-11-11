@@ -40,7 +40,7 @@ class AuthSecurityService(
         val cfHeader = request.getHeader(CF_ACCESS_JWT_ASSERTION_HEADER)
         val authHeader = request.getHeader(AUTHORIZATION_HEADER)
         val emailHeader = request.getHeader(X_FORWARDED_EMAIL_HEADER)
-        logger.info {
+        logger.debug {
             "[Security/auth] Resolving identity — " +
                 "$X_EXTERNAL_USER_ID_HEADER present=${!externalUserIdHeader.isNullOrBlank()}, " +
                 "$CF_ACCESS_JWT_ASSERTION_HEADER present=${!cfHeader.isNullOrBlank()}, " +

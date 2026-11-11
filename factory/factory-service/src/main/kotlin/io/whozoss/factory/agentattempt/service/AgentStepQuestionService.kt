@@ -345,9 +345,9 @@ class AgentStepQuestionService(
                 details = mapOf("interactionId" to interactionId, "expectedRevision" to expectedRevision),
             )
         }
-        attempts.supersede(scope, namespaceId, authoritativeWorkflowId, stepId, predecessorAttemptId, predecessor.revision, now)
-        val successor = attempts.registerRetry(
+        val successor = attempts.supersedeAndRegisterSuccessor(
             scope,
+            predecessor,
             DurableAgentAttempt(
                 attemptId = successorAttemptId,
                 caseId = predecessor.caseId,

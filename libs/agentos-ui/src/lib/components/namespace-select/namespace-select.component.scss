@@ -1,28 +1,37 @@
+@use 'libs/design-system/src/styles/scale' as t;
+
 .namespace-select {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
 
   &__label {
-    font-size: 0.8rem;
+    font-size: t.$text-small;
     font-weight: 500;
-    color: var(--color-text-secondary, #6e6e73);
+    color: var(--color-text-secondary);
     white-space: nowrap;
   }
 
+  // Look (border, arrow, focus) comes from the global .ds-control; only the compact padding is local.
   &__control {
-    padding: 0.35rem 0.6rem;
-    border-radius: 8px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    background: transparent;
-    color: var(--color-text, #1d1d1f);
-    font-size: 0.875rem;
-    font-family: inherit;
-    cursor: pointer;
+    padding: 0.35rem 2.25rem 0.35rem 0.6rem;
+  }
+}
 
-    &:focus {
-      outline: none;
-      border-color: var(--color-primary, #007aff);
+// Mobile: label above the control would waste height, so the control takes the free width
+// next to its label and gets a touch-sized target.
+@media (max-width: 760px) {
+  :host {
+    display: block;
+  }
+
+  .namespace-select {
+    display: flex;
+
+    &__control {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 44px;
     }
   }
 }

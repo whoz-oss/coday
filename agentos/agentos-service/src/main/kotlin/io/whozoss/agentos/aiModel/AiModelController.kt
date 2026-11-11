@@ -67,6 +67,7 @@ class AiModelController(
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                     reasoningEffort = resource.reasoningEffort,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution ?: false,
                 )
             },
         )
@@ -116,12 +117,14 @@ class AiModelController(
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                     reasoningEffort = resource.reasoningEffort,
+                    supportsAdvancedExecution = resource.supportsAdvancedExecution ?: existing.supportsAdvancedExecution,
                 ),
             ).let(::toDto)
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AiModel', 'DELETE')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
     ) = crud.delete(id)
@@ -145,7 +148,7 @@ class AiModelController(
     companion object : KLogging()
 }
 
-private fun toDto(entity: AiModel) =
+internal fun toDto(entity: AiModel) =
     AiModelDto(
         id = entity.metadata.id,
         aiProviderId = entity.aiProviderId,
@@ -160,4 +163,5 @@ private fun toDto(entity: AiModel) =
         contextWindow = entity.contextWindow,
         pricing = entity.pricing,
         reasoningEffort = entity.reasoningEffort,
+        supportsAdvancedExecution = entity.supportsAdvancedExecution,
     )

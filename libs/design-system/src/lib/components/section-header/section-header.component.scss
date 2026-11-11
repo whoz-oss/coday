@@ -1,3 +1,5 @@
+@use '../../../styles/scale' as t;
+
 :host {
   display: flex;
   align-items: flex-end;
@@ -8,29 +10,63 @@
   border-bottom: 1px solid var(--color-divider, rgba(0, 0, 0, 0.16));
 }
 
+.section-header__copy {
+  min-width: 0;
+}
+
 h2 {
   margin: 0 0 2px;
   color: var(--color-text, #1d1f20);
   font-family: var(--font-body, sans-serif);
-  font-size: 25px;
+  font-size: t.$text-title;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 p {
   margin: 0;
   color: var(--color-text-secondary, #6b7280);
-  font-size: 14px;
+  font-size: t.$text-body;
+}
+
+.section-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+
+  &:empty {
+    display: none;
+  }
 }
 
 .section-header__actions {
   display: flex;
   flex: none;
+  align-items: center;
   gap: 8px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 760px) {
   :host {
     align-items: stretch;
     flex-direction: column;
+    gap: 12px;
+  }
+
+  h2 {
+    font-size: t.$text-title-mobile;
+    overflow-wrap: anywhere;
+  }
+
+  // Actions stack and stretch (a flex column stretches its children); each projected control keeps its own
+  // touch target, so nothing has to be reached from here.
+  .section-header__actions {
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
   }
 }

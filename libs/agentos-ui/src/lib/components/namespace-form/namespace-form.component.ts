@@ -1,8 +1,16 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { DS_PAGE_KIT } from '@whoz-oss/design-system'
+import { UsageConfigurationService } from '../../services/usage-configuration.service'
+import { UserStateService } from '../../services/user-state.service'
+import { absolutePathValidator } from './absolute-path.validator'
+
+/** The backend stores the maximum tool rounds as an int32 and refuses anything below 1. */
+const MAX_TOOL_ROUNDS_MIN = 1
+const MAX_TOOL_ROUNDS_MAX = 2_147_483_647
 
 /**
  * NamespaceFormComponent — full-page create / edit form for a namespace.
@@ -16,9 +24,8 @@ import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-cli
  */
 @Component({
   selector: 'agentos-namespace-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DS_PAGE_KIT],
   templateUrl: './namespace-form.component.html',
-  styleUrl: './namespace-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceFormComponent implements OnInit {
@@ -26,6 +33,40 @@ export class NamespaceFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly usageConfiguration = inject(UsageConfigurationService)
+  private readonly userState = inject(UserStateService)
+
+  /**
+   * Where the shared files of a namespace live is a host-level decision: the server refuses a change from anyone
+   * but a super-admin (403). Others see the stored value, read-only, and the form sends it back untouched.
+   */
+  protected readonly canEditSharedExchangePath = computed(() => this.userState.currentUser()?.isAdmin === true)
+
+  protected readonly sharedExchangePathHint = computed(() =>
+    this.canEditSharedExchangePath()
+      ? 'Absolute path of a folder on the server that holds the files shared by the namespace. Leave empty for the default location.'
+      : 'Only a super-admin can change this folder.'
+  )
+
+  /** Shows what an empty threshold inherits. Display only: the default is never written to the namespace. */
+  protected readonly runCostThresholdPlaceholder = computed(() => {
+    const platform = this.usageConfiguration.runCostThreshold()
+    if (!this.usageConfiguration.enabled()) return 'Optional maximum cost per run (e.g. 0.50)'
+    return platform === null ? 'No platform limit' : `Platform default: ${platform}`
+  })
+
+  protected readonly runCostThresholdHint = computed(() => {
+    const inherit = 'Leave empty to inherit the platform default'
+    const platform = this.usageConfiguration.runCostThreshold()
+    switch (this.usageConfiguration.state()) {
+      case 'enabled':
+        return platform === null ? `${inherit}: no limit.` : `${inherit} (${platform}).`
+      case 'disabled':
+        return `${inherit}. Cost limits are inactive while usage tracking is disabled.`
+      default:
+        return `${inherit}.`
+    }
+  })
 
   protected readonly form = new FormGroup({
     name: new FormControl<string>('', {
@@ -34,9 +75,21 @@ export class NamespaceFormComponent implements OnInit {
     }),
     description: new FormControl<string>('', { nonNullable: true }),
     configPath: new FormControl<string>('', { nonNullable: true }),
+    sharedExchangePath: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [absolutePathValidator(() => this.canEditSharedExchangePath())],
+    }),
     externalId: new FormControl<string>('', { nonNullable: true }),
     defaultAgentName: new FormControl<string>('', { nonNullable: true }),
     runCostThreshold: new FormControl<number | null>(null),
+    // Empty inherits the server default. Validators only fire on a value, so empty stays valid.
+    maxToolRounds: new FormControl<number | null>(null, {
+      validators: [
+        Validators.min(MAX_TOOL_ROUNDS_MIN),
+        Validators.max(MAX_TOOL_ROUNDS_MAX),
+        Validators.pattern(/^\d+$/),
+      ],
+    }),
   })
 
   protected get nameControl() {
@@ -51,6 +104,10 @@ export class NamespaceFormComponent implements OnInit {
     return this.form.controls.configPath
   }
 
+  protected get sharedExchangePathControl() {
+    return this.form.controls.sharedExchangePath
+  }
+
   protected get externalIdControl() {
     return this.form.controls.externalId
   }
@@ -63,6 +120,22 @@ export class NamespaceFormComponent implements OnInit {
     return this.form.controls.runCostThreshold
   }
 
+  protected get maxToolRoundsControl() {
+    return this.form.controls.maxToolRounds
+  }
+
+  /**
+   * `type="number"` reports an empty value for anything it cannot parse ("1O0", "--50", "1e"), and the
+   * number accessor then stores null, which this control reads as "inherit the server default". Without
+   * this flag a mistyped cap would silently clear an existing override, so `validity.badInput` is what
+   * tells an unparseable entry from a deliberately emptied field.
+   */
+  protected readonly maxToolRoundsUnparsable = signal(false)
+
+  protected onMaxToolRoundsInput(event: Event): void {
+    this.maxToolRoundsUnparsable.set((event.target as HTMLInputElement).validity.badInput)
+  }
+
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
@@ -70,7 +143,21 @@ export class NamespaceFormComponent implements OnInit {
   /** Kept for the update payload (preserves server-side fields). */
   private existingNamespace: Namespace | null = null
 
+  constructor() {
+    // The check only applies to an editable field: re-run it once the user (and so the right to edit) is known.
+    effect(() => {
+      this.canEditSharedExchangePath()
+      this.sharedExchangePathControl.updateValueAndValidity()
+    })
+  }
+
   ngOnInit(): void {
+    if (!this.userState.currentUser()) {
+      this.userState
+        .loadMe()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({ error: () => undefined })
+    }
     const namespaceId =
       this.route.snapshot.paramMap.get('namespaceId') ?? this.route.parent?.snapshot.paramMap.get('namespaceId')
     if (namespaceId) {
@@ -90,9 +177,11 @@ export class NamespaceFormComponent implements OnInit {
           this.nameControl.setValue(ns.name)
           this.descriptionControl.setValue(ns.description ?? '')
           this.configPathControl.setValue(ns.configPath ?? '')
+          this.sharedExchangePathControl.setValue(ns.sharedExchangePath ?? '')
           this.externalIdControl.setValue(ns.externalId ?? '')
           this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
           this.runCostThresholdControl.setValue(ns.runCostThreshold ?? null)
+          this.maxToolRoundsControl.setValue(ns.maxToolRounds ?? null)
           this.isLoading.set(false)
         },
         error: () => {
@@ -103,7 +192,7 @@ export class NamespaceFormComponent implements OnInit {
   }
 
   protected submit(): void {
-    if (this.nameControl.invalid || this.isSubmitting()) return
+    if (this.form.invalid || this.maxToolRoundsUnparsable() || this.isSubmitting()) return
 
     this.isSubmitting.set(true)
 
@@ -115,6 +204,12 @@ export class NamespaceFormComponent implements OnInit {
       externalId: this.externalIdControl.value.trim() || undefined,
       defaultAgentName: this.defaultAgentNameControl.value.trim() || undefined,
       runCostThreshold: this.runCostThresholdControl.value ?? undefined,
+      // Always set, even when undefined: it overrides the value spread from the loaded namespace, so an
+      // emptied field is sent as absent, which is how the backend clears the override on PUT. An
+      // untouched field still carries the loaded value, so an unrelated edit never wipes it.
+      maxToolRounds: this.maxToolRoundsControl.value ?? undefined,
+      // Only a super-admin sends the field. For anyone else the loaded value, spread above, goes back unchanged.
+      ...(this.canEditSharedExchangePath() ? { sharedExchangePath: this.sharedExchangePathPayload() } : {}),
     }
 
     const call$ = this.isEditMode()
@@ -125,6 +220,12 @@ export class NamespaceFormComponent implements OnInit {
       next: () => this.navigateBack(),
       error: () => this.isSubmitting.set(false),
     })
+  }
+
+  /** On PUT an omitted value keeps the stored path, so clearing an existing one takes a blank string. */
+  private sharedExchangePathPayload(): string | undefined {
+    const value = this.sharedExchangePathControl.value.trim()
+    return value || (this.existingNamespace?.sharedExchangePath ? '' : undefined)
   }
 
   protected cancel(): void {

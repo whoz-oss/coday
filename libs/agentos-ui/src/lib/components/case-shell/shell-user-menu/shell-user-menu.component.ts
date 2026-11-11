@@ -1,9 +1,12 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
+import { CompanionPushTogglesComponent } from '../../companion-push-toggles/companion-push-toggles.component'
 
 /**
  * ShellUserMenuComponent — user context menu overlay.
  *
- * Shared between desktop sidebar and mobile topbar.
+ * Shared between the desktop sidebar (expanded + compact rail) and the topbar — the
+ * single insertion point for menu items that should appear across all of them, e.g. the
+ * Companion toggle (self-contained, see CompanionPushTogglesComponent).
  * Handles its own backdrop + action list.
  * The parent controls visibility via the `open` signal input.
  */
@@ -12,6 +15,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
   templateUrl: './shell-user-menu.component.html',
   styleUrl: './shell-user-menu.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [CompanionPushTogglesComponent],
 })
 export class ShellUserMenuComponent {
   /** Whether the menu is currently visible */
@@ -23,11 +27,11 @@ export class ShellUserMenuComponent {
   /** Whether dark mode is active */
   readonly isDark = input.required<boolean>()
 
-  /** Active theme variant ('industry' | 'terminal') */
-  readonly themeVariant = input.required<string>()
+  /** False for a light-only (or dark-only) variant: the light/dark entry is then hidden. */
+  readonly canToggleMode = input(true)
 
-  /** Whether technical logs are currently shown — drives the active state of the menu item */
-  readonly showTechnical = input.required<boolean>()
+  /** Active theme variant id (see THEME_VARIANT_DEFINITIONS) */
+  readonly themeVariant = input.required<string>()
 
   /** Whether tool calls are currently shown — drives the active state of the menu item. */
   readonly showToolCalls = input.required<boolean>()
@@ -52,9 +56,6 @@ export class ShellUserMenuComponent {
   /** Emits when the user switches theme variant */
   readonly themeVariantChanged = output<string>()
 
-  /** Emits when the user toggles technical logs */
-  readonly logsToggled = output<void>()
-
   /** Emits when the user toggles tool calls. */
   readonly toolCallsToggled = output<void>()
 
@@ -71,10 +72,6 @@ export class ShellUserMenuComponent {
 
   protected onThemeVariantChange(variant: string): void {
     this.themeVariantChanged.emit(variant)
-  }
-
-  protected onLogsToggle(): void {
-    this.logsToggled.emit()
   }
 
   protected onToolCallsToggle(): void {

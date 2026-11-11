@@ -1,97 +1,94 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router'
+import { ActivatedRoute, RouterLink, RouterOutlet } from '@angular/router'
 import { IntegrationTypeControllerService, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
-
-interface NamespaceSettingsItem {
-  readonly label: string
-  readonly path: string
-}
-
-interface NamespaceSettingsGroup {
-  readonly label: string
-  readonly items: readonly NamespaceSettingsItem[]
-}
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
+import { ShellContextService } from '../../services/shell-context.service'
+import { SettingsLayoutComponent, SettingsNavigationGroup } from '../settings-layout/settings-layout.component'
 
 @Component({
   selector: 'agentos-namespace-settings-layout',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterOutlet, SettingsLayoutComponent],
   templateUrl: './namespace-settings-layout.component.html',
   styleUrl: './namespace-settings-layout.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceSettingsLayoutComponent {
   private readonly route = inject(ActivatedRoute)
-  private readonly router = inject(Router)
   private readonly namespaceApi = inject(NamespaceControllerService)
   private readonly integrationTypeApi = inject(IntegrationTypeControllerService)
+  private readonly namespaceState = inject(NamespaceStateService)
+  private readonly shellContext = inject(ShellContextService)
   private readonly destroyRef = inject(DestroyRef)
 
   protected readonly namespaceId = this.route.snapshot.paramMap.get('namespaceId') ?? ''
   protected readonly namespaceName = signal('Namespace')
   protected readonly gitAvailable = signal(false)
 
-  protected readonly groups: readonly NamespaceSettingsGroup[] = [
-    {
-      label: 'General',
-      items: [{ label: 'Edit namespace', path: 'edit' }],
-    },
+  protected readonly groups: readonly SettingsNavigationGroup[] = [
+    { label: 'General', items: [{ label: 'Edit namespace', commands: ['edit'] }] },
     {
       label: 'Access',
       items: [
-        { label: 'Members', path: 'members' },
-        { label: 'User groups', path: 'user-groups' },
-        { label: 'Auth settings', path: 'auth-settings' },
+        { label: 'Members', commands: ['members'] },
+        { label: 'User groups', commands: ['user-groups'] },
+        { label: 'Auth settings', commands: ['auth-settings'] },
       ],
     },
     {
       label: 'Connections',
       items: [
-        { label: 'Integrations', path: 'integrations' },
-        { label: 'Git', path: 'git' },
+        { label: 'Integrations', commands: ['integrations'] },
+        { label: 'Git', commands: ['git'], hidden: !this.gitAvailable() },
       ],
     },
     {
       label: 'AI',
       items: [
-        { label: 'AI providers', path: 'ai-providers' },
-        { label: 'AI models', path: 'ai-models' },
-        { label: 'Agent configs', path: 'agent-configs' },
-        { label: 'Prompts', path: 'prompts' },
+        { label: 'AI providers', commands: ['ai-providers'] },
+        { label: 'AI models', commands: ['ai-models'] },
+        { label: 'Agent configs', commands: ['agent-configs'] },
+        { label: 'Prompts', commands: ['prompts'] },
+        { label: 'Skills', commands: ['skills'] },
       ],
     },
     {
       label: 'Automation',
       items: [
-        { label: 'Schedulers', path: 'scheduled-prompts' },
-        { label: 'Tool invoke', path: 'tool-invoke' },
+        { label: 'Schedulers', commands: ['scheduled-prompts'] },
+        { label: 'Tool invoke', commands: ['tool-invoke'] },
       ],
     },
-    {
-      label: 'Monitoring',
-      items: [{ label: 'Usage and costs', path: 'usage' }],
-    },
+    { label: 'Monitoring', items: [{ label: 'Usage and costs', commands: ['usage'] }] },
   ]
 
-  protected openNamespace(): void {
-    void this.router.navigate(['/agentos/home'], { queryParams: { ns: this.namespaceId } })
+  protected navigationGroups(): readonly SettingsNavigationGroup[] {
+    return this.groups.map((group) => ({
+      ...group,
+      items: group.items.map((item) => (item.label === 'Git' ? { ...item, hidden: !this.gitAvailable() } : item)),
+    }))
   }
 
   constructor() {
     this.integrationTypeApi
       .listTypesIntegrationType()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (types) => this.gitAvailable.set(types.some((type) => type.type === 'GIT')),
-      })
+      .subscribe({ next: (types) => this.gitAvailable.set(types.some((type) => type.type === 'GIT')) })
 
     if (!this.namespaceId) return
+
+    // Configuring a namespace makes it the active one: the topbar then points its "Namespace settings" and
+    // "Back to <namespace>" links at it, wherever the user goes next.
+    this.namespaceState.selectNamespace(this.namespaceId)
 
     this.namespaceApi
       .getByIdNamespace(this.namespaceId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (namespace) => this.namespaceName.set(namespace.name),
+        next: (namespace) => {
+          this.namespaceName.set(namespace.name)
+          this.shellContext.rememberNamespaceNames([namespace])
+        },
       })
   }
 }

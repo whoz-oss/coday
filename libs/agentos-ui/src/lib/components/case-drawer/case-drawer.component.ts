@@ -40,7 +40,7 @@ export interface CaseTreeItem extends CaseListItem {
  * - **Tree mode** (no active search): root cases with expandable sub-cases; favorited
  *   cases are promoted to a "Favorites" group at the top.
  * - **Flat mode** (search active): all matching cases at every depth level are shown as a
- *   flat list. Matching is done on title AND case ID.
+ *   flat list. Matching is done on title, case ID AND summary.
  *
  * Compact mode (compact input = true):
  * - Hides the ds-entity-list chrome entirely
@@ -65,6 +65,7 @@ export class CaseDrawerComponent {
   readonly createRequested = output<void>()
   readonly subCaseCreateRequested = output<string>()
   readonly deleteRequested = output<string>()
+  readonly killRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly renameRequested = output<{ id: string; title: string }>()
 
@@ -158,6 +159,9 @@ export class CaseDrawerComponent {
 
   /** Case id pending delete confirmation in expanded mode. */
   protected readonly expandedConfirmingDeleteId = signal<string | null>(null)
+
+  /** Case id pending stop (kill) confirmation in expanded mode. */
+  protected readonly expandedConfirmingKillId = signal<string | null>(null)
 
   protected onCompactBadgeEnter(event: MouseEvent, item: ReturnType<typeof this.compactItems>[number]): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
@@ -295,6 +299,10 @@ export class CaseDrawerComponent {
 
   protected onDeleteRequested(id: string): void {
     this.deleteRequested.emit(id)
+  }
+
+  protected onKillRequested(id: string): void {
+    this.killRequested.emit(id)
   }
 
   /** Open the inline editor on a row, seeded with its current label. */
@@ -538,13 +546,16 @@ function liftFavoriteSubtrees(node: CaseTreeItem, favorites: CaseTreeItem[]): Ca
 }
 
 /**
- * Recursively collect all tree nodes (at any depth) whose name or id
+ * Recursively collect all tree nodes (at any depth) whose name, id or summary
  * contains the given query string (case-insensitive).
  * Returns a flat list — hierarchy is not preserved in search results.
  */
 function collectMatching(nodes: CaseTreeItem[], query: string): CaseTreeItem[] {
   return nodes.reduce<CaseTreeItem[]>((acc, node) => {
-    const matches = node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)
+    const matches =
+      node.name.toLowerCase().includes(query) ||
+      node.id.toLowerCase().includes(query) ||
+      (node.summary?.toLowerCase().includes(query) ?? false)
     if (matches) acc.push(node)
     if (node.children.length) acc.push(...collectMatching(node.children, query))
     return acc

@@ -1,6 +1,8 @@
 /* Global styles */
 @use './app/styles/typography.scss';
 @use './app/styles/colors.scss';
+/* Global primitives of the design system (dsButton, dsControl, dsTable…): plain CSS, included once, after the tokens. */
+@use 'libs/design-system/src/styles/primitives';
 @use './app/styles/glass-effects.scss';
 @use './app/styles/animated-gradient-border.scss' as animated-gradient-border;
 
@@ -27,8 +29,7 @@ html {
   color-scheme: light;
 
   &[data-theme='dark'],
-  &[data-theme='industry-dark'],
-  &[data-theme='terminal-dark'] {
+  &[data-theme$='-dark'] {
     color-scheme: dark;
   }
 
@@ -124,6 +125,12 @@ body {
  * (the root component of libs/agentos-ui, mounted at /).
  */
 agentos-shell {
+  /* The skin's body font. Declared here, not only as a token: without it everything that does not set its own
+   * font-family (labels, inputs, table cells, hints, paragraphs) fell back to the page's system font, while titles
+   * and filters used the token, so one screen mixed three families. Buttons and small uppercase labels opt into
+   * --font-heading explicitly. */
+  font-family: var(--font-body);
+
   /* Blueprint corner decorations — used by the dsBlueprint directive */
   .blueprint-corner {
     position: absolute;
@@ -168,7 +175,7 @@ agentos-shell {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
   }
 
   /* Primary button — agentos-ui only */
@@ -212,7 +219,7 @@ agentos-shell {
     padding: 0 10px;
     min-height: 34px;
     outline: none;
-    border-radius: 0;
+    border-radius: var(--radius-md, 0);
     box-sizing: border-box;
 
     &:focus {
@@ -234,7 +241,7 @@ agentos-shell {
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    border-radius: 0;
+    border-radius: var(--radius-pill, 0);
   }
 
   /* Tag neutral variant — muted border + secondary text */
@@ -300,10 +307,9 @@ agentos-shell {
   }
 }
 
-/* Dark mode snackbar styles — agentos-ui dark variants */
+/* Dark mode snackbar styles — every `<variant>-dark` theme, plus the legacy `dark` */
 [data-theme='dark'],
-[data-theme^='industry-dark'],
-[data-theme^='terminal-dark'] {
+[data-theme$='-dark'] {
   .mat-mdc-snack-bar-container {
     &.snackbar-success {
       --mdc-snackbar-container-color: var(--glass-bg);
@@ -325,17 +331,27 @@ agentos-shell {
   }
 }
 
+/* ─── Terminal and Whoz OSS — blueprint corner decorations ────────────────────
+ * Both skins hide the `dsBlueprint` corner marks (square-corner language): Terminal because it is a text UI,
+ * Whoz OSS because they clash with its rounded corners. Industry keeps them. Scoped under agentos-shell.
+ */
+agentos-shell {
+  &[data-theme^='terminal'],
+  :is([data-theme^='terminal']) &,
+  &[data-theme^='whoz-oss'],
+  :is([data-theme^='whoz-oss']) & {
+    .blueprint-corner {
+      display: none;
+    }
+  }
+}
+
 /* ─── Terminal theme — structural rules (scoped under agentos-shell) ───────────
  * These rules apply to both terminal-light and terminal-dark modes.
  */
 agentos-shell {
-  /* Terminal: hide blueprint corner decorations */
   &[data-theme^='terminal'],
   :is([data-theme^='terminal']) & {
-    .blueprint-corner {
-      display: none;
-    }
-
     .tag {
       background: transparent;
       border: none;
@@ -373,15 +389,16 @@ agentos-shell {
 }
 
 /* ds-kebab-menu — panel styles for CDK overlay (mat-menu rendered outside component scope).
- * CDK overlay panels are rendered inside .cdk-overlay-container, outside agentos-shell.
- * We target them via the .ds-kebab-panel class, which is exclusive to agentos-ui.
- * These tokens use the Industry values defined in agentos-shell — they work because the CDK
- * overlay inherits custom properties from the document, and agentos-shell defines them as a
- * descendant. In practice these panels are only ever opened from within agentos-ui.
+ * CDK overlay panels are rendered inside .cdk-overlay-container, a child of body, OUTSIDE agentos-shell. Custom
+ * properties only flow down to descendants, so tokens defined on `agentos-shell` (radii, shadows, fonts, --red,
+ * and the whole Industry/Terminal/Whoz OSS palettes) do NOT reach these panels: they fall back to the Industry values
+ * written below, and to the legacy :root palette for the color tokens that exist there.
+ * A theme that must restyle these panels therefore re-applies its tokens on `[data-theme=…] .ds-kebab-panel`
+ * (see the Whoz OSS block in colors.scss). The class is exclusive to agentos-ui.
  */
 .ds-kebab-panel {
   --mat-menu-container-color: var(--color-surface, #dcdcde);
-  --mat-menu-container-shape: 0px;
+  --mat-menu-container-shape: var(--radius-md, 0px);
   --mat-menu-item-label-text-color: var(--color-text, #1d1f20);
   --mat-menu-item-label-text-font: var(--font-body, 'Barlow', system-ui, sans-serif);
   --mat-menu-item-label-text-size: 15px;
@@ -400,7 +417,7 @@ agentos-shell {
   }
 
   .mat-mdc-menu-item {
-    border-radius: 0;
+    border-radius: var(--radius-sm, 0);
     min-height: 36px;
     padding: 0 10px;
     font-family: var(--font-body, 'Barlow', system-ui, sans-serif) !important;

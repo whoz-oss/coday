@@ -73,7 +73,7 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm, 8px);
   background: transparent;
   cursor: pointer;
   color: var(--color-text-secondary);

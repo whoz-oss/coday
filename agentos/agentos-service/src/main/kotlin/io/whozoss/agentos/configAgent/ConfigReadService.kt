@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.aiModel.AiModelService
+import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.AuthSettingService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
@@ -17,6 +19,9 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.ScopedAccessPolicy
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator
 import io.whozoss.agentos.skill.Skill
 import io.whozoss.agentos.skill.SkillAuthorizationService
@@ -25,6 +30,8 @@ import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
 import java.util.UUID
 import io.whozoss.agentos.agentConfig.toDto as agentToDto
+import io.whozoss.agentos.aiModel.toDto as aiModelToDto
+import io.whozoss.agentos.aiProvider.toDto as aiProviderToDto
 import io.whozoss.agentos.authSetting.toDto as authSettingToDto
 import io.whozoss.agentos.integrationConfig.toDto as integrationToDto
 import io.whozoss.agentos.namespace.toDto as namespaceToDto
@@ -46,6 +53,9 @@ import io.whozoss.agentos.skill.toDto as skillToDto
  *
  * Namespaces are platform-level entities, listed and read with the Namespace READ rule of the REST
  * API. What a namespace's state means for its members is [ConfigNamespaceDiagnosis]'s concern.
+ *
+ * An AI model has no scope of its own: its namespace and user are those of its provider, so it is
+ * listed with the visible providers and read by id only when its provider is readable too.
  */
 @Service
 class ConfigReadService(
@@ -54,6 +64,8 @@ class ConfigReadService(
     private val promptService: PromptService,
     private val integrationConfigService: IntegrationConfigService,
     private val authSettingService: AuthSettingService,
+    private val aiProviderService: AiProviderService,
+    private val aiModelService: AiModelService,
     private val namespaceService: NamespaceService,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
     private val permissionEvaluator: AgentOsPermissionEvaluator,
@@ -103,6 +115,24 @@ class ConfigReadService(
         val caseInsensitive = kind == ConfigKind.AGENT || kind == ConfigKind.SKILL
         return loadScope(kind, scopeNamespaceId, scopeUserId)
             .filter { it.name.equals(name, ignoreCase = caseInsensitive) }
+            .firstOrNull { inBounds(it, callerId, namespaceId) && canReadById(it, callerId) }
+    }
+
+    /**
+     * The model named [name] (its alias, else its API model name) of the provider [providerId], if the
+     * caller may read it by id: what a `CREATE` of a model would duplicate.
+     */
+    fun findModel(
+        providerId: UUID,
+        name: String,
+        callerId: UUID,
+        namespaceId: UUID,
+    ): ConfigEntity? {
+        val provider = aiProviderService.findById(providerId)
+        return aiModelService
+            .findByParent(providerId)
+            .map { fromAiModel(it, provider?.name) }
+            .filter { it.name == name }
             .firstOrNull { inBounds(it, callerId, namespaceId) && canReadById(it, callerId) }
     }
 
@@ -161,10 +191,20 @@ class ConfigReadService(
                 integrationConfigService.findById(entity.id)?.let { config ->
                     scopedAccessPolicy.canAccess(callerOf(callerId), EntityType.INTEGRATION_CONFIG, config, Action.READ)
                 } == true
+            ConfigKind.AI_MODEL -> canReadModel(entity, callerId)
             else ->
                 permissionEvaluator.hasPermission(callerId.toString(), entityTypeOf(entity.kind), entity.id.toString(), Action.READ) ||
                     (entity.kind == ConfigKind.SKILL && skillAuthorizationService.canRead(callerId.toString(), entity.id))
         }
+
+    /** A model is read by id when its provider is: it has no scope or owner of its own. */
+    private fun canReadModel(
+        entity: ConfigEntity,
+        callerId: UUID,
+    ): Boolean {
+        val provider = entity.aiProviderId?.let { aiProviderService.findById(it) }?.let(::fromAiProvider) ?: return false
+        return canReadById(provider, callerId)
+    }
 
     private fun callerOf(callerId: UUID): Caller = Caller.Human(callerId, isAdmin = userService.findById(callerId)?.isAdmin == true)
 
@@ -176,6 +216,8 @@ class ConfigReadService(
             ConfigKind.INTEGRATION -> EntityType.INTEGRATION_CONFIG
             ConfigKind.AUTH_SETTING -> EntityType.AUTH_SETTING
             ConfigKind.NAMESPACE -> EntityType.NAMESPACE
+            ConfigKind.AI_PROVIDER -> EntityType.AI_PROVIDER
+            ConfigKind.AI_MODEL -> EntityType.AI_MODEL
         }
 
     private fun load(
@@ -189,6 +231,9 @@ class ConfigReadService(
             ConfigKind.INTEGRATION -> integrationConfigService.findById(id)?.let(::fromIntegration)
             ConfigKind.AUTH_SETTING -> authSettingService.findById(id)?.let(::fromAuthSetting)
             ConfigKind.NAMESPACE -> namespaceService.findById(id)?.let(::fromNamespace)
+            ConfigKind.AI_PROVIDER -> aiProviderService.findById(id)?.let(::fromAiProvider)
+            ConfigKind.AI_MODEL ->
+                aiModelService.findById(id)?.let { model -> fromAiModel(model, aiProviderService.findById(model.aiProviderId)?.name) }
         }
 
     private fun loadScope(
@@ -218,6 +263,22 @@ class ConfigReadService(
                     else -> authSettingService.findByUserId(userId).filter { it.namespaceId == namespaceId }
                 }.map(::fromAuthSetting)
             ConfigKind.NAMESPACE -> if (namespaceId == null && userId == null) namespaceService.findAll().map(::fromNamespace) else emptyList()
+            ConfigKind.AI_PROVIDER -> providersOf(namespaceId, userId).map(::fromAiProvider)
+            ConfigKind.AI_MODEL ->
+                providersOf(namespaceId, userId).flatMap { provider ->
+                    aiModelService.findByParent(provider.metadata.id).map { fromAiModel(it, provider.name) }
+                }
+        }
+
+    /** The providers of one layer: platform, namespace-shared, user x namespace or user-global. */
+    private fun providersOf(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<AiProvider> =
+        when {
+            namespaceId == null && userId == null -> aiProviderService.findPlatformLevel()
+            userId == null -> aiProviderService.findByNamespaceId(namespaceId!!).filter { it.userId == null }
+            else -> aiProviderService.findByUserId(userId).filter { it.namespaceId == namespaceId }
         }
 
     /** The caller's own overlays of [kind]: user-global and user x current namespace. */
@@ -279,6 +340,33 @@ class ConfigReadService(
             userId = setting.userId,
             dto = objectMapper.valueToTree(authSettingToDto(setting)),
         )
+
+    private fun fromAiProvider(provider: AiProvider) =
+        ConfigEntity(
+            kind = ConfigKind.AI_PROVIDER,
+            id = provider.metadata.id,
+            name = provider.name,
+            namespaceId = provider.namespaceId,
+            userId = provider.userId,
+            dto = objectMapper.valueToTree(aiProviderToDto(provider)),
+        )
+
+    private fun fromAiModel(
+        model: AiModel,
+        providerName: String?,
+    ): ConfigEntity {
+        val dto = aiModelToDto(model)
+        return ConfigEntity(
+            kind = ConfigKind.AI_MODEL,
+            id = model.metadata.id,
+            name = model.alias?.takeIf { it.isNotBlank() } ?: model.apiModelName,
+            namespaceId = model.namespaceId,
+            userId = model.userId,
+            dto = objectMapper.valueToTree(dto),
+            aiProviderId = model.aiProviderId,
+            aiProviderName = providerName,
+        )
+    }
 
     private fun fromNamespace(namespace: Namespace) =
         ConfigEntity(

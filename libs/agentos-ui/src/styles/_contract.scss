@@ -11,6 +11,16 @@
  * ── Typography ─────────────────────────────────────────────────────────────
  *   --font-body       Body font stack (Inter, system fallbacks)
  *   --font-heading    Heading / mono font stack (Geist Mono, SF Mono fallbacks)
+ *   --font-code       Monospace for code, paths and identifiers (never a bare `monospace`)
+ *
+ * ── Shape / Radius ───────────────────────────────────────────────────────
+ *   --radius-sm               Small corners: icon buttons, menu items, marks, focus ring
+ *   --radius-md               Medium corners: inputs, cards, dropdowns, blueprint surfaces, menu panels
+ *   --radius-lg               Large corners: reserved for large containers (dialogs, panels)
+ *   --radius-pill             Fully rounded: chips, buttons, tags
+ *   All four are 0 in Industry and Terminal (square corners); Whoz OSS sets 6px / 10px / 16px / 999px.
+ *   Consumers should write var(--radius-xxx, 0) so they stay square outside the host theme.
+ *   A theme must always give the four a unit (`6px`, not `6`).
  *
  * ── Text colors ──────────────────────────────────────────────────────────
  *   --color-text              Main text color
@@ -86,6 +96,21 @@
  *   --glass-border
  *   --glass-shadow
  *   --glass-backdrop-blur
+ *
+ * ── Theme variants ───────────────────────────────────────────────────────
+ *   The variants are listed in ONE table, THEME_VARIANT_DEFINITIONS in
+ *   libs/agentos-ui/src/lib/services/theme.service.ts (id, label, description, supported modes):
+ *     industry   light + dark   (default; the attribute-less light theme)
+ *     terminal   light + dark
+ *     whoz-oss  light + dark
+ *   Each variant defines the full token list above, scoped under agentos-shell:
+ *     - Industry: the base `agentos-shell` block and its dark block
+ *     - Terminal: one block per mode
+ *     - Whoz OSS: the `whoz-oss-light` and `whoz-oss-dark` mixins (sharing `whoz-oss-base`: font and radii), each
+ *                 applied to agentos-shell AND to `.ds-kebab-panel`
+ *   A `<variant>-dark` mode must also be listed in the legacy dark alias block of colors.scss, so that dialogs,
+ *   snackbars and legacy components take the dark palette.
+ *   CDK overlay panels are outside agentos-shell and do not inherit its tokens (see GUIDELINES.md).
  *
  * ── Example host setup (minimal) ─────────────────────────────────────────
  *

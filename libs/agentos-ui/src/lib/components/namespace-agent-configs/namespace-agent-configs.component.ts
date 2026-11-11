@@ -2,9 +2,11 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService, AgentConfigExecutionModeEnum } from '@whoz-oss/agentos-api-client'
-import { SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
+import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
+import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 interface AgentConfigRow {
   key: string
@@ -13,9 +15,15 @@ interface AgentConfigRow {
 }
 @Component({
   selector: 'agentos-namespace-agent-configs',
-  imports: [SectionHeaderComponent, TableDirective, TagComponent, TableFilterComponent],
+  imports: [
+    ButtonDirective,
+    SectionHeaderComponent,
+    TableDirective,
+    TagComponent,
+    TableFilterComponent,
+    RowDeleteActionComponent,
+  ],
   templateUrl: './namespace-agent-configs.component.html',
-  styleUrl: './namespace-agent-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceAgentConfigsComponent {
@@ -26,6 +34,7 @@ export class NamespaceAgentConfigsComponent {
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   protected readonly isLoading = signal(true)
+  protected readonly deletion = createRowDeletionState()
   protected readonly rows = signal<AgentConfigRow[]>([])
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.config.name, row.config.description, this.mode(row), row.scope].filter(Boolean).join(' ')
@@ -78,12 +87,13 @@ export class NamespaceAgentConfigsComponent {
     if (row.scope === 'platform' || !row.config.id) return
     void this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', row.config.id, 'edit'])
   }
-  protected delete(row: AgentConfigRow): void {
-    if (row.scope === 'platform' || !row.config.id || !confirm(`Delete agent config “${row.config.name}”?`)) return
-    this.controller
-      .deleteAgentConfig(row.config.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+  protected confirmDelete(row: AgentConfigRow): void {
+    if (row.scope === 'platform' || !row.config.id) return
+    this.deletion.execute(row.key, {
+      request$: this.controller.deleteAgentConfig(row.config.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      onSuccess: () => this.refresh$.next(),
+      errorMessage: `Deleting "${row.config.name}" failed. Try again.`,
+    })
   }
   protected canLaunch(row: AgentConfigRow): boolean {
     return row.scope === 'namespace' && row.config.executionMode === AgentConfigExecutionModeEnum.LOOP

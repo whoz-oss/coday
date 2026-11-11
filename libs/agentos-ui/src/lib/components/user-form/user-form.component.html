@@ -1,103 +1,77 @@
-<div class="user-form">
-  <header class="user-form__header">
-    <button class="user-form__back" type="button" (click)="cancel()" title="Back to users">
-      <span class="user-form__back-icon">&#8592;</span>
-      Users
-    </button>
-    <h1 class="user-form__title">{{ title }}</h1>
-  </header>
+<ds-page>
+  <ds-section-header [title]="title">
+    <button dsButton variant="ghost" type="button" title="Back to users" (click)="cancel()">&larr; Users</button>
+  </ds-section-header>
 
   @if (isLoading()) {
-    <p class="user-form__loading">Loading…</p>
+    <p class="ds-hint">Loading…</p>
   } @else {
-    <form class="user-form__body" [formGroup]="form" (ngSubmit)="save()">
-      <div class="user-form__section">
-        <h2 class="user-form__section-title">Identity</h2>
-
-        <div class="user-form__field">
-          <label class="user-form__label" for="uf-email">Email <span class="user-form__required">*</span></label>
+    <form class="ds-form" [formGroup]="form" (ngSubmit)="save()">
+      <ds-group heading="Identity">
+        <ds-form-field label="Email" controlId="uf-email" required>
           @if (isEditMode) {
-            <span class="user-form__value user-form__value--readonly">{{ form.controls.email.value }}</span>
+            <span class="ds-meta">{{ form.controls.email.value }}</span>
           } @else {
             <input
+              dsControl
               id="uf-email"
-              class="user-form__input"
               type="email"
               placeholder="user@example.com"
               formControlName="email"
               autocomplete="email"
             />
           }
-        </div>
-
-        <div class="user-form__field">
-          <label class="user-form__label" for="uf-externalId">External ID</label>
+        </ds-form-field>
+        <ds-form-field label="External ID" controlId="uf-externalId">
           <input
+            dsControl
             id="uf-externalId"
-            class="user-form__input"
             type="text"
             placeholder="External identifier"
             formControlName="externalId"
           />
-        </div>
-      </div>
+        </ds-form-field>
+      </ds-group>
 
-      <div class="user-form__section">
-        <h2 class="user-form__section-title">Profile</h2>
-
-        <div class="user-form__field">
-          <label class="user-form__label" for="uf-firstname">First name</label>
+      <ds-group heading="Profile">
+        <ds-form-field label="First name" controlId="uf-firstname">
           <input
+            dsControl
             id="uf-firstname"
-            class="user-form__input"
             type="text"
             placeholder="First name"
             formControlName="firstname"
             autocomplete="given-name"
           />
-        </div>
-
-        <div class="user-form__field">
-          <label class="user-form__label" for="uf-lastname">Last name</label>
+        </ds-form-field>
+        <ds-form-field label="Last name" controlId="uf-lastname">
           <input
+            dsControl
             id="uf-lastname"
-            class="user-form__input"
             type="text"
             placeholder="Last name"
             formControlName="lastname"
             autocomplete="family-name"
           />
-        </div>
+        </ds-form-field>
+        <ds-form-field label="Bio" controlId="uf-bio">
+          <textarea dsControl id="uf-bio" placeholder="A short description" formControlName="bio" rows="4"></textarea>
+        </ds-form-field>
+      </ds-group>
 
-        <div class="user-form__field user-form__field--bio">
-          <label class="user-form__label" for="uf-bio">Bio</label>
-          <textarea
-            id="uf-bio"
-            class="user-form__input user-form__input--textarea"
-            placeholder="A short description"
-            formControlName="bio"
-            rows="4"
-          ></textarea>
-        </div>
-      </div>
+      <ds-group heading="Permissions">
+        <label dsCheck>
+          <input id="uf-isAdmin" type="checkbox" formControlName="isAdmin" />
+          Super admin (full access to AgentOS)
+        </label>
+      </ds-group>
 
-      <div class="user-form__section">
-        <h2 class="user-form__section-title">Permissions</h2>
-
-        <div class="user-form__field user-form__field--checkbox">
-          <input id="uf-isAdmin" class="user-form__checkbox" type="checkbox" formControlName="isAdmin" />
-          <label class="user-form__label user-form__label--checkbox" for="uf-isAdmin">
-            Super admin (full access to AgentOS)
-          </label>
-        </div>
-      </div>
-
-      <div class="user-form__actions">
-        <button class="user-form__btn user-form__btn--primary" type="submit" [disabled]="form.invalid || isSaving()">
+      <ds-form-actions>
+        <button dsButton variant="primary" type="submit" [disabled]="form.invalid || isSaving()">
           {{ isSaving() ? 'Saving…' : isEditMode ? 'Save changes' : 'Create user' }}
         </button>
-        <button class="user-form__btn" type="button" (click)="cancel()">Cancel</button>
-      </div>
+        <button dsButton type="button" (click)="cancel()">Cancel</button>
+      </ds-form-actions>
     </form>
   }
-</div>
+</ds-page>
