@@ -44,7 +44,7 @@ class ConfigProposeTool(
         an integration has name, integrationType, description, parameters, authSettingName; a skill has name, description,
         body; a namespace has name, description, defaultAgentName (the agent that answers a message without @mention),
         runCostThreshold, maxToolRounds (cap on the tool rounds of one agent run; absent inherits the platform default),
-        adminCanListAllCases (true: the namespace's administrators get a "Mine / All cases" switch in the case drawer; absent inherits the platform default);
+        adminCaseListing (OWN, SWITCH or ALL: which cases the namespace's administrators see in their list, their own, their own with a switch to all, or all; absent inherits the platform default);
         an auth setting has name, description, authType and the fields of that type:
         ${ConfigAuthSettingTypes.description}, where * marks a secret).
         An AI provider (kind AI_PROVIDER) has name, description, apiType (OpenAI, Anthropic, Gemini, vLLM or Ollama: fixed once created),

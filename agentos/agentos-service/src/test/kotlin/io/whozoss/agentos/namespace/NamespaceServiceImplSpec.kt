@@ -19,6 +19,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID.randomUUID
 
@@ -37,16 +38,16 @@ class NamespaceServiceImplSpec :
         val permissionService = mockk<PermissionService>()
         val userGroupRepository = mockk<io.whozoss.agentos.userGroup.UserGroupRepository>(relaxed = true)
         val agentConfigRepository = mockk<AgentConfigRepository>(relaxed = true)
-        fun serviceWithDefault(adminListAllCasesDefault: Boolean) =
+        fun serviceWithDefault(adminCaseListingDefault: AdminCaseListing) =
             NamespaceServiceImpl(
                 namespaceRepository,
                 permissionService,
                 userGroupRepository,
                 agentConfigRepository,
                 LimitsConfigProperties(),
-                CaseConfigProperties(adminListAllCasesDefault = adminListAllCasesDefault),
+                CaseConfigProperties(adminCaseListingDefault = adminCaseListingDefault),
             )
-        val service = serviceWithDefault(adminListAllCasesDefault = false)
+        val service = serviceWithDefault(adminCaseListingDefault = AdminCaseListing.OWN)
 
         val userId = randomUUID().toString()
 
@@ -82,33 +83,35 @@ class NamespaceServiceImplSpec :
         }
 
         // -------------------------------------------------------------------------
-        // resolveAdminCanListAllCases
+        // resolveAdminCaseListing
         // -------------------------------------------------------------------------
 
-        listOf(
-            // override, platform default, expected
-            Triple(true, false, true),
-            Triple(true, true, true),
-            Triple(false, false, false),
-            Triple(false, true, false),
-            Triple(null, false, false),
-            Triple(null, true, true),
-        ).forEach { (override, platformDefault, expected) ->
-            "resolveAdminCanListAllCases is $expected for override=$override and platform default=$platformDefault" {
-                val namespaceId = randomUUID()
-                every { namespaceRepository.findByIds(listOf(namespaceId), false) } returns
-                    listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", adminCanListAllCases = override))
+        val values = AdminCaseListing.entries
+        // Every override (including none) against every platform default: the override always wins.
+        (values.map<AdminCaseListing, AdminCaseListing?> { it } + null).forEach { override ->
+            values.forEach { platformDefault ->
+                val expected = override ?: platformDefault
+                "resolveAdminCaseListing is $expected for override=$override and platform default=$platformDefault" {
+                    val namespaceId = randomUUID()
+                    every { namespaceRepository.findByIds(listOf(namespaceId), false) } returns
+                        listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", adminCaseListing = override))
 
-                serviceWithDefault(platformDefault).resolveAdminCanListAllCases(namespaceId) shouldBe expected
+                    serviceWithDefault(platformDefault).resolveAdminCaseListing(namespaceId) shouldBe expected
+                }
+
+                "resolveAdminCaseListing of a namespace in hand is $expected for override=$override and default=$platformDefault" {
+                    val namespace = Namespace(name = "ns", adminCaseListing = override)
+
+                    serviceWithDefault(platformDefault).resolveAdminCaseListing(namespace) shouldBe expected
+                }
             }
         }
 
-        "resolveAdminCanListAllCases falls back to the platform default for an unknown namespace" {
+        "resolveAdminCaseListing falls back to the platform default for an unknown namespace" {
             val namespaceId = randomUUID()
             every { namespaceRepository.findByIds(listOf(namespaceId), false) } returns emptyList()
 
-            serviceWithDefault(true).resolveAdminCanListAllCases(namespaceId) shouldBe true
-            serviceWithDefault(false).resolveAdminCanListAllCases(namespaceId) shouldBe false
+            values.forEach { serviceWithDefault(it).resolveAdminCaseListing(namespaceId) shouldBe it }
         }
 
         // -------------------------------------------------------------------------

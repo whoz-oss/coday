@@ -5,6 +5,7 @@ import { Case } from '@whoz-oss/agentos-api-client'
 import { CaseStatusGlyphComponent } from '../../case-status-glyph/case-status-glyph.component'
 import { AvatarComponent, SegmentedComponent, SegmentedOption } from '@whoz-oss/design-system'
 import { CaseListMode } from '../../../services/case-state.service'
+import { LIST_MODE_HINT, LIST_MODE_OPTIONS } from '../list-mode-options'
 
 interface CaseGroup {
   label: string
@@ -38,14 +39,12 @@ export class ShellCaseSwitcherMobileComponent {
   /** False for a light-only variant: the light/dark entry is then hidden. */
   readonly canToggleMode = input(true)
   readonly showToolCalls = input.required<boolean>()
-  /** Whether the "Mine / All cases" switch is offered (namespace toggle on AND caller is a namespace admin). */
-  readonly canListAllCases = input(false)
+  /** Whether the compact Mine / All switch is offered (an administrator of a namespace set to SWITCH). */
+  readonly canSwitchListMode = input(false)
   readonly listMode = input<CaseListMode>('mine')
 
-  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = [
-    { value: 'mine', label: 'Mine' },
-    { value: 'all', label: 'All cases' },
-  ]
+  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = LIST_MODE_OPTIONS
+  protected readonly listModeHint = LIST_MODE_HINT
 
   // ── Internal state ────────────────────────────────────────
   protected readonly filterQuery = signal('')

@@ -14,6 +14,7 @@ import { CaseDrawerComponent } from '../../case-drawer/case-drawer.component'
 import { ShellUserMenuComponent } from '../shell-user-menu/shell-user-menu.component'
 import { AvatarComponent, BlueprintDirective, SegmentedComponent, SegmentedOption } from '@whoz-oss/design-system'
 import { CaseListMode } from '../../../services/case-state.service'
+import { LIST_MODE_HINT, LIST_MODE_OPTIONS } from '../list-mode-options'
 
 /**
  * ShellSidebarComponent — desktop sidebar.
@@ -151,14 +152,12 @@ export class ShellSidebarComponent {
   readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly cases = input.required<Case[]>()
   readonly activeCaseId = input.required<string | null>()
-  /** Whether the "Mine / All cases" switch is offered (namespace toggle on AND caller is a namespace admin). */
-  readonly canListAllCases = input(false)
+  /** Whether the compact Mine / All switch is offered (an administrator of a namespace set to SWITCH). */
+  readonly canSwitchListMode = input(false)
   readonly listMode = input<CaseListMode>('mine')
 
-  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = [
-    { value: 'mine', label: 'Mine' },
-    { value: 'all', label: 'All cases' },
-  ]
+  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = LIST_MODE_OPTIONS
+  protected readonly listModeHint = LIST_MODE_HINT
 
   // User menu
   readonly userInitials = input.required<string>()

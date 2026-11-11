@@ -9,6 +9,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
@@ -121,11 +122,11 @@ class NamespaceServiceImpl(
     override fun resolveRunCostThreshold(namespaceId: UUID): Double? =
         findById(namespaceId)?.runCostThreshold ?: limitsConfig.runCostThreshold
 
-    override fun resolveAdminCanListAllCases(namespaceId: UUID): Boolean =
-        findById(namespaceId)?.let(::resolveAdminCanListAllCases) ?: caseConfig.adminListAllCasesDefault
+    override fun resolveAdminCaseListing(namespaceId: UUID): AdminCaseListing =
+        findById(namespaceId)?.let(::resolveAdminCaseListing) ?: caseConfig.adminCaseListingDefault
 
-    override fun resolveAdminCanListAllCases(namespace: Namespace): Boolean =
-        namespace.adminCanListAllCases ?: caseConfig.adminListAllCasesDefault
+    override fun resolveAdminCaseListing(namespace: Namespace): AdminCaseListing =
+        namespace.adminCaseListing ?: caseConfig.adminCaseListingDefault
 
     private fun validateAgentsInNamespace(agentConfigIds: Collection<UUID>, namespaceId: UUID) {
         agentConfigIds

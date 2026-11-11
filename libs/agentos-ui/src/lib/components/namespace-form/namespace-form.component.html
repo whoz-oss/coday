@@ -132,20 +132,20 @@
       </ds-form-field>
 
       <ds-form-field
-        label="Admins can list all cases"
-        controlId="ns-admin-list-all-cases"
-        hintId="ns-admin-list-all-cases-hint"
-        hint="Gives the administrators of this namespace a Mine / All cases switch in the case drawer. It only changes what the drawer lists, not who may open a case. Inherit follows the platform default (off unless the server sets AGENTOS_CASE_ADMIN_LIST_ALL_CASES_DEFAULT)."
+        label="Cases visible to admins"
+        controlId="ns-admin-case-listing"
+        hintId="ns-admin-case-listing-hint"
+        hint="Choose which conversations the admins of this namespace see in their list. Members always see only their own."
       >
         <select
           dsControl
-          id="ns-admin-list-all-cases"
-          aria-describedby="ns-admin-list-all-cases-hint"
-          [formControl]="adminCanListAllCasesControl"
+          id="ns-admin-case-listing"
+          aria-describedby="ns-admin-case-listing-hint"
+          [formControl]="adminCaseListingControl"
         >
-          <option value="inherit">Inherit platform default</option>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
+          @for (option of adminCaseListingOptions; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
         </select>
       </ds-form-field>
 

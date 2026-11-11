@@ -8,6 +8,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.api.namespace.NamespaceAgentDeployRequest
 import io.whozoss.agentos.sdk.api.namespace.NamespaceApi
 import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
@@ -70,7 +71,7 @@ class NamespaceController(
                     // Creation is super-admin only (see create), which is the rule for this field too.
                     sharedExchangePath = requireAbsolutePath(resource.sharedExchangePath),
                     maxToolRounds = resource.maxToolRounds,
-                    adminCanListAllCases = resource.adminCanListAllCases,
+                    adminCaseListing = resource.adminCaseListing,
                 )
             },
         )
@@ -84,7 +85,7 @@ class NamespaceController(
             return namespaceService
                 .findAll()
                 .filter { it.metadata.removed != true }
-                .map { it.toListItem(SUPER_ADMIN, namespaceService.resolveAdminCanListAllCases(it)) }
+                .map { it.toListItem(SUPER_ADMIN, namespaceService.resolveAdminCaseListing(it)) }
         }
         val userId = currentUser.id.toString()
         val readableIds = namespaceService.findIdsVisibleTo(userId, Action.READ)
@@ -94,7 +95,7 @@ class NamespaceController(
         return namespaces.map { ns ->
             ns.toListItem(
                 if (ns.metadata.id in adminIdsSet) ADMIN else MEMBER,
-                namespaceService.resolveAdminCanListAllCases(ns),
+                namespaceService.resolveAdminCaseListing(ns),
             )
         }
     }
@@ -152,9 +153,9 @@ class NamespaceController(
                     runCostThreshold = resource.runCostThreshold,
                     sharedExchangePath = resolveSharedExchangePath(existing, resource),
                     maxToolRounds = resource.maxToolRounds,
-                    // Editable by a namespace ADMIN like the other behaviour settings: it only shows a drawer
-                    // switch and grants no access (unlike sharedExchangePath, a host-level decision).
-                    adminCanListAllCases = resource.adminCanListAllCases,
+                    // Editable by a namespace ADMIN like the other behaviour settings: it only changes the list
+                    // the UI shows and grants no access (unlike sharedExchangePath, a host-level decision).
+                    adminCaseListing = resource.adminCaseListing,
                 ),
             ).toDto()
     }
@@ -276,15 +277,15 @@ fun Namespace.toDto() =
         runCostThreshold = runCostThreshold,
         sharedExchangePath = sharedExchangePath,
         maxToolRounds = maxToolRounds,
-        adminCanListAllCases = adminCanListAllCases,
+        adminCaseListing = adminCaseListing,
     )
 
 // runCostThreshold is intentionally absent from NamespaceListItem — it is an admin-configuration
 // detail not needed in list views. Full value is available via getById / update.
-// adminCanListAllCasesEffective is the exception: the drawer needs the resolved value, not the raw override.
+// adminCaseListingEffective is the exception: the UI needs the resolved value, not the raw override.
 private fun Namespace.toListItem(
     role: String,
-    adminCanListAllCasesEffective: Boolean,
+    adminCaseListingEffective: AdminCaseListing,
 ) =
     NamespaceListItem(
         id = metadata.id,
@@ -294,5 +295,5 @@ private fun Namespace.toListItem(
         externalId = externalId,
         defaultAgentName = defaultAgentName,
         role = role,
-        adminCanListAllCasesEffective = adminCanListAllCasesEffective,
+        adminCaseListingEffective = adminCaseListingEffective,
     )

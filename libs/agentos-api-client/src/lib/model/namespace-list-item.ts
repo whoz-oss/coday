@@ -7,12 +7,13 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { AdminCaseListing } from './admin-case-listing'
 
 export interface NamespaceListItem {
   /**
-   * Resolved value of the namespace setting \'adminCanListAllCases\' (the namespace override, else the platform default): whether this namespace\'s administrators get a \'Mine / All cases\' switch in the case drawer. Read-only.
+   * Resolved cases admins see. Read-only.
    */
-  adminCanListAllCasesEffective?: boolean
+  adminCaseListingEffective?: AdminCaseListing
   configPath?: string
   defaultAgentName?: string
   description?: string

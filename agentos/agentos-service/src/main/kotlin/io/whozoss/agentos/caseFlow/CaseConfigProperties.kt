@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 /**
@@ -12,7 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * - AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
  * - AGENTOS_CASE_GLOBAL_EVENTS_POLL_INTERVAL_MS
  * - AGENTOS_CASE_SUMMARY_ENABLED
- * - AGENTOS_CASE_ADMIN_LIST_ALL_CASES_DEFAULT
+ * - AGENTOS_CASE_ADMIN_CASE_LISTING_DEFAULT
  *
  * Example (application.yml):
  * ```yaml
@@ -22,7 +23,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     sse-heartbeat-interval-ms: 30000      # 30 s (default)
  *     global-events-poll-interval-ms: 5000  # 5 s (default)
  *     summary-enabled: true            # case summaries feeding the case search (default)
- *     admin-list-all-cases-default: false   # no "All cases" drawer switch for namespace admins (default)
+ *     admin-case-listing-default: OWN       # OWN, SWITCH or ALL (default OWN)
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.case")
@@ -76,14 +77,15 @@ data class CaseConfigProperties(
     val summaryEnabled: Boolean = true,
 
     /**
-     * Platform default of the namespace setting [io.whozoss.agentos.namespace.Namespace.adminCanListAllCases]:
-     * whether the administrators of a namespace get a "Mine / All cases" switch in the case drawer.
+     * Platform default of the namespace setting [io.whozoss.agentos.namespace.Namespace.adminCaseListing]:
+     * which cases the administrators of a namespace see in their case list. [AdminCaseListing.OWN] their own,
+     * [AdminCaseListing.SWITCH] their own with a switch to all, [AdminCaseListing.ALL] all.
      * A namespace that sets the option itself keeps its own value; `null` there inherits this one.
      *
-     * It only drives the drawer. It does not change who may read which case, nor the behaviour of
+     * It only drives the list the UI shows. It does not change who may read which case, nor the behaviour of
      * `GET /api/cases/by-parentId/{parentId}`, whose namespace-ADMIN listing is always unfiltered.
      *
-     * Defaults to false.
+     * Defaults to [AdminCaseListing.OWN].
      */
-    val adminListAllCasesDefault: Boolean = false,
+    val adminCaseListingDefault: AdminCaseListing = AdminCaseListing.OWN,
 )
