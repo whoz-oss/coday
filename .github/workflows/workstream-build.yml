@@ -33,6 +33,8 @@ on:
     branches:
       - 'integration/**'
 
+  workflow_dispatch:
+
 # Serialise builds per workstream slug.
 # cancel-in-progress: false is mandatory -- cancelling mid-publish can leave a
 # partial artifact set that appears coherent but is missing packages.
