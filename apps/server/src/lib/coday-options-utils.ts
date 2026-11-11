@@ -72,7 +72,8 @@ export function parseCodayOptions(
     })
     .option('port', {
       type: 'number',
-      description: 'Express port, strict (default: the port scheme of the profile, with block fallback). Env: PORT',
+      description:
+        'Express port, strict (default: the first block of the port scheme of the profile, always the same). Env: PORT',
     })
     .option('open', {
       type: 'boolean',

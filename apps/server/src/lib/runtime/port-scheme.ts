@@ -4,17 +4,19 @@
  *
  * Roles inside a block (offsets in the JSON):
  *   Server (Express)   the ONLY address a user opens, in every profile
- *   Client, Cockpit    prod/local: served BY Express (`/` and `/factory/`), the ports stay RESERVED, never used by a
- *                      fallback. dev: the Angular dev servers listen there, INTERNAL, reached through Express
+ *   Client, Cockpit    prod/local: served BY Express (`/` and `/factory/`), the ports stay RESERVED, never used by
+ *                      another role. dev: the Angular dev servers listen there, INTERNAL, reached through Express
  *   AgentOS, Factory, AgentOS embedded Neo4j (Bolt)   internal everywhere
  *
  * Profiles: prod (the published package, `coday-web`, desktop apps), local (`pnpm nx run web:local`), dev (`pnpm
  * web:serve:dev`, `pnpm client`, `pnpm server`, scripts/web-dev-tmux.sh, bootRun). 5000 and 7000 are avoided on
  * purpose: macOS AirPlay Receiver listens there.
  *
- * A stack owns a whole block [base, base + blockSize - 1]. When a packaged stack finds a port of its block taken, the
- * WHOLE stack moves to the next candidate block of the same profile (`candidateBases`): prod and local interleave
- * inside 3xxx so they never collide, dev has 4xxx for itself.
+ * A stack owns a whole block [base, base + blockSize - 1]: the first block of its profile (or the one of
+ * `CODAY_PORT_BASE`), always the same, because the redirect URIs registered at OAuth providers are tied to the ports.
+ * A taken port makes the start fail (see ports.ts), the stack never moves to another block. The other candidate
+ * blocks (`candidateBases`) are the ones a user may pick explicitly or that parallel dev stacks use; prod and local
+ * interleave inside 3xxx so they never collide, dev has 4xxx for itself.
  *
  * Leaf module (imports only the JSON): used by the server runtime and the launcher scripts. Whatever cannot import
  * it (Nx project.json files, .idea run configurations) repeats the DEV values and is guarded by
@@ -58,10 +60,11 @@ export function blockBases(base: number, count: number, step: number = PORT_BLOC
 }
 
 /**
- * The candidate blocks of a profile, in the order a stack tries them: its own base first, then one `step` further, up
- * to the end of the thousand it lives in (a block never straddles two thousands). prod 3000, 3020, ... 3980 and local
- * 3010, 3030, ... 3990 interleave, so two stacks of different profiles can never pick the same block. `count` caps the
- * list.
+ * The candidate blocks of a profile: its own base first, then one `step` further, up to the end of the thousand it
+ * lives in (a block never straddles two thousands). prod 3000, 3020, ... 3980 and local 3010, 3030, ... 3990
+ * interleave, so two stacks of different profiles can never pick the same block. A stack does NOT walk this list on a
+ * taken port; it is the set of blocks that can be chosen explicitly (`CODAY_PORT_BASE`) without overlapping. `count`
+ * caps the list.
  */
 export function candidateBases(profile: PortProfile, count = Number.POSITIVE_INFINITY): number[] {
   const { base, step } = scheme.profiles[profile]
@@ -82,8 +85,7 @@ export function parsePortBase(value: string | undefined): number | undefined {
 
 /**
  * Profile of a server process: `CODAY_PORT_PROFILE` when it names one (web:local says `local`, which a server cannot
- * derive), else dev with BUILD_ENV=development, prod otherwise. The profile only picks the candidate blocks; it is NOT
- * an explicit choice of the user, so it never makes the start strict (`CODAY_PORT_BASE` does).
+ * derive), else dev with BUILD_ENV=development, prod otherwise. The profile only picks the default block.
  */
 export function portProfile(env: NodeJS.ProcessEnv = process.env): PortProfile {
   const named = env['CODAY_PORT_PROFILE']

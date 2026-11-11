@@ -74,7 +74,7 @@ pnpm nx package-dist desktop
 
 - Resolves the `@whoz-oss/coday-web` package location
 - Spawns the web server as a child process with `--no_auth` flag
-- Creates an Electron window pointing to `http://localhost:3049` (a fixed, strict `PORT`, kept on purpose and outside the block fallback: the window origin, hence the `localStorage` preferences of the client, must not move between runs or be lost by switching to the scheme. 3049 is offset 9 of the prod candidate block 3040, a port no role ever uses, so it never collides with a stack). AgentOS, Factory and the embedded Neo4j use the PROD profile of the Coday port scheme (`apps/server/src/lib/runtime/port-scheme.json`, see `apps/web/README.md`): 3005 / 3006 / 3007, or the next free prod block (3020, 3040...) when taken
+- Creates an Electron window pointing to `http://localhost:3049` (a fixed, strict `PORT`, kept on purpose and outside the block scheme: the window origin, hence the `localStorage` preferences of the client, must not move between runs or be lost by switching to the scheme. 3049 is offset 9 of the prod candidate block 3040, a port no role ever uses, so it never collides with a stack). AgentOS, Factory and the embedded Neo4j use the PROD profile of the Coday port scheme (`apps/server/src/lib/runtime/port-scheme.json`, see `apps/web/README.md`): 3005 / 3006 / 3007, always the same: when one of them is taken, the app does not start and reports the port in use
 - Handles cleanup when the app is closed
 
 ### Preload Script (preload.ts)

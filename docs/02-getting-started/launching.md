@@ -11,11 +11,11 @@ From any directory:
 ```
 
 This will:
-1. Start the Coday server, usually on `http://localhost:3000`. If a port is already taken by another program, Coday moves to a free address by itself and prints it: nothing needs to be stopped
+1. Start the Coday server on `http://localhost:3000`. The ports are always the same (the redirect URIs registered at OAuth providers are tied to them): if one is already taken by another program, Coday refuses to start and names the program holding it. Stop it and start again
 2. Display the URL in your terminal
 3. Use the current directory as the default project
 
-Open your browser and navigate to the displayed URL (usually `http://localhost:3000`).
+Open your browser and navigate to the displayed URL (`http://localhost:3000`).
 
 ## Preflight
 
@@ -28,13 +28,13 @@ Coday preflight
   ok  config   /home/me/.coday
   !!  ripgrep  not found
                Agents search files with it. Install it with: brew install ripgrep
-  !!  ports    Port 3000 is in use (by node, pid 42), Coday starts on block 3020: http://localhost:3020/
+  XX  ports    Port 3000 is already in use (by node, pid 42). Stop what uses it or choose another port (PORT=<n>, or CODAY_PORT_BASE=<n> for a whole block).
 ```
 
 - `ok` nothing to do.
-- `!!` a warning: Coday starts anyway. The `ports` line is worth reading — when another program (often a Coday you
-  already have running) holds the usual address, this is where the address to open is announced.
-- `XX` a blocker: Coday stops there and says what to install or fix.
+- `!!` a warning: Coday starts anyway.
+- `XX` a blocker: Coday stops there and says what to install or fix. For `ports`, it names the program holding a port
+  Coday needs (often a Coday you already have running): stop it and start again.
 
 A missing Java only blocks a start that needs one right away. On a first run it is a warning: Coday comes up, the
 setup wizard explains how to install it and waits. With an external AgentOS and Factory, no JVM is started at all
@@ -60,7 +60,7 @@ installer handles the prerequisites and their first-run wizard reports the same 
 
 ### Server Options
 
-- `--port <number>` - Choose the address port yourself (default: Coday picks 3000, or the next free address). When you choose it, it is strict: if it is taken, Coday stops and names the program holding it. `PORT=<number>` does the same
+- `--port <number>` - Choose the address port yourself (default: Coday uses 3000, always). Either way it is strict: if it is taken, Coday stops and names the program holding it. `PORT=<number>` does the same. The redirect URIs registered at OAuth providers are tied to the default ports
 - `--auth` - Enable authentication. Supports two identity sources (tried in order):
   1. **Cloudflare Access** — decodes the `Cf-Access-Jwt-Assertion` header JWT and uses its `email` claim.
   2. **Reverse-proxy header** — falls back to the `x-forwarded-email` header set by an upstream auth proxy.
