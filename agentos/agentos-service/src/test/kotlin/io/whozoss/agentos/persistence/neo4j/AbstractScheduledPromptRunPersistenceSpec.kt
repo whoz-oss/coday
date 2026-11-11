@@ -47,7 +47,6 @@ abstract class AbstractScheduledPromptRunPersistenceSpec : StringSpec() {
         scheduledPromptId = scheduledPromptId,
         scheduledFor = scheduledFor,
         status = status,
-        correlationId = "test-${UUID.randomUUID()}",
     )
 
     /**
