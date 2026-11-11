@@ -24,6 +24,12 @@ import {
 } from 'rxjs'
 
 /**
+ * Which cases the drawer lists: `mine` (direct ADMIN/MEMBER relation, the default) or `all` (every case of the
+ * namespace, offered to namespace administrators only when the namespace enables it).
+ */
+export type CaseListMode = 'mine' | 'all'
+
+/**
  * CaseStateService — reactive state for the case list within a namespace.
  *
  * Shared between CaseShellComponent (which renders the drawer list) and
@@ -40,6 +46,14 @@ export class CaseStateService {
 
   /** Reactive case list. Empty until loadCases() completes. */
   readonly cases = signal<Case[]>([])
+
+  private readonly _listMode = signal<CaseListMode>('mine')
+
+  /**
+   * What the list holds. Back to `mine` on every namespace switch. In `all`, some cases carry no `role`
+   * (the caller has no direct relation on them), so they cannot be starred.
+   */
+  readonly listMode = this._listMode.asReadonly()
 
   /** Agent answer messages received from the active SSE stream. */
   private readonly agentMessageEventSubject = new Subject<MessageEvent>()
@@ -61,10 +75,10 @@ export class CaseStateService {
   private readonly pendingUpdates = new Map<string, { request: Observable<Case>; state: { confirmed: Case } }>()
 
   /**
-   * Load (or reload) the cases the current user is directly related to in a namespace.
+   * Load (or reload) the cases of a namespace.
    *
-   * Uses the `/mine` listing (direct ADMIN/MEMBER edge only) so every listed case is
-   * starrable and carries a `role`. On a same-namespace reload the previous list stays
+   * Uses the `/mine` listing (direct ADMIN/MEMBER edge only) by default, so every listed case is
+   * starrable and carries a `role`; in `all` mode it uses the unfiltered listing, see [setListMode]. On a same-namespace reload the previous list stays
    * visible until the new data arrives (no flicker); on a namespace switch the list is
    * cleared first, so a failed load can't leave the previous namespace's cases showing.
    */
@@ -75,6 +89,24 @@ export class CaseStateService {
     }
 
     this.currentNamespaceId = namespaceId
+    this._listMode.set('mine')
+    this.cases.set([])
+    this.refreshPending = false
+    this.cancelLoad$.next()
+    this.loadInFlight = false
+    this.startLoad(namespaceId)
+  }
+
+  /**
+   * Switch between my cases and all the cases of the namespace, and reload. Like a namespace switch, the list is
+   * cleared and any request in flight is cancelled, so a response of the previous mode can never land in the new
+   * one and a failed load cannot leave the other mode's cases showing.
+   */
+  setListMode(mode: CaseListMode): void {
+    if (mode === this._listMode()) return
+    this._listMode.set(mode)
+    const namespaceId = this.currentNamespaceId
+    if (!namespaceId) return
     this.cases.set([])
     this.refreshPending = false
     this.cancelLoad$.next()
@@ -98,8 +130,12 @@ export class CaseStateService {
 
   private startLoad(namespaceId: string): void {
     this.loadInFlight = true
-    this.caseController
-      .listMineByParentCase(namespaceId)
+    // The mode is read here, at each (re)start, so a live refresh always follows the mode in force.
+    const source$ =
+      this._listMode() === 'all'
+        ? this.caseController.listByParentCase(namespaceId)
+        : this.caseController.listMineByParentCase(namespaceId)
+    source$
       .pipe(
         takeUntil(this.cancelLoad$),
         finalize(() => this.finishLoad(namespaceId))

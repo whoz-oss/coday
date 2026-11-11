@@ -2,6 +2,7 @@ package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.security.SuperAdminCallerSpec
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -121,6 +122,69 @@ class NamespaceControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
             )
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.maxToolRounds").doesNotExist())
+        }
+
+        "POST /api/namespaces with adminCaseListing returns 201 and echoes it" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "listing-ns", "adminCaseListing": "SWITCH" }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.adminCaseListing").value("SWITCH"))
+        }
+
+        "POST /api/namespaces with an unknown adminCaseListing returns 400" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "bad-listing", "adminCaseListing": "EVERYTHING" }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "PUT /api/namespaces/{id} sets, changes, then clears adminCaseListing" {
+            val created = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "listing-update"),
+            )
+            val url = "/api/namespaces/${created.id}"
+
+            mockMvc.perform(
+                put(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "listing-update", "adminCaseListing": "ALL" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.adminCaseListing").value("ALL"))
+
+            mockMvc.perform(
+                put(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "listing-update", "adminCaseListing": "OWN" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.adminCaseListing").value("OWN"))
+
+            mockMvc.perform(
+                put(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "listing-update" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.adminCaseListing").doesNotExist())
+        }
+
+        "GET /api/namespaces exposes the resolved adminCaseListing: the override wins, else the platform default (OWN)" {
+            val forced = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "forced-${UUID.randomUUID()}", adminCaseListing = AdminCaseListing.ALL),
+            )
+            val inheriting = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "inheriting-${UUID.randomUUID()}"),
+            )
+
+            mockMvc.perform(get("/api/namespaces"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.id == '${forced.id}')].adminCaseListingEffective").value("ALL"))
+                .andExpect(jsonPath("$[?(@.id == '${inheriting.id}')].adminCaseListingEffective").value("OWN"))
         }
 
         "PUT /api/namespaces/{id} with negative runCostThreshold returns 400" {

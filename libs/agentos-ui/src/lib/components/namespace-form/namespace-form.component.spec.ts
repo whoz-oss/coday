@@ -2,6 +2,7 @@ import { signal } from '@angular/core'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
+  AdminCaseListing,
   Namespace,
   NamespaceControllerService,
   UsageConfigurationControllerService,
@@ -464,6 +465,107 @@ describe('NamespaceFormComponent (maximum tool rounds)', () => {
 
         expect(pathInput().readOnly).toBe(true)
       })
+    })
+  })
+
+  describe('cases visible to admins', () => {
+    const select = (): HTMLSelectElement =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('#ns-admin-case-listing')!
+    const choice = () =>
+      (component as unknown as { adminCaseListingControl: { value: string; setValue: (v: string) => void } })
+        .adminCaseListingControl
+    const sent = () => controller.updateNamespace.mock.calls[0][1]
+
+    it.each([
+      [undefined, ''],
+      [AdminCaseListing.OWN, 'OWN'],
+      [AdminCaseListing.SWITCH, 'SWITCH'],
+      [AdminCaseListing.ALL, 'ALL'],
+    ])('shows a stored %s as %j', (stored, expected) => {
+      editing({ adminCaseListing: stored })
+
+      expect(choice().value).toBe(expected)
+    })
+
+    it('renders the field with its label and hint', () => {
+      fixture.detectChanges()
+
+      const element = fixture.nativeElement as HTMLElement
+      expect(element.querySelector('label[for="ns-admin-case-listing"]')?.textContent).toContain(
+        'Cases visible to admins'
+      )
+      expect(element.querySelector('#ns-admin-case-listing-hint')?.textContent?.trim()).toBe(
+        'Choose which conversations the admins of this namespace see in their list. Members always see only their own.'
+      )
+    })
+
+    it('renders the four choices, the default first and with an empty value', () => {
+      fixture.detectChanges()
+
+      const options = Array.from(select().options).map((option) => [option.value, option.textContent?.trim()])
+      expect(options).toEqual([
+        ['', 'Default'],
+        ['OWN', 'Their own cases'],
+        ['SWITCH', 'Their own, with a switch to see all'],
+        ['ALL', 'All cases of the namespace'],
+      ])
+      expect(select().value).toBe('')
+    })
+
+    it.each([AdminCaseListing.OWN, AdminCaseListing.SWITCH, AdminCaseListing.ALL])('sends %s on update', (value) => {
+      editing()
+      choice().setValue(value)
+
+      internals().submit()
+
+      expect(sent().adminCaseListing).toBe(value)
+    })
+
+    it('sends the field as absent for the default, which clears an existing override', () => {
+      editing({ adminCaseListing: AdminCaseListing.ALL })
+      choice().setValue('')
+
+      internals().submit()
+
+      expect(sent().adminCaseListing).toBeUndefined()
+      expect(JSON.parse(JSON.stringify(sent()))).not.toHaveProperty('adminCaseListing')
+    })
+
+    it('keeps a stored override when another field is edited', () => {
+      editing({ adminCaseListing: AdminCaseListing.SWITCH })
+      internals().nameControl.setValue('renamed')
+
+      internals().submit()
+
+      expect(sent().name).toBe('renamed')
+      expect(sent().adminCaseListing).toBe(AdminCaseListing.SWITCH)
+    })
+
+    it('sends the choice made on create', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-namespace')
+      choice().setValue(AdminCaseListing.ALL)
+
+      internals().submit()
+
+      expect(controller.createNamespace.mock.calls[0][0].adminCaseListing).toBe(AdminCaseListing.ALL)
+    })
+
+    it('leaves a new namespace on the default', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-namespace')
+
+      internals().submit()
+
+      expect(controller.createNamespace.mock.calls[0][0].adminCaseListing).toBeUndefined()
+    })
+
+    it('routes a pick in the select to the control', () => {
+      fixture.detectChanges()
+      select().value = 'SWITCH'
+      select().dispatchEvent(new Event('change'))
+
+      expect(choice().value).toBe('SWITCH')
     })
   })
 

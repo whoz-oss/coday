@@ -1,6 +1,7 @@
 package io.whozoss.agentos.namespace
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 
@@ -55,4 +56,13 @@ data class Namespace(
      * is built, so a change applies from the next run on, never during one.
      */
     val maxToolRounds: Int? = null,
+    /**
+     * Which cases the administrators of this namespace see in their case list: their own, their own with a
+     * switch to all, or all.
+     *
+     * **`null` means "inherit the platform default"** (`agentos.case.admin-case-listing-default`, OWN unless
+     * configured), see [NamespaceService.resolveAdminCaseListing]. It only drives the list the UI shows:
+     * who may read which case, and `GET /api/cases/by-parentId/{parentId}`, are not affected.
+     */
+    val adminCaseListing: AdminCaseListing? = null,
 ) : Entity

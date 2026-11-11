@@ -14,6 +14,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
@@ -86,7 +87,10 @@ class NamespaceControllerSpec : StringSpec({
         defaultAgentName = defaultAgentName,
     )
 
-    beforeTest { clearAllMocks() }
+    beforeTest {
+        clearAllMocks()
+        every { namespaceService.resolveAdminCaseListing(any<Namespace>()) } returns AdminCaseListing.OWN
+    }
 
     // -------------------------------------------------------------------------
     // Mapping
@@ -105,6 +109,13 @@ class NamespaceControllerSpec : StringSpec({
     "toDto exposes maxToolRounds, null when the namespace sets none" {
         ns().copy(maxToolRounds = 250).toDto().maxToolRounds shouldBe 250
         ns().toDto().maxToolRounds shouldBe null
+    }
+
+    "toDto exposes the adminCaseListing override as is, null to inherit" {
+        AdminCaseListing.entries.forEach { value ->
+            ns().copy(adminCaseListing = value).toDto().adminCaseListing shouldBe value
+        }
+        ns().toDto().adminCaseListing shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -167,6 +178,29 @@ class NamespaceControllerSpec : StringSpec({
         val result = controller.listAll()
 
         result.map { it.role } shouldBe listOf("SUPER-ADMIN", "SUPER-ADMIN")
+    }
+
+    "listAll carries the resolved adminCaseListing of each namespace, not the raw override" {
+        val switch = ns(name = "switch")
+        val all = ns(name = "all")
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.findAll() } returns listOf(switch, all)
+        every { namespaceService.resolveAdminCaseListing(switch) } returns AdminCaseListing.SWITCH
+        every { namespaceService.resolveAdminCaseListing(all) } returns AdminCaseListing.ALL
+
+        controller.listAll().associate { it.id to it.adminCaseListingEffective } shouldBe
+            mapOf(switch.id to AdminCaseListing.SWITCH, all.id to AdminCaseListing.ALL)
+    }
+
+    "listAll carries the resolved adminCaseListing for a regular user too" {
+        val member = ns(name = "member-ns")
+        every { userService.getCurrentUser() } returns regularUser
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ) } returns listOf(member.id)
+        every { namespaceService.findByIds(listOf(member.id)) } returns listOf(member)
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.WRITE) } returns emptyList()
+        every { namespaceService.resolveAdminCaseListing(member) } returns AdminCaseListing.SWITCH
+
+        controller.listAll().single().adminCaseListingEffective shouldBe AdminCaseListing.SWITCH
     }
 
     "listAll returns empty list for a regular user with no permissions" {
@@ -289,6 +323,63 @@ class NamespaceControllerSpec : StringSpec({
         controller.update(existing.id, r)
 
         verify(exactly = 1) { namespaceService.update(match { it.maxToolRounds == null }) }
+    }
+
+    "update carries adminCaseListing from resource into the saved entity" {
+        val existing = ns()
+        val r = resource(id = existing.id).copy(adminCaseListing = AdminCaseListing.SWITCH)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r).adminCaseListing shouldBe AdminCaseListing.SWITCH
+
+        verify(exactly = 1) { namespaceService.update(match { it.adminCaseListing == AdminCaseListing.SWITCH }) }
+    }
+
+    "update replaces an existing adminCaseListing with another value" {
+        val existing = ns().copy(adminCaseListing = AdminCaseListing.ALL)
+        val r = resource(id = existing.id).copy(adminCaseListing = AdminCaseListing.OWN)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r)
+
+        verify(exactly = 1) { namespaceService.update(match { it.adminCaseListing == AdminCaseListing.OWN }) }
+    }
+
+    "update clears adminCaseListing when resource sends null" {
+        val existing = ns().copy(adminCaseListing = AdminCaseListing.ALL)
+        val r = resource(id = existing.id).copy(adminCaseListing = null)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r)
+
+        verify(exactly = 1) { namespaceService.update(match { it.adminCaseListing == null }) }
+    }
+
+    "update does not need super-admin rights to set adminCaseListing (unlike sharedExchangePath)" {
+        val existing = ns()
+        val r = resource(id = existing.id).copy(adminCaseListing = AdminCaseListing.ALL)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns regularUser
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r).adminCaseListing shouldBe AdminCaseListing.ALL
+    }
+
+    "create carries adminCaseListing from resource into the saved entity" {
+        val r = resource(id = null, name = "with-listing").copy(adminCaseListing = AdminCaseListing.SWITCH)
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.create(any()) } answers { firstArg() }
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+        controller.create(r).adminCaseListing shouldBe AdminCaseListing.SWITCH
+
+        verify(exactly = 1) { namespaceService.create(match { it.adminCaseListing == AdminCaseListing.SWITCH }) }
     }
 
     "update clears defaultAgentName when resource sends null" {

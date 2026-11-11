@@ -379,9 +379,10 @@ export class CaseDrawerComponent {
    * Kept for backward-compat with existing specs.
    */
   protected menuItemsFor(node: CaseTreeItem): Array<{ key: string; label: string; variant?: string }> {
-    const items: Array<{ key: string; label: string; variant?: string }> = [
-      { key: 'star', label: node.favorite ? 'Remove from favorites' : 'Add to favorites' },
-    ]
+    const items: Array<{ key: string; label: string; variant?: string }> = []
+    if (node.canStar) {
+      items.push({ key: 'star', label: node.favorite ? 'Remove from favorites' : 'Add to favorites' })
+    }
     if (node.canDelete) {
       items.push({ key: 'delete', label: 'Delete', variant: 'danger' })
     }
@@ -393,7 +394,7 @@ export class CaseDrawerComponent {
    * Kept for backward-compat with existing specs.
    */
   protected onMenuAction(node: CaseTreeItem, action: string): void {
-    if (action === 'star') this.onStarToggled(node)
+    if (action === 'star' && node.canStar) this.onStarToggled(node)
     if (action === 'delete') this.onDeleteRequested(node.id)
   }
 

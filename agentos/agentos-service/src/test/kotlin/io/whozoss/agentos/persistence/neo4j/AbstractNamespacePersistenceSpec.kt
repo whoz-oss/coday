@@ -13,6 +13,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository.Companion.NAMESPACE_PARENT_KEY
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
@@ -114,6 +115,25 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
         "a namespace saved without maxToolRounds reads back null" {
             val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "no-rounds"))
             repo.findByIds(listOf(ns.id)).first().maxToolRounds shouldBe null
+        }
+
+        "adminCaseListing is persisted by enum name, retrieved, changed and cleared" {
+            AdminCaseListing.entries.forEach { value ->
+                val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "listing-$value", adminCaseListing = value))
+                repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe value
+            }
+
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "listing-change", adminCaseListing = AdminCaseListing.ALL))
+            repo.save(ns.copy(adminCaseListing = AdminCaseListing.SWITCH))
+            repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe AdminCaseListing.SWITCH
+
+            repo.save(ns.copy(adminCaseListing = null))
+            repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe null
+        }
+
+        "a namespace saved without adminCaseListing reads back null" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "no-listing"))
+            repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe null
         }
 
         "save throws on duplicate externalId" {
