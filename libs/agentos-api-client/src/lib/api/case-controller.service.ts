@@ -18,6 +18,8 @@ import { AddMessageRequest } from '../model/add-message-request'
 // @ts-ignore
 import { Case } from '../model/case'
 // @ts-ignore
+import { CaseModelRequest } from '../model/case-model-request'
+// @ts-ignore
 import { CaseReasoningEffortRequest } from '../model/case-reasoning-effort-request'
 // @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
@@ -1137,6 +1139,93 @@ export class CaseControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Case>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Set the AI model of a case
+   * PUT /api/cases/{id}/model — set the case-level override of the AI model (an alias or an API model name) of the agents running in the case, or remove it with a null value so each agent uses its own model again. An unknown name is refused with 400. Read at the start of each agent run. Replaces the model of every agent of the case; sub-cases do not inherit it. Returns the updated Case DTO.
+   * @param id
+   * @param caseModelRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public setModelCase(
+    id: string,
+    caseModelRequest: CaseModelRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Case>
+  public setModelCase(
+    id: string,
+    caseModelRequest: CaseModelRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Case>>
+  public setModelCase(
+    id: string,
+    caseModelRequest: CaseModelRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Case>>
+  public setModelCase(
+    id: string,
+    caseModelRequest: CaseModelRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling setModelCase.')
+    }
+    if (caseModelRequest === null || caseModelRequest === undefined) {
+      throw new Error('Required parameter caseModelRequest was null or undefined when calling setModelCase.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/model`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Case>('put', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: caseModelRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
