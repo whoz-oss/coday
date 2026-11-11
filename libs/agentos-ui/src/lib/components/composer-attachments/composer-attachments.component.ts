@@ -13,6 +13,8 @@ import {
 import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { getFileIcon } from '../../services/exchange-content.utils'
+import { ExchangeFileRef } from '../../services/exchange-state.service'
+import { scopeOfRef } from '../composer-autocomplete/file-mention'
 import { isImageFile, kindLabel, middleTruncate, PendingAttachment } from './composer-attachments.utils'
 
 /**
@@ -21,6 +23,9 @@ import { isImageFile, kindLabel, middleTruncate, PendingAttachment } from './com
  * extension label, remove button), a per-chip error line, the attachment-limit message,
  * and the always-rendered hidden file input the host's "+" button opens via [openPicker].
  * Image attachments (e.g. pasted screenshots) show a small thumbnail instead of the kind icon.
+ *
+ * Exchange files picked in the file drawer ([references]) get the same chips, ahead of the staged uploads: they
+ * already live in an exchange, so they are never uploaded and do not count in the attachment limit.
  */
 @Component({
   selector: 'agentos-composer-attachments',
@@ -31,6 +36,8 @@ import { isImageFile, kindLabel, middleTruncate, PendingAttachment } from './com
 })
 export class ComposerAttachmentsComponent {
   readonly attachments = input.required<PendingAttachment[]>()
+  /** Exchange files referenced by the message (picked in the file drawer), shown before the staged uploads. */
+  readonly references = input<ExchangeFileRef[]>([])
   /** True when the resolved upload target is the namespace exchange (previewed on each chip). */
   readonly namespaceBadge = input(false)
   readonly limitError = input<string | null>(null)
@@ -38,6 +45,7 @@ export class ComposerAttachmentsComponent {
   readonly disabled = input(false)
 
   readonly removed = output<string>()
+  readonly referenceRemoved = output<ExchangeFileRef>()
   readonly filesSelected = output<File[]>()
 
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput')
@@ -85,6 +93,20 @@ export class ComposerAttachmentsComponent {
 
   protected readonly kindLabel = kindLabel
   protected readonly middleTruncate = middleTruncate
+  protected readonly scopeOfRef = scopeOfRef
+
+  protected referenceName(reference: ExchangeFileRef): string {
+    return reference.path.split('/').pop() || reference.path
+  }
+
+  /** Full scope-qualified path, as the agent reads it. */
+  protected referenceTitle(reference: ExchangeFileRef): string {
+    return `${scopeOfRef(reference.scope)}:${reference.path}`
+  }
+
+  protected referenceIcon(reference: ExchangeFileRef): string {
+    return scopeOfRef(reference.scope) === 'namespace' ? 'folder_shared' : 'description'
+  }
 
   protected chipIcon(attachment: PendingAttachment): string {
     if (attachment.status === 'uploading') return 'progress_activity'

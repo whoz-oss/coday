@@ -16,7 +16,11 @@ import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
 import { canViewFile, ensureImageBlob, isFormatViewable, isImageFile } from '../../services/exchange-content.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { ExchangeDrawerComponent, ExchangeManifestStatus } from '../exchange-drawer/exchange-drawer.component'
+import {
+  ExchangeDrawerComponent,
+  ExchangeManifestStatus,
+  ExchangeReferenceToggle,
+} from '../exchange-drawer/exchange-drawer.component'
 
 /**
  * ExchangeShellComponent — smart container for the file-exchange drawer panel.
@@ -42,7 +46,12 @@ export class ExchangeShellComponent {
   protected readonly state = inject(ExchangeStateService)
 
   readonly active = input(false)
+  /** Lets the user check files to put them in the message being written (relayed to the drawer). */
+  readonly selectable = input(false)
+  /** Files the message references: the drawer checks exactly these. */
+  readonly referenced = input<ExchangeFileRef[]>([])
   readonly closeRequested = output<void>()
+  readonly referenceToggled = output<ExchangeReferenceToggle>()
 
   // ── Current selection / viewer content ────────────────────────────────────────
   protected readonly selectedFile = signal<ExchangeFileRef | null>(null)
@@ -99,8 +108,13 @@ export class ExchangeShellComponent {
         this.state.clear()
       }
     })
-    // Release the shared exchange state when this shell is torn down.
-    effect((onCleanup) => onCleanup(() => this.state.clear()))
+    // Release the shared exchange state when this shell is torn down, but only if it initialised a case itself:
+    // without a case (namespace-only mode on the home composer) the state belongs to the host.
+    effect((onCleanup) =>
+      onCleanup(() => {
+        if (this.activeCaseId !== null) this.state.clear()
+      })
+    )
 
     // Load the recursive namespace manifest lazily, when a filter is typed, and again whenever the
     // namespace scope changed (upload, delete, refresh): the state service hands out a fresh request
@@ -250,6 +264,9 @@ export class ExchangeShellComponent {
   protected onClose(): void {
     this.closeRequested.emit()
   }
+
+  /** Without a case in the route, only the namespace is browsed: the case section has nothing to show. */
+  protected readonly caseSectionVisible = computed(() => this.state.caseSectionVisible() && !!this.environmentCaseId())
 
   /** Viewer back button: clear the active file so the drawer returns to the list. */
   protected onViewerClosed(): void {
