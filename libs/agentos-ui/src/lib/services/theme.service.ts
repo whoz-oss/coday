@@ -18,24 +18,27 @@ export interface ThemeVariantDefinition {
 
 /**
  * Single source of truth for the theme variants (visual identity / skin). The `ThemeVariant` type, the list of ids,
- * the skin selector of the profile page and the mode locking all derive from this table. Industry stays first: it is
- * the default and the fallback for an unknown stored id.
+ * the skin selector of the profile page and the mode locking all derive from this table. The default variant is
+ * `DEFAULT_THEME_VARIANT`; the order here is only the display order (skin selector, user menu).
  */
 export const THEME_VARIANT_DEFINITIONS = [
+  { id: 'whoz-oss', label: 'Whoz OSS', description: 'Bleu franc, Roboto, formes arrondies', modes: ['light', 'dark'] },
   { id: 'industry', label: 'Industry', description: 'Bleu acier, Barlow', modes: ['light', 'dark'] },
   { id: 'terminal', label: 'Terminal', description: 'Ambre CRT, JetBrains Mono', modes: ['light', 'dark'] },
-  { id: 'whoz-oss', label: 'Whoz OSS', description: 'Bleu franc, Roboto, formes arrondies', modes: ['light', 'dark'] },
 ] as const satisfies readonly ThemeVariantDefinition[]
 
 export type ThemeVariant = (typeof THEME_VARIANT_DEFINITIONS)[number]['id']
+
+/** The variant used when nothing (or an unknown id) is stored. */
+export const DEFAULT_THEME_VARIANT: ThemeVariant = 'whoz-oss'
 
 /** Ids of the supported variants, derived from the table. */
 export const THEME_VARIANTS: readonly ThemeVariant[] = THEME_VARIANT_DEFINITIONS.map((variant) => variant.id)
 
 /**
  * Full theme state: variant (skin) × mode (light/dark/system) — what the user chose.
- * Maps to a `data-theme` attribute value through `resolveEffectiveMode`: no attribute for industry light (default),
- * `"industry-dark"`, `"terminal-light"`, `"terminal-dark"`, `"whoz-oss-light"`, `"whoz-oss-dark"`.
+ * Maps to a `data-theme` attribute value through `resolveEffectiveMode`: no attribute for industry light (the base
+ * CSS block), `"industry-dark"`, `"terminal-light"`, `"terminal-dark"`, `"whoz-oss-light"`, `"whoz-oss-dark"`.
  */
 export interface ThemeState {
   variant: ThemeVariant
@@ -46,9 +49,13 @@ export function isThemeVariant(value: unknown): value is ThemeVariant {
   return THEME_VARIANT_DEFINITIONS.some((variant) => variant.id === value)
 }
 
-/** Definition of a variant; an unknown id falls back to industry. */
+/** Definition of a variant; an unknown id falls back to the default variant. */
 export function getThemeVariantDefinition(variant: string): ThemeVariantDefinition {
-  return THEME_VARIANT_DEFINITIONS.find((definition) => definition.id === variant) ?? THEME_VARIANT_DEFINITIONS[0]
+  return (
+    THEME_VARIANT_DEFINITIONS.find((definition) => definition.id === variant) ??
+    THEME_VARIANT_DEFINITIONS.find((definition) => definition.id === DEFAULT_THEME_VARIANT) ??
+    THEME_VARIANT_DEFINITIONS[0]
+  )
 }
 
 /** Whether the variant renders both light and dark, i.e. whether a light/dark switch makes sense for it. */
@@ -93,7 +100,7 @@ export function prefersDarkScheme(): boolean {
   )
 }
 
-/** `data-theme` value for a variant rendered in a mode; null for industry light, the attribute-less default. */
+/** `data-theme` value for a variant rendered in a mode; null for industry light, the attribute-less state. */
 function themeAttribute(variant: string, mode: ResolvedThemeMode): string | null {
   return variant === 'industry' && mode === 'light' ? null : `${variant}-${mode}`
 }
@@ -171,23 +178,23 @@ export class AgentosThemeService implements ThemePort, OnDestroy {
 
   private readStoredTheme(): ThemeState {
     try {
-      // Migrate legacy single-key storage (light/dark/system → industry + mode)
+      // Migrate legacy single-key storage (light/dark/system → default variant + mode): those users never chose a variant
       const legacy = localStorage.getItem(STORAGE_KEY_LEGACY)
       if (legacy && !localStorage.getItem(STORAGE_KEY_MODE)) {
         const mode = (THEME_MODES as readonly string[]).includes(legacy) ? (legacy as ThemeMode) : 'system'
         localStorage.setItem(STORAGE_KEY_MODE, mode)
-        localStorage.setItem(STORAGE_KEY_VARIANT, 'industry')
+        localStorage.setItem(STORAGE_KEY_VARIANT, DEFAULT_THEME_VARIANT)
         localStorage.removeItem(STORAGE_KEY_LEGACY)
-        return { variant: 'industry', mode }
+        return { variant: DEFAULT_THEME_VARIANT, mode }
       }
 
       const storedVariant = localStorage.getItem(STORAGE_KEY_VARIANT)
       const storedMode = localStorage.getItem(STORAGE_KEY_MODE)
-      const variant: ThemeVariant = isThemeVariant(storedVariant) ? storedVariant : 'industry'
+      const variant: ThemeVariant = isThemeVariant(storedVariant) ? storedVariant : DEFAULT_THEME_VARIANT
       const mode = (THEME_MODES as readonly string[]).includes(storedMode ?? '') ? (storedMode as ThemeMode) : 'system'
       return { variant, mode }
     } catch {
-      return { variant: 'industry', mode: 'system' }
+      return { variant: DEFAULT_THEME_VARIANT, mode: 'system' }
     }
   }
 }
