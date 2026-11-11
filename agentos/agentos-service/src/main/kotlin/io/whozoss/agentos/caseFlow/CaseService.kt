@@ -220,6 +220,21 @@ interface CaseService : EntityService<Case, UUID> {
     ): Case
 
     /**
+     * Set the case-level AI model ([Case.modelName]), or remove it with null.
+     *
+     * [modelName] is an alias or an API model name, resolved among the models of the case's namespace and the
+     * platform. A blank name is read as null. Goes through [edit], so only that field changes.
+     *
+     * @throws [io.whozoss.agentos.exception.BadRequestException] if no model answers to [modelName]
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if concurrent writes keep winning
+     */
+    fun setModel(
+        caseId: UUID,
+        modelName: String?,
+    ): Case
+
+    /**
      * Start a turn that a [CaseLaunchGate] held back, if there is one to start.
      *
      * Resumes a `PENDING` case whose turn was deferred by this process and nothing else: a case
