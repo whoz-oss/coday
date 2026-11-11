@@ -5,6 +5,7 @@
       <env name="PLUGINS_DIR" value="./plugins" />
       <env name="SERVER_PORT" value="8125" />
       <env name="AGENTOS_PROMPT_SCHEDULER_ENABLED" value="false" />
+      <env name="COPILOT_BASE_URL" value="http://localhost:8122" />
     </envs>
     <module name="agentos-service.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
