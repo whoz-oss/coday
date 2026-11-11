@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { inspectJava, javaInstallHint, parseJavaVersionOutput } from './java'
+import { findJavaHome, inspectJava, javaHomeHint, javaInstallHint, parseJavaVersionOutput } from './java'
 import { agentosDataDir } from './paths'
 import { borrowsRuntime, decideProfile, parseForcedProfile } from './profile'
 import { initialState, mergeState, overallDownload, readState, updateState } from './state'
@@ -202,6 +202,79 @@ describe('java', () => {
 
   it('has a hint per platform', () => {
     expect(javaInstallHint('win32')).toContain('winget')
+  })
+
+  describe('JAVA_HOME shadowing a usable JDK', () => {
+    const noHome = () => undefined
+
+    /** `run` per binary: JAVA_HOME holds an old JDK (or nothing), the PATH and /jdk25 hold a good one. */
+    const runner =
+      (versions: Record<string, string | undefined>) =>
+      (bin: string): string => {
+        const version = versions[bin]
+        if (!version) throw new Error(`ENOENT: ${bin}`)
+        return version
+      }
+
+    it('points at the PATH java instead of telling the user to install one', () => {
+      const status = inspectJava(
+        runner({ java: 'openjdk 25 2025-09-16' }), // $JAVA_HOME/bin/java is absent
+        { JAVA_HOME: '/old-jdk' },
+        'darwin',
+        noHome
+      )
+      expect(status.state).toBe('missing')
+      expect(status).toMatchObject({ alternative: { version: 'openjdk 25 2025-09-16' } })
+      expect(status.state !== 'ok' && status.hint).toContain('unset JAVA_HOME')
+      expect(status.state !== 'ok' && status.hint).not.toContain('brew install')
+    })
+
+    it('gives the export command when only a lookup finds the JDK (macOS)', () => {
+      const status = inspectJava(
+        runner({
+          [path.join('/old-jdk', 'bin', 'java')]: 'openjdk 21.0.3 2024-04-16',
+          [path.join('/jdk25', 'bin', 'java')]: 'openjdk 25 2025-09-16',
+        }),
+        { JAVA_HOME: '/old-jdk' },
+        'darwin',
+        () => '/jdk25'
+      )
+      expect(status).toMatchObject({ state: 'too-old', alternative: { home: '/jdk25' } })
+      expect(status.state !== 'ok' && status.hint).toContain('/usr/libexec/java_home -v25')
+    })
+
+    it('still says to install when nothing usable exists anywhere', () => {
+      const status = inspectJava(
+        runner({ [path.join('/old-jdk', 'bin', 'java')]: 'openjdk 21.0.3 2024-04-16' }),
+        { JAVA_HOME: '/old-jdk' },
+        'darwin',
+        noHome
+      )
+      expect(status).toMatchObject({ state: 'too-old' })
+      expect(status.state === 'too-old' && status.alternative).toBeUndefined()
+      expect(status.state !== 'ok' && status.hint).toContain('brew install')
+    })
+
+    it('does not look for an alternative when JAVA_HOME is not what failed', () => {
+      const probed: string[] = []
+      inspectJava((bin) => (probed.push(bin), 'openjdk 21.0.3 2024-04-16'), {}, 'linux', noHome)
+      expect(probed).toEqual(['java'])
+    })
+  })
+
+  it('names the JDK found and the variable to fix', () => {
+    expect(javaHomeHint({ version: 'openjdk 25' }, '/old', 'win32')).toContain('Clear JAVA_HOME')
+    expect(javaHomeHint({ version: 'openjdk 25', home: '/jdk25' }, '/old', 'win32')).toContain('/jdk25')
+  })
+
+  it('only asks the system for a JDK home on macOS', () => {
+    expect(findJavaHome('linux', () => '/never')).toBeUndefined()
+    expect(findJavaHome('darwin', () => '/jdk25\n')).toBe('/jdk25')
+    expect(
+      findJavaHome('darwin', () => {
+        throw new Error('no such JDK')
+      })
+    ).toBeUndefined()
   })
 })
 

@@ -17,6 +17,9 @@
     "@whoz-oss/coday-server": "workspace:*",
     "nx": "catalog:dev"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   }

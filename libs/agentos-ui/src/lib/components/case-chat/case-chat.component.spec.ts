@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
@@ -20,7 +20,7 @@ import {
   VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { of, Observable, throwError } from 'rxjs'
+import { of, Observable, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
@@ -42,7 +42,7 @@ import { CaseChatComponent } from './case-chat.component'
  * ExchangeStateService.
  */
 describe('CaseChatComponent — submit with attachments', () => {
-  let http: { post: jest.Mock }
+  let http: { post: jest.Mock; get: jest.Mock }
   let exchangeState: {
     uploadFile: jest.Mock
     canWriteCase: ReturnType<typeof signal<boolean>>
@@ -72,6 +72,8 @@ describe('CaseChatComponent — submit with attachments', () => {
         calls.push('post')
         return of({})
       }),
+      // The case is probed when the stream dies; by default it is still there.
+      get: jest.fn().mockImplementation(() => of({})),
     }
     exchangeState = {
       uploadFile: jest.fn().mockImplementation(async () => {
@@ -291,6 +293,97 @@ describe('CaseChatComponent — submit with attachments', () => {
 
       emit('AgentFinishedEvent', 'frontend-finished', { agentName: 'Frontend' })
       expect(ref.instance['isRunning']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
+  it('drops the existence check of the previous case when the chat moves to another one', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+      readyState: 0,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      const probe = new Subject<unknown>()
+      http.get.mockReturnValueOnce(probe)
+      ref.instance['connectSse']()
+      source.readyState = 2
+      source.onerror!(new Event('error'))
+      expect(http.get).toHaveBeenCalledWith('/api/cases/c-1')
+
+      // The user opens another case before the answer about the first one comes back.
+      ref.instance['caseId'] = 'c-2'
+      ref.instance['reinitialise']()
+      probe.error(new HttpErrorResponse({ status: 404 }))
+
+      expect(ref.instance['caseGone']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      warn.mockRestore()
+    }
+  })
+
+  it('reports the stream as gone only once the browser gave up, never on a reconnect', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+      readyState: 0,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+
+      // CONNECTING: EventSource is retrying on its own, there is nothing to tell the user.
+      source.onerror!(new Event('error'))
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+
+      // CLOSED: the stream was refused — a deleted case answers 404 — and will not be retried.
+      source.readyState = 2
+      source.onerror!(new Event('error'))
+      expect(ref.instance['streamUnavailable']()).toBe(true)
+
+      // A dead stream alone may be a backend restarting: the case is probed, it answers, and the
+      // composer stays usable.
+      ref.instance['inputValue'].set('hello')
+      expect(http.get).toHaveBeenCalledWith('/api/cases/c-1')
+      expect(ref.instance['caseGone']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+
+      // Deleting a case only marks it removed, and the case is still served: that flag is what
+      // says it is gone, and the composer closes — every way of posting, not only Send.
+      http.get.mockReturnValueOnce(of({ removed: true }))
+      source.onerror!(new Event('error'))
+      expect(ref.instance['caseGone']()).toBe(true)
+      expect(ref.instance['canSend']).toBe(false)
+      expect(ref.instance['canRecord']).toBe(false)
+      expect(ref.instance['composerClosed']()).toBe(true)
+      ref.instance['caseGone'].set(false)
+
+      // A case that answers 404 is out of reach for good: the composer closes as well.
+      http.get.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 404 })))
+      source.onerror!(new Event('error'))
+      expect(ref.instance['caseGone']()).toBe(true)
+      expect(ref.instance['canSend']).toBe(false)
+      ref.instance['caseGone'].set(false)
+
+      // Retry reopens the stream, since EventSource will not do it after CLOSED.
+      ref.instance['retryStream']()
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+      expect(globalThis.EventSource).toHaveBeenCalledTimes(2)
+      expect(ref.instance['canSend']).toBe(true)
     } finally {
       ref.destroy()
       globalThis.EventSource = original
@@ -1088,6 +1181,14 @@ describe('CaseChatComponent — submit with attachments', () => {
     it('does not continue while a message with attachments is being sent', () => {
       const ref = makeComponent()
       ref.instance['submitting'] = true
+      ref.instance['continueAfterLimit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('does not continue a case confirmed gone', () => {
+      const ref = makeComponent()
+      ref.instance['caseGone'].set(true)
       ref.instance['continueAfterLimit']()
 
       expect(http.post).not.toHaveBeenCalled()

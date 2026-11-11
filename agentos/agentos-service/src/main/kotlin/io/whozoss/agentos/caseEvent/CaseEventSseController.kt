@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import kotlinx.coroutines.CancellationException
@@ -59,6 +60,9 @@ class CaseEventSseController(
      *
      * `includePreviousEvents` is non-null and defaults explicitly to true: a new or
      * reconnecting client receives durable history before buffered/live events.
+     *
+     * A case that does not exist, or that was removed, answers 404 instead of an empty
+     * stream, which is what stops a client from reconnecting to it forever (#1616).
      */
     @Operation(
         tags = ["sse"],
@@ -85,6 +89,14 @@ class CaseEventSseController(
         @RequestParam(defaultValue = "true") includePreviousEvents: Boolean = true,
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
+
+        // A case that is gone must be refused, never served as an empty stream: EventSource
+        // reads a stream that ended as a transport hiccup and reconnects three seconds later,
+        // for as long as the tab stays open. Each of those reconnections takes one of the six
+        // connections a browser grants per origin, which the live case streams already need
+        // in full (#1616). Any status but 200 makes the browser give up instead.
+        caseService.findById(caseId, withRemoved = false)
+            ?: throw ResourceNotFoundException("Case $caseId not found")
 
         val emitter = SseEmitter(0L) // Infinite timeout
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
