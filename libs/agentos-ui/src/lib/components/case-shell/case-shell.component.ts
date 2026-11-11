@@ -269,7 +269,6 @@ export class CaseShellComponent {
     // Load the list, then watch the invalidations of this namespace. They ride the aggregated
     // stream, which one tab holds for the whole browser: a stream per namespace and per tab spent
     // a connection out of the six a browser grants per origin (#1616).
-    // Live refreshes go through CaseStateService.refreshCases, which follows the current list mode.
     effect((cleanup) => {
       const nsId = this.namespaceId()
       if (!nsId) return

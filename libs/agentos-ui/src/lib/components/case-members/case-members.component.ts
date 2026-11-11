@@ -13,13 +13,16 @@ import {
   untracked,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { MemberItem, MemberItemRoleEnum, User, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
+import { MemberItem, MemberItemRoleEnum, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
-import { forkJoin, of } from 'rxjs'
+import { forkJoin, Observable, of } from 'rxjs'
 import { catchError } from 'rxjs/operators'
 import { CaseMemberUpdateEntry, CaseMemberStateService } from '../../services/case-member-state.service'
 import { UserStateService } from '../../services/user-state.service'
-import { NamespaceMemberAutocompleteDataSource } from '../namespace-members/namespace-member.data-source'
+import {
+  MemberCandidate,
+  NamespaceMemberAutocompleteDataSource,
+} from '../namespace-members/namespace-member.data-source'
 import {
   computeMemberDiff,
   hasAtLeastOneAdmin,
@@ -42,7 +45,9 @@ interface SelectedMember {
  * Receives [caseId] as input; emits (closeRequested) when done or cancelled.
  *
  * Roles are EXCLUSIVE (ADMIN xor MEMBER xor absent), each row has a single role <select>.
- * Adding a new user requires SUPER_ADMIN (user directory is SUPER_ADMIN-only on the backend).
+ * Any case admin can add a member. The candidate pool is the members of the case's namespace
+ * ([namespaceId]), which is also what the backend enforces; super-admins pick from the whole
+ * platform directory instead (GET /api/users is SUPER_ADMIN-only).
  */
 @Component({
   selector: 'agentos-case-members',
@@ -57,6 +62,8 @@ export class CaseMembersComponent {
   private readonly userState = inject(UserStateService)
 
   readonly caseId = input.required<string>()
+  /** Namespace the case belongs to — source of the invitation candidates for non-super-admins. */
+  readonly namespaceId = input.required<string>()
 
   /** Emitted when the user saves or cancels — the parent closes the panel. */
   readonly closeRequested = output<void>()
@@ -68,14 +75,14 @@ export class CaseMembersComponent {
   protected readonly isSubmitting = signal(false)
   protected readonly errorMessage = signal<string | null>(null)
 
-  /** Whether the current user is a platform super-admin — gates the "add member" autocomplete. */
+  /** Whether the current user is a platform super-admin — only picks the candidate source. */
   protected readonly isSuperAdmin = signal(false)
 
   protected readonly selectedMembers = signal<SelectedMember[]>([])
   private originalMembers: MemberRoleEntry[] = []
 
-  /** Candidate pool for the autocomplete — all platform users, only loaded for super-admins. */
-  private readonly candidateUsers = signal<User[]>([])
+  /** Candidate pool for the autocomplete — platform users (super-admin) or namespace members. */
+  private readonly candidateUsers = signal<MemberCandidate[]>([])
 
   protected readonly memberDataSource = new NamespaceMemberAutocompleteDataSource(
     () => this.candidateUsers(),
@@ -112,16 +119,28 @@ export class CaseMembersComponent {
   }
 
   private loadMembersAndCandidates(isSuperAdmin: boolean): void {
+    // Super-admins: whole directory (GET /api/users is SUPER_ADMIN-only). Others: members of the
+    // case's namespace. A failing candidate load (e.g. 404 for a case admin outside the namespace)
+    // must not break the panel: the roster stays editable, the autocomplete is just empty.
+    const candidateSource$: Observable<MemberCandidate[]> = isSuperAdmin
+      ? this.memberState.listAllUsers()
+      : this.memberState.listNamespaceMembers(this.namespaceId())
+    const candidates$: Observable<MemberCandidate[]> = candidateSource$.pipe(
+      catchError((err) => {
+        console.warn('[CaseMembers] Failed to load invitation candidates', err)
+        return of([] as MemberCandidate[])
+      })
+    )
+
     forkJoin({
       members: this.memberState.listMembers(this.caseId()),
-      // Only super-admins may call GET /api/users (backend enforces SUPER_ADMIN).
-      allUsers: isSuperAdmin ? this.memberState.listAllUsers() : of([] as User[]),
+      candidates: candidates$,
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ members, allUsers }) => {
+        next: ({ members, candidates }) => {
           this.applyMembers(members)
-          this.candidateUsers.set(allUsers)
+          this.candidateUsers.set(candidates)
           this.isLoading.set(false)
         },
         error: (err) => {
@@ -218,13 +237,10 @@ export class CaseMembersComponent {
 
   private describeError(err: HttpErrorResponse): string {
     if (err.status === 403) {
-      return 'You do not have permission to add a new user to this case — only a platform super-admin can add someone new. You can still change roles or remove existing members.'
+      return 'You do not have permission to change who has access to this case — only a case admin can.'
     }
     if (err.status === 422) {
-      return (
-        err.error?.message ??
-        'This change would leave the case without any ADMIN. Assign ADMIN to at least one member and try again.'
-      )
+      return err.error?.message ?? 'This change was rejected. Check the members and roles, then try again.'
     }
     return 'An unexpected error occurred while saving case members. Please try again.'
   }

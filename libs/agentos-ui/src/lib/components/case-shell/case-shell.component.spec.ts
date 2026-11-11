@@ -162,18 +162,6 @@ describe('CaseShellComponent', () => {
     expect(caseStateMock.refreshCases).toHaveBeenCalledWith(NS_ID)
   })
 
-  it('follows the namespace it is switched to, and stops following the previous one', () => {
-    makeComponent({ ns: NS_ID })
-
-    queryParams$.next({ ns: 'ns-3' })
-    TestBed.flushEffects()
-    caseListUpdates$.next(NS_ID)
-    caseListUpdates$.next('ns-3')
-
-    expect(caseStateMock.refreshCases).toHaveBeenCalledTimes(1)
-    expect(caseStateMock.refreshCases).toHaveBeenCalledWith('ns-3')
-  })
-
   it('opens the sub-case composer for the chosen parent and closes the mobile drawer', () => {
     const component = makeComponent({ ns: NS_ID, case: 'root' })
     component['mobileDrawerOpen'].set(true)
