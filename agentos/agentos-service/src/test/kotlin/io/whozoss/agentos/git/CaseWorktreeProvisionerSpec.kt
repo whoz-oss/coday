@@ -342,10 +342,18 @@ class CaseWorktreeProvisionerSpec :
                 failed.failureReason!!.contains("synthetic-secret") shouldBe false
                 failed.failureReason shouldContain "Setup failed"
                 logs.list.any { it.loggerName == CaseWorktreeProvisioner::class.java.name && it.level == ch.qos.logback.classic.Level.ERROR } shouldBe true
-                val rendered = logs.list.joinToString("\n") {
+                // The provisioner logs the exception, whose message must not carry the output; the
+                // output itself goes to the server log through WorktreeSetupRunner, for administrators.
+                val provisionerLogs = logs.list.filter { it.loggerName == CaseWorktreeProvisioner::class.java.name }
+                val rendered = provisionerLogs.joinToString("\n") {
                     it.formattedMessage + (it.throwableProxy?.let(ch.qos.logback.classic.spi.ThrowableProxyUtil::asString) ?: "")
                 }
                 rendered.contains("synthetic-secret") shouldBe false
+                logs.list.any {
+                    it.loggerName == WorktreeSetupRunner::class.java.name &&
+                        it.level == ch.qos.logback.classic.Level.ERROR &&
+                        it.formattedMessage.contains("synthetic-secret")
+                } shouldBe true
             } finally {
                 logger.detachAppender(logs)
                 logs.stop()
