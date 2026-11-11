@@ -186,6 +186,15 @@ export class CaseStateService {
     return this.enqueueSave(caseId, (state) => this.saveReasoningEffort(caseId, effort, state))
   }
 
+  /**
+   * Set the case-level AI model (an alias or an API model name), or remove it with null so each agent uses its
+   * own model again. Queued with the other saves of the case, like [setReasoningEffort]: the server rewrites the
+   * whole case on each save. An unknown model is refused by the server (400) and the optimistic value rolled back.
+   */
+  setModel(caseId: string, modelName: string | null): Observable<Case> {
+    return this.enqueueSave(caseId, (state) => this.saveModel(caseId, modelName, state))
+  }
+
   private enqueueSave(caseId: string, save: (state: { confirmed: Case }) => Observable<Case>): Observable<Case> {
     return defer(() => {
       const pending = this.pendingUpdates.get(caseId)
@@ -286,6 +295,28 @@ export class CaseStateService {
 
   private patchReasoningEffort(caseId: string, reasoningEffort: ReasoningEffort | undefined): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, reasoningEffort } : c)))
+  }
+
+  private saveModel(caseId: string, modelName: string | null, state: { confirmed: Case }): Observable<Case> {
+    return defer(() => {
+      const previous = state.confirmed.modelName
+      this.patchModel(caseId, modelName ?? undefined)
+      // An omitted field removes the override.
+      return this.caseController.setModelCase(caseId, { modelName: modelName ?? undefined }).pipe(
+        tap((updated) => {
+          state.confirmed = { ...state.confirmed, modelName: updated.modelName }
+          this.patchModel(caseId, updated.modelName)
+        }),
+        catchError((err) => {
+          this.patchModel(caseId, previous)
+          return throwError(() => err)
+        })
+      )
+    })
+  }
+
+  private patchModel(caseId: string, modelName: string | undefined): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, modelName } : c)))
   }
 
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */
