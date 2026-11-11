@@ -18,7 +18,7 @@ const okFacts = (): DoctorFacts => ({
   javaNeed: { required: true, awaited: false },
   configDir: { path: '/home/me/.coday', writable: true },
   ripgrep: 'ripgrep 14.1.0',
-  ports: { express: 3000, base: 3000, notes: [] },
+  ports: { express: 3000, base: 3000 },
   platform: 'darwin',
 })
 
@@ -135,30 +135,19 @@ describe('checkRipgrep', () => {
 })
 
 describe('checkPorts', () => {
-  it('passes quietly on the first block and gives the address to open', () => {
-    expect(checkPorts({ express: 3000, base: 3000, notes: [] })).toMatchObject({
+  it('passes quietly and gives the address to open', () => {
+    expect(checkPorts({ express: 3000, base: 3000 })).toMatchObject({
       state: 'ok',
       detail: 'block 3000, open http://localhost:3000/',
     })
   })
 
-  it('warns with the move on ONE line, so nobody opens the old instance on 3000', () => {
-    const note = 'Port 3000 is in use (by node, pid 42), Coday starts on block 3020: http://localhost:3020/'
-    const check = checkPorts({ express: 3020, base: 3020, notes: [note] })
-    expect(check).toMatchObject({ state: 'warn', detail: note })
-    // The note already carries the block and the URL: repeating them as a hint says the same thing twice.
-    expect(check.hint).toBeUndefined()
-  })
-
-  it('announces no address when the OS assigns the ports: the real start gets different ones', () => {
-    const check = checkPorts({ express: 51234, notes: ['every block is taken'] })
-    expect(check.state).toBe('warn')
-    expect(check.detail).toContain('the OS assigns the ports at startup')
-    expect(check.detail).not.toContain('51234')
+  it('only warns when the ports could not be determined', () => {
+    expect(checkPorts({})).toMatchObject({ state: 'warn', detail: 'could not be determined' })
   })
 
   it('blocks on a failed choice without guessing a cause: the message already says what to do', () => {
-    const check = checkPorts({ notes: [], error: 'Port 3000 is already in use (by nginx, pid 7).' })
+    const check = checkPorts({ error: 'Port 3000 is already in use (by nginx, pid 7).' })
     expect(check).toMatchObject({ state: 'blocked', detail: 'Port 3000 is already in use (by nginx, pid 7).' })
     expect(check.hint).toBeUndefined()
   })

@@ -38,22 +38,6 @@ export async function isPortFree(
 }
 
 /**
- * A port the OS hands out (far from the Coday blocks): the last resort when every block Coday may use is taken.
- * The probe releases it right away, so the caller must bind it soon.
- */
-export async function findEphemeralPort(): Promise<number> {
-  const net = await import('node:net')
-  return new Promise((resolve, reject) => {
-    const server = net.createServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address() as import('node:net').AddressInfo
-      server.close(() => resolve(port))
-    })
-  })
-}
-
-/**
  * `lsof -F` output (`p<pid>` then `c<command>` per process) -> `command, pid 123`. Only the first process is reported.
  */
 export function parseLsofOwner(output: string): string | undefined {

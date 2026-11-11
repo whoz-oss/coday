@@ -42,7 +42,7 @@ describe('port scheme', () => {
       }
     })
 
-    it('never uses the macOS AirPlay Receiver ports (5000, 7000), whatever the profile or the fallback', () => {
+    it('never uses the macOS AirPlay Receiver ports (5000, 7000), whatever the profile or the block', () => {
       for (const profile of ['prod', 'local', 'dev'] as const) {
         for (const base of candidateBases(profile)) {
           expect(Object.values(portsFor(base))).not.toContain(5000)
@@ -108,7 +108,7 @@ describe('port scheme', () => {
       expect(candidateBases('prod').at(-1)).toBe(3980)
     })
 
-    it('never lets a prod block and a local block overlap, whatever the fallback', () => {
+    it('never lets a prod block and a local block overlap, whatever the block', () => {
       const taken = new Set<number>()
       for (const base of candidateBases('prod')) {
         for (let offset = 0; offset < PORT_BLOCK_SIZE; offset++) taken.add(base + offset)
