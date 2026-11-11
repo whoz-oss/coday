@@ -7,12 +7,13 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { AdminCaseListing } from './admin-case-listing'
 
 export interface Namespace {
   /**
-   * Whether the administrators of this namespace get a \'Mine / All cases\' switch in the case drawer. Null means inherit from the platform default (agentos.case.admin-list-all-cases-default). On PUT, null clears an existing override.
+   * Cases admins see. Null inherits the platform default.
    */
-  adminCanListAllCases?: boolean
+  adminCaseListing?: AdminCaseListing
   /**
    * Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.).
    */

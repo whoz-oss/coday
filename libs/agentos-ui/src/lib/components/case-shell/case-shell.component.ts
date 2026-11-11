@@ -12,7 +12,7 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { AdminCaseListing, NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { catchError, debounceTime, filter, map, merge, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
@@ -187,21 +187,38 @@ export class CaseShellComponent {
   })
 
   /**
-   * Whether the drawer offers the "Mine / All cases" switch: the namespace enables it (resolved value, override or
-   * platform default) AND the caller administers it. The role comes from the namespace list, the same signal that
-   * gates the namespace settings. The switch only changes what the drawer lists: the server decides who may read what.
+   * What the caller sees in the case list. Only an administrator of the namespace (role ADMIN or SUPER-ADMIN, from the
+   * namespace list, the same signal that gates the namespace settings) is concerned by the namespace's resolved
+   * `adminCaseListingEffective`; anybody else, and an admin of a server that does not send it, sees their own cases.
+   * It only changes what the list shows: the server decides who may read what.
    */
-  protected readonly canListAllCases = computed(() => {
+  protected readonly adminCaseListing = computed<AdminCaseListing>(() => {
     const namespace = this.namespaces().find((item) => item.id === this.namespaceId())
-    if (!namespace?.adminCanListAllCasesEffective) return false
-    return namespace.role === 'ADMIN' || namespace.role === 'SUPER-ADMIN'
+    const isNamespaceAdmin = namespace?.role === 'ADMIN' || namespace?.role === 'SUPER-ADMIN'
+    return isNamespaceAdmin ? (namespace?.adminCaseListingEffective ?? AdminCaseListing.OWN) : AdminCaseListing.OWN
   })
 
-  protected readonly listMode = this.caseState.listMode
+  /** Whether the list offers the compact Mine / All switch: an administrator of a namespace set to SWITCH. */
+  protected readonly canSwitchListMode = computed(() => this.adminCaseListing() === AdminCaseListing.SWITCH)
 
-  /** The mode in force, `mine` whenever the switch is not offered (a stale `all` must not outlive the toggle). */
-  protected readonly effectiveListMode = computed<CaseListMode>(() =>
-    this.canListAllCases() ? this.listMode() : 'mine'
+  /**
+   * The list the setting imposes, or null when the caller chooses (SWITCH): OWN is always `mine`, ALL is always
+   * `all`. A change of namespace, or of the setting, recomputes it.
+   */
+  private readonly forcedListMode = computed<CaseListMode | null>(() => {
+    switch (this.adminCaseListing()) {
+      case AdminCaseListing.ALL:
+        return 'all'
+      case AdminCaseListing.SWITCH:
+        return null
+      default:
+        return 'mine'
+    }
+  })
+
+  /** The list in force: the imposed one, else the caller's choice. */
+  protected readonly effectiveListMode = computed<CaseListMode>(
+    () => this.forcedListMode() ?? this.caseState.listMode()
   )
 
   protected readonly canWriteActiveCase = computed(() => {
@@ -272,11 +289,13 @@ export class CaseShellComponent {
       cleanup(() => subscription.unsubscribe())
     })
 
-    // The switch can disappear while `all` is selected (the toggle is turned off, the role is lost): fall back.
+    // Apply the list the setting imposes (OWN: mine, ALL: all). The state is back on `mine` after a namespace switch,
+    // and the namespace list may load after the first list: both are caught here, as is a change of the setting.
     effect(() => {
+      const forced = this.forcedListMode()
       const namespacesLoaded = this.namespaces().length > 0
-      if (namespacesLoaded && !this.canListAllCases() && this.caseState.listMode() === 'all') {
-        this.caseState.setListMode('mine')
+      if (namespacesLoaded && forced !== null && this.caseState.listMode() !== forced) {
+        this.caseState.setListMode(forced)
       }
     })
 
@@ -319,7 +338,8 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
 
   protected onListModeChanged(mode: CaseListMode): void {
-    if (mode === 'all' && !this.canListAllCases()) return
+    // Only the SWITCH setting leaves the choice to the caller.
+    if (!this.canSwitchListMode()) return
     this.caseState.setListMode(mode)
   }
 

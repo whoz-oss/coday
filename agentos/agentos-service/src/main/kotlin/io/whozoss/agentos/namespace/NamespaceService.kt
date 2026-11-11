@@ -3,6 +3,7 @@ package io.whozoss.agentos.namespace
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import java.util.UUID
 
 /**
@@ -70,14 +71,14 @@ interface NamespaceService : EntityService<Namespace, String> {
     fun resolveRunCostThreshold(namespaceId: UUID): Double?
 
     /**
-     * Resolves whether the administrators of [namespaceId] get the "Mine / All cases" drawer switch:
-     * `Namespace.adminCanListAllCases ?: agentos.case.admin-list-all-cases-default`.
+     * Resolves which cases the administrators of [namespaceId] see in their case list:
+     * `Namespace.adminCaseListing ?: agentos.case.admin-case-listing-default`.
      *
      * An unknown namespace resolves to the platform default. The value only drives the UI: it never
      * changes who may read which case.
      */
-    fun resolveAdminCanListAllCases(namespaceId: UUID): Boolean
+    fun resolveAdminCaseListing(namespaceId: UUID): AdminCaseListing
 
     /** Same resolution for a namespace already in hand, so that a listing does not read each one again. */
-    fun resolveAdminCanListAllCases(namespace: Namespace): Boolean
+    fun resolveAdminCaseListing(namespace: Namespace): AdminCaseListing
 }

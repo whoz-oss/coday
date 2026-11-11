@@ -13,6 +13,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository.Companion.NAMESPACE_PARENT_KEY
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
@@ -116,20 +117,23 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
             repo.findByIds(listOf(ns.id)).first().maxToolRounds shouldBe null
         }
 
-        "adminCanListAllCases keeps true, false and null apart: persisted, retrieved and cleared" {
-            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "list-all", adminCanListAllCases = true))
-            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe true
+        "adminCaseListing is persisted by enum name, retrieved, changed and cleared" {
+            AdminCaseListing.entries.forEach { value ->
+                val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "listing-$value", adminCaseListing = value))
+                repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe value
+            }
 
-            repo.save(ns.copy(adminCanListAllCases = false))
-            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe false
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "listing-change", adminCaseListing = AdminCaseListing.ALL))
+            repo.save(ns.copy(adminCaseListing = AdminCaseListing.SWITCH))
+            repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe AdminCaseListing.SWITCH
 
-            repo.save(ns.copy(adminCanListAllCases = null))
-            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe null
+            repo.save(ns.copy(adminCaseListing = null))
+            repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe null
         }
 
-        "a namespace saved without adminCanListAllCases reads back null" {
-            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "no-list-all"))
-            repo.findByIds(listOf(ns.id)).first().adminCanListAllCases shouldBe null
+        "a namespace saved without adminCaseListing reads back null" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "no-listing"))
+            repo.findByIds(listOf(ns.id)).first().adminCaseListing shouldBe null
         }
 
         "save throws on duplicate externalId" {

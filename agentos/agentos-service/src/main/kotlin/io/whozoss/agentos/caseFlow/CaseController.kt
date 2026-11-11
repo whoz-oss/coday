@@ -96,9 +96,9 @@ class CaseController(
      *    which respects FR15 (MEMBERs see only their own cases or those they were directly
      *    granted READ on).
      *
-     * The case drawer lists through this endpoint when the user switched to "All cases", a switch
-     * offered to namespace admins only when the namespace enables it
-     * ([io.whozoss.agentos.namespace.NamespaceService.resolveAdminCanListAllCases], `agentos.case.admin-list-all-cases-default`).
+     * The case list of the UI uses this endpoint when a namespace administrator sees all the cases, either by
+     * choosing "All" or because the namespace shows them all
+     * ([io.whozoss.agentos.namespace.NamespaceService.resolveAdminCaseListing], `agentos.case.admin-case-listing-default`).
      * That setting only drives the drawer: the authorization and the paths above do not depend on it. In that
      * listing a case the caller has no direct relation on has no `role`.
      */

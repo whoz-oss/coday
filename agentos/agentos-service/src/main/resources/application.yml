@@ -130,12 +130,12 @@ agentos:
   # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
   # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
   # sse-heartbeat-interval-ms: 30000
-    # Platform default of the namespace setting "admin can list all cases" (Namespace.adminCanListAllCases):
-    # whether the administrators of a namespace get a "Mine / All cases" switch in the case drawer.
+    # Platform default of the namespace setting adminCaseListing: which cases the admins of a namespace see
+    # in their case list. OWN: their own. SWITCH: their own, with a switch to all. ALL: all the cases.
     # A namespace that sets it itself keeps its own value; one that sets none inherits this one.
-    # It only drives the drawer: who may read which case, and GET /api/cases/by-parentId/{parentId}, do not change.
-    # Override with env var: AGENTOS_CASE_ADMIN_LIST_ALL_CASES_DEFAULT
-    admin-list-all-cases-default: ${AGENTOS_CASE_ADMIN_LIST_ALL_CASES_DEFAULT:false}
+    # It only changes the list the UI shows: who may read which case does not change.
+    # Override with env var: AGENTOS_CASE_ADMIN_CASE_LISTING_DEFAULT
+    admin-case-listing-default: ${AGENTOS_CASE_ADMIN_CASE_LISTING_DEFAULT:OWN}
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT

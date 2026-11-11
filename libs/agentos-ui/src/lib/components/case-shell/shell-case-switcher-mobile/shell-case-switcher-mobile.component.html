@@ -63,10 +63,10 @@
       </div>
 
       <!-- Case list -->
-      @if (canListAllCases()) {
-        <div class="mobile-drawer__list-mode">
+      @if (canSwitchListMode()) {
+        <div class="mobile-drawer__list-mode" [attr.title]="listModeHint">
           <ds-segmented
-            label="Cases to list"
+            [label]="listModeHint"
             [options]="listModeOptions"
             [value]="listMode()"
             (valueChange)="listModeChanged.emit($event)"

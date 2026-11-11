@@ -1,5 +1,6 @@
 package io.whozoss.agentos.namespace
 
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -27,7 +28,8 @@ data class NamespaceNode(
     // Nullable and absent on existing nodes: no migration needed.
     val sharedExchangePath: String? = null,
     val maxToolRounds: Int? = null,
-    val adminCanListAllCases: Boolean? = null,
+    // Enum name, null when the namespace inherits the platform default. Absent on existing nodes.
+    val adminCaseListing: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -54,7 +56,7 @@ data class NamespaceNode(
             runCostThreshold = runCostThreshold,
             sharedExchangePath = sharedExchangePath,
             maxToolRounds = maxToolRounds,
-            adminCanListAllCases = adminCanListAllCases,
+            adminCaseListing = adminCaseListing?.let(AdminCaseListing::valueOf),
         )
 
     companion object {
@@ -69,7 +71,7 @@ data class NamespaceNode(
                 runCostThreshold = ns.runCostThreshold,
                 sharedExchangePath = ns.sharedExchangePath,
                 maxToolRounds = ns.maxToolRounds,
-                adminCanListAllCases = ns.adminCanListAllCases,
+                adminCaseListing = ns.adminCaseListing?.name,
                 created = ns.metadata.created,
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,

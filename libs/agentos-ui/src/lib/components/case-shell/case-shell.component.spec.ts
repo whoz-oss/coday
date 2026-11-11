@@ -2,7 +2,13 @@ import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { ElementRef, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Case, CaseRoleEnum, NamespaceControllerService, NamespaceListItemRoleEnum } from '@whoz-oss/agentos-api-client'
+import {
+  AdminCaseListing,
+  Case,
+  CaseRoleEnum,
+  NamespaceControllerService,
+  NamespaceListItemRoleEnum,
+} from '@whoz-oss/agentos-api-client'
 import { EMPTY, of, Subject, throwError } from 'rxjs'
 import { CaseShellComponent } from './case-shell.component'
 import { CaseStateService } from '../../services/case-state.service'
@@ -42,8 +48,15 @@ describe('CaseShellComponent', () => {
       isAdmin?: boolean
       namespaceRole?: NamespaceListItemRoleEnum
       namespacesError?: boolean
-      adminCanListAllCasesEffective?: boolean
+      adminCaseListingEffective?: AdminCaseListing
       listMode?: 'mine' | 'all'
+      /** Overrides the single namespace built from namespaceRole, to test a switch between namespaces. */
+      namespaces?: Array<{
+        id: string
+        name: string
+        role: NamespaceListItemRoleEnum
+        adminCaseListingEffective?: AdminCaseListing
+      }>
     } = {}
   ): CaseShellComponent {
     queryParams$ = new Subject()
@@ -71,16 +84,17 @@ describe('CaseShellComponent', () => {
         access.namespacesError
           ? throwError(() => new Error('502'))
           : of(
-              access.namespaceRole
-                ? [
-                    {
-                      id: NS_ID,
-                      name: 'Namespace',
-                      role: access.namespaceRole,
-                      adminCanListAllCasesEffective: access.adminCanListAllCasesEffective,
-                    },
-                  ]
-                : []
+              access.namespaces ??
+                (access.namespaceRole
+                  ? [
+                      {
+                        id: NS_ID,
+                        name: 'Namespace',
+                        role: access.namespaceRole,
+                        adminCaseListingEffective: access.adminCaseListingEffective,
+                      },
+                    ]
+                  : [])
             )
       ),
     }
@@ -201,95 +215,209 @@ describe('CaseShellComponent', () => {
     expect(component['canWriteActiveCase']()).toBe(true)
   })
 
-  describe('Mine / All cases switch', () => {
+  describe('case list for admins (adminCaseListing)', () => {
     const R = NamespaceListItemRoleEnum
+    const L = AdminCaseListing
 
-    it.each([
-      { role: R.ADMIN, enabled: true, expected: true },
-      { role: R.SUPER_ADMIN, enabled: true, expected: true },
-      { role: R.MEMBER, enabled: true, expected: false },
-      { role: R.ADMIN, enabled: false, expected: false },
-      { role: R.SUPER_ADMIN, enabled: false, expected: false },
-      { role: R.ADMIN, enabled: undefined, expected: false },
-    ])('is offered only to an admin of a namespace that enables it: %j', ({ role, enabled, expected }) => {
-      const component = makeComponent({ ns: NS_ID }, [], {
-        namespaceRole: role,
-        adminCanListAllCasesEffective: enabled,
+    describe('an administrator of the namespace', () => {
+      it.each([R.ADMIN, R.SUPER_ADMIN])('with OWN (%s): lists mine, no switch, nothing to force', (role) => {
+        const component = makeComponent({ ns: NS_ID }, [], { namespaceRole: role, adminCaseListingEffective: L.OWN })
+
+        expect(component['canSwitchListMode']()).toBe(false)
+        expect(component['effectiveListMode']()).toBe('mine')
+        expect(caseStateMock.setListMode).not.toHaveBeenCalled()
       })
 
-      expect(component['canListAllCases']()).toBe(expected)
+      it.each([R.ADMIN, R.SUPER_ADMIN])('with SWITCH (%s): offers the switch and lets the user choose', (role) => {
+        const component = makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: role,
+          adminCaseListingEffective: L.SWITCH,
+        })
+
+        expect(component['canSwitchListMode']()).toBe(true)
+        expect(component['effectiveListMode']()).toBe('mine')
+        expect(caseStateMock.setListMode).not.toHaveBeenCalled()
+      })
+
+      it('with SWITCH keeps the choice of the user, mine or all', () => {
+        const all = makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: R.ADMIN,
+          adminCaseListingEffective: L.SWITCH,
+          listMode: 'all',
+        })
+
+        expect(all['effectiveListMode']()).toBe('all')
+        expect(caseStateMock.setListMode).not.toHaveBeenCalled()
+      })
+
+      it.each([R.ADMIN, R.SUPER_ADMIN])('with ALL (%s): lists all, no switch', (role) => {
+        const component = makeComponent({ ns: NS_ID }, [], { namespaceRole: role, adminCaseListingEffective: L.ALL })
+
+        expect(component['canSwitchListMode']()).toBe(false)
+        expect(component['effectiveListMode']()).toBe('all')
+      })
+
+      it('with ALL forces the state to all', () => {
+        makeComponent({ ns: NS_ID }, [], { namespaceRole: R.ADMIN, adminCaseListingEffective: L.ALL })
+
+        expect(caseStateMock.setListMode).toHaveBeenCalledWith('all')
+      })
+
+      it('with OWN forces the state back to mine when it held all', () => {
+        makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: R.ADMIN,
+          adminCaseListingEffective: L.OWN,
+          listMode: 'all',
+        })
+
+        expect(caseStateMock.setListMode).toHaveBeenCalledWith('mine')
+      })
+
+      it('lists mine when the server sends no effective value', () => {
+        const component = makeComponent({ ns: NS_ID }, [], { namespaceRole: R.ADMIN })
+
+        expect(component['canSwitchListMode']()).toBe(false)
+        expect(component['effectiveListMode']()).toBe('mine')
+      })
+    })
+
+    describe('a member', () => {
+      it.each([L.OWN, L.SWITCH, L.ALL])('with %s: always mine, no switch, nothing forced', (listing) => {
+        const component = makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: R.MEMBER,
+          adminCaseListingEffective: listing,
+          listMode: 'all',
+        })
+
+        expect(component['canSwitchListMode']()).toBe(false)
+        expect(component['effectiveListMode']()).toBe('mine')
+      })
+
+      it('is brought back to mine when the state held all', () => {
+        makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: R.MEMBER,
+          adminCaseListingEffective: L.ALL,
+          listMode: 'all',
+        })
+
+        expect(caseStateMock.setListMode).toHaveBeenCalledWith('mine')
+      })
+
+      it('cannot reach all through the handler', () => {
+        const component = makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: R.MEMBER,
+          adminCaseListingEffective: L.SWITCH,
+        })
+
+        component['onListModeChanged']('all')
+
+        expect(caseStateMock.setListMode).not.toHaveBeenCalled()
+      })
     })
 
     it('is not offered to a platform admin who has no role in the namespace list', () => {
       const component = makeComponent({ ns: NS_ID }, [], { isAdmin: true })
 
-      expect(component['canListAllCases']()).toBe(false)
-    })
-
-    it('is not offered before the namespaces have loaded', () => {
-      const component = makeComponent({ ns: NS_ID }, [], { namespacesError: true })
-      jest.spyOn(console, 'error').mockImplementation(() => undefined)
-
-      expect(component['canListAllCases']()).toBe(false)
-    })
-
-    it('forwards a pick to the state service when the switch is offered', () => {
-      const component = makeComponent({ ns: NS_ID }, [], {
-        namespaceRole: R.ADMIN,
-        adminCanListAllCasesEffective: true,
-      })
-
-      component['onListModeChanged']('all')
-
-      expect(caseStateMock.setListMode).toHaveBeenCalledWith('all')
-    })
-
-    it('refuses to switch to all when the switch is not offered', () => {
-      const component = makeComponent({ ns: NS_ID }, [], {
-        namespaceRole: R.MEMBER,
-        adminCanListAllCasesEffective: true,
-      })
-
-      component['onListModeChanged']('all')
-
-      expect(caseStateMock.setListMode).not.toHaveBeenCalled()
-    })
-
-    it('shows mine when the switch is not offered, whatever the state holds', () => {
-      const component = makeComponent({ ns: NS_ID }, [], {
-        namespaceRole: R.MEMBER,
-        adminCanListAllCasesEffective: true,
-        listMode: 'all',
-      })
-
+      expect(component['canSwitchListMode']()).toBe(false)
       expect(component['effectiveListMode']()).toBe('mine')
     })
 
-    it('falls back to mine when the toggle is turned off while all is selected', () => {
-      makeComponent({ ns: NS_ID }, [], {
-        namespaceRole: R.ADMIN,
-        adminCanListAllCasesEffective: false,
-        listMode: 'all',
-      })
+    it('lists mine while the namespaces have not loaded', () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const component = makeComponent({ ns: NS_ID }, [], { namespacesError: true })
 
-      expect(caseStateMock.setListMode).toHaveBeenCalledWith('mine')
+      expect(component['canSwitchListMode']()).toBe(false)
+      expect(component['effectiveListMode']()).toBe('mine')
     })
 
-    it('keeps all selected while the switch is offered', () => {
-      const component = makeComponent({ ns: NS_ID }, [], {
-        namespaceRole: R.ADMIN,
-        adminCanListAllCasesEffective: true,
-        listMode: 'all',
+    describe('the handler of the switch', () => {
+      it('forwards a pick to the state service when the setting is SWITCH', () => {
+        const component = makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: R.ADMIN,
+          adminCaseListingEffective: L.SWITCH,
+        })
+
+        component['onListModeChanged']('all')
+        component['onListModeChanged']('mine')
+
+        expect(caseStateMock.setListMode).toHaveBeenNthCalledWith(1, 'all')
+        expect(caseStateMock.setListMode).toHaveBeenNthCalledWith(2, 'mine')
       })
 
-      expect(caseStateMock.setListMode).not.toHaveBeenCalled()
-      expect(component['effectiveListMode']()).toBe('all')
+      it.each([L.OWN, L.ALL])('ignores a pick when the setting is %s', (listing) => {
+        const component = makeComponent({ ns: NS_ID }, [], {
+          namespaceRole: R.ADMIN,
+          adminCaseListingEffective: listing,
+        })
+        caseStateMock.setListMode.mockClear()
+
+        component['onListModeChanged']('mine')
+        component['onListModeChanged']('all')
+
+        expect(caseStateMock.setListMode).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('when the effective value changes', () => {
+      const namespaces = (listing: AdminCaseListing, role = R.ADMIN) => [
+        { id: NS_ID, name: 'Namespace', role, adminCaseListingEffective: listing },
+      ]
+
+      it('recomputes on a switch from one namespace to another with another value', () => {
+        const component = makeComponent({ ns: 'ns-a' }, [], {
+          namespaces: [
+            { ...namespaces(L.ALL)[0], id: 'ns-a' },
+            { ...namespaces(L.OWN)[0], id: 'ns-b' },
+          ],
+        })
+        expect(component['effectiveListMode']()).toBe('all')
+
+        queryParams$.next({ ns: 'ns-b' })
+        TestBed.flushEffects()
+
+        expect(component['effectiveListMode']()).toBe('mine')
+        expect(component['canSwitchListMode']()).toBe(false)
+      })
+
+      it('goes from SWITCH to OWN: the switch disappears and mine is forced', () => {
+        const component = makeComponent({ ns: 'ns-a' }, [], {
+          namespaces: [
+            { ...namespaces(L.SWITCH)[0], id: 'ns-a' },
+            { ...namespaces(L.OWN)[0], id: 'ns-b' },
+          ],
+        })
+        expect(component['canSwitchListMode']()).toBe(true)
+        caseStateMock.listMode.set('all')
+        TestBed.flushEffects()
+
+        queryParams$.next({ ns: 'ns-b' })
+        TestBed.flushEffects()
+
+        expect(component['canSwitchListMode']()).toBe(false)
+        expect(caseStateMock.setListMode).toHaveBeenCalledWith('mine')
+      })
+
+      it('goes from SWITCH to ALL: the switch disappears and all is forced', () => {
+        const component = makeComponent({ ns: 'ns-a' }, [], {
+          namespaces: [
+            { ...namespaces(L.SWITCH)[0], id: 'ns-a' },
+            { ...namespaces(L.ALL)[0], id: 'ns-b' },
+          ],
+        })
+        expect(component['canSwitchListMode']()).toBe(true)
+
+        queryParams$.next({ ns: 'ns-b' })
+        TestBed.flushEffects()
+
+        expect(component['canSwitchListMode']()).toBe(false)
+        expect(caseStateMock.setListMode).toHaveBeenCalledWith('all')
+      })
     })
 
     it('still refreshes through the state service on a live update (which follows the mode)', () => {
       makeComponent({ ns: NS_ID }, [], {
         namespaceRole: R.ADMIN,
-        adminCanListAllCasesEffective: true,
+        adminCaseListingEffective: L.ALL,
         listMode: 'all',
       })
 
