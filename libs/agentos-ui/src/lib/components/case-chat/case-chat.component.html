@@ -3,7 +3,13 @@
     @if (drawerPanel() === 'members') {
       <agentos-case-members [caseId]="caseId" [namespaceId]="namespaceId" (closeRequested)="exchangeOpen.set(false)" />
     } @else {
-      <agentos-exchange-shell [active]="exchangeOpen()" (closeRequested)="exchangeOpen.set(false)" />
+      <agentos-exchange-shell
+        [active]="exchangeOpen()"
+        [selectable]="true"
+        [referenced]="referencedFiles()"
+        (referenceToggled)="onReferenceToggled($event)"
+        (closeRequested)="exchangeOpen.set(false)"
+      />
     }
   </div>
 
@@ -551,7 +557,9 @@
           [namespaceBadge]="namespaceTargeted()"
           [limitError]="attachments.limitError()"
           [disabled]="attachments.isUploading()"
+          [references]="referencedFiles()"
           (removed)="attachments.remove($event)"
+          (referenceRemoved)="removeReference($event)"
           (filesSelected)="attachments.addFiles($event)"
         />
         <textarea

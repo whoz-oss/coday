@@ -41,14 +41,21 @@ import {
   Prompt,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
-import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
+import { BlueprintDirective, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
-import { FileSuggestion } from '../composer-autocomplete/file-mention'
+import {
+  buildReferenceMention,
+  FileSuggestion,
+  mergeFileReferences,
+  withoutFileReferences,
+} from '../composer-autocomplete/file-mention'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -79,6 +86,10 @@ const GIT_INTEGRATION_TYPE = 'GIT'
  * When this instance has Git workspaces and the GIT plugin, and the namespace creates a worktree
  * for every top-level case, the composer offers it unchecked: checking it creates the case with a worktree.
  *
+ * The folder button opens the file drawer on the namespace files (no case yet). The files checked there are kept as
+ * chips ([referencedFiles], like the staged uploads) and go with the first message as a `[Files referenced: ...]`
+ * line of `namespace:<path>` references, the same text as the `#` mention.
+ *
  * The first message is never stored in router state to avoid re-sending on refresh.
  * The created case id is remembered in [pendingCaseId] so a failed upload/send retries
  * against the same case instead of creating a duplicate.
@@ -87,6 +98,8 @@ const GIT_INTEGRATION_TYPE = 'GIT'
   selector: 'agentos-case-home',
   imports: [
     BlueprintDirective,
+    DrawerComponent,
+    ExchangeShellComponent,
     IconButtonComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
@@ -136,6 +149,10 @@ export class CaseHomeComponent implements OnInit {
   private readonly creationChanged = new Subject<void>()
 
   protected readonly inputValue = signal('')
+  /** Right-side file drawer (namespace files only: there is no case yet). */
+  protected readonly filesOpen = signal(false)
+  /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the first message. */
+  protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly isCreating = signal(false)
   protected readonly submitError = signal('')
 
@@ -190,6 +207,7 @@ export class CaseHomeComponent implements OnInit {
         this.autocomplete.reset()
         this.inputValue.set('')
         this.attachments.reset()
+        this.referencedFiles.set([])
         this.pendingCaseId.set(null)
         this.submitError.set('')
         this.isCreating.set(false)
@@ -245,7 +263,9 @@ export class CaseHomeComponent implements OnInit {
 
   protected get canSend(): boolean {
     return (
-      (!!this.inputValue().trim() || this.attachments.hasAttachments()) && !this.isCreating() && !this.voice.isBusy()
+      (!!this.inputValue().trim() || this.attachments.hasAttachments() || this.referencedFiles().length > 0) &&
+      !this.isCreating() &&
+      !this.voice.isBusy()
     )
   }
 
@@ -263,6 +283,7 @@ export class CaseHomeComponent implements OnInit {
       !this.isCreating() &&
       !this.inputValue().trim() &&
       !this.attachments.hasAttachments() &&
+      this.referencedFiles().length === 0 &&
       !this.attachments.isUploading() &&
       !this.voice.isBusy()
     )
@@ -377,6 +398,22 @@ export class CaseHomeComponent implements OnInit {
     input.style.height = `${input.scrollHeight}px`
   }
 
+  /**
+   * A file was checked or unchecked in the drawer, whose checkboxes mirror [referencedFiles]: the chip follows.
+   * The focus stays where it is, the drawer remains open for the next file.
+   */
+  protected onReferenceToggled(change: ExchangeReferenceToggle): void {
+    if (change.referenced) {
+      this.referencedFiles.update((current) => mergeFileReferences(current, [change.ref]))
+    } else {
+      this.removeReference(change.ref)
+    }
+  }
+
+  protected removeReference(ref: ExchangeFileRef): void {
+    this.referencedFiles.update((current) => withoutFileReferences(current, [ref]))
+  }
+
   protected onWorktreeChange(event: Event): void {
     this.worktree.set((event.target as HTMLInputElement).checked)
   }
@@ -432,6 +469,8 @@ export class CaseHomeComponent implements OnInit {
   protected async submit(): Promise<void> {
     if (!this.canSend) return
     const firstMessage = this.inputValue().trim()
+    // Files picked while the case is being created are not part of this message: only these are sent and dropped.
+    const references = this.referencedFiles()
     // Switching namespace or parent abandons this submit, even if the user switches back.
     const namespaceId = this.namespaceId
     const parentCaseId = this.parentCaseId()
@@ -479,6 +518,7 @@ export class CaseHomeComponent implements OnInit {
       // Step 2: upload the attachments to the fresh case (or the namespace on explicit
       // request) and reference them in the message content.
       let content = firstMessage
+      const mentions: string[] = []
       if (this.attachments.hasAttachments()) {
         this.exchangeState.initializeForCase(namespaceId, caseId)
         const scope = resolveUploadScope(firstMessage, this.exchangeState.canWriteNamespace())
@@ -489,7 +529,13 @@ export class CaseHomeComponent implements OnInit {
           // already uploaded.
           return
         }
-        content = content ? `${content}\n\n${mention}` : mention
+        mentions.push(mention)
+      }
+      const referenceMention = buildReferenceMention(references)
+      if (referenceMention) mentions.push(referenceMention)
+      if (mentions.length > 0) {
+        const block = mentions.join('\n')
+        content = content ? `${content}\n\n${block}` : block
       }
 
       // Step 3: send the first message before navigating.
@@ -502,6 +548,7 @@ export class CaseHomeComponent implements OnInit {
 
       // Step 4: navigate — no firstMessage in state, the message is already posted.
       this.attachments.reset()
+      this.referencedFiles.update((current) => withoutFileReferences(current, references))
       this.inputValue.set('')
       this.pendingCaseId.set(null)
       this.router.navigate(['/agentos/home'], { queryParams: { ns: namespaceId, case: caseId } })

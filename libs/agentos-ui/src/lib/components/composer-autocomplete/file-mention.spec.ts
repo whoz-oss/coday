@@ -5,13 +5,17 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import {
   applyFileMention,
+  buildReferenceMention,
   directoryOf,
   FileSuggestion,
   fileMentionPrefix,
   fileReference,
   manifestToSuggestions,
   MAX_FILE_SUGGESTIONS,
+  mergeFileReferences,
   rankFiles,
+  scopeOfRef,
+  withoutFileReferences,
 } from './file-mention'
 
 const file = (path: string, scope: FileSuggestion['scope'] = 'namespace'): FileSuggestion => ({
@@ -55,6 +59,65 @@ describe('fileReference / applyFileMention', () => {
 
   it('does not read a $ of the path as a replacement pattern', () => {
     expect(applyFileMention('#a', 'case:$&-$1.md ')).toBe('case:$&-$1.md ')
+  })
+})
+
+describe('referenced files', () => {
+  const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
+  const cs = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
+
+  it('maps the exchange scope to the mention scope', () => {
+    expect(scopeOfRef(ExchangeFileEntryScopeEnum.CASE)).toBe('case')
+    expect(scopeOfRef(ExchangeFileEntryScopeEnum.NAMESPACE)).toBe('namespace')
+  })
+
+  describe('mergeFileReferences', () => {
+    it('appends the new files in order', () => {
+      expect(mergeFileReferences([ns('a.md')], [cs('b.md'), ns('c.md')])).toEqual([ns('a.md'), cs('b.md'), ns('c.md')])
+    })
+
+    it('skips a file already held, and a file repeated inside the batch', () => {
+      expect(mergeFileReferences([ns('a.md')], [ns('a.md'), ns('b.md'), ns('b.md')])).toEqual([ns('a.md'), ns('b.md')])
+    })
+
+    it('does not confuse the two scopes', () => {
+      expect(mergeFileReferences([ns('a.md')], [cs('a.md')])).toEqual([ns('a.md'), cs('a.md')])
+    })
+
+    it('returns the same list when nothing is new', () => {
+      const current = [ns('a.md')]
+      expect(mergeFileReferences(current, [ns('a.md')])).toBe(current)
+      expect(mergeFileReferences(current, [])).toBe(current)
+    })
+  })
+
+  describe('withoutFileReferences', () => {
+    it('drops the given files only, in the right scope', () => {
+      expect(withoutFileReferences([ns('a.md'), cs('a.md'), ns('b.md')], [ns('a.md')])).toEqual([
+        cs('a.md'),
+        ns('b.md'),
+      ])
+    })
+
+    it('keeps everything when nothing matches', () => {
+      expect(withoutFileReferences([ns('a.md')], [cs('a.md')])).toEqual([ns('a.md')])
+    })
+  })
+
+  describe('buildReferenceMention', () => {
+    it('lists the scope-qualified paths on one line', () => {
+      expect(buildReferenceMention([ns('docs/readme.md'), cs('notes/todo.md')])).toBe(
+        '[Files referenced: namespace:docs/readme.md, case:notes/todo.md]'
+      )
+    })
+
+    it('writes a single file without a separator', () => {
+      expect(buildReferenceMention([ns('a.md')])).toBe('[Files referenced: namespace:a.md]')
+    })
+
+    it('is empty without any file', () => {
+      expect(buildReferenceMention([])).toBe('')
+    })
   })
 })
 

@@ -26,7 +26,7 @@ import { VoiceCapabilityStateService } from '../../services/voice-capability-sta
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
@@ -499,6 +499,144 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
       content: '[Files attached to the case exchange: alone.pdf]',
       userId: 'default-user',
+    })
+  })
+
+  describe('files added from the drawer', () => {
+    const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
+    const cs = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
+    /** What the drawer reports when a checkbox is clicked. */
+    const toggle = (ref: ComponentRef<CaseChatComponent>, file: ExchangeFileRef, referenced = true): void =>
+      ref.instance['onReferenceToggled']({ ref: file, referenced })
+    const add = (ref: ComponentRef<CaseChatComponent>, ...files: ExchangeFileRef[]): void =>
+      files.forEach((file) => toggle(ref, file))
+
+    it('adds a chip reference when a file is checked, once, and leaves the draft alone', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+
+      add(ref, ns('docs/readme.md'), cs('notes/todo.md'))
+      add(ref, ns('docs/readme.md'))
+
+      expect(ref.instance['referencedFiles']()).toEqual([ns('docs/readme.md'), cs('notes/todo.md')])
+      expect(ref.instance['inputValue']()).toBe('compare')
+    })
+
+    it('removes a reference when its chip is removed', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'), cs('a.md'))
+
+      ref.instance['removeReference'](ns('a.md'))
+
+      expect(ref.instance['referencedFiles']()).toEqual([cs('a.md')])
+    })
+
+    it('removes the chip reference when the file is unchecked in the drawer', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'), cs('a.md'))
+
+      toggle(ref, cs('a.md'), false)
+
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+    })
+
+    it('adds nothing on a terminal case, but still lets a file be removed', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'))
+      ref.instance['_sseStatus'].set('KILLED')
+
+      add(ref, ns('b.md'))
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+
+      toggle(ref, ns('a.md'), false)
+      expect(ref.instance['referencedFiles']()).toEqual([])
+    })
+
+    it('can send with references only, and only then', () => {
+      const ref = makeComponent()
+      expect(ref.instance['canSend']).toBe(false)
+
+      add(ref, ns('a.md'))
+
+      expect(ref.instance['canSend']).toBe(true)
+    })
+
+    it('sends a references line after the text, uploads nothing, then clears them', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+      add(ref, ns('docs/readme.md'), cs('notes/todo.md'))
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: 'compare\n\n[Files referenced: namespace:docs/readme.md, case:notes/todo.md]',
+        userId: 'default-user',
+      })
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(ref.instance['referencedFiles']()).toEqual([])
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('sends the references alone when there is no text', async () => {
+      const ref = makeComponent()
+      add(ref, cs('a.md'))
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: '[Files referenced: case:a.md]',
+        userId: 'default-user',
+      })
+    })
+
+    it('combines the upload mention and the references line', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+      add(ref, ns('docs/readme.md'))
+
+      await ref.instance['submit']()
+
+      expect(calls).toEqual(['upload', 'post'])
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content:
+          'compare\n\n[Files attached to the case exchange: report.pdf]\n[Files referenced: namespace:docs/readme.md]',
+        userId: 'default-user',
+      })
+    })
+
+    it('keeps the references when the send fails, and sends them again on the retry', async () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'))
+      http.post.mockImplementationOnce(() => throwError(() => new Error('network down')))
+
+      await ref.instance['submit']()
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledTimes(2)
+      expect(ref.instance['referencedFiles']()).toEqual([])
+    })
+
+    it('drops the references on a case switch, like the staged files', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        add(ref, ns('a.md'))
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['referencedFiles']()).toEqual([])
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
     })
   })
 

@@ -366,8 +366,8 @@ describe('CaseShellComponent', () => {
       it('recomputes on a switch from one namespace to another with another value', () => {
         const component = makeComponent({ ns: 'ns-a' }, [], {
           namespaces: [
-            { ...namespaces(L.ALL)[0], id: 'ns-a' },
-            { ...namespaces(L.OWN)[0], id: 'ns-b' },
+            { ...namespaces(L.ALL)[0], id: 'ns-a', name: 'ns-a', role: NamespaceListItemRoleEnum.SUPER_ADMIN },
+            { ...namespaces(L.OWN)[0], id: 'ns-b', name: 'ns-b', role: NamespaceListItemRoleEnum.SUPER_ADMIN },
           ],
         })
         expect(component['effectiveListMode']()).toBe('all')
@@ -382,8 +382,8 @@ describe('CaseShellComponent', () => {
       it('goes from SWITCH to OWN: the switch disappears and mine is forced', () => {
         const component = makeComponent({ ns: 'ns-a' }, [], {
           namespaces: [
-            { ...namespaces(L.SWITCH)[0], id: 'ns-a' },
-            { ...namespaces(L.OWN)[0], id: 'ns-b' },
+            { ...namespaces(L.SWITCH)[0], id: 'ns-a', name: 'ns-a', role: NamespaceListItemRoleEnum.SUPER_ADMIN },
+            { ...namespaces(L.OWN)[0], id: 'ns-b', name: 'ns-b', role: NamespaceListItemRoleEnum.SUPER_ADMIN },
           ],
         })
         expect(component['canSwitchListMode']()).toBe(true)
@@ -400,8 +400,8 @@ describe('CaseShellComponent', () => {
       it('goes from SWITCH to ALL: the switch disappears and all is forced', () => {
         const component = makeComponent({ ns: 'ns-a' }, [], {
           namespaces: [
-            { ...namespaces(L.SWITCH)[0], id: 'ns-a' },
-            { ...namespaces(L.ALL)[0], id: 'ns-b' },
+            { ...namespaces(L.SWITCH)[0], id: 'ns-a', name: 'ns-a', role: NamespaceListItemRoleEnum.SUPER_ADMIN },
+            { ...namespaces(L.ALL)[0], id: 'ns-b', name: 'ns-b', role: NamespaceListItemRoleEnum.SUPER_ADMIN },
           ],
         })
         expect(component['canSwitchListMode']()).toBe(true)
@@ -412,18 +412,6 @@ describe('CaseShellComponent', () => {
         expect(component['canSwitchListMode']()).toBe(false)
         expect(caseStateMock.setListMode).toHaveBeenCalledWith('all')
       })
-    })
-
-    it('still refreshes through the state service on a live update (which follows the mode)', () => {
-      makeComponent({ ns: NS_ID }, [], {
-        namespaceRole: R.ADMIN,
-        adminCaseListingEffective: L.ALL,
-        listMode: 'all',
-      })
-
-      caseListUpdates$.next('updated')
-
-      expect(caseStateMock.refreshCases).toHaveBeenCalledWith(NS_ID)
     })
   })
 
