@@ -2,6 +2,48 @@ import { TestBed } from '@angular/core/testing'
 import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangeFileListComponent } from './exchange-file-list.component'
 
+describe('Exchange file list selection', () => {
+  beforeEach(() => TestBed.configureTestingModule({ imports: [ExchangeFileListComponent] }))
+
+  it('checks the rows of selectedPaths and emits a scope-qualified ref on toggle', () => {
+    const fixture = TestBed.createComponent(ExchangeFileListComponent)
+    fixture.componentRef.setInput('scope', ExchangeFileEntryScopeEnum.NAMESPACE)
+    fixture.componentRef.setInput('selectable', true)
+    fixture.componentRef.setInput('selectedPaths', new Set(['b.md']))
+    fixture.componentRef.setInput('rows', [
+      { path: 'a.md', filename: 'a.md', meta: '', icon: 'description' },
+      { path: 'b.md', filename: 'b.md', meta: '', icon: 'description' },
+    ])
+    const toggled = jest.fn()
+    fixture.componentInstance.selectionToggled.subscribe(toggled)
+    fixture.detectChanges()
+    const boxes = Array.from<HTMLInputElement>(fixture.nativeElement.querySelectorAll('input[type="checkbox"]'))
+    expect(boxes.map((box) => box.checked)).toEqual([false, true])
+    boxes[0]!.click()
+    expect(toggled).toHaveBeenCalledWith({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'a.md' })
+  })
+
+  it('does not make a missing (deleted) row selectable', () => {
+    const fixture = TestBed.createComponent(ExchangeFileListComponent)
+    fixture.componentRef.setInput('scope', ExchangeFileEntryScopeEnum.CASE)
+    fixture.componentRef.setInput('selectable', true)
+    fixture.componentRef.setInput('rows', [
+      { path: 'a.md', filename: 'a.md', meta: '', icon: 'description' },
+      { path: 'gone.md', filename: 'gone.md', meta: '', icon: 'description', gitStatus: 'DELETED', missing: true },
+    ])
+    fixture.detectChanges()
+    expect(fixture.nativeElement.querySelectorAll('input[type="checkbox"]')).toHaveLength(1)
+  })
+
+  it('offers no checkbox by default', () => {
+    const fixture = TestBed.createComponent(ExchangeFileListComponent)
+    fixture.componentRef.setInput('scope', ExchangeFileEntryScopeEnum.CASE)
+    fixture.componentRef.setInput('rows', [{ path: 'a.md', filename: 'a.md', meta: '', icon: 'description' }])
+    fixture.detectChanges()
+    expect(fixture.nativeElement.querySelector('input[type="checkbox"]')).toBeNull()
+  })
+})
+
 describe('Exchange file Git indicators', () => {
   beforeEach(() => TestBed.configureTestingModule({ imports: [ExchangeFileListComponent] }))
 

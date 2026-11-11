@@ -38,7 +38,11 @@ export class ExchangeItemComponent {
   readonly row = input.required<ExchangeFileRow>()
   readonly active = input<boolean>(false)
   readonly canWrite = input<boolean>(false)
+  /** Offers a checkbox to pick the row (never on a missing, i.e. deleted, row). */
+  readonly selectable = input<boolean>(false)
+  readonly selected = input<boolean>(false)
 
+  readonly selectionToggled = output<void>()
   readonly viewRequested = output<void>()
   readonly downloadRequested = output<void>()
   readonly deleteRequested = output<void>()
@@ -50,6 +54,16 @@ export class ExchangeItemComponent {
 
   protected copyPath(): void {
     void this.copyFeedback.copy(this.row().path)
+  }
+
+  /**
+   * The checkbox is controlled by `selected`: it goes back to it at once, and shows the new state only if the
+   * parent applies it (the next binding update), so it never shows something the parent refused.
+   */
+  protected onToggle(event: Event): void {
+    const checkbox = event.target as HTMLInputElement
+    checkbox.checked = this.selected()
+    this.selectionToggled.emit()
   }
 
   /**

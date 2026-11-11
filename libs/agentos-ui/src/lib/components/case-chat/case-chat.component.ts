@@ -78,11 +78,17 @@ import {
 } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
-import { FileSuggestion } from '../composer-autocomplete/file-mention'
+import {
+  buildReferenceMention,
+  FileSuggestion,
+  mergeFileReferences,
+  withoutFileReferences,
+} from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
+import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
 import { findLegitimateAnswer, runningAfter } from './case-chat.utils'
@@ -237,6 +243,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
+  /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the next message. */
+  protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly exchangeFileCount = this.exchangeState.fileCount
 
   /** Files staged on the next message (component-scoped instance, see providers). */
@@ -856,7 +864,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected get canSend(): boolean {
     return (
-      (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
+      (!!this.inputValue().trim() || this.attachments.hasAttachments() || this.referencedFiles().length > 0) &&
       !this.isRunning() &&
       // Only a confirmed deletion closes the composer: a dead stream alone may just be a backend
       // restarting, and a message posted then still reaches a healthy case.
@@ -1312,6 +1320,23 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.closeFileSuggestions()
   }
 
+  /**
+   * A file was checked or unchecked in the drawer, whose checkboxes mirror [referencedFiles]: the chip follows.
+   * Nothing is added on a terminal case (the checkbox then stays unchecked), but a file can always be removed.
+   * The focus stays where it is, the drawer remains open for the next file.
+   */
+  protected onReferenceToggled(change: ExchangeReferenceToggle): void {
+    if (!change.referenced) {
+      this.removeReference(change.ref)
+    } else if (!this.isTerminal()) {
+      this.referencedFiles.update((current) => mergeFileReferences(current, [change.ref]))
+    }
+  }
+
+  protected removeReference(ref: ExchangeFileRef): void {
+    this.referencedFiles.update((current) => withoutFileReferences(current, [ref]))
+  }
+
   protected closeSlashAutocomplete(): void {
     this.autocomplete.slashSuggestions.set([])
   }
@@ -1380,6 +1405,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.isEditing.set(false)
     this.autocomplete.reset()
     this.attachments.reset()
+    this.referencedFiles.set([])
     this.voice.reset()
     this.connectSse()
   }
@@ -1407,21 +1433,32 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
       return
     }
-    if (this.attachments.hasAttachments()) {
+    // Referenced files are sent like uploaded ones (awaited, kept on a failed send), but have nothing to upload.
+    const references = this.referencedFiles()
+    if (this.attachments.hasAttachments() || references.length > 0) {
       this.submitting = true
       try {
         const caseIdAtSubmit = this.caseId
-        const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
-        const mention = await this.attachments.uploadAllAndBuildMention(scope)
+        const mentions: string[] = []
+        if (this.attachments.hasAttachments()) {
+          const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
+          const mention = await this.attachments.uploadAllAndBuildMention(scope)
+          if (mention === null) return
+          mentions.push(mention)
+        }
+        const referenceMention = buildReferenceMention(references)
+        if (referenceMention) mentions.push(referenceMention)
+        const mentionBlock = mentions.join('\n')
         // An upload failure or a mid-flight case switch blocks the send: failed chips carry
         // the mapped errors (or the switch reset the batch), the input stays intact.
-        if (mention === null || this.caseId !== caseIdAtSubmit) return
-        const sent = await this.postMessage(content ? `${content}\n\n${mention}` : mention)
+        if (this.caseId !== caseIdAtSubmit) return
+        const sent = await this.postMessage(content ? `${content}\n\n${mentionBlock}` : mentionBlock)
         // Only a confirmed send clears the composer: on failure the text and the uploaded
         // chips stay, and a retry rebuilds the mention without re-uploading anything.
         if (sent && this.caseId === caseIdAtSubmit) {
           this.inputValue.set('')
           this.attachments.reset()
+          this.referencedFiles.update((current) => withoutFileReferences(current, references))
         }
       } finally {
         this.submitting = false

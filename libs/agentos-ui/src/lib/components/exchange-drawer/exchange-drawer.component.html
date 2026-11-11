@@ -128,6 +128,9 @@
                     [scope]="CASE"
                     [canWrite]="canWriteCase()"
                     [activeFile]="activeFile()"
+                    [selectable]="selectable()"
+                    [selectedPaths]="referencedCasePaths()"
+                    (selectionToggled)="toggleReference($event)"
                     (fileSelected)="onFileSelected($event)"
                     (diffRequested)="openFileDiff($event)"
                     (downloadRequested)="downloadRequested.emit($event)"
@@ -253,6 +256,9 @@
                                   [row]="row"
                                   [active]="isNamespaceFileActive(row.path)"
                                   [canWrite]="canWriteNamespace()"
+                                  [selectable]="selectable()"
+                                  [selected]="referencedNamespacePaths().has(row.path)"
+                                  (selectionToggled)="toggleReference({ scope: NAMESPACE, path: row.path })"
                                   (viewRequested)="onFileSelected({ scope: NAMESPACE, path: row.path })"
                                   (downloadRequested)="downloadRequested.emit({ scope: NAMESPACE, path: row.path })"
                                   (deleteRequested)="deleteRequested.emit({ scope: NAMESPACE, path: row.path })"
@@ -314,6 +320,9 @@
                       [scope]="NAMESPACE"
                       [canWrite]="canWriteNamespace()"
                       [activeFile]="activeFile()"
+                      [selectable]="selectable()"
+                      [selectedPaths]="referencedNamespacePaths()"
+                      (selectionToggled)="toggleReference($event)"
                       (fileSelected)="onFileSelected($event)"
                       (downloadRequested)="downloadRequested.emit($event)"
                       (deleteRequested)="deleteRequested.emit($event)"
@@ -340,6 +349,13 @@
         <p class="exchange-drawer__no-access">No files available.</p>
       }
     </div>
+
+    @if (selectable() && referencedCount() > 0) {
+      <div class="exchange-drawer__selection-bar" role="region" aria-label="Files in the message">
+        <span class="exchange-drawer__selection-count" aria-live="polite">{{ referencedCount() }} in message</span>
+        <button type="button" class="exchange-drawer__retry" (click)="clearReferences()">Clear</button>
+      </div>
+    }
   }
 
   <input

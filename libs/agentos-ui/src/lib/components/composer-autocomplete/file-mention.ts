@@ -1,4 +1,9 @@
-import { ExchangeManifest, ExchangeManifestCapabilityEnum } from '@whoz-oss/agentos-api-client'
+import {
+  ExchangeFileEntryScopeEnum,
+  ExchangeManifest,
+  ExchangeManifestCapabilityEnum,
+} from '@whoz-oss/agentos-api-client'
+import type { ExchangeFileRef, ExchangeScope } from '../../services/exchange-state.service'
 
 /**
  * Pure helpers for the `#` file mention of the chat composer (no Angular, no HTTP).
@@ -36,6 +41,46 @@ export function fileMentionPrefix(value: string): string | null {
 /** Text inserted for a file, with the trailing space that ends the mention. */
 export function fileReference(file: Pick<FileSuggestion, 'scope' | 'path'>): string {
   return `${file.scope}:${file.path} `
+}
+
+/** Mention scope of an exchange scope. */
+export function scopeOfRef(scope: ExchangeScope): FileMentionScope {
+  return scope === ExchangeFileEntryScopeEnum.CASE ? 'case' : 'namespace'
+}
+
+/** Identity of a referenced file across both scopes. */
+const referenceKey = (ref: ExchangeFileRef): string => `${ref.scope}:${ref.path}`
+
+/**
+ * [current] plus the files of [refs] it does not hold yet (same scope and path), in order.
+ * Returns [current] itself when nothing is new.
+ */
+export function mergeFileReferences(current: ExchangeFileRef[], refs: ExchangeFileRef[]): ExchangeFileRef[] {
+  const known = new Set(current.map(referenceKey))
+  const added: ExchangeFileRef[] = []
+  for (const ref of refs) {
+    if (known.has(referenceKey(ref))) continue
+    known.add(referenceKey(ref))
+    added.push({ scope: ref.scope, path: ref.path })
+  }
+  return added.length > 0 ? [...current, ...added] : current
+}
+
+/** [current] without the files of [removed]. */
+export function withoutFileReferences(current: ExchangeFileRef[], removed: ExchangeFileRef[]): ExchangeFileRef[] {
+  const gone = new Set(removed.map(referenceKey))
+  return current.filter((ref) => !gone.has(referenceKey(ref)))
+}
+
+/**
+ * Line appended to the outgoing message for the files referenced from the drawer, e.g.
+ * `[Files referenced: namespace:docs/readme.md, case:notes/todo.md]`: the exact scope-qualified paths the agent
+ * reads with its exchange tools, as the `#` mention writes them. Empty when there is none.
+ */
+export function buildReferenceMention(refs: ExchangeFileRef[]): string {
+  if (refs.length === 0) return ''
+  const references = refs.map((ref) => fileReference({ scope: scopeOfRef(ref.scope), path: ref.path }).trim())
+  return `[Files referenced: ${references.join(', ')}]`
 }
 
 /** Replaces the trailing `#<prefix>` word of the value with [reference]. */

@@ -20,7 +20,7 @@ export interface ProvisionInput extends ProfileInput {
   orchestrator: RuntimeState['orchestrator']
   /** The ports of the stack (already chosen, see `chooseStackPorts`). */
   ports: PickedPorts
-  /** Block the ports were chosen in, remembered for the next start (undefined: the OS assigned them). */
+  /** Block the ports were chosen in, recorded in state.json for information only (it never influences the choice). */
   portBlock?: number
   log?: (message: string) => void
 }
