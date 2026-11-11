@@ -123,6 +123,61 @@ class NamespaceControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
                 .andExpect(jsonPath("$.maxToolRounds").doesNotExist())
         }
 
+        "POST /api/namespaces with adminCanListAllCases returns 201 and echoes it" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "list-all-ns", "adminCanListAllCases": true }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.adminCanListAllCases").value(true))
+        }
+
+        "PUT /api/namespaces/{id} sets, switches off, then clears adminCanListAllCases" {
+            val created = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "list-all-update"),
+            )
+            val url = "/api/namespaces/${created.id}"
+
+            mockMvc.perform(
+                put(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "list-all-update", "adminCanListAllCases": true }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.adminCanListAllCases").value(true))
+
+            mockMvc.perform(
+                put(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "list-all-update", "adminCanListAllCases": false }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.adminCanListAllCases").value(false))
+
+            mockMvc.perform(
+                put(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "list-all-update" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.adminCanListAllCases").doesNotExist())
+        }
+
+        "GET /api/namespaces exposes the resolved adminCanListAllCases: the override wins, else the platform default" {
+            val forced = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "forced-${UUID.randomUUID()}", adminCanListAllCases = true),
+            )
+            val inheriting = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "inheriting-${UUID.randomUUID()}"),
+            )
+
+            mockMvc.perform(get("/api/namespaces"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.id == '${forced.id}')].adminCanListAllCasesEffective").value(true))
+                .andExpect(jsonPath("$[?(@.id == '${inheriting.id}')].adminCanListAllCasesEffective").value(false))
+        }
+
         "PUT /api/namespaces/{id} with negative runCostThreshold returns 400" {
             val created = namespaceService.create(
                 Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "threshold-update-neg"),

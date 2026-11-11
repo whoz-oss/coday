@@ -86,7 +86,10 @@ class NamespaceControllerSpec : StringSpec({
         defaultAgentName = defaultAgentName,
     )
 
-    beforeTest { clearAllMocks() }
+    beforeTest {
+        clearAllMocks()
+        every { namespaceService.resolveAdminCanListAllCases(any<Namespace>()) } returns false
+    }
 
     // -------------------------------------------------------------------------
     // Mapping
@@ -105,6 +108,12 @@ class NamespaceControllerSpec : StringSpec({
     "toDto exposes maxToolRounds, null when the namespace sets none" {
         ns().copy(maxToolRounds = 250).toDto().maxToolRounds shouldBe 250
         ns().toDto().maxToolRounds shouldBe null
+    }
+
+    "toDto exposes the adminCanListAllCases override as is: true, false, or null to inherit" {
+        ns().copy(adminCanListAllCases = true).toDto().adminCanListAllCases shouldBe true
+        ns().copy(adminCanListAllCases = false).toDto().adminCanListAllCases shouldBe false
+        ns().toDto().adminCanListAllCases shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -167,6 +176,29 @@ class NamespaceControllerSpec : StringSpec({
         val result = controller.listAll()
 
         result.map { it.role } shouldBe listOf("SUPER-ADMIN", "SUPER-ADMIN")
+    }
+
+    "listAll carries the resolved adminCanListAllCases of each namespace, not the raw override" {
+        val on = ns(name = "on")
+        val off = ns(name = "off")
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.findAll() } returns listOf(on, off)
+        every { namespaceService.resolveAdminCanListAllCases(on) } returns true
+        every { namespaceService.resolveAdminCanListAllCases(off) } returns false
+
+        controller.listAll().associate { it.id to it.adminCanListAllCasesEffective } shouldBe
+            mapOf(on.id to true, off.id to false)
+    }
+
+    "listAll carries the resolved adminCanListAllCases for a regular user too" {
+        val member = ns(name = "member-ns")
+        every { userService.getCurrentUser() } returns regularUser
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ) } returns listOf(member.id)
+        every { namespaceService.findByIds(listOf(member.id)) } returns listOf(member)
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.WRITE) } returns emptyList()
+        every { namespaceService.resolveAdminCanListAllCases(member) } returns true
+
+        controller.listAll().single().adminCanListAllCasesEffective shouldBe true
     }
 
     "listAll returns empty list for a regular user with no permissions" {
@@ -289,6 +321,63 @@ class NamespaceControllerSpec : StringSpec({
         controller.update(existing.id, r)
 
         verify(exactly = 1) { namespaceService.update(match { it.maxToolRounds == null }) }
+    }
+
+    "update carries adminCanListAllCases from resource into the saved entity" {
+        val existing = ns()
+        val r = resource(id = existing.id).copy(adminCanListAllCases = true)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r).adminCanListAllCases shouldBe true
+
+        verify(exactly = 1) { namespaceService.update(match { it.adminCanListAllCases == true }) }
+    }
+
+    "update keeps an explicit false, which is not the same as inheriting" {
+        val existing = ns().copy(adminCanListAllCases = true)
+        val r = resource(id = existing.id).copy(adminCanListAllCases = false)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r)
+
+        verify(exactly = 1) { namespaceService.update(match { it.adminCanListAllCases == false }) }
+    }
+
+    "update clears adminCanListAllCases when resource sends null" {
+        val existing = ns().copy(adminCanListAllCases = true)
+        val r = resource(id = existing.id).copy(adminCanListAllCases = null)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r)
+
+        verify(exactly = 1) { namespaceService.update(match { it.adminCanListAllCases == null }) }
+    }
+
+    "update does not need super-admin rights to set adminCanListAllCases (unlike sharedExchangePath)" {
+        val existing = ns()
+        val r = resource(id = existing.id).copy(adminCanListAllCases = true)
+        every { namespaceService.findById(existing.id) } returns existing
+        every { userService.getCurrentUser() } returns regularUser
+        every { namespaceService.update(any()) } answers { firstArg() }
+
+        controller.update(existing.id, r).adminCanListAllCases shouldBe true
+    }
+
+    "create carries adminCanListAllCases from resource into the saved entity" {
+        val r = resource(id = null, name = "with-toggle").copy(adminCanListAllCases = true)
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.create(any()) } answers { firstArg() }
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+        controller.create(r).adminCanListAllCases shouldBe true
+
+        verify(exactly = 1) { namespaceService.create(match { it.adminCanListAllCases == true }) }
     }
 
     "update clears defaultAgentName when resource sends null" {

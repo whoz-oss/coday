@@ -95,6 +95,12 @@ class CaseController(
      * 2. Otherwise → permission-filtered listing via [CaseService.findAccessibleByUserInNamespace]
      *    which respects FR15 (MEMBERs see only their own cases or those they were directly
      *    granted READ on).
+     *
+     * The case drawer lists through this endpoint when the user switched to "All cases", a switch
+     * offered to namespace admins only when the namespace enables it
+     * ([io.whozoss.agentos.namespace.NamespaceService.resolveAdminCanListAllCases], `agentos.case.admin-list-all-cases-default`).
+     * That setting only drives the drawer: the authorization and the paths above do not depend on it. In that
+     * listing a case the caller has no direct relation on has no `role`.
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")

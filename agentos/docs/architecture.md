@@ -99,3 +99,19 @@ A case is never summarized twice at once. When the summary is stored, the namesp
 **Disabling.** Set `agentos.case.summary-enabled: false` (environment variable `AGENTOS_CASE_SUMMARY_ENABLED=false`), read at startup. No new summary is generated; existing ones are kept and stay searchable.
 
 **Not context compaction.** The summary is a label for humans and for search. It is never sent back to the agent's model and is unrelated to the context compaction planned in #1285, whose summary is written for the model; the two stay separate, even if some generation code is shared later.
+
+## Case listing and the "All cases" drawer switch
+
+Three endpoints list the cases of a namespace, with different reach (none of them changed by the setting below):
+
+- `GET /api/cases/by-parentId/{id}/mine`: only the cases the caller has a direct ADMIN or MEMBER relation on. It is the drawer's default source, and every case it returns can be starred.
+- `GET /api/cases/by-parentId/{id}`: a namespace ADMIN gets every case of the namespace (unfiltered fast path); anyone else gets the cases they can read.
+- Opening a case by id is gated by Case READ, which includes namespace-ADMIN transitivity.
+
+**Namespace setting `adminCanListAllCases`.** It decides whether the administrators of a namespace get a *Mine / All cases* switch in the case drawer. In *All cases* the drawer lists through `GET /api/cases/by-parentId/{id}` instead of `/mine`. It is only a drawer feature: it grants nothing and removes nothing, who may read which case is decided by the permission model alone.
+
+- Resolution: `Namespace.adminCanListAllCases ?: agentos.case.admin-list-all-cases-default` (`NamespaceService.resolveAdminCanListAllCases`). `null` on the namespace means *inherit*, never *no*.
+- Platform default: `agentos.case.admin-list-all-cases-default`, environment variable `AGENTOS_CASE_ADMIN_LIST_ALL_CASES_DEFAULT`, **false** unless set. Read at startup.
+- Who sets the namespace value: any namespace ADMIN (PUT `/api/namespaces/{id}`), in the namespace settings form (*Admins can list all cases*: Inherit platform default / Yes / No), or the configuration agent (`adminCanListAllCases` on a namespace). Unlike `sharedExchangePath`, it is not a host-level decision.
+- What the UI reads: `GET /api/namespaces` carries the resolved value as `adminCanListAllCasesEffective` (read-only), next to the caller's `role`. The switch is shown only when it is true and the role is `ADMIN` or `SUPER-ADMIN`. The raw override is on `GET /api/namespaces/{id}` as `adminCanListAllCases`.
+- In *All cases*, a case the caller has no direct relation on comes without a `role`: it can be opened, but the drawer offers no star (the server answers 409), rename, stop or delete (those need a direct ADMIN relation). Live list updates follow the mode in force, and the mode goes back to *Mine* when the namespace changes.

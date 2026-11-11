@@ -55,4 +55,12 @@ data class Namespace(
      * is built, so a change applies from the next run on, never during one.
      */
     val maxToolRounds: Int? = null,
+    /**
+     * Whether the administrators of this namespace get a "Mine / All cases" switch in the case drawer.
+     *
+     * **`null` means "inherit the platform default"** (`agentos.case.admin-list-all-cases-default`, false
+     * unless configured), see [NamespaceService.resolveAdminCanListAllCases]. It only drives the drawer:
+     * who may read which case, and `GET /api/cases/by-parentId/{parentId}`, are not affected.
+     */
+    val adminCanListAllCases: Boolean? = null,
 ) : Entity

@@ -29,6 +29,10 @@ import java.util.UUID
  *   agent run. Null means "inherit from the platform default", never "no limit". On update, a
  *   null value clears an existing override, so clients editing another property must send the
  *   current value back.
+ * @property adminCanListAllCases Namespace-level override of whether the namespace administrators get a
+ *   "Mine / All cases" switch in the case drawer. Null means "inherit from the platform default", never
+ *   "no". It only drives the drawer, not who may read which case. The resolved value is on
+ *   [NamespaceListItem.adminCanListAllCasesEffective]. On update, a null value clears an existing override.
  */
 @Schema(name = "Namespace")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -70,4 +74,11 @@ data class NamespaceDto(
     )
     @field:Min(value = 1, message = "maxToolRounds must be at least 1")
     val maxToolRounds: Int? = null,
+    @field:Schema(
+        description =
+            "Whether the administrators of this namespace get a 'Mine / All cases' switch in the case drawer. " +
+                "Null means inherit from the platform default (agentos.case.admin-list-all-cases-default). " +
+                "On PUT, null clears an existing override.",
+    )
+    val adminCanListAllCases: Boolean? = null,
 )

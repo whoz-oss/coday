@@ -25,7 +25,7 @@ import {
   ThemeMode,
 } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
-import { CaseStateService } from '../../services/case-state.service'
+import { CaseListMode, CaseStateService } from '../../services/case-state.service'
 import { GlobalStreamService } from '../../services/global-stream.service'
 import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
@@ -186,6 +186,24 @@ export class CaseShellComponent {
     return namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN'
   })
 
+  /**
+   * Whether the drawer offers the "Mine / All cases" switch: the namespace enables it (resolved value, override or
+   * platform default) AND the caller administers it. The role comes from the namespace list, the same signal that
+   * gates the namespace settings. The switch only changes what the drawer lists: the server decides who may read what.
+   */
+  protected readonly canListAllCases = computed(() => {
+    const namespace = this.namespaces().find((item) => item.id === this.namespaceId())
+    if (!namespace?.adminCanListAllCasesEffective) return false
+    return namespace.role === 'ADMIN' || namespace.role === 'SUPER-ADMIN'
+  })
+
+  protected readonly listMode = this.caseState.listMode
+
+  /** The mode in force, `mine` whenever the switch is not offered (a stale `all` must not outlive the toggle). */
+  protected readonly effectiveListMode = computed<CaseListMode>(() =>
+    this.canListAllCases() ? this.listMode() : 'mine'
+  )
+
   protected readonly canWriteActiveCase = computed(() => {
     const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
     return this.canConfigureNamespace() || caseRole === 'ADMIN'
@@ -234,6 +252,7 @@ export class CaseShellComponent {
     // Load the list, then watch the invalidations of this namespace. They ride the aggregated
     // stream, which one tab holds for the whole browser: a stream per namespace and per tab spent
     // a connection out of the six a browser grants per origin (#1616).
+    // Live refreshes go through CaseStateService.refreshCases, which follows the current list mode.
     effect((cleanup) => {
       const nsId = this.namespaceId()
       if (!nsId) return
@@ -251,6 +270,14 @@ export class CaseShellComponent {
         this.globalStream.connected$
       ).subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
+    })
+
+    // The switch can disappear while `all` is selected (the toggle is turned off, the role is lost): fall back.
+    effect(() => {
+      const namespacesLoaded = this.namespaces().length > 0
+      if (namespacesLoaded && !this.canListAllCases() && this.caseState.listMode() === 'all') {
+        this.caseState.setListMode('mine')
+      }
     })
 
     // Remember the open case so the settings pages can bring the user back to it.
@@ -290,6 +317,11 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
   // Cases
   // ---------------------------------------------------------------------------
+
+  protected onListModeChanged(mode: CaseListMode): void {
+    if (mode === 'all' && !this.canListAllCases()) return
+    this.caseState.setListMode(mode)
+  }
 
   protected onCaseSelected(caseId: string): void {
     this.router.navigate(['/agentos/home'], {

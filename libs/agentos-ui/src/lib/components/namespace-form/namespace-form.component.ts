@@ -12,6 +12,15 @@ import { absolutePathValidator } from './absolute-path.validator'
 const MAX_TOOL_ROUNDS_MIN = 1
 const MAX_TOOL_ROUNDS_MAX = 2_147_483_647
 
+/** Tri-state of the "admins can list all cases" override: `inherit` is a null (absent) value, never a "no". */
+export type AdminListAllCasesChoice = 'inherit' | 'yes' | 'no'
+
+const choiceOf = (value: boolean | undefined | null): AdminListAllCasesChoice =>
+  value === true ? 'yes' : value === false ? 'no' : 'inherit'
+
+const overrideOf = (choice: AdminListAllCasesChoice): boolean | undefined =>
+  choice === 'yes' ? true : choice === 'no' ? false : undefined
+
 /**
  * NamespaceFormComponent — full-page create / edit form for a namespace.
  *
@@ -90,6 +99,7 @@ export class NamespaceFormComponent implements OnInit {
         Validators.pattern(/^\d+$/),
       ],
     }),
+    adminCanListAllCases: new FormControl<AdminListAllCasesChoice>('inherit', { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -122,6 +132,10 @@ export class NamespaceFormComponent implements OnInit {
 
   protected get maxToolRoundsControl() {
     return this.form.controls.maxToolRounds
+  }
+
+  protected get adminCanListAllCasesControl() {
+    return this.form.controls.adminCanListAllCases
   }
 
   /**
@@ -182,6 +196,7 @@ export class NamespaceFormComponent implements OnInit {
           this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
           this.runCostThresholdControl.setValue(ns.runCostThreshold ?? null)
           this.maxToolRoundsControl.setValue(ns.maxToolRounds ?? null)
+          this.adminCanListAllCasesControl.setValue(choiceOf(ns.adminCanListAllCases))
           this.isLoading.set(false)
         },
         error: () => {
@@ -208,6 +223,8 @@ export class NamespaceFormComponent implements OnInit {
       // emptied field is sent as absent, which is how the backend clears the override on PUT. An
       // untouched field still carries the loaded value, so an unrelated edit never wipes it.
       maxToolRounds: this.maxToolRoundsControl.value ?? undefined,
+      // Same rule: `inherit` is sent as absent (the backend clears the override), yes and no as true and false.
+      adminCanListAllCases: overrideOf(this.adminCanListAllCasesControl.value),
       // Only a super-admin sends the field. For anyone else the loaded value, spread above, goes back unchanged.
       ...(this.canEditSharedExchangePath() ? { sharedExchangePath: this.sharedExchangePathPayload() } : {}),
     }

@@ -70,6 +70,7 @@ class NamespaceController(
                     // Creation is super-admin only (see create), which is the rule for this field too.
                     sharedExchangePath = requireAbsolutePath(resource.sharedExchangePath),
                     maxToolRounds = resource.maxToolRounds,
+                    adminCanListAllCases = resource.adminCanListAllCases,
                 )
             },
         )
@@ -83,7 +84,7 @@ class NamespaceController(
             return namespaceService
                 .findAll()
                 .filter { it.metadata.removed != true }
-                .map { it.toListItem(SUPER_ADMIN) }
+                .map { it.toListItem(SUPER_ADMIN, namespaceService.resolveAdminCanListAllCases(it)) }
         }
         val userId = currentUser.id.toString()
         val readableIds = namespaceService.findIdsVisibleTo(userId, Action.READ)
@@ -91,7 +92,10 @@ class NamespaceController(
         val namespaces = namespaceService.findByIds(readableIds)
         val adminIdsSet = namespaceService.findIdsVisibleTo(userId, Action.WRITE).toSet()
         return namespaces.map { ns ->
-            ns.toListItem(if (ns.metadata.id in adminIdsSet) ADMIN else MEMBER)
+            ns.toListItem(
+                if (ns.metadata.id in adminIdsSet) ADMIN else MEMBER,
+                namespaceService.resolveAdminCanListAllCases(ns),
+            )
         }
     }
 
@@ -148,6 +152,9 @@ class NamespaceController(
                     runCostThreshold = resource.runCostThreshold,
                     sharedExchangePath = resolveSharedExchangePath(existing, resource),
                     maxToolRounds = resource.maxToolRounds,
+                    // Editable by a namespace ADMIN like the other behaviour settings: it only shows a drawer
+                    // switch and grants no access (unlike sharedExchangePath, a host-level decision).
+                    adminCanListAllCases = resource.adminCanListAllCases,
                 ),
             ).toDto()
     }
@@ -269,11 +276,16 @@ fun Namespace.toDto() =
         runCostThreshold = runCostThreshold,
         sharedExchangePath = sharedExchangePath,
         maxToolRounds = maxToolRounds,
+        adminCanListAllCases = adminCanListAllCases,
     )
 
 // runCostThreshold is intentionally absent from NamespaceListItem — it is an admin-configuration
 // detail not needed in list views. Full value is available via getById / update.
-private fun Namespace.toListItem(role: String) =
+// adminCanListAllCasesEffective is the exception: the drawer needs the resolved value, not the raw override.
+private fun Namespace.toListItem(
+    role: String,
+    adminCanListAllCasesEffective: Boolean,
+) =
     NamespaceListItem(
         id = metadata.id,
         name = name,
@@ -282,4 +294,5 @@ private fun Namespace.toListItem(role: String) =
         externalId = externalId,
         defaultAgentName = defaultAgentName,
         role = role,
+        adminCanListAllCasesEffective = adminCanListAllCasesEffective,
     )

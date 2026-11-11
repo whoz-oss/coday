@@ -131,6 +131,24 @@
         />
       </ds-form-field>
 
+      <ds-form-field
+        label="Admins can list all cases"
+        controlId="ns-admin-list-all-cases"
+        hintId="ns-admin-list-all-cases-hint"
+        hint="Gives the administrators of this namespace a Mine / All cases switch in the case drawer. It only changes what the drawer lists, not who may open a case. Inherit follows the platform default (off unless the server sets AGENTOS_CASE_ADMIN_LIST_ALL_CASES_DEFAULT)."
+      >
+        <select
+          dsControl
+          id="ns-admin-list-all-cases"
+          aria-describedby="ns-admin-list-all-cases-hint"
+          [formControl]="adminCanListAllCasesControl"
+        >
+          <option value="inherit">Inherit platform default</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </ds-form-field>
+
       <ds-form-actions>
         <button dsButton variant="primary" type="submit" [disabled]="form.invalid || isSubmitting()">
           {{ isEditMode() ? 'Save changes' : 'Create' }}

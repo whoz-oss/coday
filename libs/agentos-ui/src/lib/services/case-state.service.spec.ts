@@ -7,6 +7,7 @@ describe('CaseStateService', () => {
   const caseWith = (id: string, favorite = false): Case => ({ id, namespaceId: 'ns', favorite }) as unknown as Case
   let controllerMock: {
     listMineByParentCase: jest.Mock
+    listByParentCase: jest.Mock
     deleteCase: jest.Mock
     starCase: jest.Mock
     unstarCase: jest.Mock
@@ -17,6 +18,7 @@ describe('CaseStateService', () => {
   function makeService(listMineMock?: jest.Mock): CaseStateService {
     controllerMock = {
       listMineByParentCase: listMineMock ?? jest.fn().mockReturnValue(of([])),
+      listByParentCase: jest.fn().mockReturnValue(of([])),
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
       starCase: jest.fn().mockReturnValue(of(undefined)),
       unstarCase: jest.fn().mockReturnValue(of(undefined)),
@@ -110,6 +112,158 @@ describe('CaseStateService', () => {
 
     svc.loadCases('ns-1') // same namespace, reload fails → keep what we had
     expect(svc.cases()).toEqual([caseWith('a')])
+  })
+
+  describe('list mode', () => {
+    it('starts in mine mode and loads through the /mine listing', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([caseWith('a')])))
+
+      svc.loadCases('ns-1')
+
+      expect(svc.listMode()).toBe('mine')
+      expect(controllerMock.listMineByParentCase).toHaveBeenCalledWith('ns-1')
+      expect(controllerMock.listByParentCase).not.toHaveBeenCalled()
+    })
+
+    it('switching to all reloads through the unfiltered listing', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([caseWith('mine')])))
+      controllerMock.listByParentCase.mockReturnValue(of([caseWith('mine'), caseWith('other')]))
+      svc.loadCases('ns-1')
+
+      svc.setListMode('all')
+
+      expect(svc.listMode()).toBe('all')
+      expect(controllerMock.listByParentCase).toHaveBeenCalledWith('ns-1')
+      expect(svc.cases().map((c) => c.id)).toEqual(['mine', 'other'])
+    })
+
+    it('switching back to mine reloads through /mine', () => {
+      const listMine = jest.fn().mockReturnValue(of([caseWith('mine')]))
+      const svc = makeService(listMine)
+      svc.loadCases('ns-1')
+      svc.setListMode('all')
+
+      svc.setListMode('mine')
+
+      expect(listMine).toHaveBeenCalledTimes(2)
+      expect(svc.cases().map((c) => c.id)).toEqual(['mine'])
+    })
+
+    it('does nothing when the mode is already in force', () => {
+      const svc = makeService()
+      svc.loadCases('ns-1')
+
+      svc.setListMode('mine')
+
+      expect(controllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
+    })
+
+    it('changes the mode without loading when no namespace is held yet', () => {
+      const svc = makeService()
+
+      svc.setListMode('all')
+
+      expect(svc.listMode()).toBe('all')
+      expect(controllerMock.listByParentCase).not.toHaveBeenCalled()
+    })
+
+    it('falls back to mine on a namespace switch', () => {
+      const svc = makeService()
+      svc.loadCases('ns-1')
+      svc.setListMode('all')
+
+      svc.loadCases('ns-2')
+
+      expect(svc.listMode()).toBe('mine')
+      expect(controllerMock.listMineByParentCase).toHaveBeenLastCalledWith('ns-2')
+    })
+
+    it('keeps the mode on a same-namespace reload', () => {
+      const svc = makeService()
+      svc.loadCases('ns-1')
+      svc.setListMode('all')
+      controllerMock.listByParentCase.mockClear()
+
+      svc.loadCases('ns-1')
+
+      expect(svc.listMode()).toBe('all')
+      expect(controllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+    })
+
+    it('live refreshes follow the current mode', () => {
+      const svc = makeService()
+      svc.loadCases('ns-1')
+      svc.setListMode('all')
+      controllerMock.listByParentCase.mockClear()
+      controllerMock.listMineByParentCase.mockClear()
+
+      svc.refreshCases('ns-1')
+
+      expect(controllerMock.listByParentCase).toHaveBeenCalledWith('ns-1')
+      expect(controllerMock.listMineByParentCase).not.toHaveBeenCalled()
+    })
+
+    it('the trailing refresh of a burst uses the mode in force when it starts', () => {
+      const first = new Subject<Case[]>()
+      const svc = makeService(jest.fn().mockReturnValueOnce(first))
+      controllerMock.listByParentCase.mockReturnValue(of([caseWith('all')]))
+      svc.loadCases('ns-1')
+      svc.refreshCases('ns-1') // coalesced behind the in-flight mine request
+
+      svc.setListMode('all') // cancels it and starts the all request
+      first.next([caseWith('stale-mine')])
+
+      expect(controllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+      expect(svc.cases().map((c) => c.id)).toEqual(['all'])
+    })
+
+    it('ignores the late response of the previous mode and clears the list while the new one loads', () => {
+      const mineLoad = new Subject<Case[]>()
+      const allLoad = new Subject<Case[]>()
+      const svc = makeService(jest.fn().mockReturnValueOnce(mineLoad))
+      controllerMock.listByParentCase.mockReturnValue(allLoad)
+      svc.loadCases('ns-1')
+
+      svc.setListMode('all')
+      mineLoad.next([caseWith('stale-mine')])
+      expect(svc.cases()).toEqual([])
+      allLoad.next([caseWith('fresh-all')])
+      allLoad.complete()
+
+      expect(svc.cases().map((c) => c.id)).toEqual(['fresh-all'])
+    })
+
+    it('coalesces refresh bursts in all mode into one trailing request', () => {
+      const first = new Subject<Case[]>()
+      const second = new Subject<Case[]>()
+      const svc = makeService()
+      svc.loadCases('ns-1')
+      controllerMock.listByParentCase.mockReset()
+      controllerMock.listByParentCase.mockReturnValueOnce(first).mockReturnValueOnce(second)
+      svc.setListMode('all')
+
+      svc.refreshCases('ns-1')
+      svc.refreshCases('ns-1')
+      expect(controllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+
+      first.next([caseWith('old')])
+      first.complete()
+      expect(controllerMock.listByParentCase).toHaveBeenCalledTimes(2)
+      second.next([caseWith('fresh')])
+      second.complete()
+      expect(svc.cases().map((c) => c.id)).toEqual(['fresh'])
+    })
+
+    it('deleteCase reloads in the current mode', () => {
+      const svc = makeService()
+      svc.loadCases('ns-1')
+      svc.setListMode('all')
+      controllerMock.listByParentCase.mockClear()
+
+      svc.deleteCase('a').subscribe()
+
+      expect(controllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('deleteCase calls the controller and reloads the current namespace on success', () => {

@@ -12,7 +12,8 @@ import {
 import { Case, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { CaseDrawerComponent } from '../../case-drawer/case-drawer.component'
 import { ShellUserMenuComponent } from '../shell-user-menu/shell-user-menu.component'
-import { AvatarComponent, BlueprintDirective } from '@whoz-oss/design-system'
+import { AvatarComponent, BlueprintDirective, SegmentedComponent, SegmentedOption } from '@whoz-oss/design-system'
+import { CaseListMode } from '../../../services/case-state.service'
 
 /**
  * ShellSidebarComponent — desktop sidebar.
@@ -32,7 +33,7 @@ import { AvatarComponent, BlueprintDirective } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-shell-sidebar',
-  imports: [CaseDrawerComponent, ShellUserMenuComponent, BlueprintDirective, AvatarComponent],
+  imports: [CaseDrawerComponent, ShellUserMenuComponent, BlueprintDirective, AvatarComponent, SegmentedComponent],
   templateUrl: './shell-sidebar.component.html',
   styleUrl: './shell-sidebar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -150,6 +151,14 @@ export class ShellSidebarComponent {
   readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly cases = input.required<Case[]>()
   readonly activeCaseId = input.required<string | null>()
+  /** Whether the "Mine / All cases" switch is offered (namespace toggle on AND caller is a namespace admin). */
+  readonly canListAllCases = input(false)
+  readonly listMode = input<CaseListMode>('mine')
+
+  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = [
+    { value: 'mine', label: 'Mine' },
+    { value: 'all', label: 'All cases' },
+  ]
 
   // User menu
   readonly userInitials = input.required<string>()
@@ -166,6 +175,7 @@ export class ShellSidebarComponent {
 
   // Outputs
   readonly collapseRequested = output<void>()
+  readonly listModeChanged = output<CaseListMode>()
   readonly homeClicked = output<void>()
   readonly namespaceSelected = output<NamespaceListItem>()
   readonly nsMenuToggled = output<void>()

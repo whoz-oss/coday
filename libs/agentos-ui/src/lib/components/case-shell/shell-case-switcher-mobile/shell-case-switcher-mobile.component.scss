@@ -103,6 +103,11 @@
 
 // ── Case list ──────────────────────────────────────────────────────────────────
 
+.mobile-drawer__list-mode {
+  padding: 0 12px 8px;
+  flex-shrink: 0;
+}
+
 .mobile-drawer__list {
   flex: 1;
   overflow-y: auto;
