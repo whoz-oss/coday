@@ -21,7 +21,7 @@
       @if (caseSectionVisible()) {
         <section class="exchange-drawer__section" data-track="ExchangeDrawer-caseSection">
           <div class="exchange-drawer__section-header">
-            <h3 class="exchange-drawer__section-title">Case files</h3>
+            <h3 class="exchange-drawer__section-title" tabindex="-1">Case files</h3>
             <div class="exchange-drawer__section-actions">
               @if (canWriteCase()) {
                 <ds-icon-button
@@ -77,7 +77,7 @@
                 </div>
               }
               @default {
-                <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: CASE, value: caseInput() }" />
+                <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: CASE, value: caseInput(), status: caseAnnouncement() }" />
                 @if (caseQuery()) {
                   <ng-container [ngTemplateOutlet]="filterResults" [ngTemplateOutletContext]="{ scope: CASE, query: caseQuery(), status: caseManifestStatus(), tree: caseTree() }" />
                 } @else {
@@ -157,7 +157,7 @@
       @if (namespaceSectionVisible()) {
         <section class="exchange-drawer__section" data-track="ExchangeDrawer-namespaceSection">
           <div class="exchange-drawer__section-header">
-            <h3 class="exchange-drawer__section-title">Namespace files</h3>
+            <h3 class="exchange-drawer__section-title" tabindex="-1">Namespace files</h3>
             <div class="exchange-drawer__section-actions">
               @if (canWriteNamespace()) {
                 <ds-icon-button
@@ -193,7 +193,7 @@
                 </div>
               }
               @default {
-                <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: NAMESPACE, value: namespaceInput() }" />
+                <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: NAMESPACE, value: namespaceInput(), status: namespaceAnnouncement() }" />
                 @if (namespaceQuery()) {
                   <ng-container [ngTemplateOutlet]="filterResults" [ngTemplateOutletContext]="{ scope: NAMESPACE, query: namespaceQuery(), status: namespaceManifestStatus(), tree: namespaceTree() }" />
                 } @else {
@@ -267,19 +267,20 @@
     </div>
   }
 
-  <ng-template #filterField let-scope="scope" let-value="value">
+  <ng-template #filterField let-scope="scope" let-value="value" let-status="status">
     <div class="exchange-drawer__filter">
       <span class="exchange-drawer__filter-icon material-icons" aria-hidden="true">search</span>
-      <input class="exchange-drawer__filter-input" type="search" placeholder="Filter files…"
+      <input #filterInput class="exchange-drawer__filter-input" type="search" placeholder="Filter files…"
         [attr.aria-label]="scope === CASE ? 'Filter case files by name or path' : 'Filter namespace files by name or path'"
         [attr.data-track]="scope === CASE ? 'ExchangeDrawer-caseFilterInput' : 'ExchangeDrawer-namespaceFilterInput'"
         autocomplete="off" [value]="value" (input)="onFilterInput(scope, $event)" (keydown)="onFilterKeydown(scope, $event)" />
       @if (value) {
-        <button type="button" class="exchange-drawer__filter-clear" title="Clear filter" aria-label="Clear filter" [attr.data-track]="scope === CASE ? 'ExchangeDrawer-caseClearFilter' : 'ExchangeDrawer-namespaceClearFilter'" (click)="clearFilter(scope)">
+        <button type="button" class="exchange-drawer__filter-clear" title="Clear filter" aria-label="Clear filter" [attr.data-track]="scope === CASE ? 'ExchangeDrawer-caseClearFilter' : 'ExchangeDrawer-namespaceClearFilter'" (click)="clearFilterAndFocus(scope, filterInput)">
           <span class="material-icons" aria-hidden="true">close</span>
         </button>
       }
     </div>
+    <span class="exchange-drawer__announcement" role="status" aria-live="polite" aria-atomic="true">{{ status }}</span>
   </ng-template>
 
   <ng-template #filterResults let-scope="scope" let-query="query" let-status="status" let-tree="tree">

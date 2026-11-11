@@ -44,8 +44,8 @@ test('TC-010 — case file search restores navigation and leaves namespace searc
     } else if (url.pathname === `${caseBase}/manifest`) {
       body = { capability: 'READ', files: [manifestFile(guidePath, 'CASE'), manifestFile('current/notes.txt', 'CASE')] }
     } else if (url.pathname === `${namespaceBase}/manifest`) {
-      body = { capability: 'READ', files: [manifestFile('shared.txt', 'NAMESPACE')] }
-    } else if (url.pathname === `${caseBase}/content` && url.searchParams.get('path') === guidePath) {
+      body = { capability: 'READ', files: [manifestFile('shared.txt', 'NAMESPACE'), manifestFile(guidePath, 'NAMESPACE')] }
+    } else if ((url.pathname === `${caseBase}/content` || url.pathname === `${namespaceBase}/content`) && url.searchParams.get('path') === guidePath) {
       body = { content, size: 32, mimeType: 'text/markdown', etag: 'synthetic' }
     } else if (url.pathname === '/api/agentos/api/git-workspaces-configuration') {
       body = { enabled: false }
@@ -87,8 +87,39 @@ test('TC-010 — case file search restores navigation and leaves namespace searc
   await expect(namespaceSection.locator('[data-track="ExchangeItem-file_NAMESPACE:shared.txt"]')).toBeVisible()
   await page.locator('[data-track="ExchangeDrawer-caseClearFilter"]').click()
   await expect(caseFilter).toHaveValue('')
+  await expect(caseFilter).toBeFocused()
+  await expect(caseSection.locator('[role="status"][aria-live="polite"]')).toHaveText('Case files: back to file list.')
   await expect(caseSection.locator('[data-track="ExchangeFolderNav-current"]')).toHaveText('current')
   await expect(page.locator('[data-track="ExchangeItem-file_CASE:current/notes.txt"]')).toBeVisible()
   await expect(namespaceFilter).toHaveValue('shared')
   await expect(namespaceSection.locator('[data-track="ExchangeItem-file_NAMESPACE:shared.txt"]')).toBeVisible()
+
+  // Both scopes contain the same path; returning from either preview must focus its own row.
+  await caseFilter.fill('guide')
+  await namespaceFilter.fill('guide')
+  const caseRow = page.locator('[data-track="ExchangeItem-file_CASE:docs/api/guide.md"]')
+  const namespaceRow = page.locator('[data-track="ExchangeItem-file_NAMESPACE:docs/api/guide.md"]')
+  await expect(caseRow).toBeVisible()
+  await expect(namespaceRow).toBeVisible()
+  for (const row of [caseRow, namespaceRow]) {
+    await row.click()
+    await expect(page.getByText(content)).toBeVisible()
+    await page.locator('[data-track="ExchangeContentViewer-back"]').click()
+    await expect(row).toBeFocused()
+  }
+
+  const caseStatus = caseSection.locator('[role="status"][aria-live="polite"]')
+  await expect(caseStatus).toHaveText('Case files: 1 match for "guide".')
+  await caseFilter.fill('absent')
+  await expect(caseStatus).toHaveText('Case files: 0 matches for "absent".')
+  await caseFilter.fill('docs')
+  await expect(caseStatus).toHaveText('Case files: 1 match for "docs".')
+  await caseFilter.focus()
+  await caseFilter.press('Tab')
+  const clear = page.locator('[data-track="ExchangeDrawer-caseClearFilter"]')
+  await expect(clear).toBeFocused()
+  await clear.press('Enter')
+  await expect(caseFilter).toBeFocused()
+  await expect(caseStatus).toHaveText('Case files: back to file list.')
+  await expect(namespaceFilter).toHaveValue('guide')
 })

@@ -1,4 +1,4 @@
-import { fakeAsync, TestBed, tick } from '@angular/core/testing'
+import { fakeAsync, flushMicrotasks, TestBed, tick } from '@angular/core/testing'
 import { MatDialog } from '@angular/material/dialog'
 import { BehaviorSubject, of } from 'rxjs'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
@@ -7,6 +7,133 @@ import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangeDrawerComponent } from './exchange-drawer.component'
 
 describe('ExchangeDrawerComponent file filters', () => {
+  it.each(['case', 'namespace'])('announces %s search transitions and focuses the field after clear', fakeAsync((scope: string) => {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    document.body.appendChild(fixture.nativeElement)
+    fixture.componentRef.setInput('caseStatus', 'ready')
+    fixture.componentRef.setInput('namespaceStatus', 'ready')
+    fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+    fixture.componentRef.setInput(`${scope}ManifestStatus`, 'loading')
+    fixture.detectChanges()
+    const host = fixture.nativeElement as HTMLElement
+    const input = host.querySelector<HTMLInputElement>('input[type=search]')!
+    const status = host.querySelector<HTMLElement>('[role=status][aria-live=polite]')!
+    expect(status.textContent).toBe('')
+    input.value = 'guide'
+    input.dispatchEvent(new Event('input'))
+    tick(150)
+    fixture.detectChanges()
+    expect(status.textContent).toContain('Searching')
+    fixture.componentRef.setInput(`${scope}Manifest`, [{ path: 'deep/guide.md', filename: 'guide.md', size: 1 }])
+    fixture.componentRef.setInput(`${scope}ManifestStatus`, 'ready')
+    fixture.detectChanges()
+    expect(status.textContent).toContain('1 match for "guide"')
+    fixture.componentRef.setInput(`${scope}Manifest`, [])
+    fixture.detectChanges()
+    expect(status.textContent).toContain('0 matches for "guide"')
+    const clear = host.querySelector<HTMLButtonElement>('.exchange-drawer__filter-clear')!
+    clear.focus()
+    clear.click()
+    fixture.detectChanges()
+    expect(document.activeElement).toBe(input)
+    expect(status.textContent).toContain('back to file list')
+    input.value = 'guide'
+    input.dispatchEvent(new Event('input'))
+    tick(150)
+    fixture.detectChanges()
+    input.focus()
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    input.dispatchEvent(escape)
+    fixture.detectChanges()
+    expect(escape.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(input)
+    expect(status.textContent).toContain('back to file list')
+    fixture.destroy()
+    host.remove()
+  }))
+
+  it.each([ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE])('restores focus to the %s row when both scopes share a path', fakeAsync((scope) => {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    document.body.appendChild(fixture.nativeElement)
+    for (const section of ['case', 'namespace']) {
+      fixture.componentRef.setInput(`${section}Status`, 'ready')
+      fixture.componentRef.setInput(`${section}SectionVisible`, true)
+      fixture.componentRef.setInput(`${section}Files`, [{ path: 'shared.txt', name: 'shared.txt', directory: false, size: 1 }])
+    }
+    fixture.detectChanges()
+    const host = fixture.nativeElement as HTMLElement
+    fixture.componentInstance.fileSelected.subscribe((ref) => {
+      fixture.componentRef.setInput('activeFile', ref)
+      fixture.detectChanges()
+    })
+    fixture.componentInstance.viewerClosed.subscribe(() => {
+      fixture.componentRef.setInput('activeFile', null)
+      fixture.detectChanges()
+    })
+    host.querySelector<HTMLButtonElement>(`[data-track="ExchangeItem-file_${scope}:shared.txt"]`)!.click()
+    host.querySelector<HTMLButtonElement>('[data-track="ExchangeContentViewer-back"]')!.click()
+    flushMicrotasks()
+    const target = host.querySelector<HTMLButtonElement>(`[data-track="ExchangeItem-file_${scope}:shared.txt"]`)
+    expect(document.activeElement).toBe(target)
+    fixture.destroy()
+    host.remove()
+  }))
+
+  it.each([ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE])('returns focus to the %s filter after opening a filtered folder', fakeAsync((scope) => {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    document.body.appendChild(fixture.nativeElement)
+    const section = scope === ExchangeFileEntryScopeEnum.CASE ? 'case' : 'namespace'
+    fixture.componentRef.setInput('caseStatus', 'ready')
+    fixture.componentRef.setInput('namespaceStatus', 'ready')
+    fixture.componentRef.setInput(`${section}SectionVisible`, true)
+    fixture.componentRef.setInput(`${section}ManifestStatus`, 'ready')
+    fixture.componentRef.setInput(`${section}Manifest`, [{ path: 'deep/file.txt', filename: 'file.txt' }])
+    fixture.detectChanges()
+    const host = fixture.nativeElement as HTMLElement
+    const input = host.querySelector<HTMLInputElement>('input[type=search]')!
+    input.value = 'file'
+    input.dispatchEvent(new Event('input'))
+    tick(150)
+    fixture.detectChanges()
+    host.querySelector<HTMLButtonElement>('.exchange-drawer__tree .exchange-drawer__folder')!.click()
+    fixture.detectChanges()
+    flushMicrotasks()
+    expect(document.activeElement).toBe(input)
+    fixture.destroy()
+    host.remove()
+  }))
+
+  it.each([ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE])('focuses the %s filter when the previewed file disappears', fakeAsync((scope) => {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    document.body.appendChild(fixture.nativeElement)
+    const section = scope === ExchangeFileEntryScopeEnum.CASE ? 'case' : 'namespace'
+    fixture.componentRef.setInput('caseStatus', 'ready')
+    fixture.componentRef.setInput('namespaceStatus', 'ready')
+    fixture.componentRef.setInput(`${section}SectionVisible`, true)
+    fixture.componentRef.setInput(`${section}Files`, [{ path: 'gone.txt', name: 'gone.txt', directory: false }])
+    fixture.detectChanges()
+    const host = fixture.nativeElement as HTMLElement
+    fixture.componentInstance.fileSelected.subscribe((ref) => {
+      fixture.componentRef.setInput('activeFile', ref)
+      fixture.detectChanges()
+    })
+    fixture.componentInstance.viewerClosed.subscribe(() => {
+      fixture.componentRef.setInput('activeFile', null)
+      fixture.componentRef.setInput(`${section}Files`, [])
+      fixture.detectChanges()
+    })
+    host.querySelector<HTMLButtonElement>(`[data-track="ExchangeItem-file_${scope}:gone.txt"]`)!.click()
+    host.querySelector<HTMLButtonElement>('[data-track="ExchangeContentViewer-back"]')!.click()
+    flushMicrotasks()
+    expect(document.activeElement).toBe(host.querySelector('input[type=search]'))
+    fixture.destroy()
+    host.remove()
+  }))
+
   it('exposes distinct native controls for both scopes and their full paths', fakeAsync(() => {
     TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
     const fixture = TestBed.createComponent(ExchangeDrawerComponent)
@@ -115,6 +242,8 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.detectChanges()
     expect(el.querySelectorAll('agentos-exchange-item')).toHaveLength(500)
     expect(el.textContent).toContain('Showing first 500 matches')
+    expect(el.querySelector('[role=status][aria-live=polite]')?.textContent).toContain('501 matches')
+    expect(el.querySelector('[role=status][aria-live=polite]')?.textContent).toContain('Showing first 500')
     fixture.destroy()
   }))
 

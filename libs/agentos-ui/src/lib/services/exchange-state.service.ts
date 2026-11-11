@@ -14,12 +14,15 @@ import {
 import {
   BehaviorSubject,
   catchError,
+  concatMap,
   defer,
+  endWith,
   EMPTY,
   expand,
   filter,
   finalize,
   firstValueFrom,
+  ignoreElements,
   map,
   Observable,
   of,
@@ -31,6 +34,9 @@ import {
   take,
   throwError,
   takeWhile,
+  timeout,
+  TimeoutError,
+  timer,
 } from 'rxjs'
 import { CaseWorkspaceService } from './case-workspace.service'
 
@@ -57,6 +63,11 @@ interface ExchangeScopeView {
   hasMore: boolean
   capability: ExchangeDirectoryListingCapabilityEnum
 }
+
+/** Client deadline and cooldown bound retries; neither guarantees server-side cancellation. */
+const MANIFEST_TIMEOUT_MS = 15000
+const MANIFEST_TIMEOUT_COOLDOWN_MS = 15000
+const MANIFEST_ERROR_COOLDOWN_MS = 3000
 
 const NEUTRAL_LOADING: ExchangeScopeView = {
   status: 'loading',
@@ -119,6 +130,14 @@ export class ExchangeStateService {
 
   private caseManifestCache: { id: string; files$: Observable<ExchangeFileEntry[]> } | null = null
   private namespaceManifestCache: { id: string; files$: Observable<ExchangeFileEntry[]> } | null = null
+  // A scan remains occupied until the server responds, even when its UI subscriber leaves.
+  private readonly manifestInFlight = new Map<ExchangeScope, Observable<ExchangeFileEntry[]>>()
+  private readonly manifestRetryAfter = new Map<ExchangeScope, number>()
+  private readonly forceBrowseReload = new Set<ExchangeScope>()
+  private readonly browseRecoveryInFlight = new Set<ExchangeScope>()
+  private readonly browseAccessGeneration = new Map<ExchangeScope, number>()
+  readonly caseBrowseUnavailable = signal(false)
+  readonly namespaceBrowseUnavailable = signal(false)
   readonly caseManifestVersion = signal(0)
   readonly namespaceManifestVersion = signal(0)
 
@@ -126,6 +145,7 @@ export class ExchangeStateService {
     this.caseRefresh$,
     () => this.caseId,
     () => this.casePath,
+    ExchangeFileEntryScopeEnum.CASE,
     (id) =>
       this.loadScope(() => this.loadDirectory(ExchangeFileEntryScopeEnum.CASE, id), id).pipe(
         finalize(() => this.caseLoadingMore.set(false))
@@ -135,41 +155,50 @@ export class ExchangeStateService {
     this.namespaceRefresh$,
     () => this.namespaceId,
     () => this.namespacePath,
+    ExchangeFileEntryScopeEnum.NAMESPACE,
     (id) =>
       this.loadScope(() => this.loadDirectory(ExchangeFileEntryScopeEnum.NAMESPACE, id)).pipe(
         finalize(() => this.namespaceLoadingMore.set(false))
       )
   )
 
-  // ── Public derived state (always from the manifest, never inferred from raw roles) ──
-  readonly caseStatus = computed(() => this.caseView().status)
-  readonly namespaceStatus = computed(() => this.namespaceView().status)
-  /** Files at the level currently browsed (directories are exposed separately). */
-  readonly caseFiles = computed(() => this.caseView().entries.filter((e) => !e.directory))
-  readonly namespaceFiles = computed(() => this.namespaceView().entries.filter((e) => !e.directory))
-  readonly caseFolders = computed(() => this.caseView().entries.filter((e) => e.directory))
-  readonly namespaceFolders = computed(() => this.namespaceView().entries.filter((e) => e.directory))
+  // Mask all shared consumers until a current browse revalidation succeeds.
+  private readonly safeCaseView: Signal<ExchangeScopeView> = computed(() =>
+    this.caseBrowseUnavailable() ? { ...NEUTRAL_LOADING, status: 'error' } : this.caseView()
+  )
+  private readonly safeNamespaceView: Signal<ExchangeScopeView> = computed(() =>
+    this.namespaceBrowseUnavailable() ? { ...NEUTRAL_LOADING, status: 'error' } : this.namespaceView()
+  )
 
-  readonly caseBrowsePath = computed(() => this.caseView().path)
-  readonly namespaceBrowsePath = computed(() => this.namespaceView().path)
-  readonly caseBreadcrumb = computed(() => toBreadcrumb(this.caseView().path))
-  readonly namespaceBreadcrumb = computed(() => toBreadcrumb(this.namespaceView().path))
-  readonly caseHasMore = computed(() => this.caseView().hasMore)
-  readonly namespaceHasMore = computed(() => this.namespaceView().hasMore)
+  // ── Public derived state (always from the manifest, never inferred from raw roles) ──
+  readonly caseStatus = computed(() => this.safeCaseView().status)
+  readonly namespaceStatus = computed(() => this.safeNamespaceView().status)
+  /** Files at the level currently browsed (directories are exposed separately). */
+  readonly caseFiles = computed(() => this.safeCaseView().entries.filter((e) => !e.directory))
+  readonly namespaceFiles = computed(() => this.safeNamespaceView().entries.filter((e) => !e.directory))
+  readonly caseFolders = computed(() => this.safeCaseView().entries.filter((e) => e.directory))
+  readonly namespaceFolders = computed(() => this.safeNamespaceView().entries.filter((e) => e.directory))
+
+  readonly caseBrowsePath = computed(() => this.safeCaseView().path)
+  readonly namespaceBrowsePath = computed(() => this.safeNamespaceView().path)
+  readonly caseBreadcrumb = computed(() => toBreadcrumb(this.safeCaseView().path))
+  readonly namespaceBreadcrumb = computed(() => toBreadcrumb(this.safeNamespaceView().path))
+  readonly caseHasMore = computed(() => this.safeCaseView().hasMore)
+  readonly namespaceHasMore = computed(() => this.safeNamespaceView().hasMore)
 
   // Counts describe the level being browsed, not the whole tree: a recursive count would mean
   // walking a repository on every open, which is what browsing exists to avoid.
-  readonly caseFileCount = computed(() => this.caseView().totalEntries)
-  readonly namespaceFileCount = computed(() => this.namespaceView().totalEntries)
+  readonly caseFileCount = computed(() => this.safeCaseView().totalEntries)
+  readonly namespaceFileCount = computed(() => this.safeNamespaceView().totalEntries)
   readonly fileCount = computed(() => this.caseFileCount() + this.namespaceFileCount())
   readonly canWriteCase = computed(
-    () => this.caseView().capability === ExchangeDirectoryListingCapabilityEnum.READ_WRITE
+    () => this.safeCaseView().capability === ExchangeDirectoryListingCapabilityEnum.READ_WRITE
   )
   readonly canWriteNamespace = computed(
-    () => this.namespaceView().capability === ExchangeDirectoryListingCapabilityEnum.READ_WRITE
+    () => this.safeNamespaceView().capability === ExchangeDirectoryListingCapabilityEnum.READ_WRITE
   )
-  readonly caseSectionVisible = computed(() => this.caseView().status !== 'forbidden')
-  readonly namespaceSectionVisible = computed(() => this.namespaceView().status !== 'forbidden')
+  readonly caseSectionVisible = computed(() => this.safeCaseView().status !== 'forbidden')
+  readonly namespaceSectionVisible = computed(() => this.safeNamespaceView().status !== 'forbidden')
   // Tracked per scope: an in-flight upload in one scope must not disable the other scope's upload.
   readonly caseUploading = signal(false)
   readonly namespaceUploading = signal(false)
@@ -291,6 +320,7 @@ export class ExchangeStateService {
     refresh$: Observable<void>,
     getId: () => string | null,
     getPath: () => string,
+    scope: ExchangeScope,
     load: (id: string) => Observable<ExchangeScopeView>
   ): Signal<ExchangeScopeView> {
     let previousId: string | null = null
@@ -303,12 +333,24 @@ export class ExchangeStateService {
         // Updating the directory already on screen must not replace its DOM with a spinner:
         // that collapses the list height and loses the user's scroll position. A new scope or
         // folder still clears immediately; errors and revoked permissions remain fail-closed.
-        const keepListing = id === previousId && path === previousPath && latestView.status === 'ready'
-        previousId = id
+        const forceReload = this.forceBrowseReload.delete(scope)
+        // A reused case id in another namespace is still a different context.
+        const contextKey = scope === ExchangeFileEntryScopeEnum.CASE ? JSON.stringify([this.namespaceId, id]) : id
+        const keepListing = !forceReload && contextKey === previousId && path === previousPath && latestView.status === 'ready'
+        previousId = contextKey
         previousPath = path
         if (!id) return of(NEUTRAL_LOADING)
         const loaded = load(id)
-        return keepListing ? loaded : loaded.pipe(startWith(NEUTRAL_LOADING))
+        const accessGeneration = this.browseAccessGeneration.get(scope) ?? 0
+        const revalidated = forceReload ? loaded.pipe(
+          tap((view) => {
+            if (view.status === 'ready' && (this.browseAccessGeneration.get(scope) ?? 0) === accessGeneration) {
+              this.browseUnavailable(scope).set(false)
+            }
+          }),
+          finalize(() => this.browseRecoveryInFlight.delete(scope))
+        ) : loaded
+        return keepListing ? revalidated : revalidated.pipe(startWith(NEUTRAL_LOADING))
       }),
       tap((view) => {
         latestView = view
@@ -322,6 +364,8 @@ export class ExchangeStateService {
   // ── Lifecycle ─────────────────────────────────────────────────────────────────
   initializeForCase(namespaceId: string, caseId: string): void {
     const namespaceChanged = this.namespaceId !== namespaceId
+    if (namespaceChanged) this.resetBrowseAccess(ExchangeFileEntryScopeEnum.NAMESPACE)
+    if (namespaceChanged || this.caseId !== caseId) this.resetBrowseAccess(ExchangeFileEntryScopeEnum.CASE)
     if (namespaceChanged) this.namespacePath = ''
     if (this.caseId !== caseId) this.casePath = ''
     this.namespaceId = namespaceId
@@ -339,7 +383,11 @@ export class ExchangeStateService {
    * loads the namespace manifest so `canWriteNamespace()` gating works before a case exists.
    */
   initializeForNamespace(namespaceId: string): void {
-    if (this.namespaceId !== namespaceId) this.namespacePath = ''
+    if (this.namespaceId !== namespaceId) {
+      this.namespacePath = ''
+      this.resetBrowseAccess(ExchangeFileEntryScopeEnum.NAMESPACE)
+    }
+    this.resetBrowseAccess(ExchangeFileEntryScopeEnum.CASE)
     this.namespaceId = namespaceId
     this.caseId = null
     this.casePath = ''
@@ -352,6 +400,8 @@ export class ExchangeStateService {
   }
 
   clear(): void {
+    this.resetBrowseAccess(ExchangeFileEntryScopeEnum.CASE)
+    this.resetBrowseAccess(ExchangeFileEntryScopeEnum.NAMESPACE)
     this.namespaceId = null
     this.caseId = null
     this.casePath = ''
@@ -399,6 +449,35 @@ export class ExchangeStateService {
     this.namespaceRefresh$.next()
   }
 
+  private browseUnavailable(scope: ExchangeScope) {
+    return scope === ExchangeFileEntryScopeEnum.CASE ? this.caseBrowseUnavailable : this.namespaceBrowseUnavailable
+  }
+
+  private resetBrowseAccess(scope: ExchangeScope): void {
+    this.browseAccessGeneration.set(scope, (this.browseAccessGeneration.get(scope) ?? 0) + 1)
+    this.browseUnavailable(scope).set(false)
+  }
+
+  /** Fail closed across every consumer until the current scope is revalidated. */
+  denyManifestAccess(scope: ExchangeScope): void {
+    this.browseAccessGeneration.set(scope, (this.browseAccessGeneration.get(scope) ?? 0) + 1)
+    this.browseUnavailable(scope).set(true)
+  }
+
+  /** Do not restart a recovery scan already in progress for this scope. */
+  revalidateBrowse(scope: ExchangeScope): void {
+    if (this.browseRecoveryInFlight.has(scope)) return
+    this.browseRecoveryInFlight.add(scope)
+    this.forceBrowseReload.add(scope)
+    const refresh = scope === ExchangeFileEntryScopeEnum.CASE ? this.caseRefresh$ : this.namespaceRefresh$
+    refresh.next()
+  }
+
+  /** Invalidate only the recursive search snapshot, without reloading the browse directory. */
+  invalidateSearchManifest(scope: ExchangeScope): void {
+    this.invalidateManifest(scope)
+  }
+
   private invalidateManifest(scope: ExchangeScope): void {
     if (scope === ExchangeFileEntryScopeEnum.CASE) {
       this.caseManifestCache = null
@@ -416,12 +495,45 @@ export class ExchangeStateService {
     if (!id) return throwError(() => new Error('No active scope for manifest request'))
     const cache = isCase ? this.caseManifestCache : this.namespaceManifestCache
     if (cache?.id === id) return cache.files$
-    const files$ = defer(() =>
-      isCase ? this.controller.getCaseFilesManifestExchange(id) : this.controller.getNamespaceFilesManifestExchange(id)
-    ).pipe(
-      map((manifest) => (manifest.capability === ExchangeManifestCapabilityEnum.NONE ? [] : (manifest.files ?? []))),
-      shareReplay({ bufferSize: 1, refCount: false })
-    )
+    const active = this.manifestInFlight.get(scope)
+    const delay = Math.max(0, (this.manifestRetryAfter.get(scope) ?? 0) - Date.now())
+    let files$: Observable<ExchangeFileEntry[]>
+    if (active || delay > 0) {
+      // Coalesce invalidations behind the outstanding scan instead of relying on HTTP cancellation
+      // to stop server work. Dropped UI subscribers do not start their queued replacement.
+      const wait$: Observable<unknown> = active
+        ? active.pipe(ignoreElements(), catchError(() => EMPTY), endWith(null))
+        : timer(delay)
+      files$ = wait$.pipe(
+        concatMap(() => defer(() => {
+          const current = isCase ? this.caseManifestCache : this.namespaceManifestCache
+          if (current?.files$ === files$) {
+            if (isCase) this.caseManifestCache = null
+            else this.namespaceManifestCache = null
+          }
+          if (id !== (isCase ? this.caseId : this.namespaceId)) return throwError(() => new Error('Scope changed'))
+          return this.fileManifest(scope)
+        })),
+        shareReplay({ bufferSize: 1, refCount: true })
+      )
+    } else {
+      files$ = defer(() => {
+        this.manifestInFlight.set(scope, files$)
+        return isCase ? this.controller.getCaseFilesManifestExchange(id) : this.controller.getNamespaceFilesManifestExchange(id)
+      }).pipe(
+        timeout({ first: MANIFEST_TIMEOUT_MS, each: MANIFEST_TIMEOUT_MS }),
+        map((manifest) => (manifest.capability === ExchangeManifestCapabilityEnum.NONE ? [] : (manifest.files ?? []))),
+        tap({
+          complete: () => { if (this.manifestInFlight.get(scope) === files$) this.manifestInFlight.delete(scope) },
+          error: (error: unknown) => {
+            const delay = error instanceof TimeoutError ? MANIFEST_TIMEOUT_COOLDOWN_MS : MANIFEST_ERROR_COOLDOWN_MS
+            this.manifestRetryAfter.set(scope, Date.now() + delay)
+            if (this.manifestInFlight.get(scope) === files$) this.manifestInFlight.delete(scope)
+          },
+        }),
+        shareReplay({ bufferSize: 1, refCount: false })
+      )
+    }
     if (isCase) this.caseManifestCache = { id, files$ }
     else this.namespaceManifestCache = { id, files$ }
     return files$
@@ -429,7 +541,7 @@ export class ExchangeStateService {
 
   loadMore(scope: ExchangeScope): void {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
-    const view = isCase ? this.caseView() : this.namespaceView()
+    const view = isCase ? this.safeCaseView() : this.safeNamespaceView()
     const loading = isCase ? this.caseLoadingMore : this.namespaceLoadingMore
     if (view.status !== 'ready' || !view.hasMore || loading()) return
     loading.set(true)

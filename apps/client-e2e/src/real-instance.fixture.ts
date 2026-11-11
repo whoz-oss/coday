@@ -14,7 +14,7 @@ type State = { profile: string; ports: { express: number; agentos: number; agent
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-function ownedRoot(root: string, temp: string): void {
+export function ownedRoot(root: string, temp: string): void {
   const stat = fs.lstatSync(root)
   if (!stat.isDirectory() || stat.isSymbolicLink() || stat.uid !== process.getuid?.() ||
       fs.realpathSync(root) !== root || path.dirname(root) !== temp ||
@@ -36,8 +36,8 @@ async function candidatePort(): Promise<number> {
   })
 }
 
-function processChildren(pid: number): number[] {
-  const rows = execFileSync('/bin/ps', ['-axo', 'pid=,ppid='], { encoding: 'utf8' })
+export function processChildren(pid: number): number[] {
+  const rows = execFileSync('ps', ['-axo', 'pid=,ppid='], { encoding: 'utf8' })
   return rows.split('\n').map((line) => line.trim().split(/\s+/).map(Number))
     .filter((pair) => pair[1] === pid).map((pair) => pair[0]!)
 }
@@ -47,7 +47,7 @@ function processChildren(pid: number): number[] {
 function listeners(port: number): Array<{ pid: number; address: string }> {
   let output: string
   try {
-    output = execFileSync('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fpn'], { encoding: 'utf8' })
+    output = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fpn'], { encoding: 'utf8' })
   } catch (error) {
     const e = error as { status?: number; stdout?: string }
     if (e.status === 1 && !e.stdout) return []
@@ -62,7 +62,7 @@ function listeners(port: number): Array<{ pid: number; address: string }> {
   return found
 }
 
-function requireListener(port: number, allowed: number[]): number | undefined {
+export function requireListener(port: number, allowed: number[]): number | undefined {
   const found = listeners(port)
   if (!found.length) return undefined
   if (found.length !== 1 || !allowed.includes(found[0]!.pid) || found[0]!.address !== `127.0.0.1:${port}`) {
@@ -78,13 +78,13 @@ function childExit(child: ChildProcess): Promise<void> {
   })
 }
 
-function groupMembers(group: number): number[] {
-  const rows = execFileSync('/bin/ps', ['-axo', 'pid=,pgid='], { encoding: 'utf8' })
+export function groupMembers(group: number): number[] {
+  const rows = execFileSync('ps', ['-axo', 'pid=,pgid='], { encoding: 'utf8' })
   return rows.split('\n').map((line) => line.trim().split(/\s+/).map(Number))
     .filter((pair) => pair[1] === group).map((pair) => pair[0]!)
 }
 
-async function terminate(child: ChildProcess | undefined): Promise<void> {
+export async function terminate(child: ChildProcess | undefined): Promise<void> {
   if (!child?.pid) return
   const group = child.pid // each spawn is detached and owns its new process group
   let members = groupMembers(group)
@@ -133,14 +133,10 @@ async function waitForOwnedStack(child: ChildProcess, config: string, expressPor
 
 export const test = base.extend<{ realInstance: RealInstance }>({
   realInstance: async ({}, use) => {
-    const previousTmpdir = process.env.TMPDIR
-    process.env.TMPDIR = '/private/tmp'
-    try {
+    // Resolve aliases such as macOS /tmp before creating and validating the owned root.
+    // Keep the process environment unchanged; only the isolated child stack receives TMPDIR.
     const temp = fs.realpathSync(os.tmpdir())
-    if (temp !== '/private/tmp' || fs.realpathSync('/private/tmp') !== '/private/tmp') {
-      throw new Error('os.tmpdir() does not physically resolve to /private/tmp')
-    }
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coday-tc010-'))
+    const root = fs.mkdtempSync(path.join(temp, 'coday-tc010-'))
     let prepare: ChildProcess | undefined
     let server: ChildProcess | undefined
     try {
@@ -155,7 +151,7 @@ export const test = base.extend<{ realInstance: RealInstance }>({
       const reader = `tc010-reader-${randomUUID()}@example.test`
       const env: NodeJS.ProcessEnv = {
         PATH: process.env.PATH, HOME: os.homedir(), JAVA_HOME: process.env.JAVA_HOME,
-        TMPDIR: process.env.TMPDIR,
+        TMPDIR: temp,
         CODAY_LOCAL_DIR: root, npm_config_cache: path.join(root, 'npm-cache'),
         CODAY_NO_OPEN: '1', CODAY_PROFILE: 'laptop', CODAY_HOST: '127.0.0.1',
         CODAY_NO_FACTORY: '1', CODAY_AGENTOS_VERSION: 'dev', CODAY_FACTORY_VERSION: 'dev',
@@ -246,10 +242,6 @@ export const test = base.extend<{ realInstance: RealInstance }>({
         console.log(`TC-010 cleanup: removed and verified absent ${root}`)
       } catch (e) { cleanupError ??= e }
       if (cleanupError) throw cleanupError
-    }
-    } finally {
-      if (previousTmpdir === undefined) delete process.env.TMPDIR
-      else process.env.TMPDIR = previousTmpdir
     }
   },
 })

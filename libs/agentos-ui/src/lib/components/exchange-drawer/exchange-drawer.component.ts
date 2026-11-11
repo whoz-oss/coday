@@ -8,7 +8,9 @@ import {
   input,
   output,
   signal,
+  Signal,
   viewChild,
+  WritableSignal,
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { filterFileTree, MAX_FILTER_MATCHES } from '../../services/exchange-file-filter.utils'
@@ -119,6 +121,14 @@ export class ExchangeDrawerComponent {
   protected readonly maxFilterMatches = MAX_FILTER_MATCHES
   protected readonly caseTree = computed(() => this.tree(this.caseManifest(), this.caseQuery(), true))
   protected readonly namespaceTree = computed(() => this.tree(this.namespaceManifest(), this.namespaceQuery(), false))
+  private readonly caseReturnedToList: WritableSignal<boolean> = signal(false)
+  private readonly namespaceReturnedToList: WritableSignal<boolean> = signal(false)
+  protected readonly caseAnnouncement: Signal<string> = computed(() => this.announcement({
+    scope: 'Case', query: this.caseQuery(), status: this.caseManifestStatus(), tree: this.caseTree(), returned: this.caseReturnedToList(),
+  }))
+  protected readonly namespaceAnnouncement: Signal<string> = computed(() => this.announcement({
+    scope: 'Namespace', query: this.namespaceQuery(), status: this.namespaceManifestStatus(), tree: this.namespaceTree(), returned: this.namespaceReturnedToList(),
+  }))
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.timers.forEach((timer) => clearTimeout(timer)))
@@ -153,6 +163,18 @@ export class ExchangeDrawerComponent {
     }
   }
 
+  /** Describes results without counting ancestor folders. */
+  private announcement({ scope, query, status, tree, returned }: {
+    scope: string; query: string; status: ExchangeManifestStatus; tree: FilteredFileTree; returned: boolean
+  }): string {
+    if (!query) return returned ? `${scope} files: back to file list.` : ''
+    if (status === 'error') return '' // The visible error is already an alert.
+    if (status !== 'ready') return `Searching ${scope.toLowerCase()} files for "${query}".`
+    const count = tree.matchCount
+    const limit = tree.truncated ? ` Showing first ${MAX_FILTER_MATCHES}.` : ''
+    return `${scope} files: ${count} ${count === 1 ? 'match' : 'matches'} for "${query}".${limit}`
+  }
+
   protected onFilterInput(scope: ExchangeScope, event: Event): void {
     const value = (event.target as HTMLInputElement).value
     const current = scope === this.CASE ? this.caseInput : this.namespaceInput
@@ -174,8 +196,15 @@ export class ExchangeDrawerComponent {
 
   protected clearFilter(scope: ExchangeScope): void {
     clearTimeout(this.timers.get(scope))
+    const query = scope === this.CASE ? this.caseQuery : this.namespaceQuery
+    if (query()) (scope === this.CASE ? this.caseReturnedToList : this.namespaceReturnedToList).set(true)
     ;(scope === this.CASE ? this.caseInput : this.namespaceInput).set('')
     this.applyFilter(scope, '')
+  }
+
+  protected clearFilterAndFocus(scope: ExchangeScope, input: HTMLInputElement): void {
+    this.clearFilter(scope)
+    input.focus()
   }
 
   private applyFilter(scope: ExchangeScope, value: string): void {
@@ -189,6 +218,16 @@ export class ExchangeDrawerComponent {
   protected openFilteredFolder(scope: ExchangeScope, path: string): void {
     this.clearFilter(scope)
     this.onFolderOpen(scope, path)
+    queueMicrotask(() => this.focusScope(scope))
+  }
+
+  /** Restore focus to the filter, or the section heading if it is not currently rendered. */
+  private focusScope(scope: ExchangeScope): void {
+    const section = this.host.nativeElement.querySelector<HTMLElement>(
+      scope === this.CASE ? '[data-track="ExchangeDrawer-caseSection"]' : '[data-track="ExchangeDrawer-namespaceSection"]'
+    )
+    const target = section?.querySelector<HTMLElement>('input[type="search"]') ?? section?.querySelector<HTMLElement>('h3')
+    target?.focus()
   }
 
   /** Scope enums exposed to the template. */
@@ -241,29 +280,29 @@ export class ExchangeDrawerComponent {
   }
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))
 
-  /** Path of the row that opened the viewer — focus returns to it on back (a11y). */
-  private lastSelectedPath: string | null = null
+  /** Scope and path of the row that opened the viewer, for focus restoration. */
+  private lastSelectedFile: ExchangeFileRef | null = null
 
   protected onFileSelected(ref: ExchangeFileRef): void {
-    // Cache the path, not the element: opening the viewer destroys the list, so the original row
-    // button becomes a detached node — focusing it on back is a no-op. Re-query the fresh row instead.
-    this.lastSelectedPath = ref.path
+    // Opening the viewer destroys the row; identify its replacement by both scope and path.
+    this.lastSelectedFile = ref
     this.fileSelected.emit(ref)
   }
 
   protected onViewerClose(): void {
     this.viewerClosed.emit()
-    const path = this.lastSelectedPath
-    if (!path) return
-    // Restore focus to the freshly re-rendered row once the list is back (matched by path).
+    const ref = this.lastSelectedFile
+    if (!ref) return
+    // Restore focus only to the same scope and path once the list is re-rendered.
     queueMicrotask(() => {
-      const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('[data-exchange-path]')
+      const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('[data-exchange-path][data-exchange-scope]')
       for (const el of Array.from(rows)) {
-        if (el.getAttribute('data-exchange-path') === path) {
+        if (el.getAttribute('data-exchange-path') === ref.path && el.getAttribute('data-exchange-scope') === ref.scope) {
           el.focus()
-          break
+          return
         }
       }
+      this.focusScope(ref.scope)
     })
   }
 

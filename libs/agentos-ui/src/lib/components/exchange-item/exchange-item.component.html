@@ -8,6 +8,7 @@
     class="exchange-item__main"
     type="button"
     [attr.data-exchange-path]="row().path"
+    [attr.data-exchange-scope]="scope()"
     [attr.data-track]="'ExchangeItem-file_' + scope() + ':' + row().path"
     [attr.aria-current]="active() ? 'true' : null"
     [attr.aria-label]="(row().missing ? 'View deletion diff for ' : 'View ') + row().filename"
