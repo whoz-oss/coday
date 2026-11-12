@@ -22,6 +22,8 @@ import java.util.UUID
  * - [ListAgentUsersTool] (`listAgentUsers`) — list all users who have access to an agent
  * - [ListGroupAgentUsersTool] (`listGroupAgentUsers`) — list members of a group that
  *   has a specific agent deployed to it
+ * - [SearchAgentUsersTool] (`searchAgentUsers`) — same audience as `listAgentUsers`, shaped as search
+ *   results so it can be the SEARCH step of an agent loop
  *
  * ## Authorization
  *
@@ -62,6 +64,7 @@ class UserGroupToolPlugin(
                 configName = configName,
                 membersByGroupAndAgentLoader = membersByGroupAndAgentLoader,
             ),
+            SearchAgentUsersTool(configName = configName, usersByAgentLoader = usersByAgentLoader),
         )
 
     companion object {
