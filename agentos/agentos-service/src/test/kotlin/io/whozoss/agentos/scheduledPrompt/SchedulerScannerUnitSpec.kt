@@ -801,6 +801,62 @@ class SchedulerScannerUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Loop mode — materialize failure
+        // -------------------------------------------------------------------------
+
+        "tickClaim in loop mode with an unknown loop agent: Run marked FAILED with the readable reason" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            scheduledPromptRepo.save(
+                sp.copy(
+                    agentLoopName = "ghost-loop",
+                    loopConfiguration = LoopConfiguration(searchToolName = "WHOZ__SearchTalents"),
+                ),
+            )
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            runRepo.userRunRepository = userRunRepo
+            // findByName unknown -> the executor cannot resolve the loop agent
+            val executorAgentConfigService = mockk<AgentConfigService>().also {
+                every { it.findByName(defaultNamespaceId, "ghost-loop") } returns null
+            }
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = executorAgentConfigService,
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
+                properties = properties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = properties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+                executionWindowService = ExecutionWindowService(properties),
+            )
+
+            sc.tickClaim()
+
+            val run = runRepo.all().single()
+            run.status shouldBe RunStatus.FAILED
+            run.error shouldBe "Agent loop 'ghost-loop' not found in namespace $defaultNamespaceId"
+            userRunRepo.all().shouldBeEmpty()
+            // the slot is consumed: nextRunAt advanced
+            scheduledPromptRepo.findById(sp.id)!!.nextRunAt shouldBe Instant.parse("2026-01-08T08:00:00Z")
+        }
+
+        // -------------------------------------------------------------------------
         // Tick isolation — one failing prompt must not block others
         // -------------------------------------------------------------------------
 

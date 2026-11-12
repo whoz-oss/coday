@@ -74,3 +74,106 @@ Phase B resumes automatically without operator intervention.
 in a terminal status (`DONE` or `FAILED`). This prevents concurrent calls to
 `recoverOrphanedRunningRuns` across instances from overwriting a `finishedAt` already set
 by a previous invocation.
+
+## Loop mode
+
+By default a scheduled prompt opens one case per user of the audience of its agent. In loop mode it opens a
+**single case**, driven by a LOOP agent, which searches for entities and starts one case per hit for the
+users concerned (an `AgentLoop` run, see `AgentLoop` and `LoopWorkflowRunnerService`).
+
+### Scheduler fields
+
+| Field | Meaning |
+|---|---|
+| `agentLoopName` | Name of the LOOP agent that drives the run, resolved in the namespace then at platform level. Setting it switches the prompt to loop mode. |
+| `loopConfiguration.searchToolName` | Exact name of the search tool as granted to the loop agent (integration prefix included, e.g. `WHOZ__SearchTalents`). |
+| `loopConfiguration.searchToolArgs` | JSON object passed as the input of the search tool (none = `{}`). |
+| `agentConfigId` + prompt template | The agent started for each search hit, and the prompt it receives. They are *not* what the scheduler runs itself. |
+
+`agentLoopName` and `loopConfiguration` are set together (or neither).
+
+### What a run does
+
+- **Phase A** materialises the audience of the *loop agent*, not of `agentConfigId`: the loop agent is deployed to
+  a user group holding one technical user, hence one UserRun and one loop case. The agent is not checked for
+  its number of users. An unknown agent, or one that is not a LOOP agent, fails the Run with that reason.
+- **Phase B** creates the case for that technical user (title = the scheduled prompt's name, linked to it, ADMIN
+  granted, monitored as usual) and sends the message `@<loop agent> Run scheduled prompt '<name>'`. The access
+  check applies to the loop agent. The prompt is for the search targets, not for the technical user: it is
+  neither translated nor enriched with a user context, and the user context provider is not called. The targets
+  get theirs when the loop starts their cases.
+
+### loopData and the loop agent's loopConfig
+
+The loop agent's `loopConfig` describes the *process*, the message carries the *data*. The scheduler writes the
+following `loopData` in the session context of the message (constants in `LoopDataKeys`):
+
+| `loopData` key | Value |
+|---|---|
+| `searchToolName` | `loopConfiguration.searchToolName` |
+| `searchToolArgs` | `loopConfiguration.searchToolArgs`, or `{}` |
+| `agentName` | name of the agent of `agentConfigId` |
+| `prompt` | content of the prompt template, as is |
+| `scheduledPromptId` | id of the scheduled prompt |
+
+The `loopConfig` of the loop agent (`AgentConfig.loopConfig`) reads it through `${loopData.key}` placeholders:
+
+```json
+{
+  "steps": [
+    { "id": "search", "type": "SEARCH", "tool": "${loopData.searchToolName}", "args": "${loopData.searchToolArgs}" },
+    { "id": "start-cases", "type": "START_CASES", "tool": "FreeCaseStarterForUser",
+      "args": { "agentName": "${loopData.agentName}", "prompt": "${loopData.prompt}" },
+      "scheduledPromptId": "${loopData.scheduledPromptId}" }
+  ]
+}
+```
+
+Placeholder rules (`LoopPlaceholders`):
+
+- `${loopData}` or `${loopData.k1.k2...}`, keys made of letters, digits, `_` and `-`; no index, default value,
+  operator or escaping. Resolved in `tool`, `scheduledPromptId` and every string value of `args`, at any depth;
+  never in keys, `id` or `type`.
+- A string that is exactly one placeholder takes the value as it is, with its type (object, array, number,
+  boolean, null, string). Inside a longer text only scalars can be interpolated.
+- A missing key, a non-scalar interpolated in a text and a malformed `${` are errors. What is inserted is never
+  scanned again.
+
+Step rules (`LoopStepsTranslator`), checked when the run starts: exactly a `SEARCH` then a `START_CASES` step
+with distinct ids; the `START_CASES` tool is a `FreeCaseStarterForUser` tool (bare or `CONFIG__`-prefixed);
+its `args` hold `agentName` and `prompt` (and optionally `title`), nothing else (`userId` and `sessionContext`
+are set by the loop for each hit); `scheduledPromptId` resolves to a UUID. Any violation is reported as a
+warning in the loop case and nothing runs.
+
+A `loopConfig` without a `steps` field keeps the legacy format (`search` / `act`), independent of any
+`loopData`; it is what a run launched from the UI uses.
+
+### Prerequisites
+
+- An agent in `LOOP` mode, named as `agentLoopName`, enabled, with the `loopConfig` above.
+- Its integrations grant the search tool and `CASE: [FreeCaseStarterForUser]`.
+- It is deployed to a user group with **one technical user**, who is an ADMIN of the namespace (needed to
+  start cases for other users).
+- The agent of `agentConfigId` is deployed to the users the search returns; those who are not are counted as
+  refused in the summary of the loop case.
+
+### Cases started by the loop and their link
+
+Each case the loop starts is linked to the scheduled prompt (`Case.scheduledPromptId`) right after it is
+created, with a targeted write-once update (`CaseService.assignScheduledPrompt`). A link that fails does not
+fail the start: it is counted in the summary ("Started but not linked to the scheduled prompt"). A known race
+remains: `CaseServiceImpl` saves the whole case on each status change, from a copy read just before, so a save
+started before the link and finished after it can write the link away. The window is a few milliseconds and the
+loop cannot see it; the real fix is a targeted status update.
+
+### Limits
+
+- At most `agentos.limits.agent-loop-max-items` (50) hits are processed, from the **first page** of results
+  only; the summary says when more exist.
+- Delivery is at-least-once, like any UserRun: a crash after the loop case is created can run the loop again
+  and duplicate the fan-out.
+- The UserRun only monitors the *launch*: a loop longer than `launchTimeoutSeconds` ends as `TIMEOUT` and the
+  Run as `DONE`; a loop that aborts ends its case `IDLE`, so its UserRun is `DONE`. The reasons are in the loop
+  case, not in the Run.
+- Nothing validates the `loopConfig` or the `loopData` when a scheduled prompt is saved: errors show up when
+  the loop runs (validation at save time is for a next change).

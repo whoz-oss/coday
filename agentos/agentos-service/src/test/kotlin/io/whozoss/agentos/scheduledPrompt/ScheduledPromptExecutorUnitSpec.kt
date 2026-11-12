@@ -2,6 +2,8 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -20,6 +22,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.PromptTranslation
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -1733,6 +1736,348 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val updated = userRunRepo.all().first { it.id == userRun.id }
             updated.status shouldBe UserRunStatus.FAILED
             updated.error shouldBe "AgentConfig $agentId not found"
+        }
+
+        // -------------------------------------------------------------------------
+        // Loop mode
+        // -------------------------------------------------------------------------
+
+        val loopAgentId = UUID.fromString("20000000-0000-0000-0000-0000000000a1")
+        val loopAgentName = "loop-agent"
+        val loopMapper = jacksonObjectMapper()
+        val searchArgs = loopMapper.readTree("""{"query":"kotlin","limit":10}""")
+
+        fun makeLoopAgent(mode: ExecutionMode? = ExecutionMode.LOOP) = AgentConfig(
+            metadata = EntityMetadata(id = loopAgentId),
+            namespaceId = namespaceId,
+            name = loopAgentName,
+            executionMode = mode,
+        )
+
+        fun makeLoopScheduledPrompt(args: com.fasterxml.jackson.databind.JsonNode? = searchArgs) =
+            makeScheduledPrompt().copy(
+                agentLoopName = loopAgentName,
+                loopConfiguration = LoopConfiguration(searchToolName = "WHOZ__SearchTalents", searchToolArgs = args),
+            )
+
+        "Phase A loop mode: materialises the audience of the loop agent, not of the target agent" {
+            val sp = makeLoopScheduledPrompt()
+            val run = makeRun(sp)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val audiences = mutableListOf<UUID>()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository { agentConfigId, _ ->
+                audiences += agentConfigId
+                setOf(userId1)
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findByName(namespaceId, loopAgentName) } returns makeLoopAgent()
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = agentConfigService,
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+            ).materialize(run, sp)
+
+            audiences shouldBe listOf(loopAgentId)
+            userRunRepo.all().map { it.userId } shouldBe listOf(userId1)
+            runRepo.all().first { it.id == run.id }.status shouldBe RunStatus.RUNNING
+        }
+
+        "Phase A loop mode: unknown loop agent throws, no UserRun created, Run stays CLAIMED" {
+            val sp = makeLoopScheduledPrompt()
+            val run = makeRun(sp)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1))
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findByName(namespaceId, loopAgentName) } returns null
+            }
+
+            val error = io.kotest.assertions.throwables.shouldThrow<IllegalStateException> {
+                executor(
+                    spRepo = makeSpRepo(sp),
+                    runRepo = runRepo,
+                    userRunRepo = userRunRepo,
+                    promptService = mockk(relaxed = true),
+                    agentConfigService = agentConfigService,
+                    caseService = mockk(relaxed = true),
+                    permissionService = mockk(relaxed = true),
+                    userService = mockk(relaxed = true),
+                ).materialize(run, sp)
+            }
+
+            error.message shouldBe "Agent loop '$loopAgentName' not found in namespace $namespaceId"
+            userRunRepo.all().size shouldBe 0
+            runRepo.all().first { it.id == run.id }.status shouldBe RunStatus.CLAIMED
+        }
+
+        "Phase A loop mode: agent that is not a LOOP agent throws, no UserRun created, Run stays CLAIMED" {
+            val sp = makeLoopScheduledPrompt()
+            val run = makeRun(sp)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1))
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findByName(namespaceId, loopAgentName) } returns makeLoopAgent(mode = ExecutionMode.SIMPLE)
+            }
+
+            val error = io.kotest.assertions.throwables.shouldThrow<IllegalStateException> {
+                executor(
+                    spRepo = makeSpRepo(sp),
+                    runRepo = runRepo,
+                    userRunRepo = userRunRepo,
+                    promptService = mockk(relaxed = true),
+                    agentConfigService = agentConfigService,
+                    caseService = mockk(relaxed = true),
+                    permissionService = mockk(relaxed = true),
+                    userService = mockk(relaxed = true),
+                ).materialize(run, sp)
+            }
+
+            error.message shouldBe "Agent '$loopAgentName' is not a LOOP agent"
+            userRunRepo.all().size shouldBe 0
+            runRepo.all().first { it.id == run.id }.status shouldBe RunStatus.CLAIMED
+        }
+
+        "Phase B loop mode: case is driven by the loop agent, with the loopData as its session context" {
+            val sp = makeLoopScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also { it.materialize(run.id, loopAgentId, namespaceId) }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(sourceLanguage = "en")
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
+                every { it.findByName(namespaceId, loopAgentName) } returns makeLoopAgent()
+                every {
+                    it.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId1, loopAgentName)
+                } returns listOf(makeLoopAgent())
+            }
+            // The technical user has a preferred language: it must neither translate nor enrich.
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1.copy(preferredLanguage = "it")
+            }
+            val provider = mockk<UserContextProvider>()
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseSlot = slot<Case>()
+            val contentSlot = slot<List<MessageContent>>()
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(capture(caseSlot)) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+            val permissionService = mockk<PermissionService>(relaxed = true)
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = permissionService,
+                userService = userService,
+                userSessionContextResolver = UserSessionContextResolver(provider),
+            ).processUserRun(userRun)
+
+            caseSlot.captured.title shouldBe sp.name
+            caseSlot.captured.scheduledPromptId shouldBe sp.id
+            verify(exactly = 1) {
+                permissionService.grantPermission(userId1.toString(), EntityType.CASE, caseId.toString(), PermissionRelation.ADMIN)
+            }
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = capture(contentSlot),
+                    sessionContext = capture(sessionContextSlot),
+                )
+            }
+            contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content shouldBe
+                "@$loopAgentName Run scheduled prompt '${sp.name}'"
+
+            // Session context: exactly the loopData contract, untranslated prompt, no language / provider enrichment.
+            sessionContextSlot.captured.keys shouldBe setOf("loopData")
+            val data = sessionContextSlot.captured["loopData"] as Map<*, *>
+            data.keys shouldBe
+                setOf(
+                    LoopDataKeys.SEARCH_TOOL_NAME,
+                    LoopDataKeys.SEARCH_TOOL_ARGS,
+                    LoopDataKeys.AGENT_NAME,
+                    LoopDataKeys.PROMPT,
+                    LoopDataKeys.SCHEDULED_PROMPT_ID,
+                )
+            data[LoopDataKeys.SEARCH_TOOL_NAME] shouldBe "WHOZ__SearchTalents"
+            // plain maps and lists, not JsonNodes: they are persisted on the message
+            data[LoopDataKeys.SEARCH_TOOL_ARGS] shouldBe mapOf("query" to "kotlin", "limit" to 10)
+            data[LoopDataKeys.AGENT_NAME] shouldBe "weekly-agent"
+            data[LoopDataKeys.PROMPT] shouldBe "Run your weekly digest report."
+            data[LoopDataKeys.SCHEDULED_PROMPT_ID] shouldBe sp.id.toString()
+
+            verify(exactly = 0) { promptService.translate(any(), any(), any()) }
+            verify(exactly = 0) { provider.provideUserContext(any(), any()) }
+            userRunRepo.all().first { it.id == userRun.id }.status shouldBe UserRunStatus.DONE
+        }
+
+        "Phase B loop mode: the prompt is the template as is, not translated, even for a target language" {
+            val sp = makeLoopScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also { it.materialize(run.id, loopAgentId, namespaceId) }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate("Rapport hebdomadaire.").copy(sourceLanguage = "fr")
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
+                every { it.findByName(namespaceId, loopAgentName) } returns makeLoopAgent()
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId1, loopAgentName) } returns
+                    listOf(makeLoopAgent())
+            }
+            val userService = mockk<UserService>().also { every { it.findById(userId1) } returns user1.copy(preferredLanguage = "en") }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            verify(exactly = 1) {
+                caseService.addMessage(caseId = caseId, actor = any(), content = any(), sessionContext = capture(sessionContextSlot))
+            }
+            ((sessionContextSlot.captured["loopData"] as Map<*, *>)[LoopDataKeys.PROMPT]) shouldBe "Rapport hebdomadaire."
+            verify(exactly = 0) { promptService.translate(any(), any(), any()) }
+        }
+
+        "Phase B loop mode: absent search args are passed as an empty object" {
+            val sp = makeLoopScheduledPrompt(args = null)
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also { it.materialize(run.id, loopAgentId, namespaceId) }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
+                every { it.findByName(namespaceId, loopAgentName) } returns makeLoopAgent()
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId1, loopAgentName) } returns
+                    listOf(makeLoopAgent())
+            }
+            val userService = mockk<UserService>().also { every { it.findById(userId1) } returns user1 }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            verify(exactly = 1) {
+                caseService.addMessage(caseId = caseId, actor = any(), content = any(), sessionContext = capture(sessionContextSlot))
+            }
+            val data = sessionContextSlot.captured["loopData"] as Map<*, *>
+            data[LoopDataKeys.SEARCH_TOOL_ARGS] shouldBe emptyMap<String, Any?>()
+        }
+
+        "Phase B loop mode: access is checked on the loop agent — no access marks the UserRun DONE without a Case" {
+            val sp = makeLoopScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also { it.materialize(run.id, loopAgentId, namespaceId) }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
+                every { it.findByName(namespaceId, loopAgentName) } returns makeLoopAgent()
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId1, loopAgentName) } returns emptyList()
+            }
+            val userService = mockk<UserService>().also { every { it.findById(userId1) } returns user1 }
+            val caseService = mockk<CaseService>(relaxed = true)
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            userRunRepo.all().first { it.id == userRun.id }.status shouldBe UserRunStatus.DONE
+            verify(exactly = 0) { caseService.create(any()) }
+            verify(exactly = 1) {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId1, loopAgentName)
+            }
+        }
+
+        "Phase B loop mode: loop agent no longer found marks the UserRun FAILED" {
+            val sp = makeLoopScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also { it.materialize(run.id, loopAgentId, namespaceId) }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
+                every { it.findByName(namespaceId, loopAgentName) } returns null
+            }
+            val userService = mockk<UserService>().also { every { it.findById(userId1) } returns user1 }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.FAILED
+            updated.error!! shouldContain "Agent loop '$loopAgentName' not found"
         }
     }
 }

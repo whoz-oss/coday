@@ -14,6 +14,7 @@ import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -305,6 +306,67 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             scanner.tickClaim()
 
             runRepo.findById(orphanedRun.id)!!.status shouldBe RunStatus.DONE
+        }
+
+        "loop mode: tickClaim then Phase B then tickClaim runs a single loop case for the technical user" {
+            val loopAgentId = UUID.fromString("20000000-0000-0000-0000-0000000000a1")
+            val loopAgent = AgentConfig(
+                metadata = EntityMetadata(id = loopAgentId, version = 0L),
+                namespaceId = namespaceId,
+                name = "loop-agent",
+                enabled = true,
+                executionMode = ExecutionMode.LOOP,
+            )
+            val spRepo = InMemoryScheduledPromptRepository()
+            val runRepo = InMemoryScheduledPromptRunRepository()
+            // The loop agent is deployed to a group holding the single technical user; the target agent's
+            // audience (two users) must NOT be the one materialised.
+            val audiences = mutableListOf<UUID>()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository { agentConfigId, _ ->
+                audiences += agentConfigId
+                if (agentConfigId == loopAgentId) setOf(userId1) else setOf(userId1, userId2)
+            }
+            spRepo.save(
+                ScheduledPrompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    agentConfigId = agentId,
+                    promptTemplateId = promptTemplateId,
+                    name = "weekly-digest",
+                    recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = LocalTime.of(8, 0)),
+                    planning = Planning(startDate = LocalDate.of(2026, 1, 1), endType = SchedulerEndType.NEVER),
+                    enabled = true,
+                    nextRunAt = Instant.parse("2026-01-01T08:00:00Z"),
+                    agentLoopName = "loop-agent",
+                    loopConfiguration = LoopConfiguration(searchToolName = "WHOZ__SearchTalents"),
+                ),
+            )
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns activeAgent
+                every { it.findByName(namespaceId, "loop-agent") } returns loopAgent
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId1, "loop-agent") } returns listOf(loopAgent)
+            }
+
+            val (scanner, executor) = makeComponents(
+                spRepo, runRepo, userRunRepo,
+                caseService = eventuallyIdleCaseService(),
+                agentConfigService = agentConfigService,
+            )
+
+            // Phase A: a single UserRun, for the technical user
+            scanner.tickClaim()
+            audiences shouldBe listOf(loopAgentId)
+            val run = runRepo.all().single()
+            run.status shouldBe RunStatus.RUNNING
+            userRunRepo.all().single().userId shouldBe userId1
+
+            // Phase B: the loop case reaches IDLE -> UserRun DONE
+            drivePhaseB(executor, userRunRepo)
+            userRunRepo.all().single().status shouldBe UserRunStatus.DONE
+
+            // Closure by the scanner sweep
+            scanner.tickClaim()
+            runRepo.findById(run.id)!!.status shouldBe RunStatus.DONE
         }
 
         "multi-batch: all UserRuns processed when count exceeds batchSize, Run closed on next tick" {
