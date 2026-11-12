@@ -225,7 +225,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - uses: actions/setup-node@v5
         with:
@@ -251,7 +251,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - uses: actions/setup-node@v5
         with:
@@ -290,7 +290,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - uses: actions/setup-node@v5
         with:
@@ -386,7 +386,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - uses: actions/setup-node@v5
         with:
@@ -503,7 +503,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - uses: actions/setup-node@v5
         with:
@@ -554,7 +554,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - uses: actions/setup-node@v5
         with:
@@ -604,7 +604,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - name: Download staged AgentOS JARs
         uses: actions/download-artifact@v4
@@ -687,7 +687,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.28.1
+          version: 10
 
       - uses: actions/setup-node@v5
         with:
