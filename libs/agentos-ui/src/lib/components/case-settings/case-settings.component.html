@@ -1,4 +1,8 @@
-@if (autocomplete.effortSuggestions().length > 0) {
+@if (anyOpen()) {
+  <!-- Mobile only (hidden on desktop): dims the page behind the bottom sheet; a tap on it closes the picker. -->
+  <div class="case-settings__backdrop" aria-hidden="true" (click)="closePickers()"></div>
+}
+@if (effortOpen()) {
   <div class="case-settings__picker">
     <agentos-effort-autocomplete
       [options]="autocomplete.effortSuggestions()"
@@ -8,7 +12,7 @@
     />
   </div>
 }
-@if (autocomplete.modelSuggestions().length > 0) {
+@if (modelOpen()) {
   <div class="case-settings__picker">
     <agentos-model-autocomplete
       [options]="autocomplete.modelSuggestions()"
@@ -19,20 +23,30 @@
   </div>
 }
 <button
+  #modelChip
   type="button"
   class="case-settings__chip case-settings__chip--model"
   title="AI model of this case. Click, or type /model, to change it; the agent entry goes back to each agent's own model."
+  aria-haspopup="listbox"
+  [attr.aria-expanded]="modelOpen()"
+  [attr.aria-label]="'model: ' + modelText()"
   [disabled]="disabled()"
-  (click)="openModelPicker()"
+  (click)="toggleModelPicker()"
+  (keydown)="onChipKeydown($event, 'model')"
 >
-  model: {{ modelText() }}
+  <span class="case-settings__chip-key">model: </span><span class="case-settings__chip-value">{{ modelText() }}</span>
 </button>
 <button
+  #effortChip
   type="button"
   class="case-settings__chip case-settings__chip--effort"
   title="Reasoning effort of this case. Click, or type /effort, to change it; the default entry goes back to the effort of each model. Not applied to Anthropic and Gemini providers."
+  aria-haspopup="listbox"
+  [attr.aria-expanded]="effortOpen()"
+  [attr.aria-label]="'effort: ' + effortText()"
   [disabled]="disabled()"
-  (click)="openEffortPicker()"
+  (click)="toggleEffortPicker()"
+  (keydown)="onChipKeydown($event, 'effort')"
 >
-  effort: {{ effortText() }}
+  <span class="case-settings__chip-key">effort: </span><span class="case-settings__chip-value">{{ effortText() }}</span>
 </button>

@@ -167,6 +167,136 @@ describe('CaseSettingsComponent', () => {
     expect(host.querySelector('agentos-model-autocomplete')).toBeNull()
   })
 
+  describe('dismissal', () => {
+    const pointerDown = (target: EventTarget): void => {
+      target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    }
+    const key = (target: EventTarget, name: string): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      return event
+    }
+    // TestBed attaches the component to the document, so the document listeners see its events.
+    const open = (kind: 'model' | 'effort', rendered: ReturnType<typeof render>): void => {
+      chip(rendered.host, kind).click()
+      rendered.ref.changeDetectorRef.detectChanges()
+    }
+
+    it('closes an open picker on a pointerdown outside', () => {
+      const rendered = render()
+      open('model', rendered)
+      expect(rendered.autocomplete.modelSuggestions().length).toBeGreaterThan(0)
+
+      pointerDown(document.body)
+      rendered.ref.changeDetectorRef.detectChanges()
+
+      expect(rendered.autocomplete.modelSuggestions()).toEqual([])
+      expect(rendered.host.querySelector('agentos-model-autocomplete')).toBeNull()
+    })
+
+    it('keeps the picker open on a pointerdown inside, on its list or on a chip', () => {
+      const rendered = render()
+      open('effort', rendered)
+
+      pointerDown(rendered.host.querySelector('agentos-effort-autocomplete li')!)
+      pointerDown(chip(rendered.host, 'model'))
+
+      expect(rendered.autocomplete.effortSuggestions().length).toBeGreaterThan(0)
+    })
+
+    it('closes the picker when the backdrop is tapped', () => {
+      const rendered = render()
+      open('model', rendered)
+
+      rendered.host.querySelector<HTMLElement>('.case-settings__backdrop')!.click()
+
+      expect(rendered.autocomplete.modelSuggestions()).toEqual([])
+    })
+
+    it('closes the picker on Escape anywhere, and gives the focus back to the chip', () => {
+      const rendered = render()
+      open('effort', rendered)
+      chip(rendered.host, 'effort').focus()
+
+      const event = key(document.body, 'Escape')
+      rendered.ref.changeDetectorRef.detectChanges()
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(rendered.autocomplete.effortSuggestions()).toEqual([])
+      expect(document.activeElement).toBe(chip(rendered.host, 'effort'))
+    })
+
+    it('does nothing on Escape once closed', () => {
+      const rendered = render()
+      open('model', rendered)
+      pointerDown(document.body)
+      rendered.ref.changeDetectorRef.detectChanges()
+
+      const event = key(document.body, 'Escape')
+
+      expect(event.defaultPrevented).toBe(false)
+    })
+
+    it('closes the open picker when its chip is clicked again', () => {
+      const rendered = render()
+      open('model', rendered)
+      expect(chip(rendered.host, 'model').getAttribute('aria-expanded')).toBe('true')
+
+      chip(rendered.host, 'model').click()
+      rendered.ref.changeDetectorRef.detectChanges()
+
+      expect(rendered.autocomplete.modelSuggestions()).toEqual([])
+      expect(chip(rendered.host, 'model').getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('reflects the state of each picker in aria-expanded', () => {
+      const rendered = render()
+      expect(chip(rendered.host, 'model').getAttribute('aria-expanded')).toBe('false')
+      expect(chip(rendered.host, 'effort').getAttribute('aria-expanded')).toBe('false')
+      expect(chip(rendered.host, 'model').getAttribute('aria-haspopup')).toBe('listbox')
+
+      open('effort', rendered)
+
+      expect(chip(rendered.host, 'effort').getAttribute('aria-expanded')).toBe('true')
+      expect(chip(rendered.host, 'model').getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('drives the picker from the focused chip: ArrowDown then Enter picks the next entry', () => {
+      const rendered = render()
+      open('model', rendered)
+      chip(rendered.host, 'model').focus()
+
+      key(chip(rendered.host, 'model'), 'ArrowDown')
+      rendered.ref.changeDetectorRef.detectChanges()
+      const enter = key(chip(rendered.host, 'model'), 'Enter')
+
+      // Nothing chosen yet: the picker starts on the agent entry, so the next one is the first model.
+      expect(rendered.models.map((choice) => choice.model)).toEqual(['BIG'])
+      expect(enter.defaultPrevented).toBe(true)
+    })
+
+    it('drives the effort picker from the focused chip too', () => {
+      const rendered = render()
+      open('effort', rendered)
+
+      key(chip(rendered.host, 'effort'), 'ArrowDown')
+      rendered.ref.changeDetectorRef.detectChanges()
+      key(chip(rendered.host, 'effort'), 'Enter')
+
+      expect(rendered.efforts).toHaveLength(1)
+      expect(rendered.efforts[0]!.effort).not.toBeNull()
+    })
+
+    it('leaves the keys of a closed picker alone', () => {
+      const rendered = render()
+
+      const event = key(chip(rendered.host, 'model'), 'Enter')
+
+      expect(event.defaultPrevented).toBe(false)
+      expect(rendered.models).toEqual([])
+    })
+  })
+
   it('exposes the pickers so that the host can drive them from the keyboard', () => {
     const { host, ref } = render()
     expect(ref.instance.modelPicker()).toBeUndefined()

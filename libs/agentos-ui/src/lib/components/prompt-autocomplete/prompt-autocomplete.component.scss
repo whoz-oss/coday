@@ -2,7 +2,8 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 400px;
+  // A host that must keep the list within the viewport (the model and effort pickers) sets the variable.
+  max-height: var(--autocomplete-max-height, 400px);
   width: 100%;
   overflow-y: auto;
 
@@ -37,6 +38,7 @@
     border-left: 3px solid transparent;
     border-radius: var(--radius-sm, 0);
     padding: 0.5rem 0;
+    min-height: var(--autocomplete-item-min-height, 0);
 
     &:hover,
     &--active {

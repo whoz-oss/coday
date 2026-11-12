@@ -18,6 +18,13 @@
   box-shadow: var(--shadow-lg);
   z-index: 20;
   animation: case-settings-picker-in 0.12s ease;
+  // The shared list caps its height with this variable: never taller than half the viewport.
+  --autocomplete-max-height: min(400px, 50dvh);
+}
+
+// Dims the page behind the bottom sheet; mobile only.
+.case-settings__backdrop {
+  display: none;
 }
 
 .case-settings__chip {
@@ -47,6 +54,60 @@
   &:disabled {
     cursor: default;
     opacity: 0.6;
+  }
+}
+
+// ── Mobile: the picker is a bottom sheet ───────────────────────────────────────
+// Against the composer, the list would be clipped by the viewport and by the overflow-hidden ancestors (the hero
+// of the case home): it is pinned to the viewport instead, over a backdrop whose tap closes it.
+@media (max-width: 600px) {
+  .case-settings__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .case-settings__picker {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    max-height: 70dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: var(--radius-md, 0) var(--radius-md, 0) 0 0;
+    border-bottom: none;
+    // The list takes the height of the sheet, minus the safe area, and scrolls inside.
+    --autocomplete-max-height: calc(70dvh - env(safe-area-inset-bottom));
+    // Rows comfortable to tap.
+    --autocomplete-item-min-height: 44px;
+    animation-name: case-settings-sheet-in;
+  }
+
+  // Only the value: the key is in the title and the aria-label.
+  .case-settings__chip {
+    max-width: 7rem;
+  }
+
+  .case-settings__chip-key {
+    display: none;
+  }
+}
+
+@keyframes case-settings-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
