@@ -26,7 +26,7 @@ import java.util.UUID
  *
  * 1. Guard: the triggering user must be identified.
  * 2. Guard: the `FreeCaseStarterForUser` tool must be among the agent's tools, i.e. a `CASE` integration is bound
- *    to the loop agent. Checked before searching, so a misconfigured loop fails at once instead of after a
+ *    to the loop agent: the one [AgentLoopAct.tool] names, or else the first found. Checked before searching, so a misconfigured loop fails at once instead of after a
  *    search whose results it could not use. Whether the triggering user is an ADMIN of the namespace is not
  *    checked here: a loop whose end users are all the triggering user does not need it. Without it, every
  *    other end user is refused by the tool (`FORBIDDEN`) and counted as failed.
@@ -68,13 +68,10 @@ class LoopWorkflowRunnerService(
                 ?: return LoopRunOutcome.Aborted("An AgentLoop must be triggered by an identified user.")
 
         val starterTool =
-            context.tools.find { FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(it.name) }
-                ?: return LoopRunOutcome.Aborted(
-                    "The '${FreeCaseStarterForUserTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
-                        "(available: ${context.tools.map { it.name }}). " +
-                        "Bind a CASE integration to the agent, granting FreeCaseStarterForUser (the user who triggers the loop must be " +
-                        "an ADMIN of the namespace to start cases for other users).",
-                )
+            when (val lookup = findStarterTool(payload.act.tool, context)) {
+                is ToolLookup.Found -> lookup.tool
+                is ToolLookup.Failure -> return LoopRunOutcome.Aborted(lookup.reason)
+            }
 
         val search =
             when (val searchOutcome = search(payload, context, triggerUser)) {
@@ -121,6 +118,69 @@ class LoopWorkflowRunnerService(
     }
 
     /**
+     * The tool that starts the cases: the one the loop names ([toolRef], a `FreeCaseStarterForUser` tool), or
+     * else the first `FreeCaseStarterForUser` tool of the agent.
+     */
+    private fun findStarterTool(
+        toolRef: String?,
+        context: LoopRunContext,
+    ): ToolLookup {
+        val missing =
+            "The '${toolRef ?: FreeCaseStarterForUserTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
+                "(available: ${context.tools.map { it.name }}). " +
+                "Bind a CASE integration to the agent, granting FreeCaseStarterForUser (the user who triggers the loop must be " +
+                "an ADMIN of the namespace to start cases for other users)."
+        return when {
+            toolRef == null -> {
+                context.tools
+                    .find { FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(it.name) }
+                    ?.let { ToolLookup.Found(it) } ?: ToolLookup.Failure(missing)
+            }
+
+            else -> {
+                when (val lookup = findTool(toolRef, context, missing)) {
+                    is ToolLookup.Found ->
+                        if (FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(lookup.tool.name)) {
+                            lookup
+                        } else {
+                            ToolLookup.Failure(
+                                "The starter tool '$toolRef' must be the '${FreeCaseStarterForUserTool.TOOL_NAME}' tool, " +
+                                    "found '${lookup.tool.name}'.",
+                            )
+                        }
+
+                    is ToolLookup.Failure -> lookup
+                }
+            }
+        }
+    }
+
+    /**
+     * The tool of the agent that [toolRef] designates: the one of exactly that name, else the only one whose name
+     * ends with `__<toolRef>` (the reference without its integration config prefix). Several of the latter are
+     * ambiguous, which fails rather than picks one.
+     */
+    private fun findTool(
+        toolRef: String,
+        context: LoopRunContext,
+        notFound: String,
+    ): ToolLookup {
+        val exact = context.tools.find { it.name == toolRef }
+        val suffixed = context.tools.filter { it.name.endsWith("__$toolRef") }
+        return when {
+            exact != null -> ToolLookup.Found(exact)
+            suffixed.size == 1 -> ToolLookup.Found(suffixed.single())
+            suffixed.size > 1 ->
+                ToolLookup.Failure(
+                    "The tool '$toolRef' is ambiguous for agent '${context.agentName}': ${suffixed.map { it.name }}. " +
+                        "Use the full name of one of them.",
+                )
+
+            else -> ToolLookup.Failure(notFound)
+        }
+    }
+
+    /**
      * Executes the SEARCH phase: invokes the configured tool and parses its output as
      * [SearchResult].
      *
@@ -136,11 +196,18 @@ class LoopWorkflowRunnerService(
     ): SearchOutcome {
         val toolName = payload.search.tool
         val searchTool =
-            context.tools.find { it.name == toolName }
-                ?: return SearchOutcome.Failure(
-                    "Search tool '$toolName' is not available to agent '${context.agentName}' " +
-                        "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
-                )
+            when (
+                val lookup =
+                    findTool(
+                        toolName,
+                        context,
+                        "Search tool '$toolName' is not available to agent '${context.agentName}' " +
+                            "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
+                    )
+            ) {
+                is ToolLookup.Found -> lookup.tool
+                is ToolLookup.Failure -> return SearchOutcome.Failure(lookup.reason)
+            }
         val toolContext = toolContext(context = context, triggerUser = triggerUser)
         val paramsJson = objectMapper.writeValueAsString(payload.search.params)
         logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
@@ -216,6 +283,7 @@ class LoopWorkflowRunnerService(
                 agentName = act.agentName,
                 prompt = act.prompt,
                 userId = endUserId.toString(),
+                title = act.title,
                 sessionContext = activeContextOf(item),
             )
 
@@ -288,6 +356,16 @@ class LoopWorkflowRunnerService(
         data object NoAgentAccess : ItemOutcome
 
         data object Failed : ItemOutcome
+    }
+
+    private sealed interface ToolLookup {
+        data class Found(
+            val tool: StandardTool<*>,
+        ) : ToolLookup
+
+        data class Failure(
+            val reason: String,
+        ) : ToolLookup
     }
 
     private sealed interface SearchOutcome {

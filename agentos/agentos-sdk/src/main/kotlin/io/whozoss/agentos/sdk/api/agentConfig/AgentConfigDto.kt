@@ -103,19 +103,24 @@ data class AgentConfigDto(
     )
     val skillSelectors: List<String>? = null,
     /**
-     * Default payload for LOOP-mode agents, stored as a JSON object.
+     * The loop of a LOOP-mode agent, stored as a JSON object, in one of two formats.
      *
-     * Fallback [io.whozoss.agentos.workflow.AgentLoopPayload]: a payload found in the session context
-     * (`agentLoop` entry) of the last user message takes precedence, and this default is used only
-     * when that message carries none.
+     * **`steps` format**: `{ "steps": [ { "id", "type": "SEARCH", "tool", "args" }, { "id", "type": "START_CASES",
+     * "tool", "args", "scheduledPromptId" } ] }`. It describes the process; the data of a run is the `loopData`
+     * entry of the session context of the message that triggers it, read through `${loopData.key}` placeholders
+     * in `tool`, `args` and `scheduledPromptId`.
+     *
+     * **Legacy format** (no `steps` field): `{ "search": { "tool", "params" }, "act": { "agentName", "prompt" } }`,
+     * independent of any `loopData`.
      *
      * Only meaningful when [executionMode] is LOOP; ignored for SIMPLE and ADVANCED agents.
      */
     @field:Schema(
         description =
-            "Fallback AgentLoopPayload for LOOP-mode agents. A payload in the session context ('agentLoop') of " +
-                "the last user message takes precedence; this one is used when that message carries none. " +
-                "Ignored for SIMPLE and ADVANCED agents.",
+            "Loop of a LOOP-mode agent. Either the 'steps' format (a SEARCH then a START_CASES step, whose tool, " +
+                "args and scheduledPromptId may use \${loopData.key} placeholders resolved against the 'loopData' " +
+                "entry of the session context of the triggering message), or the legacy format ('search' and " +
+                "'act', independent of any loopData). Ignored for SIMPLE and ADVANCED agents.",
         type = "object",
         nullable = true,
     )

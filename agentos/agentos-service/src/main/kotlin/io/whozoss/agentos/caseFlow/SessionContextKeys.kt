@@ -40,11 +40,12 @@ object SessionContextKeys {
     const val LAST_NAME = "lastName"
 
     /**
-     * Payload of a loop run: an [io.whozoss.agentos.workflow.AgentLoopPayload] as a plain map.
+     * Initial data of an agent loop run, a map.
      *
-     * Written by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] for a scheduled prompt in
-     * loop mode, read by [io.whozoss.agentos.agent.AgentLoop] from the last user message. Both go through
-     * [io.whozoss.agentos.workflow.AgentLoopSessionContext], which owns the format.
+     * Written by the initiator of the run (today the scheduler, for a scheduled prompt in loop mode:
+     * [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor]), read by [io.whozoss.agentos.agent.AgentLoop]
+     * from the last user message, and consumed by the `${loopData...}` placeholders of the steps of the agent's
+     * `loopConfig`. Both sides go through [io.whozoss.agentos.workflow.LoopDataSessionContext].
      */
-    const val AGENT_LOOP = "agentLoop"
+    const val LOOP_DATA = "loopData"
 }

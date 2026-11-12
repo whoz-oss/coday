@@ -16,9 +16,11 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.workflow.AgentLoopPayload
-import io.whozoss.agentos.workflow.AgentLoopSessionContext
+import io.whozoss.agentos.workflow.LoopDataSessionContext
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
+import io.whozoss.agentos.workflow.LoopSteps
+import io.whozoss.agentos.workflow.LoopStepsTranslator
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -32,24 +34,45 @@ import java.util.UUID
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunnerService]:
  *
- * 1. Resolve the [AgentLoopPayload] (see "Payload resolution order" below).
+ * 1. Resolve the [AgentLoopPayload] from [loopConfig] (see "Payload resolution" below).
  * 2. Delegate the workflow to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
  *    when the run could not proceed. Always ends with [AgentFinishedEvent].
  *
  * The text of the triggering message is not read; only its session context is.
  *
- * ## Payload resolution order
+ * ## Process and data
  *
- * 1. The `agentLoop` entry of the session context of the most recent user [MessageEvent]
- *    (see [AgentLoopSessionContext]). This is how a scheduled prompt in loop mode configures the run.
- * 2. Otherwise [loopConfig], the default stored on the [AgentConfig] (e.g. a run launched from the UI).
- * 3. Otherwise the run cannot proceed and a [WarnEvent] is emitted.
+ * The agent's [loopConfig] describes the *process* of the loop. The *data* of a run (what to search, which agent
+ * and prompt to start, ...) is the `loopData` entry of the session context of the user message that triggers the
+ * run, written by whoever starts it (see [LoopDataSessionContext]); the steps read it through placeholders.
  *
- * An `agentLoop` entry that is present but unparseable is an error (no silent fallback to [loopConfig]).
+ * ## Payload resolution
  *
- * ## Expected loopConfig format
+ * - No [loopConfig]: the run cannot proceed and a [WarnEvent] is emitted.
+ * - A [loopConfig] with a `steps` field: the `loopData` of the most recent user [MessageEvent] is required
+ *   (a [WarnEvent] when missing); the `${loopData...}` placeholders of the steps are resolved against it and the
+ *   result is validated ([LoopStepsTranslator]).
+ * - Any other [loopConfig] is in the legacy `search`/`act` format, used as is; it takes no `loopData` and is what
+ *   a run launched from the UI uses.
  *
+ * Whatever is invalid is reported as a [WarnEvent] before anything runs.
+ *
+ * ## loopConfig formats
+ *
+ * Steps format, with the `loopData` it reads:
+ * ```json
+ * {
+ *   "steps": [
+ *     { "id": "search", "type": "SEARCH", "tool": "${loopData.searchToolName}", "args": "${loopData.searchToolArgs}" },
+ *     { "id": "start-cases", "type": "START_CASES", "tool": "FreeCaseStarterForUser",
+ *       "args": { "agentName": "${loopData.agentName}", "prompt": "${loopData.prompt}" },
+ *       "scheduledPromptId": "${loopData.scheduledPromptId}" }
+ *   ]
+ * }
+ * ```
+ *
+ * Legacy format:
  * ```json
  * {
  *   "search": {
@@ -66,8 +89,7 @@ import java.util.UUID
  * @param runner        Executes the workflow.
  * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
  * @param triggerUser   The user who triggered the run.
- * @param loopConfig    The default [AgentLoopPayload] persisted on [AgentConfig], used when the last
- *                      user message carries none.
+ * @param loopConfig    The loop described by the [AgentConfig], in either format.
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -191,44 +213,61 @@ class AgentLoop(
     )
 
     /**
-     * Resolves the [AgentLoopPayload]: session context of the last user message first, then [loopConfig].
+     * Resolves the [AgentLoopPayload] of the run from [loopConfig], in its `steps` or legacy format.
      *
-     * @throws InvalidLoopPayloadException when no payload is available or the one found cannot be parsed.
+     * @throws InvalidLoopPayloadException when there is no [loopConfig], or the one found (or the `loopData` it
+     *   needs) is missing or invalid.
      */
     private fun resolvePayload(events: List<CaseEvent>): AgentLoopPayload {
-        val lastUserMessage =
-            events.filterIsInstance<MessageEvent>().lastOrNull { it.actor.role == ActorRole.USER }
+        val config =
+            loopConfig ?: throw InvalidLoopPayloadException("No loopConfig is configured on this agent.")
 
-        val fromSessionContext =
-            try {
-                AgentLoopSessionContext.read(lastUserMessage?.sessionContext, objectMapper)
-            } catch (e: Exception) {
-                throw InvalidLoopPayloadException(
-                    "The '${SessionContextKeys.AGENT_LOOP}' session context entry could not be parsed as a valid " +
-                        "AgentLoopPayload: ${e.message}",
-                    e,
-                )
-            }
-
-        val (payload, source) =
+        val (payload, format) =
             when {
-                fromSessionContext != null -> fromSessionContext to "session context"
-                loopConfig != null -> parseLoopConfig(loopConfig) to "loopConfig"
-                else ->
-                    throw InvalidLoopPayloadException(
-                        "No loop payload: neither the triggering message's session context ('${SessionContextKeys.AGENT_LOOP}') " +
-                            "nor the agent's loopConfig provides one.",
-                    )
+                config.has(STEPS_FIELD) -> stepsPayload(config, events) to "steps"
+                else -> legacyPayload(config) to "legacy"
             }
 
         if (payload.search.tool.isBlank()) {
-            throw InvalidLoopPayloadException("The loop payload ($source) has a blank 'search.tool' field.")
+            throw InvalidLoopPayloadException("The loopConfig ($format format) has a blank search tool.")
         }
-        logger.info { "[AgentLoop] '$name': payload resolved from $source (tool=${payload.search.tool})" }
+        logger.info { "[AgentLoop] '$name': loopConfig resolved ($format format, tool=${payload.search.tool})" }
         return payload
     }
 
-    private fun parseLoopConfig(config: JsonNode): AgentLoopPayload =
+    /** The `steps` format: parsed, resolved against the `loopData` of the last user message, then validated. */
+    private fun stepsPayload(
+        config: JsonNode,
+        events: List<CaseEvent>,
+    ): AgentLoopPayload {
+        val steps =
+            try {
+                objectMapper.treeToValue(config, LoopSteps::class.java)
+            } catch (e: Exception) {
+                throw InvalidLoopPayloadException("loopConfig could not be parsed as valid steps: ${e.message}", e)
+            }
+        val lastUserMessage =
+            events.filterIsInstance<MessageEvent>().lastOrNull { it.actor.role == ActorRole.USER }
+        val loopData =
+            readLoopData(lastUserMessage) ?: throw InvalidLoopPayloadException(
+                "This agent loop requires a '${SessionContextKeys.LOOP_DATA}' entry in the session context of the " +
+                    "triggering message.",
+            )
+        return try {
+            LoopStepsTranslator.translate(steps, loopData)
+        } catch (e: IllegalArgumentException) {
+            throw InvalidLoopPayloadException("Invalid loopConfig: ${e.message}", e)
+        }
+    }
+
+    private fun readLoopData(message: MessageEvent?): JsonNode? =
+        try {
+            LoopDataSessionContext.read(message?.sessionContext, objectMapper)
+        } catch (e: IllegalArgumentException) {
+            throw InvalidLoopPayloadException(e.message ?: "Invalid loopData", e)
+        }
+
+    private fun legacyPayload(config: JsonNode): AgentLoopPayload =
         try {
             objectMapper.treeToValue(config, AgentLoopPayload::class.java)
         } catch (e: Exception) {
@@ -250,5 +289,8 @@ class AgentLoop(
          */
         const val PROVIDER_NAME = "none"
         const val MODEL_NAME = "agent-loop"
+
+        /** Field whose presence in the `loopConfig` selects the `steps` format over the legacy one. */
+        private const val STEPS_FIELD = "steps"
     }
 }
