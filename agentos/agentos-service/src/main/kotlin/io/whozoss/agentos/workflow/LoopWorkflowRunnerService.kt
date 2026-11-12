@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.casePlugin.CaseStarterOutput
 import io.whozoss.agentos.casePlugin.CaseStarterRefusal
 import io.whozoss.agentos.casePlugin.FreeCaseStarterForUserTool
+import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -13,6 +14,7 @@ import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.tak
 import kotlinx.coroutines.CancellationException
 import mu.KLogging
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -40,6 +42,10 @@ import java.util.UUID
  *       language); the loop does neither. Fire-and-forget: the tool returns the new case id at once. The new
  *       cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
  *       iteration, the cases already started keep running on their own.
+ *    c. when the loop has a scheduled prompt ([AgentLoopAct.scheduledPromptId]), link the started case to it with
+ *       [CaseService.assignScheduledPrompt], right after the start, using the case id the tool returned. A link
+ *       that fails (refused, or an error) does not fail the item: the case runs all the same and is counted as
+ *       [LoopRunOutcome.Completed.unlinked].
  *
  * ## Who is authorized
  *
@@ -57,6 +63,11 @@ class LoopWorkflowRunnerService(
     private val objectMapper: ObjectMapper,
     private val userService: UserService,
     private val limitsConfig: LimitsConfigProperties,
+    /**
+     * A `@Lazy` proxy, as in `CaseStarterService`: `CaseService` depends on `AgentService`, which depends on this
+     * runner, so resolving it eagerly would close a cycle.
+     */
+    @Lazy private val caseService: CaseService,
 ) {
     suspend fun run(
         payload: AgentLoopPayload,
@@ -114,6 +125,7 @@ class LoopWorkflowRunnerService(
             maxItems = maxItems,
             targetAgent = payload.act.agentName,
             interrupted = !shouldContinue(),
+            unlinked = outcomes.count { it is ItemOutcome.Started && !it.linked },
         )
     }
 
@@ -294,6 +306,13 @@ class LoopWorkflowRunnerService(
                     toolContext(context = context, triggerUser = triggerUser),
                 )
             startOutcome(result = result, item = item, context = context)
+                .let { outcome ->
+                    when {
+                        outcome is ItemOutcome.Started && act.scheduledPromptId != null ->
+                            outcome.copy(linked = linkToScheduledPrompt(outcome.caseId, act.scheduledPromptId))
+                        else -> outcome
+                    }
+                }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -340,6 +359,30 @@ class LoopWorkflowRunnerService(
         return ItemOutcome.Started(caseId)
     }
 
+    /**
+     * Links the started case [caseId] to its scheduled prompt. Never fails the item: a refusal (case gone or
+     * already linked) or an error is logged and reported as false, the case running all the same.
+     */
+    private fun linkToScheduledPrompt(
+        caseId: UUID,
+        scheduledPromptId: UUID,
+    ): Boolean =
+        try {
+            caseService.assignScheduledPrompt(caseId, scheduledPromptId).also { linked ->
+                if (!linked) {
+                    logger.warn {
+                        "[LoopWorkflowRunner] Case $caseId was not linked to scheduled prompt $scheduledPromptId " +
+                            "(gone, or already linked to one)"
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.warn(e) { "[LoopWorkflowRunner] Could not link case $caseId to scheduled prompt $scheduledPromptId" }
+            false
+        }
+
     /** The new case id, from the structured output of the tool ([CaseStarterOutput]); null if unreadable. */
     private fun startedCaseId(result: ToolExecutionResult): UUID? =
         result.structuredOutput
@@ -349,6 +392,8 @@ class LoopWorkflowRunnerService(
     private sealed interface ItemOutcome {
         data class Started(
             val caseId: UUID,
+            /** False when the case should have been linked to a scheduled prompt and was not. */
+            val linked: Boolean = true,
         ) : ItemOutcome
 
         data object UnknownUser : ItemOutcome

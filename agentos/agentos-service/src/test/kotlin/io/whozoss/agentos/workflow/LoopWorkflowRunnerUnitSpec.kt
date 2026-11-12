@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -14,6 +16,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.casePlugin.CaseStarterOutput
+import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -23,6 +26,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.CancellationException
 import java.util.UUID
 
 /**
@@ -79,6 +83,7 @@ class LoopWorkflowRunnerUnitSpec :
             maxItems: Int = 50,
         ) {
             val userService = mockk<UserService>()
+            val caseService = mockk<CaseService>()
             val calls = mutableListOf<Call>()
             val startedIds = mutableListOf<UUID>()
 
@@ -101,6 +106,7 @@ class LoopWorkflowRunnerUnitSpec :
                     objectMapper = objectMapper,
                     userService = userService,
                     limitsConfig = LimitsConfigProperties(agentLoopMaxItems = maxItems),
+                    caseService = caseService,
                 )
 
             fun success(id: UUID): ToolExecutionResult =
@@ -536,6 +542,98 @@ class LoopWorkflowRunnerUnitSpec :
 
             f.calls.first().input["title"].asText() shouldBe "Weekly review"
             f.calls.last().input.get("title")?.isNull ?: true shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Linking the started cases to their scheduled prompt
+        // -------------------------------------------------------------------------
+
+        val scheduledPromptId: UUID = UUID.randomUUID()
+        val linking = payload.copy(act = payload.act.copy(scheduledPromptId = scheduledPromptId))
+
+        suspend fun Fixture.runLinking(search: StandardTool<*>): LoopRunOutcome =
+            runner.run(linking, context(listOf(search, starterTool))) { true }
+
+        "each started case is linked to the scheduled prompt, with the id the starter returned" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.knownUser("bob")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } returns true
+
+            val outcome = f.runLinking(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 2
+            outcome.unlinked shouldBe 0
+            f.startedIds.size shouldBe 2
+            f.startedIds.forEach { id -> verify(exactly = 1) { f.caseService.assignScheduledPrompt(id, scheduledPromptId) } }
+            verify(exactly = 2) { f.caseService.assignScheduledPrompt(any(), any()) }
+        }
+
+        "no case is linked when the loop has no scheduled prompt" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 1
+            outcome.unlinked shouldBe 0
+            verify(exactly = 0) { f.caseService.assignScheduledPrompt(any(), any()) }
+        }
+
+        "a case that was not started is not linked" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.answer = { ToolExecutionResult.error("not deployed", errorType = "AGENT_NOT_AVAILABLE") }
+
+            val outcome = f.runLinking(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.noAgentAccess shouldBe 1
+            verify(exactly = 0) { f.caseService.assignScheduledPrompt(any(), any()) }
+        }
+
+        "a refused link is counted as unlinked, the case stays started, and the summary says so" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.knownUser("bob")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } returnsMany listOf(false, true)
+
+            val outcome = f.runLinking(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 2
+            outcome.failed shouldBe 0
+            outcome.unlinked shouldBe 1
+            outcome.summary() shouldContain "- Started but not linked to the scheduled prompt: 1"
+        }
+
+        "a link that throws is counted as unlinked and does not stop the loop" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.knownUser("bob")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } throws IllegalStateException("neo4j down")
+
+            val outcome = f.runLinking(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 2
+            outcome.failed shouldBe 0
+            outcome.unlinked shouldBe 2
+            f.calls.size shouldBe 2
+        }
+
+        "a cancellation during the link is rethrown, not swallowed" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } throws CancellationException("stopped")
+
+            shouldThrow<CancellationException> { f.runLinking(searchTool(listOf("alice"))) }
+        }
+
+        "the summary has no unlinked line when every case was linked" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } returns true
+
+            f.runLinking(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>().summary() shouldNotContain
+                "not linked"
         }
 
         // -------------------------------------------------------------------------

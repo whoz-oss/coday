@@ -98,6 +98,16 @@ open class Neo4jCaseRepository(
         childCaseId: UUID,
     ) = caseNodeNeo4jRepository.linkParentToChild(parentCaseId.toString(), childCaseId.toString())
 
+    override fun assignScheduledPrompt(
+        caseId: UUID,
+        scheduledPromptId: UUID,
+    ): Boolean =
+        caseNodeNeo4jRepository
+            .assignScheduledPrompt(caseId.toString(), scheduledPromptId.toString())
+            .also { assigned ->
+                logger.debug { "[Neo4jCaseRepository] Scheduled prompt $scheduledPromptId assigned to case $caseId: $assigned" }
+            }
+
     @Transactional
     override fun deleteByParent(parentId: UUID): Int {
         val active = caseNodeNeo4jRepository.findActiveByNamespaceId(parentId.toString())

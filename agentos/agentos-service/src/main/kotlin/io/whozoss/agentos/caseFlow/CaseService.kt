@@ -72,6 +72,16 @@ interface CaseService : EntityService<Case, UUID> {
     // ========================================
 
     /**
+     * Link the case [caseId] to the scheduled prompt [scheduledPromptId], once: a case that already has a scheduled
+     * prompt, does not exist or is soft-deleted is left alone and false is returned.
+     *
+     * For a case that is created first and attributed afterwards, such as one started by an agent loop for a
+     * scheduled prompt. Delegates to [CaseRepository.assignScheduledPrompt], a targeted update whose known
+     * residual race with the status saves of [CaseServiceImpl] is described there.
+     */
+    fun assignScheduledPrompt(caseId: UUID, scheduledPromptId: UUID): Boolean
+
+    /**
      * Retrieve an active [CaseRuntime] instance by ID.
      * Rehydrates from persistence if no live instance exists.
      * Use this only when you intend to interact with the case (send a message, stop it).

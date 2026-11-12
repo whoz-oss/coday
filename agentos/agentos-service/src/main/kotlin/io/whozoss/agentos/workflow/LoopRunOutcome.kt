@@ -16,6 +16,8 @@ sealed interface LoopRunOutcome {
      * @param startedCaseIds  Ids of the standalone cases started, for traceability.
      * @param overLimit    Entities ignored because [maxItems] was reached.
      * @param interrupted  True when a kill/interrupt stopped the ACT phase early.
+     * @param unlinked     Started cases that could not be linked to the scheduled prompt of the loop (they run all
+     *                     the same). Always 0 for a loop with no scheduled prompt.
      */
     data class Completed(
         val searchTool: String,
@@ -30,6 +32,7 @@ sealed interface LoopRunOutcome {
         val maxItems: Int,
         val targetAgent: String,
         val interrupted: Boolean,
+        val unlinked: Int = 0,
     ) : LoopRunOutcome {
         val started: Int get() = startedCaseIds.size
 
@@ -42,6 +45,7 @@ sealed interface LoopRunOutcome {
                 if (unknownUser > 0) append("\n- Skipped, no matching user: $unknownUser")
                 if (noAgentAccess > 0) append("\n- Refused, user cannot access '$targetAgent': $noAgentAccess")
                 if (failed > 0) append("\n- Failed to start: $failed")
+                if (unlinked > 0) append("\n- Started but not linked to the scheduled prompt: $unlinked")
                 if (overLimit > 0) append("\n- Not processed, over the limit of $maxItems per run: $overLimit")
                 if (hasMorePages) append("\n- More results exist: only the first page was processed.")
                 if (interrupted) append("\n- Interrupted before all entities were processed.")

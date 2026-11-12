@@ -81,4 +81,25 @@ interface CaseRepository : EntityRepository<Case, UUID> {
         parentCaseId: UUID,
         childCaseId: UUID,
     )
+
+    /**
+     * Links the case [caseId] to the scheduled prompt [scheduledPromptId], unless it is already linked to one.
+     *
+     * A **targeted, write-once update** of the `scheduledPromptId` field alone, so that it neither reads nor
+     * rewrites the rest of the case: a case started by an agent loop is created without its scheduled prompt, and
+     * is linked right after, while its runtime may already be saving its status.
+     *
+     * Returns true when the link was written; false when the case does not exist, is soft-deleted, or already has
+     * a scheduled prompt (which is never overwritten).
+     *
+     * **Known residual race.** [CaseServiceImpl] saves the whole case on each status change, from a copy it read
+     * just before. If that read happens before this update and its save after, the save writes the old (null)
+     * scheduled prompt back and the link is lost without notice. The window is a few milliseconds, and the loop
+     * reports a failed link (`false`) but cannot see this one. The real fix is a targeted status update, which is
+     * out of scope here.
+     */
+    fun assignScheduledPrompt(
+        caseId: UUID,
+        scheduledPromptId: UUID,
+    ): Boolean
 }

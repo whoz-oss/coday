@@ -170,6 +170,26 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
         @Param("childCaseId") childCaseId: String,
     )
 
+    /**
+     * Sets `scheduledPromptId` on an active case that has none, and nothing else.
+     *
+     * A targeted write rather than a read-modify-save of the node, which would race with the case runtime's
+     * own saves of the status. Write-once: a case that already has a scheduled prompt is not matched, so it is
+     * never overwritten. Returns whether a case was updated (one row even when nothing matches, as `count`
+     * aggregates without grouping key).
+     */
+    @Query(
+        $$"""MATCH (c:Case {id: $caseId})
+            WHERE NOT COALESCE(c.removed, false) AND c.scheduledPromptId IS NULL
+            SET c.scheduledPromptId = $scheduledPromptId
+            RETURN count(c) > 0
+            """,
+    )
+    fun assignScheduledPrompt(
+        @Param("caseId") caseId: String,
+        @Param("scheduledPromptId") scheduledPromptId: String,
+    ): Boolean
+
     // -------------------------------------------------------------------------
     // WATCHES — consolidated per-user case state (favorite + read).
     //

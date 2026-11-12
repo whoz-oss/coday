@@ -184,6 +184,40 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             found.first().scheduledPromptId shouldBe null
         }
 
+        "assignScheduledPrompt links a case that has none, and changes nothing else" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = repo.save(case(ns.id, CaseStatus.RUNNING).copy(title = "keep me"))
+            val spId = UUID.randomUUID()
+
+            repo.assignScheduledPrompt(saved.id, spId).shouldBeTrue()
+
+            val found = repo.findByIds(listOf(saved.id)).single()
+            found.scheduledPromptId shouldBe spId
+            found.title shouldBe "keep me"
+            found.status shouldBe CaseStatus.RUNNING
+            found.namespaceId shouldBe ns.id
+        }
+
+        "assignScheduledPrompt is write-once: an existing link is never overwritten" {
+            val ns = namespaceRepo.save(namespace())
+            val first = UUID.randomUUID()
+            val saved = repo.save(case(ns.id).copy(scheduledPromptId = first))
+
+            repo.assignScheduledPrompt(saved.id, UUID.randomUUID()).shouldBeFalse()
+
+            repo.findByIds(listOf(saved.id)).single().scheduledPromptId shouldBe first
+        }
+
+        "assignScheduledPrompt ignores an unknown case and a soft-deleted one" {
+            val ns = namespaceRepo.save(namespace())
+            val deleted = repo.save(case(ns.id))
+            repo.delete(deleted.id)
+
+            repo.assignScheduledPrompt(UUID.randomUUID(), UUID.randomUUID()).shouldBeFalse()
+            repo.assignScheduledPrompt(deleted.id, UUID.randomUUID()).shouldBeFalse()
+            repo.findByIds(listOf(deleted.id), withRemoved = true).single().scheduledPromptId shouldBe null
+        }
+
         "originCaseId round-trips, and a started case stays out of its origin's tree" {
             val ns = namespaceRepo.save(namespace())
             val origin = repo.save(case(ns.id))
