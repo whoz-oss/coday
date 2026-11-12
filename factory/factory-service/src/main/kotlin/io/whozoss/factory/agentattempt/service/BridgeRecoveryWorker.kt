@@ -79,6 +79,8 @@ class BridgeRecoveryWorker(
     private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
     private val workspaceIdentityValidator: AgentOsWorkspaceIdentityValidator? = null,
     private val worktreeOccupancyService: WorktreeExecutionOccupancyService? = null,
+    @param:org.springframework.context.annotation.Lazy
+    private val capabilityExecutionService: io.whozoss.factory.capability.CapabilityExecutionService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -255,6 +257,10 @@ class BridgeRecoveryWorker(
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         }
+        if (capabilityExecutionService?.finalizeRecoveredRoutingAttempt(candidate.scope, attempt, owner, observation) == true) {
+            releaseOccupancyIfResultAccepted(candidate)
+            return Outcome.FINALIZED
+        }
         val evidenceId = persistEvidence(candidate, verdict, observation.runtimeProof)
         attempts.finalize(
             candidate.scope,
@@ -282,7 +288,7 @@ class BridgeRecoveryWorker(
                 logger.warn(error) { waitingDiagnostic(attempt, questionId, "CASE_HISTORY_UNAVAILABLE") }
                 return Outcome.SKIPPED
             }
-        val question = questionId?.let { id ->
+        val question = questionId.let { id ->
             events.lastOrNull { it.type == CaseEventView.QUESTION_EVENT && it.eventId == id }
         }
         val answer = question?.let { persistedQuestion ->
@@ -395,6 +401,7 @@ class BridgeRecoveryWorker(
         acquireRecoveryOccupancy(candidate)
         val boundAttempt = attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
             ?: error("Recovery attempt disappeared after occupancy binding")
+        val externalUserId = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
         val binding = TrustedCaseBinding(
             caseId = attempt.caseId,
             attemptId = attempt.attemptId,
@@ -404,6 +411,7 @@ class BridgeRecoveryWorker(
             agentName = attempt.agentName,
             environmentRef = attempt.environmentRef,
             environmentRevision = attempt.expectedEnvironmentRevision,
+            externalUserId = externalUserId,
         )
         ParentRunWorkspacePreflight(workEnvironmentRepository, workspaceIdentityValidator).validate(
             scope = candidate.scope, namespaceId = attempt.namespaceId, instance = instance,
@@ -478,6 +486,10 @@ class BridgeRecoveryWorker(
                     is AgentOsExecutionVerdict.Indeterminate -> AgentAttemptStatus.INDETERMINATE
                     is AgentOsExecutionVerdict.WaitingHuman -> error("handled above")
                 }
+                if (capabilityExecutionService?.finalizeRecoveredRoutingAttempt(candidate.scope, attempt, owner, observation) == true) {
+                    releaseOccupancyIfResultAccepted(candidate)
+                    return
+                }
                 val evidenceId = persistEvidence(candidate, verdict, observation.runtimeProof)
                 attempts.finalize(
                     candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner,
@@ -550,7 +562,7 @@ class BridgeRecoveryWorker(
                 outputs = mapOf(
                     "summary" to accepted.summary, "claims" to accepted.claims,
                     "findings" to accepted.findings, "artifacts" to accepted.artifacts,
-                ),
+                ).let { outputs -> accepted.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                 evidence = evidence + if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
                     mapOf("status" to "NEEDS_RESEARCH")
                 } else emptyMap(),
@@ -581,6 +593,24 @@ class BridgeRecoveryWorker(
         is AgentOsExecutionVerdict.Failed -> verdict.code
         is AgentOsExecutionVerdict.Interrupted -> "AGENT_INTERRUPTED"
         is AgentOsExecutionVerdict.Indeterminate -> "AGENT_INDETERMINATE"
+    }
+
+    private fun resolveExternalUserId(
+        scope: io.whozoss.factory.persistence.TenantScope,
+        instance: io.whozoss.factory.workflow.domain.WorkflowInstanceRecord?,
+        environmentRef: String?,
+    ): String? {
+        if (instance != null) {
+            val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
+            (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+            val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
+            (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        if (!environmentRef.isNullOrBlank()) {
+            val env = workEnvironmentRepository?.findByEnvironmentId(scope, environmentRef)
+            env?.createdBy?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return null
     }
 
     companion object {

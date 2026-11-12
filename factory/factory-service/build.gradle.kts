@@ -206,7 +206,7 @@ tasks.register<JavaExec>("mintToken") {
     )
 }
 
-// The two narrow HTTP_API contracts are versioned under openapi/ and remain the
+// The narrow HTTP_API contracts are versioned under openapi/ and remain the
 // source of truth. Package them into the application classpath so serving them
 // does not depend on the process working directory.
 tasks.named<ProcessResources>("processResources") {
@@ -214,6 +214,7 @@ tasks.named<ProcessResources>("processResources") {
         include(
             "factory-worker-http-api-submit-step-result.yaml",
             "factory-workstream-http-api.yaml",
+            "factory-authoring-http-api.yaml",
         )
         into("openapi")
     }

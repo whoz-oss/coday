@@ -19,8 +19,8 @@ import java.time.Instant
 
 @org.springframework.stereotype.Component
 open class RunProvisioningTiming(
-    @org.springframework.beans.factory.annotation.Value("\${factory.run.provisioning.timeout-ms:60000}") val timeoutMs: Long = 60_000,
-    @org.springframework.beans.factory.annotation.Value("\${factory.run.provisioning.poll-interval-ms:250}") val pollIntervalMs: Long = 250,
+    @param:org.springframework.beans.factory.annotation.Value("\${factory.run.provisioning.timeout-ms:60000}") val timeoutMs: Long = 60_000,
+    @param:org.springframework.beans.factory.annotation.Value("\${factory.run.provisioning.poll-interval-ms:250}") val pollIntervalMs: Long = 250,
 ) {
     init { require(timeoutMs >= 0 && pollIntervalMs > 0) }
     open fun nanoTime(): Long = System.nanoTime()

@@ -67,6 +67,11 @@ export interface FullWorkflowStep {
   name: string
   responsibility?: { kind?: string; name?: string }
   dependsOn?: string[]
+  decision?: { mode: 'single' | 'multiple'; routes: { name: string; target: string }[] }
+  join?: string
+  status?: string
+  activation?: string
+  routeDecision?: { selectedRoutes: string[] }
   [key: string]: unknown
 }
 
@@ -119,6 +124,8 @@ export function extractNamespaceOptions(payload: unknown): NamespaceOption[] {
 export interface CreateWorkflowRunRequest {
   namespaceId: string
   workflowType: string
+  definitionVersion?: string
+  definitionHash?: string
   title?: string
   initialRequest?: string
   parameters?: { ticket?: string }
@@ -526,6 +533,16 @@ export class FactoryApiService {
     return this.post<unknown>(path, body, namespaceId)
   }
 
+  /** Existing AgentOS discovery through the same-origin gateway, scoped by namespace. */
+  getAgents(namespaceId: string): Observable<{ name: string; enabled?: boolean }[]> {
+    return this.request<unknown>(`/api/agentos/api/agent-configs/by-parentId/${encodeURIComponent(requireNamespaceId(namespaceId))}`, {}).pipe(
+      map((payload) => (Array.isArray(payload) ? payload : []).filter(
+        (item): item is { name: string; enabled?: boolean } =>
+          typeof item?.name === 'string' && !!item.name.trim() && item.enabled !== false
+      ))
+    )
+  }
+
   /** GET `/api/factory/workflow-definitions[?namespaceId=…]`. */
   getWorkflowDefinitions(namespaceId?: string): Observable<unknown> {
     return this.request<unknown>('/api/factory/workflow-definitions', {}, namespaceId)
@@ -593,6 +610,21 @@ export class FactoryApiService {
     const formData = new FormData()
     formData.append('file', file, file.name || 'definition.json')
     return this.postFormData<unknown>('/api/factory/workflow-definitions/upload', formData, namespaceId)
+  }
+
+  /** Create-only save: never overwrite a registered (possibly pinned) definition. */
+  createWorkflowDefinition(definition: FullWorkflowDefinition): Observable<WorkflowDefinition> {
+    return this.http
+      .post<unknown>('/api/factory/workflow-definitions', definition, {
+        headers: new HttpHeaders()
+          .set('Content-Type', 'application/json')
+          .set('X-Correlation-Id', generateCorrelationId())
+          .set('If-None-Match', '*'),
+      })
+      .pipe(
+        map((payload) => (isEnvelope(payload) ? payload.data : payload) as WorkflowDefinition),
+        catchError((error: unknown) => throwError(() => normalizeError(error)))
+      )
   }
 
   /** DELETE `/api/factory/workflow-definitions/:workflowType/:version[?namespaceId=…]`. */
@@ -727,6 +759,10 @@ function normalizeFullWorkflowDefinition(payload: unknown): FullWorkflowDefiniti
   let normalized: unknown = payload
   while (isEnvelope(normalized)) {
     normalized = normalized.data
+  }
+  // Registry responses wrap the authored definition with its identity/hash.
+  if (typeof normalized === 'object' && normalized !== null && 'definition' in normalized) {
+    normalized = (normalized as { definition: unknown }).definition
   }
   return (typeof normalized === 'object' && normalized !== null ? normalized : {}) as FullWorkflowDefinition
 }

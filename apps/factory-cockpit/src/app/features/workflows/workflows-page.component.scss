@@ -1,17 +1,25 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
 .page {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-width: 1200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .page-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 16px;
 }
 .titles {
-  flex: 1;
+  flex: 1 1 220px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -69,13 +77,15 @@ h1 {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
   gap: 16px;
 }
 
 /* Card as anchor link */
 .wf-card {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 14px;
   padding: 18px 20px;
@@ -99,7 +109,7 @@ h1 {
 }
 
 .wf-card__titles {
-  flex: 1;
+  flex: 1 1 180px;
   min-width: 0;
   display: flex;
   flex-direction: column;

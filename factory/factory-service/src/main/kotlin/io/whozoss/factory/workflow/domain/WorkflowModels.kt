@@ -35,6 +35,8 @@ object WorkflowStatuses {
     const val COMPLETED = "completed"
     const val FAILED = "failed"
     const val CANCELLED = "cancelled"
+    /** Inactive, never executed; not a successful capability result. */
+    const val SKIPPED = "skipped"
 
     /**
      * Lot E: a step whose authoritative result was `NEEDS_RESEARCH`. The step is
@@ -45,7 +47,7 @@ object WorkflowStatuses {
     const val NEEDS_RESEARCH = "needs_research"
 
     val ALL: Set<String> =
-        setOf(PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH)
+        setOf(PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH, SKIPPED)
 
     /** Node `WORKFLOW_TRANSITIONS` state machine. */
     val TRANSITIONS: Map<String, Set<String>> = mapOf(
@@ -58,6 +60,7 @@ object WorkflowStatuses {
         COMPLETED to emptySet(),
         FAILED to emptySet(),
         CANCELLED to emptySet(),
+        SKIPPED to emptySet(),
     )
 
     /**
@@ -95,7 +98,32 @@ data class WorkflowStepDefinition(
     val name: String,
     val responsibility: WorkflowStepResponsibility,
     val dependsOn: List<String>,
+    val contract: WorkflowStepContract? = null,
+    val decision: WorkflowDecision? = null,
+    /** Decision step whose branches converge here. Ordinary dependencies remain AND. */
+    val join: String? = null,
 )
+
+/** Ordered prose obligations, not machine-verified predicates or orchestration commands. */
+data class WorkflowStepContract(
+    val entry: List<String>,
+    val mission: String,
+    val exit: List<String>,
+) {
+    fun toJson(): Map<String, Any?> = linkedMapOf("entry" to entry, "mission" to mission, "exit" to exit)
+
+    companion object {
+        /** Reads already validated definitions/projections; absence denotes legacy behavior. */
+        fun fromJson(step: Map<*, *>): WorkflowStepContract? {
+            val mission = step["mission"] as? String ?: return null
+            return WorkflowStepContract(
+                (step["entry"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
+                mission,
+                (step["exit"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
+            )
+        }
+    }
+}
 
 /** The resolved identity of a workflow definition used to hash a start command. */
 data class WorkflowDefinitionInput(
@@ -176,6 +204,9 @@ data class WorkflowStartCommand(
      * resolution logic belongs to Lot E and is intentionally absent.
      */
     val expectedAmendmentSeq: Long? = null,
+    /** Explicit registry selection. Both fields are required together; never resolve latest. */
+    val definitionVersion: String? = null,
+    val definitionHash: String? = null,
 )
 
 /** The trusted controlling runtime of a governed workflow. */

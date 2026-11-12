@@ -579,7 +579,29 @@ describe('FactoryApiService', () => {
     })
   })
 
+  it('discovers real enabled namespace agents through the reachable AgentOS gateway', () => {
+    let agents: unknown
+    service.getAgents(' ns/team ').subscribe((items) => (agents = items))
+    const request = http.expectOne('/api/agentos/api/agent-configs/by-parentId/ns%2Fteam')
+    expect(request.request.method).toBe('GET')
+    request.flush([{ name: 'Dev', enabled: true }, { name: 'Disabled', enabled: false }, { name: '' }, null])
+    expect(agents).toEqual([{ name: 'Dev', enabled: true }])
+  })
+
   describe('workflow definitions', () => {
+    it('saves a new definition through the JSON API with an atomic no-overwrite precondition', () => {
+      const definition = { schemaVersion: '1', workflowType: 'delivery', version: '2.0.0', steps: [] }
+      let result: unknown
+      service.createWorkflowDefinition(definition).subscribe((value) => (result = value))
+      const request = http.expectOne('/api/factory/workflow-definitions')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual(definition)
+      expect(request.request.headers.get('If-None-Match')).toBe('*')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { workflowType: 'delivery', version: '2.0.0', definitionHash: 'server-hash' } })
+      expect(result).toEqual({ workflowType: 'delivery', version: '2.0.0', definitionHash: 'server-hash' })
+    })
+
     it('getWorkflowDefinitions issues a GET and forwards the namespace', () => {
       let result: unknown
       service.getWorkflowDefinitions('ns-1').subscribe((r) => (result = r))
@@ -691,6 +713,20 @@ describe('FactoryApiService', () => {
         .flush({ data: { data: { workflowType: 't', version: 'v1', steps: [] } } })
 
       expect(result).toEqual({ workflowType: 't', version: 'v1', steps: [] })
+    })
+
+    it('unwraps the real registry definition wrapper without dropping explicit contracts', () => {
+      const definition = {
+        workflowType: 't',
+        version: '1.0.0',
+        steps: [{ id: 'implement', name: 'Implement', entry: ['Sync'], mission: 'Implement', exit: ['Push'] }],
+      }
+      let result: unknown
+      service.getWorkflowDefinition('t', '1.0.0').subscribe((value) => (result = value))
+      http
+        .expectOne((request) => request.url === '/api/factory/workflow-definitions/t/1.0.0')
+        .flush({ data: { workflowType: 't', version: '1.0.0', definitionHash: 'hash', definition } })
+      expect(result).toEqual(definition)
     })
 
     it('getWorkflowDefinition degrades to an empty object for a malformed payload', () => {

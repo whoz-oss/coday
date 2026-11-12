@@ -14,6 +14,8 @@ import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
+import io.whozoss.factory.workflow.persistence.WorkflowDefinitionDeletionGuard
 import java.time.Instant
 
 /**
@@ -46,6 +48,8 @@ data class RunNode(
     val appliedValidationUpdates: String = "[]",
     val activeEscalation: String? = null,
     val maxTotalFragments: Int = RunRecord.DEFAULT_MAX_TOTAL_FRAGMENTS,
+    /** Exact `workflowType@version` pins for fast deletion checks; empty on legacy/unpinned nodes. */
+    val pinnedDefinitions: List<String> = emptyList(),
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
 ) {
@@ -114,6 +118,9 @@ data class RunNode(
             appliedValidationUpdates = mapper.writeValueAsString(record.appliedValidationUpdates),
             activeEscalation = record.activeEscalation?.let { mapper.writeValueAsString(it) },
             maxTotalFragments = record.maxTotalFragments,
+            pinnedDefinitions = record.flowVersions.entries
+                .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+                .map { "${it.key}@${it.value}" },
             createdAt = createdAt,
             updatedAt = updatedAt,
         )
@@ -154,6 +161,7 @@ interface SpringDataNeo4jRunRepository : Neo4jRepository<RunNode, String> {
             r.decisions = ${'$'}decisions,
             r.flowVersions = ${'$'}flowVersions,
             r.flowDefinitionHashes = ${'$'}flowDefinitionHashes,
+            r.pinnedDefinitions = ${'$'}pinnedDefinitions,
             r.appliedValidationUpdates = ${'$'}appliedValidationUpdates,
             r.activeEscalation = ${'$'}activeEscalation,
             r.updatedAt = ${'$'}updatedAt
@@ -175,6 +183,7 @@ interface SpringDataNeo4jRunRepository : Neo4jRepository<RunNode, String> {
         @Param("decisions") decisions: String,
         @Param("flowVersions") flowVersions: String,
         @Param("flowDefinitionHashes") flowDefinitionHashes: String,
+        @Param("pinnedDefinitions") pinnedDefinitions: List<String>,
         @Param("appliedValidationUpdates") appliedValidationUpdates: String,
         @Param("activeEscalation") activeEscalation: String?,
         @Param("updatedAt") updatedAt: Instant,
@@ -211,6 +220,7 @@ interface RunRepository {
 class Neo4jRunRepository(
     private val runs: SpringDataNeo4jRunRepository,
     private val objectMapper: ObjectMapper,
+    private val deletionGuard: WorkflowDefinitionDeletionGuard,
 ) : RunRepository {
 
     override fun find(scope: TenantScope, namespaceId: String, runId: String): RunRecord? =
@@ -223,7 +233,9 @@ class Neo4jRunRepository(
         runs.findAllByScope(scope.organizationId, scope.workstreamId, namespaceId?.takeIf { it.isNotBlank() })
             .map { it.toDomain(objectMapper) }
 
+    @Transactional
     override fun insert(scope: TenantScope, record: RunRecord): RunRecord {
+        deletionGuard.assertPinsAvailable(scope.organizationId, record.flowVersions, record.flowDefinitionHashes)
         val id = RunNode.compositeId(scope.organizationId, scope.workstreamId, record.namespaceId, record.runId)
         val existing = runs.findById(id).orElse(null)
         if (existing != null) {
@@ -233,6 +245,7 @@ class Neo4jRunRepository(
         return saved.toDomain(objectMapper)
     }
 
+    @Transactional
     override fun update(
         scope: TenantScope,
         namespaceId: String,
@@ -240,6 +253,7 @@ class Neo4jRunRepository(
         expectedRevision: Int,
         next: RunRecord,
     ): Boolean {
+        deletionGuard.assertPinsAvailable(scope.organizationId, next.flowVersions, next.flowDefinitionHashes)
         val id = RunNode.compositeId(scope.organizationId, scope.workstreamId, namespaceId, runId)
         val count = runs.casUpdateRun(
             id = id,
@@ -256,6 +270,9 @@ class Neo4jRunRepository(
             decisions = objectMapper.writeValueAsString(next.decisions),
             flowVersions = objectMapper.writeValueAsString(next.flowVersions),
             flowDefinitionHashes = objectMapper.writeValueAsString(next.flowDefinitionHashes),
+            pinnedDefinitions = next.flowVersions.entries
+                .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+                .map { "${it.key}@${it.value}" },
             appliedValidationUpdates = objectMapper.writeValueAsString(next.appliedValidationUpdates),
             activeEscalation = next.activeEscalation?.let { objectMapper.writeValueAsString(it) },
             updatedAt = Instant.now(),

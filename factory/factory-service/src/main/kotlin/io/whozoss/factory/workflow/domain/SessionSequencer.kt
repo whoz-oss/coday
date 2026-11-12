@@ -65,7 +65,7 @@ object SessionSequencer {
             val dependencyStatuses = step.dependsOn.map { statuses[it] }
             when {
                 dependencyStatuses.any { it in BLOCKING } -> blocked.add(step.id)
-                dependencyStatuses.all { it == WorkflowStatuses.COMPLETED } -> ready.add(step.id)
+                WorkflowRouting.dependenciesSatisfied(step, steps, statuses) -> ready.add(step.id)
             }
         }
         return Evaluation(ready, blocked)
@@ -75,7 +75,7 @@ object SessionSequencer {
     fun readySteps(steps: List<WorkflowStepDefinition>, statuses: Map<String, String>): List<String> =
         steps.filter { step ->
             statuses[step.id] == WorkflowStatuses.READY &&
-                step.dependsOn.all { dependency -> statuses[dependency] == WorkflowStatuses.COMPLETED }
+                WorkflowRouting.dependenciesSatisfied(step, steps, statuses)
         }.map { it.id }
 
     /**
@@ -91,7 +91,11 @@ object SessionSequencer {
     fun terminalStatus(steps: List<WorkflowStepDefinition>, statuses: Map<String, String>): String {
         val values = steps.map { statuses[it.id] }
         if (values.any { it == WorkflowStatuses.WAITING_HUMAN }) return WorkflowStatuses.WAITING_HUMAN
-        if (values.all { it == WorkflowStatuses.COMPLETED }) return WorkflowStatuses.COMPLETED
+        if (values.all { it == WorkflowStatuses.COMPLETED || it == WorkflowStatuses.SKIPPED }) return WorkflowStatuses.COMPLETED
+        if (steps.any { it.decision != null }) {
+            if (values.any { it == WorkflowStatuses.RUNNING }) return WorkflowStatuses.RUNNING
+            if (values.any { it == WorkflowStatuses.READY }) return WorkflowStatuses.READY
+        }
         if (values.any { it == WorkflowStatuses.NEEDS_RESEARCH } && values.none { it == WorkflowStatuses.FAILED }) {
             return WorkflowStatuses.NEEDS_RESEARCH
         }

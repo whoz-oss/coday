@@ -234,6 +234,26 @@ class Neo4jAgentStepResultRepository(
 
         val parsed = AgentStepResultValidation.parseBusiness(business)
         validateAmendmentSequence(scope, capability, parsed)
+        val workflow = workflowRepository?.findInstance(scope, capability.namespaceId, capability.workflowId)
+        val definition = workflow?.instance?.let { instance ->
+            val type = instance["workflowType"] as? String
+            val version = instance["definitionVersion"] as? String
+            if (type != null && version != null) workflowRepository.findDefinition(scope, type, version) else null
+        }
+        val declared = (definition?.definition?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()
+            ?.find { it["id"] == capability.stepId }
+        if (declared?.containsKey("decision") == true && io.whozoss.factory.workflow.domain.WorkflowDecision.parse(declared["decision"]) == null) {
+            throw io.whozoss.factory.agentattempt.domain.ResultSchemaInvalidException("Persisted decision contract is invalid")
+        }
+        val decision = io.whozoss.factory.workflow.domain.WorkflowDecision.parse(declared?.get("decision"))
+        val priorDecision = (workflow?.projection?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()
+            ?.find { it["id"] == capability.stepId }?.get("routeDecision") as? Map<*, *>
+        if (priorDecision != null && (priorDecision["attemptId"] != capability.attemptId || priorDecision["resultHash"] != resultHash)) {
+            throw ResultSemanticCollisionException("Accepted routing cannot be replaced by a later attempt or result")
+        }
+        if ((decision != null && parsed.status == AgentStepResultStatus.PASS && !decision.accepts(parsed.selectedRoutes)) ||
+            (decision == null && parsed.selectedRoutes != null)
+        ) throw io.whozoss.factory.agentattempt.domain.ResultSchemaInvalidException("Missing, unknown or out-of-mode route selection")
         val submitted = AgentStepResultSubmitted(
             type = SUBMITTED_TYPE,
             resultId = existing?.resultId ?: UUID.randomUUID().toString(),
@@ -252,6 +272,7 @@ class Neo4jAgentStepResultRepository(
             submittedAt = now.toString(),
             resultHash = resultHash,
             expectedAmendmentSeq = parsed.expectedAmendmentSeq,
+            selectedRoutes = parsed.selectedRoutes,
         )
         val payload = serialize(submitted)
         val resultStatus = DB_RESULT_STATUS.getValue(parsed.status)

@@ -8,7 +8,7 @@ import java.time.Instant
  *
  * It deliberately carries only the stable, operator-visible identity and
  * lifecycle fields. All execution secrets and internal recovery/lease data are
- * excluded: `ownerToken`, `capabilityToken`, `commandId`, `brief`,
+ * excluded: `ownerToken`, `capabilityToken`, `commandId`,
  * `leaseExpiresAt`, `lastObservedEventId` and `turnCorrelation` never cross the
  * public boundary. `status` is rendered as its stable persisted [AgentAttemptStatus.dbValue].
  */
@@ -36,7 +36,7 @@ data class DurableAgentAttemptDto(
      * The amendment sequence this attempt's context was frozen against
      * (Lot D schema field). Amendment logic itself belongs to Lot E.
      * The raw frozen context envelope is intentionally NOT exposed here: it can
-     * carry the turn brief, which never crosses the public boundary.
+     * carry internal recovery data. Only the dispatched mandate is exposed separately.
      */
     val expectedAmendmentSeq: Long? = null,
     val revision: Int,
@@ -63,6 +63,8 @@ data class DurableAgentAttemptDto(
      * (`RUNTIME_CLOSED`: failed / indeterminate / interrupted / superseded).
      */
     val sealingClass: String = AgentOsRuntimeStateMapping.SealingClass.ACTIVE.name,
+    /** Frozen turn text, not the raw envelope or capability token. Null before dispatch/for legacy records. */
+    val effectiveMandate: String? = null,
 )
 
 /** Map a domain [DurableAgentAttempt] to its bounded public read DTO. */
@@ -89,4 +91,5 @@ fun DurableAgentAttempt.toDto(): DurableAgentAttemptDto = DurableAgentAttemptDto
     completedAt = completedAt,
     terminal = status.terminal,
     sealingClass = AgentOsRuntimeStateMapping.classify(status).name,
+    effectiveMandate = brief.takeIf { startedAt != null },
 )

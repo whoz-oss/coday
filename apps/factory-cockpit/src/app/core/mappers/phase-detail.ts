@@ -41,6 +41,31 @@ function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
   })
 }
 
+/** Configured prose only; never reconstruct an attempt's dispatched mandate. */
+export function stepContractSections(step: Record<string, unknown>): PhaseSection[] {
+  const mission = getString(step, 'mission')
+  if (!mission) {
+    return [
+      {
+        label: 'Entry / Mission / Exit',
+        body: 'Contrat historique : défauts de cadrage et de livrables Factory. Consulter le mandat de la tentative pour les consignes effectivement envoyées.',
+      },
+    ]
+  }
+  const lines = (value: unknown): string =>
+    Array.isArray(value)
+      ? value
+          .filter((line): line is string => typeof line === 'string')
+          .map((line) => `• ${line}`)
+          .join('\n') || 'Aucune obligation configurée.'
+      : 'Indisponible'
+  return [
+    { label: 'Entry / Préparation (configurée)', body: lines(step['entry']) },
+    { label: 'Mission (configurée)', body: mission },
+    { label: 'Exit / Livrables (configurés)', body: lines(step['exit']) },
+  ]
+}
+
 // ---------------------------------------------------------------------------
 // Core builder
 // ---------------------------------------------------------------------------
@@ -179,10 +204,33 @@ export function buildPhaseDetail(
   const agentConfig: PhaseSection = { label: "Configuration de l'agent", items: agentItems }
   if (agentItems.length === 0) agentConfig.body = 'Information agent non disponible'
 
-  detail.sections = [gates, outputs, agentConfig]
+  detail.sections = [...stepContractSections(obj), gates, outputs, agentConfig]
+  const decision = asObject(obj['decision'])
+  const accepted = asObject(obj['routeDecision'])
+  const activation = getString(obj, 'activation')
+  if (decision || accepted || activation || obj['join']) {
+    const routes = Array.isArray(decision?.['routes']) ? decision['routes'] : []
+    const selected = Array.isArray(accepted?.['selectedRoutes']) ? accepted['selectedRoutes'].filter((name): name is string => typeof name === 'string') : []
+    detail.sections.unshift({ label: 'Conditional routing', items: [
+      ...(decision ? [{ title: 'Choice mode', subtitle: getString(decision, 'mode') }, ...routes.map((raw) => {
+        const route = asObject(raw)
+        const name = getString(route, 'name') ?? '?'
+        return { title: name, subtitle: getString(route, 'target'), status: accepted ? (selected.includes(name) ? 'selected' : 'not_selected') : 'undecided' }
+      })] : []),
+      ...(activation ? [{ title: 'Activation', subtitle: activation, status: getString(obj, 'status') }, { title: 'Executed', subtitle: obj['executed'] === true ? 'yes' : 'no' }] : []),
+      ...(obj['join'] ? [{ title: 'Join decision', subtitle: getString(obj, 'join') }] : []),
+      ...(accepted ? [{ title: 'Accepted attempt', subtitle: getString(accepted, 'attemptId') }, { title: 'Accepted result', subtitle: getString(accepted, 'resultId') }] : []),
+    ] })
+  }
   if (description) detail.sections.push({ label: 'Description', body: description })
   detail.sections.push(
-    { label: 'Prompts compil\u00e9s', notAvailable: true, body: 'Non disponible (n\u00e9cessite exposition backend)' },
+    {
+      label: 'Mandat effectif de la tentative',
+      notAvailable: !currentAttempt?.effectiveMandate,
+      body:
+        currentAttempt?.effectiveMandate ??
+        'Indisponible : tentative non envoyée ou ancien enregistrement sans mandat.',
+    },
     {
       label: 'Mod\u00e8le LLM r\u00e9solu',
       notAvailable: true,

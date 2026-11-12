@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "entry": [
+        "Use existing AgentOS Git tools to inspect the current branch, HEAD and dirty files. Preserve unrelated work.",
+        "Before any file writing, initialize the authorized work branch from the base specified in the user request. If authorization or base is unclear, ask the user and wait."
+      ],
+      "exit": [
+        "Report the branch name and starting HEAD with tool evidence. Submit PASS only after branch initialization is complete."
+      ],
+      "id": "initialize-branch",
+      "mission": "Prepare the authorized branch in the existing AgentOS workspace only; do not implement, commit or push in this initialization step.",
+      "name": "Initialize branch before writing",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Gitay"
+      }
+    },
+    {
+      "dependsOn": ["initialize-branch"],
+      "entry": [
+        "Using existing AgentOS Git tools, inspect and sync the authorized branch with its remote before writing. Apply the project's AgentOS skills for reusable work conventions. Stop and ask on conflicts; never reset or stash unrelated changes."
+      ],
+      "exit": [
+        "Commit only scoped changes and push the authorized branch using existing AgentOS Git tools before reporting success. If either operation is unavailable or refused, report the blocker rather than claiming success.",
+        "Provide the commit SHA, pushed branch, changed files, exact check results and residual risks as durable result artifacts. Do not create a PR, automate review or merge."
+      ],
+      "id": "implement",
+      "mission": "Implement only the requested change and run the relevant checks in the prepared branch. Factory governs dependencies and approvals; Git operations are your obligations through AgentOS tools.",
+      "name": "Implement and deliver a checkpoint",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Dev"
+      }
+    }
+  ],
+  "title": "Illustrative agent-only Git checkpoint obligations (not automated checkpoints)",
+  "version": "1.0.0",
+  "workflowType": "illustrative-git-checkpoint"
+}

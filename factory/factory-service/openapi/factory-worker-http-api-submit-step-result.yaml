@@ -44,6 +44,13 @@ paths:
                     status:
                       type: string
                       enum: [PASS, FAIL, NEEDS_RESEARCH]
+                    selectedRoutes:
+                      type: array
+                      minItems: 1
+                      maxItems: 16
+                      uniqueItems: true
+                      description: Required only for PASS of a decision step; omit on ordinary steps, FAIL and NEEDS_RESEARCH. Named routes from the definition, not target IDs. single requires exactly one; multiple allows one or more. Unknown, missing, duplicate and out-of-mode choices are rejected. Activation occurs only after configured validators succeed.
+                      items: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
                     summary:
                       type: string
                       minLength: 1

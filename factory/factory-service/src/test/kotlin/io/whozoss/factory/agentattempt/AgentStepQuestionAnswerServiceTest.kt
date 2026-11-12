@@ -122,7 +122,7 @@ class AgentStepQuestionAnswerServiceTest {
         assertThat(context["answeredAt"]).isEqualTo(now.toString())
         assertThat(context["predecessorAttemptId"]).isEqualTo(attemptId)
         assertThat(context["predecessorInteractionId"]).isEqualTo(interactionId)
-        assertThat(successor.resumptionContext!!.toByteArray().size).isLessThanOrEqualTo(8192)
+        assertThat(successor.resumptionContext.toByteArray().size).isLessThanOrEqualTo(8192)
 
         // The interaction is CAS-closed with the audited answer and the N -> N+1 link.
         val closed = slot<HumanInteractionRecord>()

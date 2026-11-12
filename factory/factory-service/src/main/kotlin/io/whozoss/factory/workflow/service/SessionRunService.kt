@@ -17,6 +17,8 @@ import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.SessionSequencer
+import io.whozoss.factory.workflow.domain.WorkflowRouting
+import io.whozoss.factory.workflow.domain.routingJson
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
@@ -72,12 +74,14 @@ private class SessionProgress {
     val startedAt = HashMap<String, String>()
     val completedAt = HashMap<String, String>()
     val waitingQuestions = HashMap<String, Map<String, Any?>>()
+    val routing = HashMap<String, Map<String, Any?>>()
 
     /** Persisted payload of a step state: timings plus bounded intermediate question. */
     fun payload(stepId: String): Map<String, Any?> = buildMap {
         startedAt[stepId]?.let { put("startedAt", it) }
         completedAt[stepId]?.let { put("completedAt", it) }
         waitingQuestions[stepId]?.let { put("waitingQuestion", it) }
+        routing[stepId]?.let { putAll(it) }
     }
 
     companion object {
@@ -85,6 +89,8 @@ private class SessionProgress {
         fun fromStates(states: Map<String, WorkflowStepStateRecord>): SessionProgress {
             val progress = SessionProgress()
             for ((stepId, state) in states) {
+                val route = state.payload.filterKeys { it in setOf("routeDecision", "executed", "activation") }
+                if (route.isNotEmpty()) progress.routing[stepId] = route
                 (state.payload["startedAt"] as? String)?.let { progress.startedAt[stepId] = it }
                 (state.payload["completedAt"] as? String)?.let { progress.completedAt[stepId] = it }
                 @Suppress("UNCHECKED_CAST")
@@ -190,8 +196,8 @@ class SessionRunService(
      * may omit it and keep the caller-provided root.
      */
     private val runWorktreeResolver: RunWorktreeResolver? = null,
-    @Lazy
-    @Autowired(required = false)
+    @param:Lazy
+    @param:Autowired(required = false)
     private val runService: RunService? = null,
 ) {
 
@@ -271,20 +277,36 @@ class SessionRunService(
         // classical agent/human workflow run can execute in a namespace without a
         // Git repository association.
         val requiresGitWorkspace = requiresGitWorkspace(instance, steps)
+        val callerExternalUserId = instanceActorId(instance)
         workspacePrecheckService?.precheck(
             scope = scope,
             namespaceId = namespaceId,
+            callerExternalUserId = callerExternalUserId,
             requiredAgents = steps
                 .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
                 .mapNotNull { it.responsibility.name },
             requireGitWorkspace = requiresGitWorkspace,
         )
+        if (steps.any { it.decision != null } && instance.instance["routingRepoRoot"] == null) {
+            val next = instance.copy(revision = instance.revision + 1, instance = instance.instance + mapOf(
+                "routingRepoRoot" to repoRoot.toAbsolutePath().normalize().toString(), "revision" to instance.revision + 1,
+            ))
+            check(repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)) { "ROUTING_CONTEXT_REVISION_CONFLICT" }
+        }
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
+        if (steps.any { it.decision != null }) {
+            // Only a terminal durable attempt can be replayed. Never reset an uncertain live turn.
+            for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
+                if (statuses.statuses[step.id] in setOf(WorkflowStatuses.RUNNING, WorkflowStatuses.WAITING_HUMAN) &&
+                    capabilityExecutionService.hasFinalizedAttempt(scope, namespaceId, workflowId, step.id)
+                ) setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
+            }
+        }
         var suspended = false
         // Lot F: the repo root every `code` step runs against. It starts as the
         // caller-provided root and is re-bound to the run's validated worktree
         // before the first code step (once the root case exists).
-        var effectiveRepoRoot = repoRoot
+        var effectiveRepoRoot = (instance.instance["routingRepoRoot"] as? String)?.let(Path::of) ?: repoRoot
         val guard = steps.size * 4 + 8
         var iterations = 0
         run {
@@ -402,6 +424,14 @@ class SessionRunService(
         return (relations?.get("ticket") as? String)?.takeIf { it.isNotBlank() }
     }
 
+    /** The authenticated actor identity persisted on the workflow instance. */
+    private fun instanceActorId(instance: WorkflowInstanceRecord): String? {
+        val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
+        (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+        val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
+        return (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }
+    }
+
     /** Read-only projection of the current session state. */
     @Transactional(readOnly = true)
     fun sessionState(scope: TenantScope, namespaceId: String, workflowId: String): SessionRunResult? {
@@ -456,6 +486,7 @@ class SessionRunService(
         progress.startedAt.putAll(restored.startedAt)
         progress.completedAt.putAll(restored.completedAt)
         progress.waitingQuestions.putAll(restored.waitingQuestions)
+        progress.routing.putAll(restored.routing)
         return progress
     }
 
@@ -470,6 +501,8 @@ class SessionRunService(
         for (step in steps) {
             val state = durable[step.id] ?: continue
             progress.statuses[step.id] = state.status
+            val route = state.payload.filterKeys { it in setOf("routeDecision", "executed", "activation") }
+            if (route.isNotEmpty()) progress.routing[step.id] = route
             (state.payload["startedAt"] as? String)?.let { progress.startedAt[step.id] = it }
             (state.payload["completedAt"] as? String)?.let { progress.completedAt[step.id] = it }
         }
@@ -482,6 +515,30 @@ class SessionRunService(
         steps: List<WorkflowStepDefinition>,
         progress: SessionProgress,
     ) {
+        // Revalidate durable activation on every replay; only explicitly unselected targets may be skipped.
+        for (step in steps.filter { it.decision != null && progress.statuses[it.id] == WorkflowStatuses.COMPLETED }) {
+            val accepted = progress.routing[step.id]?.get("routeDecision") as? Map<*, *>
+                ?: error("ROUTING_STATE_MISSING: completed decision '${step.id}' has no durable activation record")
+            val selected = (accepted["selectedRoutes"] as? List<*>)?.map { it as? String ?: error("ROUTING_SELECTION_INVALID") }
+            val decision = requireNotNull(step.decision)
+            check(decision.accepts(selected)) { "ROUTING_SELECTION_INVALID" }
+            val result = capabilityExecutionService.routingResult(scope, namespaceId, workflowId, step.id,
+                accepted["attemptId"] as? String ?: error("ROUTING_ATTEMPT_MISSING"))
+            check(result != null && result.resultId == accepted["resultId"] && result.resultHash == accepted["resultHash"] &&
+                result.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS &&
+                result.selectedRoutes?.toSet() == selected?.toSet()) { "ROUTING_RESULT_CONFLICT" }
+            for (route in decision.routes) {
+                val active = route.name in selected.orEmpty()
+                check(if (active) progress.statuses[route.target] != WorkflowStatuses.SKIPPED else progress.statuses[route.target] == WorkflowStatuses.SKIPPED) { "ROUTING_ACTIVATION_CONFLICT" }
+            }
+        }
+        val inactiveTargets = steps.filter { it.decision != null }.flatMap { step ->
+            val accepted = progress.routing[step.id]?.get("routeDecision") as? Map<*, *>
+            val selection = accepted?.get("selectedRoutes") as? List<*>
+            if (progress.statuses[step.id] != WorkflowStatuses.COMPLETED || selection == null) emptyList()
+            else step.decision!!.routes.filter { it.name !in selection }.map { it.target }
+        }.toSet()
+        check(progress.statuses.none { (id, status) -> status == WorkflowStatuses.SKIPPED && id !in inactiveTargets }) { "ROUTING_UNAUTHORIZED_SKIP" }
         val evaluation = SessionSequencer.evaluate(steps, progress.statuses)
         for (stepId in evaluation.blocked) {
             val rootStepId = blockingRootStepId(steps, progress.statuses, stepId)
@@ -491,7 +548,7 @@ class SessionRunService(
         for (step in steps) {
             if (progress.statuses[step.id] == WorkflowStatuses.BLOCKED &&
                 step.dependsOn.isNotEmpty() &&
-                step.dependsOn.all { progress.statuses[it] == WorkflowStatuses.COMPLETED }
+                WorkflowRouting.dependenciesSatisfied(step, steps, progress.statuses)
             ) {
                 setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, progress)
             }
@@ -597,6 +654,14 @@ class SessionRunService(
             recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution, statuses)
             return resultingStatus
         }
+        if (terminal == WorkflowStatuses.COMPLETED && steps.any { it.decision != null } && step.responsibility.kind == ResponsibilityKind.AGENT) {
+            val proof = evidenceRepository.list(scope, namespaceId, workflowId, step.id)
+                .lastOrNull { it.evidenceId == execution.evidenceId && it.facts["attemptId"] == execution.attemptId }
+            if (proof?.outcome != "pass" || proof.facts["validatorsAccepted"] != true) {
+                recordStepFailure(scope, namespaceId, workflowId, step, IllegalStateException("ROUTING_VALIDATION_PROOF_MISSING"), expectedRevision, statuses)
+                return WorkflowStatuses.FAILED
+            }
+        }
         // Auto-oracles: once the step's own capability has succeeded, run every
         // oracle definition whose `applicable` conditions match this
         // (workflowType, stepId). A failing oracle gates the transition: the step
@@ -609,10 +674,57 @@ class SessionRunService(
         } else {
             emptyList()
         }
+        if (terminal == WorkflowStatuses.COMPLETED && step.decision != null) {
+            try {
+                acceptRouting(scope, namespaceId, workflowId, step, execution, statuses)
+            } catch (error: Exception) {
+                // A transaction rollback must not leak uncommitted activation through emergency projection writes.
+                statuses.routing.clear()
+                val restored = SessionProgress.fromStates(repository.findStepStates(scope, namespaceId, workflowId).associateBy { it.stepId })
+                statuses.routing.putAll(restored.routing)
+                reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
+                recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision, statuses)
+                return WorkflowStatuses.FAILED
+            }
+        }
         transition(scope, namespaceId, workflowId, step, terminal, expectedRevision, oracleEvidenceIds)
         setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
         recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution, statuses)
         return terminal
+    }
+
+    /** Commit decision/result/attempt association and every activation before any branch can run. */
+    private fun acceptRouting(
+        scope: TenantScope, namespaceId: String, workflowId: String, step: WorkflowStepDefinition,
+        execution: CapabilityExecution, progress: SessionProgress,
+    ) {
+        val decision = requireNotNull(step.decision)
+        val attemptId = requireNotNull(execution.attemptId) { "ROUTING_ATTEMPT_MISSING" }
+        val result = requireNotNull(capabilityExecutionService.routingResult(scope, namespaceId, workflowId, step.id, attemptId)) { "ROUTING_RESULT_MISSING" }
+        check(result.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS && decision.accepts(result.selectedRoutes)) { "ROUTING_SELECTION_INVALID" }
+        val proof = evidenceRepository.list(scope, namespaceId, workflowId, step.id)
+            .lastOrNull { it.evidenceId == execution.evidenceId && it.facts["attemptId"] == attemptId && it.outcome == "pass" }
+        check(proof?.facts?.get("validatorsAccepted") == true) { "ROUTING_VALIDATION_PROOF_MISSING: recovered decision requires verified validator evidence" }
+        val selected = decision.routes.map { it.name }.filter { it in result.selectedRoutes.orEmpty() }
+        val accepted = mapOf("attemptId" to attemptId, "resultId" to result.resultId, "resultHash" to result.resultHash, "selectedRoutes" to selected)
+        val prior = progress.routing[step.id]?.get("routeDecision")
+        check(prior == null || prior == accepted) { "ROUTING_DECISION_IMMUTABLE" }
+        newTransaction {
+            progress.routing[step.id] = mapOf("routeDecision" to accepted)
+            // Do not publish intermediate snapshots: the decision and its inactive targets commit together.
+            for (route in decision.routes) {
+                val active = route.name in selected
+                val status = if (active) WorkflowStatuses.PENDING else WorkflowStatuses.SKIPPED
+                check(progress.statuses[route.target] in setOf(WorkflowStatuses.PENDING, WorkflowStatuses.SKIPPED, WorkflowStatuses.BLOCKED)) { "ROUTING_BRANCH_ALREADY_STARTED" }
+                progress.statuses[route.target] = status
+                progress.routing[route.target] = mapOf("executed" to false, "activation" to if (active) "selected" else "not_selected")
+                repository.upsertStepState(scope, WorkflowStepStateRecord(namespaceId, workflowId, route.target, 1, status, progress.payload(route.target)))
+            }
+            progress.statuses[step.id] = WorkflowStatuses.COMPLETED
+            progress.completedAt[step.id] = nowIso()
+            repository.upsertStepState(scope, WorkflowStepStateRecord(namespaceId, workflowId, step.id, 1, WorkflowStatuses.COMPLETED, progress.payload(step.id)))
+            persistProgressProjection(scope, namespaceId, workflowId, progress)
+        }
     }
 
     /**
@@ -633,12 +745,16 @@ class SessionRunService(
         stepId: String,
     ): OracleEvaluation {
         val registry = oracleDefinitionRegistry ?: return OracleEvaluation.EMPTY
-        val service = oracleExecutionService ?: return OracleEvaluation.EMPTY
         val matching = runCatching { registry.list() }
             .onFailure { logger.warn(it) { "Oracle registry listing failed; skipping auto-oracles for step '$stepId'" } }
-            .getOrElse { return OracleEvaluation.EMPTY }
+            .getOrElse {
+                val instance = repository.findInstance(scope, namespaceId, workflowId)
+                val routing = (instance?.projection?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()?.any { it.containsKey("decision") } == true
+                return if (routing) OracleEvaluation(false, emptyList()) else OracleEvaluation.EMPTY
+            }
             .filter { appliesTo(it, workflowType, stepId) }
         if (matching.isEmpty()) return OracleEvaluation.EMPTY
+        val service = oracleExecutionService ?: return OracleEvaluation(false, emptyList())
 
         var allSucceeded = true
         val evidenceIds = ArrayList<String>()
@@ -731,10 +847,21 @@ class SessionRunService(
         for (step in steps) {
             if (statuses.statuses[step.id] != WorkflowStatuses.WAITING_HUMAN) continue
             val interaction = interactions.filter { it.stepId == step.id }.maxByOrNull { it.revision }
-            val terminal = humanDecision(interaction)
+            // Agent queryUser / legacy agent questions can never approve an agent step here.
+            if (step.responsibility.kind != ResponsibilityKind.HUMAN) {
+                allResolved = false
+                continue
+            }
+            var terminal = humanDecision(interaction?.takeIf { it.interactionType == "checkpoint" })
             if (terminal == null || interaction == null) {
                 allResolved = false
                 continue
+            }
+            if (terminal == WorkflowStatuses.COMPLETED && steps.any { it.decision != null }) {
+                val instance = repository.findInstance(scope, namespaceId, workflowId)
+                if (!runApplicableOracles(scope, namespaceId, workflowId, instance?.instance?.get("workflowType") as? String, step.id).allSucceeded) {
+                    terminal = WorkflowStatuses.FAILED
+                }
             }
             transition(scope, namespaceId, workflowId, step, terminal, expectedRevision)
             setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
@@ -811,13 +938,17 @@ class SessionRunService(
             workflowId,
             stepId,
             fromStatuses = listOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING, WorkflowStatuses.NEEDS_RESEARCH),
-            payload = progress.payload(stepId) + mapOf("startedAt" to startedAt),
+            payload = progress.payload(stepId) + mapOf("startedAt" to startedAt) +
+                (if (progress.routing.containsKey(stepId)) mapOf("executed" to true) else emptyMap()),
         )
         if (!claimed) {
             logger.warn { "Step '$stepId' of workflow '$workflowId' is already claimed; skipping execution." }
             return false
         }
         progress.statuses[stepId] = WorkflowStatuses.RUNNING
+        if (progress.routing.containsKey(stepId)) {
+            progress.routing[stepId] = progress.routing.getValue(stepId) + ("executed" to true)
+        }
         progress.startedAt[stepId] = startedAt
         progress.waitingQuestions.remove(stepId)
         recordRunningStepEvidence(scope, namespaceId, workflowId, stepId, startedAt)
@@ -1123,6 +1254,7 @@ class SessionRunService(
             val stepId = step["id"] as? String ?: return@mapNotNull step
             val status = progress.statuses[stepId] ?: return@mapNotNull step
             step["status"] = status
+            progress.routing[stepId]?.let { step.putAll(it) }
             progress.startedAt[stepId]?.let { step["startedAt"] = it }
             progress.completedAt[stepId]?.let { step["completedAt"] = it }
             elapsedMs(progress.startedAt[stepId], progress.completedAt[stepId])?.let { step["durationMs"] = it }
@@ -1139,7 +1271,7 @@ class SessionRunService(
             progress.statuses.values.any { it == WorkflowStatuses.FAILED } -> WorkflowStatuses.FAILED
             progress.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN } -> WorkflowStatuses.WAITING_HUMAN
             progress.statuses.values.any { it == WorkflowStatuses.RUNNING } -> WorkflowStatuses.RUNNING
-            progress.statuses.values.all { it == WorkflowStatuses.COMPLETED } -> WorkflowStatuses.COMPLETED
+            progress.statuses.values.all { it == WorkflowStatuses.COMPLETED || it == WorkflowStatuses.SKIPPED } -> WorkflowStatuses.COMPLETED
             progress.statuses.values.any { it == WorkflowStatuses.BLOCKED } -> WorkflowStatuses.FAILED
             else -> WorkflowStatuses.PENDING
         }
@@ -1219,7 +1351,11 @@ class SessionRunService(
                 "completedAt" to completedAt,
                 "durationMs" to elapsedMs(startedAt, completedAt),
                 "waitingQuestion" to progress.waitingQuestions[step.id],
-            ).filterValues { it != null }
+            ).apply {
+                step.contract?.let { putAll(it.toJson()) }
+                putAll(step.routingJson())
+                progress.routing[step.id]?.let { putAll(it) }
+            }.filterValues { it != null }
         }
         val next = instance.copy(revision = instance.revision + 1, instance = nextInstance, projection = projection)
         // The instance document mirrors the row revision (the transition policy

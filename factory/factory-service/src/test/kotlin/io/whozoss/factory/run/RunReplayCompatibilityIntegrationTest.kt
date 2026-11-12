@@ -7,7 +7,9 @@ import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.run.domain.RunDecisionRecord
 import io.whozoss.factory.run.domain.RunFragmentRecord
 import io.whozoss.factory.run.domain.RunRecord
+import io.whozoss.factory.run.persistence.RunNode
 import io.whozoss.factory.run.persistence.RunRepository
+import io.whozoss.factory.run.persistence.SpringDataNeo4jRunRepository
 import io.whozoss.factory.run.service.RunService
 import io.whozoss.factory.run.service.RunStartCommand
 import io.whozoss.factory.sdk.spi.FactoryFlowSelector
@@ -29,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired
 
 class RunReplayCompatibilityIntegrationTest : Neo4jDomainIntegrationTest() {
     @Autowired lateinit var runRepository: RunRepository
+    @Autowired lateinit var runs: SpringDataNeo4jRunRepository
     @Autowired lateinit var workflowRepository: WorkflowRepository
     @Autowired lateinit var evidenceRepository: WorkflowEvidenceRepository
     @Autowired lateinit var interactionRepository: HumanInteractionRepository
@@ -100,9 +103,15 @@ class RunReplayCompatibilityIntegrationTest : Neo4jDomainIntegrationTest() {
                 flowDefinitionHashes = hashes,
             )
         // Explicitly seed authenticated intent through the real service, not a legacy bypass.
-        provisioning().ensureReady(scope, record.copy(fragments = emptyList(), decisions = emptyMap()), RunStartCommand(id, runType, id), null, "alice")
+        provisioning().ensureReady(
+            scope,
+            record.copy(fragments = emptyList(), decisions = emptyMap(), flowVersions = emptyMap(), flowDefinitionHashes = emptyMap()),
+            RunStartCommand(id, runType, id),
+            null,
+            "alice",
+        )
         val current = runRepository.find(scope, namespace, id)!!
-        check(runRepository.update(scope, namespace, id, current.revision, record.copy(revision = current.revision + 1)))
+        runs.save(RunNode.fromDomain(scope, record.copy(revision = current.revision + 1), objectMapper))
         return runRepository.find(scope, namespace, id)!!
     }
 

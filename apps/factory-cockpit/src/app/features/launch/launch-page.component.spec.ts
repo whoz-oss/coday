@@ -14,10 +14,14 @@ interface ApiStub {
 
 const NS1 = '0d4bd471-df37-43d8-a8f7-c989f95e71d7'
 const NS2 = '1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28'
+const HASH = 'a'.repeat(64)
+const KEY = JSON.stringify(['delivery', '1.0.0', HASH])
 
 function api(overrides: Partial<ApiStub> = {}): ApiStub {
   return {
-    getWorkflowDefinitions: jest.fn().mockReturnValue(of({ items: [{ workflowType: 'delivery' }] })),
+    getWorkflowDefinitions: jest
+      .fn()
+      .mockReturnValue(of({ items: [{ workflowType: 'delivery', version: '1.0.0', definitionHash: HASH }] })),
     getNamespaces: jest.fn().mockReturnValue(
       of([
         { namespaceId: NS1, name: 'Talent' },
@@ -64,7 +68,7 @@ describe('LaunchPageComponent namespace launch', () => {
 
   it('uses the explicit namespace contract without workstream input', async () => {
     await setup(api())
-    expect(Object.keys(form().controls)).toEqual(['workflowType', 'namespaceId', 'title', 'ticket', 'initialRequest'])
+    expect(Object.keys(form().controls)).toEqual(['definitionKey', 'namespaceId', 'title', 'ticket', 'initialRequest'])
     expect(form().controls['namespaceId'].value).toBe('')
     form().controls['namespaceId'].setValue(NS1)
     expect(form().valid).toBe(true)
@@ -106,7 +110,7 @@ describe('LaunchPageComponent namespace launch', () => {
   it('refuses a namespace not present in the loaded list', async () => {
     const service = api()
     const host = await setup(service)
-    form().patchValue({ workflowType: 'delivery', namespaceId: '00000000-0000-4000-8000-000000000000' })
+    form().patchValue({ definitionKey: KEY, namespaceId: '00000000-0000-4000-8000-000000000000' })
     ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
     fixture.detectChanges()
     expect(service.createWorkflowRun).not.toHaveBeenCalled()
@@ -117,7 +121,7 @@ describe('LaunchPageComponent namespace launch', () => {
     const service = api()
     await setup(service)
     form().patchValue({
-      workflowType: 'delivery',
+      definitionKey: KEY,
       namespaceId: NS2,
       title: 'Readable',
       ticket: 'ABC-1',
@@ -128,11 +132,48 @@ describe('LaunchPageComponent namespace launch', () => {
     expect(service.createWorkflowRun.mock.calls[0][0]).toEqual({
       namespaceId: NS2,
       workflowType: 'delivery',
+      definitionVersion: '1.0.0',
+      definitionHash: HASH,
       title: 'Readable',
       initialRequest: 'Build',
       parameters: { ticket: 'ABC-1' },
     })
     expect(navigate).toHaveBeenCalledWith(['/sessions', 'generated-id'], { queryParams: { namespaceId: NS2 } })
+  })
+
+  it('requires an explicit choice when versions coexist and submits the chosen version and hash', async () => {
+    const service = api({
+      getWorkflowDefinitions: jest.fn().mockReturnValue(
+        of({
+          items: [
+            { workflowType: 'delivery', version: '1.0.0', definitionHash: HASH },
+            { workflowType: 'delivery', version: '2.0.0', definitionHash: 'b'.repeat(64) },
+          ],
+        })
+      ),
+    })
+    await setup(service)
+    expect(form().controls['definitionKey'].value).toBe('')
+    expect(form().invalid).toBe(true)
+    form().patchValue({ definitionKey: JSON.stringify(['delivery', '2.0.0', 'b'.repeat(64)]), namespaceId: NS1 })
+    jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
+    expect(service.createWorkflowRun.mock.calls[0][0]).toEqual({
+      namespaceId: NS1,
+      workflowType: 'delivery',
+      definitionVersion: '2.0.0',
+      definitionHash: 'b'.repeat(64),
+    })
+  })
+
+  it('refuses a definition not present in loaded options instead of falling back to a type', async () => {
+    const service = api()
+    const host = await setup(service)
+    form().patchValue({ definitionKey: 'delivery', namespaceId: NS1 })
+    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
+    fixture.detectChanges()
+    expect(service.createWorkflowRun).not.toHaveBeenCalled()
+    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('Select an available workflow version')
   })
 
   it('surfaces Factory rejection and does not navigate', async () => {
@@ -144,7 +185,7 @@ describe('LaunchPageComponent namespace launch', () => {
     }
     const service = api({ createWorkflowRun: jest.fn().mockReturnValue(throwError(() => error)) })
     const host = await setup(service)
-    form().patchValue({ workflowType: 'delivery', namespaceId: NS1 })
+    form().patchValue({ definitionKey: KEY, namespaceId: NS1 })
     const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
     ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
     fixture.detectChanges()

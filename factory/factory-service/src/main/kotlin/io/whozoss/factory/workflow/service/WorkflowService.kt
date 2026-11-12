@@ -2,6 +2,7 @@ package io.whozoss.factory.workflow.service
 
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.CaseEventView
+import io.whozoss.factory.agentattempt.domain.toCheckedJsonObject
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
@@ -375,7 +376,31 @@ class WorkflowService(
         controllerExecution: ControllerExecutionInput,
         repoRoot: String? = null,
     ): WorkflowHttpResult {
-        val definitionRecord = resolveUniqueDefinition(scope, command.workflowType)
+        // Resolve an existing run from its pinned identity, never from the registry's current candidates.
+        val existing = repository.findInstance(scope, namespaceId, command.workflowId)
+        val selectedVersion = command.definitionVersion
+        val selectedHash = command.definitionHash
+        if ((selectedVersion == null) != (selectedHash == null) ||
+            (selectedVersion != null && (selectedVersion.isBlank() || selectedVersion.length > 128 ||
+                selectedHash == null || !Regex("[0-9a-f]{64}").matches(selectedHash)))
+        ) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "definitionVersion and a canonical definitionHash are required together.")
+        }
+        val pinnedVersion = existing?.instance?.get("definitionVersion") as? String
+        val definitionRecord = when {
+            selectedVersion != null -> repository.findDefinition(scope, command.workflowType, selectedVersion)
+                ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND)
+            pinnedVersion != null -> repository.findDefinition(scope, command.workflowType, pinnedVersion)
+                ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND)
+            else -> resolveUniqueDefinition(scope, command.workflowType)
+        }
+        if (selectedHash != null && definitionRecord.definitionHash != selectedHash) {
+            throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH, "The selected definition changed. Reload and select it again.")
+        }
+        if (existing != null && (definitionRecord.version != pinnedVersion ||
+                definitionRecord.definitionHash != existing.instance["definitionHash"])) {
+            throw workflowException(WorkflowErrorCodes.WORKFLOW_IDENTITY_CONFLICT, "An existing run cannot change its pinned definition.")
+        }
         // Resolve the declared execution plugin BEFORE any persistence or external
         // effect: an absent/unknown plugin must refuse the start explicitly.
         val executionPolicy = definitionRecord.executionPolicy ?: executionPolicyOf(definitionRecord.definition)
@@ -387,14 +412,13 @@ class WorkflowService(
             steps = definitionRecord.toPolicyDefinition().steps,
             executionPolicy = executionPolicy,
         )
-        val existing = repository.findInstance(scope, namespaceId, command.workflowId)
         if (existing != null) {
             if (existing.status != "active") throw workflowException(WorkflowErrorCodes.WORKFLOW_REMOVED)
             val hash = CanonicalHash.workflowStartCommandHash(command, definitionInput)
             if (existing.creationCommandHash != hash) {
                 throw workflowException(WorkflowErrorCodes.WORKFLOW_IDENTITY_CONFLICT)
             }
-            val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot)
+            val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot, controllerExecution.actorId)
             return WorkflowHttpResult(
                 200,
                 mapOf(
@@ -419,7 +443,7 @@ class WorkflowService(
         )
         repository.insertInstance(scope, record)
         publishProjectionRow(scope, namespaceId, command.workflowId, created.projection, command.workflowType, definitionRecord, controllerExecution)
-        val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot)
+        val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot, controllerExecution.actorId)
         sseHub.publish(scope, namespaceId, mapOf("workflowId" to command.workflowId, "namespaceId" to namespaceId, "revision" to 1))
         return WorkflowHttpResult(
             201,
@@ -439,6 +463,7 @@ class WorkflowService(
         namespaceId: String,
         command: WorkflowStartCommand,
         repoRoot: String?,
+        actorId: String? = null,
     ): SessionRunSubmissionService.SubmissionResult {
         val submitter = sessionRunSubmissionService
             ?: throw workflowException(
@@ -447,7 +472,7 @@ class WorkflowService(
             )
         val resolvedRoot = repoRoot?.takeIf { it.isNotBlank() }
             ?: agentOsProxyClient
-                ?.let { client -> runCatching { client.resolveRepoRoot(namespaceId, null) }.getOrNull() }
+                ?.let { client -> runCatching { client.resolveRepoRoot(namespaceId, actorId) }.getOrNull() }
                 ?.takeIf { it.isNotBlank() }
             ?: Path.of(".").toAbsolutePath().normalize().toString()
         return submitter.submit(scope, namespaceId, command.workflowId, resolvedRoot, "start", command.ticket)
@@ -1174,16 +1199,19 @@ class WorkflowService(
     ) {
         if (interaction.interactionType != CHECKPOINT_INTERACTION_TYPE) return
         val runner = sessionRunService ?: return
-        val root = repoRoot ?: resolveRepoRoot(namespaceId)
+        val instance = repository.findInstance(scope, namespaceId, workflowId)
+        val actorId = (instance?.instance?.get("controllerExecution") as? Map<*, *>)?.get("actorId") as? String
+            ?: (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
+        val root = repoRoot ?: resolveRepoRoot(namespaceId, actorId)
         logger.debug { "Auto-resuming session $workflowId after checkpoint ${interaction.interactionId}" }
         runner.runSession(scope, namespaceId, workflowId, root)
     }
 
     /** The namespace repo root, or the process working directory when AgentOS cannot resolve it. */
-    private fun resolveRepoRoot(namespaceId: String): Path =
+    private fun resolveRepoRoot(namespaceId: String, actorId: String? = null): Path =
         agentOsProxyClient
             ?.let { client ->
-                runCatching { client.resolveRepoRoot(namespaceId, null) }
+                runCatching { client.resolveRepoRoot(namespaceId, actorId) }
                     .getOrNull()
                     ?.takeIf { it.isNotBlank() }
                     ?.let(Path::of)
@@ -1310,9 +1338,9 @@ class WorkflowService(
             resultId = facts["resultId"] as? String,
             summary = facts["summary"] as? String
                 ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The accepted NEEDS_RESEARCH result has no summary."),
-            findings = facts["findings"] as? List<Map<String, Any?>> ?: emptyList(),
-            artifacts = facts["artifacts"] as? List<Map<String, Any?>> ?: emptyList(),
-            claims = facts["claims"] as? Map<String, Any?> ?: emptyMap(),
+            findings = facts["findings"] as? List<*> ?: emptyList(),
+            artifacts = facts["artifacts"] as? List<*> ?: emptyList(),
+            claims = (facts["claims"] as? Map<*, *>)?.toCheckedJsonObject() ?: emptyMap(),
         )
         val successorId = (needsResearchRouter ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Research resumption is unavailable."))
             .resume(scope, namespaceId, workflowId, step, outcome, normalized, actorId)
@@ -1977,6 +2005,9 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             name = step["name"] as String,
             responsibility = WorkflowStepResponsibility(kind, responsibility?.get("name") as? String),
             dependsOn = (step["dependsOn"] as? List<*>)?.map { it as String } ?: emptyList(),
+            contract = io.whozoss.factory.workflow.domain.WorkflowStepContract.fromJson(step),
+            decision = io.whozoss.factory.workflow.domain.WorkflowDecision.parse(step["decision"]),
+            join = step["join"] as? String,
         )
     }
     return WorkflowPolicyDefinition(workflowType = workflowType, version = version, definitionHash = definitionHash, steps = steps)
