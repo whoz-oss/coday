@@ -92,6 +92,23 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+
+    &--editable {
+      color: var(--color-text);
+      background: transparent;
+      cursor: text;
+    }
+
+    &--invalid {
+      border-color: var(--color-error, #dc2626);
+    }
+  }
+
+  &__hint {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
   }
 
   // ── Errors ───────────────────────────────────────────────

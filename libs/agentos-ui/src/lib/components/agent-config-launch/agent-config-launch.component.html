@@ -9,8 +9,12 @@
 
   <p class="agent-config-launch__intro">
     The loop configuration below is read from <code class="agent-config-launch__code">AgentConfig.loopConfig</code>
-    and will be used by the backend when the agent loop starts. A new Case will be created and one child case will be
-    launched per entity found.
+    and used by the backend when the agent loop starts. A new Case will be created and one child case will be launched
+    per entity found.
+    @if (isStepsFormat()) {
+      This configuration uses the <code class="agent-config-launch__code">steps</code> format: its placeholders read the
+      <em>Loop data</em> below, sent with the start message.
+    }
   </p>
 
   <div class="agent-config-launch__field">
@@ -27,6 +31,31 @@
     ></textarea>
   </div>
 
+  @if (isStepsFormat()) {
+    <div class="agent-config-launch__field">
+      <label class="agent-config-launch__label" for="agent-loop-data">Loop data (JSON)</label>
+      <textarea
+        id="agent-loop-data"
+        class="agent-config-launch__textarea agent-config-launch__textarea--editable"
+        [class.agent-config-launch__textarea--invalid]="loopDataInvalid()"
+        rows="10"
+        [value]="loopDataJson()"
+        [disabled]="isLaunching() || isLoading()"
+        (input)="onLoopDataInput($event)"
+        spellcheck="false"
+        autocomplete="off"
+      ></textarea>
+      @if (loopDataInvalid()) {
+        <p class="agent-config-launch__error" role="alert">Loop data must be a valid JSON object.</p>
+      }
+      <p class="agent-config-launch__hint">
+        This is what a scheduled prompt in loop mode sends as <code class="agent-config-launch__code">loopData</code>
+        in the session context. A placeholder referencing a missing key fails the loop, and
+        <code class="agent-config-launch__code">scheduledPromptId</code> must be a UUID if the steps use it.
+      </p>
+    </div>
+  }
+
   @if (launchError()) {
     <p class="agent-config-launch__error agent-config-launch__error--banner" role="alert">
       {{ launchError() }}
@@ -37,7 +66,7 @@
     <button
       class="agent-config-launch__btn agent-config-launch__btn--primary"
       type="button"
-      [disabled]="isLaunching()"
+      [disabled]="isLaunching() || loopDataInvalid()"
       (click)="launch()"
     >
       {{ isLaunching() ? 'Launching\u2026' : 'Launch' }}

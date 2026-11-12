@@ -80,6 +80,14 @@
     text-overflow: ellipsis;
   }
 
+  &__loop {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   &__next-run {
     font-size: 0.8rem;
     color: var(--color-text, #1d1d1f);

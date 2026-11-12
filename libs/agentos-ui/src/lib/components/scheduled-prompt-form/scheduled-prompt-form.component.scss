@@ -232,6 +232,11 @@
     background: var(--color-surface, rgba(0, 0, 0, 0.03));
   }
 
+  &__textarea--code {
+    font-family: monospace;
+    font-size: 0.8125rem;
+  }
+
   &__input--invalid,
   &__textarea--invalid {
     border-color: var(--color-error, #ff3b30);

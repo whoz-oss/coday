@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { ScheduledPrompt } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { EntityCardBadge, EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
 import { ScheduledPromptItemComponent } from '../scheduled-prompt-item/scheduled-prompt-item.component'
 
@@ -48,6 +48,7 @@ export class PlatformScheduledPromptsComponent {
             label: d.enabled ? 'Enabled' : 'Disabled',
             variant: d.enabled ? 'success' : 'warning',
           },
+          ...(d.agentLoopName ? [{ label: 'Loop', variant: 'info' } satisfies EntityCardBadge] : []),
         ],
       })
     )

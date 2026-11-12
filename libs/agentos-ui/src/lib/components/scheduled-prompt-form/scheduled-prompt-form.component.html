@@ -53,7 +53,12 @@
         </label>
         @if (isEditMode()) {
           <p class="scheduled-prompt-form__readonly-value">{{ resolveAgentConfigName(agentConfigIdControl.value) }}</p>
-          <span class="scheduled-prompt-form__field-hint">Agent Config cannot be changed after creation.</span>
+          <span class="scheduled-prompt-form__field-hint">
+            Agent Config cannot be changed after creation.
+            @if (isLoopMode()) {
+              In loop mode, this is the agent started for each search hit.
+            }
+          </span>
         } @else if (availableAgentConfigs().length === 0) {
           <p class="scheduled-prompt-form__field-hint">
             No agent configs available in this scope yet.
@@ -71,7 +76,12 @@
           @if (agentConfigIdControl.invalid && agentConfigIdControl.touched) {
             <span class="scheduled-prompt-form__field-error">Agent Config is required.</span>
           }
-          <span class="scheduled-prompt-form__field-hint">Immutable after creation.</span>
+          <span class="scheduled-prompt-form__field-hint">
+            Immutable after creation.
+            @if (isLoopMode()) {
+              In loop mode, this is the agent started for each search hit.
+            }
+          </span>
         }
       </div>
 
@@ -94,9 +104,127 @@
           <span class="scheduled-prompt-form__field-error">Opening message is required.</span>
         }
         <span class="scheduled-prompt-form__field-hint">
-          The message sent to the agent when the scheduled prompt fires.
+          @if (isLoopMode()) {
+            The prompt received by the agent started for each search hit, sent as is (not translated).
+          } @else {
+            The message sent to the agent when the scheduled prompt fires.
+          }
         </span>
       </div>
+
+      <!-- ═══════════════════════ LOOP MODE ═══════════════════════ -->
+      <fieldset class="scheduled-prompt-form__fieldset">
+        <legend class="scheduled-prompt-form__legend">Loop mode (experimental)</legend>
+
+        <div class="scheduled-prompt-form__field">
+          <label class="scheduled-prompt-form__toggle-label">
+            <input class="scheduled-prompt-form__toggle-checkbox" type="checkbox" [formControl]="loopEnabledControl" />
+            <span class="scheduled-prompt-form__toggle-text">Run through a loop agent</span>
+          </label>
+          <p class="scheduled-prompt-form__toggle-hint">
+            Instead of opening one case per user of the Agent Config, each run opens a single case driven by a loop
+            agent, which searches for entities and starts one case per hit.
+          </p>
+          @if (isPlatformMode) {
+            <p class="scheduled-prompt-form__toggle-hint">
+              Loop mode only runs for namespace-scoped scheduled prompts: a platform-scope prompt has no audience to
+              materialise.
+            </p>
+          }
+        </div>
+
+        @if (isLoopMode()) {
+          <p class="scheduled-prompt-form__field-hint">
+            The loop agent is deployed to a user group holding one technical user, ADMIN of the namespace. The Agent
+            Config above is the agent started for each search hit, and the Opening message is the prompt it receives
+            (not translated). The loop agent's <code>loopConfig</code> must use the <code>steps</code> format, reading
+            @for (placeholder of loopDataPlaceholders; track placeholder; let last = $last) {
+              <code>{{ placeholder }}</code
+              >{{ last ? '.' : ', ' }}
+            }
+          </p>
+
+          <div class="scheduled-prompt-form__field">
+            <label class="scheduled-prompt-form__label" for="sp-agent-loop-name">
+              Loop agent <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="sp-agent-loop-name"
+              class="scheduled-prompt-form__input"
+              [class.scheduled-prompt-form__input--invalid]="
+                form.hasError('loopAgentRequired') && agentLoopNameControl.touched
+              "
+              type="text"
+              list="sp-loop-agent-suggestions"
+              placeholder="Name of a LOOP-mode agent config"
+              [formControl]="agentLoopNameControl"
+              autocomplete="off"
+            />
+            <datalist id="sp-loop-agent-suggestions">
+              @for (name of loopAgentSuggestions(); track name) {
+                <option [value]="name"></option>
+              }
+            </datalist>
+            @if (form.hasError('loopAgentRequired') && agentLoopNameControl.touched) {
+              <span class="scheduled-prompt-form__field-error">Loop agent is required in loop mode.</span>
+            }
+            <span class="scheduled-prompt-form__field-hint">
+              Resolved by name on the server: in the namespace first, then at platform level.
+            </span>
+          </div>
+
+          <div class="scheduled-prompt-form__field">
+            <label class="scheduled-prompt-form__label" for="sp-search-tool-name">
+              Search tool name <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="sp-search-tool-name"
+              class="scheduled-prompt-form__input"
+              [class.scheduled-prompt-form__input--invalid]="
+                form.hasError('loopSearchToolRequired') && searchToolNameControl.touched
+              "
+              type="text"
+              placeholder="e.g. WHOZ__SearchTalents"
+              [formControl]="searchToolNameControl"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            @if (form.hasError('loopSearchToolRequired') && searchToolNameControl.touched) {
+              <span class="scheduled-prompt-form__field-error">Search tool name is required in loop mode.</span>
+            }
+            <span class="scheduled-prompt-form__field-hint">
+              Exact name as granted to the loop agent, integration prefix included.
+            </span>
+          </div>
+
+          <div class="scheduled-prompt-form__field">
+            <label class="scheduled-prompt-form__label" for="sp-search-tool-args">
+              Search tool arguments (JSON object)
+            </label>
+            <textarea
+              id="sp-search-tool-args"
+              class="scheduled-prompt-form__textarea scheduled-prompt-form__textarea--code"
+              [class.scheduled-prompt-form__textarea--invalid]="
+                searchToolArgsJsonControl.invalid && searchToolArgsJsonControl.touched
+              "
+              rows="6"
+              placeholder='{ "key": "value" }'
+              [formControl]="searchToolArgsJsonControl"
+              spellcheck="false"
+              autocomplete="off"
+            ></textarea>
+            @if (searchToolArgsJsonControl.invalid && searchToolArgsJsonControl.touched) {
+              <span class="scheduled-prompt-form__field-error">
+                {{ searchToolArgsJsonControl.hasError('notJsonObject') ? 'Must be a JSON object.' : 'Invalid JSON.' }}
+              </span>
+            }
+            <span class="scheduled-prompt-form__field-hint">
+              Passed as is as the input of the search tool. Leave empty for <code>{{ '{}' }}</code
+              >.
+            </span>
+          </div>
+        }
+      </fieldset>
 
       <!-- ═══════════════════════ RECURRENCE ═══════════════════════ -->
       <fieldset class="scheduled-prompt-form__fieldset">

@@ -226,18 +226,22 @@ export class AgentConfigFormComponent implements OnInit {
   /** Expose the enum to the template for option value bindings. */
   protected readonly ExecutionMode = AgentConfigExecutionModeEnum
 
-  /** Placeholder illustrating the AgentLoopPayload shape expected by loopConfig. */
+  /**
+   * Placeholder illustrating the `steps` format of loopConfig: a SEARCH then a START_CASES step,
+   * reading their data from the `loopData` entry of the session context.
+   */
   protected readonly loopConfigPlaceholder = JSON.stringify(
     {
-      search: {
-        tool: 'SearchTalents',
-        params: { talentId: ['6ac76692a909eaaae0b078d6'], resolveTargets: ['MANAGER'], next: null },
-      },
-      act: {
-        agentName: 'ProfileCaretaker',
-        promptTemplate:
-          'This talent has not completed their profile. As their manager, I need you to help me review and improve it.',
-      },
+      steps: [
+        { id: 'search', type: 'SEARCH', tool: '${loopData.searchToolName}', args: '${loopData.searchToolArgs}' },
+        {
+          id: 'start-cases',
+          type: 'START_CASES',
+          tool: 'FreeCaseStarterForUser',
+          args: { agentName: '${loopData.agentName}', prompt: '${loopData.prompt}' },
+          scheduledPromptId: '${loopData.scheduledPromptId}',
+        },
+      ],
     },
     null,
     2
