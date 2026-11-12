@@ -32,14 +32,35 @@ class WorkflowDefinitionDeletionGuard(
     }
 
     fun assertUnused(organizationId: String, type: String, version: String) {
-        // Legacy pins live in JSON; parse exact identities rather than substring matching. No lifecycle/status filter:
-        // archived and purged projections, orphan instances and terminal parent-run catalogs remain protected.
-        val rows = client.query("""
+        val pinKey = "$type@$version"
+        // Fast path: check scalar/list properties written on current nodes without loading JSON blobs.
+        val indexedUsed = client.query(
+            """
             MATCH (n) WHERE n.organizationId = ${'$'}organizationId
-              AND (n:WorkflowInstance OR n:WorkflowProjection OR n:FactoryRun)
+              AND (
+                ((n:WorkflowInstance OR n:WorkflowProjection) AND n.pinnedDefinition = ${'$'}pinKey)
+                OR (n:FactoryRun AND ${'$'}pinKey IN coalesce(n.pinnedDefinitions, []))
+              )
+            RETURN count(n) > 0 AS used
+            """.trimIndent(),
+        ).bindAll(mapOf("organizationId" to organizationId, "pinKey" to pinKey))
+            .fetch().one().orElse(null)?.get("used") == true
+        if (indexedUsed) throw inUseException(type, version)
+
+        // Legacy fallback: only inspect nodes predating `pinnedDefinition`/`pinnedDefinitions` that mention `type`.
+        // No lifecycle/status filter: archived and purged projections, orphan instances and terminal parent-run catalogs remain protected.
+        val rows = client.query(
+            """
+            MATCH (n) WHERE n.organizationId = ${'$'}organizationId
+              AND (
+                (n:WorkflowInstance AND n.pinnedDefinition IS NULL AND n.instance CONTAINS ${'$'}type)
+                OR (n:WorkflowProjection AND n.pinnedDefinition IS NULL AND (n.projection CONTAINS ${'$'}type OR coalesce(n.instance, '') CONTAINS ${'$'}type))
+                OR (n:FactoryRun AND n.pinnedDefinitions IS NULL AND n.flowVersions CONTAINS ${'$'}type)
+              )
             RETURN n.instance AS instance, n.projection AS projection, n.definitionVersion AS version,
                    n.flowVersions AS versions
-        """.trimIndent()).bind(organizationId).to("organizationId").fetch().all()
+            """.trimIndent(),
+        ).bindAll(mapOf("organizationId" to organizationId, "type" to type)).fetch().all()
         val used = rows.any { row ->
             fun json(key: String): Map<*, *> = (row[key] as? String)?.let { mapper.readValue(it, Map::class.java) } ?: emptyMap<Any, Any>()
             val instance = json("instance")
@@ -48,9 +69,11 @@ class WorkflowDefinitionDeletionGuard(
                 (instance["workflowType"] == type && instance["definitionVersion"] == version) ||
                 (projection["workflowType"] == type && (row["version"] ?: instance["definitionVersion"]) == version)
         }
-        if (used) throw workflowException(
-            "WORKFLOW_DEFINITION_IN_USE",
-            "Cannot delete '$type@$version': a run pins this definition. Active and historical runs, including archived or purged runs, keep their definitions.",
-        )
+        if (used) throw inUseException(type, version)
     }
+
+    private fun inUseException(type: String, version: String) = workflowException(
+        "WORKFLOW_DEFINITION_IN_USE",
+        "Cannot delete '$type@$version': a run pins this definition. Active and historical runs, including archived or purged runs, keep their definitions.",
+    )
 }

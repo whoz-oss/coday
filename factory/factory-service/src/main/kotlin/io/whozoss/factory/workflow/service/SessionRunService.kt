@@ -745,7 +745,6 @@ class SessionRunService(
         stepId: String,
     ): OracleEvaluation {
         val registry = oracleDefinitionRegistry ?: return OracleEvaluation.EMPTY
-        val service = oracleExecutionService ?: return OracleEvaluation(false, emptyList())
         val matching = runCatching { registry.list() }
             .onFailure { logger.warn(it) { "Oracle registry listing failed; skipping auto-oracles for step '$stepId'" } }
             .getOrElse {
@@ -755,6 +754,7 @@ class SessionRunService(
             }
             .filter { appliesTo(it, workflowType, stepId) }
         if (matching.isEmpty()) return OracleEvaluation.EMPTY
+        val service = oracleExecutionService ?: return OracleEvaluation(false, emptyList())
 
         var allSucceeded = true
         val evidenceIds = ArrayList<String>()

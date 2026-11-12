@@ -320,7 +320,7 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `definition deletion protects exact org pins across workstreams and all lifecycle states`() {
-        val cases = listOf("active", "removed", "purged", "orphan", "parent")
+        val cases = listOf("active", "removed", "purged", "orphan", "parent", "indexed-instance", "indexed-projection", "indexed-parent")
         cases.forEach { lifecycle ->
             val type = "protected-$lifecycle"
             postJson(REGISTER_PATH, adminToken, validDefinition(type))
@@ -335,10 +335,14 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
                     "instance" to objectMapperJson(mapOf("workflowType" to type, "definitionVersion" to "1.0.0")),
                     "projection" to objectMapperJson(mapOf("workflowType" to type)),
                     "versions" to objectMapperJson(mapOf(type to "1.0.0")),
+                    "pinKey" to "$type@1.0.0",
                 )
                 val query = when (lifecycle) {
                     "parent" -> "CREATE (:FactoryRun {id: ${'$'}id, organizationId: ${'$'}org, workstreamId: 'other-workstream', status: 'completed', flowVersions: ${'$'}versions})"
                     "orphan" -> "CREATE (:WorkflowInstance {id: ${'$'}id, organizationId: ${'$'}org, instance: ${'$'}instance})"
+                    "indexed-instance" -> "CREATE (:WorkflowInstance {id: ${'$'}id, organizationId: ${'$'}org, pinnedDefinition: ${'$'}pinKey, instance: '{}'})"
+                    "indexed-projection" -> "CREATE (:WorkflowProjection {id: ${'$'}id, organizationId: ${'$'}org, lifecycleState: 'purged', pinnedDefinition: ${'$'}pinKey, projection: '{}'})"
+                    "indexed-parent" -> "CREATE (:FactoryRun {id: ${'$'}id, organizationId: ${'$'}org, pinnedDefinitions: [${'$'}pinKey], flowVersions: '{}'})"
                     else -> "CREATE (:WorkflowProjection {id: ${'$'}id, organizationId: ${'$'}org, workstreamId: 'other-workstream', lifecycleState: ${'$'}lifecycle, projection: ${'$'}projection, definitionVersion: '1.0.0'})"
                 }
                 session.run(query, parameters).consume()

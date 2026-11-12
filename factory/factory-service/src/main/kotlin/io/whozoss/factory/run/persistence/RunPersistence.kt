@@ -48,6 +48,8 @@ data class RunNode(
     val appliedValidationUpdates: String = "[]",
     val activeEscalation: String? = null,
     val maxTotalFragments: Int = RunRecord.DEFAULT_MAX_TOTAL_FRAGMENTS,
+    /** Exact `workflowType@version` pins for fast deletion checks; empty on legacy/unpinned nodes. */
+    val pinnedDefinitions: List<String> = emptyList(),
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
 ) {
@@ -116,6 +118,9 @@ data class RunNode(
             appliedValidationUpdates = mapper.writeValueAsString(record.appliedValidationUpdates),
             activeEscalation = record.activeEscalation?.let { mapper.writeValueAsString(it) },
             maxTotalFragments = record.maxTotalFragments,
+            pinnedDefinitions = record.flowVersions.entries
+                .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+                .map { "${it.key}@${it.value}" },
             createdAt = createdAt,
             updatedAt = updatedAt,
         )
@@ -156,6 +161,7 @@ interface SpringDataNeo4jRunRepository : Neo4jRepository<RunNode, String> {
             r.decisions = ${'$'}decisions,
             r.flowVersions = ${'$'}flowVersions,
             r.flowDefinitionHashes = ${'$'}flowDefinitionHashes,
+            r.pinnedDefinitions = ${'$'}pinnedDefinitions,
             r.appliedValidationUpdates = ${'$'}appliedValidationUpdates,
             r.activeEscalation = ${'$'}activeEscalation,
             r.updatedAt = ${'$'}updatedAt
@@ -177,6 +183,7 @@ interface SpringDataNeo4jRunRepository : Neo4jRepository<RunNode, String> {
         @Param("decisions") decisions: String,
         @Param("flowVersions") flowVersions: String,
         @Param("flowDefinitionHashes") flowDefinitionHashes: String,
+        @Param("pinnedDefinitions") pinnedDefinitions: List<String>,
         @Param("appliedValidationUpdates") appliedValidationUpdates: String,
         @Param("activeEscalation") activeEscalation: String?,
         @Param("updatedAt") updatedAt: Instant,
@@ -263,6 +270,9 @@ class Neo4jRunRepository(
             decisions = objectMapper.writeValueAsString(next.decisions),
             flowVersions = objectMapper.writeValueAsString(next.flowVersions),
             flowDefinitionHashes = objectMapper.writeValueAsString(next.flowDefinitionHashes),
+            pinnedDefinitions = next.flowVersions.entries
+                .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+                .map { "${it.key}@${it.value}" },
             appliedValidationUpdates = objectMapper.writeValueAsString(next.appliedValidationUpdates),
             activeEscalation = next.activeEscalation?.let { objectMapper.writeValueAsString(it) },
             updatedAt = Instant.now(),

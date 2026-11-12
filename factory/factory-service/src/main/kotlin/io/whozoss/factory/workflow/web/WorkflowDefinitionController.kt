@@ -170,14 +170,8 @@ class WorkflowDefinitionController(
                     "This workflow type and version already exist. Choose a new identity; nothing was overwritten.",
                 )
             }
-        } else if (!definitionCreator.createIfAbsent(caller.scope, record)) {
-            val stored = service.getDefinition(caller.scope, record.workflowType, record.version)
-            if (stored?.get("definitionHash") != record.definitionHash) {
-                throw workflowException(
-                    "WORKFLOW_DEFINITION_ALREADY_EXISTS",
-                    "This version already exists with different content. Register a new version; pinned definitions cannot be overwritten.",
-                )
-            }
+        } else {
+            service.registerDefinition(caller.scope, record)
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(
             WorkflowDataEnvelope(

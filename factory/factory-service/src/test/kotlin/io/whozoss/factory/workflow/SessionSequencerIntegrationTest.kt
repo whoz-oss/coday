@@ -543,6 +543,43 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `a step with no matching oracles succeeds even when oracleExecutionService is absent`() {
+        writeScript("pass", "exit 0")
+        writeManifest("check" to "./factory/verification/pass")
+        val workflowId = "wf-no-oracle-service"
+        startSession(
+            "unrelated-no-service-dag",
+            workflowId,
+            listOf(stepJson("s1", "code", "check", emptyList())),
+        )
+        val registry = mockk<OracleDefinitionRegistry>()
+        every { registry.list() } returns emptyList()
+        val runnerWithoutOracleService = SessionRunService(
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            CapabilityExecutionService(
+                CapabilityResolver(),
+                workflowRepository,
+                evidenceRepository,
+                interactionRepository,
+                attemptRepository,
+                durableAgentAttemptService = mockk<DurableAgentAttemptService>(relaxed = true),
+                agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
+                agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
+            ),
+            sseHub,
+            oracleDefinitionRegistry = registry,
+            oracleExecutionService = null,
+        )
+
+        val result = runnerWithoutOracleService.runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
+    }
+
+    @Test
     fun `a failing applicable oracle fails the step and blocks its dependents`() {
         writeScript("pass", "exit 0")
         writeManifest("check" to "./factory/verification/pass")

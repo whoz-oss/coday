@@ -36,6 +36,7 @@ class Neo4jWorkflowRepository(
     private val codeTransitions: SpringDataNeo4jWorkflowCodeTransitionRepository,
     private val objectMapper: ObjectMapper,
     private val deletionGuard: WorkflowDefinitionDeletionGuard,
+    private val definitionCreator: WorkflowDefinitionCreator,
 ) : WorkflowRepository {
 
     // ------------------------------------------------------------------
@@ -51,8 +52,17 @@ class Neo4jWorkflowRepository(
     override fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): List<WorkflowDefinitionRecord> =
         definitions.findAllByOrganization(scope.organizationId).map { it.toDomain(objectMapper) }
 
+    @Transactional
     override fun saveDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord) {
-        definitions.save(WorkflowDefinitionNode.fromDomain(scope, record, objectMapper))
+        if (!definitionCreator.createIfAbsent(scope, record)) {
+            val stored = findDefinition(scope, record.workflowType, record.version)
+            if (stored?.definitionHash != record.definitionHash) {
+                throw workflowException(
+                    "WORKFLOW_DEFINITION_ALREADY_EXISTS",
+                    "This version already exists with different content. Register a new version; pinned definitions cannot be overwritten.",
+                )
+            }
+        }
     }
 
     @Transactional

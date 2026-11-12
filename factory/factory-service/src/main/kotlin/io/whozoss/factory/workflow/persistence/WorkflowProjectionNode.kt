@@ -37,6 +37,8 @@ data class WorkflowProjectionNode(
     val relations: String? = null,
     val controllerExecution: String? = null,
     val lifecycleState: String,
+    /** Exact `workflowType@version` pin for fast deletion checks; null on legacy/unpinned nodes. */
+    val pinnedDefinition: String? = null,
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
 ) {
@@ -92,6 +94,13 @@ data class WorkflowProjectionNode(
             relations = record.relations?.let { objectMapper.writeJson(it) },
             controllerExecution = record.controllerExecution?.let { objectMapper.writeJson(it) },
             lifecycleState = lifecycleState,
+            pinnedDefinition = run {
+                val type = (record.projection["workflowType"] as? String)
+                    ?: (record.instance?.get("workflowType") as? String)
+                val version = record.definitionVersion
+                    ?: (record.instance?.get("definitionVersion") as? String)
+                if (!type.isNullOrBlank() && !version.isNullOrBlank()) "$type@$version" else null
+            },
             createdAt = createdAt,
             updatedAt = updatedAt,
         )
