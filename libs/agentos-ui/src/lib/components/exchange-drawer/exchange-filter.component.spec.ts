@@ -71,11 +71,12 @@ describe('ExchangeDrawerComponent file filters', () => {
     })
     fixture.componentInstance.viewerClosed.subscribe(() => {
       fixture.componentRef.setInput('activeFile', null)
-      fixture.detectChanges()
     })
     host.querySelector<HTMLButtonElement>(`[data-track="ExchangeItem-file_${scope}:shared.txt"]`)!.click()
     host.querySelector<HTMLButtonElement>('[data-track="ExchangeContentViewer-back"]')!.click()
+    // The parent updates state synchronously, but Angular renders the list on a later turn.
     flushMicrotasks()
+    fixture.detectChanges()
     const target = host.querySelector<HTMLButtonElement>(`[data-track="ExchangeItem-file_${scope}:shared.txt"]`)
     expect(document.activeElement).toBe(target)
     fixture.destroy()
@@ -126,11 +127,11 @@ describe('ExchangeDrawerComponent file filters', () => {
     fixture.componentInstance.viewerClosed.subscribe(() => {
       fixture.componentRef.setInput('activeFile', null)
       fixture.componentRef.setInput(`${section}Files`, [])
-      fixture.detectChanges()
     })
     host.querySelector<HTMLButtonElement>(`[data-track="ExchangeItem-file_${scope}:gone.txt"]`)!.click()
     host.querySelector<HTMLButtonElement>('[data-track="ExchangeContentViewer-back"]')!.click()
     flushMicrotasks()
+    fixture.detectChanges()
     const fallback = scope === ExchangeFileEntryScopeEnum.NAMESPACE
       ? host.querySelector('.exchange-drawer__section-title') : host.querySelector('input[type=search]')
     expect(document.activeElement).toBe(fallback)

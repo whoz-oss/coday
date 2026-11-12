@@ -93,5 +93,6 @@
     "tsx": "catalog:dev",
     "typescript": "catalog:dev",
     "typescript-eslint": "catalog:dev"
-  }
+  },
+  "packageManager": "pnpm@10.28.1"
 }

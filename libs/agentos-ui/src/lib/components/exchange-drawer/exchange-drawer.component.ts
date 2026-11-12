@@ -1,10 +1,12 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
   ElementRef,
   inject,
+  Injector,
   input,
   output,
   signal,
@@ -122,6 +124,7 @@ export class ExchangeDrawerComponent {
   readonly viewerClosed = output<void>()
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
+  private readonly injector = inject(Injector)
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput')
   private readonly timers = new Map<ExchangeScope, ReturnType<typeof setTimeout>>()
   protected readonly caseInput = signal('')
@@ -329,7 +332,8 @@ export class ExchangeDrawerComponent {
     const ref = this.lastSelectedFile
     if (!ref) return
     // Restore focus only to the same scope and path once the list is re-rendered.
-    queueMicrotask(() => {
+    afterNextRender(() => {
+      if (this.activeFile() || this.lastSelectedFile !== ref) return
       const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('[data-exchange-path][data-exchange-scope]')
       for (const el of Array.from(rows)) {
         if (el.getAttribute('data-exchange-path') === ref.path && el.getAttribute('data-exchange-scope') === ref.scope) {
@@ -338,7 +342,7 @@ export class ExchangeDrawerComponent {
         }
       }
       this.focusScope(ref.scope)
-    })
+    }, { injector: this.injector })
   }
 
   /** Scope of the section whose upload button was last clicked (one hidden input is shared). */
