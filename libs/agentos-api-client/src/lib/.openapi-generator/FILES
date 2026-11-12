@@ -89,6 +89,7 @@ model/intention-generated-event.ts
 model/list-auth-setting200-response-inner.ts
 model/list-by-user-in-namespace-request.ts
 model/llm-usage.ts
+model/loop-configuration.ts
 model/member-item.ts
 model/message-content.ts
 model/message-event-all-of-content.ts

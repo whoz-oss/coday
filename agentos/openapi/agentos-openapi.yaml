@@ -3936,10 +3936,12 @@ components:
               type: string
         loopConfig:
           $ref: "#/components/schemas/JsonNode"
-          description: Default AgentLoopPayload for LOOP-mode agents. Used when the
-            triggering message carries no parseable payload. A payload in the first
-            user message always takes precedence. Ignored for SIMPLE and ADVANCED
-            agents.
+          description: "Loop of a LOOP-mode agent. Either the 'steps' format (a SEARCH\
+            \ then a START_CASES step, whose tool, args and scheduledPromptId may\
+            \ use ${loopData.key} placeholders resolved against the 'loopData' entry\
+            \ of the session context of the triggering message), or the legacy format\
+            \ ('search' and 'act', independent of any loopData). Ignored for SIMPLE\
+            \ and ADVANCED agents."
         modelName:
           type: string
         name:
@@ -5152,6 +5154,16 @@ components:
       - inputTokens
       - outputTokens
       - totalTokens
+    LoopConfiguration:
+      type: object
+      properties:
+        searchToolArgs:
+          $ref: "#/components/schemas/JsonNode"
+        searchToolName:
+          type: string
+          minLength: 1
+      required:
+      - searchToolName
     MemberItem:
       type: object
       properties:
@@ -5911,6 +5923,8 @@ components:
         agentConfigId:
           type: string
           format: uuid
+        agentLoopName:
+          type: string
         createdBy:
           type: string
         createdOn:
@@ -5929,6 +5943,8 @@ components:
         lastRunAt:
           type: string
           format: date-time
+        loopConfiguration:
+          $ref: "#/components/schemas/LoopConfiguration"
         name:
           type: string
           minLength: 1
