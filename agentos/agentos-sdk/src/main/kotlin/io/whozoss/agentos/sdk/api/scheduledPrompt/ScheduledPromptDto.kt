@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.scheduledPrompt
 import com.fasterxml.jackson.annotation.JsonFormat
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -85,6 +86,21 @@ data class PlanningDto(
         get() = endType != SchedulerEndType.OCCURRENCES || maxOccurrenceCount != null
 }
 
+/**
+ * Loop-mode configuration of a scheduled prompt: which search tool the LOOP agent runs.
+ *
+ * [searchToolName] is the exact name of the search tool as granted to the loop agent
+ * (integration prefix included, e.g. `WHOZ__SearchTalents`).
+ * [searchToolArgs] is a JSON object passed verbatim as the tool input (null = `{}`).
+ */
+@Schema(name = "LoopConfiguration")
+data class LoopConfigurationDto(
+    @field:NotBlank(message = "searchToolName must not be blank")
+    val searchToolName: String,
+    @field:Schema(type = "object", nullable = true)
+    val searchToolArgs: JsonNode? = null,
+)
+
 // ---------------------------------------------------------------------------
 // Root DTO
 // ---------------------------------------------------------------------------
@@ -107,6 +123,13 @@ data class PlanningDto(
  * [planning] describes the start date and end condition. Cross-field constraints
  * (endDate after startDate, maxOccurrenceCount required) are validated directly on
  * [PlanningDto] via Bean Validation, cascaded here by `@Valid`.
+ *
+ * [agentLoopName] / [loopConfiguration] enable the loop mode: when [agentLoopName] is set, each
+ * run opens a single case driven by that LOOP agent (resolved by name in the scheduled prompt's
+ * namespace, then platform) instead of one case per user of the target agent's audience.
+ * [agentConfigId] / [promptContent] then describe the agent and the prompt the loop starts for each
+ * search target. Both fields must be set together and are replaced on PUT (omitted = back to the
+ * historical mode).
  */
 @Schema(name = "ScheduledPrompt")
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -146,4 +169,14 @@ data class ScheduledPromptDto(
      * External consumers store their own metadata here (e.g. `isStandard`).
      */
     val externalMetadata: Map<String, Any?>? = null,
-)
+    /** Name of the LOOP agent driving each run. Null = historical mode. Requires [loopConfiguration]. */
+    val agentLoopName: String? = null,
+    /** Search tool configuration read by the LOOP agent. Requires [agentLoopName]. */
+    @field:Valid
+    val loopConfiguration: LoopConfigurationDto? = null,
+) {
+    @get:AssertTrue(message = "agentLoopName and loopConfiguration must be set together")
+    @get:JsonIgnore
+    val isLoopModeConsistent: Boolean
+        get() = agentLoopName.isNullOrBlank() == (loopConfiguration == null)
+}

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -15,6 +16,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.LoopConfigurationDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -79,6 +81,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nextRunAt: Instant = fixedNextRun,
         lastRunAt: Instant? = null,
         externalMetadata: Map<String, Any?>? = null,
+        agentLoopName: String? = null,
+        loopConfiguration: LoopConfiguration? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -92,6 +96,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nextRunAt = nextRunAt,
         lastRunAt = lastRunAt,
         externalMetadata = externalMetadata,
+        agentLoopName = agentLoopName,
+        loopConfiguration = loopConfiguration,
     )
 
     fun dto(
@@ -104,6 +110,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning: PlanningDto = planningDto(),
         content: String = promptContent,
         externalMetadata: Map<String, Any?>? = null,
+        agentLoopName: String? = null,
+        loopConfiguration: LoopConfigurationDto? = null,
     ) = ScheduledPromptDto(
         id = id,
         namespaceId = nsId,
@@ -115,6 +123,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning = planning,
         enabled = enabled,
         externalMetadata = externalMetadata,
+        agentLoopName = agentLoopName,
+        loopConfiguration = loopConfiguration,
     )
 
     beforeTest {
@@ -575,5 +585,109 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
         val result = controller.update(id, dto(id = id, externalMetadata = incomingMetadata))
         result.externalMetadata shouldBe incomingMetadata
+    }
+
+    // -------------------------------------------------------------------------
+    // loop mode — agentLoopName / loopConfiguration
+    // -------------------------------------------------------------------------
+
+    val loopArgs = jacksonObjectMapper().readTree("""{"query":"kotlin","limit":10}""")
+
+    "create maps the loop fields from the DTO to the domain entity" {
+        var capturedEntity: ScheduledPrompt? = null
+        every { service.createWithPrompt(any(), any()) } answers {
+            capturedEntity = firstArg()
+            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
+        }
+        val result = controller.create(
+            dto(
+                agentLoopName = "Looper",
+                loopConfiguration = LoopConfigurationDto("WHOZ__SearchTalents", loopArgs),
+            ),
+        )
+        capturedEntity?.agentLoopName shouldBe "Looper"
+        capturedEntity?.loopConfiguration shouldBe LoopConfiguration("WHOZ__SearchTalents", loopArgs)
+        capturedEntity?.isLoopMode shouldBe true
+        result.agentLoopName shouldBe "Looper"
+        result.loopConfiguration shouldBe LoopConfigurationDto("WHOZ__SearchTalents", loopArgs)
+    }
+
+    "create normalizes a blank agentLoopName to null" {
+        var capturedEntity: ScheduledPrompt? = null
+        every { service.createWithPrompt(any(), any()) } answers {
+            capturedEntity = firstArg()
+            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
+        }
+        controller.create(dto(agentLoopName = "  "))
+        capturedEntity?.agentLoopName shouldBe null
+        capturedEntity?.isLoopMode shouldBe false
+    }
+
+    "create without loop fields stays in historical mode" {
+        var capturedEntity: ScheduledPrompt? = null
+        every { service.createWithPrompt(any(), any()) } answers {
+            capturedEntity = firstArg()
+            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
+        }
+        controller.create(dto())
+        capturedEntity?.agentLoopName shouldBe null
+        capturedEntity?.loopConfiguration shouldBe null
+    }
+
+    "update replaces the loop fields" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns sp(
+            id = id,
+            agentLoopName = "OldLooper",
+            loopConfiguration = LoopConfiguration("OLD__Search", null),
+        )
+        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
+        val result = controller.update(
+            id,
+            dto(
+                id = id,
+                agentLoopName = "NewLooper",
+                loopConfiguration = LoopConfigurationDto("NEW__Search", loopArgs),
+            ),
+        )
+        result.agentLoopName shouldBe "NewLooper"
+        result.loopConfiguration shouldBe LoopConfigurationDto("NEW__Search", loopArgs)
+    }
+
+    "update clears the loop fields when omitted" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns sp(
+            id = id,
+            agentLoopName = "Looper",
+            loopConfiguration = LoopConfiguration("WHOZ__SearchTalents", loopArgs),
+        )
+        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
+        val result = controller.update(id, dto(id = id))
+        result.agentLoopName shouldBe null
+        result.loopConfiguration shouldBe null
+    }
+
+    "toDto exposes the loop fields from the domain entity" {
+        val id = UUID.randomUUID()
+        val entity = sp(
+            id = id,
+            agentLoopName = "Looper",
+            loopConfiguration = LoopConfiguration("WHOZ__SearchTalents", loopArgs),
+        )
+        every { service.findById(id, withRemoved = true) } returns entity
+        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
+        val result = controller.getById(id)
+        result.agentLoopName shouldBe "Looper"
+        result.loopConfiguration shouldBe LoopConfigurationDto("WHOZ__SearchTalents", loopArgs)
+    }
+
+    "toDto exposes null loop fields in historical mode" {
+        val id = UUID.randomUUID()
+        val entity = sp(id = id)
+        every { service.findById(id, withRemoved = true) } returns entity
+        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
+        val result = controller.getById(id)
+        result.agentLoopName shouldBe null
+        result.loopConfiguration shouldBe null
     }
 })
