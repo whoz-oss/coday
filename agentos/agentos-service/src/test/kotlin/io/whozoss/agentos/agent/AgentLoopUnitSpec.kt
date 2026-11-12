@@ -26,6 +26,8 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.workflow.AgentLoopAct
 import io.whozoss.agentos.workflow.AgentLoopPayload
+import io.whozoss.agentos.workflow.AgentLoopSearch
+import io.whozoss.agentos.workflow.AgentLoopSessionContext
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
@@ -35,9 +37,10 @@ import java.util.UUID
 /**
  * Unit tests for [AgentLoop].
  *
- * AgentLoop reads its payload exclusively from [AgentLoop.loopConfig] (set at construction
- * from [AgentConfig.loopConfig]). Message content is ignored for payload resolution.
- * These tests cover loopConfig parsing and the mapping of [LoopRunOutcome] to case events.
+ * Payload resolution: the `agentLoop` entry of the session context of the last user message takes
+ * precedence, [AgentLoop.loopConfig] (set at construction from [AgentConfig.loopConfig]) is the fallback.
+ * The text of the message is ignored.
+ * These tests cover payload resolution and the mapping of [LoopRunOutcome] to case events.
  * The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
  */
 class AgentLoopUnitSpec :
@@ -99,12 +102,16 @@ class AgentLoopUnitSpec :
             loopConfig = loopConfig,
         )
 
-        fun userMessage(text: String = "start") =
+        fun userMessage(
+            text: String = "start",
+            sessionContext: Map<String, Any?>? = null,
+        ) =
             MessageEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 actor = Actor(id = "user-1", displayName = "Alice", role = ActorRole.USER),
                 content = listOf(MessageContent.Text(text)),
+                sessionContext = sessionContext,
             )
 
         fun agentMessage(text: String) =
@@ -211,7 +218,7 @@ class AgentLoopUnitSpec :
             emitted shouldHaveSize 3
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             emitted[1].shouldBeInstanceOf<WarnEvent>()
-            emitted.warnMessage() shouldContain "No loopConfig"
+            emitted.warnMessage() shouldContain "No loop payload"
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
@@ -226,6 +233,90 @@ class AgentLoopUnitSpec :
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             emitted[1].shouldBeInstanceOf<WarnEvent>()
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // Payload from the session context of the last user message
+        // -------------------------------------------------------------------------
+
+        val sessionPayload =
+            AgentLoopPayload(
+                search = AgentLoopSearch(tool = "WHOZ__SearchTalents", params = objectMapper.readTree("""{"query":"kotlin"}""")),
+                act = AgentLoopAct(agentName = "Caretaker", prompt = "Review this profile"),
+            )
+
+        "session context payload is used, and takes precedence over loopConfig" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = AgentLoopSessionContext.of(sessionPayload, objectMapper))
+
+            val emitted = agent(runner = runner, loopConfig = validLoopConfig).run(listOf(message)).toList()
+
+            val payloadSlot = slot<AgentLoopPayload>()
+            coVerify(exactly = 1) { runner.run(capture(payloadSlot), any(), any()) }
+            payloadSlot.captured shouldBe sessionPayload
+            emitted.filterIsInstance<WarnEvent>() shouldHaveSize 0
+        }
+
+        "session context payload is used when no loopConfig is configured" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = AgentLoopSessionContext.of(sessionPayload, objectMapper))
+
+            agent(runner = runner, loopConfig = null).run(listOf(message)).toList()
+
+            coVerify(exactly = 1) { runner.run(sessionPayload, any(), any()) }
+        }
+
+        "only the most recent user message is considered" {
+            val runner = runnerReturning(completed)
+            val older = userMessage(sessionContext = AgentLoopSessionContext.of(sessionPayload, objectMapper))
+            val newer = userMessage(text = "again")
+
+            agent(runner = runner, loopConfig = validLoopConfig).run(listOf(older, agentMessage("ok"), newer)).toList()
+
+            // The newer user message has no agentLoop entry: fallback to loopConfig, not to the older message.
+            coVerify(exactly = 1) { runner.run(match { it.search.tool == "SearchTalents" }, any(), any()) }
+        }
+
+        "falls back to loopConfig when the last user message has no agentLoop entry" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = mapOf("preferredLanguage" to "fr"))
+
+            agent(runner = runner, loopConfig = validLoopConfig).run(listOf(message)).toList()
+
+            coVerify(exactly = 1) { runner.run(match { it.search.tool == "SearchTalents" }, any(), any()) }
+        }
+
+        "neither session context nor loopConfig emits a WarnEvent and does not call the runner" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = mapOf("preferredLanguage" to "fr"))
+
+            val emitted = agent(runner = runner, loopConfig = null).run(listOf(message)).toList()
+
+            emitted.warnMessage() shouldContain "No loop payload"
+            emitted.last().shouldBeInstanceOf<AgentFinishedEvent>()
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "malformed agentLoop entry emits a WarnEvent and does not call the runner, even with a loopConfig" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = mapOf("agentLoop" to mapOf("search" to "not-an-object")))
+
+            val emitted = agent(runner = runner, loopConfig = validLoopConfig).run(listOf(message)).toList()
+
+            emitted.warnMessage() shouldContain "agentLoop"
+            emitted.last().shouldBeInstanceOf<AgentFinishedEvent>()
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "blank search.tool in the session context payload emits a WarnEvent and does not call the runner" {
+            val runner = runnerReturning(completed)
+            val blank = sessionPayload.copy(search = sessionPayload.search.copy(tool = " "))
+            val message = userMessage(sessionContext = AgentLoopSessionContext.of(blank, objectMapper))
+
+            val emitted = agent(runner = runner).run(listOf(message)).toList()
+
+            emitted.warnMessage() shouldContain "blank 'search.tool'"
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
 

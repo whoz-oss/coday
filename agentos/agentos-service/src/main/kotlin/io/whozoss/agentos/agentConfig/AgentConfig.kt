@@ -150,9 +150,10 @@ data class AgentConfig(
     /**
      * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object.
      *
-     * When an [AgentLoop] run starts, the first user message is inspected first: if it contains
-     * a valid [io.whozoss.agentos.workflow.AgentLoopPayload] JSON, that value is used (override).
-     * When the message carries no parseable payload, [loopConfig] is used as the default.
+     * When an [AgentLoop] run starts, the session context of the last user message is inspected first:
+     * if its `agentLoop` entry holds a valid [io.whozoss.agentos.workflow.AgentLoopPayload], that value
+     * takes precedence (this is how a scheduled prompt in loop mode configures a run).
+     * When the message carries none, [loopConfig] is used as the fallback.
      * If neither source provides a valid payload, the run is aborted with a warning.
      *
      * Only meaningful when [executionMode] is [ExecutionMode.LOOP]; ignored otherwise.

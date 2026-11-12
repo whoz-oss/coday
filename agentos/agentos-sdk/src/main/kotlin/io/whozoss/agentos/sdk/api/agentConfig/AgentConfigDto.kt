@@ -105,16 +105,16 @@ data class AgentConfigDto(
     /**
      * Default payload for LOOP-mode agents, stored as a JSON object.
      *
-     * When provided, it is used as the default [io.whozoss.agentos.workflow.AgentLoopPayload]
-     * when the triggering message carries no parseable payload. A payload present in the
-     * first user message always takes precedence (override).
+     * Fallback [io.whozoss.agentos.workflow.AgentLoopPayload]: a payload found in the session context
+     * (`agentLoop` entry) of the last user message takes precedence, and this default is used only
+     * when that message carries none.
      *
      * Only meaningful when [executionMode] is LOOP; ignored for SIMPLE and ADVANCED agents.
      */
     @field:Schema(
         description =
-            "Default AgentLoopPayload for LOOP-mode agents. Used when the triggering message carries no " +
-                "parseable payload. A payload in the first user message always takes precedence. " +
+            "Fallback AgentLoopPayload for LOOP-mode agents. A payload in the session context ('agentLoop') of " +
+                "the last user message takes precedence; this one is used when that message carries none. " +
                 "Ignored for SIMPLE and ADVANCED agents.",
         type = "object",
         nullable = true,
