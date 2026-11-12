@@ -30,7 +30,7 @@ const baseURL = process.env['BASE_URL'] || devClientUrl
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
-  ...nxE2EPreset(__filename, { testDir: './src' }),
+  ...nxE2EPreset(join(workspaceRoot, 'apps/client-e2e'), { testDir: './src' }),
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,

@@ -24,7 +24,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  // When the composer and header cannot fit, keep both reachable by scrolling the page.
+  overflow-y: auto;
 }
 
 // ── Case header ──────────────────────────────────────────────
@@ -287,7 +288,8 @@
     position: relative;
     flex: 1;
     min-width: 0;
-    min-height: 0;
+    // Preserve a readable slice of the conversation; very short windows scroll the host instead.
+    min-height: 6rem;
   }
 
   &__messages {
@@ -1017,7 +1019,7 @@
     line-height: 1.55;
     outline: none;
     min-height: 52px;
-    max-height: min(50vh, 480px);
+    max-height: 40vh;
     overflow-y: auto;
 
     &::placeholder {
