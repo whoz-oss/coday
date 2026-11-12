@@ -760,6 +760,36 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(ref.instance['canSend']).toBe(false)
   })
 
+  describe('case header overflow menu', () => {
+    it('offers labelled danger items for stop and delete', () => {
+      const ref = makeComponent()
+      const items = ref.instance['caseMenuItems']()
+      expect(items.map((i: { key: string; label: string }) => [i.key, i.label])).toEqual([
+        ['stop', 'Stop case'],
+        ['delete', 'Delete case'],
+      ])
+      expect(items.every((i: { variant?: string }) => i.variant === 'danger')).toBe(true)
+    })
+
+    it('opens the confirmations, never acting directly', () => {
+      const ref = makeComponent()
+      ref.instance['onCaseMenuAction']('stop')
+      expect(ref.instance['confirmingKill']()).toBe(true)
+      ref.instance['onCaseMenuAction']('delete')
+      expect(ref.instance['confirmingDelete']()).toBe(true)
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('disables stop once the case has ended', () => {
+      const ref = makeComponent()
+      ref.instance['_sseStatus'].set('KILLED')
+      const stop = ref.instance['caseMenuItems']().find((i: { key: string }) => i.key === 'stop')
+      expect(stop.disabled).toBe(true)
+      ref.instance['onCaseMenuAction']('stop')
+      expect(ref.instance['confirmingKill']()).toBe(false)
+    })
+  })
+
   describe('kill with confirmation', () => {
     it('clicking kill does not call the API until confirmed', () => {
       const ref = makeComponent()
