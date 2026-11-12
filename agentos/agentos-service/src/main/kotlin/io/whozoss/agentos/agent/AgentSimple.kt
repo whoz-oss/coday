@@ -118,6 +118,11 @@ class AgentSimple(
      * Mirrors [AgentConfigProperties.maxAttachedImages] (default 20).
      */
     val maxAttachedImages: Int = 20,
+    /**
+     * Whether a provider HTTP error shown to the case carries the provider response body
+     * (`agentos.ai-provider-errors.expose-response-body`, see [io.whozoss.agentos.chat.AiProviderErrorProperties]).
+     */
+    private val exposeProviderResponseBody: Boolean = true,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -133,6 +138,16 @@ class AgentSimple(
 
             // Channel to collect tool events from callbacks
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
+
+            // Size of the last message list sent to the provider, for the summary of a rejected request.
+            var sentMessageCount: Int? = null
+            fun requestSummary() =
+                ProviderRequestSummary(
+                    llmProvider = llmProvider,
+                    llmModel = llmModel,
+                    messageCount = sentMessageCount,
+                    toolNames = tools.map { it.name },
+                )
 
             try {
                 // Build the system message from systemPrompt + instructions (either or both may be null)
@@ -198,6 +213,7 @@ class AgentSimple(
 
                 while (true) {
                     val allMessages = listOfNotNull(effectiveSystemMessage) + convertEventsToMessages(events + runEvents)
+                    sentMessageCount = allMessages.size
 
                     logger.debug {
                         "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM $llmProvider/$llmModel with ${tools.size} tool(s)" +
@@ -275,7 +291,7 @@ class AgentSimple(
                 }
                 emitInterruptAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: NonTransientAiException) {
-                emitProviderErrorAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+                emitProviderErrorAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger, requestSummary())
             } catch (e: Exception) {
                 if (generateSequence<Throwable>(e) { it.cause }.any { it is CostRunStopped }) {
                     // Tool-only rounds may still have events buffered when a cost stop arrives.
@@ -284,7 +300,15 @@ class AgentSimple(
                         emit(toolEvent)
                     }
                 }
-                handleGenericAgentException(this@AgentSimple, e, namespaceId, caseId, logger)
+                handleGenericAgentException(
+                    this@AgentSimple,
+                    e,
+                    namespaceId,
+                    caseId,
+                    logger,
+                    requestSummary(),
+                    exposeProviderResponseBody,
+                )
             }
         }
 

@@ -301,6 +301,14 @@ agentos:
     # confirmation on the first request, it does not disable the check.
     # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
     run-cost-threshold: ${AGENTOS_LIMITS_RUN_COST_THRESHOLD:2}
+  ai-provider-errors:
+    # Append the response body of a failed AI provider call (trimmed, bounded to 4000 characters, secrets such as
+    # bearer tokens and api keys masked) to the error shown in the case, so a user can understand a rejected
+    # request without an administrator reading the DEBUG logs. Set to false when the bodies returned by your
+    # providers are considered sensitive: the error then shows the status, endpoint and request summary only.
+    # Applies to streamed calls; on non-streamed calls Spring AI already puts the body in the message.
+    # Override with env var: AGENTOS_AI_PROVIDER_ERRORS_EXPOSE_RESPONSE_BODY
+    expose-response-body: ${AGENTOS_AI_PROVIDER_ERRORS_EXPOSE_RESPONSE_BODY:true}
   defaults:
     # Seconds a delegation waits without activity from its sub-case before stopping it.
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
