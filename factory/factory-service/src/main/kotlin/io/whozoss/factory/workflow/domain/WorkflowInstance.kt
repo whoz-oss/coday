@@ -71,7 +71,7 @@ fun createWorkflowInstance(
             "lane" to step.responsibility.kind.wire,
             "dependsOn" to step.dependsOn.toList(),
             "responsibility" to step.responsibility.toJson(),
-        ).apply { step.contract?.let { putAll(it.toJson()) } }
+        ).apply { step.contract?.let { putAll(it.toJson()) }; putAll(step.routingJson()) }
     }
     val relations = command.relations?.toMap() ?: independentWorkflowRelations(command.workflowId)
     val instance = linkedMapOf<String, Any?>(

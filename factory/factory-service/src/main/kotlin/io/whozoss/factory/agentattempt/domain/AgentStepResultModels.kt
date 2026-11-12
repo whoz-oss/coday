@@ -120,6 +120,8 @@ data class AgentStepResultBusiness(
      * amendment. It is part of the semantic identity of the result.
      */
     val expectedAmendmentSeq: Long? = null,
+    @get:com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    val selectedRoutes: List<String>? = null,
 )
 
 /** Identity a result store issues a submission capability for. */
@@ -200,6 +202,8 @@ data class AgentStepResultSubmitted(
      * silent reuse, and the accepted verdict stays auditable.
      */
     val expectedAmendmentSeq: Long? = null,
+    @get:com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    val selectedRoutes: List<String>? = null,
 )
 
 /** Stored attempt row projection. */

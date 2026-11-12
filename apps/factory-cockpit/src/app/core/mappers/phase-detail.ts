@@ -205,6 +205,23 @@ export function buildPhaseDetail(
   if (agentItems.length === 0) agentConfig.body = 'Information agent non disponible'
 
   detail.sections = [...stepContractSections(obj), gates, outputs, agentConfig]
+  const decision = asObject(obj['decision'])
+  const accepted = asObject(obj['routeDecision'])
+  const activation = getString(obj, 'activation')
+  if (decision || accepted || activation || obj['join']) {
+    const routes = Array.isArray(decision?.['routes']) ? decision['routes'] : []
+    const selected = Array.isArray(accepted?.['selectedRoutes']) ? accepted['selectedRoutes'].filter((name): name is string => typeof name === 'string') : []
+    detail.sections.unshift({ label: 'Conditional routing', items: [
+      ...(decision ? [{ title: 'Choice mode', subtitle: getString(decision, 'mode') }, ...routes.map((raw) => {
+        const route = asObject(raw)
+        const name = getString(route, 'name') ?? '?'
+        return { title: name, subtitle: getString(route, 'target'), status: accepted ? (selected.includes(name) ? 'selected' : 'not_selected') : 'undecided' }
+      })] : []),
+      ...(activation ? [{ title: 'Activation', subtitle: activation, status: getString(obj, 'status') }, { title: 'Executed', subtitle: obj['executed'] === true ? 'yes' : 'no' }] : []),
+      ...(obj['join'] ? [{ title: 'Join decision', subtitle: getString(obj, 'join') }] : []),
+      ...(accepted ? [{ title: 'Accepted attempt', subtitle: getString(accepted, 'attemptId') }, { title: 'Accepted result', subtitle: getString(accepted, 'resultId') }] : []),
+    ] })
+  }
   if (description) detail.sections.push({ label: 'Description', body: description })
   detail.sections.push(
     {

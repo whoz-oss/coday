@@ -1,0 +1,159 @@
+openapi: 3.0.3
+info:
+  title: Factory workflow authoring HTTP API
+  version: 1.0.0
+  description: >-
+    Organization-owned immutable definition registry, using the ordinary Factory operator identity.
+    Not an attempt-result capability API. Validation and registration never launch or mutate a run.
+    Definitions are shared within the authenticated organization, not owned by a namespace.
+    Launch separately through FACTORY_WORKSTREAM with an explicitly mapped namespace and version/hash.
+servers:
+  - url: https://factory.example.invalid
+paths:
+  /api/factory/workflow-definitions:
+    get:
+      operationId: list_definitions
+      summary: List registered definitions in the authenticated organization (no execution).
+      responses:
+        '200': { description: 'data.items contains registered identities and canonical hashes.' }
+        '401': { description: Operator authentication required. }
+    post:
+      operationId: register_definition
+      summary: Register a new immutable workflow version without launching it.
+      description: >-
+        Submit the canonical definition object. Identical canonical content at the same type/version
+        is idempotent and returns the same identity/hash. Different content at that identity is rejected
+        with 409; choose a new version. No overwrite, delete, active-run mutation or implicit execution.
+      requestBody:
+        $ref: '#/components/requestBodies/Definition'
+      responses:
+        '201': { description: 'data contains workflowType, version and definitionHash (also on identical replay).' }
+        '400': { description: 'error contains code, message and details.path from the canonical validator.' }
+        '401': { description: Operator authentication required; worker result capabilities are not accepted. }
+        '409': { description: WORKFLOW_DEFINITION_ALREADY_EXISTS with different content. }
+  /api/factory/workflow-definitions/validate:
+    post:
+      operationId: validate_definition
+      summary: Validate a canonical workflow definition without persistence or execution.
+      description: >-
+        Uses the same backend validator and canonical hashing as registration. Checks schema, optional
+        contracts and dependency graph, not runtime agent availability or permission to launch.
+      requestBody:
+        $ref: '#/components/requestBodies/Definition'
+      responses:
+        '200': { description: 'data contains valid=true, workflowType, version and canonical definitionHash; not registered.' }
+        '400': { description: 'error contains code, message and details.path from the canonical validator.' }
+        '401': { description: Operator authentication required. }
+  /api/factory/workflow-definitions/{workflowType}/{version}:
+    get:
+      operationId: get_definition
+      summary: Read one immutable definition and hash in the authenticated organization.
+      parameters:
+        - name: workflowType
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+        - name: version
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: 'data contains workflowType, version, definitionHash and definition.' }
+        '401': { description: Operator authentication required. }
+        '404': { description: WORKFLOW_DEFINITION_NOT_FOUND in this organization. }
+components:
+  requestBodies:
+    Definition:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WorkflowDefinition'
+  schemas:
+    WorkflowDefinition:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, workflowType, version, title, steps]
+      properties:
+        schemaVersion: { type: string, enum: ['1'] }
+        workflowType:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+        version:
+          type: string
+          pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+        title: { type: string, minLength: 1, maxLength: 256 }
+        execution:
+          type: object
+          additionalProperties: false
+          required: [plugin]
+          properties:
+            plugin: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+        trustedExecution:
+          type: object
+          additionalProperties: false
+          required: [allowedPaths]
+          properties:
+            allowedPaths:
+              type: array
+              minItems: 1
+              items: { type: string }
+              description: Authorized relative paths only; never absolute, traversal, backslash or NUL.
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/Step'
+    Step:
+      type: object
+      additionalProperties: false
+      required: [id, name, responsibility, dependsOn]
+      description: >-
+        entry, mission and exit are optional for legacy compatibility but must appear together when
+        any is supplied. Dependencies must exist and form a DAG. Prose is not executable authorization.
+      properties:
+        id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+        name: { type: string, minLength: 1, maxLength: 256 }
+        responsibility:
+          type: object
+          additionalProperties: false
+          required: [kind, name]
+          properties:
+            kind: { type: string, enum: [agent, human, code] }
+            name: { type: string, minLength: 1, maxLength: 256 }
+        decision:
+          type: object
+          additionalProperties: false
+          required: [mode, routes]
+          description: One agent decision per workflow; 2–16 distinct single-step branches and one explicit join. Nested, overlapping and multi-step routes are rejected.
+          properties:
+            mode: { type: string, enum: [single, multiple] }
+            routes:
+              type: array
+              minItems: 2
+              maxItems: 16
+              items:
+                type: object
+                additionalProperties: false
+                required: [name, target]
+                properties:
+                  name: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+                  target: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+        join:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+          description: Decision step ID. dependsOn must contain all route targets; only these targets may be skipped. All ordinary dependencies remain AND.
+        dependsOn:
+          type: array
+          uniqueItems: true
+          items: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+        entry:
+          type: array
+          maxItems: 50
+          items: { type: string, minLength: 1, maxLength: 4000 }
+        mission: { type: string, minLength: 1, maxLength: 16000 }
+        exit:
+          type: array
+          maxItems: 50
+          items: { type: string, minLength: 1, maxLength: 4000 }

@@ -35,6 +35,8 @@ object WorkflowStatuses {
     const val COMPLETED = "completed"
     const val FAILED = "failed"
     const val CANCELLED = "cancelled"
+    /** Inactive, never executed; not a successful capability result. */
+    const val SKIPPED = "skipped"
 
     /**
      * Lot E: a step whose authoritative result was `NEEDS_RESEARCH`. The step is
@@ -45,7 +47,7 @@ object WorkflowStatuses {
     const val NEEDS_RESEARCH = "needs_research"
 
     val ALL: Set<String> =
-        setOf(PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH)
+        setOf(PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH, SKIPPED)
 
     /** Node `WORKFLOW_TRANSITIONS` state machine. */
     val TRANSITIONS: Map<String, Set<String>> = mapOf(
@@ -58,6 +60,7 @@ object WorkflowStatuses {
         COMPLETED to emptySet(),
         FAILED to emptySet(),
         CANCELLED to emptySet(),
+        SKIPPED to emptySet(),
     )
 
     /**
@@ -96,6 +99,9 @@ data class WorkflowStepDefinition(
     val responsibility: WorkflowStepResponsibility,
     val dependsOn: List<String>,
     val contract: WorkflowStepContract? = null,
+    val decision: WorkflowDecision? = null,
+    /** Decision step whose branches converge here. Ordinary dependencies remain AND. */
+    val join: String? = null,
 )
 
 /** Ordered prose obligations, not machine-verified predicates or orchestration commands. */
@@ -198,6 +204,9 @@ data class WorkflowStartCommand(
      * resolution logic belongs to Lot E and is intentionally absent.
      */
     val expectedAmendmentSeq: Long? = null,
+    /** Explicit registry selection. Both fields are required together; never resolve latest. */
+    val definitionVersion: String? = null,
+    val definitionHash: String? = null,
 )
 
 /** The trusted controlling runtime of a governed workflow. */

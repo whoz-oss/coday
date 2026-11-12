@@ -91,6 +91,9 @@ object SessionDefinitionValidator {
                 return failure(WorkflowDefinitionErrorCodes.DEPENDENCY_CYCLE, "steps")
             }
         }
+        WorkflowRouting.topologyError(steps)?.let { reason ->
+            return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "steps", mapOf("reason" to reason))
+        }
         return Result.Valid(steps)
     }
 }

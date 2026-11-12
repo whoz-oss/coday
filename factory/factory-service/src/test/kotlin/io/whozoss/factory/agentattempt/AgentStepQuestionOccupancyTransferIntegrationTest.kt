@@ -52,16 +52,16 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
         val occupancyService = WorktreeExecutionOccupancyService(environments, occupations, transactionManager = transactionManager)
         assertThat(occupancyService.releaseOwned(
             io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle(
-                environment, predecessor.occupancyResourceIdentity!!, scope,
-                predecessor.occupancyOwnerKind!!, predecessor.occupancyOwnerId!!, predecessor.occupancyGeneration!!,
+                environment, predecessor.occupancyResourceIdentity, scope,
+                predecessor.occupancyOwnerKind!!, predecessor.occupancyOwnerId!!, predecessor.occupancyGeneration,
             ),
         )).isFalse()
-        assertThat(occupations.find(predecessor.occupancyResourceIdentity!!)!!).isEqualTo(active)
+        assertThat(occupations.find(predecessor.occupancyResourceIdentity)!!).isEqualTo(active)
 
         assertThatThrownBy {
             occupations.release(
                 scope, predecessor.occupancyResourceIdentity,
-                predecessor.occupancyOwnerKind!!, predecessor.occupancyOwnerId!!,
+                predecessor.occupancyOwnerKind, predecessor.occupancyOwnerId,
                 predecessor.occupancyGeneration,
             )
         }.isInstanceOf(WorktreeExecutionOccupancyStaleRelease::class.java)
@@ -144,7 +144,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
         }
         assertThat(attempts.findByWorkflow(scope, namespace, workflow).map { it.attemptId })
             .containsExactlyInAnyOrder(predecessorId, successor.attemptId)
-        assertThat(occupations.find(predecessor.occupancyResourceIdentity!!)!!.generation).isEqualTo(generation)
+        assertThat(occupations.find(predecessor.occupancyResourceIdentity)!!.generation).isEqualTo(generation)
     }
 
     @Autowired lateinit var questionService: io.whozoss.factory.agentattempt.service.AgentStepQuestionService

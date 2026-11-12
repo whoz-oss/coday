@@ -38,7 +38,7 @@ private val TRUSTED_EXECUTION_FIELDS = setOf("allowedPaths")
 
 /** Allowed keys of the optional top-level `execution` block. */
 private val EXECUTION_FIELDS = setOf("plugin")
-private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "entry", "mission", "exit")
+private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "entry", "mission", "exit", "decision", "join")
 private val RESPONSIBILITY_FIELDS = setOf("kind", "name")
 
 object WorkflowDefinitionValidator {
@@ -185,6 +185,15 @@ object WorkflowDefinitionValidator {
                 }
                 contract = WorkflowStepContract(obligations.getValue("entry"), mission!!, obligations.getValue("exit"))
             }
+            val decision = if (step.containsKey("decision")) {
+                WorkflowDecision.parse(step["decision"])
+                    ?: return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "$base.decision")
+            } else null
+            val join = if (step.containsKey("join")) {
+                val (value, error) = text(step["join"], "$base.join", safe = true)
+                if (error != null) return WorkflowDefinitionValidation.Invalid(error)
+                value
+            } else null
             steps.add(
                 WorkflowStepDefinition(
                     id = id,
@@ -195,6 +204,8 @@ object WorkflowDefinitionValidator {
                     ),
                     dependsOn = dependencies,
                     contract = contract,
+                    decision = decision,
+                    join = join,
                 ),
             )
         }
@@ -205,13 +216,16 @@ object WorkflowDefinitionValidator {
             is SessionDefinitionValidator.Result.Valid -> Unit
         }
 
+        WorkflowRouting.topologyError(steps)?.let { reason ->
+            return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "steps", mapOf("reason" to reason))
+        }
         val normalizedStepJsons = steps.map { step ->
             linkedMapOf<String, Any?>(
                 "id" to step.id,
                 "name" to step.name,
                 "responsibility" to step.responsibility.toJson(),
                 "dependsOn" to step.dependsOn,
-            ).apply { step.contract?.let { putAll(it.toJson()) } }
+            ).apply { step.contract?.let { putAll(it.toJson()) }; putAll(step.routingJson()) }
         }
         val normalized = linkedMapOf<String, Any?>(
             "schemaVersion" to WORKFLOW_DEFINITION_SCHEMA_VERSION,

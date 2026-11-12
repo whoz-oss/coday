@@ -12,6 +12,7 @@ import io.whozoss.factory.workflow.domain.WorkflowTransitionRequest
 import io.whozoss.factory.workflow.domain.workflowException
 import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 /**
@@ -34,6 +35,7 @@ class Neo4jWorkflowRepository(
     private val transitionAppender: WorkflowTransitionAppender,
     private val codeTransitions: SpringDataNeo4jWorkflowCodeTransitionRepository,
     private val objectMapper: ObjectMapper,
+    private val deletionGuard: WorkflowDefinitionDeletionGuard,
 ) : WorkflowRepository {
 
     // ------------------------------------------------------------------
@@ -53,11 +55,17 @@ class Neo4jWorkflowRepository(
         definitions.save(WorkflowDefinitionNode.fromDomain(scope, record, objectMapper))
     }
 
+    @Transactional
     override fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean {
         val id = WorkflowDefinitionNode.compositeId(scope.organizationId, workflowType, version)
-        if (!definitions.existsById(id)) return false
+        if (deletionGuard.lock(scope.organizationId, workflowType, version) == null) return false
+        deletionGuard.assertUnused(scope.organizationId, workflowType, version)
         definitions.deleteById(id)
         return true
+    }
+
+    override fun lockDefinitionPins(scope: TenantScope, versions: Map<String, String>, hashes: Map<String, String>) {
+        deletionGuard.assertPinsAvailable(scope.organizationId, versions, hashes)
     }
 
     // ------------------------------------------------------------------
@@ -72,7 +80,14 @@ class Neo4jWorkflowRepository(
             .findAllByScopeAndNamespaceAndStatus(scope.organizationId, scope.workstreamId, namespaceId, "active")
             .map { it.toDomain(objectMapper) }
 
+    @Transactional
     override fun insertInstance(scope: TenantScope, record: WorkflowInstanceRecord): WorkflowInstanceRecord {
+        val type = record.instance["workflowType"] as? String
+        val version = record.instance["definitionVersion"] as? String
+        if (type != null && version != null) {
+            deletionGuard.assertPinsAvailable(scope.organizationId, mapOf(type to version),
+                (record.instance["definitionHash"] as? String)?.let { mapOf(type to it) }.orEmpty())
+        }
         val id = instanceId(scope, record.namespaceId, record.workflowId)
         val existing = instances.findById(id).orElse(null)
         if (existing != null) {
@@ -329,11 +344,18 @@ class Neo4jWorkflowRepository(
             )
             .map { it.toDomain(objectMapper) }
 
+    @Transactional
     override fun publishProjection(
         scope: TenantScope,
         record: WorkflowProjectionRecord,
         expectedRevision: Int?,
     ): ProjectionPublishResult {
+        val type = record.projection["workflowType"] as? String
+        val version = record.definitionVersion
+        if (type != null && version != null) {
+            deletionGuard.assertPinsAvailable(scope.organizationId, mapOf(type to version),
+                record.definitionHash?.let { mapOf(type to it) }.orEmpty())
+        }
         val existing = projections.findById(projectionId(scope, record.namespaceId, record.workflowId)).orElse(null)
         if (existing == null) {
             if (expectedRevision != null && expectedRevision != 0) {

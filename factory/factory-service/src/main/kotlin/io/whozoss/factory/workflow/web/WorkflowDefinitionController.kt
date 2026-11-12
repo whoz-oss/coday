@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
+import io.whozoss.factory.workflow.persistence.WorkflowDefinitionCreator
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
@@ -39,6 +41,7 @@ import org.springframework.web.multipart.MultipartFile
 class WorkflowDefinitionController(
     private val service: WorkflowService,
     private val objectMapper: ObjectMapper,
+    private val definitionCreator: WorkflowDefinitionCreator,
 ) {
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -63,14 +66,36 @@ class WorkflowDefinitionController(
         return WorkflowDataEnvelope(definition)
     }
 
+    @PostMapping(path = ["/validate"], consumes = [MediaType.APPLICATION_JSON_VALUE], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(operationId = "validate_definition", summary = "Validate a canonical workflow definition without saving or executing it.")
+    fun validateDefinition(
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        resolveWorkflowCaller(user, requireNamespace = false)
+        val record = validatedRecord(body)
+        return WorkflowDataEnvelope(
+            mapOf(
+                "valid" to true,
+                "workflowType" to record.workflowType,
+                "version" to record.version,
+                "definitionHash" to record.definitionHash,
+            ),
+        )
+    }
+
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE], produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(summary = "Register or update a workflow definition.")
+    @Operation(summary = "Register an immutable workflow definition version.")
     fun register(
         @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestHeader(name = "If-None-Match", required = false) ifNoneMatch: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
         val caller = resolveWorkflowCaller(user, requireNamespace = false)
-        return registerParsedDefinition(caller, body)
+        if (ifNoneMatch != null && ifNoneMatch != "*") {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only If-None-Match: * is supported.")
+        }
+        return registerParsedDefinition(caller, body, createOnly = ifNoneMatch == "*")
     }
 
     @PostMapping(
@@ -135,7 +160,37 @@ class WorkflowDefinitionController(
     private fun registerParsedDefinition(
         caller: DefinitionCaller,
         body: Map<String, Any?>?,
+        createOnly: Boolean = false,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
+        val record = validatedRecord(body)
+        if (createOnly) {
+            if (!definitionCreator.createIfAbsent(caller.scope, record)) {
+                throw workflowException(
+                    "WORKFLOW_DEFINITION_ALREADY_EXISTS",
+                    "This workflow type and version already exist. Choose a new identity; nothing was overwritten.",
+                )
+            }
+        } else if (!definitionCreator.createIfAbsent(caller.scope, record)) {
+            val stored = service.getDefinition(caller.scope, record.workflowType, record.version)
+            if (stored?.get("definitionHash") != record.definitionHash) {
+                throw workflowException(
+                    "WORKFLOW_DEFINITION_ALREADY_EXISTS",
+                    "This version already exists with different content. Register a new version; pinned definitions cannot be overwritten.",
+                )
+            }
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            WorkflowDataEnvelope(
+                mapOf(
+                    "workflowType" to record.workflowType,
+                    "version" to record.version,
+                    "definitionHash" to record.definitionHash,
+                ),
+            ),
+        )
+    }
+
+    private fun validatedRecord(body: Map<String, Any?>?): WorkflowDefinitionRecord {
         val validation = WorkflowDefinitionValidator.validate(body)
         if (validation is WorkflowDefinitionValidation.Invalid) {
             throw workflowException(
@@ -145,22 +200,12 @@ class WorkflowDefinitionController(
             )
         }
         val valid = validation as WorkflowDefinitionValidation.Valid
-        val record = WorkflowDefinitionRecord(
+        return WorkflowDefinitionRecord(
             workflowType = valid.definition["workflowType"] as String,
             version = valid.definition["version"] as String,
             definitionHash = hashWorkflowDefinition(valid.definition),
             definition = valid.definition,
             executionPolicy = executionPolicyOf(valid.definition),
-        )
-        service.registerDefinition(caller.scope, record)
-        return ResponseEntity.status(HttpStatus.CREATED).body(
-            WorkflowDataEnvelope(
-                mapOf(
-                    "workflowType" to record.workflowType,
-                    "version" to record.version,
-                    "definitionHash" to record.definitionHash,
-                ),
-            ),
         )
     }
 }

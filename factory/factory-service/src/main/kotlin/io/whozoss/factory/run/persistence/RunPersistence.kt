@@ -14,6 +14,8 @@ import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
+import io.whozoss.factory.workflow.persistence.WorkflowDefinitionDeletionGuard
 import java.time.Instant
 
 /**
@@ -211,6 +213,7 @@ interface RunRepository {
 class Neo4jRunRepository(
     private val runs: SpringDataNeo4jRunRepository,
     private val objectMapper: ObjectMapper,
+    private val deletionGuard: WorkflowDefinitionDeletionGuard,
 ) : RunRepository {
 
     override fun find(scope: TenantScope, namespaceId: String, runId: String): RunRecord? =
@@ -223,7 +226,9 @@ class Neo4jRunRepository(
         runs.findAllByScope(scope.organizationId, scope.workstreamId, namespaceId?.takeIf { it.isNotBlank() })
             .map { it.toDomain(objectMapper) }
 
+    @Transactional
     override fun insert(scope: TenantScope, record: RunRecord): RunRecord {
+        deletionGuard.assertPinsAvailable(scope.organizationId, record.flowVersions, record.flowDefinitionHashes)
         val id = RunNode.compositeId(scope.organizationId, scope.workstreamId, record.namespaceId, record.runId)
         val existing = runs.findById(id).orElse(null)
         if (existing != null) {
@@ -233,6 +238,7 @@ class Neo4jRunRepository(
         return saved.toDomain(objectMapper)
     }
 
+    @Transactional
     override fun update(
         scope: TenantScope,
         namespaceId: String,
@@ -240,6 +246,7 @@ class Neo4jRunRepository(
         expectedRevision: Int,
         next: RunRecord,
     ): Boolean {
+        deletionGuard.assertPinsAvailable(scope.organizationId, next.flowVersions, next.flowDefinitionHashes)
         val id = RunNode.compositeId(scope.organizationId, scope.workstreamId, namespaceId, runId)
         val count = runs.casUpdateRun(
             id = id,

@@ -44,7 +44,7 @@ function deriveStatusFromSteps(steps: unknown[]): RunStatus {
   const states = steps.map((step) => resolveStepState(step))
   if (states.some((state) => state === 'failed' || state === 'indeterminate' || state === 'cancelled')) return 'failed'
   if (states.some((state) => state === 'running' || state === 'waiting_human')) return 'running'
-  if (states.every((state) => state === 'completed')) return 'succeeded'
+  if (states.every((state) => state === 'completed' || state === 'skipped')) return 'succeeded'
   return 'queued'
 }
 
@@ -241,6 +241,7 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unkno
 
 function phaseSegmentStatus(step: unknown): PhaseSegment['status'] {
   const state = resolveStepState(step)
+  if (state === 'skipped') return 'skipped'
   if (state === 'waiting_human') return 'waiting_human'
   if (state === 'running') return 'running'
   if (state === 'pending' || state === 'ready') return 'pending'

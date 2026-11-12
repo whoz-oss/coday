@@ -51,6 +51,9 @@ interface WorkflowRepository {
     fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean =
         deleteDefinition(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId), workflowType, version)
 
+    /** Acquire all catalog pins in deterministic order before materializing any fragment in the same transaction. */
+    fun lockDefinitionPins(scope: TenantScope, versions: Map<String, String>, hashes: Map<String, String>) = Unit
+
     // ----- governed instances --------------------------------------------
     fun findInstance(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowInstanceRecord?
 

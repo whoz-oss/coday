@@ -92,6 +92,7 @@ class WorkflowExecutionPluginResolutionTest {
 
     @Test
     fun `start is refused when the declared execution plugin is unknown`() {
+        every { repository.findInstance(scope, namespace, "wf-1") } returns null
         every { repository.listDefinitions(scope) } returns listOf(definition("forge"))
         every { pluginManager.getExtensions(FactoryWorkflowExecutionPolicy::class.java) } returns emptyList()
         every { pluginManager.getPlugin("forge") } returns null
@@ -108,6 +109,7 @@ class WorkflowExecutionPluginResolutionTest {
 
     @Test
     fun `start is refused when a literal plugin id exists but is not started`() {
+        every { repository.findInstance(scope, namespace, "wf-1") } returns null
         val wrapper = mockk<PluginWrapper>()
         every { wrapper.pluginState } returns PluginState.DISABLED
         every { repository.listDefinitions(scope) } returns listOf(definition("forge"))

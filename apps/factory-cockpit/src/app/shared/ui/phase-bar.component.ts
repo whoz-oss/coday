@@ -12,6 +12,7 @@ import { PhaseSegment } from '../../core/models'
           class="seg"
           [class]="'seg--' + p.tone"
           [class.running]="p.status === 'running'"
+          [class.skipped]="p.status === 'skipped'"
           [style.flex-grow]="p.ratio"
         ></span>
       }
@@ -57,6 +58,10 @@ import { PhaseSegment } from '../../core/models'
     .seg.running {
       background: repeating-linear-gradient(135deg, #5fd4e0 0 6px, #3aa9b6 6px 12px);
     }
+    .seg.skipped {
+      background: var(--sf-outline-strong);
+      opacity: 0.55;
+    }
     .legend {
       font-family: var(--sf-mono);
       font-size: 12px;
@@ -83,6 +88,7 @@ export class PhaseBarComponent {
           if (p.status === 'indeterminate') return `${p.key} indeterminate`
           if (p.status === 'cancelled') return `${p.key} cancelled`
           if (p.status === 'pending') return `${p.key} waiting`
+          if (p.status === 'skipped') return `${p.key} skipped, not executed`
           return `${p.key} completed`
         })
         .join(', ')
