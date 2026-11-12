@@ -32,7 +32,6 @@ const baseURL = process.env['BASE_URL'] || devClientUrl
  */
 export default defineConfig({
   ...nxE2EPreset(fileURLToPath(import.meta.url), { testDir: './src' }),
-  testIgnore: /case-files-filter\.real\.spec\.ts$/,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,
@@ -40,7 +39,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   /* Run your local dev server before starting the tests */
-  webServer: {
+  webServer: process.env['BASE_URL'] ? undefined : {
     command: 'pnpm nx run client:serve',
     url: devClientUrl,
     reuseExistingServer: true,
