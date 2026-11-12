@@ -43,7 +43,7 @@ import java.util.UUID
  * `refusalOf { ... }` runs a start and returns the [CaseStarterRefusedException] it throws.
  *
  * **Sections**, in the order the service applies its rules:
- * 1. the case it creates: origin, first message, ADMIN grant;
+ * 1. the case it creates: origin, scheduled prompt, first message, ADMIN grant;
  * 2. its title;
  * 3. its session context: the caller's, under the one resolved for the target user;
  * 4. start depth: a started case cannot start, nor can a case delegated from one;
@@ -211,6 +211,35 @@ class CaseStarterServiceUnitSpec :
             f.service.start(request())
 
             f.created.single().parentCaseId shouldBe null
+        }
+
+        "the new case inherits the scheduled prompt of the calling case" {
+            val f = Fixture()
+            val scheduledPromptId = UUID.randomUUID()
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(scheduledPromptId = scheduledPromptId)
+
+            f.service.start(request())
+
+            f.created.single().scheduledPromptId shouldBe scheduledPromptId
+        }
+
+        "a calling case without a scheduled prompt starts a case without one" {
+            val f = Fixture()
+
+            f.service.start(request())
+
+            f.created.single().scheduledPromptId shouldBe null
+        }
+
+        "the scheduled prompt is read on the calling case only, not on the case it was delegated from" {
+            val f = Fixture()
+            val parent = Case(namespaceId = namespaceId, scheduledPromptId = UUID.randomUUID())
+            f.cases[parent.id] = parent
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = parent.id)
+
+            f.service.start(request())
+
+            f.created.single().scheduledPromptId shouldBe null
         }
 
         "the first message is the prompt addressed to the agent, sent as the user the case runs for" {

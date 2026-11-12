@@ -51,6 +51,11 @@ import java.util.UUID
  * of those last two steps fails the case is soft-deleted, so no empty conversation shows up, and the
  * failure is rethrown. An ADMIN grant already made is not revoked.
  *
+ * **Scheduled prompt.** The new case inherits the [Case.scheduledPromptId] of the calling case: a case started
+ * from the case of a scheduled run, such as each case an agent loop starts, is attributed to that scheduled
+ * prompt from its creation, like the case of the run itself. Only the calling case is read, not the cases it
+ * was delegated from.
+ *
  * **Who checks what.** This service owns the rules that protect users and the platform: who the case runs
  * for (the caller being ADMIN of the namespace, the target's access to the namespace), which agent may work
  * for them (deployed to the target), and how far starts go (one level). The `FreeCaseStarter` tool validates its input and scopes what its
@@ -92,7 +97,8 @@ class CaseStarterService(
      *   Any other failure is thrown as is.
      */
     fun start(request: CaseStarterRequest): StartedCase {
-        if (isInStartedCase(request.callerCaseId)) {
+        val callerCase = resolveCallerCase(request.callerCaseId)
+        if (isInStartedCase(callerCase)) {
             refuse(
                 CaseStarterRefusal.START_DEPTH_EXCEEDED,
                 "The current case was itself started by another case, so it cannot start a new one.",
@@ -111,7 +117,7 @@ class CaseStarterService(
 
         val sessionContext = resolveSessionContext(targetUser = targetUser, request = request)
 
-        val case = createCase(request)
+        val case = createCase(request = request, callerCase = callerCase)
         startConversation(
             case = case,
             targetUser = targetUser,
@@ -127,16 +133,17 @@ class CaseStarterService(
         return StartedCase(caseId = case.id, userId = targetUser.id, agentName = agentName)
     }
 
+    /** The calling case is running: missing, it is a bug. */
+    private fun resolveCallerCase(callerCaseId: UUID): Case =
+        checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
+
     /**
-     * Whether the calling case was started by another case, itself or through the cases it was delegated from.
-     * The calling case is running: missing, it is a bug. Its ancestors are read even when deleted, since a
-     * deleted case's sub-cases may still run and its origin does not go away. Delegation is capped, so this
-     * reads a few cases at most.
+     * Whether [callerCase] was started by another case, itself or through the cases it was delegated from. Its
+     * ancestors are read even when deleted, since a deleted case's sub-cases may still run and its origin does
+     * not go away. Delegation is capped, so this reads a few cases at most.
      */
-    private fun isInStartedCase(callerCaseId: UUID): Boolean {
-        val callerCase = checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
-        return generateSequence(callerCase, ::findParent).any { ancestor -> ancestor.originCaseId != null }
-    }
+    private fun isInStartedCase(callerCase: Case): Boolean =
+        generateSequence(callerCase, ::findParent).any { ancestor -> ancestor.originCaseId != null }
 
     /** The case [case] was delegated from, deleted or not, or null for a top-level case. */
     private fun findParent(case: Case): Case? =
@@ -251,13 +258,17 @@ class CaseStarterService(
         return ((request.sessionContext ?: emptyMap()) + (resolved ?: emptyMap())).takeIf { it.isNotEmpty() }
     }
 
-    /** Creates the case, tracing the calling one as its origin. */
-    private fun createCase(request: CaseStarterRequest): Case =
+    /** Creates the case, tracing the calling one as its origin and inheriting its scheduled prompt. */
+    private fun createCase(
+        request: CaseStarterRequest,
+        callerCase: Case,
+    ): Case =
         caseService.create(
             Case(
                 namespaceId = request.callerNamespaceId,
                 title = (request.title?.takeIf { it.isNotBlank() } ?: request.prompt).take(MAX_TITLE_LENGTH),
                 originCaseId = request.callerCaseId,
+                scheduledPromptId = callerCase.scheduledPromptId,
             ),
         )
 
