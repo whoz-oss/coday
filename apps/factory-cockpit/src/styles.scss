@@ -112,6 +112,15 @@ agentos-shell {
   /* .btn, .btn-primary, .btn-icon, .input, .tag, .tag-neutral, .blueprint-corner (+ Terminal / Whoz OSS rules) */
   @include ds.agentos-primitives;
 
+  /* Remove inline baseline spacing without changing Material labels or arrow positioning. */
+  .mat-mdc-form-field.mat-form-field-appearance-outline .mat-mdc-select {
+    display: block;
+
+    .mat-mdc-select-trigger {
+      display: flex;
+    }
+  }
+
   /* ─────────── Utilitaires ─────────── */
   .sf-mono {
     font-family: var(--sf-mono);

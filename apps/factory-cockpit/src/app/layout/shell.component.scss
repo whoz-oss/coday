@@ -138,7 +138,7 @@ ds-theme-picker {
   flex: 1;
 }
 .rail {
-  width: 84px;
+  width: 88px;
   border-right: 1px solid var(--color-divider);
 }
 .rail-nav {
@@ -146,7 +146,7 @@ ds-theme-picker {
   flex-direction: column;
   gap: 6px;
   height: 100%;
-  padding: 16px 10px;
+  padding: 16px 4px;
   box-sizing: border-box;
 }
 .rail-item {
@@ -160,6 +160,12 @@ ds-theme-picker {
   font-size: 11px;
   font-weight: 600;
 }
+.rail-label {
+  width: 100%;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .rail-icon {
   width: 52px;
   height: 30px;
@@ -167,6 +173,12 @@ ds-theme-picker {
   display: grid;
   place-items: center;
   transition: background 0.15s;
+}
+.rail-icon mat-icon {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+  line-height: 1;
 }
 .rail-item:hover .rail-icon {
   background: var(--color-bg-hover);

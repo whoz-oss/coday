@@ -200,10 +200,10 @@ agentos-shell {
   --font-code: 'IBM Plex Mono', 'Fira Code', ui-monospace, monospace;
 
   /* ── Shape / Radius — 0 = square corners. Industry and Terminal inherit it; Whoz OSS redefines all four. ── */
-  --radius-sm: 0;
-  --radius-md: 0;
-  --radius-lg: 0;
-  --radius-pill: 0;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-pill: 0px;
 
   /* ── Accent steel (Industry) — light ── */
   --color-accent: #5980a6;
