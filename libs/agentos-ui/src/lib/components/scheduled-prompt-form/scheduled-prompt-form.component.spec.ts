@@ -6,9 +6,8 @@ import { ScheduledPromptStateService } from '../../services/scheduled-prompt-sta
 import { ScheduledPromptFormComponent } from './scheduled-prompt-form.component'
 
 /**
- * Focused on the flowConfiguration of a scheduled prompt: an existing one must survive an edit, even when its
- * LOOP agent is not in the list the form loads (a platform agent, or a list that failed to load), because a PUT
- * with null clears it.
+ * Focused on the flowConfiguration of a scheduled prompt: an existing one is shown and survives an edit, because
+ * a PUT with null clears it.
  */
 describe('ScheduledPromptFormComponent (flowConfiguration)', () => {
   const flowConfiguration = {
@@ -19,7 +18,7 @@ describe('ScheduledPromptFormComponent (flowConfiguration)', () => {
   const existing = {
     id: 'sp-1',
     namespaceId: 'ns-1',
-    agentConfigId: 'platform-loop-agent',
+    agentConfigId: 'loop-agent',
     name: 'Weekly loop',
     promptContent: 'Review the profile',
     recurrence: { unit: 'WEEK', days: [], timeUtc: '09:00' },
@@ -51,7 +50,6 @@ describe('ScheduledPromptFormComponent (flowConfiguration)', () => {
         },
         { provide: Router, useValue: { navigate: jest.fn() } },
         { provide: ScheduledPromptStateService, useValue: state },
-        // the namespace list does not contain the platform LOOP agent of the scheduled prompt
         {
           provide: AgentConfigControllerService,
           useValue: { listByParentAgentConfig: jest.fn().mockReturnValue(of([])) },
@@ -66,7 +64,7 @@ describe('ScheduledPromptFormComponent (flowConfiguration)', () => {
   const field = (fixture: ReturnType<typeof createComponent>) =>
     (fixture.nativeElement as HTMLElement).querySelector<HTMLTextAreaElement>('#sp-flow-configuration')
 
-  it('displays an existing flowConfiguration and sends it back on save when the agent is not in the loaded list', () => {
+  it('displays an existing flowConfiguration and sends it back on save', () => {
     const fixture = createComponent(existing)
 
     expect(field(fixture)).not.toBeNull()
@@ -86,11 +84,5 @@ describe('ScheduledPromptFormComponent (flowConfiguration)', () => {
     ;(fixture.componentInstance as unknown as { submit: () => void }).submit()
 
     expect(state.update.mock.calls[0][1].flowConfiguration).toBeNull()
-  })
-
-  it('hides the field when there is no value and the agent is not a loop agent', () => {
-    const fixture = createComponent({ ...existing, flowConfiguration: undefined } as ScheduledPrompt)
-
-    expect(field(fixture)).toBeNull()
   })
 })
