@@ -14,6 +14,8 @@ import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AgentConfigExecutionModeEnum,
+  AgentFlowConfig,
   DAY_OF_WEEK_LABELS,
   DayOfWeek,
   ScheduledPrompt,
@@ -104,6 +106,12 @@ export class ScheduledPromptFormComponent implements OnInit {
         nonNullable: true,
         validators: [jsonValidator],
       }),
+
+      // Loop agents only: search tool, its params and the agent started for each result
+      agentFlowConfigJson: new FormControl<string>('', {
+        nonNullable: true,
+        validators: [jsonValidator],
+      }),
     },
     { validators: [endDateRequiredValidator, occurrenceCountRequiredValidator] }
   )
@@ -147,6 +155,9 @@ export class ScheduledPromptFormComponent implements OnInit {
   protected get externalMetadataJsonControl() {
     return this.form.controls.externalMetadataJson
   }
+  protected get agentFlowConfigJsonControl() {
+    return this.form.controls.agentFlowConfigJson
+  }
 
   // ---------------------------------------------------------------------------
   // UI state signals
@@ -185,6 +196,30 @@ export class ScheduledPromptFormComponent implements OnInit {
 
   private readonly agentConfigs = signal<AgentConfig[]>([])
   protected readonly availableAgentConfigs = this.agentConfigs.asReadonly()
+
+  private readonly agentConfigIdSignal = toSignal(
+    this.agentConfigIdControl.valueChanges.pipe(startWith(this.agentConfigIdControl.value))
+  )
+
+  /** True when the selected agent is a LOOP agent (in edit mode the agent is fixed, same rule). */
+  protected readonly isLoopAgent = computed(
+    () =>
+      this.agentConfigs().find((c) => c.id === this.agentConfigIdSignal())?.executionMode ===
+      AgentConfigExecutionModeEnum.LOOP
+  )
+
+  /** Shape of the agentFlowConfig field, shown as a placeholder. */
+  protected readonly agentFlowConfigPlaceholder = JSON.stringify(
+    {
+      search: {
+        tool: 'searchAgentUsers',
+        params: { agentConfigId: '<id of the agent whose users are targeted>' },
+      },
+      act: { agentName: '<agent started for each result>' },
+    },
+    null,
+    2
+  )
 
   private existingPrompt: ScheduledPrompt | null = null
 
@@ -252,6 +287,7 @@ export class ScheduledPromptFormComponent implements OnInit {
     this.occurrenceCountControl.setValue(def.planning.maxOccurrenceCount ?? null)
     this.enabledControl.setValue(def.enabled)
     this.externalMetadataJsonControl.setValue(def.externalMetadata ? JSON.stringify(def.externalMetadata, null, 2) : '')
+    this.agentFlowConfigJsonControl.setValue(def.agentFlowConfig ? JSON.stringify(def.agentFlowConfig, null, 2) : '')
   }
 
   // ---------------------------------------------------------------------------
@@ -309,7 +345,12 @@ export class ScheduledPromptFormComponent implements OnInit {
         const raw = this.externalMetadataJsonControl.value.trim()
         return raw ? JSON.parse(raw) : null
       })(),
-    }
+      // PUT replaces the field: null clears it. Only sent for a loop agent, the backend refuses it otherwise.
+      agentFlowConfig: (() => {
+        const raw = this.agentFlowConfigJsonControl.value.trim()
+        return this.isLoopAgent() && raw ? (JSON.parse(raw) as AgentFlowConfig) : null
+      })(),
+    } as ScheduledPrompt
 
     const call$ = isEdit ? this.state.update(this.existingPrompt!.id!, payload) : this.state.create(payload)
 
@@ -319,7 +360,7 @@ export class ScheduledPromptFormComponent implements OnInit {
         this.isSubmitting.set(false)
         if (err.status === 409) {
           this.errorMessage.set(`A scheduled prompt named "${payload.name}" already exists in this scope.`)
-        } else if (err.status === 400) {
+        } else if (err.status === 400 || err.status === 422) {
           this.errorMessage.set(err.error?.message ?? 'Invalid scheduled prompt data.')
         } else {
           this.errorMessage.set('An unexpected error occurred. Please try again.')
