@@ -1,6 +1,8 @@
 package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 
 // All types ignore unknown properties: a Search tool may return richer rows than this contract
 // without breaking the loop, whatever the ObjectMapper configuration.
@@ -57,4 +59,51 @@ data class SearchResultMetadata(
 data class SearchResult(
     val data: List<SearchResultItem>,
     val metadata: SearchResultMetadata?,
-)
+) {
+    companion object {
+        /**
+         * The `outputSchema` any search tool usable as the SEARCH step of an AgentLoop should declare.
+         * Must stay aligned with the data classes of this file (nullability included).
+         */
+        val SCHEMA: JsonNode =
+            jacksonObjectMapper().readTree(
+                """
+                {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "entityType": { "type": ["string", "null"] },
+                          "entityId":   { "type": "string" },
+                          "targets": {
+                            "type": ["array", "null"],
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "entityType": { "type": ["string", "null"] },
+                                "entityId":   { "type": "string" }
+                              },
+                              "required": ["entityId"]
+                            }
+                          }
+                        },
+                        "required": ["entityId"]
+                      }
+                    },
+                    "metadata": {
+                      "type": ["object", "null"],
+                      "properties": {
+                        "totalCount": { "type": ["integer", "null"] },
+                        "next":       { "type": ["string", "null"] }
+                      }
+                    }
+                  },
+                  "required": ["data"]
+                }
+                """.trimIndent(),
+            )
+    }
+}

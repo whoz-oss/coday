@@ -1,10 +1,13 @@
 package io.whozoss.agentos.userGroup
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.workflow.SearchResult
+import io.whozoss.agentos.workflow.SearchResultTarget
 import java.util.UUID
 
 private val NAMESPACE_ID: UUID = UUID.randomUUID()
@@ -87,13 +90,32 @@ class SearchAgentUsersToolSpec : StringSpec({
         structured["metadata"]["totalCount"].asInt() shouldBe 2
 
         data[0]["entityType"].asText() shouldBe "User"
-        data[0]["entityId"].asText() shouldBe alice.userId.toString()
+        data[0]["entityId"].asText() shouldBe "alice@example.com"
         data[0]["targets"].size() shouldBe 1
         data[0]["targets"][0]["entityType"].asText() shouldBe "User"
         data[0]["targets"][0]["entityId"].asText() shouldBe "alice@example.com"
 
-        data[1]["entityId"].asText() shouldBe bob.userId.toString()
+        data[1]["entityId"].asText() shouldBe "bob@example.com"
         data[1]["targets"][0]["entityId"].asText() shouldBe "bob@example.com"
+    }
+
+    "execute returns a structured output the loop can parse as a SearchResult" {
+        val agentId = UUID.randomUUID()
+        every { loader(agentId, NAMESPACE_ID, USER_ID) } returns
+            listOf(member("alice@example.com", "ADMIN"), member("bob@example.com"))
+
+        val result = tool().execute(ListAgentUsersTool.Input(agentId), CONTEXT)
+
+        val parsed = jacksonObjectMapper().treeToValue(result.structuredOutput, SearchResult::class.java)
+        parsed.data.map { it.entityType } shouldBe listOf("User", "User")
+        parsed.data.map { it.entityId } shouldBe listOf("alice@example.com", "bob@example.com")
+        parsed.data.map { it.targets } shouldBe
+            listOf(
+                listOf(SearchResultTarget(entityType = "User", entityId = "alice@example.com")),
+                listOf(SearchResultTarget(entityType = "User", entityId = "bob@example.com")),
+            )
+        parsed.metadata!!.totalCount shouldBe 2L
+        parsed.metadata!!.next shouldBe null
     }
 
     "execute keeps the textual summary of ListAgentUsersTool" {
@@ -107,10 +129,10 @@ class SearchAgentUsersToolSpec : StringSpec({
     // Declared contract
     // -------------------------------------------------------------------------
 
-    "output schema declares the search result envelope" {
+    "output schema is the shared SearchResult schema" {
         val schema = tool().outputSchema()
-        schema["type"].asText() shouldBe "object"
-        schema["required"].map { it.asText() }.toSet() shouldBe setOf("data", "metadata")
+        schema shouldBe SearchResult.SCHEMA
+        schema["required"].map { it.asText() }.toSet() shouldBe setOf("data")
     }
 
     "input schema is the one of listAgentUsers" {

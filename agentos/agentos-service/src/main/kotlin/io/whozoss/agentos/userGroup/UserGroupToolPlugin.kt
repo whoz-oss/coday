@@ -25,9 +25,14 @@ import java.util.UUID
  * - [SearchAgentUsersTool] (`searchAgentUsers`) — same audience as `listAgentUsers`, shaped as search
  *   results so it can be the SEARCH step of an agent loop
  *
+ * An agent granted `USER_GROUP` without a tool allowlist sees both `listAgentUsers` and `searchAgentUsers`.
+ * An agent loop should therefore allowlist the search tool explicitly: `USER_GROUP: [searchAgentUsers]`
+ * (alongside `CASE: [FreeCaseStarterForUser]`).
+ *
  * ## Authorization
  *
- * All three loaders enforce namespace isolation and permission checks inside
+ * The three loaders (the two agent-users tools share `usersByAgentLoader`) enforce namespace isolation and
+ * permission checks inside
  * [UserGroupToolPluginConfiguration]. The data returned by [ListUserGroupMembersTool]
  * is identical to `GET /api/user-groups/{id}/members` minus the Spring Security layer;
  * that layer is replaced here by explicit [io.whozoss.agentos.permissions.PermissionService]
