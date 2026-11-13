@@ -12,6 +12,8 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
+import io.whozoss.factory.workflow.domain.WorkflowDecision
+import io.whozoss.factory.workflow.domain.WorkflowRoute
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
@@ -58,6 +60,34 @@ class CapabilityExecutionRoutingRecoveryTest {
 
     @Test
     fun `late accepted PASS replays research resolution without invoking a registered validator or a new turn`() {
+        assertLateResolution(decision = false)
+    }
+
+    @Test
+    fun `decision steps refuse the unvalidated late research resolution shortcut`() {
+        assertLateResolution(decision = true)
+    }
+
+    @Test
+    fun `waiting resumption accepts only terminal running or pending successor attempts`() {
+        val scope = TenantScope("org", "ws")
+        val attempts = mockk<DurableAgentAttemptService>()
+        val service = CapabilityExecutionService(CapabilityResolver(), mockk(), mockk(), mockk(), mockk(), attempts, mockk())
+        val attempt = DurableAgentAttempt("attempt", "case", "ns", "wf", "work", 1, "Dev")
+        every { attempts.findLatestForStep(scope, "ns", "wf", "work") } returns null
+        assertThat(service.canResumeWaitingAgentStep(scope, "ns", "wf", "work")).isFalse()
+        for (status in AgentAttemptStatus.entries) {
+            for (number in listOf(1, 2)) {
+                every { attempts.findLatestForStep(scope, "ns", "wf", "work") } returns attempt.copy(status = status, attemptNumber = number)
+                assertThat(service.canResumeWaitingAgentStep(scope, "ns", "wf", "work"))
+                    .describedAs("status=%s attemptNumber=%s", status, number)
+                    .isEqualTo(status.terminal || status == AgentAttemptStatus.RUNNING || (number > 1 && status == AgentAttemptStatus.PENDING))
+                assertThat(service.hasFinalizedAttempt(scope, "ns", "wf", "work")).isEqualTo(status.terminal)
+            }
+        }
+    }
+
+    private fun assertLateResolution(decision: Boolean) {
         val scope = TenantScope("org", "ws")
         val workflows = mockk<WorkflowRepository>()
         val attempts = mockk<DurableAgentAttemptService>()
@@ -65,7 +95,8 @@ class CapabilityExecutionRoutingRecoveryTest {
         val evidence = mockk<WorkflowEvidenceRepository>(relaxed = true)
         val adapter = mockk<AgentOsExecutionAdapter>()
         val validator = mockk<FactoryStepResultValidator>()
-        val step = WorkflowStepDefinition("work", "Work", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Dev"), emptyList())
+        val step = WorkflowStepDefinition("work", "Work", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Dev"), emptyList(),
+            decision = if (decision) WorkflowDecision("single", listOf(WorkflowRoute("one", "left"), WorkflowRoute("two", "right"))) else null)
         val attempt = DurableAgentAttempt("attempt", "case", "ns", "wf", "work", 1, "Dev",
             brief = "frozen", contextEnvelope = "{}", status = AgentAttemptStatus.INDETERMINATE, failureCode = "AGENT_NEEDS_RESEARCH")
         every { attempts.findLatestForStep(scope, "ns", "wf", "work") } returns attempt
@@ -85,9 +116,16 @@ class CapabilityExecutionRoutingRecoveryTest {
 
         val execution = service.resolveAndRecord(scope, "ns", "wf", step, Path.of("."))
 
-        assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
-        assertThat(recorded.single().outcome).isEqualTo("pass")
-        assertThat(recorded.single().facts["validatorsAccepted"]).isEqualTo(true)
+        if (decision) {
+            assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentFailed::class.java)
+            assertThat(recorded).isEmpty()
+            verify(exactly = 0) { results.acceptedResult(any(), any(), any(), any(), any()) }
+        } else {
+            assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
+            assertThat(recorded.single().outcome).isEqualTo("pass")
+            assertThat(recorded.single().facts["validatorsAccepted"]).isEqualTo(false)
+            assertThat(recorded.single().facts["validationSource"]).isEqualTo("accepted-late-result-compatibility")
+        }
         verify(exactly = 0) { validator.supports(any(), any(), any()) }
         verify(exactly = 0) { validator.validate(any()) }
         verify(exactly = 0) { adapter.startTurn(any(), any(), any(), any(), any(), any()) }

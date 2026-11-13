@@ -262,6 +262,17 @@ class CapabilityExecutionService(
         return attempt.status.terminal
     }
 
+    /**
+     * A waiting step may resume a completed turn, a standard queryUser turn returned to
+     * RUNNING, or the fresh pending N+1 registered by a legacy question answer.
+     * A pending first attempt or an unanswered WAITING_HUMAN attempt is not resumable.
+     */
+    fun canResumeWaitingAgentStep(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): Boolean {
+        val attempt = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
+        return attempt.status.terminal || attempt.status == AgentAttemptStatus.RUNNING ||
+            (attempt.attemptNumber > 1 && attempt.status == AgentAttemptStatus.PENDING)
+    }
+
     /** Recovery uses the same validators for every workflow, never a raw PASS shortcut. */
     fun finalizeRecoveredAttempt(
         scope: TenantScope, attempt: DurableAgentAttempt, ownerToken: String, observation: AgentOsObservationResult,
@@ -1654,7 +1665,7 @@ class CapabilityExecutionService(
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
         if (existing != null && existing.status.terminal) {
-            if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH") {
+            if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH" && step.decision == null) {
                 val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, step.id, attemptId)
                 if (accepted != null && accepted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
                     val outcome = if (accepted.status == AgentStepResultStatus.PASS) {
@@ -1696,7 +1707,7 @@ class CapabilityExecutionService(
                             source = mapOf("kind" to "agentos-adapter", "agentId" to agentId, "attemptId" to attemptId),
                             facts = mapOf(
                                 "status" to accepted.status.name,
-                                "validatorsAccepted" to (accepted.status == AgentStepResultStatus.PASS),
+                                "validatorsAccepted" to false,
                                 "validationSource" to "accepted-late-result-compatibility",
                                 "summary" to accepted.summary,
                                 "outputs" to mapOf(
