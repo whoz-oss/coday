@@ -15,7 +15,6 @@ import {
   AgentConfig,
   AgentConfigControllerService,
   AgentConfigExecutionModeEnum,
-  AgentFlowConfig,
   DAY_OF_WEEK_LABELS,
   DayOfWeek,
   ScheduledPrompt,
@@ -108,7 +107,7 @@ export class ScheduledPromptFormComponent implements OnInit {
       }),
 
       // Loop agents only: search tool, its params and the agent started for each result
-      agentFlowConfigJson: new FormControl<string>('', {
+      flowConfigurationJson: new FormControl<string>('', {
         nonNullable: true,
         validators: [jsonValidator],
       }),
@@ -155,8 +154,8 @@ export class ScheduledPromptFormComponent implements OnInit {
   protected get externalMetadataJsonControl() {
     return this.form.controls.externalMetadataJson
   }
-  protected get agentFlowConfigJsonControl() {
-    return this.form.controls.agentFlowConfigJson
+  protected get flowConfigurationJsonControl() {
+    return this.form.controls.flowConfigurationJson
   }
 
   // ---------------------------------------------------------------------------
@@ -208,8 +207,8 @@ export class ScheduledPromptFormComponent implements OnInit {
       AgentConfigExecutionModeEnum.LOOP
   )
 
-  /** Shape of the agentFlowConfig field, shown as a placeholder. */
-  protected readonly agentFlowConfigPlaceholder = JSON.stringify(
+  /** Shape of the flowConfiguration field, shown as a placeholder. */
+  protected readonly flowConfigurationPlaceholder = JSON.stringify(
     {
       search: {
         tool: 'searchAgentUsers',
@@ -219,6 +218,16 @@ export class ScheduledPromptFormComponent implements OnInit {
     },
     null,
     2
+  )
+
+  private readonly flowConfigurationJsonSignal = toSignal(
+    this.flowConfigurationJsonControl.valueChanges.pipe(startWith(this.flowConfigurationJsonControl.value)),
+    { initialValue: '' }
+  )
+
+  /** Shown for a LOOP agent, and whenever the field holds a value: an existing config is never hidden. */
+  protected readonly showFlowConfiguration = computed(
+    () => this.isLoopAgent() || this.flowConfigurationJsonSignal().trim() !== ''
   )
 
   private existingPrompt: ScheduledPrompt | null = null
@@ -287,7 +296,9 @@ export class ScheduledPromptFormComponent implements OnInit {
     this.occurrenceCountControl.setValue(def.planning.maxOccurrenceCount ?? null)
     this.enabledControl.setValue(def.enabled)
     this.externalMetadataJsonControl.setValue(def.externalMetadata ? JSON.stringify(def.externalMetadata, null, 2) : '')
-    this.agentFlowConfigJsonControl.setValue(def.agentFlowConfig ? JSON.stringify(def.agentFlowConfig, null, 2) : '')
+    this.flowConfigurationJsonControl.setValue(
+      def.flowConfiguration ? JSON.stringify(def.flowConfiguration, null, 2) : ''
+    )
   }
 
   // ---------------------------------------------------------------------------
@@ -345,10 +356,10 @@ export class ScheduledPromptFormComponent implements OnInit {
         const raw = this.externalMetadataJsonControl.value.trim()
         return raw ? JSON.parse(raw) : null
       })(),
-      // PUT replaces the field: null clears it. Only sent for a loop agent, the backend refuses it otherwise.
-      agentFlowConfig: (() => {
-        const raw = this.agentFlowConfigJsonControl.value.trim()
-        return this.isLoopAgent() && raw ? (JSON.parse(raw) as AgentFlowConfig) : null
+      // PUT replaces the field: an empty field clears it. The backend refuses it (422) on a non-LOOP agent.
+      flowConfiguration: (() => {
+        const raw = this.flowConfigurationJsonControl.value.trim()
+        return raw ? JSON.parse(raw) : null
       })(),
     } as ScheduledPrompt
 
