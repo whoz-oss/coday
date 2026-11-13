@@ -3936,10 +3936,10 @@ components:
               type: string
         loopConfig:
           $ref: "#/components/schemas/JsonNode"
-          description: Default AgentLoopPayload for LOOP-mode agents. Used when the
-            triggering message carries no parseable payload. A payload in the first
-            user message always takes precedence. Ignored for SIMPLE and ADVANCED
-            agents.
+          description: "Default AgentLoopPayload for LOOP-mode agents. Used when the\
+            \ triggering message has no agentFlowConfig in its sessionContext (sent\
+            \ by the scheduler or the launch page), which takes precedence. Ignored\
+            \ for SIMPLE and ADVANCED agents."
         modelName:
           type: string
         name:
@@ -4097,6 +4097,36 @@ components:
       - namespaceId
       - timestamp
       - type
+    AgentFlowAct:
+      type: object
+      properties:
+        agentName:
+          type: string
+          minLength: 1
+      required:
+      - agentName
+    AgentFlowConfig:
+      type: object
+      description: "Search tool, its arguments and the agent started for each result,\
+        \ for a LOOP agent."
+      properties:
+        act:
+          $ref: "#/components/schemas/AgentFlowAct"
+        search:
+          $ref: "#/components/schemas/AgentFlowSearch"
+      required:
+      - act
+      - search
+    AgentFlowSearch:
+      type: object
+      properties:
+        params:
+          $ref: "#/components/schemas/JsonNode"
+        tool:
+          type: string
+          minLength: 1
+      required:
+      - tool
     AgentRunningEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -5911,6 +5941,12 @@ components:
         agentConfigId:
           type: string
           format: uuid
+        agentFlowConfig:
+          $ref: "#/components/schemas/AgentFlowConfig"
+          description: "Only for LOOP agents. The loop calls search.tool with search.params\
+            \ and starts one case per result with act.agentName, whose first message\
+            \ is promptContent. The tool name may be bare or prefixed with its integration\
+            \ (CONFIG__tool)."
         createdBy:
           type: string
         createdOn:

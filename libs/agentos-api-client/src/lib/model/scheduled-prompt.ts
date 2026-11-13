@@ -9,9 +9,14 @@
  */
 import { Recurrence } from './recurrence'
 import { Planning } from './planning'
+import { AgentFlowConfig } from './agent-flow-config'
 
 export interface ScheduledPrompt {
   agentConfigId: string
+  /**
+   * Only for LOOP agents. The loop calls search.tool with search.params and starts one case per result with act.agentName, whose first message is promptContent. The tool name may be bare or prefixed with its integration (CONFIG__tool).
+   */
+  agentFlowConfig?: AgentFlowConfig
   createdBy?: string
   createdOn?: string
   description?: string
