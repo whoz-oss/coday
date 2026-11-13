@@ -19,6 +19,15 @@ object BoundedProcessOutput {
         val truncated: Boolean,
     )
 
+    /** Which part of an over-long output is kept. */
+    enum class Retain {
+        /** Keep the first characters: the default, what every caller relied on before. */
+        HEAD,
+
+        /** Keep the last characters: for diagnostics, where the final lines hold the error. */
+        TAIL,
+    }
+
     private data class Output(
         val text: String,
         val truncated: Boolean,
@@ -28,10 +37,11 @@ object BoundedProcessOutput {
         process: Process,
         timeout: Duration,
         maxOutputChars: Int,
+        retain: Retain = Retain.HEAD,
     ): Result {
         val deadline = System.nanoTime() + timeout.toNanos()
-        val stdout = readAsync(process.inputStream, maxOutputChars)
-        val stderr = readAsync(process.errorStream, maxOutputChars)
+        val stdout = readAsync(process.inputStream, maxOutputChars, retain)
+        val stderr = readAsync(process.errorStream, maxOutputChars, retain)
         val descendants = linkedSetOf<ProcessHandle>()
 
         fun remainingNanos(): Long = (deadline - System.nanoTime()).also {
@@ -75,6 +85,7 @@ object BoundedProcessOutput {
     private fun readAsync(
         stream: InputStream,
         maxOutputChars: Int,
+        retain: Retain,
     ): FutureTask<Output> = FutureTask {
         stream.bufferedReader().use { reader ->
             val output = StringBuilder()
@@ -83,9 +94,26 @@ object BoundedProcessOutput {
             while (true) {
                 val read = reader.read(buffer)
                 if (read < 0) break
-                val retained = minOf(read, maxOutputChars - output.length)
-                if (retained > 0) output.append(buffer, 0, retained)
-                if (retained < read) truncated = true
+                when (retain) {
+                    Retain.HEAD -> {
+                        val retained = minOf(read, maxOutputChars - output.length)
+                        if (retained > 0) output.append(buffer, 0, retained)
+                        if (retained < read) truncated = true
+                    }
+
+                    Retain.TAIL -> {
+                        output.append(buffer, 0, read)
+                        // Trim only past twice the limit: amortized O(n) instead of a shift per read.
+                        if (output.length.toLong() > 2L * maxOutputChars) {
+                            output.delete(0, output.length - maxOutputChars)
+                            truncated = true
+                        }
+                    }
+                }
+            }
+            if (retain == Retain.TAIL && output.length > maxOutputChars) {
+                output.delete(0, output.length - maxOutputChars)
+                truncated = true
             }
             Output(output.toString(), truncated)
         }

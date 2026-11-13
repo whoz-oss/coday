@@ -32,7 +32,7 @@ import java.time.Duration
  * | `defaultTimeout` | `AGENTOS_GIT_DEFAULT_TIMEOUT` | `2m` | Timeout for ordinary plumbing commands |
  * | `cloneTimeout` | `AGENTOS_GIT_CLONE_TIMEOUT` | `30m` | Timeout for clone/fetch of a large repository, and worktree creation and removal |
  * | `setupTimeout` | `AGENTOS_GIT_SETUP_TIMEOUT` | `15m` | Timeout for the setup command of a new worktree |
- * | `maxOutputChars` | `AGENTOS_GIT_MAX_OUTPUT_CHARS` | `100000` | Cap on captured stdout/stderr |
+ * | `maxOutputChars` | `AGENTOS_GIT_MAX_OUTPUT_CHARS` | `100000` | Cap on captured stdout/stderr per stream (git keeps the start, the setup command keeps the end) |
  * | `allowedRemoteProtocols` | `AGENTOS_GIT_ALLOWED_REMOTE_PROTOCOLS` | `https` | Transports managed operations may use |
  * | `allowPrivateRemoteHosts` | `AGENTOS_GIT_ALLOW_PRIVATE_REMOTE_HOSTS` | `false` | Permit RFC1918/loopback remotes (self-hosted forge) |
  */
@@ -52,7 +52,10 @@ data class GitExecutionProperties(
     val cloneTimeout: Duration = Duration.ofMinutes(30),
     /** Timeout applied to the configured setup command run inside a new worktree. */
     val setupTimeout: Duration = Duration.ofMinutes(15),
-    /** Upper bound on captured stdout/stderr characters, to keep a runaway command out of the heap. */
+    /**
+     * Upper bound on captured stdout/stderr characters per stream, to keep a runaway command out
+     * of the heap. Git commands keep the start of an over-long output, the setup command its end.
+     */
     val maxOutputChars: Int = 100_000,
     /**
      * Transport protocols git is allowed to use. Everything else is denied through
