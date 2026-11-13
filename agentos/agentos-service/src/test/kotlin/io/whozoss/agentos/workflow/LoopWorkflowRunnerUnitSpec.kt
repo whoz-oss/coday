@@ -222,6 +222,23 @@ class LoopWorkflowRunnerUnitSpec :
             outcome.started shouldBe 1
         }
 
+        "aborts, without executing any tool, when FreeCaseStarterForUser is ambiguous" {
+            val f = Fixture(objectMapper)
+            val search = searchTool(listOf("a"))
+            fun starter(name: String) = mockk<StandardTool<*>>().also { every { it.name } returns name }
+            val first = starter("CASE_A__FreeCaseStarterForUser")
+            val second = starter("CASE_B__FreeCaseStarterForUser")
+
+            val reason = f.runner.run(payload, context(listOf(search, first, second))) { true }.reason()
+
+            reason shouldContain "ambiguous"
+            reason shouldContain "CASE_A__FreeCaseStarterForUser"
+            reason shouldContain "CASE_B__FreeCaseStarterForUser"
+            coVerify(exactly = 0) { search.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { first.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { second.executeWithJson(any(), any()) }
+        }
+
         // -------------------------------------------------------------------------
         // SEARCH phase failures
         // -------------------------------------------------------------------------
@@ -258,23 +275,9 @@ class LoopWorkflowRunnerUnitSpec :
             outcome.started shouldBe 1
         }
 
-        "prefers the search tool with the exact name over one behind a prefix" {
+        "aborts, without executing any tool, when the search tool is ambiguous" {
             val f = Fixture(objectMapper)
-            val exact = searchTool(emptyList())
-            val prefixed =
-                mockk<StandardTool<*>>().also { tool ->
-                    every { tool.name } returns "USER_GROUP__SearchTalents"
-                }
-
-            f.runner.run(payload, context(listOf(prefixed, exact, f.starterTool))) { true }
-
-            coVerify(exactly = 1) { exact.executeWithJson(any(), any()) }
-        }
-
-        "aborts, without executing any tool, when several tools match the search tool behind a prefix" {
-            val f = Fixture(objectMapper)
-            fun prefixed(name: String) =
-                mockk<StandardTool<*>>().also { every { it.name } returns name }
+            fun prefixed(name: String) = mockk<StandardTool<*>>().also { every { it.name } returns name }
             val first = prefixed("USER_GROUP_A__SearchTalents")
             val second = prefixed("USER_GROUP_B__SearchTalents")
 

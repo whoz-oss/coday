@@ -67,13 +67,19 @@ class LoopWorkflowRunnerService(
             context.triggerUser
                 ?: return LoopRunOutcome.Aborted("An AgentLoop must be triggered by an identified user.")
 
+        val starterMatches = lookupTool(context.tools, FreeCaseStarterForUserTool.TOOL_NAME)
         val starterTool =
-            context.tools.find { FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(it.name) }
+            starterMatches.singleOrNull()
                 ?: return LoopRunOutcome.Aborted(
-                    "The '${FreeCaseStarterForUserTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
-                        "(available: ${context.tools.map { it.name }}). " +
-                        "Bind a CASE integration to the agent, granting FreeCaseStarterForUser (the user who triggers the loop must be " +
-                        "an ADMIN of the namespace to start cases for other users).",
+                    if (starterMatches.isEmpty()) {
+                        "The '${FreeCaseStarterForUserTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
+                            "(available: ${context.tools.map { it.name }}). " +
+                            "Bind a CASE integration to the agent, granting FreeCaseStarterForUser (the user who triggers the loop must be " +
+                            "an ADMIN of the namespace to start cases for other users)."
+                    } else {
+                        "The '${FreeCaseStarterForUserTool.TOOL_NAME}' tool is ambiguous for agent '${context.agentName}': " +
+                            "${starterMatches.map { it.name }}. Grant it through a single CASE integration."
+                    },
                 )
 
         val search =
@@ -124,10 +130,9 @@ class LoopWorkflowRunnerService(
      * Executes the SEARCH phase: invokes the configured tool and parses its output as
      * [SearchResult].
      *
-     * The tool is looked up by its exact name, then by its name behind an integration prefix (`CONFIG__tool`), the
-     * same rule as for `FreeCaseStarterForUser`: a payload can say `searchAgentUsers` whatever the name of the
-     * integration config that provides it. When several tools match behind a prefix the search is refused as
-     * ambiguous, with their names: the payload must then use the prefixed name.
+     * The tool is found with [lookupTool], like `FreeCaseStarterForUser`: a payload can say `searchAgentUsers`
+     * whatever the name of the integration config that provides it. When several tools match, the search is refused
+     * as ambiguous, with their names: the payload must then use the prefixed name.
      *
      * **Whoz-specific coupling (V0):** [SearchResult], [SearchResultItem], and the
      * structured-output contract assumed here are tightly coupled to the Whoz Search tool
@@ -140,24 +145,17 @@ class LoopWorkflowRunnerService(
         triggerUser: User,
     ): SearchOutcome {
         val toolName = payload.search.tool
+        val matches = lookupTool(context.tools, toolName)
         val searchTool =
-            context.tools.find { it.name == toolName }
-                ?: context.tools.filter { it.name.endsWith("__$toolName") }.let { matches ->
-                    when (matches.size) {
-                        0 ->
-                            return SearchOutcome.Failure(
-                                "Search tool '$toolName' is not available to agent '${context.agentName}' " +
-                                    "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
-                            )
-
-                        1 -> matches.single()
-
-                        else ->
-                            return SearchOutcome.Failure(
-                                "Search tool '$toolName' is ambiguous: ${matches.map { it.name }}. Use its prefixed name.",
-                            )
-                    }
-                }
+            matches.singleOrNull()
+                ?: return SearchOutcome.Failure(
+                    if (matches.isEmpty()) {
+                        "Search tool '$toolName' is not available to agent '${context.agentName}' " +
+                            "(available: ${context.tools.map { it.name }}). Check the agent integrations."
+                    } else {
+                        "Search tool '$toolName' is ambiguous: ${matches.map { it.name }}. Use its prefixed name."
+                    },
+                )
         val toolContext = toolContext(context = context, triggerUser = triggerUser)
         val paramsJson = objectMapper.writeValueAsString(payload.search.params)
         logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
@@ -319,6 +317,17 @@ class LoopWorkflowRunnerService(
 
     companion object : KLogging()
 }
+
+/**
+ * The tools of [tools] that [name] designates: the one with exactly that name, otherwise those named
+ * `<integration config>__<name>`. Empty when there is none, several when it is ambiguous (the caller then names them).
+ * Both tools of the loop (the search tool and `FreeCaseStarterForUser`) are found this way, so that a bare name works
+ * whatever the name of the integration config that provides the tool.
+ */
+internal fun lookupTool(
+    tools: Collection<StandardTool<*>>,
+    name: String,
+): List<StandardTool<*>> = tools.filter { it.name == name }.ifEmpty { tools.filter { it.name.endsWith("__$name") } }
 
 /**
  * Keys of the `activeContext` the loop hands to `FreeCaseStarter`: the Whoz UI's format for "the entities the
