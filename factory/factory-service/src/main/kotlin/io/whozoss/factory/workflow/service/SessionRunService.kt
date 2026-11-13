@@ -289,11 +289,14 @@ class SessionRunService(
             requireGitWorkspace = requiresGitWorkspace,
         )
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
-        // Only a terminal durable attempt can be replayed. Never reset an uncertain live turn.
+        // RUNNING steps retain the terminal-only fence; waiting steps can also resume an answered turn/successor.
         for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
-            if (statuses.statuses[step.id] in setOf(WorkflowStatuses.RUNNING, WorkflowStatuses.WAITING_HUMAN) &&
-                capabilityExecutionService.hasFinalizedAttempt(scope, namespaceId, workflowId, step.id)
-            ) setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
+            val currentStatus = statuses.statuses[step.id]
+            val canReplayOrResume = (currentStatus == WorkflowStatuses.RUNNING &&
+                capabilityExecutionService.hasFinalizedAttempt(scope, namespaceId, workflowId, step.id)) ||
+                (currentStatus == WorkflowStatuses.WAITING_HUMAN &&
+                    capabilityExecutionService.canResumeWaitingAgentStep(scope, namespaceId, workflowId, step.id))
+            if (canReplayOrResume) setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
         }
         var suspended = false
         // Lot F: the repo root every `code` step runs against. It starts as the
@@ -828,7 +831,16 @@ class SessionRunService(
         for (step in steps) {
             if (statuses.statuses[step.id] != WorkflowStatuses.WAITING_HUMAN) continue
             val interaction = interactions.filter { it.stepId == step.id }.maxByOrNull { it.revision }
-            // Agent queryUser / legacy agent questions can never approve an agent step here.
+            // A human answer resumes agent execution; it never approves the agent's result.
+            if (step.responsibility.kind == ResponsibilityKind.AGENT) {
+                if (capabilityExecutionService.canResumeWaitingAgentStep(scope, namespaceId, workflowId, step.id)) {
+                    transition(scope, namespaceId, workflowId, step, WorkflowStatuses.READY, expectedRevision)
+                    setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
+                } else {
+                    allResolved = false
+                }
+                continue
+            }
             if (step.responsibility.kind != ResponsibilityKind.HUMAN) {
                 allResolved = false
                 continue
