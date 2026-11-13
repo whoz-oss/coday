@@ -25,6 +25,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
+  Actor,
   AgentFinishedEvent,
   AgentRunningEvent,
   AgentSelectedEvent,
@@ -92,7 +93,7 @@ import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
-import { findLegitimateAnswer, runningAfter } from './case-chat.utils'
+import { findLegitimateAnswer, runningAfter, senderLabel } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -104,6 +105,7 @@ import { AudioMessageComponent } from '../audio-message/audio-message.component'
 import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
+import { UserStateService } from '../../services/user-state.service'
 
 export interface ToolCall {
   requestId: string
@@ -243,6 +245,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly caseState = inject(CaseStateService)
   private readonly oauthService = inject(OAuthAgentosService)
   private readonly aiModels = inject(AiModelStateService)
+  private readonly userState = inject(UserStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -815,9 +818,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected readonly questionElementId = questionElementId
 
-  /** Role label of an answer bubble: the respondent's name, 'You' for an unnamed user. */
+  /** Id of the signed-in user (loaded by the case shell), to tell their turns from a collaborator's. */
+  protected readonly currentUserId = computed(() => this.userState.currentUser()?.id ?? null)
+
+  /** Label above a turn: 'You' for the current user, the sender's name for anyone else. */
+  protected actorLabel(actor: Actor): string {
+    return senderLabel(actor, this.currentUserId())
+  }
+
+  /** Role label of an answer bubble, by the same rule as a message. */
   protected answerLabel(answer: AnswerEvent): string {
-    return answer.actor.displayName || (answer.actor.role === 'USER' ? 'You' : 'Agent')
+    return this.actorLabel(answer.actor)
   }
 
   /**

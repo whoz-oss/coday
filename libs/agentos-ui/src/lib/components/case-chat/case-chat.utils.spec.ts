@@ -9,7 +9,7 @@ import {
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
 } from '@whoz-oss/agentos-api-client'
-import { findLegitimateAnswer, runningAfter } from './case-chat.utils'
+import { findLegitimateAnswer, runningAfter, senderLabel } from './case-chat.utils'
 
 const metadata = { id: '', created: '', modified: '', removed: false }
 
@@ -79,6 +79,45 @@ describe('findLegitimateAnswer', () => {
     const a = answer('a1', 'q1', 'ABCDEF00-0000-0000-0000-000000000001', 'red')
     const q = question('q1', 'abcdef00-0000-0000-0000-000000000001')
     expect(findLegitimateAnswer(q, [q, a])).toBe(a)
+  })
+})
+
+describe('senderLabel', () => {
+  const human = (id: string, displayName?: string) =>
+    ({ id, role: ActorRoleEnum.USER, displayName }) as Parameters<typeof senderLabel>[0]
+  const agent = (displayName?: string) =>
+    ({ id: 'agent-1', role: ActorRoleEnum.AGENT, displayName }) as Parameters<typeof senderLabel>[0]
+
+  it('says You for a turn of the current user', () => {
+    expect(senderLabel(human('u-1', 'Alice'), 'u-1')).toBe('You')
+  })
+
+  it('names another user, so a collaborator is not taken for the reader', () => {
+    expect(senderLabel(human('u-2', 'Bob'), 'u-1')).toBe('Bob')
+  })
+
+  it('falls back to You for another user without a name (legacy events)', () => {
+    expect(senderLabel(human('u-2'), 'u-1')).toBe('You')
+  })
+
+  it('names the sender while the current user is not loaded yet', () => {
+    expect(senderLabel(human('u-2', 'Bob'), null)).toBe('Bob')
+    expect(senderLabel(human('u-2', 'Bob'), undefined)).toBe('Bob')
+  })
+
+  it('falls back to You without a name while the current user is not loaded yet', () => {
+    expect(senderLabel(human('u-2'), null)).toBe('You')
+  })
+
+  it('compares user ids regardless of the UUID letter case', () => {
+    expect(
+      senderLabel(human('ABCDEF00-0000-0000-0000-000000000001', 'Alice'), 'abcdef00-0000-0000-0000-000000000001')
+    ).toBe('You')
+  })
+
+  it('names an agent, or says Agent when it has no name', () => {
+    expect(senderLabel(agent('Dev'), 'u-1')).toBe('Dev')
+    expect(senderLabel(agent(), 'u-1')).toBe('Agent')
   })
 })
 
