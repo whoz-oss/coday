@@ -532,16 +532,6 @@
             />
           </div>
         }
-        @if (autocomplete.effortSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-effort-autocomplete
-              [options]="autocomplete.effortSuggestions()"
-              [current]="activeCase()?.reasoningEffort ?? null"
-              (selected)="onEffortSelected($event)"
-              (dismissed)="closeEffortAutocomplete()"
-            />
-          </div>
-        }
         @if (autocomplete.slashSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-prompt-autocomplete
@@ -592,12 +582,13 @@
             />
           }
           @if (activeCase()) {
-            <span
-              class="case-chat__effort"
-              title="Type /effort to change it. Not applied to Anthropic and Gemini providers."
-            >
-              effort: {{ caseEffortLabel() }}
-            </span>
+            <agentos-case-settings
+              [model]="activeCase()?.modelName ?? null"
+              [effort]="activeCase()?.reasoningEffort ?? null"
+              [disabled]="isTerminal()"
+              (modelSelected)="onModelSelected($event)"
+              (effortSelected)="onEffortSelected($event)"
+            />
           }
           <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 

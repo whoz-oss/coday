@@ -5,6 +5,7 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
@@ -104,6 +105,11 @@ class CaseServiceImpl(
      */
     private val caseSummaryService: CaseSummaryService? = null,
     /**
+     * Checks the model a case is asked to use ([Case.modelName]). Optional so that a service built by hand
+     * without it accepts any name; the running service always has it.
+     */
+    private val aiModelService: AiModelService? = null,
+    /**
      * Coroutine context used to build the service scope.
      * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
      * in tests so all coroutines run on the test scheduler and virtual time applies.
@@ -188,6 +194,7 @@ class CaseServiceImpl(
         worktree: Boolean?,
     ): Case {
         entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
+        requireKnownModel(entity.namespaceId, entity.modelName)
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -257,6 +264,27 @@ class CaseServiceImpl(
         caseId: UUID,
         reasoningEffort: ReasoningEffort?,
     ): Case = edit(caseId) { it.copy(reasoningEffort = reasoningEffort) }
+
+    override fun setModel(
+        caseId: UUID,
+        modelName: String?,
+    ): Case {
+        val name = modelName?.trim()?.takeIf { it.isNotEmpty() }
+        val current = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        requireKnownModel(current.namespaceId, name)
+        return edit(caseId) { it.copy(modelName = name) }
+    }
+
+    /** A model name must answer to an alias or an API model name of the namespace or the platform. */
+    private fun requireKnownModel(
+        namespaceId: UUID,
+        modelName: String?,
+    ) {
+        val service = aiModelService ?: return
+        if (modelName != null && service.findAiModel(namespaceId, modelName) == null) {
+            throw BadRequestException("Unknown AI model: $modelName")
+        }
+    }
 
     override fun edit(
         id: UUID,
@@ -758,6 +786,8 @@ class CaseServiceImpl(
 
         logger.info { "Running agent: $agentName for case $caseId" }
         val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
+        // One read for the per-case overrides (reasoning effort, model), fresh at every agent run.
+        val storedCase = findById(caseId)
         val context =
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
@@ -772,7 +802,8 @@ class CaseServiceImpl(
                 },
                 usageAccumulator = usageAccumulator,
                 // Read at every agent run, so a change applies from the next run on, never during one.
-                reasoningEffort = findById(caseId)?.reasoningEffort,
+                reasoningEffort = storedCase?.reasoningEffort,
+                modelName = storedCase?.modelName,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L

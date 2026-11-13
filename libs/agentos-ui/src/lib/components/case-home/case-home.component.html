@@ -131,7 +131,13 @@
                   <span>Create a worktree</span>
                 </label>
               }
-              <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+              <agentos-case-settings
+                [model]="modelName()"
+                [effort]="reasoningEffort()"
+                [disabled]="!canChangeSettings()"
+                (modelSelected)="onModelSelected($event)"
+                (effortSelected)="onEffortSelected($event)"
+              />
             </div>
             <!-- Mic (or cancel while recording) right next to the send button, on its left -->
             <div class="case-home__footer-right">

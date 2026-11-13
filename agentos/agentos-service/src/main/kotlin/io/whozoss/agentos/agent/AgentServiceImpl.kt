@@ -234,7 +234,8 @@ class AgentServiceImpl(
         subCaseManager: SubCaseManager? = null,
     ): ResolvedAgentDefinition {
         val baseModel =
-            agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
+            findCaseModelOverride(agentConfig, context)
+                ?: agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
                 ?: findDefaultModelConfig(context.namespaceId)
                 ?: throw IllegalArgumentException(
                     "AgentConfig '${agentConfig.name}' could not resolve an AiModel " +
@@ -641,6 +642,26 @@ class AgentServiceImpl(
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
+
+    /**
+     * The model the case asks every agent to use ([AgentExecutionContext.modelName]), or null when the case has no
+     * override. A name that no longer resolves (model deleted or renamed since it was chosen) is logged and read as
+     * no override, so the run goes on with the agent's own model instead of failing.
+     */
+    private fun findCaseModelOverride(
+        agentConfig: AgentConfig,
+        context: AgentExecutionContext,
+    ): AiModel? {
+        val requested = context.modelName ?: return null
+        val model = aiModelService.findAiModel(context.namespaceId, requested)
+        if (model == null) {
+            logger.warn {
+                "Case ${context.caseId}: model override '$requested' no longer resolves in namespace " +
+                    "${context.namespaceId}, agent '${agentConfig.name}' falls back to its own model"
+            }
+        }
+        return model
+    }
 
     // -------------------------------------------------------------------------
     // Agent instantiation

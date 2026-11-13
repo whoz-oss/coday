@@ -69,14 +69,13 @@ import {
   isCorrelatedDelegateTool,
 } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
-import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
-import {
-  EffortOption,
-  effortLabel,
-  messageEffortLabel,
-  parseEffortCommand,
-} from '../composer-autocomplete/effort-command'
+import { EffortOption, messageEffortLabel, parseEffortCommand } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { CaseSettingsComponent } from '../case-settings/case-settings.component'
+import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
+import { AiModelStateService } from '../../services/ai-model-state.service'
+import { chatModelOptions } from '../../services/chat-model.utils'
+import { ModelOption } from '../agent-config-form/model-options'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import {
   buildReferenceMention,
@@ -206,7 +205,7 @@ function hasActiveSelection(): boolean {
     CaseMembersComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
-    EffortAutocompleteComponent,
+    CaseSettingsComponent,
     FileAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
@@ -240,6 +239,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
   private readonly oauthService = inject(OAuthAgentosService)
+  private readonly aiModels = inject(AiModelStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -316,7 +316,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
-  private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
+  private readonly settings = viewChild(CaseSettingsComponent)
+  // The pickers live in the shared settings component: the autocomplete service drives them from here.
+  private readonly effortAutocompleteRef = computed(() => this.settings()?.effortPicker())
+  private readonly modelAutocompleteRef = computed(() => this.settings()?.modelPicker())
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
@@ -397,8 +400,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Whether the kill confirmation dialog is showing. */
   protected readonly confirmingKill = signal(false)
 
-  /** The case-level reasoning effort shown next to the composer; "default" means each agent's model setting. */
-  protected readonly caseEffortLabel = computed(() => effortLabel(this.activeCase()?.reasoningEffort))
+  /** The chat models the case can be switched to, loaded once for the namespace (empty until then, or on failure). */
+  private readonly availableModels = signal<ModelOption[]>([])
+
+  /** The /model picker entries: the way back to the agents' own models, then the models of the namespace. */
+  private readonly modelChoiceList = computed(() => modelChoices(this.availableModels()))
 
   /** Which panel is active in the right drawer: files exchange or case members. */
   protected readonly drawerPanel = signal<'files' | 'members'>('files')
@@ -505,6 +511,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
+    this.autocomplete.enableModelCommand(
+      () => this.canChangeEffort(),
+      () => this.modelChoiceList()
+    )
     // `#` lists what the agent reaches through its exchange tools: the namespace and this case.
     this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: this.caseId }))
 
@@ -953,6 +963,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.voiceCapability.load()
+    this.aiModels
+      .listAvailable(this.namespaceId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((models) => this.availableModels.set(chatModelOptions(models)))
     this.connectSse()
 
     // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
@@ -1295,7 +1309,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.promptAutocompleteRef,
       this.agentAutocompleteRef,
       this.effortAutocompleteRef,
-      this.fileAutocompleteRef
+      this.fileAutocompleteRef,
+      this.modelAutocompleteRef
     )
     if (consumed) return
     if (this.preferences.shouldSend(event)) {
@@ -1367,8 +1382,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
   }
 
-  protected closeEffortAutocomplete(): void {
-    this.autocomplete.effortSuggestions.set([])
+  /** Apply the model picked after /model (null = back to each agent's own) and clear the command from the composer. */
+  protected onModelSelected(choice: ModelChoice): void {
+    this.autocomplete.modelSuggestions.set([])
+    if (!this.canChangeEffort()) return
+    this.inputValue.set('')
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = ''
+      this.resizeComposer(input)
+    }
+    this.caseState
+      .setModel(this.caseId, choice.model)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => console.error('[CaseChat] Failed to set the AI model', err),
+      })
   }
 
   protected closeAtAutocomplete(): void {
@@ -1430,6 +1459,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       } else {
         // Missing or unknown level: show the levels instead of doing nothing.
         this.autocomplete.showEffortLevels()
+      }
+      return
+    }
+    // Same for "/model <name>": a command for the case, never a message for the agent. The name must be one of
+    // the models the picker lists; anything else reopens the picker.
+    const modelName = parseModelCommand(content)
+    if (modelName !== undefined) {
+      const choice = modelName === null ? undefined : findModelChoice(this.modelChoiceList(), modelName)
+      if (choice) {
+        this.onModelSelected(choice)
+      } else {
+        this.autocomplete.showModelChoices()
       }
       return
     }

@@ -20,6 +20,7 @@ import { PromptStateService } from '../../services/prompt-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
+import { ModelAutocompleteComponent } from '../model-autocomplete/model-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EFFORT_OPTIONS, EffortOption, effortOptionsFor } from './effort-command'
 import {
@@ -31,6 +32,7 @@ import {
   manifestToSuggestions,
   rankFiles,
 } from './file-mention'
+import { filterModelChoices, ModelChoice, modelCommandArg } from './model-command'
 
 /** How long the files fetched on a `#` stay valid: past it, the next `#` fetches them again. */
 export const FILE_CACHE_TTL_MS = 30_000
@@ -60,6 +62,9 @@ export interface FileMentionScopes {
  * A host that can change the reasoning effort (an open case) also calls `enableEffortCommand`:
  * "/effort" then lists the levels in `effortSuggestions` instead of the matching prompts.
  *
+ * The same host also calls `enableModelCommand`: "/model" then lists in `modelSuggestions` the models the case
+ * can use (and the way back to each agent's own model), instead of the matching prompts.
+ *
  * A host that wants file references calls `enableFileMentions`: typing `#` (at the start or after a
  * whitespace) then lists in `fileSuggestions` the files the agent can reach through its exchange tools
  * — the namespace exchange and, inside a case, the case exchange. Selecting one inserts plain text,
@@ -86,6 +91,9 @@ export class ComposerAutocompleteService {
   /** /effort levels matching the current value. Empty = dropdown closed. */
   readonly effortSuggestions = signal<EffortOption[]>([])
 
+  /** /model entries matching the current value. Empty = dropdown closed. */
+  readonly modelSuggestions = signal<ModelChoice[]>([])
+
   /** Accessible files matching the current `#` prefix, best first. Empty = dropdown closed. */
   readonly fileSuggestions = signal<FileSuggestion[]>([])
 
@@ -105,6 +113,9 @@ export class ComposerAutocompleteService {
 
   /** Null until the host enables /effort; then tells whether the effort can be changed right now. */
   private effortCommandAvailable: (() => boolean) | null = null
+
+  /** Null until the host enables /model; then tells whether the model can be changed now, and what it can be. */
+  private modelCommand: { available: () => boolean; choices: () => ModelChoice[] } | null = null
 
   /** Null until the host enables `#` file mentions; then tells where the composer is. */
   private fileScopes: (() => FileMentionScopes) | null = null
@@ -141,8 +152,8 @@ export class ComposerAutocompleteService {
       .subscribe(({ prefix, prompts }) => {
         this.effectivePrompts = prompts
         this.promptsLoaded = true
-        // A late answer must not open the prompt list over the /effort picker or the file list the user has reached since.
-        if (this.effortSuggestions().length || this.fileMentionActive) return
+        // A late answer must not open the prompt list over the /effort or /model picker or the file list the user has reached since.
+        if (this.effortSuggestions().length || this.modelSuggestions().length || this.fileMentionActive) return
         this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
       })
 
@@ -201,6 +212,14 @@ export class ComposerAutocompleteService {
   }
 
   /**
+   * Offer the /model command in this composer. [available] is checked on each keystroke, like the /effort one;
+   * [choices] is read when the picker opens, so a host whose models load late always lists the current ones.
+   */
+  enableModelCommand(available: () => boolean, choices: () => ModelChoice[]): void {
+    this.modelCommand = { available, choices }
+  }
+
+  /**
    * Offer `#` file references in this composer. [scopes] is read when files are needed, so a host whose case
    * changes under the same composer always asks for the current one.
    */
@@ -214,7 +233,18 @@ export class ComposerAutocompleteService {
     this.slashSuggestions.set([])
     this.atSuggestions.set([])
     this.closeFileSuggestions()
+    this.modelSuggestions.set([])
     this.effortSuggestions.set([...EFFORT_OPTIONS])
+  }
+
+  /** Open the /model picker on every model, e.g. after a name the command does not know. */
+  showModelChoices(): void {
+    if (!this.modelCommand?.available()) return
+    this.slashSuggestions.set([])
+    this.atSuggestions.set([])
+    this.closeFileSuggestions()
+    this.effortSuggestions.set([])
+    this.modelSuggestions.set(this.modelCommand.choices())
   }
 
   /**
@@ -230,6 +260,7 @@ export class ComposerAutocompleteService {
     this.effectiveAgents = []
     this.agentsLoaded = false
     this.effortSuggestions.set([])
+    this.modelSuggestions.set([])
     this.closeFileSuggestions()
     this.fileCache = null
     this.fileRequest = null
@@ -260,8 +291,27 @@ export class ComposerAutocompleteService {
     promptRef: Signal<PromptAutocompleteComponent | undefined>,
     agentRef: Signal<AgentAutocompleteComponent | undefined>,
     effortRef?: Signal<EffortAutocompleteComponent | undefined>,
-    fileRef?: Signal<FileAutocompleteComponent | undefined>
+    fileRef?: Signal<FileAutocompleteComponent | undefined>,
+    modelRef?: Signal<ModelAutocompleteComponent | undefined>
   ): boolean {
+    if (this.modelSuggestions().length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        modelRef?.()?.navigate(event.key)
+        return true
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        this.modelSuggestions.set([])
+        return true
+      }
+      if (event.key === 'Tab' || event.key === 'Enter') {
+        event.preventDefault()
+        modelRef?.()?.navigate('Enter')
+        return true
+      }
+    }
+
     if (this.effortSuggestions().length > 0) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
@@ -487,16 +537,28 @@ export class ComposerAutocompleteService {
   // ---------------------------------------------------------------------------
 
   private updateAutocomplete(value: string): void {
-    // /effort takes precedence over the prompts whose name starts the same way.
+    // /effort and /model take precedence over the prompts whose name starts the same way.
     const effortOptions = this.effortCommandAvailable?.() ? effortOptionsFor(value) : null
     if (effortOptions?.length) {
       this.slashSuggestions.set([])
       this.atSuggestions.set([])
       this.closeFileSuggestions()
+      if (this.modelSuggestions().length) this.modelSuggestions.set([])
       this.effortSuggestions.set(effortOptions)
       return
     }
     if (this.effortSuggestions().length) this.effortSuggestions.set([])
+
+    const modelArg = this.modelCommand?.available() ? modelCommandArg(value) : null
+    const modelChoices = modelArg !== null ? filterModelChoices(this.modelCommand!.choices(), modelArg) : []
+    if (modelChoices.length) {
+      this.slashSuggestions.set([])
+      this.atSuggestions.set([])
+      this.closeFileSuggestions()
+      this.modelSuggestions.set(modelChoices)
+      return
+    }
+    if (this.modelSuggestions().length) this.modelSuggestions.set([])
 
     // Slash commands (/): only active when the value starts with / and has no space yet.
     if (value.startsWith('/')) {

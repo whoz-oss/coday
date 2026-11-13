@@ -77,6 +77,19 @@ data class CaseDto(
     )
     val reasoningEffort: ReasoningEffort? = null,
     /**
+     * Per-case override of the AI model of the agents running in the case (an alias or an API model name). Null
+     * means each agent uses its own model. Replaces the model of every agent of the case; sub-cases do not inherit
+     * it. Accepted on create, where an unknown name is refused; changed afterwards through
+     * `PUT /api/cases/{id}/model` only (`PUT /api/cases/{id}` ignores it).
+     */
+    @field:Schema(
+        description =
+            "Per-case override of the AI model of the agents running in the case (an alias or an API model name). " +
+                "Null means each agent uses its own model. Replaces the model of every agent of the case; " +
+                "sub-cases do not inherit it.",
+    )
+    val modelName: String? = null,
+    /**
      * Short summary of the case (what it is about, where it stands), generated and refreshed by the
      * server after agent turns. Null until the first one. Read-only: ignored on create and update.
      */

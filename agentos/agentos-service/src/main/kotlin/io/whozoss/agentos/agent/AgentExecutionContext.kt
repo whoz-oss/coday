@@ -34,6 +34,9 @@ import java.util.UUID
  * @param reasoningEffort The case-level override of the reasoning effort ([io.whozoss.agentos.caseFlow.Case.reasoningEffort]),
  *   read at the start of the run. Null means each agent uses the effort of its model. Replaces the effort of
  *   the model whatever it has configured.
+ * @param modelName The case-level override of the AI model ([io.whozoss.agentos.caseFlow.Case.modelName], an alias or
+ *   an API model name), read at the start of the run. Null means each agent uses its own model. Replaces the model
+ *   of the agent; when it no longer resolves, the agent's own model is used instead.
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
@@ -44,6 +47,7 @@ data class AgentExecutionContext(
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
     val usageAccumulator: UsageAccumulator? = null,
     val reasoningEffort: ReasoningEffort? = null,
+    val modelName: String? = null,
 ) {
     fun toToolContext(
         userExternalId: String?,

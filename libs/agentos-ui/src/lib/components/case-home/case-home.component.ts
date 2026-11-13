@@ -39,11 +39,15 @@ import {
   IntegrationTypeControllerService,
   NamespaceGitControllerService,
   Prompt,
+  ReasoningEffort,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
 import { BlueprintDirective, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { CaseSettingsComponent } from '../case-settings/case-settings.component'
+import { EffortOption, parseEffortCommand } from '../composer-autocomplete/effort-command'
+import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import {
   buildReferenceMention,
@@ -63,6 +67,9 @@ import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case
 import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
+import { AiModelStateService } from '../../services/ai-model-state.service'
+import { chatModelOptions } from '../../services/chat-model.utils'
+import { ModelOption } from '../agent-config-form/model-options'
 
 const GIT_INTEGRATION_TYPE = 'GIT'
 
@@ -103,6 +110,7 @@ const GIT_INTEGRATION_TYPE = 'GIT'
     IconButtonComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
+    CaseSettingsComponent,
     FileAutocompleteComponent,
     ComposerAttachmentsComponent,
     VoiceRecorderComponent,
@@ -117,6 +125,7 @@ export class CaseHomeComponent implements OnInit {
   private readonly workspaces = inject(CaseWorkspaceService)
   private readonly gitApi = inject(NamespaceGitControllerService)
   private readonly integrationTypeApi = inject(IntegrationTypeControllerService)
+  private readonly aiModels = inject(AiModelStateService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly caseState = inject(CaseStateService)
@@ -138,6 +147,10 @@ export class CaseHomeComponent implements OnInit {
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
+  private readonly settings = viewChild(CaseSettingsComponent)
+  // The pickers live in the shared settings component: the autocomplete service drives them from here.
+  private readonly effortAutocompleteRef = computed(() => this.settings()?.effortPicker())
+  private readonly modelAutocompleteRef = computed(() => this.settings()?.modelPicker())
 
   protected namespaceId = this.route.snapshot.queryParams['ns'] as string
   protected readonly parentCaseId = signal<string | null>(this.route.snapshot.queryParams['parentCase'] ?? null)
@@ -164,6 +177,15 @@ export class CaseHomeComponent implements OnInit {
   /** True once the creator opts in to the worktree the namespace can give the new case. Unchecked by default. */
   protected readonly worktree = signal(false)
   private readonly worktreeNamespace = new Subject<string>()
+
+  /** The chat models the first message can run on, for the namespace in use (empty until loaded, or on failure). */
+  protected readonly modelOptions = signal<ModelOption[]>([])
+  /** The model chosen for the new case, held here until it is created; null keeps each agent's own model. */
+  protected readonly modelName = signal<string | null>(null)
+  /** The reasoning effort chosen for the new case, held here until it is created; null keeps the models' own. */
+  protected readonly reasoningEffort = signal<ReasoningEffort | null>(null)
+  private readonly modelNamespace = new Subject<string>()
+  private readonly modelChoiceList = computed(() => modelChoices(this.modelOptions()))
   /**
    * Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows.
    * A failure is not kept: the next namespace asks again.
@@ -192,6 +214,7 @@ export class CaseHomeComponent implements OnInit {
     // (namespace-intent badge and upload target) needs the namespace manifest.
     this.exchangeState.initializeForNamespace(this.namespaceId)
     this.worktreeNamespace.next(this.namespaceId)
+    this.modelNamespace.next(this.namespaceId)
 
     // The composer is reused when switching namespaces or the parent of a new sub-case.
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -214,6 +237,10 @@ export class CaseHomeComponent implements OnInit {
         this.exchangeState.initializeForNamespace(newNs)
         this.worktreeOffered.set(false)
         this.worktreeNamespace.next(newNs)
+        this.modelName.set(null)
+        this.reasoningEffort.set(null)
+        this.modelOptions.set([])
+        this.modelNamespace.next(newNs)
       }
     })
   }
@@ -221,8 +248,24 @@ export class CaseHomeComponent implements OnInit {
   constructor() {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
     this.autocomplete.init(this.namespaceId)
+    // The model and the effort are held here until the case is created: they can be changed while nothing is
+    // being created and no case exists yet (a failed send keeps the case, and so its settings).
+    this.autocomplete.enableEffortCommand(() => this.canChangeSettings())
+    this.autocomplete.enableModelCommand(
+      () => this.canChangeSettings(),
+      () => this.modelChoiceList()
+    )
     // No case yet: `#` lists the namespace exchange only.
     this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: null }))
+
+    // The models of the namespace, for the optional model of the new case. A namespace switch drops the answer
+    // still pending for the previous one; a failed read leaves the select with its single "Agent default" entry.
+    this.modelNamespace
+      .pipe(
+        switchMap((namespaceId) => this.aiModels.listAvailable(namespaceId)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((models) => this.modelOptions.set(chatModelOptions(models)))
 
     // A namespace switch drops the answer still pending for the previous one. A sub-case shares its
     // root's worktree, so its composer asks nothing.
@@ -418,13 +461,44 @@ export class CaseHomeComponent implements OnInit {
     this.worktree.set((event.target as HTMLInputElement).checked)
   }
 
+  /** The model and the effort are read once, when the case is created: they stay put once it exists. */
+  protected canChangeSettings(): boolean {
+    return !this.isCreating() && !this.pendingCaseId()
+  }
+
+  /** Hold the effort picked after /effort (or with the chip) for the case to create, and clear the command. */
+  protected onEffortSelected(option: EffortOption): void {
+    this.autocomplete.effortSuggestions.set([])
+    if (!this.canChangeSettings()) return
+    this.reasoningEffort.set(option.effort)
+    this.clearComposer()
+  }
+
+  /** Hold the model picked after /model (null = each agent's own) for the case to create, and clear the command. */
+  protected onModelSelected(choice: ModelChoice): void {
+    this.autocomplete.modelSuggestions.set([])
+    if (!this.canChangeSettings()) return
+    this.modelName.set(choice.model)
+    this.clearComposer()
+  }
+
+  private clearComposer(): void {
+    this.inputValue.set('')
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = ''
+      this.resizeComposer(input)
+    }
+  }
+
   protected onKeydown(event: KeyboardEvent): void {
     const consumed = this.autocomplete.onKeydown(
       event,
       this.promptAutocompleteRef,
       this.agentAutocompleteRef,
-      undefined,
-      this.fileAutocompleteRef
+      this.effortAutocompleteRef,
+      this.fileAutocompleteRef,
+      this.modelAutocompleteRef
     )
     if (consumed) return
     if (this.preferences.shouldSend(event)) {
@@ -469,6 +543,27 @@ export class CaseHomeComponent implements OnInit {
   protected async submit(): Promise<void> {
     if (!this.canSend) return
     const firstMessage = this.inputValue().trim()
+    // A typed "/effort <level>" or "/model <name>" is a command for the case to create, never a message: it sets
+    // the held value and creates nothing. An unknown or missing level or name reopens the picker.
+    const effortCommand = parseEffortCommand(firstMessage)
+    if (effortCommand !== undefined) {
+      if (effortCommand) {
+        this.onEffortSelected(effortCommand)
+      } else {
+        this.autocomplete.showEffortLevels()
+      }
+      return
+    }
+    const modelCommand = parseModelCommand(firstMessage)
+    if (modelCommand !== undefined) {
+      const choice = modelCommand === null ? undefined : findModelChoice(this.modelChoiceList(), modelCommand)
+      if (choice) {
+        this.onModelSelected(choice)
+      } else {
+        this.autocomplete.showModelChoices()
+      }
+      return
+    }
     // Files picked while the case is being created are not part of this message: only these are sent and dropped.
     const references = this.referencedFiles()
     // Switching namespace or parent abandons this submit, even if the user switches back.
@@ -584,6 +679,9 @@ export class CaseHomeComponent implements OnInit {
           // When the box is offered for a top-level case, the creator's explicit choice is sent (true or false).
           // Nothing is sent otherwise: the backend rejects a worktree choice on a sub-case.
           ...(this.worktreeOffered() && !parentCaseId ? { worktree: this.worktree() } : {}),
+          // Only a chosen model or effort is sent: nothing keeps each agent on its own model and effort.
+          ...(this.modelName() ? { modelName: this.modelName() as string } : {}),
+          ...(this.reasoningEffort() ? { reasoningEffort: this.reasoningEffort() as ReasoningEffort } : {}),
           status: CaseStatusEnum.PENDING,
           favorite: false,
           removed: false,

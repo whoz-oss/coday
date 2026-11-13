@@ -14,6 +14,10 @@ export interface Case {
   favorite: boolean
   id?: string
   lastMessageAt?: string
+  /**
+   * Per-case override of the AI model of the agents running in the case (an alias or an API model name). Null means each agent uses its own model. Replaces the model of every agent of the case; sub-cases do not inherit it.
+   */
+  modelName?: string
   modified?: string
   namespaceId: string
   parentCaseId?: string
