@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.membership.requireNoDuplicateUserIds
 import io.whozoss.agentos.membership.resolveMembers
 import io.whozoss.agentos.permissions.EntityType
@@ -30,8 +31,11 @@ import java.util.UUID
  *
  * Authorization:
  * - GET: Case READ; `@HideOnAccessDenied` converts 403 → 404
- * - PATCH: Case WRITE; self-modification entries are silently filtered to prevent
- *   callers from revoking or demoting themselves.
+ * - PATCH: Case WRITE (case ADMIN); self-modification entries are silently filtered to prevent
+ *   callers from revoking or demoting themselves. Invitees must already hold a relation
+ *   (ADMIN or MEMBER) on the case's namespace, whoever the caller (super-admins included);
+ *   changing the role of an existing case member or revoking one needs no namespace check.
+ *   Violations are rejected with 422.
  *
  * Delta semantics: only listed users are affected; users absent from the list are
  * untouched. A null role means revoke. Non-existent userIds are silently skipped
@@ -71,7 +75,7 @@ class CaseMembershipController(
         @RequestBody members: List<UserMembershipRole>,
     ): List<MemberItem> {
         requireNoDuplicateUserIds(members)
-        caseService.getById(entityId)
+        val case = caseService.getById(entityId)
         val currentUserId = userService.getCurrentUser().id
         val caseIdStr = entityId.toString()
 
@@ -84,12 +88,43 @@ class CaseMembershipController(
             entry.userId.toString() to entry.role?.let { PermissionRelation.valueOf(it) }
         }
 
+        requireInviteesInNamespace(case, caseIdStr, entries)
+
         if (entries.isNotEmpty()) {
             permissionService.applyShareBatch(EntityType.CASE, caseIdStr, entries)
             logger.info { "Case $entityId members updated by $currentUserId — ${entries.size} entry(ies) applied" }
         }
 
         return resolveMembers(entityId, EntityType.CASE, permissionService, userService)
+    }
+
+    /**
+     * Rejects (422) any entry granting a role to a user who is not yet on the case
+     * and holds no relation on the case's namespace. Lookups are skipped when no entry
+     * could add a new user (role changes and revocations only).
+     */
+    private fun requireInviteesInNamespace(
+        case: Case,
+        caseIdStr: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ) {
+        val grantedIds = entries.filter { it.second != null }.map { it.first }
+        val newIds =
+            grantedIds
+                .takeIf { it.isNotEmpty() }
+                ?.let { ids -> ids - permissionService.listRelationsForUsers(EntityType.CASE, caseIdStr, ids).keys }
+                .orEmpty()
+        val outsiders =
+            newIds
+                .takeIf { it.isNotEmpty() }
+                ?.let { ids ->
+                    ids - permissionService.listRelationsForUsers(EntityType.NAMESPACE, case.namespaceId.toString(), ids).keys
+                }.orEmpty()
+        if (outsiders.isNotEmpty()) {
+            throw UnprocessableEntityException(
+                "Only members of the case's namespace can be invited: ${outsiders.joinToString()}",
+            )
+        }
     }
 
     companion object : KLogging()
