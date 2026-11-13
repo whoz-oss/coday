@@ -61,6 +61,14 @@ export interface WorkflowDefinition {
   [key: string]: unknown
 }
 
+export interface LegacyContract {
+  adoptable: boolean
+  summary: string
+  entry?: string[]
+  mission?: string
+  exit?: string[]
+}
+
 /** One step of a full workflow definition (`GET /api/factory/workflow-definitions/:type/:version`). */
 export interface FullWorkflowStep {
   id: string
@@ -72,6 +80,8 @@ export interface FullWorkflowStep {
   status?: string
   activation?: string
   routeDecision?: { selectedRoutes: string[] }
+  /** Read-only backend metadata, excluded from authored payloads. */
+  legacyContract?: LegacyContract
   [key: string]: unknown
 }
 
@@ -762,7 +772,16 @@ function normalizeFullWorkflowDefinition(payload: unknown): FullWorkflowDefiniti
   }
   // Registry responses wrap the authored definition with its identity/hash.
   if (typeof normalized === 'object' && normalized !== null && 'definition' in normalized) {
-    normalized = (normalized as { definition: unknown }).definition
+    const response = normalized as { definition: FullWorkflowDefinition; legacyContracts?: Record<string, LegacyContract> }
+    const definition = response.definition
+    if (typeof definition !== 'object' || definition === null || Array.isArray(definition)) return {}
+    return {
+      ...definition,
+      steps: Array.isArray(definition.steps) ? definition.steps.map((step) => {
+        const legacyContract = response.legacyContracts?.[step.id]
+        return legacyContract ? { ...step, legacyContract } : step
+      }) : undefined,
+    }
   }
   return (typeof normalized === 'object' && normalized !== null ? normalized : {}) as FullWorkflowDefinition
 }

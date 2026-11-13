@@ -1,6 +1,7 @@
 package io.whozoss.factory.workflow.persistence
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.persistence.OrganizationScope
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowCodeTransitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
@@ -43,17 +44,17 @@ class Neo4jWorkflowRepository(
     // Definitions
     // ------------------------------------------------------------------
 
-    override fun findDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): WorkflowDefinitionRecord? =
+    override fun findDefinition(scope: OrganizationScope, workflowType: String, version: String): WorkflowDefinitionRecord? =
         definitions
             .findById(WorkflowDefinitionNode.compositeId(scope.organizationId, workflowType, version))
             .orElse(null)
             ?.toDomain(objectMapper)
 
-    override fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): List<WorkflowDefinitionRecord> =
+    override fun listDefinitions(scope: OrganizationScope): List<WorkflowDefinitionRecord> =
         definitions.findAllByOrganization(scope.organizationId).map { it.toDomain(objectMapper) }
 
     @Transactional
-    override fun saveDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord) {
+    override fun saveDefinition(scope: OrganizationScope, record: WorkflowDefinitionRecord) {
         if (!definitionCreator.createIfAbsent(scope, record)) {
             val stored = findDefinition(scope, record.workflowType, record.version)
             if (stored?.definitionHash != record.definitionHash) {
@@ -66,7 +67,7 @@ class Neo4jWorkflowRepository(
     }
 
     @Transactional
-    override fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean {
+    override fun deleteDefinition(scope: OrganizationScope, workflowType: String, version: String): Boolean {
         val id = WorkflowDefinitionNode.compositeId(scope.organizationId, workflowType, version)
         if (deletionGuard.lock(scope.organizationId, workflowType, version) == null) return false
         deletionGuard.assertUnused(scope.organizationId, workflowType, version)
@@ -92,12 +93,6 @@ class Neo4jWorkflowRepository(
 
     @Transactional
     override fun insertInstance(scope: TenantScope, record: WorkflowInstanceRecord): WorkflowInstanceRecord {
-        val type = record.instance["workflowType"] as? String
-        val version = record.instance["definitionVersion"] as? String
-        if (type != null && version != null) {
-            deletionGuard.assertPinsAvailable(scope.organizationId, mapOf(type to version),
-                (record.instance["definitionHash"] as? String)?.let { mapOf(type to it) }.orEmpty())
-        }
         val id = instanceId(scope, record.namespaceId, record.workflowId)
         val existing = instances.findById(id).orElse(null)
         if (existing != null) {
@@ -105,6 +100,12 @@ class Neo4jWorkflowRepository(
                 throw workflowException(WorkflowErrorCodes.WORKFLOW_IDENTITY_CONFLICT)
             }
             return existing.toDomain(objectMapper)
+        }
+        val type = record.instance["workflowType"] as? String
+        val version = record.instance["definitionVersion"] as? String
+        if (type != null && version != null) {
+            deletionGuard.assertPinsAvailable(scope.organizationId, mapOf(type to version),
+                (record.instance["definitionHash"] as? String)?.let { mapOf(type to it) }.orEmpty())
         }
         instances.save(WorkflowInstanceNode.fromDomain(scope, record, objectMapper))
         return readInstance(scope, record.namespaceId, record.workflowId) ?: record
@@ -360,12 +361,6 @@ class Neo4jWorkflowRepository(
         record: WorkflowProjectionRecord,
         expectedRevision: Int?,
     ): ProjectionPublishResult {
-        val type = record.projection["workflowType"] as? String
-        val version = record.definitionVersion
-        if (type != null && version != null) {
-            deletionGuard.assertPinsAvailable(scope.organizationId, mapOf(type to version),
-                record.definitionHash?.let { mapOf(type to it) }.orEmpty())
-        }
         val existing = projections.findById(projectionId(scope, record.namespaceId, record.workflowId)).orElse(null)
         if (existing == null) {
             if (expectedRevision != null && expectedRevision != 0) {

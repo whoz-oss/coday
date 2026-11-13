@@ -1,6 +1,7 @@
 package io.whozoss.factory.config
 
 import mu.KLogging
+import io.whozoss.factory.workflow.persistence.WorkflowDefinitionPinMigration
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component
 )
 class Neo4jSchemaInitializer(
     private val neo4jClient: Neo4jClient,
+    private val definitionPinMigration: WorkflowDefinitionPinMigration,
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
@@ -454,6 +456,10 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.debug { "[Neo4jSchemaInitializer] Index plan_change_decision_proposal ensured" }
 
+        for (label in listOf("WorkflowInstance", "WorkflowProjection")) {
+            neo4jClient.query("CREATE INDEX ${label.lowercase()}_definition_pin IF NOT EXISTS FOR (n:$label) ON (n.organizationId, n.pinnedDefinition)").run()
+        }
+        definitionPinMigration.migrate()
         logger.info { "[Neo4jSchemaInitializer] Neo4j schema ensured" }
     }
 

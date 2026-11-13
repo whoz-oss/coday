@@ -1,5 +1,6 @@
 package io.whozoss.factory.agentattempt.domain
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import io.whozoss.factory.error.FactoryException
 
 /**
@@ -120,7 +121,7 @@ data class AgentStepResultBusiness(
      * amendment. It is part of the semantic identity of the result.
      */
     val expectedAmendmentSeq: Long? = null,
-    @get:com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val selectedRoutes: List<String>? = null,
 )
 
@@ -202,7 +203,7 @@ data class AgentStepResultSubmitted(
      * silent reuse, and the accepted verdict stays auditable.
      */
     val expectedAmendmentSeq: Long? = null,
-    @get:com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val selectedRoutes: List<String>? = null,
 )
 

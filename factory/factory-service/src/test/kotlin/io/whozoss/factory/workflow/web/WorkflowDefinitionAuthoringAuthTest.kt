@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 
 /** Real auth filter and registry HTTP mapping; membership is trusted server data, never model input. */
@@ -38,7 +39,7 @@ class WorkflowDefinitionAuthoringAuthTest {
     )
     private val mvc = MockMvcBuilders.standaloneSetup(WorkflowDefinitionController(service, mapper, creator))
         .setCustomArgumentResolvers(AuthenticatedUserArgumentResolver())
-        .addFilters<org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder>(filter)
+        .addFilters<StandaloneMockMvcBuilder>(filter)
         .build()
     private val definition = """
         {"schemaVersion":"1","workflowType":"auth-test","version":"1.0.0","title":"Auth test",

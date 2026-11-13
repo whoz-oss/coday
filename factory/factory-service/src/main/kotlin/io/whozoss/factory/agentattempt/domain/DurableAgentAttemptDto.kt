@@ -11,6 +11,19 @@ import java.time.Instant
  * excluded: `ownerToken`, `capabilityToken`, `commandId`,
  * `leaseExpiresAt`, `lastObservedEventId` and `turnCorrelation` never cross the
  * public boundary. `status` is rendered as its stable persisted [AgentAttemptStatus.dbValue].
+ *
+ * Access decision: GET /api/factory/workflows/{id}/attempts exposes the dispatched
+ * instructions for operator audit through authenticated, organization-scoped reads.
+ * resolveWorkflowCaller requires a namespace and resolves its workstream within the
+ * authenticated organization; persistence then scopes by organization/workstream/namespace.
+ * The same DTO is used by the authenticated workstream-service read facade.
+ * This is tenant business content, NOT public/anonymous data. The current resolver
+ * does not enforce a separate per-user namespace-membership ACL; this DTO adds no
+ * broader read access than the existing attempt endpoints. The rendered brief
+ * contains the controller request, step contract, upstream handoff and public
+ * attempt/submission IDs. Factory bearer/owner tokens are passed separately to the
+ * runtime, never interpolated into the brief; the raw contextEnvelope stays private.
+ * Defense in depth redacts known execution tokens and credential-shaped text on read.
  */
 data class DurableAgentAttemptDto(
     val attemptId: String,
@@ -63,7 +76,7 @@ data class DurableAgentAttemptDto(
      * (`RUNTIME_CLOSED`: failed / indeterminate / interrupted / superseded).
      */
     val sealingClass: String = AgentOsRuntimeStateMapping.SealingClass.ACTIVE.name,
-    /** Frozen turn text, not the raw envelope or capability token. Null before dispatch/for legacy records. */
+    /** Dispatched instructions for authenticated tenant-scoped operator audit; redacted, null before dispatch. */
     val effectiveMandate: String? = null,
 )
 
@@ -91,5 +104,16 @@ fun DurableAgentAttempt.toDto(): DurableAgentAttemptDto = DurableAgentAttemptDto
     completedAt = completedAt,
     terminal = status.terminal,
     sealingClass = AgentOsRuntimeStateMapping.classify(status).name,
-    effectiveMandate = brief.takeIf { startedAt != null },
+    effectiveMandate = if (startedAt != null) redactedMandate() else null,
 )
+
+/** Defense in depth: historical/user/plugin instructions may accidentally carry credentials. */
+private fun DurableAgentAttempt.redactedMandate(): String? {
+    var text = brief ?: return null
+    for (token in listOfNotNull(capabilityToken, ownerToken).filter { it.isNotBlank() }) {
+        text = text.replace(token, "<redacted>")
+    }
+    return text
+        .replace(Regex("(?i)\\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY))\\s*=\\s*[^\\s]+"), "$1=<redacted>")
+        .replace(Regex("(?i)\\b(bearer)\\s+[^\\s]+"), "$1 <redacted>")
+}

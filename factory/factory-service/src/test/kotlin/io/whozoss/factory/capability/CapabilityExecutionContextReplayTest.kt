@@ -17,6 +17,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.WorkflowStepContract
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
@@ -187,7 +188,7 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
         val workflowId = "wf-explicit-${UUID.randomUUID()}"
         startSession("ctx-explicit", workflowId)
         val adapter = BriefCapturingAdapter()
-        val contract = io.whozoss.factory.workflow.domain.WorkflowStepContract(
+        val contract = WorkflowStepContract(
             listOf("Inspect the branch", "Sync before writing"),
             "Implement only the authorized request",
             listOf("Commit scoped changes", "Push before success"),

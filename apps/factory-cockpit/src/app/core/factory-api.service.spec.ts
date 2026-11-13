@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { TestBed } from '@angular/core/testing'
-import { FactoryApiError, FactoryApiService } from './factory-api.service'
+import { FullWorkflowDefinition, FactoryApiError, FactoryApiService } from './factory-api.service'
 
 describe('FactoryApiService', () => {
   let service: FactoryApiService
@@ -589,6 +589,17 @@ describe('FactoryApiService', () => {
   })
 
   describe('workflow definitions', () => {
+    it('attaches backend legacy metadata without changing the canonical definition', () => {
+      const definition = { workflowType: 'legacy', version: '1.0.0', steps: [{ id: 'plan', name: 'Plan' }] }
+      const contract = { adoptable: true, summary: 'Server instructions', entry: ['Read'], mission: 'Plan', exit: ['Report'] }
+      let result: FullWorkflowDefinition | undefined
+      service.getWorkflowDefinition('legacy', '1.0.0').subscribe((value) => (result = value))
+      http.expectOne('/api/factory/workflow-definitions/legacy/1.0.0').flush({ data: {
+        definition, definitionHash: 'hash', legacyContracts: { plan: contract },
+      } })
+      expect(result?.steps?.[0].legacyContract).toEqual(contract)
+      expect(definition.steps[0]).toEqual({ id: 'plan', name: 'Plan' })
+    })
     it('saves a new definition through the JSON API with an atomic no-overwrite precondition', () => {
       const definition = { schemaVersion: '1', workflowType: 'delivery', version: '2.0.0', steps: [] }
       let result: unknown
@@ -727,6 +738,13 @@ describe('FactoryApiService', () => {
         .expectOne((request) => request.url === '/api/factory/workflow-definitions/t/1.0.0')
         .flush({ data: { workflowType: 't', version: '1.0.0', definitionHash: 'hash', definition } })
       expect(result).toEqual(definition)
+    })
+
+    it('getWorkflowDefinition rejects a malformed registry definition wrapper safely', () => {
+      let result: unknown
+      service.getWorkflowDefinition('t', 'v1').subscribe((value) => (result = value))
+      http.expectOne('/api/factory/workflow-definitions/t/v1').flush({ data: { definition: null } })
+      expect(result).toEqual({})
     })
 
     it('getWorkflowDefinition degrades to an empty object for a malformed payload', () => {

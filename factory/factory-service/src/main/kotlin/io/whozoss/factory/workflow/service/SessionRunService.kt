@@ -1,5 +1,6 @@
 package io.whozoss.factory.workflow.service
 
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.AttemptLeaseFencingException
 import io.whozoss.factory.capability.AgentObservationUpdate
 import io.whozoss.factory.capability.CapabilityExecution
@@ -287,26 +288,18 @@ class SessionRunService(
                 .mapNotNull { it.responsibility.name },
             requireGitWorkspace = requiresGitWorkspace,
         )
-        if (steps.any { it.decision != null } && instance.instance["routingRepoRoot"] == null) {
-            val next = instance.copy(revision = instance.revision + 1, instance = instance.instance + mapOf(
-                "routingRepoRoot" to repoRoot.toAbsolutePath().normalize().toString(), "revision" to instance.revision + 1,
-            ))
-            check(repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)) { "ROUTING_CONTEXT_REVISION_CONFLICT" }
-        }
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
-        if (steps.any { it.decision != null }) {
-            // Only a terminal durable attempt can be replayed. Never reset an uncertain live turn.
-            for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
-                if (statuses.statuses[step.id] in setOf(WorkflowStatuses.RUNNING, WorkflowStatuses.WAITING_HUMAN) &&
-                    capabilityExecutionService.hasFinalizedAttempt(scope, namespaceId, workflowId, step.id)
-                ) setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
-            }
+        // Only a terminal durable attempt can be replayed. Never reset an uncertain live turn.
+        for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
+            if (statuses.statuses[step.id] in setOf(WorkflowStatuses.RUNNING, WorkflowStatuses.WAITING_HUMAN) &&
+                capabilityExecutionService.hasFinalizedAttempt(scope, namespaceId, workflowId, step.id)
+            ) setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
         }
         var suspended = false
         // Lot F: the repo root every `code` step runs against. It starts as the
         // caller-provided root and is re-bound to the run's validated worktree
         // before the first code step (once the root case exists).
-        var effectiveRepoRoot = (instance.instance["routingRepoRoot"] as? String)?.let(Path::of) ?: repoRoot
+        var effectiveRepoRoot = repoRoot
         val guard = steps.size * 4 + 8
         var iterations = 0
         run {
@@ -522,10 +515,10 @@ class SessionRunService(
             val selected = (accepted["selectedRoutes"] as? List<*>)?.map { it as? String ?: error("ROUTING_SELECTION_INVALID") }
             val decision = requireNotNull(step.decision)
             check(decision.accepts(selected)) { "ROUTING_SELECTION_INVALID" }
-            val result = capabilityExecutionService.routingResult(scope, namespaceId, workflowId, step.id,
+            val result = capabilityExecutionService.acceptedStepResult(scope, namespaceId, workflowId, step.id,
                 accepted["attemptId"] as? String ?: error("ROUTING_ATTEMPT_MISSING"))
             check(result != null && result.resultId == accepted["resultId"] && result.resultHash == accepted["resultHash"] &&
-                result.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS &&
+                result.status == AgentStepResultStatus.PASS &&
                 result.selectedRoutes?.toSet() == selected?.toSet()) { "ROUTING_RESULT_CONFLICT" }
             for (route in decision.routes) {
                 val active = route.name in selected.orEmpty()
@@ -654,14 +647,6 @@ class SessionRunService(
             recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution, statuses)
             return resultingStatus
         }
-        if (terminal == WorkflowStatuses.COMPLETED && steps.any { it.decision != null } && step.responsibility.kind == ResponsibilityKind.AGENT) {
-            val proof = evidenceRepository.list(scope, namespaceId, workflowId, step.id)
-                .lastOrNull { it.evidenceId == execution.evidenceId && it.facts["attemptId"] == execution.attemptId }
-            if (proof?.outcome != "pass" || proof.facts["validatorsAccepted"] != true) {
-                recordStepFailure(scope, namespaceId, workflowId, step, IllegalStateException("ROUTING_VALIDATION_PROOF_MISSING"), expectedRevision, statuses)
-                return WorkflowStatuses.FAILED
-            }
-        }
         // Auto-oracles: once the step's own capability has succeeded, run every
         // oracle definition whose `applicable` conditions match this
         // (workflowType, stepId). A failing oracle gates the transition: the step
@@ -700,8 +685,8 @@ class SessionRunService(
     ) {
         val decision = requireNotNull(step.decision)
         val attemptId = requireNotNull(execution.attemptId) { "ROUTING_ATTEMPT_MISSING" }
-        val result = requireNotNull(capabilityExecutionService.routingResult(scope, namespaceId, workflowId, step.id, attemptId)) { "ROUTING_RESULT_MISSING" }
-        check(result.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS && decision.accepts(result.selectedRoutes)) { "ROUTING_SELECTION_INVALID" }
+        val result = requireNotNull(capabilityExecutionService.acceptedStepResult(scope, namespaceId, workflowId, step.id, attemptId)) { "ROUTING_RESULT_MISSING" }
+        check(result.status == AgentStepResultStatus.PASS && decision.accepts(result.selectedRoutes)) { "ROUTING_SELECTION_INVALID" }
         val proof = evidenceRepository.list(scope, namespaceId, workflowId, step.id)
             .lastOrNull { it.evidenceId == execution.evidenceId && it.facts["attemptId"] == attemptId && it.outcome == "pass" }
         check(proof?.facts?.get("validatorsAccepted") == true) { "ROUTING_VALIDATION_PROOF_MISSING: recovered decision requires verified validator evidence" }
@@ -747,11 +732,7 @@ class SessionRunService(
         val registry = oracleDefinitionRegistry ?: return OracleEvaluation.EMPTY
         val matching = runCatching { registry.list() }
             .onFailure { logger.warn(it) { "Oracle registry listing failed; skipping auto-oracles for step '$stepId'" } }
-            .getOrElse {
-                val instance = repository.findInstance(scope, namespaceId, workflowId)
-                val routing = (instance?.projection?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()?.any { it.containsKey("decision") } == true
-                return if (routing) OracleEvaluation(false, emptyList()) else OracleEvaluation.EMPTY
-            }
+            .getOrElse { return OracleEvaluation.EMPTY }
             .filter { appliesTo(it, workflowType, stepId) }
         if (matching.isEmpty()) return OracleEvaluation.EMPTY
         val service = oracleExecutionService ?: return OracleEvaluation(false, emptyList())
@@ -857,7 +838,7 @@ class SessionRunService(
                 allResolved = false
                 continue
             }
-            if (terminal == WorkflowStatuses.COMPLETED && steps.any { it.decision != null }) {
+            if (terminal == WorkflowStatuses.COMPLETED) {
                 val instance = repository.findInstance(scope, namespaceId, workflowId)
                 if (!runApplicableOracles(scope, namespaceId, workflowId, instance?.instance?.get("workflowType") as? String, step.id).allSucceeded) {
                     terminal = WorkflowStatuses.FAILED

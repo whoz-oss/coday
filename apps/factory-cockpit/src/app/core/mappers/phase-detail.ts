@@ -4,7 +4,7 @@
  * and buildPhaseDetailForStep by using an optional targetStepId parameter.
  */
 
-import { AgentAttempt, HumanInteraction, PhaseDetail, PhaseSection, PhaseSectionItem, RunStatus } from '../models'
+import { AgentAttempt, HumanInteraction, PhaseDetail, PhaseSection, PhaseSectionItem, RunEvent, RunEventType, RunStatus } from '../models'
 import { asObject, getString, formatClock } from './utils'
 import { classifyActorKind, actorName, resolveStepState, stepDurationSec } from './step-classification'
 import { mapWorkflowStateToRunStatus } from './timeline'
@@ -41,13 +41,48 @@ function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
   })
 }
 
+/** Presentation of routing facts; status codes remain machine-readable. */
+export function buildRoutingSection(obj: Record<string, unknown>): PhaseSection | null {
+  const decision = asObject(obj['decision'])
+  const accepted = asObject(obj['routeDecision'])
+  const activation = getString(obj, 'activation')
+  const join = getString(obj, 'join')
+  if (!decision && !accepted && !activation && !join) return null
+
+  const items: PhaseSectionItem[] = []
+  if (decision) {
+    const mode = getString(decision, 'mode')
+    items.push({ title: 'Mode de choix', subtitle: mode === 'single' ? 'Une seule route' : 'Une ou plusieurs routes' })
+    const routes = Array.isArray(decision['routes']) ? decision['routes'] : []
+    const selectedRoutes = accepted?.['selectedRoutes']
+    const selected = Array.isArray(selectedRoutes) ? selectedRoutes : []
+    for (const raw of routes) {
+      const route = asObject(raw)
+      const name = getString(route, 'name') ?? '?'
+      let status = 'undecided'
+      if (accepted) status = selected.includes(name) ? 'selected' : 'not_selected'
+      items.push({ title: name, subtitle: getString(route, 'target'), status })
+    }
+  }
+  if (activation) {
+    items.push({ title: 'Activation', subtitle: activation === 'selected' ? 'Sélectionnée' : 'Non sélectionnée', status: getString(obj, 'status') })
+    items.push({ title: 'Exécutée', subtitle: obj['executed'] === true ? 'oui' : 'non' })
+  }
+  if (join) items.push({ title: 'Décision de convergence', subtitle: join })
+  if (accepted) {
+    items.push({ title: 'Tentative retenue', subtitle: getString(accepted, 'attemptId') })
+    items.push({ title: 'Résultat retenu', subtitle: getString(accepted, 'resultId') })
+  }
+  return { label: 'Routage conditionnel', items }
+}
+
 /** Configured prose only; never reconstruct an attempt's dispatched mandate. */
 export function stepContractSections(step: Record<string, unknown>): PhaseSection[] {
   const mission = getString(step, 'mission')
   if (!mission) {
     return [
       {
-        label: 'Entry / Mission / Exit',
+        label: 'Préparation / Mission / Livrables',
         body: 'Contrat historique : défauts de cadrage et de livrables Factory. Consulter le mandat de la tentative pour les consignes effectivement envoyées.',
       },
     ]
@@ -60,9 +95,9 @@ export function stepContractSections(step: Record<string, unknown>): PhaseSectio
           .join('\n') || 'Aucune obligation configurée.'
       : 'Indisponible'
   return [
-    { label: 'Entry / Préparation (configurée)', body: lines(step['entry']) },
+    { label: 'Préparation (configurée)', body: lines(step['entry']) },
     { label: 'Mission (configurée)', body: mission },
-    { label: 'Exit / Livrables (configurés)', body: lines(step['exit']) },
+    { label: 'Livrables (configurés)', body: lines(step['exit']) },
   ]
 }
 
@@ -176,11 +211,11 @@ export function buildPhaseDetail(
   // Gates
   const stepInteractions = stepId ? interactions.filter((interaction) => interaction.stepId === stepId) : interactions
   const gates: PhaseSection = {
-    label: 'Gates',
+    label: 'Validations',
     count: stepInteractions.length,
     items: interactionToItems(stepInteractions),
   }
-  if (stepInteractions.length === 0) gates.body = "Aucune gate d'interaction pour cette phase."
+  if (stepInteractions.length === 0) gates.body = "Aucune validation d'interaction pour cette phase."
 
   // Sorties
   const stepEvidence = evidenceItems.filter((entry) => {
@@ -205,23 +240,8 @@ export function buildPhaseDetail(
   if (agentItems.length === 0) agentConfig.body = 'Information agent non disponible'
 
   detail.sections = [...stepContractSections(obj), gates, outputs, agentConfig]
-  const decision = asObject(obj['decision'])
-  const accepted = asObject(obj['routeDecision'])
-  const activation = getString(obj, 'activation')
-  if (decision || accepted || activation || obj['join']) {
-    const routes = Array.isArray(decision?.['routes']) ? decision['routes'] : []
-    const selected = Array.isArray(accepted?.['selectedRoutes']) ? accepted['selectedRoutes'].filter((name): name is string => typeof name === 'string') : []
-    detail.sections.unshift({ label: 'Conditional routing', items: [
-      ...(decision ? [{ title: 'Choice mode', subtitle: getString(decision, 'mode') }, ...routes.map((raw) => {
-        const route = asObject(raw)
-        const name = getString(route, 'name') ?? '?'
-        return { title: name, subtitle: getString(route, 'target'), status: accepted ? (selected.includes(name) ? 'selected' : 'not_selected') : 'undecided' }
-      })] : []),
-      ...(activation ? [{ title: 'Activation', subtitle: activation, status: getString(obj, 'status') }, { title: 'Executed', subtitle: obj['executed'] === true ? 'yes' : 'no' }] : []),
-      ...(obj['join'] ? [{ title: 'Join decision', subtitle: getString(obj, 'join') }] : []),
-      ...(accepted ? [{ title: 'Accepted attempt', subtitle: getString(accepted, 'attemptId') }, { title: 'Accepted result', subtitle: getString(accepted, 'resultId') }] : []),
-    ] })
-  }
+  const routing = buildRoutingSection(obj)
+  if (routing) detail.sections.unshift(routing)
   if (description) detail.sections.push({ label: 'Description', body: description })
   detail.sections.push(
     {
@@ -234,7 +254,7 @@ export function buildPhaseDetail(
     {
       label: 'Mod\u00e8le LLM r\u00e9solu',
       notAvailable: true,
-      body: 'Non disponible (n\u00e9cessite exposition backend)',
+      body: 'Non disponible (nécessite une exposition par le serveur)',
     }
   )
 
@@ -284,8 +304,6 @@ export function mapProjectionToPhaseByAttemptId(
 // ---------------------------------------------------------------------------
 // Events (needed by workflow.ts)
 // ---------------------------------------------------------------------------
-
-import { RunEvent, RunEventType } from '../models'
 
 function eventTypeFor(kind: string): RunEventType {
   const normalized = kind.toLowerCase()
@@ -467,7 +485,7 @@ export function mapInteractionsToEvents(interactions: HumanInteraction[]): RunEv
   return interactions.map((interaction) => ({
     time: formatClock(interaction.createdAt),
     type: 'agent_message',
-    text: `[Human Gate - ${interaction.interactionType}] ${interaction.prompt ?? interaction.status}`,
+    text: `[Validation humaine - ${interaction.interactionType}] ${interaction.prompt ?? interaction.status}`,
   }))
 }
 

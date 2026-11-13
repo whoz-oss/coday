@@ -1,5 +1,40 @@
 package io.whozoss.factory.agentattempt
 
+import java.nio.file.Files
+import java.nio.file.Path
+import org.junit.jupiter.api.io.TempDir
+import io.mockk.every
+import io.mockk.mockk
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
+import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
+import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
+import io.whozoss.factory.adapter.agentos.CaseHandle
+import io.whozoss.factory.agentattempt.domain.AgentStepResultSubmitted
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
+import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
+import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
+import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
+import io.whozoss.factory.agentattempt.service.AgentStepQuestionService
+import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.environment.domain.WorkEnvironment
+import io.whozoss.factory.environment.domain.WorkEnvironmentState
+import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
+import io.whozoss.factory.proxy.AgentOsProxyClient
+import io.whozoss.factory.capability.CapabilityResolver
+import io.whozoss.factory.capability.CapabilityOutcome
+import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
+import io.whozoss.factory.workflow.domain.HumanInteractionRecord
+import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
+import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
+import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
+import io.whozoss.factory.workflow.domain.ResponsibilityKind
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle
+import io.whozoss.factory.worktree.AgentOsWorkspaceIdentityValidator
+import io.whozoss.factory.worktree.LocalWorktreeResourceIdentityResolver
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
@@ -21,7 +56,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
     @Autowired lateinit var attempts: DurableAgentAttemptService
     @Autowired lateinit var occupations: Neo4jWorktreeExecutionOccupancyRepository
     @Autowired lateinit var transactionManager: PlatformTransactionManager
-    @Autowired lateinit var environments: io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
+    @Autowired lateinit var environments: WorkEnvironmentRepository
 
     private val namespace = "ns-answer-transfer"
     private val workflow = "wf-answer-transfer"
@@ -51,7 +86,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
 
         val occupancyService = WorktreeExecutionOccupancyService(environments, occupations, transactionManager = transactionManager)
         assertThat(occupancyService.releaseOwned(
-            io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle(
+            WorktreeExecutionOccupancyHandle(
                 environment, predecessor.occupancyResourceIdentity, scope,
                 predecessor.occupancyOwnerKind!!, predecessor.occupancyOwnerId!!, predecessor.occupancyGeneration,
             ),
@@ -89,10 +124,10 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
 
     @Test
     fun `atomic acquire and bind rolls acquisition back when a claim fence changes the attempt`() {
-        val path = java.nio.file.Files.createTempDirectory("d7-acquire-bind")
+        val path = Files.createTempDirectory("d7-acquire-bind")
         environments.insert(
             scope,
-            io.whozoss.factory.environment.domain.WorkEnvironment(
+            WorkEnvironment(
                 organizationId = scope.organizationId,
                 workstreamId = scope.workstreamId,
                 environmentId = environment,
@@ -103,7 +138,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
                 integrationBranch = "integration/d7",
                 branch = "work/d7",
                 worktreePath = path.toString(),
-                lifecycleState = io.whozoss.factory.environment.domain.WorkEnvironmentState.READY,
+                lifecycleState = WorkEnvironmentState.READY,
                 createdBy = "test",
                 revision = 7,
             ),
@@ -119,7 +154,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
         )
         val stale = attempt
         attempt = attempts.claim(scope, namespace, workflow, "step-acquire-bind", attempt.attemptId, "claim-owner", 60_000, now)
-        val occupancyService = io.whozoss.factory.worktree.WorktreeExecutionOccupancyService(environments, occupations, transactionManager = transactionManager)
+        val occupancyService = WorktreeExecutionOccupancyService(environments, occupations, transactionManager = transactionManager)
 
         assertThatThrownBy {
             occupancyService.acquireAndBindForAttemptEnvironment(scope, environment, 7, stale) { handle ->
@@ -147,16 +182,16 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
         assertThat(occupations.find(predecessor.occupancyResourceIdentity)!!.generation).isEqualTo(generation)
     }
 
-    @Autowired lateinit var questionService: io.whozoss.factory.agentattempt.service.AgentStepQuestionService
-    @Autowired lateinit var interactions: io.whozoss.factory.workflow.persistence.HumanInteractionRepository
-    @Autowired lateinit var workflows: io.whozoss.factory.workflow.persistence.WorkflowRepository
-    @Autowired lateinit var evidence: io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
-    @Autowired lateinit var stepAttempts: io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
-    @org.junit.jupiter.api.io.TempDir lateinit var root: java.nio.file.Path
+    @Autowired lateinit var questionService: AgentStepQuestionService
+    @Autowired lateinit var interactions: HumanInteractionRepository
+    @Autowired lateinit var workflows: WorkflowRepository
+    @Autowired lateinit var evidence: WorkflowEvidenceRepository
+    @Autowired lateinit var stepAttempts: AgentStepAttemptRepository
+    @TempDir lateinit var root: Path
 
     private fun seedInteraction(predecessor: DurableAgentAttempt) = interactions.insert(
         scope,
-        io.whozoss.factory.workflow.domain.HumanInteractionRecord(
+        HumanInteractionRecord(
             interactionId = "question-transfer", namespaceId = namespace, workflowId = workflow,
             stepId = step, interactionType = "agent_question", status = "waiting", revision = 1,
             payload = mapOf("attemptId" to predecessor.attemptId, "prompt" to "Continue?", "questionType" to "free_text"),
@@ -198,43 +233,43 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
         assertThat(active.generation).isEqualTo(2L)
         assertThat(active.status).isEqualTo(WorktreeExecutionOccupancyStatus.ACTIVE)
         val occupancy = WorktreeExecutionOccupancyService(environments, occupations, transactionManager = transactionManager)
-        assertThat(occupancy.releaseOwned(io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle(
+        assertThat(occupancy.releaseOwned(WorktreeExecutionOccupancyHandle(
             environment, predecessor.occupancyResourceIdentity, scope, predecessor.occupancyOwnerKind!!,
             predecessor.occupancyOwnerId!!, predecessor.occupancyGeneration!!,
         ))).isFalse()
         assertThat(occupations.find(predecessor.occupancyResourceIdentity)).isEqualTo(active)
 
-        val adapter = io.mockk.mockk<io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter>(relaxed = true)
-        io.mockk.every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
-            val binding = firstArg<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>()
-            io.whozoss.factory.adapter.agentos.CaseHandle(binding.caseId, binding.namespaceId, false)
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+            val binding = firstArg<TrustedCaseBinding>()
+            CaseHandle(binding.caseId, binding.namespaceId, false)
         }
-        io.mockk.every { adapter.observeTurnResult(any(), any(), any(), any()) } returns io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
-            io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict.Indeterminate("OBSERVATION_TIMEOUT"),
+        every { adapter.observeTurnResult(any(), any(), any(), any()) } returns AgentOsObservationResult(
+            AgentOsExecutionVerdict.Indeterminate("OBSERVATION_TIMEOUT"),
         )
-        val results = io.mockk.mockk<io.whozoss.factory.agentattempt.service.AgentStepResultService>()
-        io.mockk.every { results.acceptedResult(scope, namespace, workflow, step, successor.attemptId) } returns io.whozoss.factory.agentattempt.domain.AgentStepResultSubmitted(
+        val results = mockk<AgentStepResultService>()
+        every { results.acceptedResult(scope, namespace, workflow, step, successor.attemptId) } returns AgentStepResultSubmitted(
             type = "result-submitted", resultId = "successor-pass", attemptId = successor.attemptId,
             workflowId = workflow, stepId = step, namespaceId = namespace, caseId = successor.caseId,
-            agentName = successor.agentName, briefHash = "brief", status = io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS,
-            summary = "done", artifacts = emptyList(), claims = io.whozoss.factory.agentattempt.domain.AgentStepResultClaim(emptyList()),
+            agentName = successor.agentName, briefHash = "brief", status = AgentStepResultStatus.PASS,
+            summary = "done", artifacts = emptyList(), claims = AgentStepResultClaim(emptyList()),
             findings = emptyList(), submittedAt = "2026-01-01T00:00:00Z", resultHash = "successor-pass-hash",
         )
-        val proxy = io.mockk.mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
-        io.mockk.every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
+        val proxy = mockk<AgentOsProxyClient>()
+        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
         val capability = CapabilityExecutionService(
-            resolver = io.whozoss.factory.capability.CapabilityResolver(), workflowRepository = workflows,
+            resolver = CapabilityResolver(), workflowRepository = workflows,
             evidenceRepository = evidence, interactionRepository = interactions, attemptRepository = stepAttempts,
             durableAgentAttemptService = attempts, agentOsExecutionAdapter = adapter, agentStepResultService = results,
             transactionManager = transactionManager, workEnvironmentRepository = environments,
-            agentOsWorkspaceIdentityValidator = io.whozoss.factory.worktree.AgentOsWorkspaceIdentityValidator(proxy),
+            agentOsWorkspaceIdentityValidator = AgentOsWorkspaceIdentityValidator(proxy),
             worktreeExecutionOccupancyService = occupancy,
         )
         val execution = capability.resolveAndRecord(scope, namespace, workflow,
-            io.whozoss.factory.workflow.domain.WorkflowStepDefinition(step, "Write",
-                io.whozoss.factory.workflow.domain.WorkflowStepResponsibility(io.whozoss.factory.workflow.domain.ResponsibilityKind.AGENT, "Worker"), emptyList()), root)
+            WorkflowStepDefinition(step, "Write",
+                WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Worker"), emptyList()), root)
         assertThat(execution.attemptId).isEqualTo(successor.attemptId)
-        assertThat(execution.outcome).isInstanceOf(io.whozoss.factory.capability.CapabilityOutcome.AgentCompleted::class.java)
+        assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
         val completed = attempts.find(scope, namespace, workflow, step, successor.attemptId)!!
         assertThat(completed.status).isEqualTo(AgentAttemptStatus.SUCCEEDED)
         assertThat(completed.occupancyGeneration).isEqualTo(2L)
@@ -244,13 +279,13 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
 
     private fun seedWaitingPredecessorWithOccupancy(physicalWorktree: Boolean = false): DurableAgentAttempt {
         if (physicalWorktree) {
-            environments.insert(scope, io.whozoss.factory.environment.domain.WorkEnvironment(
+            environments.insert(scope, WorkEnvironment(
                 organizationId = scope.organizationId, workstreamId = scope.workstreamId, environmentId = environment,
                 workUnitId = "unit", workflowId = "parent-run", namespaceId = namespace, parentCaseId = "root-answer-transfer",
                 repoRoot = root.toString(), integrationBranch = "main", branch = "work/test", worktreePath = root.toString(),
-                lifecycleState = io.whozoss.factory.environment.domain.WorkEnvironmentState.READY, createdBy = "test", revision = 7,
+                lifecycleState = WorkEnvironmentState.READY, createdBy = "test", revision = 7,
             ))
-            workflows.insertInstance(scope, io.whozoss.factory.workflow.domain.WorkflowInstanceRecord(
+            workflows.insertInstance(scope, WorkflowInstanceRecord(
                 namespaceId = namespace, workflowId = workflow, revision = 1, status = "active", creationCommandHash = "answer-transfer",
                 instance = mapOf("runId" to "parent-run"), projection = emptyMap(), rootCaseId = "root-answer-transfer",
             ))
@@ -266,7 +301,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
                 attemptNumber = 1,
                 agentName = "Worker",
                 brief = "brief",
-                contextEnvelope = io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope(
+                contextEnvelope = AttemptContextEnvelope(
                     organizationId = scope.organizationId,
                     workstreamId = scope.workstreamId,
                     namespaceId = namespace,
@@ -274,7 +309,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
                     stepId = step,
                     attemptNumber = 1,
                     agentName = "Worker",
-                    briefHash = io.whozoss.factory.agentattempt.domain.CanonicalJsonHash.sha256("brief"),
+                    briefHash = CanonicalJsonHash.sha256("brief"),
                 ).toJson(),
                 environmentRef = environment,
                 expectedEnvironmentRevision = 7,
@@ -287,7 +322,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
         attempt = attempts.transition(scope, namespace, workflow, step, predecessorId, "lease-owner", AgentAttemptStatus.STARTING, now = now)
         attempt = attempts.transition(scope, namespace, workflow, step, predecessorId, "lease-owner", AgentAttemptStatus.RUNNING, now = now)
         val ownerId = WorktreeExecutionOccupancyService.agentOwnerId(namespace, workflow, step, predecessorId)
-        val identity = if (physicalWorktree) io.whozoss.factory.worktree.LocalWorktreeResourceIdentityResolver().resolve(root) else "resource-answer-transfer"
+        val identity = if (physicalWorktree) LocalWorktreeResourceIdentityResolver().resolve(root) else "resource-answer-transfer"
         val handle = occupations.acquire(scope, identity, WorktreeExecutionOccupancyService.AGENT_OWNER_KIND, ownerId)
         attempt = attempts.bindOccupancy(scope, attempt, handle.resourceIdentity, handle.ownerKind!!, handle.ownerId!!, handle.generation, now)
         return attempts.transition(

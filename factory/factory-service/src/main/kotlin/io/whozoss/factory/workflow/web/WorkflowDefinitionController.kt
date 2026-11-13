@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.factory.persistence.OrganizationScope
 import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
@@ -150,11 +151,11 @@ class WorkflowDefinitionController(
         )
     }
 
-    private data class DefinitionCaller(val scope: io.whozoss.factory.persistence.OrganizationScope)
+    private data class DefinitionCaller(val scope: OrganizationScope)
 
     // Definitions are organization-owned; no namespace or workstream lookup is performed.
     private fun resolveWorkflowCaller(user: AuthenticatedUser, requireNamespace: Boolean): DefinitionCaller =
-        DefinitionCaller(io.whozoss.factory.persistence.OrganizationScope(user.organizationId))
+        DefinitionCaller(OrganizationScope(user.organizationId))
 
     /** Validates, canonicalizes and persists a parsed definition payload. */
     private fun registerParsedDefinition(

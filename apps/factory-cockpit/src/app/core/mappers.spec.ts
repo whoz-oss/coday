@@ -909,7 +909,7 @@ describe('mappers', () => {
       expect(session.steps.find((step) => step.key === 'back')?.status).toBe('skipped')
       expect(session.lanes.flatMap((lane) => lane.blocks).some((block) => block.stepId === 'back')).toBe(false)
       expect(session.phaseByStepId?.get('back')?.stepStatus).toBe('skipped')
-      const routing = session.phaseByStepId?.get('architect')?.sections.find((section) => section.label === 'Conditional routing')
+      const routing = session.phaseByStepId?.get('architect')?.sections.find((section) => section.label === 'Routage conditionnel')
       expect(routing?.items).toContainEqual({ title: 'backend', subtitle: 'back', status: 'not_selected' })
     })
     it('builds a complete session from projection + enrichment payloads', () => {
@@ -1272,7 +1272,7 @@ describe('mappers', () => {
 
       expect(session.interactions).toHaveLength(1)
       expect(session.interactions?.[0]?.interactionId).toBe('i-1')
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       expect(gates?.count).toBe(1)
 
       const interactionEvents = session.events.filter((event) => event.text.includes('Approve the deploy?'))
@@ -1284,7 +1284,7 @@ describe('mappers', () => {
 
     it('reports zero gates when no interaction is available', () => {
       const session = mapProjectionToSessionDetail(snapshot)
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       expect(gates?.count).toBe(0)
       expect(session.interactions).toEqual([])
     })
@@ -1303,7 +1303,7 @@ describe('mappers', () => {
       ]
       const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, interactions)
 
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       expect(gates?.count).toBe(1)
       expect(gates?.body).toBeUndefined()
       expect(gates?.items).toEqual([
@@ -1353,9 +1353,9 @@ describe('mappers', () => {
 
     it('reports an explicit empty message for Gates and Sorties when nothing is known', () => {
       const session = mapProjectionToSessionDetail(snapshot)
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       const outputs = session.phase.sections.find((section) => section.label === 'Sorties')
-      expect(gates?.body).toBe("Aucune gate d'interaction pour cette phase.")
+      expect(gates?.body).toBe("Aucune validation d'interaction pour cette phase.")
       expect(outputs?.body).toBe('Aucune sortie enregistrée pour cette phase.')
     })
 
@@ -1386,7 +1386,7 @@ describe('mappers', () => {
       expect(prompts?.count).toBeUndefined()
 
       const model = session.phase.sections.find((section) => section.label === 'Modèle LLM résolu')
-      expect(model).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite exposition backend)' })
+      expect(model).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite une exposition par le serveur)' })
     })
 
     it('surfaces the real attempts of the active step and a dynamic attempt string', () => {

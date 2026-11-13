@@ -1,6 +1,15 @@
 package io.whozoss.factory.run
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.mockk.every
+import java.nio.file.Path
+import java.util.UUID
+import org.junit.jupiter.api.io.TempDir
+import org.springframework.transaction.PlatformTransactionManager
+import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
+import io.whozoss.factory.run.persistence.RunProvisioningIntentRepository
+import io.whozoss.factory.run.service.ParentRunWorkspaceProvisioningService
+import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.factory.Neo4jDomainIntegrationTest
@@ -37,15 +46,15 @@ class RunReplayCompatibilityIntegrationTest : Neo4jDomainIntegrationTest() {
     @Autowired lateinit var interactionRepository: HumanInteractionRepository
     @Autowired lateinit var objectMapper: ObjectMapper
 
-    @Autowired lateinit var environments: io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
-    @Autowired lateinit var intents: io.whozoss.factory.run.persistence.RunProvisioningIntentRepository
-    @Autowired lateinit var transactions: org.springframework.transaction.PlatformTransactionManager
-    @org.junit.jupiter.api.io.TempDir lateinit var root: java.nio.file.Path
-    private fun provisioning(): io.whozoss.factory.run.service.ParentRunWorkspaceProvisioningService {
-        val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>(relaxed = true)
-        io.mockk.every { proxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit
-        io.mockk.every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
-        return io.whozoss.factory.run.service.ParentRunWorkspaceProvisioningService(runRepository, environments, intents, proxy, objectMapper, transactions)
+    @Autowired lateinit var environments: WorkEnvironmentRepository
+    @Autowired lateinit var intents: RunProvisioningIntentRepository
+    @Autowired lateinit var transactions: PlatformTransactionManager
+    @TempDir lateinit var root: Path
+    private fun provisioning(): ParentRunWorkspaceProvisioningService {
+        val proxy = mockk<AgentOsProxyClient>(relaxed = true)
+        every { proxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit
+        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
+        return ParentRunWorkspaceProvisioningService(runRepository, environments, intents, proxy, objectMapper, transactions)
     }
     private val namespace = "7f8a2c10-9e3b-4c5a-8a11-replaycompat1"
     private val runType = "replay-compat"
@@ -95,7 +104,7 @@ class RunReplayCompatibilityIntegrationTest : Neo4jDomainIntegrationTest() {
                 runType = runType,
                 selectorVersion = selectorVersion,
                 title = id,
-                rootCaseId = java.util.UUID.randomUUID().toString(),
+                rootCaseId = UUID.randomUUID().toString(),
                 revision = 2,
                 fragments = listOf(RunFragmentRecord("${id}__f1", 1, flowType, WorkflowStatuses.READY)),
                 decisions = mapOf(RunService.START_DECISION_KEY to decision),

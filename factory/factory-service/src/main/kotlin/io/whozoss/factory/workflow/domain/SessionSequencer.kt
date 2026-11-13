@@ -79,7 +79,7 @@ object SessionSequencer {
         }.map { it.id }
 
     /**
-     * The overall session status once no step is `ready`/`running` any more.
+     * The overall session status, including a live/recoverable ready or running step.
      *
      * `waiting_human` wins (the session is suspended, not terminal); then a step
      * blocked for missing research keeps the session NON-terminal
@@ -92,10 +92,8 @@ object SessionSequencer {
         val values = steps.map { statuses[it.id] }
         if (values.any { it == WorkflowStatuses.WAITING_HUMAN }) return WorkflowStatuses.WAITING_HUMAN
         if (values.all { it == WorkflowStatuses.COMPLETED || it == WorkflowStatuses.SKIPPED }) return WorkflowStatuses.COMPLETED
-        if (steps.any { it.decision != null }) {
-            if (values.any { it == WorkflowStatuses.RUNNING }) return WorkflowStatuses.RUNNING
-            if (values.any { it == WorkflowStatuses.READY }) return WorkflowStatuses.READY
-        }
+        if (values.any { it == WorkflowStatuses.RUNNING }) return WorkflowStatuses.RUNNING
+        if (readySteps(steps, statuses).isNotEmpty()) return WorkflowStatuses.READY
         if (values.any { it == WorkflowStatuses.NEEDS_RESEARCH } && values.none { it == WorkflowStatuses.FAILED }) {
             return WorkflowStatuses.NEEDS_RESEARCH
         }

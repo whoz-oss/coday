@@ -178,8 +178,9 @@ object WorkflowTransitionPolicy {
         ) {
             return deny("REVISION_CONFLICT", "revision_mismatch")
         }
-        if (definition.steps.any { it.decision != null } && declared.responsibility.kind != ResponsibilityKind.HUMAN) {
-            return deny("ROUTING_SEQUENCER_REQUIRED", "routing_workflow_transitions_require_validated_sequencer")
+        if (declared.decision != null) {
+            // Only the sequencer can atomically accept a decision and activate its branches.
+            return deny("ROUTING_SEQUENCER_REQUIRED", "decision_transitions_require_validated_sequencer")
         }
         val currentStatus = current["status"] as? String
         if (currentStatus == null || request.requestedStatus !in WorkflowStatuses.TRANSITIONS[currentStatus].orEmpty()) {

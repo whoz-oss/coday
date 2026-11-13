@@ -2,6 +2,8 @@ package io.whozoss.factory.agentattempt
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.capability.CapabilityExecutionService
+import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
@@ -19,6 +21,9 @@ import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.persistence.SpringDataNeo4jAgentStepResultRepository
 import io.whozoss.factory.agentattempt.persistence.SpringDataNeo4jOutboxRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
+import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -49,6 +54,9 @@ class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var objectMapper: ObjectMapper
+
+    @Autowired
+    private lateinit var workflows: WorkflowRepository
 
     private val namespace = "ns-a7"
     private val workflow = "wf-a7"
@@ -259,13 +267,13 @@ class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `a deterministic governed attempt identity is accepted by capability validation`() {
-        val attemptId = io.whozoss.factory.capability.CapabilityExecutionService.stableAttemptId(workflow, step)
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflow, step)
         seedAttempt(attemptId)
 
         val issued = service.issue(scope, identity(attemptId))
 
         assertThat(issued.token).isNotBlank()
-        assertThat(io.whozoss.factory.agentattempt.domain.CanonicalJsonHash.isSafeId(attemptId)).isTrue()
+        assertThat(CanonicalJsonHash.isSafeId(attemptId)).isTrue()
     }
 
     @Test
@@ -306,6 +314,33 @@ class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
         }
             .isInstanceOf(IdempotencyKeyCollisionException::class.java)
             .hasFieldOrPropertyWithValue("errorCode", "IDEMPOTENCY_KEY_COLLISION")
+    }
+
+    @Test
+    fun `service validates declared route selections before result persistence`() {
+        val rawStep = mapOf(
+            "id" to step, "name" to "Choose", "responsibility" to mapOf("kind" to "agent", "name" to agentName),
+            "decision" to mapOf("mode" to "single", "routes" to listOf(
+                mapOf("name" to "route-1", "target" to "one"), mapOf("name" to "route-2", "target" to "two"),
+            )),
+        )
+        workflows.saveDefinition(scope, WorkflowDefinitionRecord("route-contract", "1.0.0", "hash", mapOf("steps" to listOf(rawStep))))
+        workflows.insertInstance(scope, WorkflowInstanceRecord(namespace, workflow, 1, "active", "create",
+            mapOf("workflowType" to "route-contract", "definitionVersion" to "1.0.0", "definitionHash" to "hash"),
+            mapOf("steps" to listOf(rawStep))))
+        seedAttempt("routing-attempt")
+        val token = service.issue(scope, identity("routing-attempt")).token
+        for (selection in listOf("", ",\"selectedRoutes\":[\"unknown\"]", ",\"selectedRoutes\":[\"route-1\",\"route-2\"]")) {
+            val payload = objectMapper.readTree("""{"status":"PASS","summary":"chosen","claims":{"modifiedFiles":[]}$selection}""")
+            assertThatThrownBy { service.submit(scope, token, payload, observed("routing-attempt"), null) }
+                .isInstanceOf(ResultSchemaInvalidException::class.java)
+            assertThat(resultPayloadType("routing-attempt")).isEqualTo("capability-reserved")
+            assertThat(countOutbox()).isZero()
+        }
+        val payload = objectMapper.readTree("""{"status":"PASS","summary":"chosen","claims":{"modifiedFiles":[]},"selectedRoutes":["route-1"]}""")
+        val accepted = service.submit(scope, token, payload, observed("routing-attempt"), null)
+        assertThat(accepted.created).isTrue()
+        assertThat(service.submit(scope, token, payload, observed("routing-attempt"), null).idempotent).isTrue()
     }
 
     // ------------------------------------------------------------------

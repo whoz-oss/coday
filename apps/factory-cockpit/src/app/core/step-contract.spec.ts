@@ -1,7 +1,22 @@
 import { extractAttempts } from './mappers/actions'
-import { buildPhaseDetail, mapProjectionToPhaseByAttemptId, stepContractSections } from './mappers/phase-detail'
+import { buildRoutingSection, buildPhaseDetail, mapProjectionToPhaseByAttemptId, stepContractSections } from './mappers/phase-detail'
 
 describe('explicit step contracts', () => {
+  it('builds a French routing section without fabricating routing for ordinary steps', () => {
+    expect(buildRoutingSection({ id: 'ordinary' })).toBeNull()
+    const section = buildRoutingSection({
+      decision: { mode: 'single', routes: [{ name: 'route-1', target: 'one' }, { name: 'route-2', target: 'two' }] },
+      routeDecision: { selectedRoutes: ['route-1'], attemptId: 'a', resultId: 'r' },
+      activation: 'selected', executed: true, join: 'decision',
+    })
+    expect(section?.label).toBe('Routage conditionnel')
+    expect(section?.items).toEqual(expect.arrayContaining([
+      { title: 'route-1', subtitle: 'one', status: 'selected' },
+      { title: 'route-2', subtitle: 'two', status: 'not_selected' },
+      { title: 'Exécutée', subtitle: 'oui' },
+      { title: 'Tentative retenue', subtitle: 'a' },
+    ]))
+  })
   const step = {
     id: 'implement',
     name: 'Implement',
@@ -13,6 +28,9 @@ describe('explicit step contracts', () => {
   }
 
   it('renders configured prose in Entry Mission Exit order without raw JSON', () => {
+    expect(stepContractSections(step).map((section) => section.label)).toEqual([
+      'Préparation (configurée)', 'Mission (configurée)', 'Livrables (configurés)',
+    ])
     expect(stepContractSections(step).map((section) => section.body)).toEqual([
       '• Inspect branch\n• Sync',
       'Implement scoped work',

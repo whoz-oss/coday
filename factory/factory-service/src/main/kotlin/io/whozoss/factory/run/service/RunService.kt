@@ -1,5 +1,6 @@
 package io.whozoss.factory.run.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.persistence.OrganizationScope
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
@@ -165,7 +166,7 @@ class RunService(
         ensureCatalogDefinitionsSeeded(scope)
 
         val rootCaseId = existing?.rootCaseId ?: UUID.nameUUIDFromBytes(
-            com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(listOf(
+            ObjectMapper().writeValueAsBytes(listOf(
                 "factory-run-root-case", scope.organizationId, scope.workstreamId, namespaceId, command.runId,
             )),
         ).toString()
@@ -538,9 +539,12 @@ class RunService(
         repoRoot: String?,
         actorId: String? = null,
     ): RunRecord {
-        // Lock the whole catalog before a fragment takes a single definition lock. Otherwise two starts
-        // selecting different fragments could acquire A then B / B then A during the later parent update.
-        workflowRepository.lockDefinitionPins(scope, updatedAfterReduce.flowVersions, updatedAfterReduce.flowDefinitionHashes)
+        // Lock only newly created pins, in deterministic order before materializing a fragment.
+        // Existing immutable pins are already protected by their durable parent Run.
+        val newPins = updatedAfterReduce.flowVersions.filter { (type, version) -> baseRun.flowVersions[type] != version }
+        if (newPins.isNotEmpty()) {
+            workflowRepository.lockDefinitionPins(scope, newPins, updatedAfterReduce.flowDefinitionHashes)
+        }
         val nextLoopCounts = LinkedHashMap(updatedAfterReduce.loopCounts)
         val effectiveDecision: FlowDecision = when (rawDecision) {
             is FlowDecision.Apply -> {

@@ -40,7 +40,12 @@ class CapabilityExecutionRoutingRecoveryTest {
         verify(exactly = 0) { manager.rollback(any()) }
     }
 
-    private fun assertRecoveryWithoutSubmissionService(manager: PlatformTransactionManager? = null) {
+    @Test
+    fun `ordinary workflow recovery uses the same validator evidence path`() {
+        assertRecoveryWithoutSubmissionService(routing = false)
+    }
+
+    private fun assertRecoveryWithoutSubmissionService(manager: PlatformTransactionManager? = null, routing: Boolean = true) {
         val scope = TenantScope("org", "ws")
         val workflows = mockk<WorkflowRepository>()
         val attempts = mockk<DurableAgentAttemptService>()
@@ -61,6 +66,17 @@ class CapabilityExecutionRoutingRecoveryTest {
         } answers {
             attempt.copy(status = AgentAttemptStatus.SUCCEEDED, resultEvidenceId = arg<String?>(8))
         }
+        val step = mutableMapOf<String, Any?>(
+            "id" to "decision", "name" to "Choose a route",
+            "responsibility" to mapOf("kind" to "agent", "name" to "architect"),
+            "dependsOn" to emptyList<String>(),
+        )
+        if (routing) step["decision"] = mapOf(
+            "mode" to "single", "routes" to listOf(
+                mapOf("name" to "left", "target" to "left-step"),
+                mapOf("name" to "right", "target" to "right-step"),
+            ),
+        )
         every { workflows.findInstance(scope, "ns", "wf") } returns WorkflowInstanceRecord(
             namespaceId = "ns",
             workflowId = "wf",
@@ -68,19 +84,7 @@ class CapabilityExecutionRoutingRecoveryTest {
             status = "active",
             creationCommandHash = "recovery-test",
             instance = emptyMap(),
-            projection = mapOf("steps" to listOf(mapOf(
-                "id" to "decision",
-                "name" to "Choose a route",
-                "responsibility" to mapOf("kind" to "agent", "name" to "architect"),
-                "dependsOn" to emptyList<String>(),
-                "decision" to mapOf(
-                    "mode" to "single",
-                    "routes" to listOf(
-                        mapOf("name" to "left", "target" to "left-step"),
-                        mapOf("name" to "right", "target" to "right-step"),
-                    ),
-                ),
-            ))),
+            projection = mapOf("steps" to listOf(step)),
         )
         val service = CapabilityExecutionService(
             resolver = CapabilityResolver(),
@@ -91,12 +95,13 @@ class CapabilityExecutionRoutingRecoveryTest {
             durableAgentAttemptService = attempts,
             agentOsExecutionAdapter = mockk(relaxed = true),
             transactionManager = manager,
-            sessionRunSubmissionService = null,
         )
 
-        val recovered = service.finalizeRecoveredRoutingAttempt(
+        var continued = false
+        val recovered = service.finalizeRecoveredAttempt(
             scope, attempt, "owner", AgentOsObservationResult(AgentOsExecutionVerdict.Succeeded(emptyMap())),
-        )
+        ) { continued = true }
+        assertThat(continued).isTrue()
 
         assertThat(recovered).isTrue()
         verify(exactly = 1) {
