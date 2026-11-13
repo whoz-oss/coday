@@ -201,25 +201,25 @@
             }
           </header>
           <div class="phase-tags">
-            <span class="tag"
+            <span class="phase-tag"
               >step <b class="sf-mono">{{ phase.stepId ?? phase.name }}</b></span
             >
             @if (phase.agentName) {
-              <span class="tag"
+              <span class="phase-tag"
                 >agent <b>{{ phase.agentName }}</b></span
               >
             }
-            <span class="tag"
+            <span class="phase-tag"
               >owner <b>{{ phase.owner }}</b></span
             >
-            <span class="tag"
+            <span class="phase-tag"
               >kind <b>{{ phase.kind }}</b></span
             >
-            <span class="tag"
+            <span class="phase-tag"
               >attempt <b class="sf-mono">{{ phase.attempt }}</b></span
             >
             @if (phase.failureCode) {
-              <span class="tag tag--failure"
+              <span class="phase-tag phase-tag--failure"
                 >failure <b class="sf-mono">{{ phase.failureCode }}</b></span
               >
             }
