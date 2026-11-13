@@ -8,7 +8,7 @@
  * Do not edit the class manually.
  */
 
-export interface AgentFlowSearch {
+export interface FlowConfigurationSearch {
   params?: any | null
   tool: string
 }

@@ -7,13 +7,13 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { AgentFlowAct } from './agent-flow-act'
-import { AgentFlowSearch } from './agent-flow-search'
+import { FlowConfigurationSearch } from './flow-configuration-search'
+import { FlowConfigurationAct } from './flow-configuration-act'
 
 /**
  * Search tool, its arguments and the agent started for each result, for a LOOP agent.
  */
-export interface AgentFlowConfig {
-  act: AgentFlowAct
-  search: AgentFlowSearch
+export interface FlowConfiguration {
+  act: FlowConfigurationAct
+  search: FlowConfigurationSearch
 }

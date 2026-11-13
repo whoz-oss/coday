@@ -8,6 +8,6 @@
  * Do not edit the class manually.
  */
 
-export interface AgentFlowAct {
+export interface FlowConfigurationAct {
   agentName: string
 }
