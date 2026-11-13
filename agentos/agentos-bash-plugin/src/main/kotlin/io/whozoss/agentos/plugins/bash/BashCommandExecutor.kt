@@ -25,6 +25,10 @@ private const val DEFAULT_MAX_OUTPUT_CHARS = 100_000
  * shell diagnostics and `$LINENO` are unchanged. The marker is stripped before the output is
  * returned, so it never reaches the caller. A command that replaces the shell (`exec`) or installs
  * its own `EXIT` trap yields no working directory (null), and its stdout is left intact.
+ *
+ * Extra environment variables (the secret of an Auth Setting, see [BashAuthVariables]) are merged into the
+ * inherited environment of the process. They are passed this way, never inside the command text, so they
+ * appear neither in the logged command nor in the shell's own diagnostics; only their names are logged.
  */
 object BashCommandExecutor : KLogging() {
 
@@ -33,15 +37,22 @@ object BashCommandExecutor : KLogging() {
         workingDirectory: File,
         timeoutSeconds: Long,
         maxOutputChars: Int = DEFAULT_MAX_OUTPUT_CHARS,
+        environment: Map<String, String> = emptyMap(),
     ): BashExecutionResult {
-        logger.debug { "Running bash command in ${workingDirectory.absolutePath}: $command" }
+        logger.debug {
+            "Running bash command in ${workingDirectory.absolutePath}: $command" +
+                (if (environment.isEmpty()) "" else " (extra environment: ${environment.keys.sorted().joinToString()})")
+        }
         val marker = "__AGENTOS_PWD_${UUID.randomUUID()}__:"
 
-        val process = try {
+        val processBuilder =
             ProcessBuilder("/bin/bash", "-c", wrapWithPwdTrap(command, marker))
                 .directory(workingDirectory)
                 .redirectErrorStream(false)
-                .start()
+        processBuilder.environment().putAll(environment)
+
+        val process = try {
+            processBuilder.start()
         } catch (e: Exception) {
             logger.error(e) { "Failed to start process for command: $command" }
             return BashExecutionResult.Error(e.message ?: e.javaClass.simpleName)

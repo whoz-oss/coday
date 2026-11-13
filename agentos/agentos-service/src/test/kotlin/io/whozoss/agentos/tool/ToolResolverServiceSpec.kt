@@ -12,6 +12,7 @@ import io.mockk.mockk
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -65,6 +66,7 @@ class ToolResolverServiceSpec :
             name: String,
             integrationType: String,
             parameters: JsonNode? = null,
+            authSettingName: String? = null,
         ) = IntegrationConfig(
             metadata = EntityMetadata(),
             namespaceId = namespaceId,
@@ -72,6 +74,7 @@ class ToolResolverServiceSpec :
             name = name,
             integrationType = integrationType,
             parameters = parameters,
+            authSettingName = authSettingName,
         )
 
         fun ctx(
@@ -483,6 +486,94 @@ class ToolResolverServiceSpec :
             capturedContext shouldNotBe null
             capturedContext!!.namespaceId shouldBe nsId
             tools shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // Auth Setting forwarding
+        // -------------------------------------------------------------------------
+
+        fun capturingPlugin(captured: MutableList<ToolContext?>) =
+            object : ToolPlugin {
+                override val integrationType = "BASH"
+                override val configSchema: JsonNode? = null
+
+                override fun provideTools(
+                    config: JsonNode?,
+                    configName: String?,
+                    context: ToolContext?,
+                ): List<StandardTool<*>> {
+                    captured.add(context)
+                    return listOf(makeTool("run", configName))
+                }
+            }
+
+        "resolveToolsForRun passes the Auth Setting name to the plugin together with the credential provider" {
+            val nsId = UUID.randomUUID()
+            val captured = mutableListOf<ToolContext?>()
+            val provider: CredentialProvider = { null }
+            val service = buildService(plugins = listOf(capturingPlugin(captured)))
+            val config =
+                integrationConfig(
+                    namespaceId = nsId,
+                    name = "GH",
+                    integrationType = "BASH",
+                    authSettingName = "GITHUB_TOKEN",
+                )
+            val requested = mutableListOf<String>()
+
+            service.resolveToolsForRun(
+                agentIntegrations = mapOf("GH" to null),
+                context = ctx(nsId),
+                allIntegrationConfigs = listOf(config),
+                credentialProviderFactory = { name ->
+                    requested.add(name)
+                    provider
+                },
+            )
+
+            requested shouldBe listOf("GITHUB_TOKEN")
+            captured.single()!!.credentialProvider shouldBe provider
+            captured.single()!!.authSettingName shouldBe "GITHUB_TOKEN"
+        }
+
+        "resolveToolsForRun leaves the Auth Setting name null when the factory builds no provider" {
+            val nsId = UUID.randomUUID()
+            val captured = mutableListOf<ToolContext?>()
+            val service = buildService(plugins = listOf(capturingPlugin(captured)))
+            val config =
+                integrationConfig(
+                    namespaceId = nsId,
+                    name = "GH",
+                    integrationType = "BASH",
+                    authSettingName = "GITHUB_TOKEN",
+                )
+
+            service.resolveToolsForRun(
+                agentIntegrations = mapOf("GH" to null),
+                context = ctx(nsId),
+                allIntegrationConfigs = listOf(config),
+                credentialProviderFactory = { null },
+            )
+
+            captured.single()!!.credentialProvider shouldBe null
+            captured.single()!!.authSettingName shouldBe null
+        }
+
+        "resolveToolsForRun leaves the context without Auth Setting when the config binds none" {
+            val nsId = UUID.randomUUID()
+            val captured = mutableListOf<ToolContext?>()
+            val service = buildService(plugins = listOf(capturingPlugin(captured)))
+            val config = integrationConfig(namespaceId = nsId, name = "GH", integrationType = "BASH")
+
+            service.resolveToolsForRun(
+                agentIntegrations = mapOf("GH" to null),
+                context = ctx(nsId),
+                allIntegrationConfigs = listOf(config),
+                credentialProviderFactory = { { null } },
+            )
+
+            captured.single()!!.credentialProvider shouldBe null
+            captured.single()!!.authSettingName shouldBe null
         }
 
         // -------------------------------------------------------------------------
