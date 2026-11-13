@@ -18,8 +18,9 @@
 }
 h1 {
   margin: 0;
+  font-family: var(--font-heading);
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 .titles p {
@@ -37,15 +38,15 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-radius: 14px;
+  border-radius: var(--radius-md, 0);
 }
 .kpi--total {
-  background: #151027;
-  border-color: #3b2d63;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }
 .kpi--total .sf-overline,
 .kpi--total .kpi-sub {
-  color: #b9a4e6;
+  color: var(--color-accent-700);
 }
 .kpi-value {
   font-family: var(--sf-mono);
@@ -53,10 +54,10 @@ h1 {
   font-weight: 600;
 }
 .kpi-value--cyan {
-  color: var(--sf-secondary);
+  color: var(--color-accent-700);
 }
 .kpi-value--violet {
-  color: var(--sf-primary);
+  color: var(--color-accent-700);
   font-weight: 700;
 }
 .kpi-sub {

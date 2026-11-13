@@ -1,6 +1,13 @@
 import { Injectable, computed, inject, signal } from '@angular/core'
 import { finalize } from 'rxjs'
-import { FactoryApiError, FactoryApiService, FullWorkflowDefinition, FullWorkflowStep, NamespaceOption, extractNamespaceOptions } from './factory-api.service'
+import {
+  FactoryApiError,
+  FactoryApiService,
+  FullWorkflowDefinition,
+  FullWorkflowStep,
+  NamespaceOption,
+  extractNamespaceOptions,
+} from './factory-api.service'
 
 export interface StepDraft {
   entry: string[]
@@ -40,7 +47,8 @@ const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 
 /** Helpful early feedback only: registration always uses the canonical backend validator. */
 export function validateStructure(definition: FullWorkflowDefinition): string | null {
-  if (!SAFE_ID.test(definition.workflowType ?? '')) return 'Workflow type: use 1–128 letters, digits, dots, underscores or hyphens, starting with a letter or digit.'
+  if (!SAFE_ID.test(definition.workflowType ?? ''))
+    return 'Workflow type: use 1–128 letters, digits, dots, underscores or hyphens, starting with a letter or digit.'
   if (!definition.title?.trim() || definition.title.length > 256) return 'Workflow name must contain 1–256 characters.'
   const steps = definition.steps ?? []
   if (!steps.length || steps.length > 500) return 'Add between 1 and 500 blocks.'
@@ -49,7 +57,8 @@ export function validateStructure(definition: FullWorkflowDefinition): string | 
   for (const step of steps) {
     if (!SAFE_ID.test(step.id)) return `Invalid block ID: ${step.id}`
     if (!step.name.trim() || step.name.length > 256) return `${step.id}: block name must contain 1–256 characters.`
-    if (!step.responsibility?.name?.trim()) return `${step.id}: ${step.responsibility?.kind === 'human' ? 'enter a human role.' : 'select an agent (or preserve the existing code responsibility).'}`
+    if (!step.responsibility?.name?.trim())
+      return `${step.id}: ${step.responsibility?.kind === 'human' ? 'enter a human role.' : 'select an agent (or preserve the existing code responsibility).'}`
     if (step.dependsOn?.some((id) => !ids.has(id))) return `${step.id}: missing predecessor.`
     if (new Set(step.dependsOn).size !== (step.dependsOn?.length ?? 0)) return `${step.id}: duplicate predecessor.`
     const contract = explicitContract(step)
@@ -78,22 +87,41 @@ export function validateRouting(steps: FullWorkflowStep[]): string | null {
   const decisions = steps.filter((step) => step.decision)
   const joins = steps.filter((step) => step.join)
   if (!decisions.length && !joins.length) return null
-  if (decisions.length !== 1 || joins.length !== 1) return 'Routing requires exactly one decision and one explicit join.'
+  if (decisions.length !== 1 || joins.length !== 1)
+    return 'Routing requires exactly one decision and one explicit join.'
   const decision = decisions[0]!
   const join = joins[0]!
   const config = decision.decision!
-  if (decision.responsibility?.kind !== 'agent' || !['single', 'multiple'].includes(config.mode)) return 'Decision requires an agent and single/multiple mode.'
+  if (decision.responsibility?.kind !== 'agent' || !['single', 'multiple'].includes(config.mode))
+    return 'Decision requires an agent and single/multiple mode.'
   const routes = config.routes
-  if (routes.length < 2 || routes.length > 16 || routes.some((route) => !SAFE_ID.test(route.name) || !SAFE_ID.test(route.target)) ||
-    new Set(routes.map((route) => route.name)).size !== routes.length || new Set(routes.map((route) => route.target)).size !== routes.length) return 'Configure 2–16 unique route names and distinct targets.'
+  if (
+    routes.length < 2 ||
+    routes.length > 16 ||
+    routes.some((route) => !SAFE_ID.test(route.name) || !SAFE_ID.test(route.target)) ||
+    new Set(routes.map((route) => route.name)).size !== routes.length ||
+    new Set(routes.map((route) => route.target)).size !== routes.length
+  )
+    return 'Configure 2–16 unique route names and distinct targets.'
   if (join.join !== decision.id || join.id === decision.id) return 'Join must reference the decision.'
   const targets = routes.map((route) => route.target)
   for (const target of targets) {
     const branch = steps.find((step) => step.id === target)
-    if (!branch || [decision.id, join.id].includes(target) || branch.dependsOn?.length !== 1 || branch.dependsOn[0] !== decision.id) return 'Each route targets one step depending only on the decision.'
-    if (steps.filter((step) => step.dependsOn?.includes(target)).some((step) => step.id !== join.id) || !join.dependsOn?.includes(target)) return 'Every branch must lead only and directly to the explicit join. Multi-step/nested branches are not supported.'
+    if (
+      !branch ||
+      [decision.id, join.id].includes(target) ||
+      branch.dependsOn?.length !== 1 ||
+      branch.dependsOn[0] !== decision.id
+    )
+      return 'Each route targets one step depending only on the decision.'
+    if (
+      steps.filter((step) => step.dependsOn?.includes(target)).some((step) => step.id !== join.id) ||
+      !join.dependsOn?.includes(target)
+    )
+      return 'Every branch must lead only and directly to the explicit join. Multi-step/nested branches are not supported.'
   }
-  if (steps.some((step) => step.dependsOn?.includes(decision.id) && !targets.includes(step.id) && step.id !== join.id)) return 'Decision fanout must use named routes.'
+  if (steps.some((step) => step.dependsOn?.includes(decision.id) && !targets.includes(step.id) && step.id !== join.id))
+    return 'Decision fanout must use named routes.'
   return null
 }
 
@@ -124,7 +152,12 @@ export class WorkflowStepEditorState {
     const step = this.selected()
     return step ? (this.drafts()[step.id] ?? explicitContract(step)) : null
   })
-  readonly dirty = computed(() => this.structureDirty() || Object.keys(this.drafts()).length > 0 || this.targetVersion() !== (this.creating() ? '1.0.0' : ''))
+  readonly dirty = computed(
+    () =>
+      this.structureDirty() ||
+      Object.keys(this.drafts()).length > 0 ||
+      this.targetVersion() !== (this.creating() ? '1.0.0' : '')
+  )
   readonly validation = computed(() => {
     for (const draft of Object.values(this.drafts())) {
       const error = validateDraft(draft)
@@ -135,7 +168,9 @@ export class WorkflowStepEditorState {
   })
   readonly preview = computed(() => {
     const definition = this.definition()
-    return definition ? { ...definition, steps: definition.steps?.map((step) => ({ ...step, ...this.drafts()[step.id] })) } : null
+    return definition
+      ? { ...definition, steps: definition.steps?.map((step) => ({ ...step, ...this.drafts()[step.id] })) }
+      : null
   })
 
   startNew(): void {
@@ -186,11 +221,19 @@ export class WorkflowStepEditorState {
     let number = 1
     while (definition.steps?.some((step) => step.id === `step-${number}`)) number++
     const id = `step-${number}`
-    this.changeDefinition({ ...definition, steps: [...(definition.steps ?? []), {
-      id, name: `${kind === 'human' ? 'Human' : 'Agent'} step ${number}`,
-      responsibility: { kind, name: '' }, dependsOn: [],
-      ...(kind === 'agent' ? { entry: [], mission: '', exit: [] } : {}),
-    }] })
+    this.changeDefinition({
+      ...definition,
+      steps: [
+        ...(definition.steps ?? []),
+        {
+          id,
+          name: `${kind === 'human' ? 'Human' : 'Agent'} step ${number}`,
+          responsibility: { kind, name: '' },
+          dependsOn: [],
+          ...(kind === 'agent' ? { entry: [], mission: '', exit: [] } : {}),
+        },
+      ],
+    })
     this.selectedId.set(id)
   }
 
@@ -203,19 +246,37 @@ export class WorkflowStepEditorState {
       return
     }
     const steps = this.definition()?.steps?.map((step) => ({
-      ...(step.id === selected.id ? {
-        ...step, ...patch,
-        // Metadata was computed for the loaded role/dependency position. Never adopt stale obligations.
-        legacyContract: patch.responsibility || patch.dependsOn || patch.name ? undefined : step.legacyContract,
-      } : step),
-      dependsOn: (step.id === selected.id ? patch.dependsOn ?? step.dependsOn : step.dependsOn)?.map((dep) => dep === selected.id ? id : dep),
-      ...(id !== selected.id && step.decision ? { decision: { ...step.decision, routes: step.decision.routes.map((route) => ({ ...route, target: route.target === selected.id ? id : route.target })) } } : {}),
+      ...(step.id === selected.id
+        ? {
+            ...step,
+            ...patch,
+            // Metadata was computed for the loaded role/dependency position. Never adopt stale obligations.
+            legacyContract: patch.responsibility || patch.dependsOn || patch.name ? undefined : step.legacyContract,
+          }
+        : step),
+      dependsOn: (step.id === selected.id ? (patch.dependsOn ?? step.dependsOn) : step.dependsOn)?.map((dep) =>
+        dep === selected.id ? id : dep
+      ),
+      ...(id !== selected.id && step.decision
+        ? {
+            decision: {
+              ...step.decision,
+              routes: step.decision.routes.map((route) => ({
+                ...route,
+                target: route.target === selected.id ? id : route.target,
+              })),
+            },
+          }
+        : {}),
       ...(id !== selected.id && step.join ? { join: step.join === selected.id ? id : step.join } : {}),
     }))
     if (id !== selected.id) {
       const drafts = { ...this.drafts() }
       const draft = drafts[selected.id]
-      if (draft) { drafts[id] = draft; delete drafts[selected.id] }
+      if (draft) {
+        drafts[id] = draft
+        delete drafts[selected.id]
+      }
       this.drafts.set(drafts)
     }
     this.changeDefinition({ ...this.definition(), steps })
@@ -225,20 +286,37 @@ export class WorkflowStepEditorState {
   setRoutingMode(mode: string): void {
     const step = this.selected()
     if (!step || step.responsibility?.kind !== 'agent') return
-    if (mode === '') { this.updateBlock({ decision: undefined }); return }
+    if (mode === '') {
+      this.updateBlock({ decision: undefined })
+      return
+    }
     if (mode !== 'single' && mode !== 'multiple') return
-    this.updateBlock({ decision: { mode, routes: step.decision?.routes ?? [{ name: 'route-1', target: '' }, { name: 'route-2', target: '' }] } })
+    this.updateBlock({
+      decision: {
+        mode,
+        routes: step.decision?.routes ?? [
+          { name: 'route-1', target: '' },
+          { name: 'route-2', target: '' },
+        ],
+      },
+    })
   }
 
   updateRoute(index: number, field: 'name' | 'target', value: string): void {
     const decision = this.selected()?.decision
     if (!decision) return
-    this.updateBlock({ decision: { ...decision, routes: decision.routes.map((route, i) => i === index ? { ...route, [field]: value } : route) } })
+    this.updateBlock({
+      decision: {
+        ...decision,
+        routes: decision.routes.map((route, i) => (i === index ? { ...route, [field]: value } : route)),
+      },
+    })
   }
 
   addRoute(): void {
     const decision = this.selected()?.decision
-    if (decision && decision.routes.length < 16) this.updateBlock({ decision: { ...decision, routes: [...decision.routes, { name: '', target: '' }] } })
+    if (decision && decision.routes.length < 16)
+      this.updateBlock({ decision: { ...decision, routes: [...decision.routes, { name: '', target: '' }] } })
   }
 
   removeRoute(index: number): void {
@@ -261,18 +339,39 @@ export class WorkflowStepEditorState {
 
   connect(predecessor: string, checked: boolean): void {
     const step = this.selected()
-    if (!step || predecessor === step.id || !this.definition()?.steps?.some((candidate) => candidate.id === predecessor)) return
-    this.updateBlock({ dependsOn: checked ? [...new Set([...(step.dependsOn ?? []), predecessor])] : step.dependsOn?.filter((id) => id !== predecessor) })
+    if (
+      !step ||
+      predecessor === step.id ||
+      !this.definition()?.steps?.some((candidate) => candidate.id === predecessor)
+    )
+      return
+    this.updateBlock({
+      dependsOn: checked
+        ? [...new Set([...(step.dependsOn ?? []), predecessor])]
+        : step.dependsOn?.filter((id) => id !== predecessor),
+    })
   }
 
   removeBlock(): void {
     const selected = this.selected()
-    if (!this.editing() || !selected || !['agent', 'human'].includes(selected.responsibility?.kind ?? '') || this.saving()) return
-    const steps = this.definition()?.steps?.filter((step) => step.id !== selected.id).map((step) => ({
-      ...step, dependsOn: step.dependsOn?.filter((id) => id !== selected.id),
-      legacyContract: step.dependsOn?.includes(selected.id) ? undefined : step.legacyContract,
-    })) ?? []
-    const drafts = { ...this.drafts() }; delete drafts[selected.id]; this.drafts.set(drafts)
+    if (
+      !this.editing() ||
+      !selected ||
+      !['agent', 'human'].includes(selected.responsibility?.kind ?? '') ||
+      this.saving()
+    )
+      return
+    const steps =
+      this.definition()
+        ?.steps?.filter((step) => step.id !== selected.id)
+        .map((step) => ({
+          ...step,
+          dependsOn: step.dependsOn?.filter((id) => id !== selected.id),
+          legacyContract: step.dependsOn?.includes(selected.id) ? undefined : step.legacyContract,
+        })) ?? []
+    const drafts = { ...this.drafts() }
+    delete drafts[selected.id]
+    this.drafts.set(drafts)
     this.changeDefinition({ ...this.definition(), steps })
     this.selectedId.set(steps[0]?.id ?? null)
   }
@@ -370,7 +469,9 @@ export class WorkflowStepEditorState {
     const workflowType = source.workflowType?.trim()
     const version = this.targetVersion().trim()
     if (!workflowType || !SEMVER.test(version) || version === source.version) {
-      this.error.set('Choose a new version in MAJOR.MINOR.PATCH format. Existing definitions and active runs are never modified.')
+      this.error.set(
+        'Choose a new version in MAJOR.MINOR.PATCH format. Existing definitions and active runs are never modified.'
+      )
       return
     }
     const drafts = this.drafts()

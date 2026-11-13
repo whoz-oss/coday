@@ -899,9 +899,36 @@ describe('mappers', () => {
   describe('mapProjectionToSessionDetail', () => {
     it('keeps inactive routed branches skipped and selectable without falsely showing execution or success', () => {
       const steps = [
-        { id: 'architect', name: 'Scope', status: 'completed', responsibility: { kind: 'agent', name: 'Architect' }, decision: { mode: 'multiple', routes: [{ name: 'frontend', target: 'front' }, { name: 'backend', target: 'back' }] }, routeDecision: { attemptId: 'a', resultId: 'r', selectedRoutes: ['frontend'] } },
-        { id: 'front', name: 'Frontend', status: 'completed', activation: 'selected', executed: true, responsibility: { kind: 'agent', name: 'Frontend' } },
-        { id: 'back', name: 'Backend', status: 'skipped', activation: 'not_selected', executed: false, responsibility: { kind: 'agent', name: 'Backend' } },
+        {
+          id: 'architect',
+          name: 'Scope',
+          status: 'completed',
+          responsibility: { kind: 'agent', name: 'Architect' },
+          decision: {
+            mode: 'multiple',
+            routes: [
+              { name: 'frontend', target: 'front' },
+              { name: 'backend', target: 'back' },
+            ],
+          },
+          routeDecision: { attemptId: 'a', resultId: 'r', selectedRoutes: ['frontend'] },
+        },
+        {
+          id: 'front',
+          name: 'Frontend',
+          status: 'completed',
+          activation: 'selected',
+          executed: true,
+          responsibility: { kind: 'agent', name: 'Frontend' },
+        },
+        {
+          id: 'back',
+          name: 'Backend',
+          status: 'skipped',
+          activation: 'not_selected',
+          executed: false,
+          responsibility: { kind: 'agent', name: 'Backend' },
+        },
       ]
       const session = mapProjectionToSessionDetail({ workflowId: 'routed', projection: { status: 'completed', steps } })
       expect(session.status).toBe('succeeded')
@@ -909,7 +936,9 @@ describe('mappers', () => {
       expect(session.steps.find((step) => step.key === 'back')?.status).toBe('skipped')
       expect(session.lanes.flatMap((lane) => lane.blocks).some((block) => block.stepId === 'back')).toBe(false)
       expect(session.phaseByStepId?.get('back')?.stepStatus).toBe('skipped')
-      const routing = session.phaseByStepId?.get('architect')?.sections.find((section) => section.label === 'Routage conditionnel')
+      const routing = session.phaseByStepId
+        ?.get('architect')
+        ?.sections.find((section) => section.label === 'Routage conditionnel')
       expect(routing?.items).toContainEqual({ title: 'backend', subtitle: 'back', status: 'not_selected' })
     })
     it('builds a complete session from projection + enrichment payloads', () => {
@@ -1386,7 +1415,10 @@ describe('mappers', () => {
       expect(prompts?.count).toBeUndefined()
 
       const model = session.phase.sections.find((section) => section.label === 'Modèle LLM résolu')
-      expect(model).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite une exposition par le serveur)' })
+      expect(model).toMatchObject({
+        notAvailable: true,
+        body: 'Non disponible (nécessite une exposition par le serveur)',
+      })
     })
 
     it('surfaces the real attempts of the active step and a dynamic attempt string', () => {

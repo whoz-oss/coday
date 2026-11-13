@@ -545,11 +545,16 @@ export class FactoryApiService {
 
   /** Existing AgentOS discovery through the same-origin gateway, scoped by namespace. */
   getAgents(namespaceId: string): Observable<{ name: string; enabled?: boolean }[]> {
-    return this.request<unknown>(`/api/agentos/api/agent-configs/by-parentId/${encodeURIComponent(requireNamespaceId(namespaceId))}`, {}).pipe(
-      map((payload) => (Array.isArray(payload) ? payload : []).filter(
-        (item): item is { name: string; enabled?: boolean } =>
-          typeof item?.name === 'string' && !!item.name.trim() && item.enabled !== false
-      ))
+    return this.request<unknown>(
+      `/api/agentos/api/agent-configs/by-parentId/${encodeURIComponent(requireNamespaceId(namespaceId))}`,
+      {}
+    ).pipe(
+      map((payload) =>
+        (Array.isArray(payload) ? payload : []).filter(
+          (item): item is { name: string; enabled?: boolean } =>
+            typeof item?.name === 'string' && !!item.name.trim() && item.enabled !== false
+        )
+      )
     )
   }
 
@@ -772,15 +777,20 @@ function normalizeFullWorkflowDefinition(payload: unknown): FullWorkflowDefiniti
   }
   // Registry responses wrap the authored definition with its identity/hash.
   if (typeof normalized === 'object' && normalized !== null && 'definition' in normalized) {
-    const response = normalized as { definition: FullWorkflowDefinition; legacyContracts?: Record<string, LegacyContract> }
+    const response = normalized as {
+      definition: FullWorkflowDefinition
+      legacyContracts?: Record<string, LegacyContract>
+    }
     const definition = response.definition
     if (typeof definition !== 'object' || definition === null || Array.isArray(definition)) return {}
     return {
       ...definition,
-      steps: Array.isArray(definition.steps) ? definition.steps.map((step) => {
-        const legacyContract = response.legacyContracts?.[step.id]
-        return legacyContract ? { ...step, legacyContract } : step
-      }) : undefined,
+      steps: Array.isArray(definition.steps)
+        ? definition.steps.map((step) => {
+            const legacyContract = response.legacyContracts?.[step.id]
+            return legacyContract ? { ...step, legacyContract } : step
+          })
+        : undefined,
     }
   }
   return (typeof normalized === 'object' && normalized !== null ? normalized : {}) as FullWorkflowDefinition

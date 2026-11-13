@@ -5,17 +5,41 @@
     <title>Software Factory</title>
     <base href="/factory/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" />
+    <!-- Skin fonts of the Coday client (apps/client/src/index.html), one per skin -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Barlow (body) and IBM Plex Mono (headings): Industry skin -->
     <link
+      href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
     />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <!-- JetBrains Mono: Terminal skin -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Roboto: Whoz OSS skin -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+    <!-- Icons: the app uses mat-icon with Material Symbols names (MatIconRegistry default font set, see app.config.ts) -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0"
     />
   </head>
   <body>
-    <sf-root></sf-root>
+    <!--
+      Not an Angular component: a plain custom element. The AgentOS design tokens (Industry, Terminal, Whoz OSS, light and
+      dark: apps/client/src/app/styles/colors.scss) are scoped under the `agentos-shell` element, as are the shared
+      primitives (.btn, .input, .tag...). Living inside it is how the cockpit gets them as they are, with a single source
+      of truth, instead of copying their values. The CDK overlays (dialogs, select panels, menus, tooltips) are moved
+      inside it too: see core/shell-overlay-container.ts.
+    -->
+    <agentos-shell>
+      <sf-root></sf-root>
+    </agentos-shell>
   </body>
 </html>

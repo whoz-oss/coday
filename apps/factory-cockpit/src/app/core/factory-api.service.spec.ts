@@ -591,12 +591,22 @@ describe('FactoryApiService', () => {
   describe('workflow definitions', () => {
     it('attaches backend legacy metadata without changing the canonical definition', () => {
       const definition = { workflowType: 'legacy', version: '1.0.0', steps: [{ id: 'plan', name: 'Plan' }] }
-      const contract = { adoptable: true, summary: 'Server instructions', entry: ['Read'], mission: 'Plan', exit: ['Report'] }
+      const contract = {
+        adoptable: true,
+        summary: 'Server instructions',
+        entry: ['Read'],
+        mission: 'Plan',
+        exit: ['Report'],
+      }
       let result: FullWorkflowDefinition | undefined
       service.getWorkflowDefinition('legacy', '1.0.0').subscribe((value) => (result = value))
-      http.expectOne('/api/factory/workflow-definitions/legacy/1.0.0').flush({ data: {
-        definition, definitionHash: 'hash', legacyContracts: { plan: contract },
-      } })
+      http.expectOne('/api/factory/workflow-definitions/legacy/1.0.0').flush({
+        data: {
+          definition,
+          definitionHash: 'hash',
+          legacyContracts: { plan: contract },
+        },
+      })
       expect(result?.steps?.[0].legacyContract).toEqual(contract)
       expect(definition.steps[0]).toEqual({ id: 'plan', name: 'Plan' })
     })

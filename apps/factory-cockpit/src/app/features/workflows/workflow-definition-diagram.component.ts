@@ -37,7 +37,16 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
       const y2 = node.y + 40
       const route = parent.step.decision?.routes.find((item) => item.target === node.step.id)
       const label = route ? `${route.name} (${parent.step.decision?.mode})` : node.step.join ? 'join' : ''
-      return [{ label, x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 8, from: id, to: node.step.id, path: `M ${x1} ${y1} C ${x1 + 22} ${y1}, ${x2 - 22} ${y2}, ${x2} ${y2}` }]
+      return [
+        {
+          label,
+          x: (x1 + x2) / 2,
+          y: (y1 + y2) / 2 - 8,
+          from: id,
+          to: node.step.id,
+          path: `M ${x1} ${y1} C ${x1 + 22} ${y1}, ${x2 - 22} ${y2}, ${x2} ${y2}`,
+        },
+      ]
     })
   )
   return {
@@ -75,7 +84,9 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
               marker-end="url(#definition-arrow)"
               [attr.data-dependency]="edge.from + ':' + edge.to"
             />
-            @if (edge.label) { <text [attr.x]="edge.x" [attr.y]="edge.y" text-anchor="middle" font-size="10">{{ edge.label }}</text> }
+            @if (edge.label) {
+              <text [attr.x]="edge.x" [attr.y]="edge.y" text-anchor="middle" font-size="10">{{ edge.label }}</text>
+            }
           }
         </svg>
         @for (node of layout().nodes; track node.step.id) {
@@ -90,10 +101,18 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
           >
             <strong>{{ node.step.name }}</strong>
             <span>{{ node.step.responsibility?.kind }} · {{ node.step.responsibility?.name }}</span>
-            @if (node.step.decision) { <span>Decision · {{ node.step.decision.mode }}</span> }
-            @if (node.step.join) { <span>Join · {{ node.step.join }}</span> }
-            @if (node.step.status) { <span>{{ node.step.status }} · {{ node.step.activation }}</span> }
-            @if (node.step.routeDecision) { <span>Selected: {{ node.step.routeDecision.selectedRoutes.join(', ') }}</span> }
+            @if (node.step.decision) {
+              <span>Decision · {{ node.step.decision.mode }}</span>
+            }
+            @if (node.step.join) {
+              <span>Join · {{ node.step.join }}</span>
+            }
+            @if (node.step.status) {
+              <span>{{ node.step.status }} · {{ node.step.activation }}</span>
+            }
+            @if (node.step.routeDecision) {
+              <span>Selected: {{ node.step.routeDecision.selectedRoutes.join(', ') }}</span>
+            }
             <span class="sr-only">Depends on: {{ node.step.dependsOn?.join(', ') || 'none' }}</span>
             @for (route of node.step.decision?.routes ?? []; track route.name) {
               <span class="sr-only">Route {{ route.name }} to {{ route.target }}</span>

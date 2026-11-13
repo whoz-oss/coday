@@ -152,7 +152,7 @@ p {
 h1 {
   margin: 0;
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   word-break: break-all;
 }
@@ -160,27 +160,6 @@ h1 {
 .titles p {
   margin: 0;
   font-size: 14px;
-}
-
-.banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid;
-  font-size: 13.5px;
-  font-weight: 600;
-}
-.banner mat-icon {
-  width: 18px;
-  height: 18px;
-  font-size: 18px;
-}
-.banner--warn {
-  color: var(--sf-tertiary);
-  border-color: #5a4818;
-  background: #1d180b;
 }
 
 .state {
@@ -192,9 +171,9 @@ h1 {
 .json-block {
   margin: 0;
   padding: 20px 24px;
-  border-radius: 12px;
-  border: 1px solid var(--sf-outline);
-  background: var(--sf-surface-2);
+  border-radius: var(--radius-md, 0);
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface-muted);
   font-family: var(--sf-mono);
   font-size: 13px;
   line-height: 1.6;

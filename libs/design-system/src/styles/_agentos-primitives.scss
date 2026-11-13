@@ -1,0 +1,168 @@
+///
+/// Coday Design System — AgentOS primitives
+///
+/// The global utility classes of the AgentOS skin: `.btn`, `.btn-primary`, `.btn-icon`, `.input`, `.tag`,
+/// `.tag-neutral` and the `.blueprint-corner` marks used by the `dsBlueprint` directive, plus what Terminal and
+/// Whoz OSS change about them (no blueprint corners, bracketed tags).
+///
+/// They are plain global classes, not component styles, and they read the tokens of `agentos-shell`, so the mixin must
+/// be included inside an `agentos-shell` rule (the `&` of the theme rules is that element):
+///
+///   @use 'libs/design-system/src/styles' as ds;
+///
+///   agentos-shell {
+///     @include ds.agentos-primitives;
+///   }
+///
+/// Hosts: apps/client (global styles) and apps/durable-cockpit.
+///
+@mixin agentos-primitives {
+  /* Blueprint corner decorations — used by the dsBlueprint directive */
+  .blueprint-corner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-color: var(--color-accent);
+    border-style: solid;
+    pointer-events: none;
+
+    &.tl {
+      top: -1px;
+      left: -1px;
+      border-width: 1.5px 0 0 1.5px;
+    }
+    &.tr {
+      top: -1px;
+      right: -1px;
+      border-width: 1.5px 1.5px 0 0;
+    }
+    &.bl {
+      bottom: -1px;
+      left: -1px;
+      border-width: 0 0 1.5px 1.5px;
+    }
+    &.br {
+      bottom: -1px;
+      right: -1px;
+      border-width: 0 1.5px 1.5px 0;
+    }
+  }
+
+  /* Base button reset — agentos-ui only */
+  .btn {
+    appearance: none;
+    margin: 0;
+    font: inherit;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-pill, 0);
+  }
+
+  /* Primary button — agentos-ui only */
+  .btn-primary {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    border: 1px solid var(--color-accent);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    padding: 0 14px;
+    height: 34px;
+    gap: 7px;
+
+    &:hover {
+      background: var(--color-accent-700);
+      border-color: var(--color-accent-700);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
+  /* Icon-only variant — square, no horizontal padding */
+  .btn-icon {
+    padding: 0;
+    width: 32px;
+  }
+
+  /* Input — agentos-ui design system */
+  .input {
+    width: 100%;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    padding: 0 10px;
+    min-height: 34px;
+    outline: none;
+    border-radius: var(--radius-md, 0);
+    box-sizing: border-box;
+
+    &:focus {
+      border-color: var(--color-accent);
+    }
+
+    &::placeholder {
+      color: var(--color-neutral-500);
+    }
+  }
+
+  /* Tag — base */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: var(--radius-pill, 0);
+  }
+
+  /* Tag neutral variant — muted border + secondary text */
+  .tag-neutral {
+    border: 1px solid var(--color-divider);
+    color: var(--color-neutral-600);
+  }
+
+  /* ─── Terminal and Whoz OSS — blueprint corner decorations ──────────────────────
+   * Both skins hide the `dsBlueprint` corner marks (square-corner language): Terminal because it is a text UI,
+   * Whoz OSS because they clash with its rounded corners. Industry keeps them.
+   */
+  &[data-theme^='terminal'],
+  :is([data-theme^='terminal']) &,
+  &[data-theme^='whoz-oss'],
+  :is([data-theme^='whoz-oss']) & {
+    .blueprint-corner {
+      display: none;
+    }
+  }
+
+  /* ─── Terminal theme — structural rules (terminal-light and terminal-dark) ─────── */
+  &[data-theme^='terminal'],
+  :is([data-theme^='terminal']) & {
+    .tag {
+      background: transparent;
+      border: none;
+      padding: 0;
+
+      &::before {
+        content: '[';
+      }
+      &::after {
+        content: ']';
+      }
+    }
+  }
+}

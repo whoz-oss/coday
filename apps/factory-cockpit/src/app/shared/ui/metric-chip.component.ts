@@ -20,9 +20,9 @@ import { MatTooltipModule } from '@angular/material/tooltip'
       gap: 7px;
       height: 30px;
       padding: 0 11px;
-      border-radius: 8px;
-      border: 1px solid var(--sf-outline);
-      background: var(--sf-surface);
+      border-radius: var(--radius-md, 0);
+      border: 1px solid var(--color-divider);
+      background: var(--color-bg);
       font-family: var(--sf-mono);
       font-size: 13px;
       font-weight: 600;
