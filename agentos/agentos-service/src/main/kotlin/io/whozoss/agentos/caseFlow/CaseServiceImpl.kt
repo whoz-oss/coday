@@ -255,6 +255,11 @@ class CaseServiceImpl(
         return caseRepository.deleteByParent(parentId)
     }
 
+    override fun assignScheduledPrompt(
+        caseId: UUID,
+        scheduledPromptId: UUID,
+    ): Boolean = caseRepository.assignScheduledPrompt(caseId, scheduledPromptId)
+
     // ======================================================
     // Runtime lifecycle
     // ======================================================

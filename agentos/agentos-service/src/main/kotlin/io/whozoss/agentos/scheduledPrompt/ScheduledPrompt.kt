@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.Entity
@@ -42,6 +43,18 @@ data class Planning(
     val endType: SchedulerEndType = SchedulerEndType.NEVER,
     val endDate: LocalDate? = null,
     val maxOccurrenceCount: Int? = null,
+)
+
+/**
+ * Search configuration of a loop-mode [ScheduledPrompt].
+ *
+ * [searchToolName] is the exact name of the search tool as granted to the loop agent
+ * (integration prefix included, e.g. `WHOZ__SearchTalents`).
+ * [searchToolArgs] is a JSON object passed verbatim as the tool input (null = `{}`).
+ */
+data class LoopConfiguration(
+    val searchToolName: String,
+    val searchToolArgs: JsonNode? = null,
 )
 
 // ---------------------------------------------------------------------------
@@ -105,4 +118,16 @@ data class ScheduledPrompt(
      * AgentOS persists this field as-is without interpreting its content.
      */
     val externalMetadata: Map<String, Any?>? = null,
-) : Entity
+    /**
+     * Name of the LOOP agent driving each run (resolved by name in [namespaceId], then platform).
+     * Null = historical mode (one case per user of the [agentConfigId] audience). When set, each
+     * run opens a single case driven by this agent; [agentConfigId] and the prompt then describe
+     * what the loop starts for each search target.
+     */
+    val agentLoopName: String? = null,
+    /** Search tool configuration handed to the loop agent. Set together with [agentLoopName]. */
+    val loopConfiguration: LoopConfiguration? = null,
+) : Entity {
+    /** True when runs go through a LOOP agent instead of one case per audience user. */
+    val isLoopMode: Boolean get() = agentLoopName != null
+}

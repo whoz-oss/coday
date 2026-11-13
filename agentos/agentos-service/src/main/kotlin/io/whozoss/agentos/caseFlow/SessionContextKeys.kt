@@ -38,4 +38,14 @@ object SessionContextKeys {
 
     /** Last name, in [USER_CONTEXT]. */
     const val LAST_NAME = "lastName"
+
+    /**
+     * Initial data of an agent loop run, a map.
+     *
+     * Written by the initiator of the run (today the scheduler, for a scheduled prompt in loop mode:
+     * [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor]), read by [io.whozoss.agentos.agent.AgentLoop]
+     * from the last user message, and consumed by the `${loopData...}` placeholders of the steps of the agent's
+     * `loopConfig`. Both sides go through [io.whozoss.agentos.workflow.LoopDataSessionContext].
+     */
+    const val LOOP_DATA = "loopData"
 }

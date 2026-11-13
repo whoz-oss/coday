@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.casePlugin.CaseStarterOutput
 import io.whozoss.agentos.casePlugin.CaseStarterRefusal
 import io.whozoss.agentos.casePlugin.FreeCaseStarterForUserTool
+import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -13,6 +14,7 @@ import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.tak
 import kotlinx.coroutines.CancellationException
 import mu.KLogging
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -26,7 +28,7 @@ import java.util.UUID
  *
  * 1. Guard: the triggering user must be identified.
  * 2. Guard: the `FreeCaseStarterForUser` tool must be among the agent's tools, i.e. a `CASE` integration is bound
- *    to the loop agent. Checked before searching, so a misconfigured loop fails at once instead of after a
+ *    to the loop agent: the one [AgentLoopAct.tool] names, or else the first found. Checked before searching, so a misconfigured loop fails at once instead of after a
  *    search whose results it could not use. Whether the triggering user is an ADMIN of the namespace is not
  *    checked here: a loop whose end users are all the triggering user does not need it. Without it, every
  *    other end user is refused by the tool (`FORBIDDEN`) and counted as failed.
@@ -40,6 +42,10 @@ import java.util.UUID
  *       language); the loop does neither. Fire-and-forget: the tool returns the new case id at once. The new
  *       cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
  *       iteration, the cases already started keep running on their own.
+ *    c. when the loop has a scheduled prompt ([AgentLoopAct.scheduledPromptId]), link the started case to it with
+ *       [CaseService.assignScheduledPrompt], right after the start, using the case id the tool returned. A link
+ *       that fails (refused, or an error) does not fail the item: the case runs all the same and is counted as
+ *       [LoopRunOutcome.Completed.unlinked].
  *
  * ## Who is authorized
  *
@@ -57,6 +63,11 @@ class LoopWorkflowRunnerService(
     private val objectMapper: ObjectMapper,
     private val userService: UserService,
     private val limitsConfig: LimitsConfigProperties,
+    /**
+     * A `@Lazy` proxy, as in `CaseStarterService`: `CaseService` depends on `AgentService`, which depends on this
+     * runner, so resolving it eagerly would close a cycle.
+     */
+    @Lazy private val caseService: CaseService,
 ) {
     suspend fun run(
         payload: AgentLoopPayload,
@@ -68,13 +79,10 @@ class LoopWorkflowRunnerService(
                 ?: return LoopRunOutcome.Aborted("An AgentLoop must be triggered by an identified user.")
 
         val starterTool =
-            context.tools.find { FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(it.name) }
-                ?: return LoopRunOutcome.Aborted(
-                    "The '${FreeCaseStarterForUserTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
-                        "(available: ${context.tools.map { it.name }}). " +
-                        "Bind a CASE integration to the agent, granting FreeCaseStarterForUser (the user who triggers the loop must be " +
-                        "an ADMIN of the namespace to start cases for other users).",
-                )
+            when (val lookup = findStarterTool(payload.act.tool, context)) {
+                is ToolLookup.Found -> lookup.tool
+                is ToolLookup.Failure -> return LoopRunOutcome.Aborted(lookup.reason)
+            }
 
         val search =
             when (val searchOutcome = search(payload, context, triggerUser)) {
@@ -117,7 +125,71 @@ class LoopWorkflowRunnerService(
             maxItems = maxItems,
             targetAgent = payload.act.agentName,
             interrupted = !shouldContinue(),
+            unlinked = outcomes.count { it is ItemOutcome.Started && !it.linked },
         )
+    }
+
+    /**
+     * The tool that starts the cases: the one the loop names ([toolRef], a `FreeCaseStarterForUser` tool), or
+     * else the first `FreeCaseStarterForUser` tool of the agent.
+     */
+    private fun findStarterTool(
+        toolRef: String?,
+        context: LoopRunContext,
+    ): ToolLookup {
+        val missing =
+            "The '${toolRef ?: FreeCaseStarterForUserTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
+                "(available: ${context.tools.map { it.name }}). " +
+                "Bind a CASE integration to the agent, granting FreeCaseStarterForUser (the user who triggers the loop must be " +
+                "an ADMIN of the namespace to start cases for other users)."
+        return when {
+            toolRef == null -> {
+                context.tools
+                    .find { FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(it.name) }
+                    ?.let { ToolLookup.Found(it) } ?: ToolLookup.Failure(missing)
+            }
+
+            else -> {
+                when (val lookup = findTool(toolRef, context, missing)) {
+                    is ToolLookup.Found ->
+                        if (FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(lookup.tool.name)) {
+                            lookup
+                        } else {
+                            ToolLookup.Failure(
+                                "The starter tool '$toolRef' must be the '${FreeCaseStarterForUserTool.TOOL_NAME}' tool, " +
+                                    "found '${lookup.tool.name}'.",
+                            )
+                        }
+
+                    is ToolLookup.Failure -> lookup
+                }
+            }
+        }
+    }
+
+    /**
+     * The tool of the agent that [toolRef] designates: the one of exactly that name, else the only one whose name
+     * ends with `__<toolRef>` (the reference without its integration config prefix). Several of the latter are
+     * ambiguous, which fails rather than picks one.
+     */
+    private fun findTool(
+        toolRef: String,
+        context: LoopRunContext,
+        notFound: String,
+    ): ToolLookup {
+        val exact = context.tools.find { it.name == toolRef }
+        val suffixed = context.tools.filter { it.name.endsWith("__$toolRef") }
+        return when {
+            exact != null -> ToolLookup.Found(exact)
+            suffixed.size == 1 -> ToolLookup.Found(suffixed.single())
+            suffixed.size > 1 ->
+                ToolLookup.Failure(
+                    "The tool '$toolRef' is ambiguous for agent '${context.agentName}': ${suffixed.map { it.name }}. " +
+                        "Use the full name of one of them.",
+                )
+
+            else -> ToolLookup.Failure(notFound)
+        }
     }
 
     /**
@@ -136,11 +208,18 @@ class LoopWorkflowRunnerService(
     ): SearchOutcome {
         val toolName = payload.search.tool
         val searchTool =
-            context.tools.find { it.name == toolName }
-                ?: return SearchOutcome.Failure(
-                    "Search tool '$toolName' is not available to agent '${context.agentName}' " +
-                        "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
-                )
+            when (
+                val lookup =
+                    findTool(
+                        toolName,
+                        context,
+                        "Search tool '$toolName' is not available to agent '${context.agentName}' " +
+                            "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
+                    )
+            ) {
+                is ToolLookup.Found -> lookup.tool
+                is ToolLookup.Failure -> return SearchOutcome.Failure(lookup.reason)
+            }
         val toolContext = toolContext(context = context, triggerUser = triggerUser)
         val paramsJson = objectMapper.writeValueAsString(payload.search.params)
         logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
@@ -216,6 +295,7 @@ class LoopWorkflowRunnerService(
                 agentName = act.agentName,
                 prompt = act.prompt,
                 userId = endUserId.toString(),
+                title = act.title,
                 sessionContext = activeContextOf(item),
             )
 
@@ -226,6 +306,13 @@ class LoopWorkflowRunnerService(
                     toolContext(context = context, triggerUser = triggerUser),
                 )
             startOutcome(result = result, item = item, context = context)
+                .let { outcome ->
+                    when {
+                        outcome is ItemOutcome.Started && act.scheduledPromptId != null ->
+                            outcome.copy(linked = linkToScheduledPrompt(outcome.caseId, act.scheduledPromptId))
+                        else -> outcome
+                    }
+                }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -272,6 +359,30 @@ class LoopWorkflowRunnerService(
         return ItemOutcome.Started(caseId)
     }
 
+    /**
+     * Links the started case [caseId] to its scheduled prompt. Never fails the item: a refusal (case gone or
+     * already linked) or an error is logged and reported as false, the case running all the same.
+     */
+    private fun linkToScheduledPrompt(
+        caseId: UUID,
+        scheduledPromptId: UUID,
+    ): Boolean =
+        try {
+            caseService.assignScheduledPrompt(caseId, scheduledPromptId).also { linked ->
+                if (!linked) {
+                    logger.warn {
+                        "[LoopWorkflowRunner] Case $caseId was not linked to scheduled prompt $scheduledPromptId " +
+                            "(gone, or already linked to one)"
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.warn(e) { "[LoopWorkflowRunner] Could not link case $caseId to scheduled prompt $scheduledPromptId" }
+            false
+        }
+
     /** The new case id, from the structured output of the tool ([CaseStarterOutput]); null if unreadable. */
     private fun startedCaseId(result: ToolExecutionResult): UUID? =
         result.structuredOutput
@@ -281,6 +392,8 @@ class LoopWorkflowRunnerService(
     private sealed interface ItemOutcome {
         data class Started(
             val caseId: UUID,
+            /** False when the case should have been linked to a scheduled prompt and was not. */
+            val linked: Boolean = true,
         ) : ItemOutcome
 
         data object UnknownUser : ItemOutcome
@@ -288,6 +401,16 @@ class LoopWorkflowRunnerService(
         data object NoAgentAccess : ItemOutcome
 
         data object Failed : ItemOutcome
+    }
+
+    private sealed interface ToolLookup {
+        data class Found(
+            val tool: StandardTool<*>,
+        ) : ToolLookup
+
+        data class Failure(
+            val reason: String,
+        ) : ToolLookup
     }
 
     private sealed interface SearchOutcome {

@@ -148,12 +148,27 @@ data class AgentConfig(
      */
     val skillSelectors: List<String>? = null,
     /**
-     * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object.
+     * The loop of an [ExecutionMode.LOOP] agent, stored as a JSON object, in one of two formats.
      *
-     * When an [AgentLoop] run starts, the first user message is inspected first: if it contains
-     * a valid [io.whozoss.agentos.workflow.AgentLoopPayload] JSON, that value is used (override).
-     * When the message carries no parseable payload, [loopConfig] is used as the default.
-     * If neither source provides a valid payload, the run is aborted with a warning.
+     * **`steps` format** (recommended): describes the *process*; the *data* of a run comes with the message that
+     * triggers it, as the `loopData` entry of its session context (written, for a scheduled prompt in loop mode,
+     * by the scheduler). The steps read it through `${loopData.key}` placeholders:
+     * ```json
+     * { "steps": [
+     *   { "id": "search", "type": "SEARCH", "tool": "${loopData.searchToolName}", "args": "${loopData.searchToolArgs}" },
+     *   { "id": "start-cases", "type": "START_CASES", "tool": "FreeCaseStarterForUser",
+     *     "args": { "agentName": "${loopData.agentName}", "prompt": "${loopData.prompt}" },
+     *     "scheduledPromptId": "${loopData.scheduledPromptId}" }
+     * ] }
+     * ```
+     * Exactly a SEARCH then a START_CASES step; see [io.whozoss.agentos.workflow.LoopStepsTranslator] for the rules
+     * and [io.whozoss.agentos.workflow.LoopPlaceholders] for the placeholders.
+     *
+     * **Legacy format** (a `loopConfig` without `steps`): a fixed `search` (tool and params) and `act` (agent and
+     * prompt), read as an [io.whozoss.agentos.workflow.AgentLoopPayload] and independent of any `loopData`. A run
+     * launched from the UI uses it.
+     *
+     * An invalid or missing loop aborts the run with a warning in the case.
      *
      * Only meaningful when [executionMode] is [ExecutionMode.LOOP]; ignored otherwise.
      */

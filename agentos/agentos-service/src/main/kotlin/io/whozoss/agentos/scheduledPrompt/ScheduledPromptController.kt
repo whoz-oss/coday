@@ -7,6 +7,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.scheduledPrompt.LoopConfigurationDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptApi
@@ -181,6 +182,8 @@ class ScheduledPromptController(
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
             externalMetadata = resource.externalMetadata,
+            agentLoopName = resource.agentLoopName?.takeIf { it.isNotBlank() },
+            loopConfiguration = resource.loopConfiguration?.toDomain(),
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -244,6 +247,8 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             externalMetadata = resource.externalMetadata,
+            agentLoopName = resource.agentLoopName?.takeIf { it.isNotBlank() },
+            loopConfiguration = resource.loopConfiguration?.toDomain(),
         )
 
     companion object : KLogging()
@@ -264,6 +269,16 @@ internal fun PlanningDto.toDomain(): Planning = Planning(
     endType = endType,
     endDate = endDate,
     maxOccurrenceCount = maxOccurrenceCount,
+)
+
+internal fun LoopConfigurationDto.toDomain(): LoopConfiguration = LoopConfiguration(
+    searchToolName = searchToolName,
+    searchToolArgs = searchToolArgs,
+)
+
+internal fun LoopConfiguration.toDto(): LoopConfigurationDto = LoopConfigurationDto(
+    searchToolName = searchToolName,
+    searchToolArgs = searchToolArgs,
 )
 
 internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPromptDto =
@@ -295,4 +310,6 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         updatedOn = entity.metadata.modified,
         removed = entity.metadata.removed,
         externalMetadata = entity.externalMetadata,
+        agentLoopName = entity.agentLoopName,
+        loopConfiguration = entity.loopConfiguration?.toDto(),
     )

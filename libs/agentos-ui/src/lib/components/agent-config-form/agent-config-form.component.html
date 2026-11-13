@@ -157,9 +157,17 @@
             <p class="agent-config-form__field-error" role="alert">Invalid JSON — please fix the syntax.</p>
           }
           <p class="agent-config-form__field-hint">
-            Default payload for this loop agent. Overridden at launch time if the first message contains a valid
-            <code class="agent-config-form__code">AgentLoopPayload</code>. Leave empty if you always provide the payload
-            at launch.
+            Two formats. <code class="agent-config-form__code">steps</code> (recommended) reads its data from
+            <code class="agent-config-form__code">loopData</code> through
+            <code class="agent-config-form__code">{{ '${loopData.key}' }}</code> placeholders: a scheduled prompt in
+            loop mode sends <code class="agent-config-form__code">searchToolName</code>,
+            <code class="agent-config-form__code">searchToolArgs</code>,
+            <code class="agent-config-form__code">agentName</code>,
+            <code class="agent-config-form__code">prompt</code> and
+            <code class="agent-config-form__code">scheduledPromptId</code>, or you provide them on the Launch page. The
+            legacy <code class="agent-config-form__code">search</code> /
+            <code class="agent-config-form__code">act</code> format runs as is. The agent's integrations must grant the
+            search tool and <code class="agent-config-form__code">CASE: [FreeCaseStarterForUser]</code>.
           </p>
         </div>
       }

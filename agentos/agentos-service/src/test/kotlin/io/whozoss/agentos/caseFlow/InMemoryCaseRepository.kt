@@ -82,4 +82,19 @@ class InMemoryCaseRepository : CaseRepository {
         parentCaseId: UUID,
         childCaseId: UUID,
     ): Unit = Unit
+
+    /** Write-once, like the real one: an unknown, soft-deleted or already linked case is left alone. */
+    override fun assignScheduledPrompt(
+        caseId: UUID,
+        scheduledPromptId: UUID,
+    ): Boolean {
+        val case = delegate.findByIds(listOf(caseId), withRemoved = false).firstOrNull()
+        return when {
+            case == null || case.scheduledPromptId != null -> false
+            else -> {
+                delegate.save(case.copy(scheduledPromptId = scheduledPromptId))
+                true
+            }
+        }
+    }
 }

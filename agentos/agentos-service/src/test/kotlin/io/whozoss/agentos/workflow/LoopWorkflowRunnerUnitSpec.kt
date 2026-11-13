@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -14,6 +16,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.casePlugin.CaseStarterOutput
+import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -23,6 +26,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.CancellationException
 import java.util.UUID
 
 /**
@@ -79,6 +83,7 @@ class LoopWorkflowRunnerUnitSpec :
             maxItems: Int = 50,
         ) {
             val userService = mockk<UserService>()
+            val caseService = mockk<CaseService>()
             val calls = mutableListOf<Call>()
             val startedIds = mutableListOf<UUID>()
 
@@ -101,6 +106,7 @@ class LoopWorkflowRunnerUnitSpec :
                     objectMapper = objectMapper,
                     userService = userService,
                     limitsConfig = LimitsConfigProperties(agentLoopMaxItems = maxItems),
+                    caseService = caseService,
                 )
 
             fun success(id: UUID): ToolExecutionResult =
@@ -130,6 +136,7 @@ class LoopWorkflowRunnerUnitSpec :
             next: String? = null,
             success: Boolean = true,
             structured: Boolean = true,
+            name: String = "SearchTalents",
         ): StandardTool<*> {
             val data =
                 userExternalIds.joinToString(",") { userExtId ->
@@ -150,7 +157,7 @@ class LoopWorkflowRunnerUnitSpec :
                     }}}""",
                 )
             return mockk<StandardTool<*>>().also { tool ->
-                every { tool.name } returns "SearchTalents"
+                every { tool.name } returns name
                 coEvery { tool.executeWithJson(any(), any()) } returns
                     ToolExecutionResult(
                         output = "search output",
@@ -405,6 +412,228 @@ class LoopWorkflowRunnerUnitSpec :
             outcome.unknownUser shouldBe 1
             outcome.started shouldBe 0
             f.calls shouldBe emptyList()
+        }
+
+        // -------------------------------------------------------------------------
+        // Tool lookup: exact name first, else the only tool named <CONFIG>__<reference>
+        // -------------------------------------------------------------------------
+
+        fun namedTool(
+            toolName: String,
+            answer: ToolExecutionResult? = null,
+        ): StandardTool<*> =
+            mockk<StandardTool<*>>().also { tool ->
+                every { tool.name } returns toolName
+                if (answer != null) coEvery { tool.executeWithJson(any(), any()) } returns answer
+            }
+
+        "the search tool is found under its integration prefix when the payload gives it bare" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            val prefixed = searchTool(listOf("alice"), name = "WHOZ__SearchTalents")
+
+            val outcome =
+                f.runner
+                    .run(payload, context(listOf(prefixed, f.starterTool))) { true }
+                    .shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 1
+            coVerify(exactly = 1) { prefixed.executeWithJson(any(), any()) }
+        }
+
+        "an exact tool name wins over a prefixed one" {
+            val f = Fixture(objectMapper)
+            val exact = searchTool(emptyList(), name = "SearchTalents")
+            val prefixed = searchTool(emptyList(), name = "WHOZ__SearchTalents")
+
+            f.runner.run(payload, context(listOf(prefixed, exact, f.starterTool))) { true }
+
+            coVerify(exactly = 1) { exact.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { prefixed.executeWithJson(any(), any()) }
+        }
+
+        "several prefixed search tools make the reference ambiguous and abort before searching" {
+            val f = Fixture(objectMapper)
+            val one = searchTool(emptyList(), name = "A__SearchTalents")
+            val two = searchTool(emptyList(), name = "B__SearchTalents")
+
+            val reason = f.runner.run(payload, context(listOf(one, two, f.starterTool))) { true }.reason()
+
+            reason shouldContain "ambiguous"
+            reason shouldContain "A__SearchTalents"
+            reason shouldContain "B__SearchTalents"
+            coVerify(exactly = 0) { one.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { two.executeWithJson(any(), any()) }
+        }
+
+        "a tool that merely ends with the reference, without the separator, is not a match" {
+            val f = Fixture(objectMapper)
+
+            f.runner
+                .run(payload, context(listOf(searchTool(emptyList(), name = "MySearchTalents"), f.starterTool))) { true }
+                .reason() shouldContain "Search tool 'SearchTalents' is not available"
+        }
+
+        "the starter tool named by the payload is used, found under its prefix" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            val named = payload.copy(act = payload.act.copy(tool = "FreeCaseStarterForUser"))
+            val calls = mutableListOf<String>()
+            val prefixedStarter =
+                namedTool("CASE__FreeCaseStarterForUser").also { tool ->
+                    coEvery { tool.executeWithJson(any(), any()) } answers {
+                        calls += firstArg<String>()
+                        f.success(UUID.randomUUID())
+                    }
+                }
+
+            val outcome =
+                f.runner
+                    .run(named, context(listOf(searchTool(listOf("alice")), prefixedStarter))) { true }
+                    .shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 1
+            calls.size shouldBe 1
+        }
+
+        "a starter tool named by the payload that is not available aborts before searching" {
+            val f = Fixture(objectMapper)
+            val named = payload.copy(act = payload.act.copy(tool = "CASE__FreeCaseStarterForUser"))
+            val search = searchTool(listOf("a"))
+
+            val reason = f.runner.run(named, context(listOf(search))) { true }.reason()
+
+            reason shouldContain "'CASE__FreeCaseStarterForUser' tool is not available"
+            coVerify(exactly = 0) { search.executeWithJson(any(), any()) }
+        }
+
+        "a starter tool named by the payload that is not a FreeCaseStarterForUser tool aborts" {
+            val f = Fixture(objectMapper)
+            val named = payload.copy(act = payload.act.copy(tool = "FreeCaseStarter"))
+            val search = searchTool(listOf("a"))
+
+            val reason =
+                f.runner.run(named, context(listOf(search, namedTool("FreeCaseStarter")))) { true }.reason()
+
+            reason shouldContain "must be the 'FreeCaseStarterForUser' tool"
+            coVerify(exactly = 0) { search.executeWithJson(any(), any()) }
+        }
+
+        "an ambiguous starter reference aborts" {
+            val f = Fixture(objectMapper)
+            val named = payload.copy(act = payload.act.copy(tool = "FreeCaseStarterForUser"))
+            val tools =
+                listOf(
+                    searchTool(listOf("a")),
+                    namedTool("ONE__FreeCaseStarterForUser"),
+                    namedTool("TWO__FreeCaseStarterForUser"),
+                )
+
+            f.runner.run(named, context(tools)) { true }.reason() shouldContain "ambiguous"
+        }
+
+        "the title of the payload is forwarded to the starter, and absent when there is none" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            val titled = payload.copy(act = payload.act.copy(title = "Weekly review"))
+
+            f.runner.run(titled, context(listOf(searchTool(listOf("alice")), f.starterTool))) { true }
+            f.run(searchTool(listOf("alice")))
+
+            f.calls.first().input["title"].asText() shouldBe "Weekly review"
+            f.calls.last().input.get("title")?.isNull ?: true shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Linking the started cases to their scheduled prompt
+        // -------------------------------------------------------------------------
+
+        val scheduledPromptId: UUID = UUID.randomUUID()
+        val linking = payload.copy(act = payload.act.copy(scheduledPromptId = scheduledPromptId))
+
+        suspend fun Fixture.runLinking(search: StandardTool<*>): LoopRunOutcome =
+            runner.run(linking, context(listOf(search, starterTool))) { true }
+
+        "each started case is linked to the scheduled prompt, with the id the starter returned" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.knownUser("bob")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } returns true
+
+            val outcome = f.runLinking(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 2
+            outcome.unlinked shouldBe 0
+            f.startedIds.size shouldBe 2
+            f.startedIds.forEach { id -> verify(exactly = 1) { f.caseService.assignScheduledPrompt(id, scheduledPromptId) } }
+            verify(exactly = 2) { f.caseService.assignScheduledPrompt(any(), any()) }
+        }
+
+        "no case is linked when the loop has no scheduled prompt" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 1
+            outcome.unlinked shouldBe 0
+            verify(exactly = 0) { f.caseService.assignScheduledPrompt(any(), any()) }
+        }
+
+        "a case that was not started is not linked" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.answer = { ToolExecutionResult.error("not deployed", errorType = "AGENT_NOT_AVAILABLE") }
+
+            val outcome = f.runLinking(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.noAgentAccess shouldBe 1
+            verify(exactly = 0) { f.caseService.assignScheduledPrompt(any(), any()) }
+        }
+
+        "a refused link is counted as unlinked, the case stays started, and the summary says so" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.knownUser("bob")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } returnsMany listOf(false, true)
+
+            val outcome = f.runLinking(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 2
+            outcome.failed shouldBe 0
+            outcome.unlinked shouldBe 1
+            outcome.summary() shouldContain "- Started but not linked to the scheduled prompt: 1"
+        }
+
+        "a link that throws is counted as unlinked and does not stop the loop" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.knownUser("bob")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } throws IllegalStateException("neo4j down")
+
+            val outcome = f.runLinking(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 2
+            outcome.failed shouldBe 0
+            outcome.unlinked shouldBe 2
+            f.calls.size shouldBe 2
+        }
+
+        "a cancellation during the link is rethrown, not swallowed" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } throws CancellationException("stopped")
+
+            shouldThrow<CancellationException> { f.runLinking(searchTool(listOf("alice"))) }
+        }
+
+        "the summary has no unlinked line when every case was linked" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            every { f.caseService.assignScheduledPrompt(any(), any()) } returns true
+
+            f.runLinking(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>().summary() shouldNotContain
+                "not linked"
         }
 
         // -------------------------------------------------------------------------

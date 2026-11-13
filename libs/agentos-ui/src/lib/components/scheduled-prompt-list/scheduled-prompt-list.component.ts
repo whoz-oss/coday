@@ -2,13 +2,25 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { ScheduledPrompt } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { EntityCardBadge, EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { catchError, forkJoin, of } from 'rxjs'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
 import { ScheduledPromptItemComponent } from '../scheduled-prompt-item/scheduled-prompt-item.component'
 
 const GROUP_PLATFORM = 'platform'
 const GROUP_NAMESPACE = 'namespace'
+
+/** Enabled/Disabled badge, plus a Loop badge when the prompt runs through a loop agent. */
+function promptBadges(d: ScheduledPrompt): EntityCardBadge[] {
+  const badges: EntityCardBadge[] = [
+    {
+      label: d.enabled ? 'Enabled' : 'Disabled',
+      variant: d.enabled ? 'success' : 'warning',
+    },
+  ]
+  if (d.agentLoopName) badges.push({ label: 'Loop', variant: 'info' })
+  return badges
+}
 
 /**
  * ScheduledPromptListComponent — smart container for scheduled prompts of a namespace.
@@ -55,12 +67,7 @@ export class ScheduledPromptListComponent {
         description: d.description,
         groupKey: GROUP_PLATFORM,
         groupLabel: 'Platform (read-only)',
-        badges: [
-          {
-            label: d.enabled ? 'Enabled' : 'Disabled',
-            variant: d.enabled ? 'success' : 'warning',
-          },
-        ],
+        badges: promptBadges(d),
       })
     ),
     ...this.namespacePrompts().map(
@@ -70,12 +77,7 @@ export class ScheduledPromptListComponent {
         description: d.description,
         groupKey: GROUP_NAMESPACE,
         groupLabel: 'Namespace',
-        badges: [
-          {
-            label: d.enabled ? 'Enabled' : 'Disabled',
-            variant: d.enabled ? 'success' : 'warning',
-          },
-        ],
+        badges: promptBadges(d),
       })
     ),
   ])

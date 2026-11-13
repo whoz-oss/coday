@@ -8,10 +8,12 @@
  * Do not edit the class manually.
  */
 import { Recurrence } from './recurrence'
+import { LoopConfiguration } from './loop-configuration'
 import { Planning } from './planning'
 
 export interface ScheduledPrompt {
   agentConfigId: string
+  agentLoopName?: string
   createdBy?: string
   createdOn?: string
   description?: string
@@ -19,6 +21,7 @@ export interface ScheduledPrompt {
   externalMetadata?: { [key: string]: any }
   id?: string
   lastRunAt?: string
+  loopConfiguration?: LoopConfiguration
   name: string
   namespaceId?: string | null
   nextRunAt?: string

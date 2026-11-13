@@ -2704,6 +2704,33 @@ class CaseServiceImplSpec :
             verify(exactly = 1) { repository.countAncestorDepth(parent.id) }
         }
 
+        // -------------------------------------------------------------------------
+        // assignScheduledPrompt: delegated to the repository
+        // -------------------------------------------------------------------------
+
+        "assignScheduledPrompt links a case through the repository, once" {
+            val service = buildService()
+            val case = service.create(Case(namespaceId = namespaceId))
+            val scheduledPromptId = UUID.randomUUID()
+
+            service.assignScheduledPrompt(case.id, scheduledPromptId) shouldBe true
+            service.assignScheduledPrompt(case.id, UUID.randomUUID()) shouldBe false
+
+            service.getById(case.id).scheduledPromptId shouldBe scheduledPromptId
+        }
+
+        "assignScheduledPrompt passes the ids to the repository as they are" {
+            val repository = mockk<CaseRepository>(relaxed = true)
+            val caseId = UUID.randomUUID()
+            val scheduledPromptId = UUID.randomUUID()
+            every { repository.assignScheduledPrompt(caseId, scheduledPromptId) } returns true
+            val service = buildService(caseRepository = repository)
+
+            service.assignScheduledPrompt(caseId, scheduledPromptId) shouldBe true
+
+            verify(exactly = 1) { repository.assignScheduledPrompt(caseId, scheduledPromptId) }
+        }
+
         "create refuses the id of a soft-deleted case" {
             val service = buildService()
             val deleted = service.create(Case(namespaceId = namespaceId))

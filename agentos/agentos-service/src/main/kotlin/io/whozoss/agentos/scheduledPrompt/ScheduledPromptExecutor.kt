@@ -1,5 +1,8 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
@@ -11,10 +14,12 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.workflow.LoopDataSessionContext
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CancellationException
@@ -117,6 +122,25 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [SchedulerScanner.tickClaim] (approximately every 60 s). It finds all RUNNING Runs whose
  * UserRuns are all terminal and closes them as DONE or FAILED. This avoids N concurrent
  * completion checks from parallel workers racing on the same `runId`.
+ *
+ * ### Loop mode
+ *
+ * A [ScheduledPrompt] with an [ScheduledPrompt.agentLoopName] runs in loop mode. The pipeline above is
+ * reused unchanged; only two things differ:
+ *
+ * - **Whose audience is materialised** (Phase A): the one of the LOOP agent, not of
+ *   [ScheduledPrompt.agentConfigId]. The loop agent is deployed to a user group holding a single technical
+ *   user, so the usual materialisation yields one UserRun, hence one loop case. No check is made on the
+ *   number of users.
+ * - **What the case carries** (Phase B): the message is `"@<loopAgent> Run scheduled prompt '<name>'"` and the
+ *   session context holds the `loopData` of the run (see [LoopDataKeys] and [LoopDataSessionContext]): the
+ *   search tool and arguments of [ScheduledPrompt.loopConfiguration], the target agent, the (untranslated)
+ *   prompt the loop starts for each search target, and the id of the scheduled prompt. The `loopConfig` of the
+ *   loop agent describes what to do with them. The prompt is for the targets, not for the technical
+ *   user: it is neither translated nor enriched with the user's context or language, and the user context
+ *   provider is not called. The targets get their own when the loop starts their cases.
+ *
+ * The access check of Phase B then applies to the loop agent, symmetrically with the materialised audience.
  */
 @Component
 @ConditionalOnProperty(name = ["agentos.prompt.scheduler.enabled"], havingValue = "true")
@@ -139,6 +163,8 @@ class ScheduledPromptExecutor(
      * Defaults to always-open so tests and non-windowed deployments are unaffected.
      */
     private val executionWindowService: ExecutionWindowService = ExecutionWindowService(SchedulerProperties()),
+    /** Converts the search arguments of a loop-mode scheduled prompt to the plain maps and lists of `loopData`. */
+    private val objectMapper: ObjectMapper = jacksonObjectMapper(),
 ) {
     /** When true, the poller skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
@@ -298,6 +324,10 @@ class ScheduledPromptExecutor(
      * PENDING UserRun per distinct user — entirely inside Neo4j, no JVM heap pressure.
      *
      * Safe to call multiple times for the same Run (idempotent via MERGE).
+     * In loop mode ([ScheduledPrompt.agentLoopName]) the audience materialised is the one of the LOOP agent,
+     * resolved by name in the namespace, not the one of [ScheduledPrompt.agentConfigId]; an unknown agent, or
+     * one that is not a LOOP agent, throws [IllegalStateException] (the scanner then fails the Run with that
+     * message).
      * Transitions the Run to [RunStatus.RUNNING] when UserRuns are created, or directly
      * to [RunStatus.DONE] when no target users exist (e.g. platform-scope ScheduledPrompt).
      *
@@ -333,7 +363,11 @@ class ScheduledPromptExecutor(
                 }
 
                 else -> {
-                    userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
+                    val audienceAgentId =
+                        scheduledPrompt.agentLoopName
+                            ?.let { findLoopAgent(it, namespaceId).id }
+                            ?: scheduledPrompt.agentConfigId
+                    userRunRepository.materialize(run.id, audienceAgentId, namespaceId)
                 }
             }
 
@@ -378,6 +412,14 @@ class ScheduledPromptExecutor(
                         " to AgentConfig=${runContext.agentConfigId}, marking DONE without creating a Case"
                 }
                 userRunRepository.markTerminal(userRun.id, UserRunStatus.DONE, Instant.now(clock))
+                return
+            }
+            if (runContext.isLoopMode) {
+                // Loop mode: the case is started for the technical user, who carries no context of their own to
+                // resolve; its session context is already the loopData, aimed at the search results, which get
+                // theirs when the loop starts their cases.
+                val caseId = createAndInjectCase(userRun, runContext)
+                awaitLaunch(userRun.id, caseId)
                 return
             }
             when (
@@ -462,6 +504,21 @@ class ScheduledPromptExecutor(
             checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
                 "AgentConfig ${scheduledPrompt.agentConfigId} not found"
             }
+        val actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER)
+
+        val loopAgentName = scheduledPrompt.agentLoopName
+        if (loopAgentName != null) {
+            return resolveLoopRunContext(
+                scheduledPrompt = scheduledPrompt,
+                loopAgentName = loopAgentName,
+                targetAgentName = agentName,
+                targetPrompt = promptContent,
+                namespaceId = namespaceId,
+                actor = actor,
+                userExternalId = user.externalId,
+            )
+        }
+
         val preferredLanguage = user.preferredLanguage?.takeIf { it.isNotBlank() }
         val (effectivePromptContent, effectiveCaseTitle) =
             translatePromptForUser(
@@ -476,8 +533,8 @@ class ScheduledPromptExecutor(
         return UserRunContext(
             namespaceId = namespaceId,
             caseTitle = effectiveCaseTitle,
-            actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
-            promptContent = effectivePromptContent,
+            actor = actor,
+            message = "@$agentName $effectivePromptContent",
             scheduledPromptId = scheduledPrompt.id,
             agentConfigId = scheduledPrompt.agentConfigId,
             agentName = agentName,
@@ -487,11 +544,74 @@ class ScheduledPromptExecutor(
     }
 
     /**
-     * Create a [Case], grant ADMIN to the target user, and inject the prompt message.
+     * Loop-mode counterpart of the tail of [resolveRunContext]: the case is driven by the LOOP agent, which is
+     * the agent mentioned (and access-checked), and its session context is the `loopData` of the run, built from
+     * the [LoopConfiguration] and from the target agent and prompt. The prompt is for the search targets, so it is
+     * neither translated nor adapted to the user (the technical user the case is started for).
+     */
+    private fun resolveLoopRunContext(
+        scheduledPrompt: ScheduledPrompt,
+        loopAgentName: String,
+        targetAgentName: String,
+        targetPrompt: String,
+        namespaceId: UUID,
+        actor: Actor,
+        userExternalId: String,
+    ): UserRunContext {
+        val loopAgent = findLoopAgent(loopAgentName, namespaceId)
+        val loopConfiguration =
+            checkNotNull(scheduledPrompt.loopConfiguration) {
+                "ScheduledPrompt ${scheduledPrompt.id} has an agent loop ('$loopAgentName') but no loop configuration"
+            }
+        val loopData =
+            mapOf(
+                LoopDataKeys.SEARCH_TOOL_NAME to loopConfiguration.searchToolName,
+                LoopDataKeys.SEARCH_TOOL_ARGS to
+                    (loopConfiguration.searchToolArgs?.let { objectMapper.convertValue(it, Any::class.java) } ?: emptyMap<String, Any?>()),
+                LoopDataKeys.AGENT_NAME to targetAgentName,
+                LoopDataKeys.PROMPT to targetPrompt,
+                LoopDataKeys.SCHEDULED_PROMPT_ID to scheduledPrompt.id.toString(),
+            )
+        return UserRunContext(
+            namespaceId = namespaceId,
+            caseTitle = scheduledPrompt.name,
+            actor = actor,
+            message = "@${loopAgent.name} Run scheduled prompt '${scheduledPrompt.name}'",
+            scheduledPromptId = scheduledPrompt.id,
+            agentConfigId = loopAgent.id,
+            agentName = loopAgent.name,
+            userExternalId = userExternalId,
+            sessionContext = LoopDataSessionContext.of(loopData),
+            isLoopMode = true,
+        )
+    }
+
+    /**
+     * The LOOP agent named [name], resolved in [namespaceId] then at platform level.
+     *
+     * @throws IllegalStateException when there is none, or when the agent found is not in LOOP mode.
+     */
+    private fun findLoopAgent(
+        name: String,
+        namespaceId: UUID,
+    ): AgentConfig {
+        val agent =
+            checkNotNull(agentConfigService.findByName(namespaceId, name)) {
+                "Agent loop '$name' not found in namespace $namespaceId"
+            }
+        check(agent.resolvedExecutionMode == ExecutionMode.LOOP) {
+            "Agent '$name' is not a LOOP agent"
+        }
+        return agent
+    }
+
+    /**
+     * Create a [Case], grant ADMIN to the target user, and inject the message.
      * Returns the created [Case] id.
      *
-     * [UserRunContext.sessionContext] already contains the merged preferredLanguage (applied
-     * by [processUserRun] via [UserSessionContextResolver.mergePreferredLanguage]) so this
+     * [UserRunContext.sessionContext] already contains what the message must carry (the merged
+     * preferredLanguage in the historical mode, applied by [processUserRun] via
+     * [UserSessionContextResolver.mergePreferredLanguage]; the `loopData` in loop mode) so this
      * method simply forwards it as-is to [CaseService.addMessage].
      */
     private fun createAndInjectCase(
@@ -524,21 +644,26 @@ class ScheduledPromptExecutor(
         return case.id
     }
 
-    /** Resolved execution context for a single [ScheduledPromptUserRun]. */
+    /**
+     * Resolved execution context for a single [ScheduledPromptUserRun].
+     *
+     * [agentName] / [agentConfigId] are those of the agent mentioned in [message]: the target agent in the
+     * historical mode, the LOOP agent in loop mode, where [isLoopMode] is also set and [sessionContext] is the
+     * `loopData` from the start.
+     */
     private data class UserRunContext(
         val namespaceId: UUID,
         val caseTitle: String,
         val actor: Actor,
-        val promptContent: String,
+        val message: String,
         val scheduledPromptId: UUID,
         val agentConfigId: UUID,
         val agentName: String,
         val userExternalId: String,
         val preferredLanguage: String? = null,
         val sessionContext: Map<String, Any?>? = null,
-    ) {
-        val message: String get() = "@$agentName $promptContent"
-    }
+        val isLoopMode: Boolean = false,
+    )
 
     // -------------------------------------------------------------------------
     // Case completion

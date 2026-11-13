@@ -14,6 +14,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AgentConfigExecutionModeEnum,
   DAY_OF_WEEK_LABELS,
   DayOfWeek,
   ScheduledPrompt,
@@ -96,6 +97,16 @@ export class ScheduledPromptFormComponent implements OnInit {
       endDate: new FormControl<string | null>(null),
       occurrenceCount: new FormControl<number | null>(null),
 
+      // Loop mode (experimental). The three fields below are only enabled while `loopEnabled` is on,
+      // so a hidden, half-typed value can never block the submit of a historical-mode prompt.
+      loopEnabled: new FormControl<boolean>(false, { nonNullable: true }),
+      agentLoopName: new FormControl<string>('', { nonNullable: true }),
+      searchToolName: new FormControl<string>('', { nonNullable: true }),
+      searchToolArgsJson: new FormControl<string>('', {
+        nonNullable: true,
+        validators: [jsonObjectValidator],
+      }),
+
       // State
       enabled: new FormControl<boolean>(true, { nonNullable: true }),
 
@@ -105,7 +116,7 @@ export class ScheduledPromptFormComponent implements OnInit {
         validators: [jsonValidator],
       }),
     },
-    { validators: [endDateRequiredValidator, occurrenceCountRequiredValidator] }
+    { validators: [endDateRequiredValidator, occurrenceCountRequiredValidator, loopModeRequiredValidator] }
   )
 
   protected get nameControl() {
@@ -140,6 +151,18 @@ export class ScheduledPromptFormComponent implements OnInit {
   }
   protected get occurrenceCountControl() {
     return this.form.controls.occurrenceCount
+  }
+  protected get loopEnabledControl() {
+    return this.form.controls.loopEnabled
+  }
+  protected get agentLoopNameControl() {
+    return this.form.controls.agentLoopName
+  }
+  protected get searchToolNameControl() {
+    return this.form.controls.searchToolName
+  }
+  protected get searchToolArgsJsonControl() {
+    return this.form.controls.searchToolArgsJson
   }
   protected get enabledControl() {
     return this.form.controls.enabled
@@ -179,6 +202,11 @@ export class ScheduledPromptFormComponent implements OnInit {
   private readonly unitSignal = toSignal(this.unitControl.valueChanges.pipe(startWith(this.unitControl.value)))
   private readonly endTypeSignal = toSignal(this.endTypeControl.valueChanges.pipe(startWith(this.endTypeControl.value)))
 
+  private readonly loopEnabledSignal = toSignal(
+    this.loopEnabledControl.valueChanges.pipe(startWith(this.loopEnabledControl.value))
+  )
+
+  protected readonly isLoopMode = computed(() => !!this.loopEnabledSignal())
   protected readonly showDayFilter = computed(() => this.unitSignal() === SchedulerUnit.WEEK)
   protected readonly showEndDate = computed(() => this.endTypeSignal() === SchedulerEndType.ON_DATE)
   protected readonly showOccurrenceCount = computed(() => this.endTypeSignal() === SchedulerEndType.OCCURRENCES)
@@ -186,7 +214,37 @@ export class ScheduledPromptFormComponent implements OnInit {
   private readonly agentConfigs = signal<AgentConfig[]>([])
   protected readonly availableAgentConfigs = this.agentConfigs.asReadonly()
 
+  /**
+   * Platform-level agent configs, loaded in namespace mode only: `listByParent` does not return them,
+   * yet the loop agent is resolved by name in the namespace then at platform level. In platform mode
+   * they are already part of `agentConfigs`.
+   */
+  private readonly platformAgentConfigs = signal<AgentConfig[]>([])
+
+  /** Names of the enabled LOOP-mode agent configs, suggested for the free-text "Loop agent" field. */
+  protected readonly loopAgentSuggestions = computed(() => {
+    const names = [...this.agentConfigs(), ...this.platformAgentConfigs()]
+      .filter((c) => c.executionMode === AgentConfigExecutionModeEnum.LOOP && c.enabled !== false)
+      .map((c) => c.name)
+    return [...new Set(names)]
+  })
+
+  /** Placeholders the loop agent's `steps` loopConfig reads from the session context (`loopData`). */
+  protected readonly loopDataPlaceholders = [
+    '${loopData.searchToolName}',
+    '${loopData.searchToolArgs}',
+    '${loopData.agentName}',
+    '${loopData.prompt}',
+    '${loopData.scheduledPromptId}',
+  ]
+
   private existingPrompt: ScheduledPrompt | null = null
+
+  constructor() {
+    this.loopEnabledControl.valueChanges
+      .pipe(startWith(this.loopEnabledControl.value), takeUntilDestroyed(this.destroyRef))
+      .subscribe((enabled) => this.setLoopControlsEnabled(enabled))
+  }
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -201,6 +259,25 @@ export class ScheduledPromptFormComponent implements OnInit {
       this.loadPromptAndResources(scheduledPromptId)
     } else {
       this.loadResources()
+    }
+    this.loadPlatformLoopAgents()
+  }
+
+  private loadPlatformLoopAgents(): void {
+    if (this.isPlatformMode) return
+    this.agentConfigController
+      .listPlatformAgentsAgentConfig()
+      .pipe(
+        catchError(() => of([] as AgentConfig[])),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((configs) => this.platformAgentConfigs.set(configs))
+  }
+
+  private setLoopControlsEnabled(enabled: boolean): void {
+    for (const control of [this.agentLoopNameControl, this.searchToolNameControl, this.searchToolArgsJsonControl]) {
+      if (enabled) control.enable()
+      else control.disable()
     }
   }
 
@@ -250,6 +327,11 @@ export class ScheduledPromptFormComponent implements OnInit {
     this.endTypeControl.setValue(def.planning.endType)
     this.endDateControl.setValue(def.planning.endDate ?? null)
     this.occurrenceCountControl.setValue(def.planning.maxOccurrenceCount ?? null)
+    this.loopEnabledControl.setValue(!!def.agentLoopName)
+    this.agentLoopNameControl.setValue(def.agentLoopName ?? '')
+    this.searchToolNameControl.setValue(def.loopConfiguration?.searchToolName ?? '')
+    const searchToolArgs = def.loopConfiguration?.searchToolArgs
+    this.searchToolArgsJsonControl.setValue(searchToolArgs != null ? JSON.stringify(searchToolArgs, null, 2) : '')
     this.enabledControl.setValue(def.enabled)
     this.externalMetadataJsonControl.setValue(def.externalMetadata ? JSON.stringify(def.externalMetadata, null, 2) : '')
   }
@@ -283,6 +365,7 @@ export class ScheduledPromptFormComponent implements OnInit {
 
     const isEdit = this.isEditMode() && !!this.existingPrompt?.id
     const endType = this.endTypeControl.value
+    const loopOn = this.loopEnabledControl.value
 
     const payload: ScheduledPrompt = {
       ...(this.existingPrompt ?? {}),
@@ -304,6 +387,15 @@ export class ScheduledPromptFormComponent implements OnInit {
           endType === SchedulerEndType.OCCURRENCES ? (this.occurrenceCountControl.value ?? undefined) : undefined,
       },
       enabled: this.enabledControl.value,
+      // Set explicitly: the payload spreads the existing prompt, and an omitted field on PUT is what
+      // clears the loop mode (back to the historical mode). Both are set together, or neither.
+      agentLoopName: loopOn ? this.agentLoopNameControl.value.trim() : undefined,
+      loopConfiguration: loopOn
+        ? {
+            searchToolName: this.searchToolNameControl.value.trim(),
+            searchToolArgs: this.parseSearchToolArgs(),
+          }
+        : undefined,
       removed: this.existingPrompt?.removed ?? false,
       externalMetadata: (() => {
         const raw = this.externalMetadataJsonControl.value.trim()
@@ -326,6 +418,12 @@ export class ScheduledPromptFormComponent implements OnInit {
         }
       },
     })
+  }
+
+  /** Search tool input: the parsed JSON object, or null (= `{}` server-side) when left empty. */
+  private parseSearchToolArgs(): object | null {
+    const raw = this.searchToolArgsJsonControl.value.trim()
+    return raw ? (JSON.parse(raw) as object) : null
   }
 
   protected cancel(): void {
@@ -361,6 +459,27 @@ function occurrenceCountRequiredValidator(group: AbstractControl): ValidationErr
     return { occurrenceCountRequired: true }
   }
   return null
+}
+
+/** Mirror of the backend `isLoopModeConsistent` + `@NotBlank searchToolName`. */
+function loopModeRequiredValidator(group: AbstractControl): ValidationErrors | null {
+  if (!group.get('loopEnabled')?.value) return null
+  const errors: ValidationErrors = {}
+  if (!(group.get('agentLoopName')?.value as string | undefined)?.trim()) errors['loopAgentRequired'] = true
+  if (!(group.get('searchToolName')?.value as string | undefined)?.trim()) errors['loopSearchToolRequired'] = true
+  return Object.keys(errors).length > 0 ? errors : null
+}
+
+/** Empty, or a JSON *object*: the loop requires the SEARCH args to resolve to an object. */
+function jsonObjectValidator(control: AbstractControl): ValidationErrors | null {
+  const value = (control.value as string)?.trim()
+  if (!value) return null
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? null : { notJsonObject: true }
+  } catch {
+    return { invalidJson: true }
+  }
 }
 
 function jsonValidator(control: AbstractControl): ValidationErrors | null {

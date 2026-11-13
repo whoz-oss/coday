@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.kotest.core.spec.style.StringSpec
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -26,6 +27,8 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     /** Builds a minimal [ScheduledPrompt] with all required fields populated. */
     fun minimalPrompt(
         externalMetadata: Map<String, Any?>? = null,
+        agentLoopName: String? = null,
+        loopConfiguration: LoopConfiguration? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         agentConfigId = UUID.randomUUID(),
@@ -41,6 +44,8 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
         ),
         nextRunAt = Instant.parse("2026-01-01T08:00:00Z"),
         externalMetadata = externalMetadata,
+        agentLoopName = agentLoopName,
+        loopConfiguration = loopConfiguration,
     )
 
     // -------------------------------------------------------------------------
@@ -122,5 +127,44 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     "toDomain with null externalMetadataJson produces null externalMetadata" {
         val restored = ScheduledPromptNode.fromDomain(minimalPrompt(externalMetadata = null)).toDomain()
         restored.externalMetadata shouldBe null
+    }
+
+    // -------------------------------------------------------------------------
+    // loop mode — fromDomain / toDomain round-trip
+    // -------------------------------------------------------------------------
+
+    "loop fields round-trip through the node, including the tool args" {
+        val args = jacksonObjectMapper().readTree("""{"query":"kotlin","filters":{"seniority":["senior"]}}""")
+        val prompt = minimalPrompt(
+            agentLoopName = "Looper",
+            loopConfiguration = LoopConfiguration("WHOZ__SearchTalents", args),
+        )
+        val node = ScheduledPromptNode.fromDomain(prompt)
+        node.agentLoopName shouldBe "Looper"
+        node.loopSearchToolName shouldBe "WHOZ__SearchTalents"
+        node.loopSearchToolArgsJson shouldNotBe null
+        val restored = node.toDomain()
+        restored.agentLoopName shouldBe "Looper"
+        restored.loopConfiguration shouldBe LoopConfiguration("WHOZ__SearchTalents", args)
+        restored.isLoopMode shouldBe true
+    }
+
+    "loop configuration without tool args round-trips with null args" {
+        val node = ScheduledPromptNode.fromDomain(
+            minimalPrompt(agentLoopName = "Looper", loopConfiguration = LoopConfiguration("WHOZ__SearchTalents", null)),
+        )
+        node.loopSearchToolArgsJson shouldBe null
+        node.toDomain().loopConfiguration shouldBe LoopConfiguration("WHOZ__SearchTalents", null)
+    }
+
+    "historical prompt has null loop properties and restores in historical mode" {
+        val node = ScheduledPromptNode.fromDomain(minimalPrompt())
+        node.agentLoopName shouldBe null
+        node.loopSearchToolName shouldBe null
+        node.loopSearchToolArgsJson shouldBe null
+        val restored = node.toDomain()
+        restored.agentLoopName shouldBe null
+        restored.loopConfiguration shouldBe null
+        restored.isLoopMode shouldBe false
     }
 })

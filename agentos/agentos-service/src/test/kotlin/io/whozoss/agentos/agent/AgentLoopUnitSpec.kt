@@ -26,6 +26,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.workflow.AgentLoopAct
 import io.whozoss.agentos.workflow.AgentLoopPayload
+import io.whozoss.agentos.workflow.LoopDataSessionContext
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
@@ -35,10 +36,11 @@ import java.util.UUID
 /**
  * Unit tests for [AgentLoop].
  *
- * AgentLoop reads its payload exclusively from [AgentLoop.loopConfig] (set at construction
- * from [AgentConfig.loopConfig]). Message content is ignored for payload resolution.
- * These tests cover loopConfig parsing and the mapping of [LoopRunOutcome] to case events.
- * The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
+ * Payload resolution: the [AgentLoop.loopConfig] (set at construction from [AgentConfig.loopConfig]) is either in
+ * the legacy `search`/`act` format, used as is, or in the `steps` format, resolved against the `loopData` entry of
+ * the session context of the last user message. The text of the message is ignored.
+ * These tests cover payload resolution and the mapping of [LoopRunOutcome] to case events.
+ * The workflow itself is covered by [LoopWorkflowRunnerUnitSpec], the steps by [LoopStepsTranslatorUnitSpec].
  */
 class AgentLoopUnitSpec :
     StringSpec({
@@ -99,12 +101,16 @@ class AgentLoopUnitSpec :
             loopConfig = loopConfig,
         )
 
-        fun userMessage(text: String = "start") =
+        fun userMessage(
+            text: String = "start",
+            sessionContext: Map<String, Any?>? = null,
+        ) =
             MessageEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 actor = Actor(id = "user-1", displayName = "Alice", role = ActorRole.USER),
                 content = listOf(MessageContent.Text(text)),
+                sessionContext = sessionContext,
             )
 
         fun agentMessage(text: String) =
@@ -211,7 +217,7 @@ class AgentLoopUnitSpec :
             emitted shouldHaveSize 3
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             emitted[1].shouldBeInstanceOf<WarnEvent>()
-            emitted.warnMessage() shouldContain "No loopConfig"
+            emitted.warnMessage() shouldContain "No loopConfig is configured"
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
@@ -226,6 +232,136 @@ class AgentLoopUnitSpec :
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             emitted[1].shouldBeInstanceOf<WarnEvent>()
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // The steps format, resolved against the loopData of the last user message
+        // -------------------------------------------------------------------------
+
+        val scheduledPromptId = UUID.randomUUID()
+        val loopData =
+            mapOf(
+                "searchToolName" to "WHOZ__SearchTalents",
+                "searchToolArgs" to mapOf("query" to "kotlin"),
+                "agentName" to "Caretaker",
+                "prompt" to "Review this profile",
+                "scheduledPromptId" to scheduledPromptId.toString(),
+            )
+        val stepsConfig: JsonNode =
+            objectMapper.readTree(
+                $$"""
+                {"steps": [
+                  {"id": "search", "type": "SEARCH", "tool": "${loopData.searchToolName}", "args": "${loopData.searchToolArgs}"},
+                  {"id": "start-cases", "type": "START_CASES", "tool": "FreeCaseStarterForUser",
+                   "args": {"agentName": "${loopData.agentName}", "prompt": "${loopData.prompt}"},
+                   "scheduledPromptId": "${loopData.scheduledPromptId}"}
+                ]}
+                """.trimIndent(),
+            )
+
+        "a steps config is resolved against the loopData of the triggering message and run" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = LoopDataSessionContext.of(loopData))
+
+            val emitted = agent(runner = runner, loopConfig = stepsConfig).run(listOf(message)).toList()
+
+            val payloadSlot = slot<AgentLoopPayload>()
+            coVerify(exactly = 1) { runner.run(capture(payloadSlot), any(), any()) }
+            payloadSlot.captured.search.tool shouldBe "WHOZ__SearchTalents"
+            payloadSlot.captured.search.params shouldBe objectMapper.readTree("""{"query": "kotlin"}""")
+            payloadSlot.captured.act shouldBe
+                AgentLoopAct(
+                    agentName = "Caretaker",
+                    prompt = "Review this profile",
+                    title = null,
+                    tool = "FreeCaseStarterForUser",
+                    scheduledPromptId = scheduledPromptId,
+                )
+            emitted.filterIsInstance<WarnEvent>() shouldHaveSize 0
+        }
+
+        "only the most recent user message provides the loopData" {
+            val runner = runnerReturning(completed)
+            val older = userMessage(sessionContext = LoopDataSessionContext.of(loopData))
+            val newer = userMessage(text = "again")
+
+            val emitted =
+                agent(runner = runner, loopConfig = stepsConfig).run(listOf(older, agentMessage("ok"), newer)).toList()
+
+            emitted.warnMessage() shouldContain "requires a 'loopData' entry"
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "a steps config without loopData emits a WarnEvent and does not call the runner" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = mapOf("preferredLanguage" to "fr"))
+
+            val emitted = agent(runner = runner, loopConfig = stepsConfig).run(listOf(message)).toList()
+
+            emitted shouldHaveSize 3
+            emitted.warnMessage() shouldBe
+                "AgentLoop 'loop-agent': This agent loop requires a 'loopData' entry in the session context of the " +
+                "triggering message."
+            emitted.last().shouldBeInstanceOf<AgentFinishedEvent>()
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "a loopData that is not an object emits a WarnEvent and does not call the runner" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = mapOf("loopData" to "nope"))
+
+            val emitted = agent(runner = runner, loopConfig = stepsConfig).run(listOf(message)).toList()
+
+            emitted.warnMessage() shouldContain "must be an object"
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "a placeholder that cannot be resolved emits a WarnEvent naming it, and does not call the runner" {
+            val runner = runnerReturning(completed)
+            val message = userMessage(sessionContext = LoopDataSessionContext.of(loopData - "agentName"))
+
+            val emitted = agent(runner = runner, loopConfig = stepsConfig).run(listOf(message)).toList()
+
+            emitted.warnMessage() shouldContain "'loopData.agentName' is not defined in loopData"
+            emitted.warnMessage() shouldContain "step 'start-cases'"
+            emitted.last().shouldBeInstanceOf<AgentFinishedEvent>()
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "an invalid steps config emits a WarnEvent and does not call the runner" {
+            val runner = runnerReturning(completed)
+            val onlySearch = objectMapper.readTree("""{"steps": [{"id": "s", "type": "SEARCH", "tool": "S"}]}""")
+            val unparseable = objectMapper.readTree("""{"steps": "nope"}""")
+            val message = userMessage(sessionContext = LoopDataSessionContext.of(loopData))
+
+            val first = agent(runner = runner, loopConfig = onlySearch).run(listOf(message)).toList()
+            val second = agent(runner = runner, loopConfig = unparseable).run(listOf(message)).toList()
+
+            first.warnMessage() shouldContain "exactly two steps"
+            second.warnMessage() shouldContain "could not be parsed as valid steps"
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "a legacy loopConfig still works, with or without a loopData on the message" {
+            val runner = runnerReturning(completed)
+
+            agent(runner = runner).run(listOf(userMessage())).toList()
+            agent(runner = runner).run(listOf(userMessage(sessionContext = LoopDataSessionContext.of(loopData)))).toList()
+
+            coVerify(exactly = 2) { runner.run(match { it.search.tool == "SearchTalents" }, any(), any()) }
+        }
+
+        "a loopConfig with a blank search tool emits a WarnEvent and does not call the runner" {
+            val runner = runnerReturning(completed)
+            val blank =
+                objectMapper.readTree(
+                    """{"search": {"tool": " ", "params": {}}, "act": {"agentName": "A", "prompt": "p"}}""",
+                )
+
+            val emitted = agent(runner = runner, loopConfig = blank).run(listOf(userMessage())).toList()
+
+            emitted.warnMessage() shouldContain "blank search tool"
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
 
