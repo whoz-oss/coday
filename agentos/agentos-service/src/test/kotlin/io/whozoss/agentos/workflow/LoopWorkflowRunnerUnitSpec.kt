@@ -271,6 +271,23 @@ class LoopWorkflowRunnerUnitSpec :
             coVerify(exactly = 1) { exact.executeWithJson(any(), any()) }
         }
 
+        "aborts, without executing any tool, when several tools match the search tool behind a prefix" {
+            val f = Fixture(objectMapper)
+            fun prefixed(name: String) =
+                mockk<StandardTool<*>>().also { every { it.name } returns name }
+            val first = prefixed("USER_GROUP_A__SearchTalents")
+            val second = prefixed("USER_GROUP_B__SearchTalents")
+
+            val reason = f.runner.run(payload, context(listOf(first, second, f.starterTool))) { true }.reason()
+
+            reason shouldContain "ambiguous"
+            reason shouldContain "USER_GROUP_A__SearchTalents"
+            reason shouldContain "USER_GROUP_B__SearchTalents"
+            coVerify(exactly = 0) { first.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { second.executeWithJson(any(), any()) }
+            f.calls shouldBe emptyList()
+        }
+
         "aborts when the search tool throws" {
             val tool = mockk<StandardTool<*>>()
             every { tool.name } returns "SearchTalents"
