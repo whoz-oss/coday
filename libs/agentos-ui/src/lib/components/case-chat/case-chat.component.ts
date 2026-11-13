@@ -150,6 +150,10 @@ function hasActiveSelection(): boolean {
  */
 @Component({
   selector: 'agentos-case-chat',
+  host: {
+    // Files pasted anywhere on the chat screen, not only into the textarea (see ComposerAttachmentsService).
+    '(document:paste)': 'canStageFiles() && attachments.onDocumentPaste($event)',
+  },
   imports: [
     IconButtonComponent,
     CaseUsageComponent,

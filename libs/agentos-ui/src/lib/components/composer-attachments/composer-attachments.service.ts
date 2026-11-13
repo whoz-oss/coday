@@ -1,6 +1,11 @@
 import { computed, inject, Injectable, signal } from '@angular/core'
 import { ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { buildAttachmentMention, MAX_ATTACHMENTS, PendingAttachment } from './composer-attachments.utils'
+import {
+  buildAttachmentMention,
+  isEditableTarget,
+  MAX_ATTACHMENTS,
+  PendingAttachment,
+} from './composer-attachments.utils'
 
 /**
  * ComposerAttachmentsService — staging and upload orchestration for the files attached to a
@@ -100,6 +105,27 @@ export class ComposerAttachmentsService {
     this.isDragOver.set(false)
     const files = event.dataTransfer?.files
     if (files && files.length > 0) this.addFiles(files)
+  }
+
+  /**
+   * Stages files pasted into the composer (Cmd/Ctrl+V of a file in Finder, or a screenshot).
+   * Text-only pastes are left to the browser so the textarea behaves as usual.
+   */
+  onPaste(event: ClipboardEvent): void {
+    const files = event.clipboardData?.files
+    if (!files || files.length === 0) return
+    event.preventDefault()
+    this.addFiles(files)
+  }
+
+  /**
+   * Document-level variant of [onPaste], so files can be pasted with nothing focused on the
+   * chat screen (a paste goes to the focused element, not to the selection). Skips pastes the
+   * composer already handled (defaultPrevented) and pastes aimed at another text field.
+   */
+  onDocumentPaste(event: ClipboardEvent): void {
+    if (event.defaultPrevented || isEditableTarget(event.target)) return
+    this.onPaste(event)
   }
 
   /**

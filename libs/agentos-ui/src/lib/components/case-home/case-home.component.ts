@@ -51,6 +51,10 @@ import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case
  */
 @Component({
   selector: 'agentos-case-home',
+  host: {
+    // Files pasted anywhere on the home screen, not only into the textarea (see ComposerAttachmentsService).
+    '(document:paste)': '!isCreating() && attachments.onDocumentPaste($event)',
+  },
   imports: [
     BlueprintDirective,
     IconButtonComponent,

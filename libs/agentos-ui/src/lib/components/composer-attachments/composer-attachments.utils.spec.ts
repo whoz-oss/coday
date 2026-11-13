@@ -1,6 +1,7 @@
 import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import {
   buildAttachmentMention,
+  isEditableTarget,
   kindLabel,
   middleTruncate,
   PendingAttachment,
@@ -87,5 +88,24 @@ describe('kindLabel', () => {
     expect(kindLabel('README')).toBe('FILE')
     expect(kindLabel('.gitignore')).toBe('FILE')
     expect(kindLabel('archive.')).toBe('FILE')
+  })
+})
+
+describe('isEditableTarget', () => {
+  it('is true for input and textarea elements', () => {
+    expect(isEditableTarget(document.createElement('input'))).toBe(true)
+    expect(isEditableTarget(document.createElement('textarea'))).toBe(true)
+  })
+
+  it('is true for contenteditable elements', () => {
+    const editable = document.createElement('div')
+    Object.defineProperty(editable, 'isContentEditable', { value: true })
+    expect(isEditableTarget(editable)).toBe(true)
+  })
+
+  it('is false for the page body, plain elements and missing targets', () => {
+    expect(isEditableTarget(document.body)).toBe(false)
+    expect(isEditableTarget(document.createElement('button'))).toBe(false)
+    expect(isEditableTarget(null)).toBe(false)
   })
 })
