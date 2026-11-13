@@ -1,9 +1,13 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.workflow.AgentLoopAct
+import io.whozoss.agentos.workflow.AgentLoopPayload
+import io.whozoss.agentos.workflow.AgentLoopSearch
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -43,6 +47,21 @@ data class Planning(
     val endDate: LocalDate? = null,
     val maxOccurrenceCount: Int? = null,
 )
+
+/**
+ * What a LOOP agent runs for a [ScheduledPrompt]: [searchTool] is called with [searchParams], and one case is
+ * started with [agentName] for each result. The prompt of those cases is not stored here: it is the
+ * scheduled prompt's own content, added by [toLoopPayload].
+ */
+data class AgentFlowConfig(
+    val searchTool: String,
+    val searchParams: JsonNode? = null,
+    val agentName: String,
+) {
+    /** The full payload AgentLoop runs, `prompt` being the first message of each started case. */
+    fun toLoopPayload(prompt: String): AgentLoopPayload =
+        AgentLoopPayload(search = AgentLoopSearch(searchTool, searchParams), act = AgentLoopAct(agentName, prompt))
+}
 
 // ---------------------------------------------------------------------------
 // Aggregate root
@@ -105,4 +124,13 @@ data class ScheduledPrompt(
      * AgentOS persists this field as-is without interpreting its content.
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * Only read when the agent is a LOOP agent (saving it on any other agent is refused).
+     *
+     * The scheduler materialises one run per user of the agent's deployment audience, so **the loop agent must be
+     * deployed to a single user**: each user would otherwise trigger a full fan-out. That user must be an ADMIN of
+     * the namespace to start cases for other users (rule of `FreeCaseStarterForUser`). The loop agent needs the
+     * search tool's integration and a CASE integration granting `FreeCaseStarterForUser`.
+     */
+    val agentFlowConfig: AgentFlowConfig? = null,
 ) : Entity

@@ -233,6 +233,44 @@ class LoopWorkflowRunnerUnitSpec :
                 "Search tool 'SearchTalents' is not available"
         }
 
+        "finds the search tool under its integration prefix" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            val prefixed =
+                mockk<StandardTool<*>>().also { tool ->
+                    every { tool.name } returns "USER_GROUP__SearchTalents"
+                    coEvery { tool.executeWithJson(any(), any()) } returns
+                        ToolExecutionResult(
+                            output = "ok",
+                            success = true,
+                            structuredOutput =
+                                objectMapper.readTree(
+                                    """{"data": [{"entityType": "TALENT", "entityId": "t", "targets": [{"entityType": "User", "entityId": "alice"}]}], "metadata": {"totalCount": 1, "next": null}}""",
+                                ),
+                        )
+                }
+
+            val outcome =
+                f.runner
+                    .run(payload, context(listOf(prefixed, f.starterTool))) { true }
+                    .shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 1
+        }
+
+        "prefers the search tool with the exact name over one behind a prefix" {
+            val f = Fixture(objectMapper)
+            val exact = searchTool(emptyList())
+            val prefixed =
+                mockk<StandardTool<*>>().also { tool ->
+                    every { tool.name } returns "USER_GROUP__SearchTalents"
+                }
+
+            f.runner.run(payload, context(listOf(prefixed, exact, f.starterTool))) { true }
+
+            coVerify(exactly = 1) { exact.executeWithJson(any(), any()) }
+        }
+
         "aborts when the search tool throws" {
             val tool = mockk<StandardTool<*>>()
             every { tool.name } returns "SearchTalents"

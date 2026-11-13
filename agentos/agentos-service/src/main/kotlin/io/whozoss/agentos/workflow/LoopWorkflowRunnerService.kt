@@ -124,6 +124,10 @@ class LoopWorkflowRunnerService(
      * Executes the SEARCH phase: invokes the configured tool and parses its output as
      * [SearchResult].
      *
+     * The tool is looked up by its exact name, then by its name behind an integration prefix (`CONFIG__tool`), the
+     * same rule as for `FreeCaseStarterForUser`: a payload can say `searchAgentUsers` whatever the name of the
+     * integration config that provides it.
+     *
      * **Whoz-specific coupling (V0):** [SearchResult], [SearchResultItem], and the
      * structured-output contract assumed here are tightly coupled to the Whoz Search tool
      * response schema. This method should be generalised once a stable cross-tool contract
@@ -137,6 +141,7 @@ class LoopWorkflowRunnerService(
         val toolName = payload.search.tool
         val searchTool =
             context.tools.find { it.name == toolName }
+                ?: context.tools.find { it.name.endsWith("__$toolName") }
                 ?: return SearchOutcome.Failure(
                     "Search tool '$toolName' is not available to agent '${context.agentName}' " +
                         "(available: ${context.tools.map { it.name }}). Check the agent integrations.",

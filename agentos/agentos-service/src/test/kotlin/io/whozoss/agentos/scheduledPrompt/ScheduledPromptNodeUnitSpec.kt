@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -122,5 +123,31 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     "toDomain with null externalMetadataJson produces null externalMetadata" {
         val restored = ScheduledPromptNode.fromDomain(minimalPrompt(externalMetadata = null)).toDomain()
         restored.externalMetadata shouldBe null
+    }
+
+    // -------------------------------------------------------------------------
+    // agentFlowConfig — fromDomain / toDomain round-trip
+    // -------------------------------------------------------------------------
+
+    "agentFlowConfig round-trips, including a JSON object in searchParams" {
+        val config = AgentFlowConfig(
+            searchTool = "searchAgentUsers",
+            searchParams = ObjectMapper().readTree("""{"agentConfigId": "abc", "nested": {"n": [1, 2]}}"""),
+            agentName = "Caretaker",
+        )
+        val node = ScheduledPromptNode.fromDomain(minimalPrompt().copy(agentFlowConfig = config))
+        node.agentFlowConfigJson shouldNotBe null
+        node.toDomain().agentFlowConfig shouldBe config
+    }
+
+    "agentFlowConfig without searchParams round-trips" {
+        val config = AgentFlowConfig(searchTool = "searchAgentUsers", agentName = "Caretaker")
+        ScheduledPromptNode.fromDomain(minimalPrompt().copy(agentFlowConfig = config)).toDomain().agentFlowConfig shouldBe config
+    }
+
+    "null agentFlowConfig produces a null agentFlowConfigJson and restores as null" {
+        val node = ScheduledPromptNode.fromDomain(minimalPrompt())
+        node.agentFlowConfigJson shouldBe null
+        node.toDomain().agentFlowConfig shouldBe null
     }
 })
