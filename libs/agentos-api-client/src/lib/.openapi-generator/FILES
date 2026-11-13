@@ -46,9 +46,6 @@ model/agent-config.ts
 model/agent-definition-tool-summary.ts
 model/agent-definition.ts
 model/agent-finished-event.ts
-model/agent-flow-act.ts
-model/agent-flow-config.ts
-model/agent-flow-search.ts
 model/agent-running-event.ts
 model/agent-selected-event.ts
 model/ai-model.ts
@@ -80,6 +77,9 @@ model/exchange-git-changes.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
+model/flow-configuration-act.ts
+model/flow-configuration-search.ts
+model/flow-configuration.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
 model/git-workspace-summary.ts
