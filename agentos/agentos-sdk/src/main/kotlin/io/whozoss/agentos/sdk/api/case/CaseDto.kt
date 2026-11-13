@@ -34,13 +34,12 @@ import java.util.UUID
  *   been opened by this user (meaning it is unread). Same population rules as `favorite`.
  * @property scheduledPromptId Id of the ScheduledPrompt this case is attributed to, or null when the
  *   case was started by a human user or a delegation tool. Set on the case of the scheduled run itself,
- *   and inherited by cases started from it via a `FreeCaseStarter` tool, provided the calling case has
- *   no `originCaseId` (i.e. it is a top-level scheduled case, not itself a started child). This covers
- *   the [io.whozoss.agentos.agent.AgentLoop] pattern — scheduler → loop case → one case per entity —
- *   where each leaf case is correctly attributed to the scheduled prompt. Automatic creation chains
- *   deeper than one level are not attributed: if a started case itself uses `FreeCaseStarter`, its
- *   children will not carry the link. This limitation is acceptable today as AgentLoop always runs at
- *   depth 1; if multi-level automatic creation is introduced, the propagation strategy should be revisited.
+ *   and inherited by any case started from it via a `FreeCaseStarter` tool (one level only: the direct
+ *   caller's value is copied). This covers the AgentLoop pattern — scheduler → loop case → one case per
+ *   entity — where each leaf case is correctly attributed to the scheduled prompt. There is no risk of
+ *   unintended multi-level propagation: the start depth rule prevents a started case from starting
+ *   another one, so only a top-level case can carry a non-null `scheduledPromptId` when calling the
+ *   service.
  * @property runCostThreshold Per-case override of the run cost threshold, in the platform currency
  *   unit. Null means "inherit from the namespace or platform default", never "no limit" or "zero".
  *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement

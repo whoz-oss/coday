@@ -242,21 +242,6 @@ class CaseStarterServiceUnitSpec :
             f.created.single().scheduledPromptId shouldBe null
         }
 
-        "a calling case that was itself started (has originCaseId) does not propagate the scheduled prompt" {
-            val f = Fixture()
-            val scheduledPromptId = UUID.randomUUID()
-            // The calling case carries a scheduledPromptId but was itself started by another case:
-            // it is at depth 1, its own children should not inherit the link.
-            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(
-                scheduledPromptId = scheduledPromptId,
-                originCaseId = UUID.randomUUID(),
-            )
-
-            f.service.start(request())
-
-            f.created.single().scheduledPromptId shouldBe null
-        }
-
         "a calling case without originCaseId propagates its scheduled prompt (top-level scheduled run)" {
             val f = Fixture()
             val scheduledPromptId = UUID.randomUUID()
