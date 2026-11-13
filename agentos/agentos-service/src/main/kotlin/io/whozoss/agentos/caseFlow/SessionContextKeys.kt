@@ -12,8 +12,11 @@ package io.whozoss.agentos.caseFlow
  * The map's format is not agentos's: it belongs to whoever writes it (the UI's backend, the
  * `UserContextProvider` plugin, the caller of `FreeCaseStarter`), and agentos only carries it. This object
  * holds the few keys agentos itself writes or reads, through the accessors of `SessionContextAccessors.kt`:
- * [PREFERRED_LANGUAGE], and [FIRST_NAME] and [LAST_NAME] of [USER_CONTEXT]. The rest is read by the LLM, which is
- * shown the whole map of the last user message, and by the tools of plugins, which receive the case events.
+ * [PREFERRED_LANGUAGE], [FIRST_NAME] and [LAST_NAME] of [USER_CONTEXT], and [FLOW_CONFIGURATION]. The rest is read
+ * by the LLM, which is shown the whole map of the last user message, and by the tools of plugins, which receive the
+ * case events.
+ *
+ * [FLOW_CONFIGURATION] is the only key that drives execution: it is the payload a LOOP agent runs.
  */
 object SessionContextKeys {
     /**
@@ -40,11 +43,14 @@ object SessionContextKeys {
     const val LAST_NAME = "lastName"
 
     /**
-     * The [io.whozoss.agentos.workflow.AgentLoopPayload] a loop agent runs, as a JSON object (a map once persisted).
+     * The [io.whozoss.agentos.workflow.AgentLoopPayload] a LOOP agent runs, as a JSON object (a map once persisted).
      *
-     * Written by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] (from the scheduled prompt's
-     * `flowConfiguration`) and by the UI launch page. Read by [io.whozoss.agentos.agent.AgentLoop], from the last
-     * user message: it takes precedence over the agent's `loopConfig`.
+     * Unlike the other keys, it drives execution: [io.whozoss.agentos.agent.AgentLoop] reads it from the last user
+     * message and runs it instead of the agent's `loopConfig`. Any initiator may set it (scheduler, launch page,
+     * API client): the loop does not know who started it.
+     *
+     * Setting it grants nothing: the loop runs as the message's author and can only call the tools granted to the
+     * loop agent. What bounds a run is the loop agent's integrations, not `loopConfig`.
      */
     const val FLOW_CONFIGURATION = "flowConfiguration"
 }
