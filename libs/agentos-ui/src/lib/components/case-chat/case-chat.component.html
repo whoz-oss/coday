@@ -467,6 +467,7 @@
           [disabled]="isRunning() || isTerminal() || attachments.isUploading()"
           (input)="onInput($event)"
           (keydown)="onKeydown($event)"
+          (paste)="canStageFiles() && attachments.onPaste($event)"
         ></textarea>
         <div class="case-chat__actions">
           @if (canAttach()) {

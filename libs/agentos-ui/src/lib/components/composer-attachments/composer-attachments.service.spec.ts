@@ -118,6 +118,46 @@ describe('ComposerAttachmentsService', () => {
     })
   })
 
+  describe('paste', () => {
+    function pasteEvent(pasted: File[] = []): ClipboardEvent {
+      return {
+        preventDefault: jest.fn(),
+        clipboardData: { files: pasted },
+      } as unknown as ClipboardEvent
+    }
+
+    it('pasting files stages them and prevents the default paste', () => {
+      const event = pasteEvent(files(2))
+
+      service.onPaste(event)
+
+      expect(service.attachments().map((a) => a.file.name)).toEqual(['file-0.txt', 'file-1.txt'])
+      expect(event.preventDefault).toHaveBeenCalled()
+    })
+
+    it('pasting text only is left to the browser: nothing staged, default not prevented', () => {
+      const event = pasteEvent()
+
+      service.onPaste(event)
+
+      expect(service.hasAttachments()).toBe(false)
+      expect(event.preventDefault).not.toHaveBeenCalled()
+    })
+
+    it('pasting files during an upload batch is ignored by the staging guard', async () => {
+      let resolveUpload: (value: { success: boolean }) => void = () => undefined
+      exchangeState.uploadFile.mockReturnValueOnce(new Promise((resolve) => (resolveUpload = resolve)))
+      service.addFiles(files(1))
+      const batch = service.uploadAllAndBuildMention(ExchangeFileEntryScopeEnum.CASE)
+
+      service.onPaste(pasteEvent(files(1, 'late')))
+      resolveUpload({ success: true })
+      await batch
+
+      expect(service.attachments().map((a) => a.file.name)).toEqual(['file-0.txt'])
+    })
+  })
+
   describe('uploadAllAndBuildMention', () => {
     it('uploads sequentially, marks everything uploaded and returns the mention', async () => {
       service.addFiles([new File(['x'], 'a.pdf'), new File(['x'], 'b.xlsx')])

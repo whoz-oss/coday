@@ -103,6 +103,17 @@ export class ComposerAttachmentsService {
   }
 
   /**
+   * Stages files pasted into the composer (Cmd/Ctrl+V of a file in Finder, or a screenshot).
+   * Text-only pastes are left to the browser so the textarea behaves as usual.
+   */
+  onPaste(event: ClipboardEvent): void {
+    const files = event.clipboardData?.files
+    if (!files || files.length === 0) return
+    event.preventDefault()
+    this.addFiles(files)
+  }
+
+  /**
    * Uploads every non-uploaded attachment to [scope], continuing on failure so one duplicate
    * does not silently skip the rest of the batch (mirrors ExchangeShellComponent.onUpload).
    * Entries already `uploaded` by a previous attempt are skipped (no self-inflicted 409) but
