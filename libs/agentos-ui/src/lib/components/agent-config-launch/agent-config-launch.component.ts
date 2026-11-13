@@ -16,7 +16,7 @@ import { CaseStateService } from '../../services/case-state.service'
  * AgentConfigLaunchComponent — launch page for LOOP-mode agent configs, and the UI way to test a loop.
  *
  * It exercises the same path as the scheduler: the editable JSON below is an `AgentLoopPayload`, sent as
- * `sessionContext.agentFlowConfig` of the start message, where it takes precedence over `AgentConfig.loopConfig`.
+ * `sessionContext.flowConfiguration` of the start message, where it takes precedence over `AgentConfig.loopConfig`.
  * The textarea is prefilled with `loopConfig` when the agent has one, with a `searchAgentUsers` template otherwise
  * (its `agentConfigId` being this loop agent's own, whose audience contains the launching user).
  * When the textarea is emptied, no context is sent and the backend falls back to `loopConfig`.
@@ -44,7 +44,7 @@ export class AgentConfigLaunchComponent implements OnInit {
   /** Resolved agent config — stored to avoid a second fetch at launch time. */
   private resolvedAgentConfig: AgentConfig | null = null
 
-  /** Editable AgentLoopPayload JSON, sent as `sessionContext.agentFlowConfig` when non-empty. */
+  /** Editable AgentLoopPayload JSON, sent as `sessionContext.flowConfiguration` when non-empty. */
   protected readonly payloadControl = new FormControl<string>('', {
     nonNullable: true,
     validators: [jsonValidator],
@@ -88,7 +88,7 @@ export class AgentConfigLaunchComponent implements OnInit {
    * 2. POST /api/cases to create a new case in the current namespace.
    * 3. Prepend the case to CaseStateService.
    * 4. POST /api/cases/:id/messages with a start message; when the textarea is non-empty its JSON travels as
-   *    `sessionContext.agentFlowConfig`, otherwise the backend uses loopConfig.
+   *    `sessionContext.flowConfiguration`, otherwise the backend uses loopConfig.
    * 5. Navigate to the case chat.
    */
   protected async launch(): Promise<void> {
@@ -117,7 +117,7 @@ export class AgentConfigLaunchComponent implements OnInit {
       const raw = this.payloadControl.value.trim()
       const startMessage: AddMessageRequest = {
         content: `@${agentConfig.name} start`,
-        ...(raw ? { sessionContext: { agentFlowConfig: JSON.parse(raw) } } : {}),
+        ...(raw ? { sessionContext: { flowConfiguration: JSON.parse(raw) } } : {}),
       }
       await firstValueFrom(this.caseController.addMessageCase(caseId, startMessage))
 

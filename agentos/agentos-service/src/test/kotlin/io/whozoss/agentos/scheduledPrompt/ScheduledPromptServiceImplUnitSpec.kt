@@ -2,6 +2,8 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -566,43 +568,44 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // agentFlowConfig — only for LOOP agents
+        // flowConfiguration — only for LOOP agents
         // -------------------------------------------------------------------------
 
-        val flowConfig = AgentFlowConfig(searchTool = "searchAgentUsers", agentName = "Caretaker")
+        val flowConfiguration =
+            FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))
 
         fun agentWithMode(mode: ExecutionMode) = defaultAgent().copy(executionMode = mode)
 
-        "create with agentFlowConfig throws UnprocessableEntityException on a non-LOOP agent" {
-            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.ADVANCED)
-            val ex = shouldThrow<UnprocessableEntityException> { newService().create(sp().copy(agentFlowConfig = flowConfig)) }
-            ex.message shouldContain "LOOP"
+        "flowConfiguration is refused on a non-LOOP agent, on create and on update" {
+            forAll(row("create"), row("update")) { operation ->
+                every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.ADVANCED)
+                val svc = newService()
+                val saved = svc.create(sp(name = "sp-$operation"))
+                val withConfig = (if (operation == "create") sp(name = "sp-new") else saved).copy(flowConfiguration = flowConfiguration)
+
+                val ex =
+                    shouldThrow<UnprocessableEntityException> {
+                        if (operation == "create") svc.create(withConfig) else svc.update(withConfig)
+                    }
+                ex.message shouldContain "flowConfiguration is only allowed for a LOOP agent"
+            }
         }
 
-        "create with agentFlowConfig on a LOOP agent saves it" {
+        "flowConfiguration on a LOOP agent is saved on create" {
             every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
-            newService().create(sp().copy(agentFlowConfig = flowConfig)).agentFlowConfig shouldBe flowConfig
+
+            newService().create(sp().copy(flowConfiguration = flowConfiguration)).flowConfiguration shouldBe flowConfiguration
         }
 
-        "create without agentFlowConfig is unaffected by the execution mode" {
-            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.SIMPLE)
-            newService().create(sp()).agentFlowConfig.shouldBeNull()
-        }
-
-        "update with agentFlowConfig throws UnprocessableEntityException on a non-LOOP agent" {
-            val svc = newService()
-            val saved = svc.create(sp())
-            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.SIMPLE)
-            shouldThrow<UnprocessableEntityException> { svc.update(saved.copy(agentFlowConfig = flowConfig)) }
-        }
-
-        "update with agentFlowConfig on a LOOP agent saves it, and null clears it" {
+        "flowConfiguration on a LOOP agent is saved on update, and a null one clears it" {
             every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
             val svc = newService()
             val saved = svc.create(sp())
-            val withConfig = svc.update(saved.copy(agentFlowConfig = flowConfig))
-            withConfig.agentFlowConfig shouldBe flowConfig
-            svc.update(withConfig.copy(agentFlowConfig = null)).agentFlowConfig.shouldBeNull()
+
+            val withConfig = svc.update(saved.copy(flowConfiguration = flowConfiguration))
+
+            withConfig.flowConfiguration shouldBe flowConfiguration
+            svc.update(withConfig.copy(flowConfiguration = null)).flowConfiguration.shouldBeNull()
         }
 
         // -------------------------------------------------------------------------

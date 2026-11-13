@@ -61,7 +61,7 @@ class ScheduledPromptServiceImpl(
             )
         }
         validateAgentConfigScope(entity, agentConfig)
-        validateAgentFlowConfig(entity, agentConfig)
+        validateFlowConfiguration(entity, agentConfig)
 
         val prompt = promptService.findById(entity.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
@@ -84,10 +84,10 @@ class ScheduledPromptServiceImpl(
         promptService.findById(entity.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
 
-        if (entity.agentFlowConfig != null) {
+        if (entity.flowConfiguration != null) {
             val agentConfig = agentConfigService.findById(entity.agentConfigId)
                 ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
-            validateAgentFlowConfig(entity, agentConfig)
+            validateFlowConfiguration(entity, agentConfig)
         }
 
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)
@@ -247,11 +247,11 @@ class ScheduledPromptServiceImpl(
         }
     }
 
-    /** An agentFlowConfig is only read for a LOOP agent: refuse it elsewhere rather than silently ignore it. */
-    private fun validateAgentFlowConfig(entity: ScheduledPrompt, agentConfig: AgentConfig) {
-        if (entity.agentFlowConfig != null && agentConfig.resolvedExecutionMode != ExecutionMode.LOOP) {
+    /** A flowConfiguration is only read for a LOOP agent: refuse it elsewhere rather than silently ignore it. */
+    private fun validateFlowConfiguration(entity: ScheduledPrompt, agentConfig: AgentConfig) {
+        if (entity.flowConfiguration != null && agentConfig.resolvedExecutionMode != ExecutionMode.LOOP) {
             throw UnprocessableEntityException(
-                "agentFlowConfig is only allowed for a LOOP agent: AgentConfig id=${entity.agentConfigId} " +
+                "flowConfiguration is only allowed for a LOOP agent: AgentConfig id=${entity.agentConfigId} " +
                     "has execution mode ${agentConfig.resolvedExecutionMode}",
             )
         }

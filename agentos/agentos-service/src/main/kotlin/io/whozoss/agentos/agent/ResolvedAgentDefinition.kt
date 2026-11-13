@@ -43,7 +43,7 @@ import java.util.UUID
  *   [AgentIntentionGenerator]'s planning prompt; for an `AgentSimple` it is appended to
  *   [instructions] instead. See [io.whozoss.agentos.agent.AgentServiceImpl.resolveRedirectGuideline].
  * @param loopConfig Default [io.whozoss.agentos.workflow.AgentLoopPayload] for LOOP-mode agents,
- *   carried from [io.whozoss.agentos.agentConfig.AgentConfig.loopConfig]. Overridden by the `agentFlowConfig` of
+ *   carried from [io.whozoss.agentos.agentConfig.AgentConfig.loopConfig]. Overridden by the `flowConfiguration` of
  *   the triggering message's session context. Null for SIMPLE/ADVANCED
  *   agents or when no default was configured.
  */

@@ -3,6 +3,8 @@ package io.whozoss.agentos.scheduledPrompt
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.NullNode
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -14,9 +16,9 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.api.scheduledPrompt.AgentFlowActDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.AgentFlowConfigDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.AgentFlowSearchDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationActDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationSearchDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptDto
@@ -82,7 +84,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nextRunAt: Instant = fixedNextRun,
         lastRunAt: Instant? = null,
         externalMetadata: Map<String, Any?>? = null,
-        agentFlowConfig: AgentFlowConfig? = null,
+        flowConfiguration: FlowConfiguration? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -96,7 +98,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nextRunAt = nextRunAt,
         lastRunAt = lastRunAt,
         externalMetadata = externalMetadata,
-        agentFlowConfig = agentFlowConfig,
+        flowConfiguration = flowConfiguration,
     )
 
     fun dto(
@@ -109,7 +111,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning: PlanningDto = planningDto(),
         content: String = promptContent,
         externalMetadata: Map<String, Any?>? = null,
-        agentFlowConfig: AgentFlowConfigDto? = null,
+        flowConfiguration: FlowConfigurationDto? = null,
     ) = ScheduledPromptDto(
         id = id,
         namespaceId = nsId,
@@ -121,7 +123,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning = planning,
         enabled = enabled,
         externalMetadata = externalMetadata,
-        agentFlowConfig = agentFlowConfig,
+        flowConfiguration = flowConfiguration,
     )
 
     beforeTest {
@@ -585,74 +587,50 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // agentFlowConfig — create, toDto, update (replaced as a whole, null clears)
+    // flowConfiguration — DTO → domain on create, domain → DTO on read, replaced as a whole on update
     // -------------------------------------------------------------------------
 
-    val flowDto = AgentFlowConfigDto(
-        search = AgentFlowSearchDto(
-            tool = "  searchAgentUsers ",
-            params = com.fasterxml.jackson.databind.ObjectMapper().readTree("""{"agentConfigId": "abc"}"""),
-        ),
-        act = AgentFlowActDto(agentName = " Caretaker "),
-    )
-    val flowDomain = AgentFlowConfig(
-        searchTool = "searchAgentUsers",
-        searchParams = flowDto.search.params,
-        agentName = "Caretaker",
+    val params = ObjectMapper().readTree("""{"agentConfigId": "abc"}""")
+    val flowDomain = FlowConfiguration(
+        search = FlowConfiguration.Search(tool = "searchAgentUsers", params = params),
+        act = FlowConfiguration.Act(agentName = "Caretaker"),
     )
 
-    "create maps agentFlowConfig from DTO to domain, trimming the tool and the agent name" {
+    "create maps flowConfiguration to the domain, trimming the names and reading a JSON null params as none" {
         var capturedEntity: ScheduledPrompt? = null
         every { service.createWithPrompt(any(), any()) } answers {
             capturedEntity = firstArg()
             Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
         }
-        controller.create(dto(agentFlowConfig = flowDto))
-        capturedEntity?.agentFlowConfig shouldBe flowDomain
+        val incoming = FlowConfigurationDto(
+            search = FlowConfigurationSearchDto(tool = "  searchAgentUsers ", params = NullNode.instance),
+            act = FlowConfigurationActDto(agentName = " Caretaker "),
+        )
+
+        controller.create(dto(flowConfiguration = incoming))
+
+        capturedEntity?.flowConfiguration shouldBe
+            FlowConfiguration(FlowConfiguration.Search(tool = "searchAgentUsers"), FlowConfiguration.Act("Caretaker"))
     }
 
-    "create without agentFlowConfig leaves it null" {
-        var capturedEntity: ScheduledPrompt? = null
-        every { service.createWithPrompt(any(), any()) } answers {
-            capturedEntity = firstArg()
-            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
-        }
-        controller.create(dto())
-        capturedEntity?.agentFlowConfig shouldBe null
-    }
-
-    "toDto exposes agentFlowConfig from the domain entity" {
+    "getById exposes the flowConfiguration of the domain entity" {
         val id = UUID.randomUUID()
-        val entity = sp(id = id, agentFlowConfig = flowDomain)
+        val entity = sp(id = id, flowConfiguration = flowDomain)
         every { service.findById(id, withRemoved = true) } returns entity
         every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
-        val result = controller.getById(id).agentFlowConfig
+
+        val result = controller.getById(id).flowConfiguration
+
         result?.search?.tool shouldBe "searchAgentUsers"
-        result?.search?.params shouldBe flowDto.search.params
+        result?.search?.params shouldBe params
         result?.act?.agentName shouldBe "Caretaker"
     }
 
-    "toDto exposes null agentFlowConfig when the domain has none" {
+    "update with a null flowConfiguration clears the existing one" {
         val id = UUID.randomUUID()
-        val entity = sp(id = id)
-        every { service.findById(id, withRemoved = true) } returns entity
-        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
-        controller.getById(id).agentFlowConfig shouldBe null
-    }
-
-    "update replaces agentFlowConfig with the incoming one" {
-        val id = UUID.randomUUID()
-        every { service.findById(id) } returns sp(id = id)
+        every { service.findById(id) } returns sp(id = id, flowConfiguration = flowDomain)
         every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
-        val result = controller.update(id, dto(id = id, agentFlowConfig = flowDto))
-        result.agentFlowConfig?.act?.agentName shouldBe "Caretaker"
-        result.agentFlowConfig?.search?.tool shouldBe "searchAgentUsers"
-    }
 
-    "update with null incoming agentFlowConfig clears the existing one" {
-        val id = UUID.randomUUID()
-        every { service.findById(id) } returns sp(id = id, agentFlowConfig = flowDomain)
-        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
-        controller.update(id, dto(id = id)).agentFlowConfig shouldBe null
+        controller.update(id, dto(id = id)).flowConfiguration shouldBe null
     }
 })

@@ -107,8 +107,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
  *    which is incompatible with the leading `@mention`. When the scheduled prompt has an
- *    [ScheduledPrompt.agentFlowConfig], the full loop payload (with the untranslated prompt content as
- *    `act.prompt`) is added to the message's sessionContext under [SessionContextKeys.AGENT_FLOW_CONFIG].
+ *    [ScheduledPrompt.flowConfiguration], the full loop payload (with the untranslated prompt content as
+ *    `act.prompt`) is added to the message's sessionContext under [SessionContextKeys.FLOW_CONFIGURATION].
  * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
  *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
  *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
@@ -345,7 +345,6 @@ class ScheduledPromptExecutor(
 
         val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
         runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
-
         logger.info {
             "[Executor] Phase A complete: run=${run.id} — $count UserRun(s) created, status=$finalStatus"
         }
@@ -420,7 +419,7 @@ class ScheduledPromptExecutor(
                             .mergePreferredLanguage(
                                 result.sessionContext,
                                 runContext.preferredLanguage,
-                            ).withAgentFlowConfig(runContext.agentFlowPayload)
+                            ).withFlowConfiguration(runContext.flowPayload)
                     val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = effectiveContext))
                     awaitLaunch(userRun.id, caseId)
                 }
@@ -492,7 +491,7 @@ class ScheduledPromptExecutor(
             preferredLanguage = preferredLanguage,
             // Source content, not effectivePromptContent: the loop's cases run for other users, each of whom
             // gets their own preferredLanguage from FreeCaseStarterForUser, so the loop user's translation is wrong.
-            agentFlowPayload = scheduledPrompt.agentFlowConfig?.toLoopPayload(prompt = promptContent),
+            flowPayload = scheduledPrompt.flowConfiguration?.toLoopPayload(prompt = promptContent),
         )
     }
 
@@ -545,7 +544,7 @@ class ScheduledPromptExecutor(
         val agentName: String,
         val userExternalId: String,
         val preferredLanguage: String? = null,
-        val agentFlowPayload: AgentLoopPayload? = null,
+        val flowPayload: AgentLoopPayload? = null,
         val sessionContext: Map<String, Any?>? = null,
     ) {
         val message: String get() = "@$agentName $promptContent"
@@ -746,13 +745,13 @@ class ScheduledPromptExecutor(
         private val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
 
         /**
-         * Adds [payload] under [SessionContextKeys.AGENT_FLOW_CONFIG] as a plain map, the scheduler's value winning
+         * Adds [payload] under [SessionContextKeys.FLOW_CONFIGURATION] as a plain map, the scheduler's value winning
          * over any provider key. Returns the context untouched when there is no payload.
          */
-        private fun Map<String, Any?>?.withAgentFlowConfig(payload: AgentLoopPayload?): Map<String, Any?>? =
+        private fun Map<String, Any?>?.withFlowConfiguration(payload: AgentLoopPayload?): Map<String, Any?>? =
             when (payload) {
                 null -> this
-                else -> (this ?: emptyMap()) + (SessionContextKeys.AGENT_FLOW_CONFIG to MAPPER.convertValue(payload, MAP_TYPE))
+                else -> (this ?: emptyMap()) + (SessionContextKeys.FLOW_CONFIGURATION to MAPPER.convertValue(payload, MAP_TYPE))
             }
 
         private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> =

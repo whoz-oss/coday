@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
@@ -49,18 +50,27 @@ data class Planning(
 )
 
 /**
- * What a LOOP agent runs for a [ScheduledPrompt]: [searchTool] is called with [searchParams], and one case is
- * started with [agentName] for each result. The prompt of those cases is not stored here: it is the
- * scheduled prompt's own content, added by [toLoopPayload].
+ * What a LOOP agent runs for a [ScheduledPrompt]: [search] calls a tool with its params, and [act] starts one case
+ * per result. The prompt of those cases is not stored here: it is the scheduled prompt's own content, added by
+ * [toLoopPayload]. Same shape as the API and as the stored JSON.
  */
-data class AgentFlowConfig(
-    val searchTool: String,
-    val searchParams: JsonNode? = null,
-    val agentName: String,
+data class FlowConfiguration(
+    val search: Search,
+    val act: Act,
 ) {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    data class Search(
+        val tool: String,
+        val params: JsonNode? = null,
+    )
+
+    data class Act(
+        val agentName: String,
+    )
+
     /** The full payload AgentLoop runs, `prompt` being the first message of each started case. */
     fun toLoopPayload(prompt: String): AgentLoopPayload =
-        AgentLoopPayload(search = AgentLoopSearch(searchTool, searchParams), act = AgentLoopAct(agentName, prompt))
+        AgentLoopPayload(AgentLoopSearch(search.tool, search.params), AgentLoopAct(act.agentName, prompt))
 }
 
 // ---------------------------------------------------------------------------
@@ -125,12 +135,9 @@ data class ScheduledPrompt(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /**
-     * Only read when the agent is a LOOP agent (saving it on any other agent is refused).
-     *
-     * The scheduler materialises one run per user of the agent's deployment audience, so **the loop agent must be
-     * deployed to a single user**: each user would otherwise trigger a full fan-out. That user must be an ADMIN of
-     * the namespace to start cases for other users (rule of `FreeCaseStarterForUser`). The loop agent needs the
-     * search tool's integration and a CASE integration granting `FreeCaseStarterForUser`.
+     * What a LOOP agent runs for this scheduled prompt, handed to the run in the context of its first message
+     * ([io.whozoss.agentos.caseFlow.SessionContextKeys.FLOW_CONFIGURATION]). Refused on a non-LOOP agent.
+     * Null to use the agent's own `loopConfig`.
      */
-    val agentFlowConfig: AgentFlowConfig? = null,
+    val flowConfiguration: FlowConfiguration? = null,
 ) : Entity
