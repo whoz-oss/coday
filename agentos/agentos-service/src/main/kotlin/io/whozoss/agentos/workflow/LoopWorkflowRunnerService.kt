@@ -126,7 +126,8 @@ class LoopWorkflowRunnerService(
      *
      * The tool is looked up by its exact name, then by its name behind an integration prefix (`CONFIG__tool`), the
      * same rule as for `FreeCaseStarterForUser`: a payload can say `searchAgentUsers` whatever the name of the
-     * integration config that provides it.
+     * integration config that provides it. When several tools match behind a prefix the search is refused as
+     * ambiguous, with their names: the payload must then use the prefixed name.
      *
      * **Whoz-specific coupling (V0):** [SearchResult], [SearchResultItem], and the
      * structured-output contract assumed here are tightly coupled to the Whoz Search tool
@@ -141,11 +142,22 @@ class LoopWorkflowRunnerService(
         val toolName = payload.search.tool
         val searchTool =
             context.tools.find { it.name == toolName }
-                ?: context.tools.find { it.name.endsWith("__$toolName") }
-                ?: return SearchOutcome.Failure(
-                    "Search tool '$toolName' is not available to agent '${context.agentName}' " +
-                        "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
-                )
+                ?: context.tools.filter { it.name.endsWith("__$toolName") }.let { matches ->
+                    when (matches.size) {
+                        0 ->
+                            return SearchOutcome.Failure(
+                                "Search tool '$toolName' is not available to agent '${context.agentName}' " +
+                                    "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
+                            )
+
+                        1 -> matches.single()
+
+                        else ->
+                            return SearchOutcome.Failure(
+                                "Search tool '$toolName' is ambiguous: ${matches.map { it.name }}. Use its prefixed name.",
+                            )
+                    }
+                }
         val toolContext = toolContext(context = context, triggerUser = triggerUser)
         val paramsJson = objectMapper.writeValueAsString(payload.search.params)
         logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
