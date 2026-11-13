@@ -151,7 +151,7 @@ data class AgentConfig(
      * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object.
      *
      * When an [AgentLoop] run starts, the last user message is inspected first: if its sessionContext carries an
-     * `agentFlowConfig` (see [io.whozoss.agentos.caseFlow.SessionContextKeys.AGENT_FLOW_CONFIG]), that payload is used
+     * `flowConfiguration` (see [io.whozoss.agentos.caseFlow.SessionContextKeys.FLOW_CONFIGURATION]), that payload is used
      * (override), and if it is invalid the run is aborted rather than falling back here. Without one, [loopConfig]
      * is the payload. If neither exists, the run is aborted with a warning.
      *

@@ -31,13 +31,13 @@ import java.util.UUID
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunnerService]:
  *
- * 1. Resolve the [AgentLoopPayload]: from the `agentFlowConfig` of the triggering message's session context
+ * 1. Resolve the [AgentLoopPayload]: from the `flowConfiguration` of the triggering message's session context
  *    when it has one, from [loopConfig] otherwise (see [resolvePayload]).
  * 2. Delegate the workflow to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
  *    when the run could not proceed. Always ends with [AgentFinishedEvent].
  *
- * The triggering message *content* is never read. Its session context is: [SessionContextKeys.AGENT_FLOW_CONFIG]
+ * The triggering message *content* is never read. Its session context is: [SessionContextKeys.FLOW_CONFIGURATION]
  * is how the scheduler and the UI launch page hand a payload to the run, [loopConfig] being the default.
  *
  * ## Expected payload format (in the session context or in loopConfig)
@@ -59,7 +59,7 @@ import java.util.UUID
  * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
  * @param triggerUser   The user who triggered the run.
  * @param loopConfig    The default [AgentLoopPayload] persisted on [AgentConfig], used when the triggering message
- *                      has no `agentFlowConfig` in its session context.
+ *                      has no `flowConfiguration` in its session context.
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -184,7 +184,7 @@ class AgentLoop(
 
     /**
      * Resolves the [AgentLoopPayload] to run, in this order:
-     * 1. `sessionContext[agentFlowConfig]` of the last user [MessageEvent] of [events], when present. If it is
+     * 1. `sessionContext[flowConfiguration]` of the last user [MessageEvent] of [events], when present. If it is
      *    invalid the run is aborted: it never falls back to [loopConfig], which would run something the caller did
      *    not ask for.
      * 2. [loopConfig].
@@ -197,14 +197,14 @@ class AgentLoop(
                 .filterIsInstance<MessageEvent>()
                 .lastOrNull { it.actor.role == ActorRole.USER }
                 ?.sessionContext
-                ?.get(SessionContextKeys.AGENT_FLOW_CONFIG)
+                ?.get(SessionContextKeys.FLOW_CONFIGURATION)
         val (source, node) =
             when {
-                fromContext != null -> "agentFlowConfig of the triggering message" to objectMapper.valueToTree<JsonNode>(fromContext)
+                fromContext != null -> "flowConfiguration of the triggering message" to objectMapper.valueToTree<JsonNode>(fromContext)
                 loopConfig != null -> "loopConfig" to loopConfig
                 else ->
                     throw InvalidLoopPayloadException(
-                        "No agentFlowConfig in the context of the triggering message and no loopConfig on this agent.",
+                        "No flowConfiguration in the context of the triggering message and no loopConfig on this agent.",
                     )
             }
         return try {

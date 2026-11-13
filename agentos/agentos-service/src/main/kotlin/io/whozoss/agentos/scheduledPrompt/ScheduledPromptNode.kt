@@ -73,7 +73,7 @@ data class ScheduledPromptNode(
     @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
     val externalMetadataJson: String? = null,
-    val agentFlowConfigJson: String? = null,
+    val flowConfigurationJson: String? = null,
 ) {
     fun toDomain(): ScheduledPrompt =
         ScheduledPrompt(
@@ -107,15 +107,12 @@ data class ScheduledPromptNode(
             nextRunAt = nextRunAt,
             lastRunAt = lastRunAt,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
-            agentFlowConfig = agentFlowConfigJson?.let { MAPPER.readValue(it, AgentFlowConfig::class.java).withoutNullParams() },
+            flowConfiguration = flowConfigurationJson?.let { MAPPER.readValue(it, FlowConfiguration::class.java) },
         )
 
     companion object {
         private val MAPPER = jacksonObjectMapper()
         private val EXTERNAL_METADATA_TYPE = object : TypeReference<Map<String, Any?>>() {}
-
-        /** Jackson reads a stored JSON `null` as a `NullNode`; the domain means "no params" with a Kotlin null. */
-        private fun AgentFlowConfig.withoutNullParams() = copy(searchParams = searchParams?.takeUnless { it.isNull })
 
         fun computeTripleKey(namespaceId: UUID?, userId: UUID?, name: String): String =
             OverlayKeyEncoding.activeKey(namespaceId, userId, name.toSlug())
@@ -149,7 +146,7 @@ data class ScheduledPromptNode(
                 modifiedBy = scheduledPrompt.metadata.modifiedBy,
                 removed = scheduledPrompt.metadata.removed.takeIf { it },
                 externalMetadataJson = scheduledPrompt.externalMetadata?.let { MAPPER.writeValueAsString(it) },
-                agentFlowConfigJson = scheduledPrompt.agentFlowConfig?.let { MAPPER.writeValueAsString(it) },
+                flowConfigurationJson = scheduledPrompt.flowConfiguration?.let { MAPPER.writeValueAsString(it) },
             )
     }
 }

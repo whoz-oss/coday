@@ -7,9 +7,9 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.api.scheduledPrompt.AgentFlowActDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.AgentFlowConfigDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.AgentFlowSearchDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationActDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationSearchDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptApi
@@ -184,7 +184,7 @@ class ScheduledPromptController(
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
             externalMetadata = resource.externalMetadata,
-            agentFlowConfig = resource.agentFlowConfig?.toDomain(),
+            flowConfiguration = resource.flowConfiguration?.toDomain(),
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -248,7 +248,7 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             externalMetadata = resource.externalMetadata,
-            agentFlowConfig = resource.agentFlowConfig?.toDomain(),
+            flowConfiguration = resource.flowConfiguration?.toDomain(),
         )
 
     companion object : KLogging()
@@ -271,15 +271,18 @@ internal fun PlanningDto.toDomain(): Planning = Planning(
     maxOccurrenceCount = maxOccurrenceCount,
 )
 
-internal fun AgentFlowConfigDto.toDomain(): AgentFlowConfig = AgentFlowConfig(
-    searchTool = search.tool.trim(),
-    searchParams = search.params,
-    agentName = act.agentName.trim(),
+internal fun FlowConfigurationDto.toDomain(): FlowConfiguration = FlowConfiguration(
+    search = FlowConfiguration.Search(
+        tool = search.tool.trim(),
+        // an explicit JSON null is "no params", like an absent field
+        params = search.params?.takeUnless { it.isNull },
+    ),
+    act = FlowConfiguration.Act(agentName = act.agentName.trim()),
 )
 
-internal fun AgentFlowConfig.toDto(): AgentFlowConfigDto = AgentFlowConfigDto(
-    search = AgentFlowSearchDto(tool = searchTool, params = searchParams),
-    act = AgentFlowActDto(agentName = agentName),
+internal fun FlowConfiguration.toDto(): FlowConfigurationDto = FlowConfigurationDto(
+    search = FlowConfigurationSearchDto(tool = search.tool, params = search.params),
+    act = FlowConfigurationActDto(agentName = act.agentName),
 )
 
 internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPromptDto =
@@ -311,5 +314,5 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         updatedOn = entity.metadata.modified,
         removed = entity.metadata.removed,
         externalMetadata = entity.externalMetadata,
-        agentFlowConfig = entity.agentFlowConfig?.toDto(),
+        flowConfiguration = entity.flowConfiguration?.toDto(),
     )

@@ -2,6 +2,8 @@ package io.whozoss.agentos.scheduledPrompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -126,28 +128,36 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // agentFlowConfig — fromDomain / toDomain round-trip
+    // flowConfiguration — fromDomain / toDomain
     // -------------------------------------------------------------------------
 
-    "agentFlowConfig round-trips, including a JSON object in searchParams" {
-        val config = AgentFlowConfig(
-            searchTool = "searchAgentUsers",
-            searchParams = ObjectMapper().readTree("""{"agentConfigId": "abc", "nested": {"n": [1, 2]}}"""),
-            agentName = "Caretaker",
+    val mapper = ObjectMapper()
+
+    "flowConfiguration round-trips: object params, no params, no configuration" {
+        forAll(
+            row(FlowConfiguration(FlowConfiguration.Search("searchAgentUsers", mapper.readTree("""{"a": "b", "n": {"x": [1, 2]}}""")), FlowConfiguration.Act("Caretaker"))),
+            row(FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))),
+            row(null),
+        ) { config ->
+            val node = ScheduledPromptNode.fromDomain(minimalPrompt().copy(flowConfiguration = config))
+            (node.flowConfigurationJson == null) shouldBe (config == null)
+            node.toDomain().flowConfiguration shouldBe config
+        }
+    }
+
+    "the stored flowConfiguration has the nested shape of the API, without a params key when there are none" {
+        val withParams = FlowConfiguration(
+            FlowConfiguration.Search("searchAgentUsers", mapper.readTree("""{"agentConfigId": "abc"}""")),
+            FlowConfiguration.Act("Caretaker"),
         )
-        val node = ScheduledPromptNode.fromDomain(minimalPrompt().copy(agentFlowConfig = config))
-        node.agentFlowConfigJson shouldNotBe null
-        node.toDomain().agentFlowConfig shouldBe config
-    }
+        val withoutParams = withParams.copy(search = FlowConfiguration.Search("searchAgentUsers"))
 
-    "agentFlowConfig without searchParams round-trips" {
-        val config = AgentFlowConfig(searchTool = "searchAgentUsers", agentName = "Caretaker")
-        ScheduledPromptNode.fromDomain(minimalPrompt().copy(agentFlowConfig = config)).toDomain().agentFlowConfig shouldBe config
-    }
+        fun stored(config: FlowConfiguration) =
+            mapper.readTree(ScheduledPromptNode.fromDomain(minimalPrompt().copy(flowConfiguration = config)).flowConfigurationJson)
 
-    "null agentFlowConfig produces a null agentFlowConfigJson and restores as null" {
-        val node = ScheduledPromptNode.fromDomain(minimalPrompt())
-        node.agentFlowConfigJson shouldBe null
-        node.toDomain().agentFlowConfig shouldBe null
+        stored(withParams) shouldBe
+            mapper.readTree("""{"search":{"tool":"searchAgentUsers","params":{"agentConfigId":"abc"}},"act":{"agentName":"Caretaker"}}""")
+        stored(withoutParams) shouldBe
+            mapper.readTree("""{"search":{"tool":"searchAgentUsers"},"act":{"agentName":"Caretaker"}}""")
     }
 })

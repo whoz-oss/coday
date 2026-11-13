@@ -92,24 +92,24 @@ data class PlanningDto(
  * The prompt of the started cases is not part of it: it is the scheduled prompt's `promptContent`.
  */
 @Schema(
-    name = "AgentFlowConfig",
+    name = "FlowConfiguration",
     description = "Search tool, its arguments and the agent started for each result, for a LOOP agent.",
 )
-data class AgentFlowConfigDto(
+data class FlowConfigurationDto(
     @field:NotNull(message = "search must not be null")
     @field:Valid
-    val search: AgentFlowSearchDto,
+    val search: FlowConfigurationSearchDto,
     @field:NotNull(message = "act must not be null")
     @field:Valid
-    val act: AgentFlowActDto,
+    val act: FlowConfigurationActDto,
 )
 
 /**
  * The SEARCH step: [tool] is called with [params]. The tool name may be bare (`searchAgentUsers`) or
  * prefixed with its integration (`USER_GROUP__searchAgentUsers`).
  */
-@Schema(name = "AgentFlowSearch")
-data class AgentFlowSearchDto(
+@Schema(name = "FlowConfigurationSearch")
+data class FlowConfigurationSearchDto(
     @field:NotBlank(message = "search.tool must not be blank")
     val tool: String,
     /** Opaque object passed as-is to the tool, same as [AgentConfigDto.loopConfig]. */
@@ -117,8 +117,8 @@ data class AgentFlowSearchDto(
 )
 
 /** The ACT step: one case is started with [agentName] for each search result. */
-@Schema(name = "AgentFlowAct")
-data class AgentFlowActDto(
+@Schema(name = "FlowConfigurationAct")
+data class FlowConfigurationActDto(
     @field:NotBlank(message = "act.agentName must not be blank")
     val agentName: String,
 )
@@ -191,9 +191,10 @@ data class ScheduledPromptDto(
      */
     @field:Valid
     @field:Schema(
+        nullable = true,
         description = "Only for LOOP agents. The loop calls search.tool with search.params and starts one case " +
             "per result with act.agentName, whose first message is promptContent. The tool name may be bare " +
             "or prefixed with its integration (CONFIG__tool).",
     )
-    val agentFlowConfig: AgentFlowConfigDto? = null,
+    val flowConfiguration: FlowConfigurationDto? = null,
 )
