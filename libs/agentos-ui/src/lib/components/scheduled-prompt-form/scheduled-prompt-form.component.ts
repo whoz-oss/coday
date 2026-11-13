@@ -14,7 +14,6 @@ import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
-  AgentConfigExecutionModeEnum,
   DAY_OF_WEEK_LABELS,
   DayOfWeek,
   ScheduledPrompt,
@@ -106,7 +105,7 @@ export class ScheduledPromptFormComponent implements OnInit {
         validators: [jsonValidator],
       }),
 
-      // Loop agents only: search tool, its params and the agent started for each result
+      // Loop agents: search tool, its params and the agent started for each result
       flowConfigurationJson: new FormControl<string>('', {
         nonNullable: true,
         validators: [jsonValidator],
@@ -196,17 +195,6 @@ export class ScheduledPromptFormComponent implements OnInit {
   private readonly agentConfigs = signal<AgentConfig[]>([])
   protected readonly availableAgentConfigs = this.agentConfigs.asReadonly()
 
-  private readonly agentConfigIdSignal = toSignal(
-    this.agentConfigIdControl.valueChanges.pipe(startWith(this.agentConfigIdControl.value))
-  )
-
-  /** True when the selected agent is a LOOP agent (in edit mode the agent is fixed, same rule). */
-  protected readonly isLoopAgent = computed(
-    () =>
-      this.agentConfigs().find((c) => c.id === this.agentConfigIdSignal())?.executionMode ===
-      AgentConfigExecutionModeEnum.LOOP
-  )
-
   /** Shape of the flowConfiguration field, shown as a placeholder. */
   protected readonly flowConfigurationPlaceholder = JSON.stringify(
     {
@@ -218,16 +206,6 @@ export class ScheduledPromptFormComponent implements OnInit {
     },
     null,
     2
-  )
-
-  private readonly flowConfigurationJsonSignal = toSignal(
-    this.flowConfigurationJsonControl.valueChanges.pipe(startWith(this.flowConfigurationJsonControl.value)),
-    { initialValue: '' }
-  )
-
-  /** Shown for a LOOP agent, and whenever the field holds a value: an existing config is never hidden. */
-  protected readonly showFlowConfiguration = computed(
-    () => this.isLoopAgent() || this.flowConfigurationJsonSignal().trim() !== ''
   )
 
   private existingPrompt: ScheduledPrompt | null = null
