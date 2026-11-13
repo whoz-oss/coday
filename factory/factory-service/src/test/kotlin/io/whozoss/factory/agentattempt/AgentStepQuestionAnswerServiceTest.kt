@@ -18,6 +18,7 @@ import io.whozoss.factory.agentattempt.service.AgentStepQuestionService
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.capability.CapabilityExecutionService
+import io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStaleRelease
 import io.whozoss.factory.error.RevisionConflictException
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -251,9 +252,9 @@ class AgentStepQuestionAnswerServiceTest {
         every { attempts.nextAttemptNumber(scope, namespace, workflowId, stepId) } returns 2
         every { interactions.update(scope, namespace, workflowId, interactionId, 5, any()) } returns true
         every { attempts.supersedeAndRegisterSuccessor(scope, any(), any(), now) } throws
-            io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStaleRelease("stale predecessor handle")
+            WorktreeExecutionOccupancyStaleRelease("stale predecessor handle")
 
-        assertThrows(io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStaleRelease::class.java) {
+        assertThrows(WorktreeExecutionOccupancyStaleRelease::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 5, "yes", "alice", now)
         }
         verify(exactly = 0) { interactions.appendEvent(any(), any(), any(), any()) }

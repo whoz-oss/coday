@@ -14,36 +14,12 @@ export function explicitContract(step: FullWorkflowStep): StepDraft | null {
     : null
 }
 
-/** Deliberate adoption of the generic legacy lane; special runtime-derived briefs cannot be copied safely. */
+/** Only the backend can authorize adoption and supply legacy obligations. */
 export function legacyAdoption(step: FullWorkflowStep): StepDraft | null {
-  if (step.responsibility?.kind !== 'agent' || ['Gitay', 'A11yReviewer'].includes(step.responsibility.name ?? '')) {
-    return null
-  }
-  const root = !step.dependsOn?.length
-  return {
-    entry: root
-      ? [
-          'Frame the handoff: objective, scope and exclusions, user/workflow criteria, constraints and open questions.',
-          'If the initial intention is absent or ambiguous, call queryUser and wait. Do not submit FAIL merely for clarification. If unavailable, do not guess or widen scope; report the blocker as a justified terminal failure only when no supported continuation exists.',
-          'Do not invent criteria or turn a request for analysis into implementation.',
-        ]
-      : [
-          'Consume the structured dependency inputs and run-brief handoff. The original user request remains the governing intention.',
-        ],
-    mission: step.name,
-    exit: [
-      ...(root
-        ? [
-            "Include a durable Markdown artifact in artifacts with kind 'run-brief', encoding 'markdown', and sections: Objectif, Périmètre et exclusions, Critères, Contraintes, Questions ouvertes.",
-          ]
-        : [
-            'Preserve every run-brief artifact received from direct dependencies unchanged in artifacts. Add separate artifacts for this step; never rewrite or merge independent framings.',
-          ]),
-      'Choose deliverables from the work actually requested: analysis/design requires reasoned findings, decisions/options, constraints, open questions and a durable Markdown artifact; do not implement unless requested.',
-      'Implementation requires scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.',
-      'Review requires prioritized findings with locations/evidence and residual risks; do not modify code unless requested.',
-    ],
-  }
+  const contract = step.legacyContract
+  return contract?.adoptable && contract.entry && typeof contract.mission === 'string' && contract.exit
+    ? { entry: [...contract.entry], mission: contract.mission, exit: [...contract.exit] }
+    : null
 }
 
 export function validateDraft(draft: StepDraft): string | null {
@@ -227,7 +203,11 @@ export class WorkflowStepEditorState {
       return
     }
     const steps = this.definition()?.steps?.map((step) => ({
-      ...(step.id === selected.id ? { ...step, ...patch } : step),
+      ...(step.id === selected.id ? {
+        ...step, ...patch,
+        // Metadata was computed for the loaded role/dependency position. Never adopt stale obligations.
+        legacyContract: patch.responsibility || patch.dependsOn || patch.name ? undefined : step.legacyContract,
+      } : step),
       dependsOn: (step.id === selected.id ? patch.dependsOn ?? step.dependsOn : step.dependsOn)?.map((dep) => dep === selected.id ? id : dep),
       ...(id !== selected.id && step.decision ? { decision: { ...step.decision, routes: step.decision.routes.map((route) => ({ ...route, target: route.target === selected.id ? id : route.target })) } } : {}),
       ...(id !== selected.id && step.join ? { join: step.join === selected.id ? id : step.join } : {}),
@@ -247,7 +227,7 @@ export class WorkflowStepEditorState {
     if (!step || step.responsibility?.kind !== 'agent') return
     if (mode === '') { this.updateBlock({ decision: undefined }); return }
     if (mode !== 'single' && mode !== 'multiple') return
-    this.updateBlock({ decision: { mode, routes: step.decision?.routes ?? [{ name: 'frontend', target: '' }, { name: 'backend', target: '' }] } })
+    this.updateBlock({ decision: { mode, routes: step.decision?.routes ?? [{ name: 'route-1', target: '' }, { name: 'route-2', target: '' }] } })
   }
 
   updateRoute(index: number, field: 'name' | 'target', value: string): void {
@@ -290,6 +270,7 @@ export class WorkflowStepEditorState {
     if (!this.editing() || !selected || !['agent', 'human'].includes(selected.responsibility?.kind ?? '') || this.saving()) return
     const steps = this.definition()?.steps?.filter((step) => step.id !== selected.id).map((step) => ({
       ...step, dependsOn: step.dependsOn?.filter((id) => id !== selected.id),
+      legacyContract: step.dependsOn?.includes(selected.id) ? undefined : step.legacyContract,
     })) ?? []
     const drafts = { ...this.drafts() }; delete drafts[selected.id]; this.drafts.set(drafts)
     this.changeDefinition({ ...this.definition(), steps })
@@ -396,7 +377,11 @@ export class WorkflowStepEditorState {
     const definition: FullWorkflowDefinition = {
       ...source,
       version,
-      steps: source.steps?.map((step) => (drafts[step.id] ? { ...step, ...drafts[step.id] } : step)),
+      steps: source.steps?.map((step) => {
+        const authored = { ...step, ...drafts[step.id] }
+        delete authored.legacyContract
+        return authored
+      }),
     }
     this.saving.set(true)
     this.error.set(null)

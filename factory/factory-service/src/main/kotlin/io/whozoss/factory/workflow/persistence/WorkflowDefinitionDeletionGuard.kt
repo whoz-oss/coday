@@ -1,17 +1,13 @@
 package io.whozoss.factory.workflow.persistence
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.workflowException
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.stereotype.Component
 
-/** Definition write locks serialize deletion and durable pin writes in the caller's transaction. */
+/** Serialize deletion with creation of durable pins, never with ordinary run/projection updates. */
 @Component
-class WorkflowDefinitionDeletionGuard(
-    private val client: Neo4jClient,
-    private val mapper: ObjectMapper,
-) {
+class WorkflowDefinitionDeletionGuard(private val client: Neo4jClient) {
     fun lock(organizationId: String, type: String, version: String): String? =
         client.query("""
             MATCH (d:WorkflowDefinition {id: ${'$'}id})
@@ -21,7 +17,6 @@ class WorkflowDefinitionDeletionGuard(
             .fetch().one().orElse(null)?.get("hash") as? String
 
     fun assertPinsAvailable(organizationId: String, versions: Map<String, String>, hashes: Map<String, String> = emptyMap()) {
-        // Deterministic lock order for parent runs pinning multiple definitions.
         versions.toSortedMap().forEach { (type, version) ->
             val hash = lock(organizationId, type, version)
                 ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND, "The pinned workflow definition '$type@$version' is unavailable.")
@@ -32,48 +27,17 @@ class WorkflowDefinitionDeletionGuard(
     }
 
     fun assertUnused(organizationId: String, type: String, version: String) {
-        val pinKey = "$type@$version"
-        // Fast path: check scalar/list properties written on current nodes without loading JSON blobs.
-        val indexedUsed = client.query(
-            """
-            MATCH (n) WHERE n.organizationId = ${'$'}organizationId
-              AND (
-                ((n:WorkflowInstance OR n:WorkflowProjection) AND n.pinnedDefinition = ${'$'}pinKey)
-                OR (n:FactoryRun AND ${'$'}pinKey IN coalesce(n.pinnedDefinitions, []))
-              )
-            RETURN count(n) > 0 AS used
-            """.trimIndent(),
-        ).bindAll(mapOf("organizationId" to organizationId, "pinKey" to pinKey))
-            .fetch().one().orElse(null)?.get("used") == true
-        if (indexedUsed) throw inUseException(type, version)
-
-        // Legacy fallback: only inspect nodes predating `pinnedDefinition`/`pinnedDefinitions` that mention `type`.
-        // No lifecycle/status filter: archived and purged projections, orphan instances and terminal parent-run catalogs remain protected.
-        val rows = client.query(
-            """
-            MATCH (n) WHERE n.organizationId = ${'$'}organizationId
-              AND (
-                (n:WorkflowInstance AND n.pinnedDefinition IS NULL AND n.instance CONTAINS ${'$'}type)
-                OR (n:WorkflowProjection AND n.pinnedDefinition IS NULL AND (n.projection CONTAINS ${'$'}type OR coalesce(n.instance, '') CONTAINS ${'$'}type))
-                OR (n:FactoryRun AND n.pinnedDefinitions IS NULL AND n.flowVersions CONTAINS ${'$'}type)
-              )
-            RETURN n.instance AS instance, n.projection AS projection, n.definitionVersion AS version,
-                   n.flowVersions AS versions
-            """.trimIndent(),
-        ).bindAll(mapOf("organizationId" to organizationId, "type" to type)).fetch().all()
-        val used = rows.any { row ->
-            fun json(key: String): Map<*, *> = (row[key] as? String)?.let { mapper.readValue(it, Map::class.java) } ?: emptyMap<Any, Any>()
-            val instance = json("instance")
-            val projection = json("projection")
-            json("versions")[type] == version ||
-                (instance["workflowType"] == type && instance["definitionVersion"] == version) ||
-                (projection["workflowType"] == type && (row["version"] ?: instance["definitionVersion"]) == version)
+        val parameters = mapOf("organizationId" to organizationId, "pinKey" to "$type@$version")
+        val queries = listOf(
+            "MATCH (n:WorkflowInstance {organizationId: ${'$'}organizationId, pinnedDefinition: ${'$'}pinKey}) RETURN count(n) > 0 AS used",
+            "MATCH (n:WorkflowProjection {organizationId: ${'$'}organizationId, pinnedDefinition: ${'$'}pinKey}) RETURN count(n) > 0 AS used",
+            "MATCH (n:FactoryRun {organizationId: ${'$'}organizationId}) WHERE ${'$'}pinKey IN coalesce(n.pinnedDefinitions, []) RETURN count(n) > 0 AS used",
+        )
+        if (queries.any { client.query(it).bindAll(parameters).fetch().one().orElse(null)?.get("used") == true }) {
+            throw workflowException(
+                "WORKFLOW_DEFINITION_IN_USE",
+                "Cannot delete '$type@$version': a run pins this definition. Active and historical runs, including archived or purged runs, keep their definitions.",
+            )
         }
-        if (used) throw inUseException(type, version)
     }
-
-    private fun inUseException(type: String, version: String) = workflowException(
-        "WORKFLOW_DEFINITION_IN_USE",
-        "Cannot delete '$type@$version': a run pins this definition. Active and historical runs, including archived or purged runs, keep their definitions.",
-    )
 }

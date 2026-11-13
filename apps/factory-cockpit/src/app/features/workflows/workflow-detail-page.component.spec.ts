@@ -455,7 +455,9 @@ describe('WorkflowDetailPageComponent', () => {
       getWorkflowDefinition: jest.fn().mockReturnValue(
         of({
           ...FULL_DEF,
-          steps: [{ id: 'plan', name: 'Analyze request', responsibility: { kind: 'agent', name: 'Architect' } }],
+          steps: [{ id: 'plan', name: 'Analyze request', responsibility: { kind: 'agent', name: 'Architect' },
+            legacyContract: { adoptable: true, summary: 'Backend legacy instructions', entry: ['Frame the request'],
+              mission: 'Analyze request', exit: ["Include kind 'run-brief'", 'do not claim checks that were not run'] } }],
         })
       ),
     })
@@ -487,7 +489,7 @@ describe('WorkflowDetailPageComponent', () => {
       getWorkflowDefinition: jest.fn().mockReturnValue(
         of({
           ...FULL_DEF,
-          steps: [{ id: 'special', name, responsibility: { kind: 'agent', name } }],
+          steps: [{ id: 'special', name, responsibility: { kind: 'agent', name }, legacyContract: { adoptable: false, summary: 'Runtime-derived obligations' } }],
         })
       ),
     })
@@ -537,7 +539,8 @@ describe('WorkflowDetailPageComponent', () => {
       getWorkflowDefinition: jest.fn().mockReturnValue(
         of({
           ...FULL_DEF,
-          steps: [{ id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Architect' } }],
+          steps: [{ id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Architect' },
+            legacyContract: { adoptable: true, summary: 'Backend legacy instructions', entry: [], mission: 'Plan', exit: [] } }],
         })
       ),
     })
@@ -611,7 +614,8 @@ describe('WorkflowDetailPageComponent', () => {
 
   it.each(['human', 'code'])('preserves read-only %s execution information', async (kind) => {
     const api = createApi({ getWorkflowDefinition: jest.fn().mockReturnValue(of({
-      ...FULL_DEF, steps: [{ id: 'check', name: 'Check', responsibility: { kind, name: 'Verifier' } }],
+      ...FULL_DEF, steps: [{ id: 'check', name: 'Check', responsibility: { kind, name: 'Verifier' },
+        legacyContract: { adoptable: false, summary: 'This step uses the existing approval or verification implementation, not an agent prompt.' } }],
     })) })
     const { host, fixture } = await setup(api)
     expect(host.querySelector('[data-step-contract]')?.textContent).toContain('Verifier')

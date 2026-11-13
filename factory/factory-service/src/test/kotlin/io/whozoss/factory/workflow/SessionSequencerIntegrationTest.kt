@@ -35,6 +35,7 @@ import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -243,6 +244,32 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
             .filter { it.kind == NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND }
         assertThat(proof).hasSize(1)
         assertThat(proof.single().outcome).isEqualTo(NeedsResearchRouter.NEEDS_RESEARCH_OUTCOME)
+    }
+
+    @Test
+    fun `non-routing queryUser waits for agent completion then resumes from the finalized attempt`() {
+        val workflowId = "wf-query-user-resume"
+        startSession("query-user-resume", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
+        val capability = mockk<CapabilityExecutionService>()
+        every { capability.hasFinalizedAttempt(scope, namespace, workflowId, "s1") } returns false
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
+            CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired("s1", "architect"), attemptId = "attempt-1")
+        val service = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub)
+
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        // A repeated continuation while queryUser is still unanswered cannot approve an agent step.
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+
+        // The answer resumes the same agent turn. Its eventual durable finalization, not a human
+        // checkpoint approval, permits the outbox continuation to replay the outcome.
+        every { capability.hasFinalizedAttempt(scope, namespace, workflowId, "s1") } returns true
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
+            CapabilityExecution(CapabilityOutcome.AgentCompleted("s1", "architect", "PASS", emptyMap()), attemptId = "attempt-1")
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
+        verify(exactly = 2) { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) }
+        assertThat(interactionRepository.list(scope, namespace, workflowId, false)).isEmpty()
     }
 
     // ----- tests ---------------------------------------------------------

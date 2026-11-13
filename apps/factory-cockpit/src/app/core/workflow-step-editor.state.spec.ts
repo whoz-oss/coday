@@ -44,10 +44,10 @@ describe('workflow block composition', () => {
     expect(state.definition()?.steps?.[0].decision?.routes[0].target).toBe('frontend')
     state.select('architect'); state.setRoutingMode('single')
     expect(state.selected()?.decision?.mode).toBe('single')
-    expect(layoutDefinition(state.preview()?.steps ?? []).edges.find((edge) => edge.to === 'frontend')?.label).toBe('frontend (single)')
+    expect(layoutDefinition(state.preview()?.steps ?? []).edges.find((edge) => edge.to === 'frontend')?.label).toBe('route-1 (single)')
     state.save()
     const payload = api.createWorkflowDefinition.mock.calls[0][0]
-    expect(JSON.parse(JSON.stringify(payload)).steps[0].decision).toEqual({ mode: 'single', routes: [{ name: 'frontend', target: 'frontend' }, { name: 'backend', target: 'step-3' }] })
+    expect(JSON.parse(JSON.stringify(payload)).steps[0].decision).toEqual({ mode: 'single', routes: [{ name: 'route-1', target: 'frontend' }, { name: 'route-2', target: 'step-3' }] })
     expect(payload.steps[3].join).toBe('architect')
   })
 
@@ -59,6 +59,31 @@ describe('workflow block composition', () => {
     expect(validateStructure({ ...base, steps: base.steps.filter((step) => step.id !== 'j') })).toContain('explicit join')
     expect(validateStructure({ ...base, steps: [...base.steps, step('escape', ['f'])] })).toContain('only and directly')
     expect(validateStructure({ ...base, steps: base.steps.map((step) => step.id === 'a' ? { ...step, decision: { ...decision, routes: [decision.routes[0], decision.routes[0]] } } : step) })).toContain('unique')
+  })
+
+  it('invalidates server adoption metadata when the loaded responsibility changes', () => {
+    const { state } = setup()
+    state.definition.set({ steps: [{ id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Dev' },
+      legacyContract: { adoptable: true, summary: 'Server default', entry: [], mission: 'Plan', exit: [] },
+    }] })
+    state.select('plan')
+    expect(legacyAdoption(state.selected()!)).not.toBeNull()
+    state.updateBlock({ responsibility: { kind: 'agent', name: 'Other' } })
+    expect(legacyAdoption(state.selected()!)).toBeNull()
+  })
+
+  it('strips backend metadata on save', () => {
+    const { state, api } = setup()
+    state.metadata('workflowType', 'legacy')
+    state.metadata('title', 'Legacy')
+    state.definition.set({ ...state.definition(), steps: [{
+      id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: [],
+      legacyContract: { adoptable: true, summary: 'Server default', entry: ['Read'], mission: 'Plan', exit: ['Report'] },
+    }] })
+    state.select('plan')
+    state.adopt()
+    state.save()
+    expect(api.createWorkflowDefinition.mock.calls[0][0].steps[0].legacyContract).toBeUndefined()
   })
 
   it('starts pristine, tracks version-only edits, and clears dirty on discard', () => {
@@ -260,10 +285,19 @@ describe('step instruction editing', () => {
       name: 'Work',
       responsibility: { kind: 'agent', name: 'Dev' },
       dependsOn: ['plan'],
+      legacyContract: {
+        adoptable: true, summary: 'Backend contract', mission: 'Work',
+        entry: ['Consume structured dependency inputs'],
+        exit: ['Preserve run briefs unchanged; never rewrite or merge independent framings'],
+      },
     })
     expect(draft?.entry.join('\n')).toContain('structured dependency inputs')
     expect(draft?.exit.join('\n')).toContain('unchanged')
     expect(draft?.exit.join('\n')).toContain('never rewrite or merge independent framings')
+  })
+
+  it('does not invent legacy obligations when backend metadata is absent', () => {
+    expect(legacyAdoption({ id: 'x', name: 'Work', responsibility: { kind: 'agent', name: 'Dev' } })).toBeNull()
   })
 
   it('does not treat partial contracts as explicit or auto-adopt non-agent execution', () => {

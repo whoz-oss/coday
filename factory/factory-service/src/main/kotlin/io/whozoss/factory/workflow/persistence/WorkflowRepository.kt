@@ -1,5 +1,6 @@
 package io.whozoss.factory.workflow.persistence
 
+import io.whozoss.factory.persistence.OrganizationScope
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -37,19 +38,19 @@ sealed interface EvidenceAppendResult {
 interface WorkflowRepository {
 
     // ----- definitions ----------------------------------------------------
-    fun findDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): WorkflowDefinitionRecord?
-    fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): List<WorkflowDefinitionRecord>
-    fun saveDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord)
-    fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean
+    fun findDefinition(scope: OrganizationScope, workflowType: String, version: String): WorkflowDefinitionRecord?
+    fun listDefinitions(scope: OrganizationScope): List<WorkflowDefinitionRecord>
+    fun saveDefinition(scope: OrganizationScope, record: WorkflowDefinitionRecord)
+    fun deleteDefinition(scope: OrganizationScope, workflowType: String, version: String): Boolean
 
     fun findDefinition(scope: TenantScope, workflowType: String, version: String): WorkflowDefinitionRecord? =
-        findDefinition(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId), workflowType, version)
+        findDefinition(OrganizationScope(scope.organizationId), workflowType, version)
     fun listDefinitions(scope: TenantScope): List<WorkflowDefinitionRecord> =
-        listDefinitions(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId))
+        listDefinitions(OrganizationScope(scope.organizationId))
     fun saveDefinition(scope: TenantScope, record: WorkflowDefinitionRecord) =
-        saveDefinition(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId), record)
+        saveDefinition(OrganizationScope(scope.organizationId), record)
     fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean =
-        deleteDefinition(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId), workflowType, version)
+        deleteDefinition(OrganizationScope(scope.organizationId), workflowType, version)
 
     /** Acquire all catalog pins in deterministic order before materializing any fragment in the same transaction. */
     fun lockDefinitionPins(scope: TenantScope, versions: Map<String, String>, hashes: Map<String, String>) = Unit

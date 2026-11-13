@@ -1,5 +1,16 @@
 package io.whozoss.factory.workflow.web
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.workflow.persistence.WorkflowDefinitionDeletionGuard
+import io.whozoss.factory.workflow.persistence.WorkflowDefinitionPinMigration
+import io.whozoss.factory.workflow.domain.WorkflowException
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
+import org.springframework.data.neo4j.core.Neo4jClient
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.web.FakeIdp
@@ -33,6 +44,9 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var factoryProperties: FactoryProperties
+
+    @Autowired
+    private lateinit var pinMigration: WorkflowDefinitionPinMigration
 
     private val adminToken: String
         get() = FakeIdp.issueJwt(
@@ -171,6 +185,10 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
         val detail = get("$REGISTER_PATH/wf-admin/1.0.0", adminToken)
         assertThat(detail.statusCode.value()).isEqualTo(200)
         assertThat(data(detail)["definitionHash"]).isEqualTo(registered["definitionHash"])
+        assertThat(data(detail)["definition"]).isEqualTo(validDefinition())
+        val legacy = data(detail)["legacyContracts"] as Map<*, *>
+        assertThat((legacy["gate"] as Map<*, *>)["adoptable"]).isEqualTo(false)
+        assertThat((legacy["gate"] as Map<*, *>)["summary"] as String).contains("approval")
     }
 
     @Test
@@ -191,9 +209,9 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `concurrent create-only registrations have one winner without overwriting`() {
-        val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
-        val ready = java.util.concurrent.CountDownLatch(2)
-        val start = java.util.concurrent.CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
         val definitions = listOf(
             validDefinition("wf-create-race") + ("title" to "First editor"),
             validDefinition("wf-create-race") + ("title" to "Second editor"),
@@ -202,16 +220,16 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
             val futures = definitions.map { definition ->
                 executor.submit<ResponseEntity<Map<String, Any?>>> {
                     ready.countDown()
-                    check(start.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    check(start.await(10, TimeUnit.SECONDS))
                     restTemplate.exchange(
                         REGISTER_PATH, HttpMethod.POST,
                         HttpEntity(definition, jsonHeaders(adminToken).apply { set("If-None-Match", "*") }), mapType(),
                     )
                 }
             }
-            check(ready.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            check(ready.await(10, TimeUnit.SECONDS))
             start.countDown()
-            val responses = futures.map { it.get(30, java.util.concurrent.TimeUnit.SECONDS) }
+            val responses = futures.map { it.get(30, TimeUnit.SECONDS) }
             assertThat(responses.map { it.statusCode.value() }).containsExactlyInAnyOrder(201, 409)
             val winner = responses.indexOfFirst { it.statusCode.value() == 201 }
             val detail = data(get("$REGISTER_PATH/wf-create-race/1.0.0", adminToken))
@@ -347,6 +365,9 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
                 }
                 session.run(query, parameters).consume()
             }
+            // Legacy fixtures predate scalar pins: simulate the startup backfill, twice to prove idempotence.
+            pinMigration.migrate()
+            pinMigration.migrate()
             val response = delete("$REGISTER_PATH/$type/1.0.0", adminToken)
             assertThat(response.statusCode.value()).isEqualTo(409)
             assertThat(errorCode(response)).isEqualTo("WORKFLOW_DEFINITION_IN_USE")
@@ -366,10 +387,10 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Autowired
-    private lateinit var deletionGuard: io.whozoss.factory.workflow.persistence.WorkflowDefinitionDeletionGuard
+    private lateinit var deletionGuard: WorkflowDefinitionDeletionGuard
 
     @Autowired
-    private lateinit var transactionManager: org.springframework.transaction.PlatformTransactionManager
+    private lateinit var transactionManager: PlatformTransactionManager
 
     @Test
     fun `concurrent pin and deletion serialize on the definition before checking references`() {
@@ -378,27 +399,27 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
             session.run("MATCH (d:WorkflowDefinition {workflowType: 'pin-delete-race'}) RETURN d.organizationId AS org")
                 .single()["org"].asString()
         }
-        val locked = java.util.concurrent.CountDownLatch(1)
-        val release = java.util.concurrent.CountDownLatch(1)
-        val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
         try {
             val pin = executor.submit {
-                org.springframework.transaction.support.TransactionTemplate(transactionManager).execute {
+                TransactionTemplate(transactionManager).execute {
                     deletionGuard.assertPinsAvailable(organizationId, mapOf("pin-delete-race" to "1.0.0"))
                     locked.countDown()
-                    check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    check(release.await(10, TimeUnit.SECONDS))
                     // Same transaction as the lock, using the production client.
-                    neo4jClient.query("CREATE (:FactoryRun {id: 'race-pin', organizationId: ${'$'}org, flowVersions: ${'$'}versions})")
+                    neo4jClient.query("CREATE (:FactoryRun {id: 'race-pin', organizationId: ${'$'}org, pinnedDefinitions: ['pin-delete-race@1.0.0'], flowVersions: ${'$'}versions})")
                         .bindAll(mapOf("org" to organizationId, "versions" to objectMapperJson(mapOf("pin-delete-race" to "1.0.0")))).run()
                 }
             }
-            check(locked.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            check(locked.await(10, TimeUnit.SECONDS))
             val delete = executor.submit<ResponseEntity<Map<String, Any?>>> {
                 delete("$REGISTER_PATH/pin-delete-race/1.0.0", adminToken)
             }
             release.countDown()
-            pin.get(30, java.util.concurrent.TimeUnit.SECONDS)
-            val response = delete.get(30, java.util.concurrent.TimeUnit.SECONDS)
+            pin.get(30, TimeUnit.SECONDS)
+            val response = delete.get(30, TimeUnit.SECONDS)
             assertThat(response.statusCode.value()).isEqualTo(409)
             assertThat(errorCode(response)).isEqualTo("WORKFLOW_DEFINITION_IN_USE")
         } finally {
@@ -415,19 +436,19 @@ class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
                 .single()["org"].asString()
         }
         assertThat(delete("$REGISTER_PATH/delete-before-pin/1.0.0", adminToken).statusCode.value()).isEqualTo(200)
-        org.assertj.core.api.Assertions.assertThatThrownBy {
-            org.springframework.transaction.support.TransactionTemplate(transactionManager).execute {
+        assertThatThrownBy {
+            TransactionTemplate(transactionManager).execute {
                 deletionGuard.assertPinsAvailable(organizationId, mapOf("delete-before-pin" to "1.0.0"))
             }
-        }.isInstanceOf(io.whozoss.factory.workflow.domain.WorkflowException::class.java)
+        }.isInstanceOf(WorkflowException::class.java)
             .hasMessageContaining("unavailable")
     }
 
     @Autowired
-    private lateinit var neo4jClient: org.springframework.data.neo4j.core.Neo4jClient
+    private lateinit var neo4jClient: Neo4jClient
 
     private fun objectMapperJson(value: Any?): String =
-        com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(value)
+        ObjectMapper().writeValueAsString(value)
 
     companion object {
         private const val REGISTER_PATH = "/api/factory/workflow-definitions"

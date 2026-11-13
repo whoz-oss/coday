@@ -11,6 +11,7 @@ import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.FactoryCaller
 import io.whozoss.factory.workflow.web.resolveWorkflowCaller
 import io.whozoss.factory.web.factoryError
+import io.whozoss.factory.workflow.domain.WorkflowBlockerDto
 import io.whozoss.factory.workflow.domain.WorkflowActionTypes
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.workflowException
@@ -366,7 +367,7 @@ class WorkstreamServiceController(
             "message" to "Retry requested for step $stepId; awaiting human approval in Factory.",
         )
 
-    private fun blockerView(blocker: io.whozoss.factory.workflow.domain.WorkflowBlockerDto): Map<String, Any?> =
+    private fun blockerView(blocker: WorkflowBlockerDto): Map<String, Any?> =
         mapOf("code" to blocker.code, "stepId" to blocker.stepId, "message" to blocker.message)
 
     private fun optionalPin(request: Map<String, Any?>, field: String): String? {

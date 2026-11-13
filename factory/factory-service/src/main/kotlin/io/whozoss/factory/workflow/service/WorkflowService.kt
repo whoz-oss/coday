@@ -10,11 +10,22 @@ import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
 import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableException
+import io.whozoss.factory.persistence.OrganizationScope
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
+import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
+import io.whozoss.factory.capability.NeedsResearchRouter
+import io.whozoss.factory.capability.CapabilityOutcome
+import io.whozoss.factory.workflow.domain.ProjectionValidation
+import io.whozoss.factory.workflow.domain.WorkflowException
+import io.whozoss.factory.workflow.domain.WorkflowStepContract
+import io.whozoss.factory.workflow.domain.WorkflowDecision
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.proxy.AgentOsUnavailableException
 import io.whozoss.factory.proxy.UsageTrackingUnavailableException
 import io.whozoss.factory.sdk.spi.FactoryWorkflowExecutionPolicy
+import io.whozoss.factory.workflow.domain.LegacyStepContract
 import io.whozoss.factory.workflow.domain.AllowedActionDto
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
@@ -119,7 +130,7 @@ class WorkflowService(
      * plugin is refused when the manager is unavailable.
      */
     private val pluginManager: PluginManager? = null,
-    private val needsResearchRouter: io.whozoss.factory.capability.NeedsResearchRouter? = null,
+    private val needsResearchRouter: NeedsResearchRouter? = null,
     private val idempotencyRepository: IdempotencyRepository? = null,
     private val objectMapper: ObjectMapper? = null,
 ) {
@@ -167,20 +178,20 @@ class WorkflowService(
         repository.findDefinition(scope, workflowType, version)?.let { definitionJson(it) }
 
     @Transactional
-    fun registerDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord) {
+    fun registerDefinition(scope: OrganizationScope, record: WorkflowDefinitionRecord) {
         repository.saveDefinition(scope, record)
     }
 
     @Transactional
-    fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean =
+    fun deleteDefinition(scope: OrganizationScope, workflowType: String, version: String): Boolean =
         repository.deleteDefinition(scope, workflowType, version)
 
     @Transactional(readOnly = true)
-    fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): Map<String, Any?> =
+    fun listDefinitions(scope: OrganizationScope): Map<String, Any?> =
         mapOf("items" to repository.listDefinitions(scope).map { definitionJson(it) })
 
     @Transactional(readOnly = true)
-    fun getDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Map<String, Any?>? =
+    fun getDefinition(scope: OrganizationScope, workflowType: String, version: String): Map<String, Any?>? =
         repository.findDefinition(scope, workflowType, version)?.let { definitionJson(it) }
 
     private fun definitionJson(record: WorkflowDefinitionRecord): Map<String, Any?> = mapOf(
@@ -188,6 +199,8 @@ class WorkflowService(
         "version" to record.version,
         "definitionHash" to record.definitionHash,
         "definition" to record.definition,
+        "legacyContracts" to record.toPolicyDefinition().steps.filter { it.contract == null }
+            .associate { it.id to LegacyStepContract.metadata(it) },
     )
 
     // ------------------------------------------------------------------
@@ -325,10 +338,10 @@ class WorkflowService(
         controllerExecution: Map<String, Any?>?,
     ): WorkflowHttpResult {
         val validation = WorkflowProjectionValidator.validate(projection, workflowId)
-        if (validation is io.whozoss.factory.workflow.domain.ProjectionValidation.Invalid) {
+        if (validation is ProjectionValidation.Invalid) {
             throw workflowException(validation.error.code, "Workflow projection is invalid.", validation.error.details)
         }
-        val normalized = (validation as io.whozoss.factory.workflow.domain.ProjectionValidation.Valid).normalized
+        val normalized = (validation as ProjectionValidation.Valid).normalized
         val hash = CanonicalHash.workflowProjectionHash(normalized)
         val record = WorkflowProjectionRecord(
             namespaceId = namespaceId,
@@ -507,7 +520,7 @@ class WorkflowService(
         )
         try {
             repository.publishProjection(scope, record, 0)
-        } catch (_: io.whozoss.factory.workflow.domain.WorkflowException) {
+        } catch (_: WorkflowException) {
             // A projection already exists for this workflow (e.g. replayed start); keep it.
         }
     }
@@ -831,7 +844,7 @@ class WorkflowService(
 
     private fun refreshResultCapabilityForAgentAnswer(
         scope: TenantScope,
-        attempt: io.whozoss.factory.agentattempt.domain.DurableAgentAttempt,
+        attempt: DurableAgentAttempt,
         questionEventId: String,
     ) {
         val service = agentStepResultService ?: return
@@ -1293,7 +1306,7 @@ class WorkflowService(
             ),
         )
         idempotency.find(scope, scopedKey)?.let { cached ->
-            if (cached.requestHash != requestHash) throw io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException()
+            if (cached.requestHash != requestHash) throw IdempotencyKeyCollisionException()
             val response = mapper.readValue(cached.responsePayload, Map::class.java).entries.associate { it.key.toString() to it.value }
             return WorkflowHttpResult(200, response + ("idempotent" to true))
         }
@@ -1321,17 +1334,17 @@ class WorkflowService(
         }
         val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, predecessor.attemptId)
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "No accepted NEEDS_RESEARCH result is available for the authoritative predecessor.")
-        if (accepted.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
+        if (accepted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
             throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The authoritative predecessor result is not NEEDS_RESEARCH.")
         }
         val result = evidenceRepository.list(scope, namespaceId, workflowId, stepId)
-            .singleOrNull { it.kind == io.whozoss.factory.capability.NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND && it.facts["attemptId"] == predecessor.attemptId && it.facts["resultId"] == accepted.resultId }
+            .singleOrNull { it.kind == NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND && it.facts["attemptId"] == predecessor.attemptId && it.facts["resultId"] == accepted.resultId }
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The accepted NEEDS_RESEARCH proof is missing or ambiguous.")
         val facts = result.facts
         @Suppress("UNCHECKED_CAST")
         val persona = (result.source?.get("persona") as? String) ?: step.responsibility.name
         if (persona == null) throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The research step has no assigned agent.")
-        val outcome = io.whozoss.factory.capability.CapabilityOutcome.AgentNeedsResearch(
+        val outcome = CapabilityOutcome.AgentNeedsResearch(
             stepId = stepId,
             persona = persona,
             attemptId = facts["attemptId"] as? String,
@@ -2005,8 +2018,8 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             name = step["name"] as String,
             responsibility = WorkflowStepResponsibility(kind, responsibility?.get("name") as? String),
             dependsOn = (step["dependsOn"] as? List<*>)?.map { it as String } ?: emptyList(),
-            contract = io.whozoss.factory.workflow.domain.WorkflowStepContract.fromJson(step),
-            decision = io.whozoss.factory.workflow.domain.WorkflowDecision.parse(step["decision"]),
+            contract = WorkflowStepContract.fromJson(step),
+            decision = WorkflowDecision.parse(step["decision"]),
             join = step["join"] as? String,
         )
     }

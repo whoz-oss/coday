@@ -149,7 +149,7 @@
               </label>
             }
             @if (step.decision; as decision) {
-              <p>Agents submit route names in selectedRoutes on PASS. Fullstack selects frontend and backend, not a third route.</p>
+              <p>Agents submit configured route names in selectedRoutes on PASS. Multiple selection activates the chosen routes, not an additional route.</p>
               @for (route of decision.routes; track $index; let i = $index) {
                 <label>Route {{ i + 1 }} name
                   <input [ngModel]="route.name" (ngModelChange)="state.updateRoute(i, 'name', $event)" maxlength="128" [attr.data-route-name]="i" />
@@ -310,27 +310,7 @@
                 Factory currently generates hidden business instructions from the agent name and dependency position,
                 plus plugin context. The exact text is available in a dispatched run's selected attempt mandate.
               </p>
-              @if (step.responsibility?.name === 'Gitay') {
-                <p>
-                  Gitay: Factory selects the authoritative branch, restricts Git tools, requires unchanged HEAD and
-                  attached expected branch, and forbids editing, commit, push, fetch, stash, reset and merge.
-                </p>
-              } @else if (step.responsibility?.name === 'A11yReviewer') {
-                <p>
-                  Accessibility review: Factory computes authoritative PR files and changed ranges, limits the audit to
-                  this scope, and fails closed when scope is unavailable.
-                </p>
-              } @else if (step.responsibility?.kind === 'agent') {
-                <p>
-                  Entry steps must clarify the request, avoid invented criteria and produce a durable run-brief.
-                  Downstream steps must consume dependency inputs and preserve run-brief artifacts unchanged.
-                  Deliverable guidance varies for analysis, implementation and review.
-                </p>
-              } @else {
-                <p>
-                  This human/code step uses the existing approval or verification implementation, not an agent prompt.
-                </p>
-              }
+              <p>{{ step.legacyContract?.summary || 'Legacy contract metadata unavailable or changed locally. Reload the saved definition before adoption.' }}</p>
               @if (legacyAdoption(step)) {
                 <p>
                   Adoption copies the generic legacy obligations into editable actions and uses the step name as the

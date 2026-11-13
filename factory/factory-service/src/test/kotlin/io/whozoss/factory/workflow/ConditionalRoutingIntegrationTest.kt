@@ -1,11 +1,28 @@
 package io.whozoss.factory.workflow
 
 import io.whozoss.factory.Neo4jDomainIntegrationTest
-import io.whozoss.factory.agentattempt.domain.*
+import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
+import io.whozoss.factory.agentattempt.domain.AgentStepResultSubmitted
 import io.whozoss.factory.capability.CapabilityExecution
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityOutcome
-import io.whozoss.factory.workflow.domain.*
+import io.whozoss.factory.workflow.domain.ControllerExecutionInput
+import io.whozoss.factory.workflow.domain.ResponsibilityKind
+import io.whozoss.factory.workflow.domain.WorkflowDecision
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionInput
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
+import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
+import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
+import io.whozoss.factory.workflow.domain.WorkflowRoute
+import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
+import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
+import io.whozoss.factory.workflow.domain.createWorkflowInstance
+import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
+import io.whozoss.factory.workflow.domain.routingJson
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
@@ -43,7 +60,7 @@ class ConditionalRoutingIntegrationTest : Neo4jDomainIntegrationTest() {
             val capability = mockk<CapabilityExecutionService>()
             every { capability.hasFinalizedAttempt(any(), any(), any(), any()) } returns false
             val called = mutableListOf<String>()
-            every { capability.routingResult(any(), any(), any(), "architect", "attempt-architect") } returns AgentStepResultSubmitted(
+            every { capability.acceptedStepResult(any(), any(), any(), "architect", "attempt-architect") } returns AgentStepResultSubmitted(
                 "result-submitted", "result-architect", "attempt-architect", id, "architect", ns, "case", "Executor", "brief",
                 AgentStepResultStatus.PASS, "Scope", emptyList(), AgentStepResultClaim(emptyList()), emptyList(), "2026-01-01T00:00:00Z", "result-hash", selectedRoutes = selected,
             )
@@ -64,7 +81,7 @@ class ConditionalRoutingIntegrationTest : Neo4jDomainIntegrationTest() {
                 CapabilityExecution(CapabilityOutcome.AgentCompleted(step.id, "Executor", "PASS", emptyMap()), evidenceId = ev, attemptId = "attempt-${step.id}")
             }
             fun runner() = SessionRunService(repository, evidence, interactions, capability, hub, transactionManager = transactions)
-            assertThat(runner().runSession(scope, ns, id, Path.of("." )).status).isEqualTo("completed")
+            assertThat(runner().runSession(scope, ns, id, Path.of(".")).status).isEqualTo("completed")
             assertThat(called).containsExactlyElementsOf(listOf("architect") + listOf("front", "back").filter { if (it == "front") "frontend" in selected else "backend" in selected } + "review")
             val count = called.size
             // New service instance: no in-memory route cache or accepted-result re-selection needed.

@@ -1,5 +1,7 @@
 package io.whozoss.factory.workflow.domain
 
+import java.time.Instant
+
 /**
  * Domain + persistence models of the workflow aggregate (A6).
  *
@@ -292,7 +294,7 @@ data class WorkflowProjectionRecord(
      * Null when the projection was loaded via a path that does not propagate it
      * (e.g. older code paths before this field was added to the domain).
      */
-    val createdAt: java.time.Instant? = null,
+    val createdAt: Instant? = null,
 )
 
 /** A validated `POST /transitions` / `POST /code-transitions` request. */
