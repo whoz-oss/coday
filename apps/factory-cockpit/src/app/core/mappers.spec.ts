@@ -136,6 +136,17 @@ describe('mappers', () => {
   })
 
   describe('mapStepsToPhaseSegments', () => {
+    it('preserves skipped branches in phase segments and run summaries without marking them done', () => {
+      const steps = [
+        { id: 'selected', status: 'completed' },
+        { id: 'unselected', name: 'Not selected branch', status: 'skipped', executed: false },
+      ]
+      expect(mapStepsToPhaseSegments(steps).map((segment) => segment.status)).toEqual(['done', 'skipped'])
+      const summary = mapProjectionToRunSummary({ workflowId: 'routed', projection: { steps } })
+      expect(summary.status).toBe('succeeded')
+      expect(summary.phases[1]).toMatchObject({ key: 'unselected', label: 'Not selected branch', status: 'skipped' })
+    })
+
     it('computes ratios from the step durations and assigns tones/status', () => {
       const segments = mapStepsToPhaseSegments(projection.steps, 180)
       expect(segments.map((segment) => segment.key)).toEqual(['request', 'plan', 'build'])
@@ -886,6 +897,21 @@ describe('mappers', () => {
   })
 
   describe('mapProjectionToSessionDetail', () => {
+    it('keeps inactive routed branches skipped and selectable without falsely showing execution or success', () => {
+      const steps = [
+        { id: 'architect', name: 'Scope', status: 'completed', responsibility: { kind: 'agent', name: 'Architect' }, decision: { mode: 'multiple', routes: [{ name: 'frontend', target: 'front' }, { name: 'backend', target: 'back' }] }, routeDecision: { attemptId: 'a', resultId: 'r', selectedRoutes: ['frontend'] } },
+        { id: 'front', name: 'Frontend', status: 'completed', activation: 'selected', executed: true, responsibility: { kind: 'agent', name: 'Frontend' } },
+        { id: 'back', name: 'Backend', status: 'skipped', activation: 'not_selected', executed: false, responsibility: { kind: 'agent', name: 'Backend' } },
+      ]
+      const session = mapProjectionToSessionDetail({ workflowId: 'routed', projection: { status: 'completed', steps } })
+      expect(session.status).toBe('succeeded')
+      expect(session.routingSteps).toHaveLength(3)
+      expect(session.steps.find((step) => step.key === 'back')?.status).toBe('skipped')
+      expect(session.lanes.flatMap((lane) => lane.blocks).some((block) => block.stepId === 'back')).toBe(false)
+      expect(session.phaseByStepId?.get('back')?.stepStatus).toBe('skipped')
+      const routing = session.phaseByStepId?.get('architect')?.sections.find((section) => section.label === 'Routage conditionnel')
+      expect(routing?.items).toContainEqual({ title: 'backend', subtitle: 'back', status: 'not_selected' })
+    })
     it('builds a complete session from projection + enrichment payloads', () => {
       const session = mapProjectionToSessionDetail(
         snapshot,
@@ -1246,7 +1272,7 @@ describe('mappers', () => {
 
       expect(session.interactions).toHaveLength(1)
       expect(session.interactions?.[0]?.interactionId).toBe('i-1')
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       expect(gates?.count).toBe(1)
 
       const interactionEvents = session.events.filter((event) => event.text.includes('Approve the deploy?'))
@@ -1258,7 +1284,7 @@ describe('mappers', () => {
 
     it('reports zero gates when no interaction is available', () => {
       const session = mapProjectionToSessionDetail(snapshot)
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       expect(gates?.count).toBe(0)
       expect(session.interactions).toEqual([])
     })
@@ -1277,7 +1303,7 @@ describe('mappers', () => {
       ]
       const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, interactions)
 
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       expect(gates?.count).toBe(1)
       expect(gates?.body).toBeUndefined()
       expect(gates?.items).toEqual([
@@ -1327,9 +1353,9 @@ describe('mappers', () => {
 
     it('reports an explicit empty message for Gates and Sorties when nothing is known', () => {
       const session = mapProjectionToSessionDetail(snapshot)
-      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const gates = session.phase.sections.find((section) => section.label === 'Validations')
       const outputs = session.phase.sections.find((section) => section.label === 'Sorties')
-      expect(gates?.body).toBe("Aucune gate d'interaction pour cette phase.")
+      expect(gates?.body).toBe("Aucune validation d'interaction pour cette phase.")
       expect(outputs?.body).toBe('Aucune sortie enregistrée pour cette phase.')
     })
 
@@ -1355,12 +1381,12 @@ describe('mappers', () => {
         ])
       )
 
-      const prompts = session.phase.sections.find((section) => section.label === 'Prompts compilés')
-      expect(prompts).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite exposition backend)' })
+      const prompts = session.phase.sections.find((section) => section.label === 'Mandat effectif de la tentative')
+      expect(prompts).toMatchObject({ notAvailable: true })
       expect(prompts?.count).toBeUndefined()
 
       const model = session.phase.sections.find((section) => section.label === 'Modèle LLM résolu')
-      expect(model).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite exposition backend)' })
+      expect(model).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite une exposition par le serveur)' })
     })
 
     it('surfaces the real attempts of the active step and a dynamic attempt string', () => {

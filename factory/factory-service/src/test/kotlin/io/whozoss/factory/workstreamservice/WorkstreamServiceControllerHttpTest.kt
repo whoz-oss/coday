@@ -273,6 +273,25 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `start accepts an exact registered pin and refuses partial or stale pins`() {
+        registerDefinition()
+        val definition = workflowService.getDefinition(scope, "wf-svc", "1.0.0")!!
+        val pinned = mapOf(
+            "workflowType" to "wf-svc",
+            "definitionVersion" to "1.0.0",
+            "definitionHash" to definition["definitionHash"],
+        )
+        assertThat(post("$base/workflows", pinned, "pinned-start").statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(post("$base/workflows", pinned, "pinned-start").statusCode).isEqualTo(HttpStatus.OK)
+        val stale = post("$base/workflows", pinned + ("definitionHash" to "0".repeat(64)), "stale-start")
+        assertThat(stale.statusCode.is4xxClientError).isTrue()
+        val partial = post("$base/workflows", pinned - "definitionHash", "partial-start")
+        assertThat(partial.statusCode.is4xxClientError).isTrue()
+        val wrongType = post("$base/workflows", pinned + ("definitionVersion" to 1), "invalid-pin")
+        assertThat(wrongType.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+    }
+
+    @Test
     fun `the same start key with a different payload is refused`() {
         registerDefinition()
         post("$base/workflows", mapOf("workflowType" to "wf-svc", "title" to "One"), key = "start-key-2")

@@ -692,7 +692,7 @@ describe('FactoryStore', () => {
 
     const session = store.session('wf-1')
     expect(session?.interactions).toHaveLength(1)
-    expect(session?.phase.sections.find((section) => section.label === 'Gates')?.count).toBe(1)
+    expect(session?.phase.sections.find((section) => section.label === 'Validations')?.count).toBe(1)
     expect(session?.events.some((event) => event.text.includes('Approve the deploy?'))).toBe(true)
   })
 

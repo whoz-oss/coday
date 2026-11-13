@@ -1,28 +1,394 @@
 <div class="page">
   <header class="page-head">
     <a mat-stroked-button class="sf-secondary back-btn" [routerLink]="backLink" data-workflow-back>
-      <mat-icon>arrow_back</mat-icon>
-      Back
+      <mat-icon>arrow_back</mat-icon> Back
     </a>
     <div class="titles">
-      <h1 class="sf-mono" data-workflow-detail-type>{{ workflowType }}&#64;{{ version }}</h1>
-      @if (definition()?.title; as title) {
+      <h1 class="sf-mono" data-workflow-detail-type>
+        @if (state.creating()) {
+          New workflow
+        } @else {
+          {{ state.definition()?.workflowType || workflowType }}&#64;{{ state.definition()?.version || version }}
+        }
+      </h1>
+      @if (state.definition()?.title; as title) {
         <p class="sf-muted" data-workflow-detail-title>{{ title }}</p>
       }
     </div>
   </header>
-
-  @if (loading()) {
+  @if (state.loading()) {
     <div class="state" data-workflow-detail-loading>
-      <mat-progress-spinner diameter="32" mode="indeterminate" />
-      <span class="sf-muted">Loading definition…</span>
+      <mat-progress-spinner diameter="32" mode="indeterminate" /> Loading definition…
     </div>
-  } @else if (error(); as message) {
-    <div class="banner banner--warn" role="alert" data-workflow-detail-error>
-      <mat-icon aria-hidden="true">cloud_off</mat-icon>
-      <span>{{ message }}</span>
-    </div>
-  } @else if (definition(); as def) {
-    <pre class="json-block" data-workflow-detail-json><code>{{ formatJson(def) }}</code></pre>
+  }
+  @if (state.error(); as message) {
+    <div class="banner banner--warn" role="alert" data-workflow-detail-error>{{ message }}</div>
+  }
+  @if (state.saved(); as message) {
+    <p role="status" data-save-success>{{ message }}</p>
+  }
+  @if (state.definition(); as def) {
+    @if (!state.editing() && !state.creating() && !state.loading()) {
+      <div>
+        <div class="save-actions">
+          <button mat-flat-button class="sf-primary" (click)="state.edit()" [disabled]="deleting()" data-edit-workflow>Edit workflow</button>
+          <button mat-stroked-button class="sf-danger" type="button" (click)="deleteWorkflow()"
+            [disabled]="deleting()" [attr.aria-label]="'Delete workflow ' + (def.title || def.workflowType) + ' ' + def.workflowType + '@' + def.version"
+            data-delete-workflow><mat-icon>delete_outline</mat-icon>{{ deleting() ? 'Deleting…' : 'Delete workflow' }}</button>
+        </div>
+        @if (deleteError(); as message) {
+          <p class="banner banner--warn" role="alert" data-delete-error>{{ message }}</p>
+        }
+        <p class="sf-muted">Read-only definition. Editing saves a new immutable version; existing runs keep their version and hash.</p>
+      </div>
+    }
+    @if (state.editing()) {
+    <fieldset class="step-contract" [disabled]="state.saving()" aria-label="Workflow identity">
+      <legend>Workflow identity</legend>
+      <div class="save-fields">
+        <label>Workflow type
+          <input [ngModel]="def.workflowType" (ngModelChange)="state.metadata('workflowType', $event)"
+            [readonly]="!state.creating()" maxlength="128" data-workflow-type />
+        </label>
+        <label>Workflow name
+          <input [ngModel]="def.title" (ngModelChange)="state.metadata('title', $event)" maxlength="256" data-workflow-name />
+        </label>
+      </div>
+      <p class="sf-muted">Schema 1 · stable workflow type; immutable semantic versions. Agent discovery namespace is not stored in the definition; choose the execution namespace explicitly at launch.</p>
+    </fieldset>
+    <section class="step-contract" aria-label="Agent discovery">
+      <h2>Available agents</h2>
+      <button mat-stroked-button class="sf-secondary composer-action" type="button" (click)="state.loadDiscovery()" [disabled]="state.saving()" data-refresh-namespaces>
+        <mat-icon>refresh</mat-icon> Load / refresh namespaces
+      </button>
+      <p class="sf-muted">Optional for human-only workflows. Load agents only when assigning an agent step.</p>
+      <label>Agent discovery namespace
+        <select [ngModel]="state.namespaceId()" (ngModelChange)="state.discoverAgents($event)" [disabled]="state.saving()" data-agent-namespace>
+          <option value="">Select namespace</option>
+          @for (namespace of state.namespaces(); track namespace.id) {
+            <option [value]="namespace.id">{{ namespace.name }}</option>
+          }
+        </select>
+      </label>
+      @if (state.agentsLoading()) { <p role="status">Loading agents…</p> }
+      @if (state.discoveryError(); as message) { <p role="alert">{{ message }}</p> }
+      @if (state.namespaceId() && !state.agentsLoading() && !state.agents().length) {
+        <p role="status">No enabled agents discovered. Existing assignments are preserved; choose another namespace or retry.</p>
+      }
+    </section>
+    }
+    <section aria-label="Workflow diagram" data-workflow-diagram>
+      <h2>Workflow steps</h2>
+      @if (state.editing()) {
+        <p class="sf-muted">Add agent or human steps, then select a step to edit its properties and optional dependencies. Arrows show dependencies. Human steps wait for approval; code steps retain their existing execution.</p>
+        <div class="composer-actions">
+          <button mat-stroked-button class="sf-secondary composer-action" type="button" (click)="state.addBlock()" [disabled]="state.saving() || (def.steps?.length ?? 0) >= 500" data-add-block>
+            <mat-icon>smart_toy</mat-icon> Add agent step
+          </button>
+          <button mat-stroked-button class="sf-secondary composer-action" type="button" (click)="state.addBlock('human')" [disabled]="state.saving() || (def.steps?.length ?? 0) >= 500" data-add-human-step>
+            <mat-icon>person_add</mat-icon> Add human step
+          </button>
+        </div>
+      } @else {
+        <p class="sf-muted">Select a step to preview its details below. Arrows show dependencies.</p>
+      }
+      <sf-workflow-definition-diagram
+        [steps]="state.preview()?.steps ?? []"
+        [selectedId]="state.selectedId()"
+        [disabled]="state.saving()"
+        (selected)="state.select($event)"
+      />
+    </section>
+    @if (state.selected(); as step) {
+      <section class="step-contract" data-step-contract [attr.aria-label]="state.editing() ? 'Selected step editor' : 'Selected step preview'">
+        <h2>{{ step.name }}</h2>
+        <p class="sf-mono">{{ step.id }} · {{ step.responsibility?.kind }} · {{ step.responsibility?.name }}</p>
+        <p>Inputs from dependencies: {{ step.dependsOn?.join(', ') || 'None (entry step)' }}</p>
+        @if (step.decision; as decision) {
+          <p>Decision: {{ decision.mode }} selection.</p>
+          <ul>@for (route of decision.routes; track route.name) { <li>{{ route.name }} → {{ dependencyLabel(route.target) }}</li> }</ul>
+        }
+        @if (step.join) { <p>Join: waits for every selected branch of {{ step.join }} to succeed, plus ordinary dependencies.</p> }
+        @if (state.editing()) {
+        <fieldset [disabled]="state.saving()" aria-label="Block properties">
+          <legend>Block properties</legend>
+          <label>Block ID (applied on leaving the field)
+            <input [value]="step.id" (change)="state.updateBlock({ id: $any($event.target).value })" maxlength="128" data-block-id />
+          </label>
+          <label>Block name
+            <input [ngModel]="step.name" (ngModelChange)="state.updateBlock({ name: $event })" maxlength="256" data-block-name />
+          </label>
+          @if (step.responsibility?.kind === 'agent') {
+            <label>Agent
+              <select [ngModel]="step.responsibility?.name ?? ''" (ngModelChange)="state.setAgent($event)" data-block-agent>
+                <option value="" disabled>Select an agent</option>
+                @if (step.responsibility?.name && !state.agents().includes(step.responsibility?.name ?? '')) {
+                  <option [value]="step.responsibility?.name">{{ step.responsibility?.name }} (existing; not in discovery)</option>
+                }
+                @for (agent of state.agents(); track agent) { <option [value]="agent">{{ agent }}</option> }
+              </select>
+            </label>
+            <p class="sf-muted">One agent per block; use separate blocks for multiple agents. Load a namespace above to choose an agent.</p>
+          } @else if (step.responsibility?.kind === 'human') {
+            <label>Human role
+              <input [ngModel]="step.responsibility?.name ?? ''"
+                (ngModelChange)="state.updateBlock({ responsibility: { kind: 'human', name: $event } })"
+                placeholder="e.g. Product owner" maxlength="256" data-human-role />
+            </label>
+            <p class="sf-muted">Waits for human approval. The role is not an AgentOS agent; no discovery is required.</p>
+          } @else {
+            <p>Existing code responsibility is preserved and cannot be changed or removed here.</p>
+          }
+          <fieldset aria-label="Conditional routing">
+            <legend>Conditional routing</legend>
+            @if (step.responsibility?.kind === 'agent') {
+              <label>Route choice mode
+                <select [ngModel]="step.decision?.mode ?? ''" (ngModelChange)="state.setRoutingMode($event)" data-route-mode>
+                  <option value="">No decision</option><option value="single">Exactly one route</option><option value="multiple">One or more routes</option>
+                </select>
+              </label>
+            }
+            @if (step.decision; as decision) {
+              <p>Agents submit configured route names in selectedRoutes on PASS. Multiple selection activates the chosen routes, not an additional route.</p>
+              @for (route of decision.routes; track $index; let i = $index) {
+                <label>Route {{ i + 1 }} name
+                  <input [ngModel]="route.name" (ngModelChange)="state.updateRoute(i, 'name', $event)" maxlength="128" [attr.data-route-name]="i" />
+                </label>
+                <label>Route {{ i + 1 }} target
+                  <select [ngModel]="route.target" (ngModelChange)="state.updateRoute(i, 'target', $event)" [attr.data-route-target]="i">
+                    <option value="">Choose target</option>
+                    @for (candidate of def.steps; track candidate.id) {
+                      @if (candidate.id !== step.id) { <option [value]="candidate.id">{{ candidate.name }} ({{ candidate.id }})</option> }
+                    }
+                  </select>
+                </label>
+                <button type="button" (click)="state.removeRoute(i)" [attr.aria-label]="'Remove route ' + (i + 1)">Remove route</button>
+              }
+              <button type="button" (click)="state.addRoute()" [disabled]="decision.routes.length >= 16">Add route</button>
+            }
+            <label>Join decision (convergence)
+              <select [ngModel]="step.join ?? ''" (ngModelChange)="state.updateBlock({ join: $event || undefined })" data-join-decision>
+                <option value="">No join</option>
+                @for (candidate of def.steps; track candidate.id) {
+                  @if (candidate.decision && candidate.id !== step.id) { <option [value]="candidate.id">{{ candidate.name }}</option> }
+                }
+              </select>
+            </label>
+            <p class="sf-muted">Initial scope: one decision, 2–16 single-step branches, one join. Each branch depends only on the decision and feeds only the join. The join depends on every branch; extra ordinary dependencies still require success. Nested/multi-step routes are rejected.</p>
+          </fieldset>
+          <div class="dependencies">
+            <label for="step-dependency">Dependencies (optional)</label>
+            <p class="sf-muted" id="dependency-help">This step waits for all added steps. Leave empty for an entry step.</p>
+            <select id="step-dependency" aria-describedby="dependency-help" data-dependency-select
+              (change)="state.connect($any($event.target).value, true); $any($event.target).value = ''">
+              <option value="">Add a dependency…</option>
+              @for (candidate of def.steps; track candidate.id) {
+                @if (candidate.id !== step.id && !step.dependsOn?.includes(candidate.id)) {
+                  <option [value]="candidate.id">{{ candidate.name }} ({{ candidate.id }})</option>
+                }
+              }
+            </select>
+            <div class="dependency-chips" aria-label="Selected dependencies">
+              @for (id of step.dependsOn; track id) {
+                <button mat-stroked-button class="sf-secondary dependency-chip" type="button"
+                  (click)="state.connect(id, false)" [attr.data-remove-dependency]="id"
+                  [attr.aria-label]="'Remove dependency ' + dependencyLabel(id)">
+                  <mat-icon>close</mat-icon> {{ dependencyLabel(id) }}
+                </button>
+              }
+            </div>
+          </div>
+          @if (step.responsibility?.kind === 'agent' || step.responsibility?.kind === 'human') {
+            <button mat-stroked-button class="sf-secondary composer-action" type="button" (click)="state.removeBlock()" data-remove-block>
+              <mat-icon>delete_outline</mat-icon> Remove step and its connections
+            </button>
+          }
+        </fieldset>
+        }
+        @if (state.draft(); as draft) {
+          @if (!state.editing()) {
+            <div data-step-preview>
+              <p><strong>Agent / responsibility:</strong> {{ step.responsibility?.name || 'Not specified' }} ({{ step.responsibility?.kind || 'Not specified' }})</p>
+              @if (step.responsibility?.kind !== 'agent') {
+                <p role="note">For human/code steps these fields document intent only. They do not change approval or verifier execution.</p>
+              }
+              <h3>Pre-actions</h3>
+              <ol>@for (action of draft.entry; track $index) { <li class="prose">{{ action }}</li> }</ol>
+              @if (!draft.entry.length) { <p>None configured.</p> }
+              <h3>Prompt</h3>
+              <p class="prose">{{ draft.mission }}</p>
+              <h3>Post-actions</h3>
+              <ol>@for (action of draft.exit; track $index) { <li class="prose">{{ action }}</li> }</ol>
+              @if (!draft.exit.length) { <p>None configured.</p> }
+            </div>
+          } @else {
+          @if (step.responsibility?.kind !== 'agent') {
+            <p role="note">
+              For human/code steps these fields document intent only. They do not change approval or verifier execution.
+            </p>
+          }
+          <fieldset [disabled]="state.saving()">
+            <legend>Step instructions</legend>
+            <h3>Pre-actions</h3>
+            <p class="sf-muted">Preparation / input obligations, in order (not executable commands).</p>
+            @for (action of draft.entry; track $index; let i = $index) {
+              <div class="action-row">
+                <label
+                  >Pre-action {{ i + 1 }}
+                  <textarea
+                    rows="2"
+                    maxlength="4000"
+                    [ngModel]="action"
+                    (ngModelChange)="updateAction('entry', i, $event)"
+                    [attr.data-entry]="i"
+                  ></textarea>
+                </label>
+                <button
+                  mat-stroked-button class="sf-secondary composer-action"
+                  type="button"
+                  (click)="removeAction('entry', i)"
+                  [attr.aria-label]="'Remove pre-action ' + (i + 1)"
+                >
+                  Remove
+                </button>
+              </div>
+            }
+            <button mat-stroked-button class="sf-secondary composer-action" type="button" (click)="addAction('entry')" [disabled]="draft.entry.length >= 50">
+              <mat-icon>add</mat-icon> Add pre-action
+            </button>
+            <h3><label for="step-prompt">Prompt</label></h3>
+            <p class="sf-muted">{{ step.responsibility?.kind === 'agent' ? 'What the agent must do. Replaces legacy Factory business instructions for this step.' : 'Optional documentation of intent. Human approval and code verification are unchanged; this is not executed as an agent prompt.' }}</p>
+            <textarea
+              id="step-prompt"
+              rows="8"
+              maxlength="16000"
+              [ngModel]="draft.mission"
+              (ngModelChange)="state.update('mission', $event)"
+              data-step-prompt
+            ></textarea>
+            <h3>Post-actions</h3>
+            <p class="sf-muted">Output / deliverable obligations, in order.</p>
+            @for (action of draft.exit; track $index; let i = $index) {
+              <div class="action-row">
+                <label
+                  >Post-action {{ i + 1 }}
+                  <textarea
+                    rows="2"
+                    maxlength="4000"
+                    [ngModel]="action"
+                    (ngModelChange)="updateAction('exit', i, $event)"
+                    [attr.data-exit]="i"
+                  ></textarea>
+                </label>
+                <button
+                  mat-stroked-button class="sf-secondary composer-action"
+                  type="button"
+                  (click)="removeAction('exit', i)"
+                  [attr.aria-label]="'Remove post-action ' + (i + 1)"
+                >
+                  Remove
+                </button>
+              </div>
+            }
+            <button mat-stroked-button class="sf-secondary composer-action" type="button" (click)="addAction('exit')" [disabled]="draft.exit.length >= 50">
+              <mat-icon>add</mat-icon> Add post-action
+            </button>
+          </fieldset>
+          }
+        } @else if (step.responsibility?.kind === 'human') {
+          <p role="note" data-human-checkpoint>This human step uses the existing approval or verification implementation, not an agent prompt.</p>
+          @if (state.editing()) {
+            <button mat-stroked-button class="sf-secondary composer-action" type="button" (click)="state.addHumanContract()" [disabled]="state.saving()" data-add-human-contract>
+              <mat-icon>notes</mat-icon> Add optional instructions
+            </button>
+          }
+        } @else {
+          <div class="banner banner--warn" data-legacy-contract>
+            <div>
+              <h3>Legacy instructions — not an empty prompt</h3>
+              <p>
+                Factory currently generates hidden business instructions from the agent name and dependency position,
+                plus plugin context. The exact text is available in a dispatched run's selected attempt mandate.
+              </p>
+              <p>{{ step.legacyContract?.summary || 'Legacy contract metadata unavailable or changed locally. Reload the saved definition before adoption.' }}</p>
+              @if (legacyAdoption(step)) {
+                <p>
+                  Adoption copies the generic legacy obligations into editable actions and uses the step name as the
+                  initial prompt. Review and refine it before saving. Plugin context and Factory's technical result
+                  protocol remain.
+                </p>
+                @if (state.editing()) {
+                  <button mat-stroked-button (click)="state.adopt()" [disabled]="state.saving()" data-adopt-contract>
+                    Adopt explicit instructions
+                  </button>
+                }
+              } @else {
+                <p data-adoption-blocked>
+                  Automatic adoption unavailable: runtime-derived branch/review obligations or non-agent execution
+                  cannot safely be replaced with a static prompt. Keep this step legacy pending a backend
+                  context/adoption decision.
+                </p>
+              }
+            </div>
+          </div>
+        }
+      </section>
+    }
+    @if (state.editing()) {
+    <section class="step-contract" aria-label="Save step changes">
+      <h2>Save workflow definition</h2>
+      <p>
+        Existing definitions and active pinned runs are never edited. Save this composition as a new immutable
+        version. Plugin routing and untouched step properties are preserved. Saving never starts a run.
+      </p>
+      <p class="sf-muted">
+        Save this workflow first. You can launch a saved version from Launch a run.
+      </p>
+      <div class="save-fields">
+        <label>Workflow type <input [value]="def.workflowType ?? ''" readonly data-target-type /></label>
+        <label
+          >Version
+          <input
+            [ngModel]="state.targetVersion()"
+            (ngModelChange)="state.targetVersion.set($event)"
+            [disabled]="state.saving()"
+            data-target-version
+        /></label>
+      </div>
+      @if (state.validation(); as validation) {
+        <p role="alert">{{ validation }}</p>
+      }
+      <p role="status">
+        {{ state.dirty() ? 'Unsaved step changes and structure edits (kept when selecting another step).' : 'No unsaved changes.' }}
+      </p>
+      <div class="save-actions">
+        <button
+          mat-flat-button
+          class="sf-primary"
+          (click)="state.save()"
+          [disabled]="!state.dirty() || !!state.validation() || state.saving()"
+          data-save-contract
+        >
+          {{ state.saving() ? 'Saving…' : 'Save new version' }}
+        </button>
+        <button
+          mat-stroked-button
+          (click)="cancel()"
+          [disabled]="state.saving()"
+          data-discard-contract
+        >
+          Cancel
+        </button>
+      </div>
+      <p class="sf-muted">
+        Prose is not automatically verified. Result submission, authorization, approvals and configured validators
+        remain enforced. Do not put secrets in instructions.
+      </p>
+    </section>
+    }
+    <details>
+      <summary>Definition JSON (read-only reference)</summary>
+      <pre class="json-block" data-workflow-detail-json><code>{{ formatJson(def) }}</code></pre>
+    </details>
   }
 </div>

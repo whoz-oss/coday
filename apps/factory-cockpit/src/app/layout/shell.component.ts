@@ -38,6 +38,5 @@ export class ShellComponent {
     { label: 'Workstreams', icon: 'grid_view', link: '/workstreams' },
     { label: 'History', icon: 'history', link: '/historique' },
     { label: 'Workflows', icon: 'account_tree', link: '/workflows' },
-    { label: 'Settings', icon: 'settings', link: '/reglages' },
   ]
 }
