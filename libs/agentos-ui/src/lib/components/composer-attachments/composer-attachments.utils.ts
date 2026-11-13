@@ -68,6 +68,12 @@ export function middleTruncate(name: string, max = 32): string {
   return `${name.slice(0, head)}…${name.slice(name.length - tail)}`
 }
 
+/** True when a paste aimed at [target] belongs to a text field (input, textarea, contenteditable). */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+}
+
 /** Short kind label for the chip, e.g. "PDF"; "FILE" when there is no extension. */
 export function kindLabel(filename: string): string {
   const dot = filename.lastIndexOf('.')

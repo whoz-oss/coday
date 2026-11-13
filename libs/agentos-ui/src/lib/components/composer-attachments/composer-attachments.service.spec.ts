@@ -144,6 +144,37 @@ describe('ComposerAttachmentsService', () => {
       expect(event.preventDefault).not.toHaveBeenCalled()
     })
 
+    it('document paste with nothing focused stages files', () => {
+      const event = { ...pasteEvent(files(1)), target: document.body } as unknown as ClipboardEvent
+
+      service.onDocumentPaste(event)
+
+      expect(service.attachments()).toHaveLength(1)
+      expect(event.preventDefault).toHaveBeenCalled()
+    })
+
+    it('document paste is not staged twice when the composer already handled it', () => {
+      const event = {
+        ...pasteEvent(files(1)),
+        defaultPrevented: true,
+        target: document.body,
+      } as unknown as ClipboardEvent
+
+      service.onDocumentPaste(event)
+
+      expect(service.hasAttachments()).toBe(false)
+    })
+
+    it('document paste aimed at another text field is left to that field', () => {
+      const otherField = document.createElement('input')
+      const event = { ...pasteEvent(files(1)), target: otherField } as unknown as ClipboardEvent
+
+      service.onDocumentPaste(event)
+
+      expect(service.hasAttachments()).toBe(false)
+      expect(event.preventDefault).not.toHaveBeenCalled()
+    })
+
     it('pasting files during an upload batch is ignored by the staging guard', async () => {
       let resolveUpload: (value: { success: boolean }) => void = () => undefined
       exchangeState.uploadFile.mockReturnValueOnce(new Promise((resolve) => (resolveUpload = resolve)))
