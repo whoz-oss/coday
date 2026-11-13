@@ -345,6 +345,13 @@ class ScheduledPromptExecutor(
 
         val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
         runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
+
+        if (scheduledPrompt.flowConfiguration != null && count > 1) {
+            logger.warn {
+                "[Executor] sp=${scheduledPrompt.id} has a flowConfiguration but its agent reaches $count users: " +
+                    "the loop will run $count times. Deploy the loop agent to a single user."
+            }
+        }
         logger.info {
             "[Executor] Phase A complete: run=${run.id} — $count UserRun(s) created, status=$finalStatus"
         }
