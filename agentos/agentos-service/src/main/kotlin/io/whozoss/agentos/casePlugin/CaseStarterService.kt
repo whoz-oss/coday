@@ -51,10 +51,13 @@ import java.util.UUID
  * of those last two steps fails the case is soft-deleted, so no empty conversation shows up, and the
  * failure is rethrown. An ADMIN grant already made is not revoked.
  *
- * **Scheduled prompt.** The new case inherits the [Case.scheduledPromptId] of the calling case: a case started
- * from the case of a scheduled run, such as each case an agent loop starts, is attributed to that scheduled
- * prompt from its creation, like the case of the run itself. Only the calling case is read, not the cases it
- * was delegated from.
+ * **Scheduled prompt.** The new case inherits the [Case.scheduledPromptId] of the calling case, but only when
+ * the calling case has no [Case.originCaseId] — i.e. it is itself a top-level case, not one that was started
+ * by another case. The motivating use case is [io.whozoss.agentos.agent.AgentLoop]: the scheduler creates the
+ * loop case (top-level, `scheduledPromptId` set, no `originCaseId`), and each case the loop starts inherits the
+ * link, marking it as automatically created rather than manually opened by a user. Cases started from those
+ * children do not propagate further, since their caller already has an `originCaseId`. Only the calling case is
+ * read, not the cases it was delegated from.
  *
  * **Who checks what.** This service owns the rules that protect users and the platform: who the case runs
  * for (the caller being ADMIN of the namespace, the target's access to the namespace), which agent may work
@@ -258,7 +261,22 @@ class CaseStarterService(
         return ((request.sessionContext ?: emptyMap()) + (resolved ?: emptyMap())).takeIf { it.isNotEmpty() }
     }
 
-    /** Creates the case, tracing the calling one as its origin and inheriting its scheduled prompt. */
+    /**
+     * Creates the case, tracing the calling one as its origin and inheriting its scheduled prompt.
+     *
+     * The [Case.scheduledPromptId] is inherited only when the calling case has no [Case.originCaseId],
+     * i.e. it is itself a top-level started case (the case of the scheduled run, or the loop case it
+     * created at depth 1). A case at depth 2 or beyond — one that was itself started by a started case —
+     * does not propagate the link further.
+     *
+     * **Known limitation**: this means automatic creation chains deeper than one level (a started case
+     * whose agent uses `FreeCaseStarter` again) lose the scheduled prompt attribution from depth 2 on.
+     * Today only [io.whozoss.agentos.agent.AgentLoop] creates cases automatically, and it always runs
+     * at depth 1 (the start depth rule prevents it from being started by another started case), so this
+     * limitation has no practical effect. If automatic multi-level creation is introduced in the future,
+     * the propagation strategy should be revisited: a walk up the origin chain or a dedicated flag on
+     * [Case] could replace this guard.
+     */
     private fun createCase(
         request: CaseStarterRequest,
         callerCase: Case,
@@ -268,7 +286,7 @@ class CaseStarterService(
                 namespaceId = request.callerNamespaceId,
                 title = (request.title?.takeIf { it.isNotBlank() } ?: request.prompt).take(MAX_TITLE_LENGTH),
                 originCaseId = request.callerCaseId,
-                scheduledPromptId = callerCase.scheduledPromptId,
+                scheduledPromptId = callerCase.scheduledPromptId?.takeIf { callerCase.originCaseId == null },
             ),
         )
 

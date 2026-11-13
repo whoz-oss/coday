@@ -242,6 +242,36 @@ class CaseStarterServiceUnitSpec :
             f.created.single().scheduledPromptId shouldBe null
         }
 
+        "a calling case that was itself started (has originCaseId) does not propagate the scheduled prompt" {
+            val f = Fixture()
+            val scheduledPromptId = UUID.randomUUID()
+            // The calling case carries a scheduledPromptId but was itself started by another case:
+            // it is at depth 1, its own children should not inherit the link.
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(
+                scheduledPromptId = scheduledPromptId,
+                originCaseId = UUID.randomUUID(),
+            )
+
+            f.service.start(request())
+
+            f.created.single().scheduledPromptId shouldBe null
+        }
+
+        "a calling case without originCaseId propagates its scheduled prompt (top-level scheduled run)" {
+            val f = Fixture()
+            val scheduledPromptId = UUID.randomUUID()
+            // The calling case has a scheduledPromptId and no originCaseId: it is the scheduled run itself.
+            // Its children (e.g. each case the AgentLoop starts) must inherit the link.
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(
+                scheduledPromptId = scheduledPromptId,
+                originCaseId = null,
+            )
+
+            f.service.start(request())
+
+            f.created.single().scheduledPromptId shouldBe scheduledPromptId
+        }
+
         "the first message is the prompt addressed to the agent, sent as the user the case runs for" {
             val f = Fixture()
 
