@@ -21,6 +21,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -562,6 +563,46 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "promptTemplateId round-trips" {
             newService().create(sp()).promptTemplateId shouldBe promptId
+        }
+
+        // -------------------------------------------------------------------------
+        // agentFlowConfig — only for LOOP agents
+        // -------------------------------------------------------------------------
+
+        val flowConfig = AgentFlowConfig(searchTool = "searchAgentUsers", agentName = "Caretaker")
+
+        fun agentWithMode(mode: ExecutionMode) = defaultAgent().copy(executionMode = mode)
+
+        "create with agentFlowConfig throws UnprocessableEntityException on a non-LOOP agent" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.ADVANCED)
+            val ex = shouldThrow<UnprocessableEntityException> { newService().create(sp().copy(agentFlowConfig = flowConfig)) }
+            ex.message shouldContain "LOOP"
+        }
+
+        "create with agentFlowConfig on a LOOP agent saves it" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            newService().create(sp().copy(agentFlowConfig = flowConfig)).agentFlowConfig shouldBe flowConfig
+        }
+
+        "create without agentFlowConfig is unaffected by the execution mode" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.SIMPLE)
+            newService().create(sp()).agentFlowConfig.shouldBeNull()
+        }
+
+        "update with agentFlowConfig throws UnprocessableEntityException on a non-LOOP agent" {
+            val svc = newService()
+            val saved = svc.create(sp())
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.SIMPLE)
+            shouldThrow<UnprocessableEntityException> { svc.update(saved.copy(agentFlowConfig = flowConfig)) }
+        }
+
+        "update with agentFlowConfig on a LOOP agent saves it, and null clears it" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            val svc = newService()
+            val saved = svc.create(sp())
+            val withConfig = svc.update(saved.copy(agentFlowConfig = flowConfig))
+            withConfig.agentFlowConfig shouldBe flowConfig
+            svc.update(withConfig.copy(agentFlowConfig = null)).agentFlowConfig.shouldBeNull()
         }
 
         // -------------------------------------------------------------------------

@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.scheduledPrompt
 import com.fasterxml.jackson.annotation.JsonFormat
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -85,6 +86,43 @@ data class PlanningDto(
         get() = endType != SchedulerEndType.OCCURRENCES || maxOccurrenceCount != null
 }
 
+/**
+ * What a loop agent runs for a scheduled prompt: the search tool it calls and the agent it starts for each result.
+ *
+ * The prompt of the started cases is not part of it: it is the scheduled prompt's `promptContent`.
+ */
+@Schema(
+    name = "AgentFlowConfig",
+    description = "Search tool, its arguments and the agent started for each result, for a LOOP agent.",
+)
+data class AgentFlowConfigDto(
+    @field:NotNull(message = "search must not be null")
+    @field:Valid
+    val search: AgentFlowSearchDto,
+    @field:NotNull(message = "act must not be null")
+    @field:Valid
+    val act: AgentFlowActDto,
+)
+
+/**
+ * The SEARCH step: [tool] is called with [params]. The tool name may be bare (`searchAgentUsers`) or
+ * prefixed with its integration (`USER_GROUP__searchAgentUsers`).
+ */
+@Schema(name = "AgentFlowSearch")
+data class AgentFlowSearchDto(
+    @field:NotBlank(message = "search.tool must not be blank")
+    val tool: String,
+    /** Opaque object passed as-is to the tool, same as [AgentConfigDto.loopConfig]. */
+    val params: JsonNode? = null,
+)
+
+/** The ACT step: one case is started with [agentName] for each search result. */
+@Schema(name = "AgentFlowAct")
+data class AgentFlowActDto(
+    @field:NotBlank(message = "act.agentName must not be blank")
+    val agentName: String,
+)
+
 // ---------------------------------------------------------------------------
 // Root DTO
 // ---------------------------------------------------------------------------
@@ -146,4 +184,16 @@ data class ScheduledPromptDto(
      * External consumers store their own metadata here (e.g. `isStandard`).
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * Only for LOOP agents (rejected with 422 otherwise). The loop calls `search.tool` with `search.params`
+     * and starts one case per result with `act.agentName`, whose first message is [promptContent].
+     * Replaced as a whole on PUT: null clears it.
+     */
+    @field:Valid
+    @field:Schema(
+        description = "Only for LOOP agents. The loop calls search.tool with search.params and starts one case " +
+            "per result with act.agentName, whose first message is promptContent. The tool name may be bare " +
+            "or prefixed with its integration (CONFIG__tool).",
+    )
+    val agentFlowConfig: AgentFlowConfigDto? = null,
 )

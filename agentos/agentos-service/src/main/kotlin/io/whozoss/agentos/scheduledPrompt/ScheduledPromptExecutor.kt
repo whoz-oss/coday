@@ -1,9 +1,12 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -15,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.workflow.AgentLoopPayload
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CancellationException
@@ -102,7 +106,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 4. Resolve the prompt content directly and inject `"@agentName <content>"` via
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
- *    which is incompatible with the leading `@mention`.
+ *    which is incompatible with the leading `@mention`. When the scheduled prompt has an
+ *    [ScheduledPrompt.agentFlowConfig], the full loop payload (with the untranslated prompt content as
+ *    `act.prompt`) is added to the message's sessionContext under [SessionContextKeys.AGENT_FLOW_CONFIG].
  * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
  *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
  *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
@@ -410,10 +416,11 @@ class ScheduledPromptExecutor(
                         }
                     }
                     val effectiveContext =
-                        userSessionContextResolver.mergePreferredLanguage(
-                            result.sessionContext,
-                            runContext.preferredLanguage,
-                        )
+                        userSessionContextResolver
+                            .mergePreferredLanguage(
+                                result.sessionContext,
+                                runContext.preferredLanguage,
+                            ).withAgentFlowConfig(runContext.agentFlowPayload)
                     val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = effectiveContext))
                     awaitLaunch(userRun.id, caseId)
                 }
@@ -483,6 +490,9 @@ class ScheduledPromptExecutor(
             agentName = agentName,
             userExternalId = user.externalId,
             preferredLanguage = preferredLanguage,
+            // Source content, not effectivePromptContent: the loop's cases run for other users, each of whom
+            // gets their own preferredLanguage from FreeCaseStarterForUser, so the loop user's translation is wrong.
+            agentFlowPayload = scheduledPrompt.agentFlowConfig?.toLoopPayload(prompt = promptContent),
         )
     }
 
@@ -535,6 +545,7 @@ class ScheduledPromptExecutor(
         val agentName: String,
         val userExternalId: String,
         val preferredLanguage: String? = null,
+        val agentFlowPayload: AgentLoopPayload? = null,
         val sessionContext: Map<String, Any?>? = null,
     ) {
         val message: String get() = "@$agentName $promptContent"
@@ -731,6 +742,19 @@ class ScheduledPromptExecutor(
     }
 
     companion object : KLogging() {
+        private val MAPPER = jacksonObjectMapper()
+        private val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
+
+        /**
+         * Adds [payload] under [SessionContextKeys.AGENT_FLOW_CONFIG] as a plain map, the scheduler's value winning
+         * over any provider key. Returns the context untouched when there is no payload.
+         */
+        private fun Map<String, Any?>?.withAgentFlowConfig(payload: AgentLoopPayload?): Map<String, Any?>? =
+            when (payload) {
+                null -> this
+                else -> (this ?: emptyMap()) + (SessionContextKeys.AGENT_FLOW_CONFIG to MAPPER.convertValue(payload, MAP_TYPE))
+            }
+
         private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> =
             when (this) {
                 CaseStatus.KILLED, CaseStatus.ERROR -> {

@@ -38,4 +38,13 @@ object SessionContextKeys {
 
     /** Last name, in [USER_CONTEXT]. */
     const val LAST_NAME = "lastName"
+
+    /**
+     * The [io.whozoss.agentos.workflow.AgentLoopPayload] a loop agent runs, as a JSON object (a map once persisted).
+     *
+     * Written by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] (from the scheduled prompt's
+     * `agentFlowConfig`) and by the UI launch page. Read by [io.whozoss.agentos.agent.AgentLoop], from the last
+     * user message: it takes precedence over the agent's `loopConfig`.
+     */
+    const val AGENT_FLOW_CONFIG = "agentFlowConfig"
 }
