@@ -220,8 +220,37 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
         startSession("ctx-legacy", workflowId)
         val adapter = BriefCapturingAdapter()
         service(adapter).resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
-        assertThat(adapter.startTurnBriefs.single()).contains("Frame the handoff", "Choose deliverables",
+        val brief = adapter.startTurnBriefs.single()
+        assertThat(brief).contains("Frame the handoff", "Choose deliverables",
+            "  - Analysis or design:", "  - Implementation:", "  - Review:",
             "FACTORY_WORKER__submitStepResult", "If Factory rejects the result schema")
+
+        // A pre-envelope attempt that persisted the historical brief (with rendered attemptId)
+        // and contextEnvelope = null replays without hitting IdempotencyKeyCollisionException.
+        val replayWorkflowId = "wf-legacy-no-envelope-${UUID.randomUUID()}"
+        startSession("ctx-legacy-no-envelope", replayWorkflowId)
+        val replayAttemptId = CapabilityExecutionService.stableAttemptId(replayWorkflowId, "A")
+        val historicalBrief = brief
+            .replace(CapabilityExecutionService.stableAttemptId(workflowId, "A"), replayAttemptId)
+            .replace("Session ctx-legacy", "Session ctx-legacy-no-envelope")
+        durableAgentAttemptService.register(
+            scope,
+            DurableAgentAttempt(
+                attemptId = replayAttemptId,
+                caseId = CapabilityExecutionService.stableCaseId(replayWorkflowId, "A"),
+                namespaceId = namespace,
+                workflowId = replayWorkflowId,
+                stepId = "A",
+                attemptNumber = 1,
+                agentName = "architect",
+                brief = historicalBrief,
+                contextEnvelope = null,
+            ),
+        )
+        val replayAdapter = BriefCapturingAdapter()
+        val replayResult = service(replayAdapter).resolveAndRecord(scope, namespace, replayWorkflowId, agentStep("A"), repoRoot)
+        assertThat(replayResult.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
+        assertThat(replayAdapter.startTurnBriefs).containsExactly(historicalBrief)
     }
 
     @Test

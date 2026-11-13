@@ -23,6 +23,7 @@ import io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle
 import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import java.util.UUID
+import java.nio.file.Path
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.capability.CapabilityExecutionService
@@ -268,8 +269,8 @@ class BridgeRecoveryWorker(
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         }
-        val continuation = recoveryContinuation(candidate)
-        if (capabilityExecutionService?.finalizeRecoveredAttempt(candidate.scope, attempt, owner, observation, continuation) == true) {
+        if (capabilityExecutionService?.finalizeRecoveredAttempt(candidate.scope, attempt, owner, observation) == true) {
+            enqueueContinuationBestEffort(candidate)
             releaseOccupancyIfResultAccepted(candidate)
             return Outcome.FINALIZED
         }
@@ -285,7 +286,7 @@ class BridgeRecoveryWorker(
             failureCode = failureCodeFor(verdict),
             resultEvidenceId = evidenceId,
         )
-        continuation()
+        enqueueContinuationBestEffort(candidate)
         releaseOccupancyIfResultAccepted(candidate)
         return Outcome.FINALIZED
     }
@@ -499,8 +500,8 @@ class BridgeRecoveryWorker(
                     is AgentOsExecutionVerdict.Indeterminate -> AgentAttemptStatus.INDETERMINATE
                     is AgentOsExecutionVerdict.WaitingHuman -> error("handled above")
                 }
-                val continuation = recoveryContinuation(candidate)
-                if (capabilityExecutionService?.finalizeRecoveredAttempt(candidate.scope, attempt, owner, observation, continuation) == true) {
+                if (capabilityExecutionService?.finalizeRecoveredAttempt(candidate.scope, attempt, owner, observation) == true) {
+                    enqueueContinuationBestEffort(candidate)
                     releaseOccupancyIfResultAccepted(candidate)
                     return
                 }
@@ -509,7 +510,7 @@ class BridgeRecoveryWorker(
                     candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner,
                     target, failureCode = failureCodeFor(verdict), resultEvidenceId = evidenceId,
                 )
-                continuation()
+                enqueueContinuationBestEffort(candidate)
                 releaseOccupancyIfResultAccepted(candidate)
             }
         }
@@ -586,18 +587,21 @@ class BridgeRecoveryWorker(
         return AgentOsObservationResult(verdict, raw.runtimeProof)
     }
 
-    /** Recovery must advance the DAG even if its original result event was already drained. */
-    private fun recoveryContinuation(candidate: ScopedDurableAgentAttempt): () -> Unit {
-        val submitter = sessionRunSubmissionService ?: return {}
-        // Resolve remote namespace context BEFORE the short finalization transaction.
+    /** Continuation is post-commit and must never prevent durable attempt finalization. */
+    private fun enqueueContinuationBestEffort(candidate: ScopedDurableAgentAttempt) {
+        val submitter = sessionRunSubmissionService ?: return
         val attempt = candidate.attempt
-        val instance = workflowRepository?.findInstance(candidate.scope, attempt.namespaceId, attempt.workflowId)
-        val actor = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
-        val root = agentOsProxyClient?.resolveRepoRoot(attempt.namespaceId, actor)
-            ?.takeIf { it.isNotBlank() } ?: error("Recovery continuation requires the namespace repository root")
-        return {
+        runCatching {
+            val instance = workflowRepository?.findInstance(candidate.scope, attempt.namespaceId, attempt.workflowId)
+            val actor = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
+            val root = agentOsProxyClient?.let { client ->
+                runCatching { client.resolveRepoRoot(attempt.namespaceId, actor) }.getOrNull()
+            }?.takeIf { it.isNotBlank() } ?: Path.of(".").toAbsolutePath().normalize().toString()
             submitter.submit(candidate.scope, attempt.namespaceId, attempt.workflowId, root, "attempt-recovered:${attempt.attemptId}", null)
-            Unit
+        }.onFailure { error ->
+            logger.warn(error) {
+                "Best-effort continuation enqueue after recovery of attempt '${attempt.attemptId}' failed; leaving to normal outbox/resume path"
+            }
         }
     }
 
