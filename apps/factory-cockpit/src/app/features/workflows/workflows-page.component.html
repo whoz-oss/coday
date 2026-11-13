@@ -4,6 +4,7 @@
       <h1>Workflows</h1>
       <p class="sf-muted">Registered workflow definitions and their governed steps.</p>
     </div>
+    <a mat-flat-button class="sf-primary" routerLink="/workflows/new" data-new-workflow>New workflow</a>
     <button mat-stroked-button class="sf-secondary" (click)="load()" [disabled]="loading()">
       <mat-icon>refresh</mat-icon>
       Refresh

@@ -2,6 +2,7 @@ package io.whozoss.factory.agentattempt.persistence
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.agentattempt.domain.AgentStepResultBusiness
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapability
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultLimits
@@ -252,6 +253,7 @@ class Neo4jAgentStepResultRepository(
             submittedAt = now.toString(),
             resultHash = resultHash,
             expectedAmendmentSeq = parsed.expectedAmendmentSeq,
+            selectedRoutes = parsed.selectedRoutes,
         )
         val payload = serialize(submitted)
         val resultStatus = DB_RESULT_STATUS.getValue(parsed.status)
@@ -528,7 +530,7 @@ class Neo4jAgentStepResultRepository(
     private fun validateAmendmentSequence(
         scope: TenantScope,
         capability: AgentStepResultCapability,
-        parsed: io.whozoss.factory.agentattempt.domain.AgentStepResultBusiness,
+        parsed: AgentStepResultBusiness,
     ) {
         val expected = parsed.expectedAmendmentSeq ?: return
         val repository = workflowRepository ?: return

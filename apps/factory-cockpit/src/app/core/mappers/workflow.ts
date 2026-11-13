@@ -89,15 +89,17 @@ function mapStepsToSessionSteps(steps: unknown[], blockedStepIds: ReadonlySet<st
       tone: phaseToneForStep(obj),
       status: blockedStepIds.has(getString(obj, 'id') ?? getString(obj, 'name') ?? `step-${index + 1}`)
         ? 'blocked'
-        : state === 'waiting_human'
-          ? 'waiting_human'
-          : state === 'running'
-            ? 'running'
-            : state === 'failed'
-              ? 'failed'
-              : state === 'pending' || state === 'ready'
-                ? 'pending'
-                : 'done',
+        : state === 'skipped'
+          ? 'skipped'
+          : state === 'waiting_human'
+            ? 'waiting_human'
+            : state === 'running'
+              ? 'running'
+              : state === 'failed'
+                ? 'failed'
+                : state === 'pending' || state === 'ready'
+                  ? 'pending'
+                  : 'done',
     }
     const duration = stepDurationSec(obj)
     if (duration !== null) result.durationSec = Math.round(duration)
@@ -276,6 +278,9 @@ export function mapProjectionToSessionDetail(
     asObject(snapshot['relations']) ?? asObject(asObject(snapshot['instance'])?.['relations']) ?? undefined
 
   const result: SessionDetail = {
+    ...(steps.some((raw) => asObject(raw)?.['decision'])
+      ? { routingSteps: steps as import('../factory-api.service').FullWorkflowStep[] }
+      : {}),
     id,
     sandbox:
       getString(relations, 'ticket') ?? getString(controller, 'caseId') ?? getString(snapshot, 'namespaceId') ?? id,

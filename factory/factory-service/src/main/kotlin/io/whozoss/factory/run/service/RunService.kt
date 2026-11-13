@@ -1,5 +1,6 @@
 package io.whozoss.factory.run.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.persistence.OrganizationScope
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
@@ -101,9 +102,12 @@ class RunService(
         TransactionTemplate(it).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
     }
 
-    private fun <T : Any?> inTransaction(block: () -> T): T {
+    private class TransactionResult<T>(val value: T)
+
+    private fun <T> inTransaction(block: () -> T): T {
         val template = txTemplate ?: return block()
-        return template.execute { block() } as T
+        // The callback result is non-null even when T itself is nullable.
+        return checkNotNull(template.execute { TransactionResult(block()) }).value
     }
 
     /**
@@ -162,7 +166,7 @@ class RunService(
         ensureCatalogDefinitionsSeeded(scope)
 
         val rootCaseId = existing?.rootCaseId ?: UUID.nameUUIDFromBytes(
-            com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(listOf(
+            ObjectMapper().writeValueAsBytes(listOf(
                 "factory-run-root-case", scope.organizationId, scope.workstreamId, namespaceId, command.runId,
             )),
         ).toString()
@@ -215,6 +219,7 @@ class RunService(
                 rawDecision = rawDecision,
                 decisionKey = START_DECISION_KEY,
                 repoRoot = readyRepoRoot,
+                actorId = authenticatedActor,
             )
         }
 
@@ -320,6 +325,7 @@ class RunService(
                 val freshUpdate = compatibleSelector.reduce(freshCompleted.toView(), outcome)
                 val updatedAfterReduce = freshCompleted.applyUpdate(freshUpdate, sourceFragmentId = fragmentWorkflowId)
                 val freshDecision = compatibleSelector.next(updatedAfterReduce.toView())
+                val inheritedActorId = instanceActorId(instance)
                 applyDecisionTransactionally(
                     scope = scope,
                     namespaceId = namespaceId,
@@ -328,6 +334,7 @@ class RunService(
                     rawDecision = freshDecision,
                     decisionKey = fragmentWorkflowId,
                     repoRoot = repoRoot.toString(),
+                    actorId = inheritedActorId,
                 )
             }
 
@@ -435,7 +442,7 @@ class RunService(
         }
 
         val updatedAfterReduce = runForSelector.applyUpdate(update, sourceFragmentId = escalationId)
-        val effectiveRoot = repoRoot ?: resolveRepoRoot(namespaceId)
+        val effectiveRoot = repoRoot ?: resolveRepoRoot(namespaceId, actorId)
 
         val committed = inTransaction {
             applyDecisionTransactionally(
@@ -446,6 +453,7 @@ class RunService(
                 rawDecision = rawDecision,
                 decisionKey = decisionKey,
                 repoRoot = effectiveRoot.toString(),
+                actorId = actorId,
             )
         }
 
@@ -529,7 +537,14 @@ class RunService(
         rawDecision: FlowDecision,
         decisionKey: String,
         repoRoot: String?,
+        actorId: String? = null,
     ): RunRecord {
+        // Lock only newly created pins, in deterministic order before materializing a fragment.
+        // Existing immutable pins are already protected by their durable parent Run.
+        val newPins = updatedAfterReduce.flowVersions.filter { (type, version) -> baseRun.flowVersions[type] != version }
+        if (newPins.isNotEmpty()) {
+            workflowRepository.lockDefinitionPins(scope, newPins, updatedAfterReduce.flowDefinitionHashes)
+        }
         val nextLoopCounts = LinkedHashMap(updatedAfterReduce.loopCounts)
         val effectiveDecision: FlowDecision = when (rawDecision) {
             is FlowDecision.Apply -> {
@@ -585,6 +600,7 @@ class RunService(
                     ordinal = ordinal,
                     flowType = effectiveDecision.flowType,
                     inputs = effectiveDecision.inputs,
+                    actorId = actorId,
                 )
 
                 nextFragments.add(
@@ -714,6 +730,7 @@ class RunService(
         ordinal: Int,
         flowType: String,
         inputs: Map<String, Any?>,
+        actorId: String? = null,
     ) {
         val definitionRecord = resolveFlowDefinition(scope, flowType, run)
         val executionPolicy = definitionRecord.executionPolicy ?: executionPolicyOf(definitionRecord.definition)
@@ -748,6 +765,7 @@ class RunService(
             kind = "factory-run",
             agentId = "factory-run-selector",
             caseId = run.rootCaseId,
+            actorId = actorId,
             namespaceId = namespaceId,
         )
         val created = createWorkflowInstance(startCommand, definitionInput, controllerExecution)
@@ -985,15 +1003,22 @@ class RunService(
         submitter.submit(scope, namespaceId, fragmentWorkflowId, resolvedRoot, operation, ticket)
     }
 
-    private fun resolveRepoRoot(namespaceId: String): Path =
+    private fun resolveRepoRoot(namespaceId: String, actorId: String? = null): Path =
         agentOsProxyClient
             ?.let { client ->
-                runCatching { client.resolveRepoRoot(namespaceId, null) }
+                runCatching { client.resolveRepoRoot(namespaceId, actorId) }
                     .getOrNull()
                     ?.takeIf { it.isNotBlank() }
                     ?.let(Path::of)
             }
             ?: Path.of(".").toAbsolutePath().normalize()
+
+    private fun instanceActorId(instance: WorkflowInstanceRecord): String? {
+        val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
+        (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+        val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
+        return (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }
+    }
 
     private fun committedRepositoryState(scope: TenantScope, namespaceId: String, runId: String): RunRecord? =
         runRepository.find(scope, namespaceId, runId)

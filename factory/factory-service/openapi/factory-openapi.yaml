@@ -1466,8 +1466,34 @@ paths:
     post:
       tags:
       - workflows
-      summary: Register or update a workflow definition.
+      summary: Register an immutable workflow definition version.
       operationId: registerWorkflowDefinition
+      parameters:
+      - name: If-None-Match
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflow-definitions/validate:
+    post:
+      tags:
+      - workflows
+      summary: Validate a canonical workflow definition without saving or executing
+        it.
+      operationId: validateDefinitionWorkflowDefinition
       requestBody:
         content:
           application/json:
@@ -2364,6 +2390,19 @@ paths:
       tags:
       - factory-open-api-controller
       operationId: workerFactoryOpenApi
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+                format: binary
+  /api/factory/openapi/factory-authoring.yaml:
+    get:
+      tags:
+      - factory-open-api-controller
+      operationId: authoringFactoryOpenApi
       responses:
         "200":
           description: OK
@@ -3424,6 +3463,8 @@ components:
         terminal:
           type: boolean
         sealingClass:
+          type: string
+        effectiveMandate:
           type: string
       required:
       - activeDurationMs

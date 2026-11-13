@@ -8,11 +8,22 @@ import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.adapter.agentos.TurnToken
 import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
 import io.whozoss.factory.adapter.agentos.VerdictDeriver
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
+import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
+import io.whozoss.factory.workflow.domain.WorkflowStepContract
+import io.whozoss.factory.workflow.domain.WorkflowDecision
+import io.whozoss.factory.sdk.spi.WorkspaceCaptureStatus
+import io.whozoss.factory.sdk.spi.NewFinding
+import io.whozoss.factory.sdk.spi.FindingSeverity
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle
+import io.whozoss.factory.adapter.agentos.CaseEventView
+import io.whozoss.factory.workflow.service.codeVerificationFacts
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
+import io.whozoss.factory.agentattempt.domain.toCheckedJsonObject
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
@@ -34,6 +45,7 @@ import io.whozoss.factory.sdk.spi.StepValidationContext
 import io.whozoss.factory.sdk.spi.StepValidationVerdict
 import io.whozoss.factory.sdk.spi.ToolEventView
 import io.whozoss.factory.sdk.spi.WorkspaceDelta
+import io.whozoss.factory.workflow.domain.LegacyStepContract
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
@@ -177,20 +189,20 @@ class CapabilityExecutionService(
     private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
     /** Factory-authoritative PR file scope used by scoped review agents. */
     private val pullRequestReviewScopeResolver: PullRequestReviewScopeResolver? = null,
-    @Autowired(required = false)
+    @param:Autowired(required = false)
     private val workspaceDeltaCollector: WorkspaceDeltaCollector? = null,
-    @Autowired(required = false)
+    @param:Autowired(required = false)
     private val pluginManager: PluginManager? = null,
-    @Lazy
-    @Autowired(required = false)
+    @param:Lazy
+    @param:Autowired(required = false)
     private val runService: RunService? = null,
-    @Autowired(required = false)
+    @param:Autowired(required = false)
     private val registeredBriefContributors: List<FactoryBriefContributor> = emptyList(),
-    @Autowired(required = false)
+    @param:Autowired(required = false)
     private val registeredStepResultValidators: List<FactoryStepResultValidator> = emptyList(),
-    @Autowired(required = false)
+    @param:Autowired(required = false)
     private val agentOsWorkspaceIdentityValidator: AgentOsWorkspaceIdentityValidator? = null,
-    @Autowired(required = false)
+    @param:Autowired(required = false)
     private val worktreeExecutionOccupancyService: WorktreeExecutionOccupancyService? = null,
 ) {
 
@@ -241,8 +253,45 @@ class CapabilityExecutionService(
     ): Boolean {
         val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
         val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, latest.attemptId) ?: return false
-        return accepted.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH
+        return accepted.status != AgentStepResultStatus.NEEDS_RESEARCH
     }
+
+    /** A finalized durable attempt may be replayed without dispatching a second turn. */
+    fun hasFinalizedAttempt(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): Boolean {
+        val attempt = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
+        return attempt.status.terminal
+    }
+
+    /**
+     * A waiting step may resume a completed turn, a standard queryUser turn returned to
+     * RUNNING, or the fresh pending N+1 registered by a legacy question answer.
+     * A pending first attempt or an unanswered WAITING_HUMAN attempt is not resumable.
+     */
+    fun canResumeWaitingAgentStep(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): Boolean {
+        val attempt = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
+        return attempt.status.terminal || attempt.status == AgentAttemptStatus.RUNNING ||
+            (attempt.attemptNumber > 1 && attempt.status == AgentAttemptStatus.PENDING)
+    }
+
+    /** Recovery uses the same validators for every workflow, never a raw PASS shortcut. */
+    fun finalizeRecoveredAttempt(
+        scope: TenantScope, attempt: DurableAgentAttempt, ownerToken: String, observation: AgentOsObservationResult,
+    ): Boolean {
+        val steps = projectedSteps(scope, attempt.namespaceId, attempt.workflowId)
+        val step = steps.find { it.id == attempt.stepId } ?: return false
+        newTransaction<Unit> {
+            finalizeAgentAttempt(
+                scope, attempt.namespaceId, attempt.workflowId, step,
+                AgentReservation(attempt.attemptId, attempt.caseId, ownerToken, attempt.capabilityToken, attempt.parentCaseId, turnStarted = true),
+                observation.verdict, runtimeProof = observation.runtimeProof,
+            )
+        }
+        return true
+    }
+
+    /** Exact structured result of the capability execution; never derive decisions from output prose. */
+    fun acceptedStepResult(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String, attemptId: String) =
+        agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, attemptId)
 
     /**
      * Code capability: external process execution (Phase 2) then a short
@@ -365,7 +414,7 @@ class CapabilityExecutionService(
                 }
                 val outputs = evidence.facts["outputs"] as? Map<*, *> ?: return@firstNotNullOfOrNull null
                 when (val claims = outputs["claims"]) {
-                    is io.whozoss.factory.agentattempt.domain.AgentStepResultClaim -> claims.modifiedFiles
+                    is AgentStepResultClaim -> claims.modifiedFiles
                     is Map<*, *> -> (claims["modifiedFiles"] as? List<*>)?.filterIsInstance<String>()
                     else -> null
                 }
@@ -500,7 +549,12 @@ class CapabilityExecutionService(
                     val kind = ResponsibilityKind.fromWire(kindWire) ?: ResponsibilityKind.AGENT
                     val name = s["name"] as? String ?: id
                     val respName = respMap?.get("name") as? String
-                    id to WorkflowStepDefinition(id, name, WorkflowStepResponsibility(kind, respName), deps)
+                    id to WorkflowStepDefinition(
+                        id, name, WorkflowStepResponsibility(kind, respName), deps,
+                        WorkflowStepContract.fromJson(s),
+                        WorkflowDecision.parse(s["decision"]),
+                        s["join"] as? String,
+                    )
                 }?.toMap()
                 if (definitionSteps == null) return@run null
                 val ancestors = transitiveAncestors(step.dependsOn, definitionSteps)
@@ -654,14 +708,14 @@ class CapabilityExecutionService(
 
         // §6.1 step 3: strict distinction between unavailable workspace evidence
         // and business/artifact rejection.
-        if (workspaceDelta.captureStatus != io.whozoss.factory.sdk.spi.WorkspaceCaptureStatus.COMPLETE) {
+        if (workspaceDelta.captureStatus != WorkspaceCaptureStatus.COMPLETE) {
             val reason = workspaceDelta.degradedReason ?: "Workspace evidence is ${workspaceDelta.captureStatus}"
             return StepValidationVerdict.Rejected(
                 reasonCode = "WORKSPACE_EVIDENCE_UNAVAILABLE",
                 findings = listOf(
-                    io.whozoss.factory.sdk.spi.NewFinding(
+                    NewFinding(
                         code = "WORKSPACE_EVIDENCE_UNAVAILABLE",
-                        severity = io.whozoss.factory.sdk.spi.FindingSeverity.MAJOR,
+                        severity = FindingSeverity.MAJOR,
                         message = "Workspace delta could not be captured ($reason); cannot validate step '${step.id}'.",
                         stepId = step.id,
                     ),
@@ -694,9 +748,9 @@ class CapabilityExecutionService(
                 StepValidationVerdict.Rejected(
                     reasonCode = "STEP_VALIDATOR_EXCEPTION",
                     findings = listOf(
-                        io.whozoss.factory.sdk.spi.NewFinding(
+                        NewFinding(
                             code = "STEP_VALIDATOR_EXCEPTION",
-                            severity = io.whozoss.factory.sdk.spi.FindingSeverity.MAJOR,
+                            severity = FindingSeverity.MAJOR,
                             message = error.message ?: error.javaClass.simpleName,
                             stepId = step.id,
                         ),
@@ -732,6 +786,7 @@ class CapabilityExecutionService(
     }
 
     private fun renderBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
+        if (step.contract != null) return renderExplicitBrief(step, assembly)
         val ticketInstruction = assembly.ticketInstruction
         val entryStep = assembly.entryStep
         val inputs = assembly.inputs
@@ -753,16 +808,8 @@ class CapabilityExecutionService(
             if (!entryStep && runBrief != null) appendLine("Run brief handoff: ${renderValue(runBrief)}")
             appendLine()
             appendLine("## Execution contract")
-            if (entryStep) {
-                appendLine("- This is an entry step. Frame the handoff before completing it: objective, scope and exclusions, criteria explicitly supplied by the user or workflow, constraints, and open questions.")
-                appendLine("- If the initial intention is absent or ambiguous, call queryUser and wait for the answer. Do not submit FAIL merely because clarification is needed.")
-                appendLine("- If queryUser is unavailable, do not bypass clarification by guessing or silently widening scope; report the clarification blocker only as a justified terminal failure when no supported continuation exists.")
-                appendLine("- Include one durable Markdown artifact in the normal artifacts list with kind 'run-brief', encoding 'markdown', and content sections: Objectif, Périmètre et exclusions, Critères, Contraintes, Questions ouvertes.")
-                appendLine("- Do not invent criteria or turn a request for analysis into an implementation task.")
-            } else {
-                appendLine("- Consume the structured dependency inputs and the run-brief handoff above while following this step's own instructions; the original user request remains the governing intention.")
-                appendLine("- Preserve every run-brief artifact received from direct dependencies unchanged in this step's artifacts so later steps can relay the correct branch framing. Add separate artifacts for this step's own work; never rewrite or merge independent framings.")
-            }
+            val legacyContract = LegacyStepContract.obligations(step)
+            append(legacyContract.renderHandoff())
             if (step.responsibility.name == A11Y_REVIEWER_AGENT) {
                 appendLine()
                 appendLine("## Accessibility review scope")
@@ -794,18 +841,63 @@ class CapabilityExecutionService(
                     appendLine(section)
                 }
             }
-            appendLine("- Choose deliverables from the work actually requested when the definition has no explicit deliverable metadata:")
-            appendLine("  - Analysis or design: provide reasoned findings, decisions/options, constraints, open questions, and a durable Markdown artifact; do not implement unless requested.")
-            appendLine("  - Implementation: provide the scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.")
-            appendLine("  - Review: provide prioritized findings with locations/evidence and residual risks; do not modify code unless requested.")
-            appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If that tool is unavailable, do not guess or bypass the clarification requirement.")
-            appendLine(resultSubmissionInstruction())
-            appendLine("- Submit NEEDS_RESEARCH only when missing research blocks a reliable PASS/FAIL decision; identify the missing business information and useful references in the summary/findings.")
-            appendLine("- Otherwise use PASS or FAIL according to this step's criteria. Do not invent criteria.")
-            appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
-            appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
-            append("- Once Factory accepts the result, stop working on this step.")
+            append(legacyContract.renderDeliverables())
+            append(routingInstruction(step))
+            append(resultProtocol())
         }
+    }
+
+    /** Explicit contracts replace legacy business defaults, never the Factory result protocol. */
+    private fun renderExplicitBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String = buildString {
+        val contract = requireNotNull(step.contract)
+        assembly.controllerRequest?.let {
+            appendLine("## User request")
+            appendLine(it)
+            appendLine()
+        }
+        appendLine("## Current step")
+        appendLine("Id: ${step.id}")
+        appendLine("Name: ${step.name}")
+        appendLine("Role: ${step.responsibility.name ?: step.responsibility.kind.wire}")
+        appendLine("Scope: Work only on this step.")
+        assembly.ticketInstruction?.let { appendLine("Ticket context: $it") }
+        if (assembly.inputs.isNotEmpty()) appendLine("Inputs: ${renderValue(assembly.inputs)}")
+        assembly.runBrief?.let { appendLine("Run brief handoff: ${renderValue(it)}") }
+        appendLine()
+        appendLine("## Entry / Preparation")
+        contract.entry.forEach { appendLine("- $it") }
+        appendLine()
+        appendLine("## Mission")
+        appendLine(contract.mission)
+        appendLine()
+        appendLine("## Exit / Deliverables")
+        contract.exit.forEach { appendLine("- $it") }
+        if (assembly.pluginSections.isNotEmpty()) {
+            appendLine()
+            appendLine("## Context contributions")
+            assembly.pluginSections.forEach { appendLine(it) }
+        }
+        appendLine()
+        appendLine("## Factory execution protocol")
+        appendLine("- Entry and exit prose are agent obligations, not machine-verified predicates. Factory still validates the structured result and configured validators.")
+        appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If unavailable, report the blocker; do not guess.")
+        append(routingInstruction(step))
+        append(resultProtocol())
+    }
+
+    private fun routingInstruction(step: WorkflowStepDefinition): String = step.decision?.let { decision ->
+        "\n## Route decision\nSubmit selectedRoutes on PASS: ${decision.routes.joinToString { it.name }}. " +
+            "Mode: ${decision.mode}; select ${if (decision.mode == "single") "exactly one" else "one or more"} named routes. " +
+            "Return route names, never step IDs. Do not include selectedRoutes on FAIL or NEEDS_RESEARCH.\n"
+    }.orEmpty()
+
+    private fun resultProtocol(): String = buildString {
+        appendLine(resultSubmissionInstruction())
+        appendLine("- Submit NEEDS_RESEARCH only when missing research blocks a reliable PASS/FAIL decision; identify the missing business information and useful references in the summary/findings.")
+        appendLine("- Otherwise use PASS or FAIL according to this step's criteria. Do not invent criteria.")
+        appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
+        appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
+        append("- Once Factory accepts the result, stop working on this step.")
     }
 
     private fun buildBrief(
@@ -816,7 +908,7 @@ class CapabilityExecutionService(
         ticket: String?,
     ): String {
         val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
-        return if (step.responsibility.name == GITAY_AGENT) {
+        return if (step.contract == null && step.responsibility.name == GITAY_AGENT) {
             renderGitayBrief(step, assembly, expectedFactoryBranch(scope, namespaceId, ticket, workflowId))
         } else {
             renderBrief(step, assembly)
@@ -850,6 +942,7 @@ class CapabilityExecutionService(
         appendLine("- A final detached HEAD, existing/divergent branch, another unexpected state, changed or unreadable HEAD, tool refusal, or unverifiable state requires structured FAIL.")
         appendLine("- Do not infer success from prose. Factory accepts success only through its configured structured result tool.")
         appendLine("- Forbidden: file edits, add, commit, push, fetch, stash, reset, merge, branch deletion, and worktree creation/removal.")
+        append(routingInstruction(step))
         appendLine("- Once Factory accepts the structured result, stop.")
     }
 
@@ -884,7 +977,7 @@ class CapabilityExecutionService(
         expectedAmendmentSeq: Long? = null,
     ): Pair<String, AttemptContextEnvelope> {
         val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
-        val brief = if (step.responsibility.name == GITAY_AGENT) {
+        val brief = if (step.contract == null && step.responsibility.name == GITAY_AGENT) {
             renderGitayBrief(step, assembly, expectedFactoryBranch(scope, namespaceId, ticket, workflowId))
         } else {
             renderBrief(step, assembly)
@@ -1032,7 +1125,7 @@ class CapabilityExecutionService(
                 // session evidence. This improves new runs while the cockpit still
                 // correlates legacy rich session evidence through evidenceId.
                 facts = mapOf("stepId" to step.id, "verdict" to outcome.verdict) +
-                    io.whozoss.factory.workflow.service.codeVerificationFacts(outcome),
+                    codeVerificationFacts(outcome),
                 idempotencyKey = null,
                 createdAt = null,
             ),
@@ -1133,7 +1226,7 @@ class CapabilityExecutionService(
         /** Set when a live competing lease owns the attempt: the turn must not start. */
         val conflicted: Boolean = false,
         /** Exact physical-worktree claim, persisted in the durable attempt before remote effects. */
-        val occupancy: io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle? = null,
+        val occupancy: WorktreeExecutionOccupancyHandle? = null,
     )
 
     /**
@@ -1191,7 +1284,7 @@ class CapabilityExecutionService(
             )
             FrozenContext(brief, envelope.toJson())
         }
-        val context = if (latestAttempt == null) {
+        val context = if (latestAttempt == null || latestAttempt.contextEnvelope == null) {
             val renderedBrief = renderSubmissionIdentifiers(contextTemplate.brief, attemptId)
             val renderedEnvelope = AttemptContextEnvelope.fromJson(contextTemplate.envelopeJson)
                 .copy(briefHash = CanonicalJsonHash.sha256(renderedBrief))
@@ -1250,17 +1343,20 @@ class CapabilityExecutionService(
             ?.associate { it.key.toString() to it.value }
             .orEmpty()
         val (_, watchedPaths) = resolveBriefContributions(scope, namespaceId, workflowInstance, step, fragmentInputs)
+        val externalUserId = resolveExternalUserId(scope, workflowInstance)
         val workspaceCaseId = reservation.parentCaseId ?: reservation.caseId
         val beforeSnapshot = workspaceDeltaCollector?.captureSnapshot(
             caseId = workspaceCaseId,
             watchedPaths = watchedPaths,
+            externalUserId = externalUserId,
         )
         val observation = executeRemoteTurn(
-            adapter, attempts, scope, namespaceId, workflowId, step, occupiedReservation, agentId, brief, onAgentObservation,
+            adapter, attempts, scope, namespaceId, workflowId, step, occupiedReservation, agentId, brief, externalUserId, onAgentObservation,
         )
         val afterSnapshot = workspaceDeltaCollector?.captureSnapshot(
             caseId = workspaceCaseId,
             watchedPaths = watchedPaths,
+            externalUserId = externalUserId,
         )
         val workspaceDelta = if (workspaceDeltaCollector != null && beforeSnapshot != null && afterSnapshot != null) {
             workspaceDeltaCollector.computeDelta(beforeSnapshot, afterSnapshot, watchedPaths)
@@ -1316,7 +1412,7 @@ class CapabilityExecutionService(
      * before any remote call.
      */
     private data class AgentWorktreeAcquisition(
-        val handle: io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle? = null,
+        val handle: WorktreeExecutionOccupancyHandle? = null,
         val deferred: CapabilityExecution? = null,
     )
 
@@ -1391,7 +1487,7 @@ class CapabilityExecutionService(
             val ownerId = attempt.occupancyOwnerId ?: return
             val generation = attempt.occupancyGeneration ?: return
             service.releaseOwned(
-                io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle(
+                WorktreeExecutionOccupancyHandle(
                     environmentId = attempt.environmentRef ?: "",
                     resourceIdentity = resourceIdentity,
                     ownerScope = scope,
@@ -1468,6 +1564,23 @@ class CapabilityExecutionService(
     }
 
     /**
+     * Resolves the authenticated external user identity to relay to AgentOS as
+     * `X-External-User-Id` from the persisted workflow instance (or parent Run
+     * work environment).
+     */
+    private fun resolveExternalUserId(scope: TenantScope, instance: WorkflowInstanceRecord?): String? {
+        if (instance != null) {
+            val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
+            (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+            val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
+            (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        val environmentOwnerId = parentRunIdOf(instance) ?: instance?.workflowId ?: return null
+        val env = workEnvironmentRepository?.findLatestByWorkflowId(scope, environmentOwnerId)
+        return env?.createdBy?.takeIf { it.isNotBlank() }
+    }
+
+    /**
      * The projected step definitions of a workflow instance, reconstructed from
      * the persisted projection — the same source the run briefs are built from.
      */
@@ -1486,7 +1599,12 @@ class CapabilityExecutionService(
             val kind = ResponsibilityKind.fromWire(respMap?.get("kind") as? String) ?: ResponsibilityKind.AGENT
             val name = raw["name"] as? String ?: id
             val respName = respMap?.get("name") as? String
-            WorkflowStepDefinition(id, name, WorkflowStepResponsibility(kind, respName), deps)
+            WorkflowStepDefinition(
+                id, name, WorkflowStepResponsibility(kind, respName), deps,
+                WorkflowStepContract.fromJson(raw),
+                WorkflowDecision.parse(raw["decision"]),
+                raw["join"] as? String,
+            )
         }
     }
 
@@ -1547,10 +1665,10 @@ class CapabilityExecutionService(
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
         if (existing != null && existing.status.terminal) {
-            if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH") {
+            if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH" && step.decision == null) {
                 val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, step.id, attemptId)
-                if (accepted != null && accepted.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
-                    val outcome = if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS) {
+                if (accepted != null && accepted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
+                    val outcome = if (accepted.status == AgentStepResultStatus.PASS) {
                         CapabilityOutcome.AgentCompleted(
                             step.id,
                             step.responsibility.name,
@@ -1560,7 +1678,7 @@ class CapabilityExecutionService(
                                 "claims" to accepted.claims,
                                 "findings" to accepted.findings,
                                 "artifacts" to accepted.artifacts,
-                            ),
+                            ).let { outputs -> accepted.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                         )
                     } else {
                         CapabilityOutcome.AgentFailed(
@@ -1571,6 +1689,9 @@ class CapabilityExecutionService(
                             mapOf("resultId" to accepted.resultId),
                         )
                     }
+                    // Compatibility: this replays an accepted out-of-band resolution, not a new
+                    // turn. No before/after workspace snapshots exist, so do not re-run validators
+                    // with fabricated/unavailable evidence. Normal turn finalization still validates.
                     val evidenceId = UUID.randomUUID().toString()
                     evidenceRepository.append(
                         scope,
@@ -1582,16 +1703,19 @@ class CapabilityExecutionService(
                             workflowId = workflowId,
                             stepId = step.id,
                             kind = AGENT_RESULT_EVIDENCE_KIND,
-                            outcome = if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS) "pass" else "fail",
+                            outcome = if (accepted.status == AgentStepResultStatus.PASS) "pass" else "fail",
                             source = mapOf("kind" to "agentos-adapter", "agentId" to agentId, "attemptId" to attemptId),
                             facts = mapOf(
                                 "status" to accepted.status.name,
+                                "validatorsAccepted" to false,
+                                "validationSource" to "accepted-late-result-compatibility",
                                 "summary" to accepted.summary,
                                 "outputs" to mapOf(
                                     "summary" to accepted.summary,
                                     "claims" to accepted.claims,
                                     "findings" to accepted.findings,
                                     "artifacts" to accepted.artifacts,
+                                    "selectedRoutes" to accepted.selectedRoutes,
                                 ),
                                 "attemptId" to attemptId,
                                 "stepId" to step.id,
@@ -1607,7 +1731,7 @@ class CapabilityExecutionService(
                         capabilityToken = existing.capabilityToken,
                         parentCaseId = existing.parentCaseId,
                         turnStarted = true,
-                        terminalStatus = if (accepted.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS) {
+                        terminalStatus = if (accepted.status == AgentStepResultStatus.PASS) {
                             AgentAttemptStatus.SUCCEEDED
                         } else {
                             AgentAttemptStatus.FAILED
@@ -1723,6 +1847,7 @@ class CapabilityExecutionService(
         reservation: AgentReservation,
         agentId: String,
         brief: String,
+        externalUserId: String?,
         onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): AgentOsObservationResult {
         val persistedAttempt = attempts.find(
@@ -1753,6 +1878,7 @@ class CapabilityExecutionService(
             agentName = agentId,
             environmentRef = persistedAttempt.environmentRef,
             environmentRevision = persistedAttempt.expectedEnvironmentRevision,
+            externalUserId = externalUserId,
         )
         // Validate the captured environment and the already-known case identity before any remote
         // create/recover side effect. The post-create validation below remains necessary because an
@@ -1870,7 +1996,7 @@ class CapabilityExecutionService(
                 val current = attempts.find(scope, namespaceId, workflowId, step.id, reservation.attemptId)
                 if (current?.status == AgentAttemptStatus.WAITING_HUMAN) {
                     val persistedAnswer = adapter.persistedEvents(caseId).lastOrNull {
-                        it.type == io.whozoss.factory.adapter.agentos.CaseEventView.ANSWER_EVENT &&
+                        it.type == CaseEventView.ANSWER_EVENT &&
                             it.answeredQuestionId == waitingQuestion
                     }
                     if (persistedAnswer != null) {
@@ -1879,7 +2005,7 @@ class CapabilityExecutionService(
                             reservation.ownerToken, AgentAttemptStatus.RUNNING,
                             lastObservedEventId = persistedAnswer.eventId,
                         )
-                        refreshCapabilityAfterHumanWait(scope, attempts, running, waitingQuestion!!)
+                        refreshCapabilityAfterHumanWait(scope, attempts, running, waitingQuestion)
                         onAgentObservation(AgentObservationUpdate(status = "running"))
                     }
                 }
@@ -1893,23 +2019,23 @@ class CapabilityExecutionService(
         )
         if (acceptedResult != null) {
             val businessVerdict = when (acceptedResult.status) {
-                io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS ->
+                AgentStepResultStatus.PASS ->
                     AgentOsExecutionVerdict.Succeeded(
                         outputs = mapOf(
                             "summary" to acceptedResult.summary,
                             "claims" to acceptedResult.claims,
                             "findings" to acceptedResult.findings,
                             "artifacts" to acceptedResult.artifacts,
-                        ),
+                        ).let { outputs -> acceptedResult.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                         evidence = mapOf("resultId" to acceptedResult.resultId, "source" to "factory-step-result"),
                     )
-                io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.FAIL ->
+                AgentStepResultStatus.FAIL ->
                     AgentOsExecutionVerdict.Failed(
                         code = "FACTORY_STEP_RESULT_FAILED",
                         message = acceptedResult.summary,
                         evidence = mapOf("resultId" to acceptedResult.resultId, "source" to "factory-step-result"),
                     )
-                io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH ->
+                AgentStepResultStatus.NEEDS_RESEARCH ->
                     // Blocked, not failed: the Succeeded carrier is used ONLY to
                     // hand the authoritative result to the finalize phase, which
                     // detects the `NEEDS_RESEARCH` marker and emits
@@ -2096,7 +2222,7 @@ class CapabilityExecutionService(
                             summary = verdict.outputs["summary"]?.toString() ?: "",
                             findings = (verdict.outputs["findings"] as? List<Any?>) ?: emptyList(),
                             artifacts = (verdict.outputs["artifacts"] as? List<Any?>) ?: emptyList(),
-                            claims = (verdict.outputs["claims"] as? Map<String, Any?>) ?: emptyMap(),
+                            claims = (verdict.outputs["claims"] as? Map<*, *>)?.toCheckedJsonObject() ?: emptyMap(),
                         ),
                         evidenceId = evidenceId,
                         attemptId = reservation.attemptId,
@@ -2169,7 +2295,7 @@ class CapabilityExecutionService(
                     }
                     val evidenceId = persistEvidence(
                         "pass",
-                        mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence),
+                        mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence, "validatorsAccepted" to true),
                     )
                     durableAgentAttemptService.finalize(
                         scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
@@ -2261,8 +2387,20 @@ class CapabilityExecutionService(
         reservation: AgentReservation,
     ): CapabilityExecution {
         val status = reservation.terminalStatus ?: AgentAttemptStatus.INDETERMINATE
-        val evidence = evidenceRepository.list(scope, namespaceId, workflowId, step.id)
-            .lastOrNull { it.kind == AGENT_RESULT_EVIDENCE_KIND }
+        val results = evidenceRepository.list(scope, namespaceId, workflowId, step.id)
+            .filter { it.kind == AGENT_RESULT_EVIDENCE_KIND }
+        val evidence = results.lastOrNull { it.facts["attemptId"] == reservation.attemptId }
+            ?: results.lastOrNull { it.facts["attemptId"] == null }
+        if (evidence?.outcome == "needs_research") {
+            val accepted = acceptedStepResult(scope, namespaceId, workflowId, step.id, reservation.attemptId)
+            if (accepted?.status == AgentStepResultStatus.NEEDS_RESEARCH) {
+                return CapabilityExecution(
+                    CapabilityOutcome.AgentNeedsResearch(step.id, step.responsibility.name, reservation.attemptId,
+                        accepted.resultId, accepted.summary, accepted.findings, accepted.artifacts),
+                    evidenceId = evidence.evidenceId, attemptId = reservation.attemptId,
+                )
+            }
+        }
         return when (status) {
             AgentAttemptStatus.SUCCEEDED -> CapabilityExecution(
                 CapabilityOutcome.AgentCompleted(step.id, step.responsibility.name, "PASS", evidence?.facts ?: emptyMap()),

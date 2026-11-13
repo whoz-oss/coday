@@ -11,6 +11,7 @@ import { PhaseSegment } from '../../core/models'
  * - blocked        → amber outline
  * - indeterminate  → muted red (opacity 0.6, distinct from failed)
  * - cancelled      → neutral grey (--color-neutral-500)
+ * - skipped        → muted neutral grey, not executed
  * - running        → animated accent pulse (1.8s)
  * - waiting_human  → amber, NEVER animated
  * - pending        → faint divider grey
@@ -97,6 +98,10 @@ import { PhaseSegment } from '../../core/models'
     .dot--pending {
       background: var(--color-divider);
     }
+    .dot--skipped {
+      background: var(--sf-outline-strong);
+      opacity: 0.55;
+    }
 
     @keyframes sf-dot-pulse {
       0%,
@@ -141,6 +146,8 @@ export class StepDotsComponent {
         return 'dot--waiting-human'
       case 'pending':
         return 'dot--pending'
+      case 'skipped':
+        return 'dot--skipped'
     }
   }
 
@@ -154,6 +161,7 @@ export class StepDotsComponent {
       running: 'running',
       waiting_human: 'waiting for human',
       pending: 'waiting',
+      skipped: 'skipped, not executed',
     }
     // Prefer the readable label (name from backend, or synthetic label)
     // over the raw id key.

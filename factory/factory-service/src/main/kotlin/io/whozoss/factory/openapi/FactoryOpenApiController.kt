@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * Public, read-only access to the two versioned OpenAPI contracts used by
+ * Public, read-only access to the versioned OpenAPI contracts used by
  * standard AgentOS HTTP_API integrations.
  */
 @RestController
@@ -21,6 +21,9 @@ class FactoryOpenApiController {
 
     @GetMapping("/factory-workstream.yaml", produces = [YAML_MEDIA_TYPE])
     fun workstream(): ResponseEntity<ClassPathResource> = contract("factory-workstream-http-api.yaml")
+
+    @GetMapping("/factory-authoring.yaml", produces = [YAML_MEDIA_TYPE])
+    fun authoring(): ResponseEntity<ClassPathResource> = contract("factory-authoring-http-api.yaml")
 
     private fun contract(filename: String): ResponseEntity<ClassPathResource> =
         ResponseEntity.ok()

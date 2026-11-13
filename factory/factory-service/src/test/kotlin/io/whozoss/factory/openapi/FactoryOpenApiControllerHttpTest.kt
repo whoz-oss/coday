@@ -31,6 +31,14 @@ class FactoryOpenApiControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `authoring contract is served anonymously from its packaged source`() {
+        assertContract(
+            "/api/factory/openapi/factory-authoring.yaml",
+            "openapi/factory-authoring-http-api.yaml",
+        )
+    }
+
+    @Test
     fun `openapi exposure does not accept posts or unknown routes`() {
         val post = restTemplate.exchange(
             "/api/factory/openapi/factory-worker.yaml",

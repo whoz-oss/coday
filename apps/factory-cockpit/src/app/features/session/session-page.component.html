@@ -159,6 +159,17 @@
       </section>
     }
 
+    @if (s.routingSteps; as routingSteps) {
+      <section class="sf-panel" aria-label="Conditional routing state">
+        <h2>Routes and convergence</h2>
+        <p>Selected branches must succeed. Skipped branches were not executed; they are not successful attempts.</p>
+        <sf-workflow-definition-diagram
+          [steps]="routingSteps"
+          [selectedId]="selectedStepId()"
+          (selected)="selectRoutingStep($event)"
+        />
+      </section>
+    }
     <!-- Timeline -->
     <sf-agent-timeline
       [lanes]="s.lanes"
@@ -181,6 +192,8 @@
               <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>running</sf-status-chip>
             } @else if (phase.stepStatus === 'failed') {
               <sf-status-chip tone="red" size="sm" icon="close">failed</sf-status-chip>
+            } @else if (phase.stepStatus === 'skipped') {
+              <sf-status-chip tone="neutral" size="sm">skipped · not executed</sf-status-chip>
             } @else if (phase.stepStatus === 'completed') {
               <sf-status-chip tone="green" size="sm" icon="check">completed</sf-status-chip>
             } @else {

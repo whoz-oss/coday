@@ -19,7 +19,7 @@ private val PROJECTION_FIELDS = setOf("schemaVersion", "workflowId", "workflowTy
 // the cockpit swimlanes. They are pass-through metadata: absent for a v1/v2
 // publication, present once a session run has scheduled/executed the step.
 private val STEP_FIELDS =
-    setOf("id", "name", "status", "description", "dependsOn", "responsibility", "lane", "startedAt", "completedAt", "durationMs")
+    setOf("id", "name", "status", "description", "dependsOn", "responsibility", "lane", "startedAt", "completedAt", "durationMs", "entry", "mission", "exit", "decision", "join", "activation", "executed", "routeDecision")
 private val LANE_VALUES = setOf("agent", "code", "human")
 
 data class ProjectionError(val code: String, val path: String, val details: Map<String, Any?> = emptyMap())
@@ -111,12 +111,39 @@ object WorkflowProjectionValidator {
                     return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.responsibility.name")
                 }
             }
+            if (listOf("entry", "mission", "exit").any { step.containsKey(it) }) {
+                val mission = step["mission"]
+                if (mission !is String || mission.isBlank() || mission.length > 16_000) {
+                    return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.mission")
+                }
+                for (field in listOf("entry", "exit")) {
+                    val lines = step[field]
+                    if (lines !is List<*> || lines.size > 50 ||
+                        lines.any { it !is String || it.isBlank() || it.length > 4_000 }
+                    ) return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.$field")
+                }
+            }
             val normalizedStep = LinkedHashMap<String, Any?>()
+            WorkflowStepContract.fromJson(step)?.let { normalizedStep.putAll(it.toJson()) }
+            if (step.containsKey("decision")) {
+                val decision = WorkflowDecision.parse(step["decision"])
+                    ?: return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.decision")
+                normalizedStep["decision"] = decision.toJson()
+            }
+            if (step.containsKey("join")) {
+                val join = step["join"] as? String
+                if (join == null || !SAFE_ID.matches(join)) return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.join")
+                normalizedStep["join"] = join
+            }
+            // Runtime activation records are Factory-owned, never accepted from declarative publishers.
+            if (step.keys.any { it in setOf("activation", "executed", "routeDecision") }) {
+                return invalid(WorkflowErrorCodes.INVALID_PROJECTION, base, mapOf("reason" to "factory_owned_routing_state"))
+            }
             normalizedStep["id"] = id
             normalizedStep["name"] = name
             normalizedStep["status"] = stepStatus
             (step["description"] as? String)?.let { normalizedStep["description"] = it }
-            if (dependsOn != null) normalizedStep["dependsOn"] = dependsOn.map { it as String }
+            if (dependsOn != null) normalizedStep["dependsOn"] = dependsOn.toList()
             if (responsibility is Map<*, *>) {
                 val responsibilityRecord = responsibility.entries.associate { it.key.toString() to it.value }
                 normalizedStep["responsibility"] = linkedMapOf<String, Any?>(
@@ -126,14 +153,14 @@ object WorkflowProjectionValidator {
             }
             // Optional multi-lane timeline attributes: explicit `lane` wins,
             // otherwise it is derived from the responsibility kind.
-            val explicitLane = lane as? String
+            val explicitLane = lane
             val responsibilityKind = (responsibility as? Map<*, *>)?.get("kind") as? String
             val derivedLane = explicitLane
                 ?: responsibilityKind?.takeIf { it in LANE_VALUES }
             if (derivedLane != null) normalizedStep["lane"] = derivedLane
             (step["startedAt"] as? String)?.let { normalizedStep["startedAt"] = it }
             (step["completedAt"] as? String)?.let { normalizedStep["completedAt"] = it }
-            (durationMs as? Number)?.let { normalizedStep["durationMs"] = it.toLong() }
+            durationMs?.let { normalizedStep["durationMs"] = it.toLong() }
             steps.add(normalizedStep)
         }
         // Dependency targets must exist (array order stays semantic).

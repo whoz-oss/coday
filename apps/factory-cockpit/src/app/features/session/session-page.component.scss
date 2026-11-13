@@ -149,6 +149,8 @@ mat-panel-description {
   flex-grow: 0;
 }
 .section-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   margin: 0;
   font-size: 13px;
 }

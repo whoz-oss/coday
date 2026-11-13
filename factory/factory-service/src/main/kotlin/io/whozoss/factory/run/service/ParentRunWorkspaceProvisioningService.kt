@@ -1,5 +1,12 @@
 package io.whozoss.factory.run.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
+import org.springframework.stereotype.Component
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.transaction.TransactionDefinition
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 import io.whozoss.factory.environment.domain.WorkEnvironment
 import io.whozoss.factory.environment.domain.WorkEnvironmentState
 import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
@@ -17,10 +24,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.nio.file.Path
 import java.time.Instant
 
-@org.springframework.stereotype.Component
+@Component
 open class RunProvisioningTiming(
-    @org.springframework.beans.factory.annotation.Value("\${factory.run.provisioning.timeout-ms:60000}") val timeoutMs: Long = 60_000,
-    @org.springframework.beans.factory.annotation.Value("\${factory.run.provisioning.poll-interval-ms:250}") val pollIntervalMs: Long = 250,
+    @param:Value("\${factory.run.provisioning.timeout-ms:60000}") val timeoutMs: Long = 60_000,
+    @param:Value("\${factory.run.provisioning.poll-interval-ms:250}") val pollIntervalMs: Long = 250,
 ) {
     init { require(timeoutMs >= 0 && pollIntervalMs > 0) }
     open fun nanoTime(): Long = System.nanoTime()
@@ -34,12 +41,12 @@ class ParentRunWorkspaceProvisioningService(
     private val environments: WorkEnvironmentRepository,
     private val intents: RunProvisioningIntentRepository,
     private val proxy: AgentOsProxyClient,
-    private val mapper: com.fasterxml.jackson.databind.ObjectMapper,
+    private val mapper: ObjectMapper,
     transactionManager: PlatformTransactionManager,
     private val timing: RunProvisioningTiming = RunProvisioningTiming(),
 ) {
     private val transaction = TransactionTemplate(transactionManager).apply {
-        propagationBehavior = org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
     }
 
     fun readyPath(scope: TenantScope, run: RunRecord): String {
@@ -54,11 +61,11 @@ class ParentRunWorkspaceProvisioningService(
         require(actorId.isNotBlank()) { "Authenticated provisioning identity is required" }
         val key = mapper.writeValueAsString(listOf(scope.organizationId, scope.workstreamId, proposed.namespaceId, proposed.runId))
         require(proposed.runId == command.runId && proposed.runType == command.runType && proposed.namespaceId.isNotBlank()) { "Run command identity mismatch" }
-        val hash = io.whozoss.factory.agentattempt.domain.CanonicalJsonHash.hash(mapper.valueToTree(
+        val hash = CanonicalJsonHash.hash(mapper.valueToTree(
             listOf(command.runType, command.title, command.ticket, command.initialDomainState, command.maxTotalFragments, repoRoot),
         ))
         val root = requireNotNull(proposed.rootCaseId) { "Run has no persisted root case identity" }
-        val environmentId = "run-workspace:" + java.util.UUID.nameUUIDFromBytes(key.toByteArray(Charsets.UTF_8))
+        val environmentId = "run-workspace:" + UUID.nameUUIDFromBytes(key.toByteArray(Charsets.UTF_8))
         val run = transaction.execute {
             val intent = intents.findById(key).orElse(null)
             if (intent != null) {
@@ -114,7 +121,7 @@ class ParentRunWorkspaceProvisioningService(
                 "REQUESTED", "PREPARING" -> Unit
                 else -> error("Root workspace preparation failed or has unknown status: ${raw["status"]}")
             }
-            check(timing.nanoTime() - started < java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timing.timeoutMs)) { "Root workspace provisioning timed out; intent retained" }
+            check(timing.nanoTime() - started < TimeUnit.MILLISECONDS.toNanos(timing.timeoutMs)) { "Root workspace provisioning timed out; intent retained" }
             try {
                 timing.pause(timing.pollIntervalMs)
             } catch (interrupted: InterruptedException) {
