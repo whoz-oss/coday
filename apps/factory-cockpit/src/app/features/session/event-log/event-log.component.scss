@@ -15,36 +15,33 @@
   align-items: center;
   gap: 10px;
   padding: 12px 20px;
-  border-bottom: 1px solid #1d2331;
+  border-bottom: 1px solid var(--color-divider);
   mat-icon {
     width: 18px;
     height: 18px;
     font-size: 18px;
-    color: var(--sf-text-muted);
+    color: var(--color-text-secondary);
   }
   h2 {
     margin: 0;
+    font-family: var(--font-heading);
     font-size: 15px;
-    font-weight: 800;
+    font-weight: 600;
   }
   .count {
     font-size: 13px;
-    color: var(--sf-text-muted);
+    color: var(--color-text-secondary);
   }
 }
 
+/* Button toggle look (height, shape, selected tone) comes from the global Material overrides (styles/_material.scss). */
 .filters {
-  --mat-standard-button-toggle-height: 30px;
-  --mat-standard-button-toggle-shape: 8px;
-  --mat-standard-button-toggle-divider-color: var(--sf-outline);
-  --mat-standard-button-toggle-selected-state-background-color: #2a2145;
-  --mat-standard-button-toggle-selected-state-text-color: #e3d6ff;
-  font-family: var(--sf-mono);
+  font-family: var(--font-heading);
   .f-tool_call {
-    color: #7fd8c5;
+    color: var(--sf-success-text);
   }
   .f-agent_message {
-    color: var(--sf-running);
+    color: var(--color-accent-700);
   }
 }
 
@@ -61,15 +58,15 @@
   height: 33px;
   padding: 0 20px;
   box-sizing: border-box;
-  border-bottom: 1px solid #171c28;
-  font-family: var(--sf-mono);
+  border-bottom: 1px solid var(--color-border-light);
+  font-family: var(--font-heading);
   font-size: 12.5px;
 }
 .ev--message {
   padding: 0;
-  background: #121a2b;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   .text {
-    color: var(--sf-text);
+    color: var(--color-text);
   }
 }
 .ev-message-button,
@@ -93,61 +90,61 @@
   cursor: pointer;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--color-bg-hover);
   }
 
   &:focus-visible {
-    outline: 2px solid var(--sf-secondary);
+    outline: 2px solid var(--color-accent);
     outline-offset: -2px;
   }
 }
 .diagnostic-hint {
   margin-left: 8px;
-  color: var(--sf-secondary);
+  color: var(--color-accent-700);
   font-size: 10px;
   opacity: 0.8;
 }
 .time {
-  color: var(--sf-text-faint);
+  color: var(--color-text-tertiary);
 }
 .text {
-  color: var(--sf-text-2);
+  color: var(--color-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .text b {
-  color: var(--sf-text);
+  color: var(--color-text);
   margin-right: 6px;
 }
 .text b.write {
-  color: var(--sf-success);
+  color: var(--sf-success-text);
 }
 .dur {
   text-align: right;
-  color: var(--sf-text-faint);
+  color: var(--color-text-tertiary);
 }
 .dur.slow {
-  color: var(--sf-tertiary);
+  color: var(--sf-warning-text);
 }
 
 .type {
-  color: var(--sf-text-muted);
+  color: var(--color-text-secondary);
 }
 .t-phase_start {
-  color: var(--sf-text);
+  color: var(--color-text);
 }
 .t-agent_start {
   color: var(--sf-secondary);
 }
 .t-thinking {
-  color: #c9a8ff;
+  color: var(--color-accent-700);
 }
 .t-tool_call {
-  color: #7fd8c5;
+  color: var(--sf-success-text);
 }
 .t-agent_message {
-  color: var(--sf-running);
+  color: var(--color-accent-700);
 }
 
 .context-label {
@@ -157,9 +154,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--sf-text-muted);
+  border-radius: var(--radius-sm, 0);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
 }
 
 .source-badge {
@@ -168,15 +165,15 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 2px 7px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--sf-text-muted);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm, 0);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-divider);
 
   &--agentos {
-    background: rgba(95, 212, 224, 0.1);
-    color: var(--sf-secondary);
-    border-color: rgba(95, 212, 224, 0.25);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    color: var(--color-accent-700);
+    border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
   }
 }
 
@@ -196,23 +193,23 @@
   gap: 3px;
   font-size: 11px;
   font-weight: 600;
-  font-family: var(--sf-mono);
+  font-family: var(--font-heading);
   padding: 2px 7px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--sf-text-muted);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm, 0);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-divider);
   cursor: default;
   white-space: nowrap;
 
   &--partial {
-    color: var(--sf-tertiary, #f59e0b);
-    border-color: rgba(245, 158, 11, 0.3);
-    background: rgba(245, 158, 11, 0.06);
+    color: var(--sf-warning-text);
+    border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+    background: color-mix(in srgb, var(--color-warning) 12%, transparent);
   }
 
   &--duration {
-    color: var(--sf-text-2);
+    color: var(--color-text-secondary);
   }
 
   &--muted {
@@ -221,7 +218,8 @@
 }
 
 .metric-icon {
-  font-family: 'Material Icons';
+  /* The only icon font loaded by index.html (mat-icon default font set). */
+  font-family: 'Material Symbols Outlined';
   font-size: 12px;
   line-height: 1;
   vertical-align: middle;
@@ -229,9 +227,9 @@
 }
 
 .state-placeholder--error {
-  color: var(--sf-error, #f87171);
+  color: var(--sf-error-text);
   mat-icon {
-    color: var(--sf-error, #f87171);
+    color: var(--color-error);
     opacity: 0.7;
   }
   span:not(.sf-muted) {
@@ -247,7 +245,7 @@
   gap: 10px;
   flex: 1;
   min-height: 160px;
-  color: var(--sf-text-muted);
+  color: var(--color-text-secondary);
   mat-icon {
     width: 28px;
     height: 28px;
@@ -277,7 +275,7 @@
   gap: 10px;
   height: 38px;
   padding: 0 20px;
-  color: var(--sf-secondary);
+  color: var(--color-accent-700);
   font-size: 13px;
   font-weight: 600;
 }
@@ -285,6 +283,6 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--sf-secondary);
-  box-shadow: 0 0 0 4px rgba(95, 212, 224, 0.15);
+  background: var(--color-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }

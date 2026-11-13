@@ -4,7 +4,16 @@
  * and buildPhaseDetailForStep by using an optional targetStepId parameter.
  */
 
-import { AgentAttempt, HumanInteraction, PhaseDetail, PhaseSection, PhaseSectionItem, RunEvent, RunEventType, RunStatus } from '../models'
+import {
+  AgentAttempt,
+  HumanInteraction,
+  PhaseDetail,
+  PhaseSection,
+  PhaseSectionItem,
+  RunEvent,
+  RunEventType,
+  RunStatus,
+} from '../models'
 import { asObject, getString, formatClock } from './utils'
 import { classifyActorKind, actorName, resolveStepState, stepDurationSec } from './step-classification'
 import { mapWorkflowStateToRunStatus } from './timeline'
@@ -65,7 +74,11 @@ export function buildRoutingSection(obj: Record<string, unknown>): PhaseSection 
     }
   }
   if (activation) {
-    items.push({ title: 'Activation', subtitle: activation === 'selected' ? 'Sélectionnée' : 'Non sélectionnée', status: getString(obj, 'status') })
+    items.push({
+      title: 'Activation',
+      subtitle: activation === 'selected' ? 'Sélectionnée' : 'Non sélectionnée',
+      status: getString(obj, 'status'),
+    })
     items.push({ title: 'Exécutée', subtitle: obj['executed'] === true ? 'oui' : 'non' })
   }
   if (join) items.push({ title: 'Décision de convergence', subtitle: join })

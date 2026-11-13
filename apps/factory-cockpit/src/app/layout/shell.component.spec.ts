@@ -9,17 +9,23 @@ import { ShellComponent } from './shell.component'
 describe('Factory navigation simplification', () => {
   it('redirects old Settings bookmarks to workflows without loading the obsolete import page', () => {
     expect(routes.find((route) => route.path === 'reglages')).toEqual({
-      path: 'reglages', pathMatch: 'full', redirectTo: 'workflows',
+      path: 'reglages',
+      pathMatch: 'full',
+      redirectTo: 'workflows',
     })
   })
 
   it('keeps workflow navigation and removes Settings', async () => {
     await TestBed.configureTestingModule({
       imports: [ShellComponent],
-      providers: [provideRouter([]), provideNoopAnimations(), {
-        provide: FactoryStore,
-        useValue: { costs: signal({ active: 0, totalUsd: 0, workflowsUsd: 0 }), showDestroyed: signal(false) },
-      }],
+      providers: [
+        provideRouter([]),
+        provideNoopAnimations(),
+        {
+          provide: FactoryStore,
+          useValue: { costs: signal({ active: 0, totalUsd: 0, workflowsUsd: 0 }), showDestroyed: signal(false) },
+        },
+      ],
     }).compileComponents()
     const fixture: ComponentFixture<ShellComponent> = TestBed.createComponent(ShellComponent)
     fixture.detectChanges()

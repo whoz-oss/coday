@@ -9,7 +9,16 @@ export interface PhaseSegment {
   label?: string
   ratio: number // part de la durée totale (0–1)
   tone: Tone
-  status: 'done' | 'failed' | 'blocked' | 'cancelled' | 'indeterminate' | 'running' | 'waiting_human' | 'pending' | 'skipped'
+  status:
+    | 'done'
+    | 'failed'
+    | 'blocked'
+    | 'cancelled'
+    | 'indeterminate'
+    | 'running'
+    | 'waiting_human'
+    | 'pending'
+    | 'skipped'
 }
 
 export type RunCardState = 'pending' | 'running' | 'waiting_human' | 'blocked' | 'succeeded' | 'failed'

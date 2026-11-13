@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing'
 import { of, Subject } from 'rxjs'
 import { FactoryApiService } from './factory-api.service'
-import { WorkflowStepEditorState, explicitContract, legacyAdoption, validateDraft, validateStructure } from './workflow-step-editor.state'
+import {
+  WorkflowStepEditorState,
+  explicitContract,
+  legacyAdoption,
+  validateDraft,
+  validateStructure,
+} from './workflow-step-editor.state'
 import { layoutDefinition } from '../features/workflows/workflow-definition-diagram.component'
 
 describe('workflow block composition', () => {
@@ -12,7 +18,9 @@ describe('workflow block composition', () => {
       getAgents: jest.fn().mockReturnValue(of([{ name: 'Dev' }, { name: 'Architect' }])),
       createWorkflowDefinition: jest.fn().mockReturnValue(response),
     }
-    TestBed.configureTestingModule({ providers: [WorkflowStepEditorState, { provide: FactoryApiService, useValue: api }] })
+    TestBed.configureTestingModule({
+      providers: [WorkflowStepEditorState, { provide: FactoryApiService, useValue: api }],
+    })
     const state = TestBed.inject(WorkflowStepEditorState)
     state.startNew()
     return { state, api, response }
@@ -32,40 +40,87 @@ describe('workflow block composition', () => {
     state.setRoutingMode('multiple')
     state.updateRoute(0, 'target', 'step-2')
     state.updateRoute(1, 'target', 'step-3')
-    state.select('step-2'); state.connect('step-1', true)
-    state.select('step-3'); state.connect('step-1', true)
+    state.select('step-2')
+    state.connect('step-1', true)
+    state.select('step-3')
+    state.connect('step-1', true)
     state.select('step-4')
-    state.connect('step-2', true); state.connect('step-3', true)
+    state.connect('step-2', true)
+    state.connect('step-3', true)
     state.updateBlock({ join: 'step-1' })
     expect(state.validation()).toBeNull()
-    state.select('step-1'); state.updateBlock({ id: 'architect' })
+    state.select('step-1')
+    state.updateBlock({ id: 'architect' })
     expect(state.definition()?.steps?.[3].join).toBe('architect')
-    state.select('step-2'); state.updateBlock({ id: 'frontend' })
+    state.select('step-2')
+    state.updateBlock({ id: 'frontend' })
     expect(state.definition()?.steps?.[0].decision?.routes[0].target).toBe('frontend')
-    state.select('architect'); state.setRoutingMode('single')
+    state.select('architect')
+    state.setRoutingMode('single')
     expect(state.selected()?.decision?.mode).toBe('single')
-    expect(layoutDefinition(state.preview()?.steps ?? []).edges.find((edge) => edge.to === 'frontend')?.label).toBe('route-1 (single)')
+    expect(layoutDefinition(state.preview()?.steps ?? []).edges.find((edge) => edge.to === 'frontend')?.label).toBe(
+      'route-1 (single)'
+    )
     state.save()
     const payload = api.createWorkflowDefinition.mock.calls[0][0]
-    expect(JSON.parse(JSON.stringify(payload)).steps[0].decision).toEqual({ mode: 'single', routes: [{ name: 'route-1', target: 'frontend' }, { name: 'route-2', target: 'step-3' }] })
+    expect(JSON.parse(JSON.stringify(payload)).steps[0].decision).toEqual({
+      mode: 'single',
+      routes: [
+        { name: 'route-1', target: 'frontend' },
+        { name: 'route-2', target: 'step-3' },
+      ],
+    })
     expect(payload.steps[3].join).toBe('architect')
   })
 
   it('rejects incomplete duplicate and unsupported routing topologies before save', () => {
-    const step = (id: string, dependsOn: string[] = []) => ({ id, name: id, dependsOn, responsibility: { kind: 'agent', name: 'Dev' } })
-    const decision = { mode: 'multiple' as const, routes: [{ name: 'frontend', target: 'f' }, { name: 'backend', target: 'b' }] }
-    const base = { workflowType: 'x', title: 'X', steps: [{ ...step('a'), decision }, step('f', ['a']), step('b', ['a']), { ...step('j', ['f', 'b']), join: 'a' }] }
+    const step = (id: string, dependsOn: string[] = []) => ({
+      id,
+      name: id,
+      dependsOn,
+      responsibility: { kind: 'agent', name: 'Dev' },
+    })
+    const decision = {
+      mode: 'multiple' as const,
+      routes: [
+        { name: 'frontend', target: 'f' },
+        { name: 'backend', target: 'b' },
+      ],
+    }
+    const base = {
+      workflowType: 'x',
+      title: 'X',
+      steps: [{ ...step('a'), decision }, step('f', ['a']), step('b', ['a']), { ...step('j', ['f', 'b']), join: 'a' }],
+    }
     expect(validateStructure(base)).toBeNull()
-    expect(validateStructure({ ...base, steps: base.steps.filter((step) => step.id !== 'j') })).toContain('explicit join')
+    expect(validateStructure({ ...base, steps: base.steps.filter((step) => step.id !== 'j') })).toContain(
+      'explicit join'
+    )
     expect(validateStructure({ ...base, steps: [...base.steps, step('escape', ['f'])] })).toContain('only and directly')
-    expect(validateStructure({ ...base, steps: base.steps.map((step) => step.id === 'a' ? { ...step, decision: { ...decision, routes: [decision.routes[0], decision.routes[0]] } } : step) })).toContain('unique')
+    expect(
+      validateStructure({
+        ...base,
+        steps: base.steps.map((step) =>
+          step.id === 'a'
+            ? { ...step, decision: { ...decision, routes: [decision.routes[0], decision.routes[0]] } }
+            : step
+        ),
+      })
+    ).toContain('unique')
   })
 
   it('invalidates server adoption metadata when the loaded responsibility changes', () => {
     const { state } = setup()
-    state.definition.set({ steps: [{ id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Dev' },
-      legacyContract: { adoptable: true, summary: 'Server default', entry: [], mission: 'Plan', exit: [] },
-    }] })
+    state.definition.set({
+      steps: [
+        {
+          id: 'plan',
+          name: 'Plan',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          legacyContract: { adoptable: true, summary: 'Server default', entry: [], mission: 'Plan', exit: [] },
+        },
+      ],
+    })
     state.select('plan')
     expect(legacyAdoption(state.selected()!)).not.toBeNull()
     state.updateBlock({ responsibility: { kind: 'agent', name: 'Other' } })
@@ -76,10 +131,24 @@ describe('workflow block composition', () => {
     const { state, api } = setup()
     state.metadata('workflowType', 'legacy')
     state.metadata('title', 'Legacy')
-    state.definition.set({ ...state.definition(), steps: [{
-      id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: [],
-      legacyContract: { adoptable: true, summary: 'Server default', entry: ['Read'], mission: 'Plan', exit: ['Report'] },
-    }] })
+    state.definition.set({
+      ...state.definition(),
+      steps: [
+        {
+          id: 'plan',
+          name: 'Plan',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          dependsOn: [],
+          legacyContract: {
+            adoptable: true,
+            summary: 'Server default',
+            entry: ['Read'],
+            mission: 'Plan',
+            exit: ['Report'],
+          },
+        },
+      ],
+    })
     state.select('plan')
     state.adopt()
     state.save()
@@ -141,8 +210,13 @@ describe('workflow block composition', () => {
     expect(state.draft()).toBeNull()
     state.save()
     expect(api.createWorkflowDefinition).toHaveBeenCalledWith({
-      schemaVersion: '1', workflowType: 'approval', title: 'Approval', version: '1.0.0',
-      steps: [{ id: 'step-1', name: 'Human step 1', responsibility: { kind: 'human', name: 'Product owner' }, dependsOn: [] }],
+      schemaVersion: '1',
+      workflowType: 'approval',
+      title: 'Approval',
+      version: '1.0.0',
+      steps: [
+        { id: 'step-1', name: 'Human step 1', responsibility: { kind: 'human', name: 'Product owner' }, dependsOn: [] },
+      ],
     })
     expect(api.getNamespaces).not.toHaveBeenCalled()
     expect(api.getAgents).not.toHaveBeenCalled()
@@ -206,8 +280,21 @@ describe('workflow block composition', () => {
     state.update('exit', ['Deliver findings'])
     state.save()
     expect(api.createWorkflowDefinition).toHaveBeenCalledWith({
-      schemaVersion: '1', workflowType: 'analysis', title: 'Analysis', version: '1.0.0',
-      steps: [{ id: 'step-1', name: 'Agent step 1', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: [], entry: ['Read inputs'], mission: 'Analyze only', exit: ['Deliver findings'] }],
+      schemaVersion: '1',
+      workflowType: 'analysis',
+      title: 'Analysis',
+      version: '1.0.0',
+      steps: [
+        {
+          id: 'step-1',
+          name: 'Agent step 1',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          dependsOn: [],
+          entry: ['Read inputs'],
+          mission: 'Analyze only',
+          exit: ['Deliver findings'],
+        },
+      ],
     })
     expect(state.saving()).toBe(true)
     response.error({ message: 'Conflict', details: { path: 'version' } })
@@ -254,7 +341,11 @@ describe('workflow block composition', () => {
     state.updateBlock({ id: 'step-1' })
     expect(state.selectedId()).toBe('step-2')
     expect(state.error()).toContain('unique')
-    const base = { workflowType: 'x', title: 'X', steps: [{ id: 'a', name: 'A', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: ['missing'] }] }
+    const base = {
+      workflowType: 'x',
+      title: 'X',
+      steps: [{ id: 'a', name: 'A', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: ['missing'] }],
+    }
     expect(validateStructure(base)).toContain('missing predecessor')
     expect(validateStructure({ ...base, steps: [base.steps[0], base.steps[0]] })).toContain('Duplicate')
   })
@@ -286,7 +377,9 @@ describe('step instruction editing', () => {
       responsibility: { kind: 'agent', name: 'Dev' },
       dependsOn: ['plan'],
       legacyContract: {
-        adoptable: true, summary: 'Backend contract', mission: 'Work',
+        adoptable: true,
+        summary: 'Backend contract',
+        mission: 'Work',
         entry: ['Consume structured dependency inputs'],
         exit: ['Preserve run briefs unchanged; never rewrite or merge independent framings'],
       },

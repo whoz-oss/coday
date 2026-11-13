@@ -83,7 +83,8 @@ export class SessionPageState {
           ? block.attemptId === selection.attemptId
           : (block.stepId ?? block.label) === selection.stepId && !block.attemptId
     )
-    if (stillExists || (!selection.attemptId && session.routingSteps?.some((step) => step.id === selection.stepId))) return
+    if (stillExists || (!selection.attemptId && session.routingSteps?.some((step) => step.id === selection.stepId)))
+      return
     const fallback = blocks[0]
     if (fallback) this.selectBlock(fallback)
     else this.selection.set(null)

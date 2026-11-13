@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, effect, inject, signal, untracked } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  HostListener,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { MatButtonModule } from '@angular/material/button'
@@ -55,29 +64,48 @@ export class WorkflowDetailPageComponent {
     const data: ConfirmDialogData = {
       title: 'Delete workflow',
       detail: `${definition.title || workflowType} · ${workflowType}@${version}`,
-      message: 'Permanently delete this registered version? It will no longer be available for new runs. Runs are not deleted or changed. Deletion is refused if any active or historical run pins this version, including archived or purged runs.',
+      message:
+        'Permanently delete this registered version? It will no longer be available for new runs. Runs are not deleted or changed. Deletion is refused if any active or historical run pins this version, including archived or purged runs.',
       confirmLabel: 'Delete workflow',
       destructive: true,
     }
-    this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(ConfirmDialogComponent, {
-      data, width: '520px', autoFocus: 'first-tabbable',
-    }).afterClosed().pipe(take(1), takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
-      const current = this.state.definition()
-      if (confirmed !== true || current?.workflowType !== workflowType || current?.version !== version || this.state.editing()) {
-        this.deleting.set(false)
-        return
-      }
-      this.deleteError.set(null)
-      this.registry.delete(workflowType, version).pipe(
-        finalize(() => this.deleting.set(false)),
-        takeUntilDestroyed(this.destroyRef)
-      ).subscribe({
-        next: () => { void this.router.navigate(this.backLink) },
-        error: (error: FactoryApiError) => {
-          this.deleteError.set(`${error.message || 'Unable to delete workflow. Nothing was changed.'}${error.code ? ` (${error.code})` : ''}`)
-        },
+    this.dialog
+      .open<ConfirmDialogComponent, ConfirmDialogData, boolean>(ConfirmDialogComponent, {
+        data,
+        width: '520px',
+        autoFocus: 'first-tabbable',
       })
-    })
+      .afterClosed()
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((confirmed) => {
+        const current = this.state.definition()
+        if (
+          confirmed !== true ||
+          current?.workflowType !== workflowType ||
+          current?.version !== version ||
+          this.state.editing()
+        ) {
+          this.deleting.set(false)
+          return
+        }
+        this.deleteError.set(null)
+        this.registry
+          .delete(workflowType, version)
+          .pipe(
+            finalize(() => this.deleting.set(false)),
+            takeUntilDestroyed(this.destroyRef)
+          )
+          .subscribe({
+            next: () => {
+              void this.router.navigate(this.backLink)
+            },
+            error: (error: FactoryApiError) => {
+              this.deleteError.set(
+                `${error.message || 'Unable to delete workflow. Nothing was changed.'}${error.code ? ` (${error.code})` : ''}`
+              )
+            },
+          })
+      })
   }
   protected readonly backLink = ['/workflows']
   protected readonly formatJson = formatJson

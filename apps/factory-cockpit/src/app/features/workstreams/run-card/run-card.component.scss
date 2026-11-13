@@ -5,8 +5,8 @@
   gap: 14px;
 }
 .card--working {
-  border-color: var(--sf-outline-active);
-  box-shadow: 0 10px 40px -18px rgba(122, 162, 247, 0.45);
+  border-color: var(--color-accent);
+  box-shadow: 0 10px 40px -18px color-mix(in srgb, var(--color-accent) 45%, transparent);
 }
 .card--destroyed {
   opacity: 0.8;
@@ -23,7 +23,7 @@
   font-family: var(--sf-mono);
   font-size: 19px;
   font-weight: 700;
-  color: var(--sf-primary);
+  color: var(--color-accent-700);
   a {
     color: inherit;
     text-decoration: none;
@@ -45,7 +45,7 @@
   width: 16px;
   height: 16px;
   font-size: 16px;
-  color: var(--sf-secondary);
+  color: var(--color-accent);
 }
 .service-link {
   display: inline-flex;
@@ -53,8 +53,8 @@
   gap: 7px;
   height: 26px;
   padding: 0 11px;
-  border-radius: 999px;
-  border: 1px solid var(--sf-outline);
+  border-radius: var(--radius-pill, 0);
+  border: 1px solid var(--color-divider);
   font-family: var(--sf-font);
   font-size: 12.5px;
   font-weight: 600;
@@ -64,10 +64,10 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--sf-secondary);
+    background: var(--color-accent);
   }
   &:hover {
-    border-color: var(--sf-outline-strong);
+    border-color: var(--color-accent);
     color: var(--sf-text);
   }
 
@@ -94,9 +94,9 @@
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--sf-chrome);
-  border: 1px solid var(--sf-outline);
+  border-radius: var(--radius-md, 0);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-divider);
 }
 .run-notice {
   display: flex;
@@ -123,7 +123,7 @@
 .goal {
   margin: 0;
   font-size: 14px;
-  color: #d5d9e4;
+  color: var(--color-text);
 }
 
 .final-cost {
@@ -197,9 +197,9 @@
   gap: 6px;
   margin: 4px 0 0;
   padding: 6px 10px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--sf-danger, #e53e3e) 12%, transparent);
-  color: var(--sf-danger, #e53e3e);
+  border-radius: var(--radius-sm, 0);
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  color: var(--sf-error-text);
   font-size: 13px;
 
   &__icon {

@@ -10,14 +10,14 @@ import { PhaseSegment } from '../../core/models'
  * - failed         → red   (--sf-error)
  * - blocked        → amber outline
  * - indeterminate  → muted red (opacity 0.6, distinct from failed)
- * - cancelled      → neutral grey (--sf-outline-strong)
+ * - cancelled      → neutral grey (--color-neutral-500)
  * - skipped        → muted neutral grey, not executed
- * - running        → animated cyan pulse (1.8s)
+ * - running        → animated accent pulse (1.8s)
  * - waiting_human  → amber, NEVER animated
- * - pending        → dark grey (--sf-outline)
+ * - pending        → faint divider grey
  *
  * Accessibility: tooltip title + aria-label = "name: readable status".
- * Keyboard focus visible (:focus-visible outline violet).
+ * Keyboard focus visible (:focus-visible outline accent).
  * prefers-reduced-motion: pulse animation disabled.
  */
 @Component({
@@ -63,40 +63,40 @@ import { PhaseSegment } from '../../core/models'
       outline-offset: 2px;
     }
     .dot:focus-visible {
-      outline: 2px solid var(--sf-primary);
+      outline: 2px solid var(--color-accent);
     }
 
     /* \u2500\u2500 Statuses \u2500\u2500 */
     .dot--done {
-      background: var(--sf-success);
+      background: var(--color-success);
     }
     .dot--failed {
-      background: var(--sf-error);
+      background: var(--color-error);
     }
     .dot--blocked {
       box-sizing: border-box;
-      border: 2px solid var(--sf-tertiary);
+      border: 2px solid var(--color-warning);
       background: transparent;
     }
     /* indeterminate: same red but muted to distinguish from failed */
     .dot--indeterminate {
-      background: var(--sf-error);
+      background: var(--color-error);
       opacity: 0.55;
     }
     /* cancelled: neutral fixed, no success or failure connotation */
     .dot--cancelled {
-      background: var(--sf-outline-strong);
+      background: var(--color-neutral-500);
     }
     .dot--running {
-      background: var(--sf-secondary);
+      background: var(--color-accent);
       animation: sf-dot-pulse 1.8s ease-in-out infinite;
     }
     /* waiting_human: fixed amber \u2014 NEVER animated */
     .dot--waiting-human {
-      background: var(--sf-tertiary);
+      background: var(--color-warning);
     }
     .dot--pending {
-      background: var(--sf-outline);
+      background: var(--color-divider);
     }
     .dot--skipped {
       background: var(--sf-outline-strong);
@@ -106,10 +106,10 @@ import { PhaseSegment } from '../../core/models'
     @keyframes sf-dot-pulse {
       0%,
       100% {
-        box-shadow: 0 0 0 0 rgba(95, 212, 224, 0);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 0%, transparent);
       }
       50% {
-        box-shadow: 0 0 0 4px rgba(95, 212, 224, 0.22);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 22%, transparent);
       }
     }
     @media (prefers-reduced-motion: reduce) {

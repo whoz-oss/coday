@@ -76,9 +76,15 @@ describe('WorkflowDetailPageComponent', () => {
   }
 
   it('creates a workflow using visible block, discovery and predecessor controls without auto-running', async () => {
-    const api = createApi({ createWorkflowDefinition: jest.fn().mockReturnValue(of({
-      workflowType: 'analysis', version: '1.0.0', definitionHash: 'server-hash',
-    })) })
+    const api = createApi({
+      createWorkflowDefinition: jest.fn().mockReturnValue(
+        of({
+          workflowType: 'analysis',
+          version: '1.0.0',
+          definitionHash: 'server-hash',
+        })
+      ),
+    })
     const route = createRoute('', '')
     const newRoute = { ...route, snapshot: { ...route.snapshot, data: { create: true } } } as Partial<ActivatedRoute>
     const { host, fixture } = await setup(api, newRoute)
@@ -113,10 +119,22 @@ describe('WorkflowDetailPageComponent', () => {
     expect(host.querySelectorAll('[data-step-node]')).toHaveLength(1)
     query<HTMLButtonElement>(host, '[data-save-contract]').click()
     fixture.detectChanges()
-    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(expect.objectContaining({
-      workflowType: 'analysis', title: 'Analysis', version: '1.0.0',
-      steps: [expect.objectContaining({ responsibility: { kind: 'agent', name: 'Dev' }, mission: 'Analyze request', entry: [], exit: [], dependsOn: [] })],
-    }))
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowType: 'analysis',
+        title: 'Analysis',
+        version: '1.0.0',
+        steps: [
+          expect.objectContaining({
+            responsibility: { kind: 'agent', name: 'Dev' },
+            mission: 'Analyze request',
+            entry: [],
+            exit: [],
+            dependsOn: [],
+          }),
+        ],
+      })
+    )
     expect(fixture.componentInstance.state.dirty()).toBe(false)
     expect(fixture.componentInstance.canLeave()).toBe(true)
     expect(host.textContent).toContain('server-hash')
@@ -125,18 +143,25 @@ describe('WorkflowDetailPageComponent', () => {
     expect(host.querySelector('[data-add-block]')).toBeNull()
     expect(host.querySelector('[data-save-contract]')).toBeNull()
     expect(host.querySelector('[data-workflow-diagram]')).not.toBeNull()
-    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(
-      ['/workflows', 'analysis', '1.0.0'], { replaceUrl: true }
-    )
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/workflows', 'analysis', '1.0.0'], {
+      replaceUrl: true,
+    })
   })
 
   it('composes human steps without discovery using styled controls and a multi-dependency dropdown', async () => {
-    const api = createApi({ createWorkflowDefinition: jest.fn().mockReturnValue(of({
-      workflowType: 'approval', version: '1.0.0', definitionHash: 'human-hash',
-    })) })
+    const api = createApi({
+      createWorkflowDefinition: jest.fn().mockReturnValue(
+        of({
+          workflowType: 'approval',
+          version: '1.0.0',
+          definitionHash: 'human-hash',
+        })
+      ),
+    })
     const route = createRoute('', '')
     const { host, fixture } = await setup(api, {
-      ...route, snapshot: { ...route.snapshot, data: { create: true } },
+      ...route,
+      snapshot: { ...route.snapshot, data: { create: true } },
     } as Partial<ActivatedRoute>)
     edit(host, '[data-workflow-type]', 'approval')
     edit(host, '[data-workflow-name]', 'Approval')
@@ -181,33 +206,46 @@ describe('WorkflowDetailPageComponent', () => {
     fixture.detectChanges()
     expect(api.getNamespaces).not.toHaveBeenCalled()
     expect(api.getAgents).not.toHaveBeenCalled()
-    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(expect.objectContaining({
-      steps: expect.arrayContaining([expect.objectContaining({ responsibility: { kind: 'human', name: 'Product owner' } })]),
-    }))
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        steps: expect.arrayContaining([
+          expect.objectContaining({ responsibility: { kind: 'human', name: 'Product owner' } }),
+        ]),
+      })
+    )
     expect(host.querySelector('[data-add-human-step]')).toBeNull()
     expect(host.querySelector('[data-human-role]')).toBeNull()
     expect(host.querySelector('[data-edit-workflow]')).not.toBeNull()
     expect(host.textContent).toContain('approval@1.0.0')
   })
 
-  it.each([false, true])('groups save actions and explains saved-version launch in the editor (creating: %s)', async (creating) => {
-    const route = createRoute()
-    const { host, fixture } = await setup(createApi(), creating ? {
-      ...route, snapshot: { ...route.snapshot, data: { create: true } },
-    } as Partial<ActivatedRoute> : route)
-    if (!creating) {
-      query<HTMLButtonElement>(host, '[data-edit-workflow]').click()
-      fixture.detectChanges()
+  it.each([false, true])(
+    'groups save actions and explains saved-version launch in the editor (creating: %s)',
+    async (creating) => {
+      const route = createRoute()
+      const { host, fixture } = await setup(
+        createApi(),
+        creating
+          ? ({
+              ...route,
+              snapshot: { ...route.snapshot, data: { create: true } },
+            } as Partial<ActivatedRoute>)
+          : route
+      )
+      if (!creating) {
+        query<HTMLButtonElement>(host, '[data-edit-workflow]').click()
+        fixture.detectChanges()
+      }
+      const card = query(host, 'section[aria-label="Save step changes"]')
+      const actions = query(card, '.save-actions')
+      expect(query(card, '[data-save-contract]').parentElement).toBe(actions)
+      expect(query(card, '[data-discard-contract]').parentElement).toBe(actions)
+      expect(actions.querySelectorAll('button')).toHaveLength(2)
+      expect(card.querySelector('a, [routerLink]')).toBeNull()
+      expect(card.textContent).toContain('Save this workflow first. You can launch a saved version from Launch a run.')
+      expect(card.textContent).toContain('Saving never starts a run.')
     }
-    const card = query(host, 'section[aria-label="Save step changes"]')
-    const actions = query(card, '.save-actions')
-    expect(query(card, '[data-save-contract]').parentElement).toBe(actions)
-    expect(query(card, '[data-discard-contract]').parentElement).toBe(actions)
-    expect(actions.querySelectorAll('button')).toHaveLength(2)
-    expect(card.querySelector('a, [routerLink]')).toBeNull()
-    expect(card.textContent).toContain('Save this workflow first. You can launch a saved version from Launch a run.')
-    expect(card.textContent).toContain('Saving never starts a run.')
-  })
+  )
 
   it('places styled Delete next to Edit in read-only mode, not in the editor', async () => {
     const { host, fixture } = await setup(createApi())
@@ -224,7 +262,8 @@ describe('WorkflowDetailPageComponent', () => {
   it('never offers deletion on an unsaved new workflow', async () => {
     const route = createRoute('', '')
     const { host } = await setup(createApi(), {
-      ...route, snapshot: { ...route.snapshot, data: { create: true } },
+      ...route,
+      snapshot: { ...route.snapshot, data: { create: true } },
     } as Partial<ActivatedRoute>)
     expect(host.querySelector('[data-delete-workflow]')).toBeNull()
   })
@@ -365,13 +404,22 @@ describe('WorkflowDetailPageComponent', () => {
   it('keeps long multiline preview prose intact and editable alongside the diagram scroll region', async () => {
     const mission = `Long prompt\n${'unbroken-token'.repeat(200)}\nLast paragraph`
     const api = createApi({
-      getWorkflowDefinition: jest.fn().mockReturnValue(of({
-        ...FULL_DEF,
-        steps: [{
-          id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Architect' },
-          dependsOn: [], entry: [], mission, exit: [],
-        }],
-      })),
+      getWorkflowDefinition: jest.fn().mockReturnValue(
+        of({
+          ...FULL_DEF,
+          steps: [
+            {
+              id: 'plan',
+              name: 'Plan',
+              responsibility: { kind: 'agent', name: 'Architect' },
+              dependsOn: [],
+              entry: [],
+              mission,
+              exit: [],
+            },
+          ],
+        })
+      ),
     })
     const { host, fixture } = await setup(api)
     const preview = query(host, '[data-step-preview] .prose')
@@ -455,9 +503,20 @@ describe('WorkflowDetailPageComponent', () => {
       getWorkflowDefinition: jest.fn().mockReturnValue(
         of({
           ...FULL_DEF,
-          steps: [{ id: 'plan', name: 'Analyze request', responsibility: { kind: 'agent', name: 'Architect' },
-            legacyContract: { adoptable: true, summary: 'Backend legacy instructions', entry: ['Frame the request'],
-              mission: 'Analyze request', exit: ["Include kind 'run-brief'", 'do not claim checks that were not run'] } }],
+          steps: [
+            {
+              id: 'plan',
+              name: 'Analyze request',
+              responsibility: { kind: 'agent', name: 'Architect' },
+              legacyContract: {
+                adoptable: true,
+                summary: 'Backend legacy instructions',
+                entry: ['Frame the request'],
+                mission: 'Analyze request',
+                exit: ["Include kind 'run-brief'", 'do not claim checks that were not run'],
+              },
+            },
+          ],
         })
       ),
     })
@@ -489,7 +548,14 @@ describe('WorkflowDetailPageComponent', () => {
       getWorkflowDefinition: jest.fn().mockReturnValue(
         of({
           ...FULL_DEF,
-          steps: [{ id: 'special', name, responsibility: { kind: 'agent', name }, legacyContract: { adoptable: false, summary: 'Runtime-derived obligations' } }],
+          steps: [
+            {
+              id: 'special',
+              name,
+              responsibility: { kind: 'agent', name },
+              legacyContract: { adoptable: false, summary: 'Runtime-derived obligations' },
+            },
+          ],
         })
       ),
     })
@@ -539,8 +605,20 @@ describe('WorkflowDetailPageComponent', () => {
       getWorkflowDefinition: jest.fn().mockReturnValue(
         of({
           ...FULL_DEF,
-          steps: [{ id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Architect' },
-            legacyContract: { adoptable: true, summary: 'Backend legacy instructions', entry: [], mission: 'Plan', exit: [] } }],
+          steps: [
+            {
+              id: 'plan',
+              name: 'Plan',
+              responsibility: { kind: 'agent', name: 'Architect' },
+              legacyContract: {
+                adoptable: true,
+                summary: 'Backend legacy instructions',
+                entry: [],
+                mission: 'Plan',
+                exit: [],
+              },
+            },
+          ],
         })
       ),
     })
@@ -577,7 +655,16 @@ describe('WorkflowDetailPageComponent', () => {
   it('cancels edits only after confirmation and restores the saved definition without mutation', async () => {
     const original = {
       ...FULL_DEF,
-      steps: [{ id: 'plan', name: 'Plan', responsibility: { kind: 'agent', name: 'Dev' }, entry: [], mission: 'Saved prompt', exit: [] }],
+      steps: [
+        {
+          id: 'plan',
+          name: 'Plan',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          entry: [],
+          mission: 'Saved prompt',
+          exit: [],
+        },
+      ],
     }
     const api = createApi({ getWorkflowDefinition: jest.fn().mockReturnValue(of(original)) })
     const { host, fixture } = await setup(api)
@@ -613,13 +700,29 @@ describe('WorkflowDetailPageComponent', () => {
   })
 
   it.each(['human', 'code'])('preserves read-only %s execution information', async (kind) => {
-    const api = createApi({ getWorkflowDefinition: jest.fn().mockReturnValue(of({
-      ...FULL_DEF, steps: [{ id: 'check', name: 'Check', responsibility: { kind, name: 'Verifier' },
-        legacyContract: { adoptable: false, summary: 'This step uses the existing approval or verification implementation, not an agent prompt.' } }],
-    })) })
+    const api = createApi({
+      getWorkflowDefinition: jest.fn().mockReturnValue(
+        of({
+          ...FULL_DEF,
+          steps: [
+            {
+              id: 'check',
+              name: 'Check',
+              responsibility: { kind, name: 'Verifier' },
+              legacyContract: {
+                adoptable: false,
+                summary: 'This step uses the existing approval or verification implementation, not an agent prompt.',
+              },
+            },
+          ],
+        })
+      ),
+    })
     const { host, fixture } = await setup(api)
     expect(host.querySelector('[data-step-contract]')?.textContent).toContain('Verifier')
-    expect(host.querySelector(kind === 'human' ? '[data-human-checkpoint]' : '[data-legacy-contract]')?.textContent).toContain('existing approval or verification')
+    expect(
+      host.querySelector(kind === 'human' ? '[data-human-checkpoint]' : '[data-legacy-contract]')?.textContent
+    ).toContain('existing approval or verification')
     query<HTMLButtonElement>(host, '[data-edit-workflow]').click()
     fixture.detectChanges()
     expect(!!host.querySelector('[data-remove-block]')).toBe(kind === 'human')

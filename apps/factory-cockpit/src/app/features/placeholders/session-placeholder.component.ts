@@ -22,7 +22,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core'
     .placeholder h1 {
       margin: 0 0 8px;
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 600;
     }
     .placeholder p {
       margin: 0;

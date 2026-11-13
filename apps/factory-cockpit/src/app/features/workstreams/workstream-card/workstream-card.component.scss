@@ -3,10 +3,10 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px 18px;
-  border: 1px solid var(--sf-outline);
-  border-left: 4px solid var(--sf-primary);
-  border-radius: 16px;
-  background: var(--sf-panel, transparent);
+  border: 1px solid var(--color-divider);
+  border-left: 4px solid var(--color-accent);
+  border-radius: var(--radius-lg, 0);
+  background: var(--color-bg);
 }
 
 .workstream-head {
@@ -36,7 +36,7 @@
   margin: 0;
   font-family: var(--sf-font);
   font-size: 30px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--sf-text-primary);
 }
@@ -63,7 +63,7 @@
   font-family: var(--sf-mono);
   font-size: 15px;
   font-weight: 700;
-  color: var(--sf-secondary);
+  color: var(--color-accent-700);
 }
 
 .runs {

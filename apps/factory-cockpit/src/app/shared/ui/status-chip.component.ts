@@ -20,16 +20,21 @@ import { Tone } from '../../core/models'
     <ng-content />
   `,
   styles: `
+    /* Tone: --tone is the fill (border and background are tints of it), --tone-text the readable text color. */
     :host {
+      --tone: var(--color-neutral-500);
+      --tone-text: var(--color-text-secondary);
       display: inline-flex;
       align-items: center;
       gap: 6px;
       height: 26px;
       padding: 0 12px;
-      border-radius: 999px;
-      border: 1px solid;
+      border-radius: var(--radius-pill, 0);
+      border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+      background: color-mix(in srgb, var(--tone) 12%, transparent);
+      color: var(--tone-text);
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 600;
       white-space: nowrap;
     }
     :host(.sf-chip--sm) {
@@ -46,43 +51,40 @@ import { Tone } from '../../core/models'
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--sf-success);
+      background: var(--color-success);
     }
+    /* running */
     :host(.sf-chip--blue) {
-      color: var(--sf-running);
-      border-color: #33486e;
-      background: #121a2b;
+      --tone: var(--color-accent);
+      --tone-text: var(--color-accent-700);
     }
+    /* waiting for a human */
     :host(.sf-chip--amber) {
-      color: var(--sf-tertiary);
-      border-color: #5a4818;
-      background: #1d180b;
-      font-weight: 600;
+      --tone: var(--color-warning);
+      --tone-text: var(--status-pending-text);
     }
+    /* done */
     :host(.sf-chip--green) {
-      color: #6ee79a;
-      border-color: #22583a;
-      background: #0e1f16;
+      --tone: var(--color-success);
+      --tone-text: color-mix(in srgb, var(--color-success) 70%, var(--color-text));
     }
+    /* failure */
     :host(.sf-chip--red) {
-      color: #f58f8f;
-      border-color: #6b2a2e;
-      background: #1f1114;
+      --tone: var(--color-error);
+      --tone-text: var(--red-deep);
     }
     :host(.sf-chip--neutral) {
-      color: var(--sf-text-muted);
-      border-color: var(--sf-outline-strong);
-      background: var(--sf-surface-2);
+      --tone: var(--color-neutral-500);
+      --tone-text: var(--color-text-secondary);
     }
     :host(.sf-chip--violet) {
-      color: #e3d6ff;
-      border-color: #4b3d80;
-      background: #2a2145;
+      --tone: var(--color-accent);
+      --tone-text: var(--color-accent-800);
+      background: color-mix(in srgb, var(--tone) 22%, transparent);
     }
     :host(.sf-chip--cyan) {
-      color: var(--sf-secondary);
-      border-color: #2c5d63;
-      background: #0e1d21;
+      --tone: var(--color-info);
+      --tone-text: color-mix(in srgb, var(--color-info) 50%, var(--color-text));
     }
   `,
 })

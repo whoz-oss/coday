@@ -35,23 +35,23 @@ export interface MessageDetailDialogData {
       display: flex;
       gap: 12px;
       margin: 0 0 16px;
-      color: var(--sf-text-muted);
-      font-family: var(--sf-mono);
+      color: var(--color-text-secondary);
+      font-family: var(--font-heading);
       font-size: 12px;
     }
     .message-body {
       margin: 0;
       max-height: min(60vh, 640px);
       overflow: auto;
-      color: var(--sf-text);
-      font-family: var(--sf-mono);
+      color: var(--color-text);
+      font-family: var(--font-heading);
       font-size: 13px;
       line-height: 1.55;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
     .message-empty {
-      color: var(--sf-text-muted);
+      color: var(--color-text-secondary);
       font-style: italic;
     }
   `,

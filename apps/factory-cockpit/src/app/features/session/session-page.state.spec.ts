@@ -89,7 +89,9 @@ describe('SessionPageState', () => {
 
   it('retains an inactive routing step selection without inventing a timeline execution', () => {
     sessions.set('run-1', {
-      phase: { stepId: 'architect' }, lanes: [], events: [],
+      phase: { stepId: 'architect' },
+      lanes: [],
+      events: [],
       routingSteps: [{ id: 'backend', status: 'skipped', activation: 'not_selected', executed: false }],
       phaseByStepId: new Map([['backend', { stepId: 'backend', stepStatus: 'skipped' }]]),
       eventsByStepId: new Map([['backend', []]]),

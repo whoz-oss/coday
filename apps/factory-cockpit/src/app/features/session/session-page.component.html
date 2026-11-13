@@ -163,7 +163,11 @@
       <section class="sf-panel" aria-label="Conditional routing state">
         <h2>Routes and convergence</h2>
         <p>Selected branches must succeed. Skipped branches were not executed; they are not successful attempts.</p>
-        <sf-workflow-definition-diagram [steps]="routingSteps" [selectedId]="selectedStepId()" (selected)="selectRoutingStep($event)" />
+        <sf-workflow-definition-diagram
+          [steps]="routingSteps"
+          [selectedId]="selectedStepId()"
+          (selected)="selectRoutingStep($event)"
+        />
       </section>
     }
     <!-- Timeline -->
@@ -210,25 +214,25 @@
             }
           </header>
           <div class="phase-tags">
-            <span class="tag"
+            <span class="phase-tag"
               >step <b class="sf-mono">{{ phase.stepId ?? phase.name }}</b></span
             >
             @if (phase.agentName) {
-              <span class="tag"
+              <span class="phase-tag"
                 >agent <b>{{ phase.agentName }}</b></span
               >
             }
-            <span class="tag"
+            <span class="phase-tag"
               >owner <b>{{ phase.owner }}</b></span
             >
-            <span class="tag"
+            <span class="phase-tag"
               >kind <b>{{ phase.kind }}</b></span
             >
-            <span class="tag"
+            <span class="phase-tag"
               >attempt <b class="sf-mono">{{ phase.attempt }}</b></span
             >
             @if (phase.failureCode) {
-              <span class="tag tag--failure"
+              <span class="phase-tag phase-tag--failure"
                 >failure <b class="sf-mono">{{ phase.failureCode }}</b></span
               >
             }
