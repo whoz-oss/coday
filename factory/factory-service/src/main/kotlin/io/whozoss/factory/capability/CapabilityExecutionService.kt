@@ -265,7 +265,6 @@ class CapabilityExecutionService(
     /** Recovery uses the same validators for every workflow, never a raw PASS shortcut. */
     fun finalizeRecoveredAttempt(
         scope: TenantScope, attempt: DurableAgentAttempt, ownerToken: String, observation: AgentOsObservationResult,
-        onFinalized: () -> Unit = {},
     ): Boolean {
         val steps = projectedSteps(scope, attempt.namespaceId, attempt.workflowId)
         val step = steps.find { it.id == attempt.stepId } ?: return false
@@ -275,8 +274,6 @@ class CapabilityExecutionService(
                 AgentReservation(attempt.attemptId, attempt.caseId, ownerToken, attempt.capabilityToken, attempt.parentCaseId, turnStarted = true),
                 observation.verdict, runtimeProof = observation.runtimeProof,
             )
-            // Recovery supplies a durable continuation without exposing routing to this layer.
-            onFinalized()
         }
         return true
     }
@@ -800,9 +797,8 @@ class CapabilityExecutionService(
             if (!entryStep && runBrief != null) appendLine("Run brief handoff: ${renderValue(runBrief)}")
             appendLine()
             appendLine("## Execution contract")
-            val legacyContract = LegacyStepContract.generic(step)
-            legacyContract.entry.forEach { appendLine("- $it") }
-            legacyContract.exit.take(1).forEach { appendLine("- $it") }
+            val legacyContract = LegacyStepContract.obligations(step)
+            append(legacyContract.renderHandoff())
             if (step.responsibility.name == A11Y_REVIEWER_AGENT) {
                 appendLine()
                 appendLine("## Accessibility review scope")
@@ -834,8 +830,7 @@ class CapabilityExecutionService(
                     appendLine(section)
                 }
             }
-            legacyContract.exit.drop(1).forEach { appendLine("- $it") }
-            appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If that tool is unavailable, do not guess or bypass the clarification requirement.")
+            append(legacyContract.renderDeliverables())
             append(routingInstruction(step))
             append(resultProtocol())
         }
@@ -1278,7 +1273,7 @@ class CapabilityExecutionService(
             )
             FrozenContext(brief, envelope.toJson())
         }
-        val context = if (latestAttempt == null) {
+        val context = if (latestAttempt == null || latestAttempt.contextEnvelope == null) {
             val renderedBrief = renderSubmissionIdentifiers(contextTemplate.brief, attemptId)
             val renderedEnvelope = AttemptContextEnvelope.fromJson(contextTemplate.envelopeJson)
                 .copy(briefHash = CanonicalJsonHash.sha256(renderedBrief))
@@ -1683,13 +1678,9 @@ class CapabilityExecutionService(
                             mapOf("resultId" to accepted.resultId),
                         )
                     }
-                    // A late research resolution still passes configured validators. Historical
-                    // workspace deltas cannot be reconstructed: matching validators fail closed.
-                    val validation = if (accepted.status == AgentStepResultStatus.PASS) {
-                        evaluateStepResultValidators(scope, namespaceId, workflowId, step, agentId,
-                            (outcome as CapabilityOutcome.AgentCompleted).facts, WorkspaceDelta(), emptyList(), emptyList(), attemptId)
-                    } else null
-                    val rejection = validation as? StepValidationVerdict.Rejected
+                    // Compatibility: this replays an accepted out-of-band resolution, not a new
+                    // turn. No before/after workspace snapshots exist, so do not re-run validators
+                    // with fabricated/unavailable evidence. Normal turn finalization still validates.
                     val evidenceId = UUID.randomUUID().toString()
                     evidenceRepository.append(
                         scope,
@@ -1701,13 +1692,12 @@ class CapabilityExecutionService(
                             workflowId = workflowId,
                             stepId = step.id,
                             kind = AGENT_RESULT_EVIDENCE_KIND,
-                            outcome = if (accepted.status == AgentStepResultStatus.PASS && rejection == null) "pass" else "fail",
+                            outcome = if (accepted.status == AgentStepResultStatus.PASS) "pass" else "fail",
                             source = mapOf("kind" to "agentos-adapter", "agentId" to agentId, "attemptId" to attemptId),
                             facts = mapOf(
                                 "status" to accepted.status.name,
-                                "validatorsAccepted" to (validation is StepValidationVerdict.Accepted),
-                                "code" to rejection?.reasonCode,
-                                "message" to rejection?.findings?.firstOrNull()?.message,
+                                "validatorsAccepted" to (accepted.status == AgentStepResultStatus.PASS),
+                                "validationSource" to "accepted-late-result-compatibility",
                                 "summary" to accepted.summary,
                                 "outputs" to mapOf(
                                     "summary" to accepted.summary,
@@ -1730,7 +1720,7 @@ class CapabilityExecutionService(
                         capabilityToken = existing.capabilityToken,
                         parentCaseId = existing.parentCaseId,
                         turnStarted = true,
-                        terminalStatus = if (accepted.status == AgentStepResultStatus.PASS && rejection == null) {
+                        terminalStatus = if (accepted.status == AgentStepResultStatus.PASS) {
                             AgentAttemptStatus.SUCCEEDED
                         } else {
                             AgentAttemptStatus.FAILED

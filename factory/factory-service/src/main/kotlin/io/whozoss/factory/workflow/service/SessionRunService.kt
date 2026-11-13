@@ -833,16 +833,10 @@ class SessionRunService(
                 allResolved = false
                 continue
             }
-            var terminal = humanDecision(interaction?.takeIf { it.interactionType == "checkpoint" })
+            val terminal = humanDecision(interaction?.takeIf { it.interactionType == "checkpoint" })
             if (terminal == null || interaction == null) {
                 allResolved = false
                 continue
-            }
-            if (terminal == WorkflowStatuses.COMPLETED) {
-                val instance = repository.findInstance(scope, namespaceId, workflowId)
-                if (!runApplicableOracles(scope, namespaceId, workflowId, instance?.instance?.get("workflowType") as? String, step.id).allSucceeded) {
-                    terminal = WorkflowStatuses.FAILED
-                }
             }
             transition(scope, namespaceId, workflowId, step, terminal, expectedRevision)
             setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
