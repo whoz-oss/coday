@@ -513,6 +513,38 @@
         }
       </div>
 
+      @if (sideQuestions.visible()) {
+        <!-- The aside of a /btw side question: not a timeline item, nothing of it is saved in the case. -->
+        <section
+          class="case-chat__aside"
+          role="complementary"
+          aria-label="Side question"
+          [attr.aria-busy]="sideQuestions.pending()"
+          (keydown.escape)="sideQuestions.dismiss()"
+        >
+          <header class="case-chat__aside-header">
+            <span class="case-chat__aside-label">By the way</span>
+            <span class="case-chat__aside-note">Not saved in the case</span>
+            <ds-icon-button
+              class="case-chat__aside-close"
+              icon="close"
+              variant="default"
+              title="Dismiss (Esc)"
+              (action)="sideQuestions.dismiss()"
+            />
+          </header>
+          <p class="case-chat__aside-question">{{ sideQuestions.question() }}</p>
+          @if (sideQuestions.pending()) {
+            <p class="case-chat__aside-pending" role="status">Thinking…</p>
+          } @else if (sideQuestions.error(); as sideError) {
+            <p class="case-chat__aside-error" role="alert">{{ sideError }}</p>
+          } @else if (sideQuestions.answer(); as sideAnswer) {
+            <div class="case-chat__aside-answer case-chat__message-text--markdown" [innerHTML]="sideAnswerHtml()"></div>
+            <ds-copy-button class="case-chat__aside-copy" [text]="sideAnswer" title="Copy answer" />
+          }
+        </section>
+      }
+
       <div class="case-chat__composer" dsBlueprint>
         @if (autocomplete.atSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
@@ -565,11 +597,11 @@
         <textarea
           #composerInput
           class="case-chat__input"
-          placeholder="Reply…"
+          [placeholder]="isRunning() ? 'Agent is working — use /btw to ask a side question' : 'Reply…'"
           rows="3"
           [value]="inputValue()"
           [hidden]="voice.isActive()"
-          [disabled]="isRunning() || composerClosed() || attachments.isUploading()"
+          [disabled]="composerClosed() || attachments.isUploading()"
           (input)="onInput($event)"
           (keydown)="onKeydown($event)"
           (paste)="canStageFiles() && attachments.onPaste($event)"

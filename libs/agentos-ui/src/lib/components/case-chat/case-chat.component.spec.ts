@@ -34,6 +34,7 @@ import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
+import { SideQuestionApiService } from '../../services/side-question-api.service'
 import { CaseChatComponent } from './case-chat.component'
 
 /**
@@ -651,6 +652,189 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'hello', userId: 'default-user' })
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+  })
+
+  describe('/btw side question', () => {
+    let sideApi: { ask: jest.Mock }
+    let answer: Subject<{ answer: string }>
+
+    beforeEach(() => {
+      answer = new Subject<{ answer: string }>()
+      sideApi = { ask: jest.fn().mockReturnValue(answer) }
+      TestBed.overrideProvider(SideQuestionApiService, { useValue: sideApi })
+    })
+
+    it('asks aside, posts nothing to the case, clears the composer and does not set the case running', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'what is the plan?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['inputValue']()).toBe('')
+      expect(ref.instance['sideQuestions'].pending()).toBe(true)
+
+      answer.next({ answer: 'The plan is X.' })
+      expect(ref.instance['sideQuestions'].answer()).toBe('The plan is X.')
+      expect(ref.instance['events']()).toEqual([])
+    })
+
+    it('works while the agent runs: the case stays running and nothing is posted or interrupted', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/btw how long will it take?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'how long will it take?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('while the agent runs, any other text is not sent and stays in the composer', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('please also fix the tests')
+
+      await ref.instance['submit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('please also fix the tests')
+    })
+
+    it('while the agent runs, a typed /effort command is not applied and nothing is sent', async () => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'RUNNING' } as Case])
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/effort high')
+    })
+
+    it('while the agent runs, staged attachments and references are not sent either', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+      ref.instance['inputValue'].set('with a file')
+
+      await ref.instance['submit']()
+
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('with a file')
+    })
+
+    it('while the agent runs, the mic and the Continue button stay out of reach', () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+
+      expect(ref.instance['canRecord']).toBe(false)
+      ref.instance['continueAfterLimit']()
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('a /btw without a question asks nothing and keeps the text to be completed', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw')
+    })
+
+    it('asks nothing on a case that has ended or is gone', async () => {
+      const ref = makeComponent()
+      ref.instance['caseGone'].set(true)
+      ref.instance['inputValue'].set('/btw still there?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw still there?')
+    })
+
+    it('a new /btw replaces the previous aside', async () => {
+      const second = new Subject<{ answer: string }>()
+      sideApi.ask.mockReturnValueOnce(answer).mockReturnValueOnce(second)
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw first?')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('/btw second?')
+      await ref.instance['submit']()
+
+      answer.next({ answer: 'stale' })
+
+      expect(ref.instance['sideQuestions'].question()).toBe('second?')
+      expect(ref.instance['sideQuestions'].answer()).toBeNull()
+    })
+
+    it('Escape dismisses the aside, and leaves the composer text alone', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      ref.instance['inputValue'].set('typing')
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      expect(escape.defaultPrevented).toBe(true)
+      expect(ref.instance['inputValue']()).toBe('typing')
+    })
+
+    it('Escape does nothing special without an aside', () => {
+      const ref = makeComponent()
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(escape.defaultPrevented).toBe(false)
+    })
+
+    it('a case switch closes the aside', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        ref.instance['sideQuestions'].ask('c-1', 'q')
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
+    })
+
+    it('renders the answer with the markdown of the agent messages', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      answer.next({ answer: 'It is **bold**' })
+
+      expect(String(ref.instance['sideAnswerHtml']())).toContain('bold')
+    })
+
+    it('is component-scoped: each chat gets its own aside', () => {
+      const a = makeComponent()
+      const b = makeComponent()
+      a.instance['sideQuestions'].ask('c-1', 'q')
+
+      expect(b.instance['sideQuestions'].visible()).toBe(false)
+    })
   })
 
   describe('/effort command', () => {
