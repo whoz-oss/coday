@@ -28,6 +28,12 @@ class FakeMessagingConfiguration {
     ): MessagingDrivers = MessagingDrivers(listOf(driver, slack))
 }
 
+/** What a [FakeVoiceTranscriber] was asked to transcribe, besides the audio. */
+data class FakeTranscriptionRequest(
+    val mimeType: String?,
+    val language: String?,
+)
+
 /** A [VoiceTranscriber] that reads the audio as the text it says, unless told to fail or to be off. */
 class FakeVoiceTranscriber : VoiceTranscriber {
     @Volatile override var available: Boolean = true
@@ -39,9 +45,15 @@ class FakeVoiceTranscriber : VoiceTranscriber {
     override val maxBytes: Long = 1024
 
     val transcribed = CopyOnWriteArrayList<String>()
+    val requests = CopyOnWriteArrayList<FakeTranscriptionRequest>()
 
-    override fun transcribe(audio: ByteArray): String {
+    override fun transcribe(
+        audio: ByteArray,
+        mimeType: String?,
+        language: String?,
+    ): String {
         failure?.let { throw TranscriptionException(it) }
+        requests.add(FakeTranscriptionRequest(mimeType, language))
         return audio.decodeToString().also { transcribed.add(it) }
     }
 
@@ -49,6 +61,7 @@ class FakeVoiceTranscriber : VoiceTranscriber {
         available = true
         failure = null
         transcribed.clear()
+        requests.clear()
     }
 }
 

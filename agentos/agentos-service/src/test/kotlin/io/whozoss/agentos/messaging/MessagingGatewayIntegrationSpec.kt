@@ -383,6 +383,15 @@ class MessagingGatewayIntegrationSpec : StringSpec() {
             bot.typing shouldContain chatId
         }
 
+        "a voice message is transcribed with the type the platform declared and the language of the user" {
+            users.save(ada.copy(preferredLanguage = "fr-FR"))
+            linkAda()
+
+            voice("bonjour")
+
+            transcriber.requests shouldBe listOf(FakeTranscriptionRequest(mimeType = "audio/ogg", language = "fr-FR"))
+        }
+
         "a voice message is not transcribed for an account that is not linked" {
             voice("hello")
 

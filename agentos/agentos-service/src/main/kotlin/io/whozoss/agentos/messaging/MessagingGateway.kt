@@ -243,7 +243,7 @@ class MessagingGateway(
         chat.adapter.showTyping(chat.chatId)
         val words =
             try {
-                transcriber.transcribe(chat.adapter.downloadAudio(audio, transcriber.maxBytes))
+                transcriber.transcribe(chat.adapter.downloadAudio(audio, transcriber.maxBytes), audio.mimeType, chat.user.preferredLanguage)
             } catch (e: MessagingDeliveryException) {
                 logger.warn(e) { "[Messaging] could not download a voice message of chat ${chat.chatId}" }
                 null
