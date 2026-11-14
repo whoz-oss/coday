@@ -107,9 +107,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 4. Resolve the prompt content directly and inject `"@agentName <content>"` via
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
- *    which is incompatible with the leading `@mention`. When the scheduled prompt has an
- *    [ScheduledPrompt.flowConfiguration], the full loop payload (with the untranslated prompt content as
- *    `act.prompt`) is added to the message's sessionContext under [SessionContextKeys.FLOW_CONFIGURATION].
+ *    which is incompatible with the leading `@mention`. A [ScheduledPrompt.flowConfiguration] is handed over in the
+ *    sessionContext of the message, with the untranslated prompt content as its `act.prompt`
+ *    (see [io.whozoss.agentos.agent.AgentLoop]).
  * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
  *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
  *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
