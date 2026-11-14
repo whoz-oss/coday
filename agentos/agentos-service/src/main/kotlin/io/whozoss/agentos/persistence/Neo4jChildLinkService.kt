@@ -4,6 +4,7 @@ import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionSynchronizationManager
 
 /**
  * Single helper for the parent-child relationship pattern repeated across every entity
@@ -35,6 +36,12 @@ class Neo4jChildLinkService(
      * MERGE a directed [relationship] edge from the child node to the parent node.
      * Idempotent — no-op when the edge already exists.
      *
+     * The parent is typically a dense node (a Case with thousands of events, a Namespace with all
+     * its cases) that other writers update at the same time, and Neo4j can pick this statement as
+     * the victim of a deadlock. Being idempotent it is replayed on such a transient failure, unless
+     * the caller's own transaction is active: the deadlock has then already terminated it and only
+     * the caller can start over.
+     *
      * @param childLabel Neo4j label of the child node (e.g. `"AgentConfig"`)
      * @param childId    `id` property of the child node
      * @param parentLabel Neo4j label of the parent node (e.g. `"Namespace"`, `"Case"`, `"User"`)
@@ -54,10 +61,26 @@ class Neo4jChildLinkService(
             MERGE (c)-[:`$relationship`]->(p)
         """.trimIndent()
 
-        neo4jClient.query(cypher)
-            .bind(childId).to("childId")
-            .bind(parentId).to("parentId")
-            .run()
+        val merge = {
+            neo4jClient.query(cypher)
+                .bind(childId).to("childId")
+                .bind(parentId).to("parentId")
+                .run()
+        }
+        when {
+            TransactionSynchronizationManager.isActualTransactionActive() -> merge()
+
+            else ->
+                retryOnTransientFailure(
+                    onRetry = { attempt, cause ->
+                        logger.warn {
+                            "[Neo4jChildLink] transient failure linking $childLabel($childId) -[:$relationship]-> " +
+                                "$parentLabel($parentId), attempt $attempt failed: ${cause.javaClass.simpleName}, retrying"
+                        }
+                    },
+                    block = merge,
+                )
+        }
 
         logger.debug { "[Neo4jChildLink] $childLabel($childId) -[:$relationship]-> $parentLabel($parentId)" }
     }
