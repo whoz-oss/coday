@@ -51,15 +51,7 @@ import java.util.UUID
  *
  * ## Payload format
  *
- * ```json
- * {
- *   "search": {
- *     "tool": "SearchTalents",
- *     "params": { "endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"] }
- *   },
- *   "act": { "agentName": "talent-analyzer", "prompt": "Analyse this entity: {entityId}" }
- * }
- * ```
+ * See [AgentLoopPayload].
  *
  * @param metadata      Agent identity, inherited from [Entity].
  * @param name          Display name of this agent instance.
