@@ -12,8 +12,9 @@ package io.whozoss.agentos.caseFlow
  * The map's format is not agentos's: it belongs to whoever writes it (the UI's backend, the
  * `UserContextProvider` plugin, the caller of `FreeCaseStarter`), and agentos only carries it. This object
  * holds the few keys agentos itself writes or reads, through the accessors of `SessionContextAccessors.kt`:
- * [PREFERRED_LANGUAGE], and [FIRST_NAME] and [LAST_NAME] of [USER_CONTEXT]. The rest is read by the LLM, which is
- * shown the whole map of the last user message, and by the tools of plugins, which receive the case events.
+ * [PREFERRED_LANGUAGE], [FIRST_NAME] and [LAST_NAME] of [USER_CONTEXT], and [MESSAGING]. The rest is read by
+ * the LLM, which is shown the whole map of the last user message, and by the tools of plugins, which receive
+ * the case events.
  */
 object SessionContextKeys {
     /**
@@ -38,4 +39,17 @@ object SessionContextKeys {
 
     /** Last name, in [USER_CONTEXT]. */
     const val LAST_NAME = "lastName"
+
+    /**
+     * Where a message sent from a messaging application came from, a map written by
+     * [io.whozoss.agentos.messaging.MessagingGateway]: [PLATFORM] tells the agent which application the user
+     * writes from, [CONVERSATION_ID] tells AgentOS where to send the reply. Absent on a message typed in the UI.
+     */
+    const val MESSAGING = "messaging"
+
+    /** A [io.whozoss.agentos.sdk.api.messaging.MessagingPlatform] name, in [MESSAGING]. */
+    const val PLATFORM = "platform"
+
+    /** Id of the [io.whozoss.agentos.messaging.MessagingConversation] the message came from, in [MESSAGING]. */
+    const val CONVERSATION_ID = "conversationId"
 }

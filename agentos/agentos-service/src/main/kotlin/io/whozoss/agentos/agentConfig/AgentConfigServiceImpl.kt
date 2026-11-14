@@ -5,12 +5,16 @@ import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
  * Delegates all persistence operations to [AgentConfigRepository].
+ *
+ * [delete] publishes an [AgentConfigDeletedEvent]. Spring always injects [eventPublisher]; the no-op default only
+ * serves the unit tests that build this service by hand.
  */
 @Service
 class AgentConfigServiceImpl(
@@ -18,6 +22,7 @@ class AgentConfigServiceImpl(
     private val promptRepository: PromptRepository,
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val userService: UserService,
+    private val eventPublisher: ApplicationEventPublisher = ApplicationEventPublisher {},
 ) : AgentConfigService {
     override fun create(entity: AgentConfig): AgentConfig {
         requireUniqueName(entity.namespaceId, entity.name, excludeId = null)
@@ -47,6 +52,7 @@ class AgentConfigServiceImpl(
                 logger.info { "[AgentConfigService] Soft-deleted $deletedScheduledPromptsCount scheduled prompt(s) and their linked prompts for agentConfigId=$id" }
             }
         }
+        if (deleted) eventPublisher.publishEvent(AgentConfigDeletedEvent(id))
         return deleted
     }
 

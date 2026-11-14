@@ -87,6 +87,11 @@
         <!-- Share case -->
         <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
 
+        <!-- Continue on a messaging application (only with a linked account) -->
+        @if (caseId) {
+          <agentos-case-continue-messaging [caseId]="caseId" [namespaceId]="namespaceId" />
+        }
+
         <!-- Separator -->
         <span class="case-chat__header-sep"></span>
 
@@ -167,6 +172,9 @@
                   @if (item.isFirstInGroup) {
                     <span class="case-chat__role-label">
                       {{ actorLabel(item.event.actor) }}
+                      @if (messagingPlatform(item.event); as platform) {
+                        <span class="case-chat__role-via">via {{ platform }}</span>
+                      }
                       @if (agentModelAttribution(item.event); as modelAttribution) {
                         <span class="case-chat__role-model">({{ modelAttribution }})</span>
                       }

@@ -4,8 +4,10 @@ import {
   AnswerEvent,
   CaseEvent,
   CaseStatusEventStatusEnum,
+  MessagingPlatform,
   QuestionEvent,
 } from '@whoz-oss/agentos-api-client'
+import { messagingPlatformName } from '../messaging-accounts/messaging-platforms'
 
 /**
  * Label above a turn of the conversation, for messages and question answers alike.
@@ -41,6 +43,29 @@ export function findLegitimateAnswer(question: QuestionEvent, events: readonly C
       event.questionId === question.id &&
       (!question.userId || event.actor.id.toLowerCase() === question.userId.toLowerCase())
   )
+}
+
+/**
+ * The label above a message: "You" for the current user's own messages, the author's name for anyone
+ * else's, so that a case shared with others or fed from a chat tells who wrote what. Without a known
+ * current user, every user message reads "You", as before cases had several authors.
+ */
+export function messageAuthorLabel(actor: Actor, currentUserId: string | undefined): string {
+  if (actor.role === 'AGENT') return actor.displayName || 'Agent'
+  if (!currentUserId || actor.id.toLowerCase() === currentUserId.toLowerCase()) return 'You'
+  return actor.displayName || 'Someone'
+}
+
+/**
+ * The messaging application a user message was sent from, read from the `messaging` entry the backend
+ * writes in its session context (`SessionContextKeys.MESSAGING`). Null for a message typed in the UI.
+ */
+export function messagingPlatformLabel(sessionContext: { [key: string]: unknown } | undefined): string | null {
+  const messaging = sessionContext?.['messaging'] as { platform?: unknown } | undefined
+  const platform = messaging?.platform
+  return typeof platform === 'string' && (Object.values(MessagingPlatform) as string[]).includes(platform)
+    ? messagingPlatformName(platform as MessagingPlatform)
+    : null
 }
 
 /**

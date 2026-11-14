@@ -13,6 +13,7 @@ import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.git.core.GitExecutionProperties
 import io.whozoss.agentos.integrationConfig.IntegrationsProperties
+import io.whozoss.agentos.messaging.MessagingProperties
 import io.whozoss.agentos.prompt.PromptBatchTranslationProperties
 import io.whozoss.agentos.prompt.PromptTranslationCacheProperties
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
@@ -50,6 +51,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
     ExchangeToolsConfigProperties::class,
     GitExecutionProperties::class,
     IntegrationsProperties::class,
+    MessagingProperties::class,
     PromptBatchTranslationProperties::class,
     PromptTranslationCacheProperties::class,
     QueryUserConfigProperties::class,

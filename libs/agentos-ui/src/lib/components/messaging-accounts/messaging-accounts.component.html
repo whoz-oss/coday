@@ -1,0 +1,81 @@
+@if (visible()) {
+  <div class="messaging-accounts">
+    <h2 class="messaging-accounts__title">Messaging</h2>
+    <p class="messaging-accounts__hint">
+      Talk to your agents from a messaging application: each agent with a bot answers there, in your cases.
+    </p>
+
+    @for (bot of bots(); track bot.id) {
+      <div class="messaging-accounts__row">
+        <span class="messaging-accounts__platform">
+          {{ bot.agentName }}
+          <a class="messaging-accounts__since" [href]="bot.url" target="_blank" rel="noopener">
+            &#64;{{ bot.username }} on {{ platformName(bot.platform) }}
+          </a>
+        </span>
+        @if (identityOf(bot); as identity) {
+          <span class="messaging-accounts__account">
+            {{ identity.displayName }}
+            <span class="messaging-accounts__since">linked {{ identity.linkedAt | date: 'mediumDate' }}</span>
+          </span>
+          @if (pendingUnlinkId() === identity.id) {
+            <span class="messaging-accounts__confirm">Unlink?</span>
+            <button
+              type="button"
+              class="messaging-accounts__btn messaging-accounts__btn--danger"
+              (click)="unlink(identity)"
+            >
+              Confirm
+            </button>
+            <button type="button" class="messaging-accounts__btn" (click)="pendingUnlinkId.set(null)">Cancel</button>
+          } @else {
+            <button type="button" class="messaging-accounts__btn" (click)="pendingUnlinkId.set(identity.id)">
+              Unlink
+            </button>
+          }
+        } @else if (linkOf(bot); as link) {
+          <a
+            class="messaging-accounts__btn messaging-accounts__btn--primary"
+            [href]="link.url"
+            target="_blank"
+            rel="noopener"
+          >
+            Open &#64;{{ bot.username }}
+          </a>
+          @if (link.code; as code) {
+            <span class="messaging-accounts__since">
+              Then send it this message: <code class="messaging-accounts__code">{{ code }}</code>
+              <button type="button" class="messaging-accounts__btn" (click)="copy(code)">Copy</button>
+              Valid until {{ link.expiresAt | date: 'shortTime' }}.
+            </span>
+          } @else {
+            <span class="messaging-accounts__since">
+              Press Start in {{ platformName(bot.platform) }}, then come back here. Valid until
+              {{ link.expiresAt | date: 'shortTime' }}.
+            </span>
+          }
+        } @else {
+          <span class="messaging-accounts__account messaging-accounts__account--none">Not connected</span>
+          <button type="button" class="messaging-accounts__btn messaging-accounts__btn--primary" (click)="connect(bot)">
+            Connect
+          </button>
+        }
+      </div>
+    }
+
+    @for (identity of orphanIdentities(); track identity.id) {
+      <div class="messaging-accounts__row">
+        <span class="messaging-accounts__platform">
+          {{ identity.agentName ?? 'A removed bot' }}
+          <span class="messaging-accounts__since">{{ platformName(identity.platform) }}</span>
+        </span>
+        <span class="messaging-accounts__account">{{ identity.displayName }}</span>
+        <button type="button" class="messaging-accounts__btn" (click)="unlink(identity)">Unlink</button>
+      </div>
+    }
+
+    @if (error(); as message) {
+      <p class="messaging-accounts__error" role="alert">{{ message }}</p>
+    }
+  </div>
+}

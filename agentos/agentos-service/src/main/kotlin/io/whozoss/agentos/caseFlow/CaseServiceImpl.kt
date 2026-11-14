@@ -560,7 +560,7 @@ class CaseServiceImpl(
                     sessionContext,
                 )
                 resolvedCommands.drop(1).forEach { cmd ->
-                    runtime.enqueueCommand(listOf(MessageContent.Text(resolvedText(cmd))))
+                    runtime.enqueueCommand(listOf(MessageContent.Text(resolvedText(cmd))), sessionContext)
                 }
             }
         }
@@ -701,6 +701,14 @@ class CaseServiceImpl(
      * In both error cases the runtime will stop cleanly on the [WarnEvent] with no
      * [AgentSelectedEvent] following it.
      */
+    // The agent selectDefaultAgent picks, when it picks one.
+    override fun defaultAgentName(
+        namespaceId: UUID,
+        userId: UUID?,
+    ): String? =
+        (namespaceService.findById(namespaceId)?.defaultAgentName ?: agentConfigProperties.agentName)
+            ?.let { agentService.resolveAgentName(namePart = it, namespaceId = namespaceId, userId = userId) }
+
     private fun selectDefaultAgent(
         namespaceId: UUID,
         caseId: UUID,

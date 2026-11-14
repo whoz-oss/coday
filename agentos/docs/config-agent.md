@@ -46,7 +46,8 @@ agent --AGENTOS_CONFIG__propose-> validation, order, hash; plan stored in the To
                                   (structuredOutput); run suspends on a question with that id
 card  --GET  /api/cases/{c}/config-changes/{q}         plan + live status, read with the viewer's rights
 user  --POST /api/cases/{c}/config-changes/{q}/apply   {expectedPlanHash, secrets}
-server   applies the plan in this request through the *Api beans, then posts the answer
+chat  --Apply button--> the same endpoint, in process, as the linked user (messaging.md)
+server   applies the plan in this call through the *Api beans, then posts the answer
 agent    resumes with the per-operation report
 ```
 
@@ -62,7 +63,9 @@ namespaces the user administers and a namespace the plan creates, a personal sco
 skills (they have none), a secret outside a credential field, a path through a list, an agent
 created without an explicit `enabled`.
 
-- **Writes** run inside the HTTP request of the Apply click, through the public `*Api` interfaces
+- **Writes** run in the call of the Apply click (the HTTP request of the card, or the button of a
+  Telegram or Slack chat, see [messaging.md](messaging.md)), with the user who clicked authenticated on
+  the thread, through the public `*Api` interfaces
   (`AgentConfigApi`, `SkillApi`, `PromptApi`, `IntegrationConfigApi`, `AuthSettingApi`, `AiProviderApi`,
   `AiModelApi`, `NamespaceApi`, including its `deployAgents` / `undeployAgents`). Their only implementation is the controller's
   method-security proxy, so `@PreAuthorize` and the inline guards apply exactly as for the browser.
@@ -222,6 +225,8 @@ The tools are granted in `AgentServiceImpl.resolveAgentDefinition` only:
 
 - A proposal made in a delegated sub-case shows its card in the sub-case only.
 - Clients without the card (Slack, older desktop) show the question text; a text reply closes the plan.
+  The Telegram and Slack bots of AgentOS ([messaging.md](messaging.md)) send the card with its Apply and
+  Reject; a plan that needs a secret is applied from the UI card only.
 - A member cannot create a personal `HTTP_API` integration: user scopes refuse it, so that a member
   cannot point a shared credential at an API of their choosing. The supported path is a shared
   integration created by an admin plus the member's own `API_KEY` auth setting in user x namespace

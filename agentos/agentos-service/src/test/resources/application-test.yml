@@ -32,6 +32,12 @@ eureka:
     enabled: false
 
 agentos:
+  messaging:
+    telegram:
+      # A port nothing listens on: a bot run by the real Telegram driver in a test never reaches Telegram.
+      api-base-url: http://127.0.0.1:9
+    slack:
+      api-base-url: http://127.0.0.1:9
   # Fixed test credentials — NOT real secrets; exist solely to satisfy
   # FieldEncryptorConfiguration's fail-fast requirement in integration tests.
   encryption:

@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { AgentConfigControllerService, AgentDefinition, AgentDefinitionToolSummary } from '@whoz-oss/agentos-api-client'
 import { DisclosureComponent, DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
+import { AgentMessagingComponent } from '../agent-messaging/agent-messaging.component'
 
 /**
  * AgentConfigInspectComponent — read-only view of a resolved AgentDefinition.
@@ -19,7 +20,7 @@ import { MarkdownPipe } from '../../pipes/markdown.pipe'
  */
 @Component({
   selector: 'agentos-agent-config-inspect',
-  imports: [RouterLink, MarkdownPipe, DS_PAGE_KIT, DisclosureComponent],
+  imports: [RouterLink, MarkdownPipe, DS_PAGE_KIT, DisclosureComponent, AgentMessagingComponent],
   templateUrl: './agent-config-inspect.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

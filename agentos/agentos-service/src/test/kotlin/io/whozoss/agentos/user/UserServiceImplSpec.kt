@@ -1,5 +1,6 @@
 package io.whozoss.agentos.user
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -7,14 +8,19 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
+import io.whozoss.agentos.security.declarative.AgentOsAuthentication
 import org.springframework.context.ApplicationEventPublisher
+import org.springframework.http.HttpStatus
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
  * Unit tests for [UserServiceImpl].
  *
  * Covers:
- * - [UserServiceImpl.getCurrentUser] — delegates to SecurityService then resolveOrCreateByExternalId
+ * - [UserServiceImpl.getCurrentUser] — the user authenticated on the thread, else SecurityService then
+ *   resolveOrCreateByExternalId
  * - [UserServiceImpl.resolveOrCreateByExternalId] — returns existing user or auto-creates
  */
 class UserServiceImplSpec : StringSpec({
@@ -89,6 +95,39 @@ class UserServiceImplSpec : StringSpec({
 
         result shouldBe createdUser
         verify(exactly = 1) { userRepository.save(any()) }
+    }
+
+    "getCurrentUser returns the user authenticated on the thread, read again, without asking SecurityService" {
+        val authenticated = makeUser("ada@example.com")
+        val renamed = authenticated.copy(firstname = "Ada")
+        val securityService = mockk<SecurityService>()
+        val userRepository = mockk<UserRepository>()
+        every { userRepository.findById(authenticated.id) } returns renamed
+        SecurityContextHolder.getContext().authentication = AgentOsAuthentication(authenticated)
+
+        try {
+            UserServiceImpl(userRepository, securityService, publisher).getCurrentUser() shouldBe renamed
+        } finally {
+            SecurityContextHolder.clearContext()
+        }
+        verify(exactly = 0) { securityService.resolveCurrentIdentity() }
+    }
+
+    "getCurrentUser refuses an authenticated user who no longer exists, rather than falling back to another identity" {
+        val gone = makeUser("gone@example.com")
+        val securityService = mockk<SecurityService>()
+        val userRepository = mockk<UserRepository>()
+        every { userRepository.findById(gone.id) } returns null
+        SecurityContextHolder.getContext().authentication = AgentOsAuthentication(gone)
+
+        val refused =
+            try {
+                shouldThrow<ResponseStatusException> { UserServiceImpl(userRepository, securityService, publisher).getCurrentUser() }
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
+        refused.statusCode shouldBe HttpStatus.UNAUTHORIZED
+        verify(exactly = 0) { securityService.resolveCurrentIdentity() }
     }
 
     // -------------------------------------------------------------------------
