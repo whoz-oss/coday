@@ -12,7 +12,7 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { AdminCaseListing, NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { catchError, debounceTime, filter, map, merge, of, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
@@ -25,7 +25,7 @@ import {
   ThemeMode,
 } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
-import { CaseStateService } from '../../services/case-state.service'
+import { CaseListMode, CaseStateService } from '../../services/case-state.service'
 import { GlobalStreamService } from '../../services/global-stream.service'
 import { ShellContextService } from '../../services/shell-context.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
@@ -186,6 +186,41 @@ export class CaseShellComponent {
     return namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN'
   })
 
+  /**
+   * What the caller sees in the case list. Only an administrator of the namespace (role ADMIN or SUPER-ADMIN, from the
+   * namespace list, the same signal that gates the namespace settings) is concerned by the namespace's resolved
+   * `adminCaseListingEffective`; anybody else, and an admin of a server that does not send it, sees their own cases.
+   * It only changes what the list shows: the server decides who may read what.
+   */
+  protected readonly adminCaseListing = computed<AdminCaseListing>(() => {
+    const namespace = this.namespaces().find((item) => item.id === this.namespaceId())
+    const isNamespaceAdmin = namespace?.role === 'ADMIN' || namespace?.role === 'SUPER-ADMIN'
+    return isNamespaceAdmin ? (namespace?.adminCaseListingEffective ?? AdminCaseListing.OWN) : AdminCaseListing.OWN
+  })
+
+  /** Whether the list offers the compact Mine / All switch: an administrator of a namespace set to SWITCH. */
+  protected readonly canSwitchListMode = computed(() => this.adminCaseListing() === AdminCaseListing.SWITCH)
+
+  /**
+   * The list the setting imposes, or null when the caller chooses (SWITCH): OWN is always `mine`, ALL is always
+   * `all`. A change of namespace, or of the setting, recomputes it.
+   */
+  private readonly forcedListMode = computed<CaseListMode | null>(() => {
+    switch (this.adminCaseListing()) {
+      case AdminCaseListing.ALL:
+        return 'all'
+      case AdminCaseListing.SWITCH:
+        return null
+      default:
+        return 'mine'
+    }
+  })
+
+  /** The list in force: the imposed one, else the caller's choice. */
+  protected readonly effectiveListMode = computed<CaseListMode>(
+    () => this.forcedListMode() ?? this.caseState.listMode()
+  )
+
   protected readonly canWriteActiveCase = computed(() => {
     const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
     return this.canConfigureNamespace() || caseRole === 'ADMIN'
@@ -234,6 +269,7 @@ export class CaseShellComponent {
     // Load the list, then watch the invalidations of this namespace. They ride the aggregated
     // stream, which one tab holds for the whole browser: a stream per namespace and per tab spent
     // a connection out of the six a browser grants per origin (#1616).
+    // Live refreshes go through CaseStateService.refreshCases, which follows the current list mode.
     effect((cleanup) => {
       const nsId = this.namespaceId()
       if (!nsId) return
@@ -251,6 +287,16 @@ export class CaseShellComponent {
         this.globalStream.connected$
       ).subscribe(() => this.caseState.refreshCases(nsId))
       cleanup(() => subscription.unsubscribe())
+    })
+
+    // Apply the list the setting imposes (OWN: mine, ALL: all). The state is back on `mine` after a namespace switch,
+    // and the namespace list may load after the first list: both are caught here, as is a change of the setting.
+    effect(() => {
+      const forced = this.forcedListMode()
+      const namespacesLoaded = this.namespaces().length > 0
+      if (namespacesLoaded && forced !== null && this.caseState.listMode() !== forced) {
+        this.caseState.setListMode(forced)
+      }
     })
 
     // Remember the open case so the settings pages can bring the user back to it.
@@ -290,6 +336,12 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
   // Cases
   // ---------------------------------------------------------------------------
+
+  protected onListModeChanged(mode: CaseListMode): void {
+    // Only the SWITCH setting leaves the choice to the caller.
+    if (!this.canSwitchListMode()) return
+    this.caseState.setListMode(mode)
+  }
 
   protected onCaseSelected(caseId: string): void {
     this.router.navigate(['/agentos/home'], {

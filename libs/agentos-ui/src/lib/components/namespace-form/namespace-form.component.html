@@ -131,6 +131,24 @@
         />
       </ds-form-field>
 
+      <ds-form-field
+        label="Cases visible to admins"
+        controlId="ns-admin-case-listing"
+        hintId="ns-admin-case-listing-hint"
+        hint="Choose which conversations the admins of this namespace see in their list. Members always see only their own."
+      >
+        <select
+          dsControl
+          id="ns-admin-case-listing"
+          aria-describedby="ns-admin-case-listing-hint"
+          [formControl]="adminCaseListingControl"
+        >
+          @for (option of adminCaseListingOptions; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </ds-form-field>
+
       <ds-form-actions>
         <button dsButton variant="primary" type="submit" [disabled]="form.invalid || isSubmitting()">
           {{ isEditMode() ? 'Save changes' : 'Create' }}

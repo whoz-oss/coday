@@ -14,6 +14,9 @@ import java.util.UUID
  * - `"SUPER-ADMIN"` — the caller has `isAdmin = true`; visible for every namespace
  * - `"ADMIN"`       — the caller holds a direct `[:ADMIN]` relation on the namespace
  * - `"MEMBER"`      — the caller holds a direct `[:MEMBER]` relation but no ADMIN
+ *
+ * [adminCaseListingEffective] is the resolved value of the namespace setting
+ * [NamespaceDto.adminCaseListing] (override, else platform default), so a client does not need to know the default.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class NamespaceListItem(
@@ -28,4 +31,6 @@ data class NamespaceListItem(
         allowableValues = ["SUPER-ADMIN", "ADMIN", "MEMBER"],
     )
     val role: String,
+    @field:Schema(description = "Resolved cases admins see. Read-only.")
+    val adminCaseListingEffective: AdminCaseListing? = null,
 )
