@@ -107,7 +107,7 @@ data class ScheduledPromptNode(
             nextRunAt = nextRunAt,
             lastRunAt = lastRunAt,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
-            flowConfiguration = flowConfigurationJson?.let { MAPPER.readValue(it, FlowConfiguration::class.java) },
+            flowConfiguration = flowConfigurationJson?.let { MAPPER.readTree(it) },
         )
 
     companion object {

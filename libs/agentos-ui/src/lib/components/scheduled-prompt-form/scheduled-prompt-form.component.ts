@@ -339,7 +339,7 @@ export class ScheduledPromptFormComponent implements OnInit {
         const raw = this.flowConfigurationJsonControl.value.trim()
         return raw ? JSON.parse(raw) : null
       })(),
-    } as ScheduledPrompt
+    }
 
     const call$ = isEdit ? this.state.update(this.existingPrompt!.id!, payload) : this.state.create(payload)
 

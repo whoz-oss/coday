@@ -247,9 +247,16 @@ class ScheduledPromptServiceImpl(
         }
     }
 
-    /** A flowConfiguration is only read for a LOOP agent: refuse it elsewhere rather than silently ignore it. */
+    /**
+     * A flowConfiguration is a JSON object, and is only read for a LOOP agent: refuse it elsewhere rather than silently
+     * ignore it. Its content is not validated here, [io.whozoss.agentos.agent.AgentLoop] does when it runs.
+     */
     private fun validateFlowConfiguration(entity: ScheduledPrompt, agentConfig: AgentConfig) {
-        if (entity.flowConfiguration != null && agentConfig.resolvedExecutionMode != ExecutionMode.LOOP) {
+        val flowConfiguration = entity.flowConfiguration ?: return
+        if (!flowConfiguration.isObject) {
+            throw UnprocessableEntityException("flowConfiguration must be a JSON object")
+        }
+        if (agentConfig.resolvedExecutionMode != ExecutionMode.LOOP) {
             throw UnprocessableEntityException(
                 "flowConfiguration is only allowed for a LOOP agent: AgentConfig id=${entity.agentConfigId} " +
                     "has execution mode ${agentConfig.resolvedExecutionMode}",

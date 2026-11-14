@@ -77,9 +77,6 @@ model/exchange-git-changes.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
-model/flow-configuration-act.ts
-model/flow-configuration-search.ts
-model/flow-configuration.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
 model/git-workspace-summary.ts

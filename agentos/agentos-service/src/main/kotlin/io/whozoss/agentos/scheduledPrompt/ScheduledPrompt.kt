@@ -1,14 +1,10 @@
 package io.whozoss.agentos.scheduledPrompt
 
-import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.workflow.AgentLoopAct
-import io.whozoss.agentos.workflow.AgentLoopPayload
-import io.whozoss.agentos.workflow.AgentLoopSearch
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -48,30 +44,6 @@ data class Planning(
     val endDate: LocalDate? = null,
     val maxOccurrenceCount: Int? = null,
 )
-
-/**
- * What a LOOP agent runs for a [ScheduledPrompt]: [search] calls a tool with its params, and [act] starts one case
- * per result. The prompt of those cases is not stored here: it is the scheduled prompt's own content, added by
- * [toLoopPayload]. Same shape as the API and as the stored JSON.
- */
-data class FlowConfiguration(
-    val search: Search,
-    val act: Act,
-) {
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    data class Search(
-        val tool: String,
-        val params: JsonNode? = null,
-    )
-
-    data class Act(
-        val agentName: String,
-    )
-
-    /** The full payload AgentLoop runs, `prompt` being the first message of each started case. */
-    fun toLoopPayload(prompt: String): AgentLoopPayload =
-        AgentLoopPayload(AgentLoopSearch(search.tool, search.params), AgentLoopAct(act.agentName, prompt))
-}
 
 // ---------------------------------------------------------------------------
 // Aggregate root
@@ -135,9 +107,9 @@ data class ScheduledPrompt(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /**
-     * What a LOOP agent runs for this scheduled prompt, handed to the run in the context of its first message
-     * ([io.whozoss.agentos.caseFlow.SessionContextKeys.FLOW_CONFIGURATION]). Refused on a non-LOOP agent.
-     * Null to use the agent's own `loopConfig`.
+     * What a LOOP agent runs for this scheduled prompt, as a JSON object, opaque like
+     * [io.whozoss.agentos.agentConfig.AgentConfig.loopConfig]; refused on a non-LOOP agent. It is handed to the run
+     * in the context of the first message, see [io.whozoss.agentos.agent.AgentLoop].
      */
-    val flowConfiguration: FlowConfiguration? = null,
+    val flowConfiguration: JsonNode? = null,
 ) : Entity

@@ -4910,36 +4910,6 @@ components:
       required:
       - caseEventId
       - positive
-    FlowConfiguration:
-      type: object
-      description: "Search tool, its arguments and the agent started for each result,\
-        \ for a LOOP agent."
-      properties:
-        act:
-          $ref: "#/components/schemas/FlowConfigurationAct"
-        search:
-          $ref: "#/components/schemas/FlowConfigurationSearch"
-      required:
-      - act
-      - search
-    FlowConfigurationAct:
-      type: object
-      properties:
-        agentName:
-          type: string
-          minLength: 1
-      required:
-      - agentName
-    FlowConfigurationSearch:
-      type: object
-      properties:
-        params:
-          $ref: "#/components/schemas/JsonNode"
-        tool:
-          type: string
-          minLength: 1
-      required:
-      - tool
     GetByIdsRequest:
       type: object
       properties:
@@ -5144,7 +5114,10 @@ components:
       - timestamp
       - toolName
       - type
-    JsonNode: {}
+    JsonNode:
+      description: "What a LOOP agent runs for this scheduled prompt: a loop payload,\
+        \ without act.prompt (the prompt content is used). Null to use the agent's\
+        \ own loopConfig."
     ListByUserInNamespaceRequest:
       type: object
       properties:
@@ -5954,11 +5927,10 @@ components:
           type: object
           additionalProperties: {}
         flowConfiguration:
-          $ref: "#/components/schemas/FlowConfiguration"
-          description: "Only for LOOP agents. The loop calls search.tool with search.params\
-            \ and starts one case per result with act.agentName, whose first message\
-            \ is promptContent. The tool name may be bare or prefixed with its integration\
-            \ (CONFIG__tool)."
+          $ref: "#/components/schemas/JsonNode"
+          description: "What a LOOP agent runs for this scheduled prompt: a loop payload,\
+            \ without act.prompt (the prompt content is used). Null to use the agent's\
+            \ own loopConfig."
         id:
           type: string
           format: uuid
