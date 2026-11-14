@@ -955,6 +955,79 @@
     }
   }
 
+  // ── Aside of a /btw side question ──────────────────────────────────────────
+  // Above the composer, outside the timeline: a quick answer that is not part of the conversation, so it
+  // looks apart from the bubbles (dashed rule, no accent bar) and says it is not saved.
+
+  &__aside {
+    flex: none;
+    position: relative;
+    max-height: 40%;
+    overflow-y: auto;
+    padding: 10px 14px 12px;
+    border: 1px dashed var(--color-divider);
+    border-radius: var(--radius-md, 0);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+    animation: autocomplete-in 0.12s ease;
+  }
+
+  &__aside-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__aside-label {
+    font-family: var(--font-heading);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-accent-700);
+  }
+
+  &__aside-note {
+    flex: 1;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+  }
+
+  &__aside-question {
+    margin: 6px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  &__aside-answer {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--color-text);
+    overflow-wrap: anywhere;
+  }
+
+  &__aside-copy {
+    position: absolute;
+    right: 10px;
+    bottom: 8px;
+  }
+
+  &__aside-pending {
+    margin: 0;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--color-neutral-600);
+  }
+
+  &__aside-error {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-error);
+  }
+
   // ── Composer ──────────────────────────────────────────────────────────────
 
   &__composer {

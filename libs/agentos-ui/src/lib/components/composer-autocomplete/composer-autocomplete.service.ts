@@ -21,6 +21,7 @@ import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomp
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
+import { BTW_COMMAND, BTW_PROMPT } from './btw-command'
 import { EFFORT_OPTIONS, EffortOption, effortOptionsFor } from './effort-command'
 import {
   applyFileMention,
@@ -59,6 +60,9 @@ export interface FileMentionScopes {
  *
  * A host that can change the reasoning effort (an open case) also calls `enableEffortCommand`:
  * "/effort" then lists the levels in `effortSuggestions` instead of the matching prompts.
+ *
+ * A host that offers `/btw` (a side question) calls `enableBtwCommand`: it then heads the slash suggestions, and
+ * while the host says a run is in progress it is the only command listed, since nothing else can be sent then.
  *
  * A host that wants file references calls `enableFileMentions`: typing `#` (at the start or after a
  * whitespace) then lists in `fileSuggestions` the files the agent can reach through its exchange tools
@@ -106,6 +110,9 @@ export class ComposerAutocompleteService {
   /** Null until the host enables /effort; then tells whether the effort can be changed right now. */
   private effortCommandAvailable: (() => boolean) | null = null
 
+  /** Null until the host enables /btw; then tells whether it is the only command offered right now. */
+  private btwOnly: (() => boolean) | null = null
+
   /** Null until the host enables `#` file mentions; then tells where the composer is. */
   private fileScopes: (() => FileMentionScopes) | null = null
   /** True while the word being typed is a `#` mention: a late answer must not open another dropdown then. */
@@ -143,7 +150,7 @@ export class ComposerAutocompleteService {
         this.promptsLoaded = true
         // A late answer must not open the prompt list over the /effort picker or the file list the user has reached since.
         if (this.effortSuggestions().length || this.fileMentionActive) return
-        this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
+        this.slashSuggestions.set(this.slashMatches(prompts, prefix))
       })
 
     // Agent @-mention pipeline: same debounce pattern, lazy-loads on first `@`.
@@ -198,6 +205,14 @@ export class ComposerAutocompleteService {
    */
   enableEffortCommand(available: () => boolean): void {
     this.effortCommandAvailable = available
+  }
+
+  /**
+   * Offer the /btw command in this composer. [onlyCommand] is checked on each keystroke: while it is true (the
+   * agent is running) /btw is the only slash suggestion, as it is the only thing that can be sent.
+   */
+  enableBtwCommand(onlyCommand: () => boolean): void {
+    this.btwOnly = onlyCommand
   }
 
   /**
@@ -486,6 +501,22 @@ export class ComposerAutocompleteService {
   // Internal — autocomplete dispatch
   // ---------------------------------------------------------------------------
 
+  /**
+   * The slash suggestions for [prefix]: the prompts it starts, headed by /btw when the host offers it. /btw is a
+   * command of the composer that wins over a prompt of the same name; while the agent runs it is alone, since
+   * nothing else can be sent.
+   */
+  private slashMatches(prompts: Prompt[], prefix: string): Prompt[] {
+    const wanted = prefix.toLowerCase()
+    if (!this.btwOnly) return prompts.filter((p) => p.name.toLowerCase().startsWith(wanted))
+    const btw = BTW_COMMAND.startsWith(wanted) ? [BTW_PROMPT] : []
+    if (this.btwOnly()) return btw
+    const others = prompts.filter(
+      (p) => p.name.toLowerCase() !== BTW_COMMAND && p.name.toLowerCase().startsWith(wanted)
+    )
+    return [...btw, ...others]
+  }
+
   private updateAutocomplete(value: string): void {
     // /effort takes precedence over the prompts whose name starts the same way.
     const effortOptions = this.effortCommandAvailable?.() ? effortOptionsFor(value) : null
@@ -505,9 +536,10 @@ export class ComposerAutocompleteService {
         if (this.atSuggestions().length) this.atSuggestions.set([])
         this.closeFileSuggestions()
         if (this.promptsLoaded) {
-          this.slashSuggestions.set(
-            this.effectivePrompts.filter((p) => p.name.toLowerCase().startsWith(withoutSlash.toLowerCase()))
-          )
+          this.slashSuggestions.set(this.slashMatches(this.effectivePrompts, withoutSlash))
+        } else if (this.btwOnly) {
+          // /btw needs no prompt: it is offered at once, the prompts join it once loaded.
+          this.slashSuggestions.set(this.slashMatches([], withoutSlash))
         }
         this.slashPrefix$.next(withoutSlash)
         return

@@ -55,6 +55,17 @@
   </springProfile>
 
   <!--
+    Profile: openapi (spec generation fork)
+    Without a section for it, the fork has no appender at all: a startup failure leaves only the banner
+    and the generation times out with "Connection refused" and no hint why. INFO is enough to see it.
+  -->
+  <springProfile name="openapi">
+    <root level="info">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+
+  <!--
     Profile: development or default
     Used for local development without ELK or when no profile is active.
     Debug level, plain console output.

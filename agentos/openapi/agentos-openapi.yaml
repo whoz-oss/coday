@@ -1646,6 +1646,37 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/side-questions:
+    post:
+      description: "POST /api/cases/{caseId}/side-questions: answers a quick question\
+        \ from the conversation of the case, without tools. Nothing is persisted or\
+        \ broadcast, and a running turn is not interrupted. 400 for a blank or too\
+        \ long question, 409 when the namespace has no default AI model, 502 when\
+        \ the model fails to answer."
+      operationId: askSideQuestionCaseSideQuestion
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SideQuestionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SideQuestionResponse"
+          description: OK
+      summary: Ask a side question about a case
+      tags:
+      - case-side-question-controller
   /api/cases/{caseId}/voice-messages:
     post:
       operationId: postVoiceMessage
@@ -6785,6 +6816,25 @@ components:
         withRemoved:
           type: boolean
           default: false
+    SideQuestionRequest:
+      type: object
+      properties:
+        question:
+          type: string
+          description: "The question, asked about the conversation of the case. Not\
+            \ blank, at most 4000 characters."
+          maxLength: 4000
+          minLength: 1
+      required:
+      - question
+    SideQuestionResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: "The answer, in Markdown. It is not saved anywhere."
+      required:
+      - answer
     Skill:
       type: object
       properties:

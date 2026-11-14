@@ -78,6 +78,8 @@ import {
   parseEffortCommand,
 } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { parseBtwCommand } from '../composer-autocomplete/btw-command'
+import { SideQuestionStateService } from '../../services/side-question-state.service'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import {
   buildReferenceMention,
@@ -224,7 +226,7 @@ function hasActiveSelection(): boolean {
     CostPipe,
     TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService, SideQuestionStateService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -253,6 +255,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Files staged on the next message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
   protected readonly autocomplete = inject(ComposerAutocompleteService)
+  /** The aside of the /btw side questions: component-scoped, so each chat has its own and it ends with the chat. */
+  protected readonly sideQuestions = inject(SideQuestionStateService)
+  /** The answer of the aside, rendered like an agent message. */
+  protected readonly sideAnswerHtml = computed<SafeHtml>(() => {
+    const answer = this.sideQuestions.answer()
+    return answer ? this.renderMarkdown(answer) : ''
+  })
   /** Voice messages: the recorder is component-scoped (microphone released with the host), the capability is app-wide. */
   protected readonly voice = inject(VoiceRecorderService)
   protected readonly voiceCapability = inject(VoiceCapabilityStateService)
@@ -508,6 +517,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
+    // While the agent runs, /btw is the only thing the composer accepts, and the only command it suggests.
+    this.autocomplete.enableBtwCommand(() => this.isRunning())
     // `#` lists what the agent reaches through its exchange tools: the namespace and this case.
     this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: this.caseId }))
 
@@ -1309,6 +1320,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.fileAutocompleteRef
     )
     if (consumed) return
+    // Escape closes the aside of a side question, once no dropdown is left to take it.
+    if (event.key === 'Escape' && this.sideQuestions.visible()) {
+      event.preventDefault()
+      this.sideQuestions.dismiss()
+      return
+    }
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
@@ -1357,7 +1374,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * opened through namespace access only is not in it), and a run reads it at its start.
    */
   private canChangeEffort(): boolean {
-    return !!this.activeCase() && !this.isTerminal()
+    // Not while the agent runs: nothing but /btw is accepted then, and a run reads the effort at its start.
+    return !!this.activeCase() && !this.isTerminal() && !this.isRunning()
   }
 
   /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
@@ -1415,6 +1433,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.drawerPanel.set('files')
     this.isEditing.set(false)
     this.autocomplete.reset()
+    this.sideQuestions.dismiss()
     this.attachments.reset()
     this.referencedFiles.set([])
     this.voice.reset()
@@ -1430,8 +1449,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private submitting = false
 
   protected async submit(): Promise<void> {
-    if (this.submitting || !this.canSend) return
+    if (this.submitting) return
     const content = this.inputValue().trim()
+    // A typed "/btw <question>" is a side question, never a message for the agent. It is the one thing the
+    // composer accepts while the agent runs: it is answered aside, and posts nothing to the case.
+    const sideQuestion = parseBtwCommand(content)
+    if (sideQuestion !== undefined) {
+      this.askSideQuestion(sideQuestion)
+      return
+    }
+    // Anything else waits for the agent: the text stays in the composer.
+    if (!this.canSend) return
     // A typed "/effort <level>" is a command for the case, never a message for the agent. When the
     // effort cannot be changed here, the text stays in the composer.
     const effortCommand = parseEffortCommand(content)
@@ -1482,6 +1510,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private sendMessage(content: string): void {
     void this.postMessage(content)
+  }
+
+  /**
+   * Asks a side question: the answer shows in the aside, and neither the question nor the answer reaches the case.
+   * Does nothing the case cannot take (ended, gone) or while an upload or a recording is under way, like a send;
+   * an empty question keeps the text, to be completed.
+   */
+  private askSideQuestion(question: string): void {
+    if (!question || this.composerClosed() || this.attachments.isUploading() || this.voice.isBusy()) return
+    this.sideQuestions.ask(this.caseId, question)
+    this.inputValue.set('')
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = ''
+      this.resizeComposer(input)
+    }
   }
 
   /** The agent resumes from the history: its tool calls and its summary of the work so far. */
