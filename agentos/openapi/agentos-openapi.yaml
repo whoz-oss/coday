@@ -5112,9 +5112,7 @@ components:
       - timestamp
       - toolName
       - type
-    JsonNode:
-      description: "Loop payload run by a LOOP agent for this scheduled prompt, overriding\
-        \ the agent's loopConfig."
+    JsonNode: {}
     ListByUserInNamespaceRequest:
       type: object
       properties:

@@ -110,8 +110,7 @@ data class AgentConfigDto(
      */
     @field:Schema(
         description = "Default loop payload for LOOP-mode agents, used when the start message carries no flowConfiguration.",
-        type = "object",
-        nullable = true,
+        ref = "#/components/schemas/JsonNode",
     )
     val loopConfig: JsonNode? = null,
 )

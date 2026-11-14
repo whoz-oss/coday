@@ -151,11 +151,13 @@ data class ScheduledPromptDto(
      * What a LOOP agent runs for this scheduled prompt, as an opaque JSON object, like
      * [io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto.loopConfig] (rejected with 422 for any other agent).
      * Replaced as a whole on PUT: null clears it. See `io.whozoss.agentos.agent.AgentLoop`.
+     *
+     * The explicit `ref` in the [Schema] below keeps this property's description beside the `$ref`, instead of letting
+     * it be written into the shared `JsonNode` component, where it would show on every other JsonNode field of the API.
      */
     @field:Schema(
         description = "Loop payload run by a LOOP agent for this scheduled prompt, overriding the agent's loopConfig.",
-        type = "object",
-        nullable = true,
+        ref = "#/components/schemas/JsonNode",
     )
     val flowConfiguration: JsonNode? = null,
 )
