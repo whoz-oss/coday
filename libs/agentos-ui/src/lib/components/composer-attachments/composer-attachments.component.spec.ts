@@ -120,6 +120,146 @@ describe('ComposerAttachmentsComponent', () => {
   })
 })
 
+describe('ComposerAttachmentsComponent — image thumbnails', () => {
+  const originalCreate = URL.createObjectURL
+  const originalRevoke = URL.revokeObjectURL
+  let create: jest.Mock
+  let revoke: jest.Mock
+
+  beforeEach(() => {
+    let counter = 0
+    create = jest.fn(() => `blob:preview-${counter++}`)
+    revoke = jest.fn()
+    URL.createObjectURL = create
+    URL.revokeObjectURL = revoke
+  })
+
+  afterEach(() => {
+    // Destroy the components while the mocks are still installed (their destroy hook revokes).
+    TestBed.resetTestingModule()
+    URL.createObjectURL = originalCreate
+    URL.revokeObjectURL = originalRevoke
+  })
+
+  function image(id: string, status: PendingAttachment['status'] = 'pending'): PendingAttachment {
+    return { id, file: new File(['x'], `${id}.png`, { type: 'image/png' }), status }
+  }
+
+  it('renders a thumbnail instead of the kind icon for an image attachment', () => {
+    const ref = makeComponent([image('shot'), attachment('doc.pdf')])
+    const host = ref.location.nativeElement as HTMLElement
+
+    const thumbnails = host.querySelectorAll<HTMLImageElement>('.composer-attachments__thumbnail')
+    expect(thumbnails).toHaveLength(1)
+    expect(thumbnails[0]!.getAttribute('src')).toBe('blob:preview-0')
+    // The non-image chip keeps its kind icon.
+    expect(host.querySelectorAll('.composer-attachments__icon')).toHaveLength(1)
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
+  it('revokes the object URL once the attachment disappears, and the rest on destroy', () => {
+    const ref = makeComponent([image('one'), image('two')])
+    expect(create).toHaveBeenCalledTimes(2)
+
+    ref.setInput('attachments', [image('two')])
+    ref.changeDetectorRef.detectChanges()
+    expect(revoke).toHaveBeenCalledTimes(1)
+    expect(revoke).toHaveBeenCalledWith('blob:preview-0')
+    // The surviving image keeps its URL: no re-creation.
+    expect(create).toHaveBeenCalledTimes(2)
+
+    ref.destroy()
+    expect(revoke).toHaveBeenCalledWith('blob:preview-1')
+  })
+
+  it('shows the spinner instead of the thumbnail while uploading', () => {
+    const ref = makeComponent([image('shot', 'uploading')])
+    const host = ref.location.nativeElement as HTMLElement
+
+    expect(host.querySelector('.composer-attachments__thumbnail')).toBeNull()
+    expect(host.querySelector('.composer-attachments__icon')?.textContent).toContain('progress_activity')
+  })
+})
+
+describe('ComposerAttachmentsComponent — referenced exchange files', () => {
+  afterEach(() => TestBed.resetTestingModule())
+
+  const namespaceFile = { scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/readme.md' }
+  const caseFile = { scope: ExchangeFileEntryScopeEnum.CASE, path: 'notes/todo.md' }
+  const chipsOf = (ref: ComponentRef<ComposerAttachmentsComponent>) =>
+    (ref.location.nativeElement as HTMLElement).querySelectorAll('.composer-attachments__chip')
+
+  it('renders a chip when there are only references', () => {
+    const ref = makeComponent([])
+    ref.setInput('references', [namespaceFile])
+    ref.changeDetectorRef.detectChanges()
+
+    expect(chipsOf(ref)).toHaveLength(1)
+  })
+
+  it('shows the icon, the file name, the kind, the scope badge and the full path as title', () => {
+    const ref = makeComponent([])
+    ref.setInput('references', [namespaceFile, caseFile])
+    ref.changeDetectorRef.detectChanges()
+    const [first, second] = Array.from(chipsOf(ref))
+
+    expect(first!.querySelector('.composer-attachments__icon')?.textContent).toContain('folder_shared')
+    expect(first!.querySelector('.composer-attachments__name')?.textContent).toContain('readme.md')
+    expect(first!.querySelector('.composer-attachments__name')?.getAttribute('title')).toBe('namespace:docs/readme.md')
+    expect(first!.querySelector('.composer-attachments__kind')?.textContent).toContain('MD')
+    expect(first!.querySelector('.composer-attachments__badge')?.textContent).toContain('namespace')
+    expect(second!.querySelector('.composer-attachments__icon')?.textContent).toContain('description')
+    expect(second!.querySelector('.composer-attachments__name')?.getAttribute('title')).toBe('case:notes/todo.md')
+    expect(second!.querySelector('.composer-attachments__badge')?.textContent).toContain('case')
+  })
+
+  it('puts the references before the staged uploads', () => {
+    const ref = makeComponent([attachment('report.pdf')])
+    ref.setInput('references', [caseFile])
+    ref.changeDetectorRef.detectChanges()
+    const chips = Array.from(chipsOf(ref))
+
+    expect(chips).toHaveLength(2)
+    expect(chips[0]!.textContent).toContain('todo.md')
+    expect(chips[1]!.textContent).toContain('report.pdf')
+  })
+
+  it('emits referenceRemoved with the file when its remove button is clicked', () => {
+    const ref = makeComponent([])
+    ref.setInput('references', [namespaceFile, caseFile])
+    ref.changeDetectorRef.detectChanges()
+    const emitted: unknown[] = []
+    ref.instance.referenceRemoved.subscribe((removed) => emitted.push(removed))
+
+    const button = chipsOf(ref)[1]!.querySelector<HTMLButtonElement>('button')!
+    expect(button.title).toBe('Remove todo.md')
+    button.click()
+
+    expect(emitted).toEqual([caseFile])
+  })
+
+  it('does not emit removed for a reference', () => {
+    const ref = makeComponent([])
+    ref.setInput('references', [namespaceFile])
+    ref.changeDetectorRef.detectChanges()
+    const removed = jest.fn()
+    ref.instance.removed.subscribe(removed)
+
+    chipsOf(ref)[0]!.querySelector<HTMLButtonElement>('button')!.click()
+
+    expect(removed).not.toHaveBeenCalled()
+  })
+
+  it('does not mark a reference with the upload namespace badge preview', () => {
+    const ref = makeComponent([])
+    ref.setInput('references', [caseFile])
+    ref.setInput('namespaceBadge', true)
+    ref.changeDetectorRef.detectChanges()
+
+    expect(chipsOf(ref)[0]!.querySelector('.composer-attachments__badge')?.textContent).toContain('case')
+  })
+})
+
 describe('ComposerAttachmentsComponent — status rendering', () => {
   afterEach(() => TestBed.resetTestingModule())
 

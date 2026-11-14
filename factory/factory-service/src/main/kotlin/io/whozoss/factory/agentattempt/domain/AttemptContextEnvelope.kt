@@ -76,9 +76,8 @@ data class AttemptContextEnvelope(
 
         private val mapper = ObjectMapper()
 
-        @Suppress("UNCHECKED_CAST")
         private fun readMap(json: String): Map<String, Any?> =
-            mapper.readValue(json, Map::class.java) as Map<String, Any?>
+            mapper.readValue(json, Map::class.java).toCheckedJsonObject()
 
         /** Deserialize an envelope persisted by [toJson]. */
         fun fromJson(json: String): AttemptContextEnvelope {
@@ -94,8 +93,8 @@ data class AttemptContextEnvelope(
                 agentName = raw["agentName"] as? String ?: "",
                 ticket = raw["ticket"] as? String,
                 briefHash = raw["briefHash"] as? String ?: "",
-                inputs = (raw["inputs"] as? Map<String, Any?>) ?: emptyMap(),
-                runBrief = raw["runBrief"] as? Map<String, Any?>,
+                inputs = raw["inputs"].checkedJsonObjectOrNull() ?: emptyMap(),
+                runBrief = raw["runBrief"].checkedJsonObjectOrNull(),
                 controllerRequest = raw["controllerRequest"] as? String,
                 expectedAmendmentSeq = (raw["expectedAmendmentSeq"] as? Number)?.toLong(),
             )

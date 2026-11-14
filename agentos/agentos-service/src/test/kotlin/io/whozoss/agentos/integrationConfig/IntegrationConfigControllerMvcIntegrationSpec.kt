@@ -276,7 +276,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
         // -------------------------------------------------------------------------
         // POST / PUT — user scope denied for network-reaching integration types
-        // (agentos.integrations.user-scope-denied-types, default HTTP_API, MCP_STDIO, MCP_HTTP)
+        // (agentos.integrations.user-scope-denied-types, default HTTP_API, MCP_STDIO, MCP_HTTP, GIT, BASH)
         // -------------------------------------------------------------------------
 
         "POST user-global config of a denied type (MCP_HTTP) returns 403" {
@@ -331,7 +331,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 ).andExpect(status().isCreated)
         }
 
-        "POST user-global config of a type outside the denied list (BASH) still returns 201" {
+        "POST user-global config of a denied type (BASH) returns 403" {
             mockMvc
                 .perform(
                     post("/api/integration-configs")
@@ -340,7 +340,24 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                             """
                             {
                               "userId": "$aliceId",
-                              "name": "ALLOWED_${UUID.randomUUID()}",
+                              "name": "DENIED_${UUID.randomUUID()}",
+                              "integrationType": "BASH"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isForbidden)
+        }
+
+        "POST NS-shared config of a denied type (BASH) still returns 201" {
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "namespaceId": "$namespaceId",
+                              "name": "SHARED_BASH_${UUID.randomUUID()}",
                               "integrationType": "BASH"
                             }
                             """.trimIndent(),

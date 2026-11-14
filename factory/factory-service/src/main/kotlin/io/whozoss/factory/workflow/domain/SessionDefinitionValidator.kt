@@ -3,11 +3,11 @@ package io.whozoss.factory.workflow.domain
 /**
  * Pure validation of the declarative session graph (W8.2).
  *
- * A SESSION is a list of STEPS with exactly `id`, `name`, `dependsOn` and
- * `responsibility { kind, name }`. No orchestration property (`gate`, `retry`,
- * `onFailure`, `briefTemplate`…) is ever modelled, so none can be declared: the
- * format is intentionally minimal and the smart orchestration stays in an
- * external Coday agent, never in the file.
+ * A SESSION is a list of STEPS with `id`, `name`, `dependsOn` and
+ * `responsibility { kind, name }`, optionally an explicit Entry/Mission/Exit
+ * prose contract. No orchestration property (`gate`, `retry`, `onFailure`,
+ * `briefTemplate`…) is modelled: Factory owns scheduling, dependencies,
+ * approvals and result validation; AgentOS agents perform the declared work.
  *
  * The JSON-shape validation (unknown fields, safe ids, string lengths,
  * `schemaVersion`…) lives in [WorkflowDefinitionValidator]. This validator
@@ -90,6 +90,9 @@ object SessionDefinitionValidator {
             if (cyclic(step.id)) {
                 return failure(WorkflowDefinitionErrorCodes.DEPENDENCY_CYCLE, "steps")
             }
+        }
+        WorkflowRouting.topologyError(steps)?.let { reason ->
+            return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "steps", mapOf("reason" to reason))
         }
         return Result.Valid(steps)
     }

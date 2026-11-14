@@ -31,6 +31,7 @@ import {
 import { AgentTimelineComponent } from './agent-timeline/agent-timeline.component'
 import { EventLogComponent } from './event-log/event-log.component'
 import { SessionPageState } from './session-page.state'
+import { WorkflowDefinitionDiagramComponent } from '../workflows/workflow-definition-diagram.component'
 
 @Component({
   selector: 'sf-session-page',
@@ -44,6 +45,7 @@ import { SessionPageState } from './session-page.state'
     ActionBarComponent,
     AgentTimelineComponent,
     EventLogComponent,
+    WorkflowDefinitionDiagramComponent,
     UsdPipe,
     DurationPipe,
     TokensPipe,
@@ -190,6 +192,10 @@ export class SessionPageComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.pageState.destroy()
+  }
+
+  protected selectRoutingStep(stepId: string): void {
+    this.pageState.selection.set({ stepId })
   }
 
   protected selectBlock(b: TimelineBlock): void {

@@ -16,6 +16,8 @@ enum class ReadKind(
     INTEGRATION("integration", ConfigKind.INTEGRATION),
     AUTH_SETTING("auth-setting", ConfigKind.AUTH_SETTING),
     NAMESPACE("namespace", ConfigKind.NAMESPACE),
+    AI_PROVIDER("ai-provider", ConfigKind.AI_PROVIDER),
+    AI_MODEL("ai-model", ConfigKind.AI_MODEL),
     INTEGRATION_TYPE("integration-type"),
     DEPLOYMENT("deployment"),
     CAPABILITIES("capabilities"),

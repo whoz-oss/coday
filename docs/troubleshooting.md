@@ -10,7 +10,9 @@ This guide covers common issues and their solutions when working with Coday.
 
 **Solutions**:
 - Ensure Node.js version 22+ is installed: `node --version`
-- Check port 3000 is available (or use `--port` flag)
+- Open the address printed in the terminal (`Coday  http://localhost:...`). It is usually `http://localhost:3000`; if a port was already taken by another program, Coday moved to a free one (3020, 3040...) and printed it. Nothing needs to be stopped.
+- If you set `PORT` or `--port` yourself and that port is taken, Coday stops with a message naming the program holding it: pick another port, or remove the option and let Coday choose.
+- Full explanation of the ports: `apps/web/README.md`, section *Ports*
 - Clear npx cache: `npx clear-npx-cache`
 - Check internet connection (npx needs to download package)
 - Try with verbose logging: `npx --yes @whoz-oss/coday-web --debug`

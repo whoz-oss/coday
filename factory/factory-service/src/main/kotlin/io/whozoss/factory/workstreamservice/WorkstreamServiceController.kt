@@ -11,6 +11,7 @@ import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.FactoryCaller
 import io.whozoss.factory.workflow.web.resolveWorkflowCaller
 import io.whozoss.factory.web.factoryError
+import io.whozoss.factory.workflow.domain.WorkflowBlockerDto
 import io.whozoss.factory.workflow.domain.WorkflowActionTypes
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.workflowException
@@ -273,6 +274,8 @@ class WorkstreamServiceController(
                 initialRequest = null,
                 parameters = ticket?.let { mapOf("ticket" to it) } ?: emptyMap(),
                 idempotencyKey = "svc:${caller.userId}:$key",
+                definitionVersion = optionalPin(request, "definitionVersion"),
+                definitionHash = optionalPin(request, "definitionHash"),
             ),
             repoRoot = sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() },
         )
@@ -364,8 +367,14 @@ class WorkstreamServiceController(
             "message" to "Retry requested for step $stepId; awaiting human approval in Factory.",
         )
 
-    private fun blockerView(blocker: io.whozoss.factory.workflow.domain.WorkflowBlockerDto): Map<String, Any?> =
+    private fun blockerView(blocker: WorkflowBlockerDto): Map<String, Any?> =
         mapOf("code" to blocker.code, "stepId" to blocker.stepId, "message" to blocker.message)
+
+    private fun optionalPin(request: Map<String, Any?>, field: String): String? {
+        if (!request.containsKey(field)) return null
+        return (request[field] as? String)?.takeIf { it.isNotBlank() }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "$field must be a nonblank string.")
+    }
 
     private fun requireWorkflowId(raw: String): String =
         raw.takeIf { ID_PATTERN.matches(it) }
@@ -386,7 +395,7 @@ class WorkstreamServiceController(
         val KEY_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
         val TICKET_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
         val REASON_PATTERN = Regex("^[A-Za-z0-9._-]{1,64}$")
-        val START_FIELDS = setOf("workflowType", "title", "ticket")
+        val START_FIELDS = setOf("workflowType", "title", "ticket", "definitionVersion", "definitionHash")
         val RETRY_FIELDS = setOf("stepId", "expectedRevision", "reasonCode")
     }
 }

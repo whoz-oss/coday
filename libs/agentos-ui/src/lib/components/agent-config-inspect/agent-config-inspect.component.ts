@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { AgentConfigControllerService, AgentDefinition, AgentDefinitionToolSummary } from '@whoz-oss/agentos-api-client'
-import { DisclosureComponent, DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
+import { DisclosureComponent, DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
 import { AgentMessagingComponent } from '../agent-messaging/agent-messaging.component'
 
@@ -20,7 +20,7 @@ import { AgentMessagingComponent } from '../agent-messaging/agent-messaging.comp
  */
 @Component({
   selector: 'agentos-agent-config-inspect',
-  imports: [RouterLink, MarkdownPipe, DS_PAGE_KIT, TagComponent, DisclosureComponent, AgentMessagingComponent],
+  imports: [RouterLink, MarkdownPipe, DS_PAGE_KIT, DisclosureComponent, AgentMessagingComponent],
   templateUrl: './agent-config-inspect.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

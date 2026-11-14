@@ -68,6 +68,14 @@ paths:
                 workflowType:
                   type: string
                   maxLength: 128
+                definitionVersion:
+                  type: string
+                  description: Immutable registered version. Supply together with definitionHash; never silently select latest.
+                  pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+                definitionHash:
+                  type: string
+                  description: Exact server-returned canonical SHA-256. Supply together with definitionVersion.
+                  pattern: '^[a-f0-9]{64}$'
                 title:
                   type: string
                   maxLength: 200

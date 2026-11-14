@@ -245,6 +245,8 @@ class CaseController(
                     runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                     // reasoningEffort is not changed here: an absent field must not erase the
                     // override, and null is a meaningful value. See setReasoningEffort.
+                    // summary and summaryMessageCount are not changed here either: they belong to
+                    // CaseSummaryService, a client cannot overwrite them.
                 )
             }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
@@ -480,6 +482,7 @@ internal fun toDto(entity: Case) =
         scheduledPromptId = entity.scheduledPromptId,
         runCostThreshold = entity.runCostThreshold,
         reasoningEffort = entity.reasoningEffort,
+        summary = entity.summary,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by

@@ -3,7 +3,13 @@
     @if (drawerPanel() === 'members') {
       <agentos-case-members [caseId]="caseId" (closeRequested)="exchangeOpen.set(false)" />
     } @else {
-      <agentos-exchange-shell [active]="exchangeOpen()" (closeRequested)="exchangeOpen.set(false)" />
+      <agentos-exchange-shell
+        [active]="exchangeOpen()"
+        [selectable]="true"
+        [referenced]="referencedFiles()"
+        (referenceToggled)="onReferenceToggled($event)"
+        (closeRequested)="exchangeOpen.set(false)"
+      />
     }
   </div>
 
@@ -99,6 +105,14 @@
             [class.case-chat__header-star--active]="activeCase()?.favorite"
             (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
           />
+          <!-- Stop (kill) — asks for confirmation through the dialog below -->
+          <ds-icon-button
+            icon="cancel"
+            variant="danger"
+            title="Stop case — terminates the agent and all running sub-cases"
+            [disabled]="isTerminal()"
+            (action)="confirmingKill.set(true)"
+          />
           <!-- Delete -->
           <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
         } @else {
@@ -164,7 +178,7 @@
                 >
                   @if (item.isFirstInGroup) {
                     <span class="case-chat__role-label">
-                      {{ authorLabel(item.event) }}
+                      {{ actorLabel(item.event.actor) }}
                       @if (messagingPlatform(item.event); as platform) {
                         <span class="case-chat__role-via">via {{ platform }}</span>
                       }
@@ -181,11 +195,21 @@
                   }
                   <div class="case-chat__bubble-wrapper">
                     @if (item.event.actor.role === 'USER') {
-                      <div
-                        class="case-chat__bubble case-chat__message-text--markdown"
-                        dsBlueprint
-                        [innerHTML]="item.html"
-                      ></div>
+                      @if (audioOf(item.event); as audio) {
+                        <!-- A voice message: the player, then its transcript like a normal user bubble. -->
+                        <!-- The transcript is spoken text, not markdown: shown as plain text so a leading space or an
+                             indented line can never turn into a code block or shift the text. -->
+                        <div class="case-chat__bubble case-chat__bubble--audio" dsBlueprint>
+                          <agentos-audio-message [caseId]="caseId" [audio]="audio" />
+                          <p class="case-chat__transcript">{{ messageText(item).trim() }}</p>
+                        </div>
+                      } @else {
+                        <div
+                          class="case-chat__bubble case-chat__message-text--markdown"
+                          dsBlueprint
+                          [innerHTML]="item.html"
+                        ></div>
+                      }
                     } @else {
                       <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
                     }
@@ -248,7 +272,10 @@
                     <span class="case-chat__execution-notice-detail">{{ item.notice.detail }}</span>
                   }
                   @if (
-                    item.eventId === continuableStopId() && !isRunning() && !isTerminal() && !attachments.isUploading()
+                    item.eventId === continuableStopId() &&
+                    !isRunning() &&
+                    !composerClosed() &&
+                    !attachments.isUploading()
                   ) {
                     <button type="button" class="case-chat__execution-notice-action" (click)="continueAfterLimit()">
                       Continue
@@ -504,6 +531,15 @@
             />
           </div>
         }
+        @if (autocomplete.fileSuggestions().length > 0) {
+          <div class="case-chat__autocomplete">
+            <agentos-file-autocomplete
+              [files]="autocomplete.fileSuggestions()"
+              (selected)="onFileSelected($event)"
+              (dismissed)="closeFileAutocomplete()"
+            />
+          </div>
+        }
         @if (autocomplete.effortSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-effort-autocomplete
@@ -529,7 +565,9 @@
           [namespaceBadge]="namespaceTargeted()"
           [limitError]="attachments.limitError()"
           [disabled]="attachments.isUploading()"
+          [references]="referencedFiles()"
           (removed)="attachments.remove($event)"
+          (referenceRemoved)="removeReference($event)"
           (filesSelected)="attachments.addFiles($event)"
         />
         <textarea
@@ -538,10 +576,19 @@
           placeholder="Reply…"
           rows="3"
           [value]="inputValue()"
-          [disabled]="isRunning() || isTerminal() || attachments.isUploading()"
+          [hidden]="voice.isActive()"
+          [disabled]="isRunning() || composerClosed() || attachments.isUploading()"
           (input)="onInput($event)"
           (keydown)="onKeydown($event)"
+          (paste)="canStageFiles() && attachments.onPaste($event)"
         ></textarea>
+        <agentos-voice-recorder
+          [state]="voice.state()"
+          [elapsedMs]="voice.elapsedMs()"
+          [error]="voice.error()"
+          [sendKey]="sendKeyLabel"
+          (keyPressed)="onRecordingKeydown($event)"
+        />
         <div class="case-chat__actions">
           @if (canAttach()) {
             <ds-icon-button
@@ -562,32 +609,45 @@
           }
           <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 
+          <!-- Right next to the send button, on its left -->
+          @if (voice.isRecording()) {
+            <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
+          } @else if (voiceCapability.available()) {
+            <ds-icon-button
+              icon="mic"
+              variant="default"
+              title="Record a voice message"
+              [disabled]="!canRecord"
+              (action)="startRecording()"
+            />
+          }
+
           @if (isRunning()) {
             <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
           } @else {
             <ds-icon-button
               icon="send"
               variant="primary"
-              [title]="preferences.composerHint()"
-              [disabled]="!canSend"
-              (action)="submit()"
+              [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
+              [disabled]="!canSendNow"
+              (action)="onSendClick()"
             />
           }
-          <ds-icon-button
-            icon="cancel"
-            variant="danger"
-            title="Stop case — terminates the agent and all running sub-cases"
-            [disabled]="isTerminal()"
-            (action)="confirmingKill.set(true)"
-          />
         </div>
 
         @if (isTerminal()) {
-          <div class="case-chat__reopen-bar">
-            <span class="case-chat__reopen-label"
+          <div class="case-chat__notice-bar">
+            <span class="case-chat__notice-label"
               >This case has ended. You can reopen it to continue the conversation.</span
             >
-            <button type="button" class="case-chat__reopen-btn" (click)="reopen()">Reopen</button>
+            <button type="button" class="case-chat__notice-btn" (click)="reopen()">Reopen</button>
+          </div>
+        } @else if (streamUnavailable()) {
+          <div class="case-chat__notice-bar">
+            <span class="case-chat__notice-label"
+              >Live updates stopped: the case may no longer exist, or the connection was refused.</span
+            >
+            <button type="button" class="case-chat__notice-btn" (click)="retryStream()">Retry</button>
           </div>
         }
       </div>

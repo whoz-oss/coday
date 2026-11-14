@@ -1,5 +1,5 @@
-import { HttpClient } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@angular/core'
+import { HttpClient, HttpErrorResponse } from '@angular/common/http'
+import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -8,6 +8,7 @@ import {
   AgentRunningEvent,
   AnswerEvent,
   Case,
+  CaseStatusEnum,
   Configuration,
   ExchangeFileEntryScopeEnum,
   MessageEvent as CaseMessageEvent,
@@ -16,13 +17,20 @@ import {
   ReasoningEffort,
   ToolRequestEvent,
   ToolResponseEvent,
+  User,
+  VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { of, throwError } from 'rxjs'
+import { of, Observable, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
-import { ExchangeStateService } from '../../services/exchange-state.service'
+import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
+import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
+import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
+import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
+import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
@@ -36,7 +44,7 @@ import { CaseChatComponent } from './case-chat.component'
  * ExchangeStateService.
  */
 describe('CaseChatComponent — submit with attachments', () => {
-  let http: { post: jest.Mock }
+  let http: { post: jest.Mock; get: jest.Mock }
   let exchangeState: {
     uploadFile: jest.Mock
     canWriteCase: ReturnType<typeof signal<boolean>>
@@ -66,6 +74,8 @@ describe('CaseChatComponent — submit with attachments', () => {
         calls.push('post')
         return of({})
       }),
+      // The case is probed when the stream dies; by default it is still there.
+      get: jest.fn().mockImplementation(() => of({})),
     }
     exchangeState = {
       uploadFile: jest.fn().mockImplementation(async () => {
@@ -100,9 +110,15 @@ describe('CaseChatComponent — submit with attachments', () => {
           },
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
+        { provide: UserStateService, useValue: { currentUser: signal<User | null>(null) } },
         {
           provide: USER_PREFERENCES_PORT,
-          useValue: { shouldSend: jest.fn().mockReturnValue(false), composerHint: () => 'hint', showTechnical },
+          useValue: {
+            shouldSend: jest.fn().mockReturnValue(false),
+            composerHint: () => 'hint',
+            showTechnical,
+            enterKeyBehavior: signal('send'),
+          },
         },
       ],
     })
@@ -142,6 +158,240 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.destroy()
       globalThis.EventSource = original
       log.mockRestore()
+    }
+  })
+
+  it('keeps the composer closed while the launch gate holds the turn', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      // Submitting locks the composer optimistically; on a gated case the first frame back is
+      // PENDING, for as long as the workspace takes to prepare. It must not cancel that lock:
+      // a second message would be folded into the queued turn and run as two consecutive user
+      // messages.
+      ref.instance['isRunning'].set(true)
+      emit('CaseStatusEvent', 'pending-1', { status: 'PENDING' })
+
+      expect(ref.instance['isRunning']()).toBe(true)
+      ref.instance['inputValue'].set('a second message')
+      expect(ref.instance['canSend']).toBe(false)
+
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      expect(ref.instance['isRunning']()).toBe(true)
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('keeps the case running, and the composer closed, in the gap between two agents', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('AgentRunningEvent', 'assistant-running', { agentName: 'Assistant' })
+      emit('AgentFinishedEvent', 'assistant-finished', { agentName: 'Assistant' })
+      // The gap this test pins: the next agent is selected but has not started. The case stays
+      // RUNNING on the backend, and nothing else need arrive for seconds while the agent is
+      // resolved and its tools initialise.
+      emit('AgentSelectedEvent', 'frontend-selected', { agentName: 'Frontend' })
+
+      expect(ref.instance['isRunning']()).toBe(true)
+      // The user-visible stake: a message posted here would be persisted mid-turn and dropped.
+      ref.instance['inputValue'].set('a second message')
+      expect(ref.instance['canSend']).toBe(false)
+
+      // And the composer opens again once the turn really ends, so the check above is not vacuous.
+      emit('AgentRunningEvent', 'frontend-running', { agentName: 'Frontend' })
+      emit('AgentFinishedEvent', 'frontend-finished', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('does not revive the running indicator while a killed case replays its history', () => {
+    // caseStatus() falls back to the stored case status until a frame arrives, so seeding the shared
+    // list is what makes isTerminal() true here. With the default empty list it is false in every
+    // test and the terminal guard on the handoff rule would never be exercised.
+    const caseState = TestBed.inject(CaseStateService) as unknown as { cases: WritableSignal<Case[]> }
+    caseState.cases.set([
+      { id: 'c-1', namespaceId: 'ns-1', favorite: false, removed: false, status: CaseStatusEnum.KILLED },
+    ])
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      expect(ref.instance['isTerminal']()).toBe(true)
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+      // Mid-history frames of the last turn: on a dead case they must not flash the indicator.
+      emit('AgentSelectedEvent', 'assistant-selected', { agentName: 'Assistant' })
+      emit('AgentRunningEvent', 'assistant-running', { agentName: 'Assistant' })
+
+      expect(ref.instance['isRunning']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('keeps the case running when its run is handed to another agent, also after a reconnection', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('AgentRunningEvent', 'assistant-running', { agentName: 'Assistant' })
+      // The redirect: Assistant finishes, Frontend takes the same run over, the case status does not change.
+      emit('AgentFinishedEvent', 'assistant-finished', { agentName: 'Assistant' })
+      emit('AgentSelectedEvent', 'frontend-selected', { agentName: 'Frontend' })
+      emit('AgentRunningEvent', 'frontend-running', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      source.onerror!(new Event('error'))
+      for (const [type, id] of [
+        ['CaseStatusEvent', 'running-1'],
+        ['AgentRunningEvent', 'assistant-running'],
+        ['AgentFinishedEvent', 'assistant-finished'],
+        ['AgentSelectedEvent', 'frontend-selected'],
+        ['AgentRunningEvent', 'frontend-running'],
+      ] as const) {
+        emit(type, id, type === 'CaseStatusEvent' ? { status: 'RUNNING' } : {})
+      }
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      emit('AgentFinishedEvent', 'frontend-finished', { agentName: 'Frontend' })
+      expect(ref.instance['isRunning']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
+  it('drops the existence check of the previous case when the chat moves to another one', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+      readyState: 0,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      const probe = new Subject<unknown>()
+      http.get.mockReturnValueOnce(probe)
+      ref.instance['connectSse']()
+      source.readyState = 2
+      source.onerror!(new Event('error'))
+      expect(http.get).toHaveBeenCalledWith('/api/cases/c-1')
+
+      // The user opens another case before the answer about the first one comes back.
+      ref.instance['caseId'] = 'c-2'
+      ref.instance['reinitialise']()
+      probe.error(new HttpErrorResponse({ status: 404 }))
+
+      expect(ref.instance['caseGone']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      warn.mockRestore()
+    }
+  })
+
+  it('reports the stream as gone only once the browser gave up, never on a reconnect', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+      readyState: 0,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+
+      // CONNECTING: EventSource is retrying on its own, there is nothing to tell the user.
+      source.onerror!(new Event('error'))
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+
+      // CLOSED: the stream was refused — a deleted case answers 404 — and will not be retried.
+      source.readyState = 2
+      source.onerror!(new Event('error'))
+      expect(ref.instance['streamUnavailable']()).toBe(true)
+
+      // A dead stream alone may be a backend restarting: the case is probed, it answers, and the
+      // composer stays usable.
+      ref.instance['inputValue'].set('hello')
+      expect(http.get).toHaveBeenCalledWith('/api/cases/c-1')
+      expect(ref.instance['caseGone']()).toBe(false)
+      expect(ref.instance['canSend']).toBe(true)
+
+      // Deleting a case only marks it removed, and the case is still served: that flag is what
+      // says it is gone, and the composer closes — every way of posting, not only Send.
+      http.get.mockReturnValueOnce(of({ removed: true }))
+      source.onerror!(new Event('error'))
+      expect(ref.instance['caseGone']()).toBe(true)
+      expect(ref.instance['canSend']).toBe(false)
+      expect(ref.instance['canRecord']).toBe(false)
+      expect(ref.instance['composerClosed']()).toBe(true)
+      ref.instance['caseGone'].set(false)
+
+      // A case that answers 404 is out of reach for good: the composer closes as well.
+      http.get.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 404 })))
+      source.onerror!(new Event('error'))
+      expect(ref.instance['caseGone']()).toBe(true)
+      expect(ref.instance['canSend']).toBe(false)
+      ref.instance['caseGone'].set(false)
+
+      // Retry reopens the stream, since EventSource will not do it after CLOSED.
+      ref.instance['retryStream']()
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+      expect(globalThis.EventSource).toHaveBeenCalledTimes(2)
+      expect(ref.instance['canSend']).toBe(true)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
     }
   })
 
@@ -252,6 +502,144 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
       content: '[Files attached to the case exchange: alone.pdf]',
       userId: 'default-user',
+    })
+  })
+
+  describe('files added from the drawer', () => {
+    const ns = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.NAMESPACE, path })
+    const cs = (path: string) => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
+    /** What the drawer reports when a checkbox is clicked. */
+    const toggle = (ref: ComponentRef<CaseChatComponent>, file: ExchangeFileRef, referenced = true): void =>
+      ref.instance['onReferenceToggled']({ ref: file, referenced })
+    const add = (ref: ComponentRef<CaseChatComponent>, ...files: ExchangeFileRef[]): void =>
+      files.forEach((file) => toggle(ref, file))
+
+    it('adds a chip reference when a file is checked, once, and leaves the draft alone', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+
+      add(ref, ns('docs/readme.md'), cs('notes/todo.md'))
+      add(ref, ns('docs/readme.md'))
+
+      expect(ref.instance['referencedFiles']()).toEqual([ns('docs/readme.md'), cs('notes/todo.md')])
+      expect(ref.instance['inputValue']()).toBe('compare')
+    })
+
+    it('removes a reference when its chip is removed', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'), cs('a.md'))
+
+      ref.instance['removeReference'](ns('a.md'))
+
+      expect(ref.instance['referencedFiles']()).toEqual([cs('a.md')])
+    })
+
+    it('removes the chip reference when the file is unchecked in the drawer', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'), cs('a.md'))
+
+      toggle(ref, cs('a.md'), false)
+
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+    })
+
+    it('adds nothing on a terminal case, but still lets a file be removed', () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'))
+      ref.instance['_sseStatus'].set('KILLED')
+
+      add(ref, ns('b.md'))
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+
+      toggle(ref, ns('a.md'), false)
+      expect(ref.instance['referencedFiles']()).toEqual([])
+    })
+
+    it('can send with references only, and only then', () => {
+      const ref = makeComponent()
+      expect(ref.instance['canSend']).toBe(false)
+
+      add(ref, ns('a.md'))
+
+      expect(ref.instance['canSend']).toBe(true)
+    })
+
+    it('sends a references line after the text, uploads nothing, then clears them', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+      add(ref, ns('docs/readme.md'), cs('notes/todo.md'))
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: 'compare\n\n[Files referenced: namespace:docs/readme.md, case:notes/todo.md]',
+        userId: 'default-user',
+      })
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(ref.instance['referencedFiles']()).toEqual([])
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('sends the references alone when there is no text', async () => {
+      const ref = makeComponent()
+      add(ref, cs('a.md'))
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: '[Files referenced: case:a.md]',
+        userId: 'default-user',
+      })
+    })
+
+    it('combines the upload mention and the references line', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('compare')
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+      add(ref, ns('docs/readme.md'))
+
+      await ref.instance['submit']()
+
+      expect(calls).toEqual(['upload', 'post'])
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content:
+          'compare\n\n[Files attached to the case exchange: report.pdf]\n[Files referenced: namespace:docs/readme.md]',
+        userId: 'default-user',
+      })
+    })
+
+    it('keeps the references when the send fails, and sends them again on the retry', async () => {
+      const ref = makeComponent()
+      add(ref, ns('a.md'))
+      http.post.mockImplementationOnce(() => throwError(() => new Error('network down')))
+
+      await ref.instance['submit']()
+      expect(ref.instance['referencedFiles']()).toEqual([ns('a.md')])
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledTimes(2)
+      expect(ref.instance['referencedFiles']()).toEqual([])
+    })
+
+    it('drops the references on a case switch, like the staged files', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        add(ref, ns('a.md'))
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['referencedFiles']()).toEqual([])
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
     })
   })
 
@@ -694,12 +1082,34 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(item?.kind === 'question' && item.answer).toBe(fromA)
     })
 
-    it('labels the answer with the respondent name, falling back to You for an unnamed user', () => {
+    it('labels an answer You for the current user and by name for anyone else, falling back to You when unnamed', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-1' } as User)
       const ref = makeComponent()
-      const named = answer('a-1', 'u-1', 'blue')
-      const unnamed = { ...named, actor: { id: 'u-1', role: ActorRoleEnum.USER } }
-      expect(ref.instance['answerLabel'](named)).toBe('Someone')
+      const mine = {
+        ...answer('a-1', 'u-1', 'blue'),
+        actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'Me' },
+      }
+      const theirs = answer('a-2', 'u-2', 'red')
+      const unnamed = { ...theirs, actor: { id: 'u-2', role: ActorRoleEnum.USER } } as unknown as AnswerEvent
+
+      expect(ref.instance['answerLabel'](mine)).toBe('You')
+      expect(ref.instance['answerLabel'](theirs)).toBe('Someone')
       expect(ref.instance['answerLabel'](unnamed)).toBe('You')
+
+      // The labels follow the signal: before the user is loaded, nobody is 'You' by id.
+      userState.currentUser.set(null)
+      expect(ref.instance['answerLabel'](mine)).toBe('Me')
+    })
+
+    it('labels the message of a collaborator with their name, and your own with You', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-1' } as User)
+      const ref = makeComponent()
+
+      expect(ref.instance['actorLabel']({ id: 'u-1', role: ActorRoleEnum.USER, displayName: 'Me' })).toBe('You')
+      expect(ref.instance['actorLabel']({ id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' })).toBe('Bob')
+      expect(ref.instance['actorLabel']({ id: 'a-1', role: ActorRoleEnum.AGENT, displayName: 'Dev' })).toBe('Dev')
     })
 
     it('only treats an unanswered, non-OAuth question as pending (focus target)', () => {
@@ -939,6 +1349,14 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(http.post).not.toHaveBeenCalled()
     })
 
+    it('does not continue a case confirmed gone', () => {
+      const ref = makeComponent()
+      ref.instance['caseGone'].set(true)
+      ref.instance['continueAfterLimit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
     it('continues by sending a message, once, and not while the agent runs', () => {
       const ref = makeComponent()
       ref.instance['continueAfterLimit']()
@@ -1075,6 +1493,487 @@ describe('CaseChatComponent — submit with attachments', () => {
       }>
       expect(messages.map((m) => m.metrics?.cost)).toEqual([0.1, 0.25])
       expect(messages.map((m) => m.metrics?.cumulativeCost)).toEqual([0.1, 0.35])
+    })
+  })
+
+  /**
+   * Voice messages. The template is not rendered here (like the rest of this spec): the composer wiring is
+   * exercised through the real component-scoped VoiceRecorderService on a fake media port, and the timeline
+   * through the events the component ingests.
+   */
+  describe('voice messages', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const track = { stop: jest.fn() }
+    let voiceApi: { postVoiceMessage: jest.Mock; capabilityVoiceMessage: jest.Mock }
+    let recorder: {
+      state: string
+      ondataavailable: ((event: { data: Blob }) => void) | null
+      onstop: (() => void) | null
+      onerror: (() => void) | null
+      start: jest.Mock
+      stop: jest.Mock
+    }
+
+    const flush = async () => {
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+    }
+
+    beforeEach(() => {
+      track.stop.mockClear()
+      voiceApi = {
+        postVoiceMessage: jest.fn().mockReturnValue(of({ transcript: 'hello', path: 'voice-messages/v.webm' })),
+        capabilityVoiceMessage: jest.fn().mockReturnValue(of({ available: true })),
+      }
+      const media = {
+        isTypeSupported: () => true,
+        getUserMedia: () => Promise.resolve({ getTracks: () => [track] } as unknown as MediaStream),
+        createRecorder: () => {
+          const r = {
+            state: 'inactive',
+            ondataavailable: null as ((event: { data: Blob }) => void) | null,
+            onstop: null as (() => void) | null,
+            onerror: null as (() => void) | null,
+            start: jest.fn(() => {
+              r.state = 'recording'
+            }),
+            stop: jest.fn(() => {
+              r.state = 'inactive'
+              r.ondataavailable?.({ data: new Blob(['audio']) })
+              r.onstop?.()
+            }),
+          }
+          recorder = r
+          return r as unknown as MediaRecorder
+        },
+      }
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: VOICE_MEDIA_PORT, useValue: media },
+          { provide: VoiceMessageControllerService, useValue: voiceApi },
+        ],
+      })
+    })
+
+    describe('mic availability', () => {
+      it('is hidden until the capability endpoint says available: true', () => {
+        const capability = TestBed.inject(VoiceCapabilityStateService)
+        expect(capability.available()).toBe(false)
+
+        capability.load()
+
+        expect(capability.available()).toBe(true)
+      })
+
+      it('stays hidden when the capability is off or the call fails', () => {
+        voiceApi.capabilityVoiceMessage.mockReturnValue(of({ available: false }))
+        const capability = TestBed.inject(VoiceCapabilityStateService)
+        capability.load()
+        expect(capability.available()).toBe(false)
+      })
+
+      it('asks for the capability when the chat opens', () => {
+        const original = globalThis.EventSource
+        globalThis.EventSource = jest.fn(() =>
+          Object.assign(new EventTarget(), { close: jest.fn() })
+        ) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        const ref = makeComponent()
+        try {
+          ref.instance.ngOnInit()
+          expect(voiceApi.capabilityVoiceMessage).toHaveBeenCalledTimes(1)
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
+    })
+
+    describe('canRecord', () => {
+      it('is true on an idle, open case', () => {
+        expect(makeComponent().instance['canRecord']).toBe(true)
+      })
+
+      it('is false while the agent is running', () => {
+        const ref = makeComponent()
+        ref.instance['isRunning'].set(true)
+        expect(ref.instance['canRecord']).toBe(false)
+      })
+
+      it('is false on a terminal case', () => {
+        const ref = makeComponent()
+        ref.instance['_sseStatus'].set('KILLED')
+        expect(ref.instance['canRecord']).toBe(false)
+      })
+
+      it('is false while attachments upload or a submit is in flight', () => {
+        const ref = makeComponent()
+        attachments(ref).isUploading.set(true)
+        expect(ref.instance['canRecord']).toBe(false)
+        attachments(ref).isUploading.set(false)
+        ref.instance['submitting'] = true
+        expect(ref.instance['canRecord']).toBe(false)
+      })
+
+      it('is false while recording, and a recording also blocks send and file staging', async () => {
+        const ref = makeComponent()
+        ref.instance['inputValue'].set('typed text')
+        expect(ref.instance['canSend']).toBe(true)
+
+        ref.instance['startRecording']()
+        await flush()
+
+        expect(ref.instance['canRecord']).toBe(false)
+        expect(ref.instance['canSend']).toBe(false)
+        expect(ref.instance['canStageFiles']()).toBe(false)
+      })
+    })
+
+    describe('recording a voice message', () => {
+      it('posts the recording to the current case and marks the case running, like a normal send', async () => {
+        const ref = makeComponent()
+        ref.instance['startRecording']()
+        await flush()
+        expect(ref.instance['voice'].state()).toBe('recording')
+        expect(ref.instance['isRunning']()).toBe(false)
+
+        ref.instance['sendRecording']()
+        await flush()
+
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+        expect(voiceApi.postVoiceMessage.mock.calls[0]![0]).toBe('c-1')
+        expect(ref.instance['isRunning']()).toBe(true)
+        expect(ref.instance['voice'].state()).toBe('idle')
+        expect(track.stop).toHaveBeenCalled()
+      })
+
+      it('shows the case as running while the recording is uploaded and transcribed', async () => {
+        const ref = makeComponent()
+        ref.instance['streamingText'].set('stale')
+        ref.instance['startRecording']()
+        await flush()
+
+        let runningDuringPost = false
+        voiceApi.postVoiceMessage.mockImplementation(() => {
+          runningDuringPost = ref.instance['isRunning']()
+          return of({ transcript: 't', path: 'p' })
+        })
+        ref.instance['sendRecording']()
+        await flush()
+
+        expect(runningDuringPost).toBe(true)
+        expect(ref.instance['streamingText']()).toBe('')
+      })
+
+      it('puts the case back to idle and shows the error when the post fails, the composer otherwise untouched', async () => {
+        voiceApi.postVoiceMessage.mockReturnValue(throwError(() => ({ status: 422 })))
+        const ref = makeComponent()
+        ref.instance['inputValue'].set('draft')
+        ref.instance['startRecording']()
+        await flush()
+
+        ref.instance['sendRecording']()
+        await flush()
+
+        expect(ref.instance['isRunning']()).toBe(false)
+        expect(ref.instance['voice'].error()).toBe(VOICE_ERRORS.noSpeech)
+        expect(ref.instance['inputValue']()).toBe('draft')
+        expect(track.stop).toHaveBeenCalled()
+      })
+
+      it('cancelling discards the recording and does not post', async () => {
+        const ref = makeComponent()
+        ref.instance['startRecording']()
+        await flush()
+
+        ref.instance['cancelRecording']()
+
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(track.stop).toHaveBeenCalled()
+        expect(ref.instance['voice'].state()).toBe('idle')
+        expect(ref.instance['isRunning']()).toBe(false)
+      })
+
+      it('does not start while the composer is not usable', async () => {
+        const ref = makeComponent()
+        ref.instance['isRunning'].set(true)
+        ref.instance['startRecording']()
+        await flush()
+        expect(ref.instance['voice'].state()).toBe('idle')
+      })
+    })
+
+    describe('releasing the microphone', () => {
+      it('on a case switch (reinitialise)', async () => {
+        const original = globalThis.EventSource
+        globalThis.EventSource = jest.fn(() =>
+          Object.assign(new EventTarget(), { close: jest.fn() })
+        ) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        const ref = makeComponent()
+        try {
+          ref.instance['startRecording']()
+          await flush()
+          expect(track.stop).not.toHaveBeenCalled()
+
+          ref.instance['reinitialise']()
+
+          expect(track.stop).toHaveBeenCalled()
+          expect(ref.instance['voice'].state()).toBe('idle')
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
+
+      it('when the component is destroyed', async () => {
+        const ref = makeComponent()
+        ref.instance['startRecording']()
+        await flush()
+
+        ref.destroy()
+
+        expect(track.stop).toHaveBeenCalled()
+      })
+    })
+
+    describe('voice message in the timeline', () => {
+      const audio = { type: 'Audio', path: 'voice-messages/v.webm', mimeType: 'audio/webm', durationMs: 4_000 }
+      const userMessage = (id: string, content: unknown[]): CaseMessageEvent =>
+        ({
+          id,
+          type: 'MessageEvent',
+          caseId: 'c-1',
+          namespaceId: 'ns-1',
+          timestamp: '2026-01-01T10:00:00Z',
+          metadata,
+          actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'You' },
+          content,
+        }) as unknown as CaseMessageEvent
+
+      it('finds the Audio part of a voice message, and none on a text message', () => {
+        const ref = makeComponent()
+        const voice = userMessage('m-1', [audio, { type: 'Text', content: 'hello there' }])
+        const plain = userMessage('m-2', [{ type: 'Text', content: 'just text' }])
+
+        expect(ref.instance['audioOf'](voice)).toEqual(audio)
+        expect(ref.instance['audioOf'](plain)).toBeUndefined()
+      })
+
+      it('keeps the Audio part out of the text: the transcript is what is shown and copied', () => {
+        const ref = makeComponent()
+        const voice = userMessage('m-1', [audio, { type: 'Text', content: 'hello there' }])
+
+        expect(ref.instance['extractText'](voice)).toBe('hello there')
+        ref.instance['events'].set([voice])
+        const item = ref.instance['timeline']()[0]!
+        expect(item.kind).toBe('message')
+        expect(item.kind === 'message' && ref.instance['messageText'](item)).toBe('hello there')
+      })
+
+      it('renders the transcript of a voice message through the usual markdown path', () => {
+        const original = globalThis.EventSource
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        const ref = makeComponent()
+        try {
+          ref.instance['connectSse']()
+          const voice = userMessage('m-1', [audio, { type: 'Text', content: 'hello **there**' }])
+          source.dispatchEvent(new MessageEvent('MessageEvent', { data: JSON.stringify(voice) }))
+
+          expect(ref.instance['messageHtmlCache'].has('m-1')).toBe(true)
+          const item = ref.instance['timeline']()[0]!
+          expect(item.kind === 'message' && ref.instance['audioOf'](item.event)).toEqual(audio)
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
+
+      it('leaves a plain text message unchanged', () => {
+        const ref = makeComponent()
+        const plain = userMessage('m-2', [{ type: 'Text', content: 'just text' }])
+        ref.instance['events'].set([plain])
+
+        const item = ref.instance['timeline']()[0]!
+        expect(item.kind === 'message' && ref.instance['audioOf'](item.event)).toBeFalsy()
+        expect(item.kind === 'message' && ref.instance['messageText'](item)).toBe('just text')
+      })
+    })
+
+    describe('keys and action bar while recording', () => {
+      const keydown = (init: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { cancelable: true, ...init })
+      const shouldSend = () => TestBed.inject(USER_PREFERENCES_PORT).shouldSend as jest.Mock
+
+      async function recording(): Promise<ComponentRef<CaseChatComponent>> {
+        const ref = makeComponent()
+        ref.instance['startRecording']()
+        await flush()
+        expect(ref.instance['voice'].state()).toBe('recording')
+        return ref
+      }
+
+      it('the send button of the action bar sends the recording, not the typed text', async () => {
+        const ref = await recording()
+        const submit = jest.spyOn(ref.instance as never, 'submit')
+
+        expect(ref.instance['canSendNow']).toBe(true)
+        ref.instance['onSendClick']()
+        await flush()
+
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+        expect(submit).not.toHaveBeenCalled()
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('the cancel button of the action bar discards the recording', async () => {
+        const ref = await recording()
+
+        ref.instance['cancelRecording']()
+
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(track.stop).toHaveBeenCalled()
+        expect(ref.instance['voice'].state()).toBe('idle')
+      })
+
+      it('without a recording the send button sends the typed message, and only when there is one', async () => {
+        const ref = makeComponent()
+        expect(ref.instance['canSendNow']).toBe(false)
+
+        ref.instance['inputValue'].set('typed')
+        expect(ref.instance['canSendNow']).toBe(true)
+        ref.instance['onSendClick']()
+        await flush()
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'typed', userId: 'default-user' })
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+      })
+
+      it('Enter sends the recording when the preference says the key sends', async () => {
+        shouldSend().mockReturnValue(true)
+        const ref = await recording()
+        const event = keydown({ key: 'Enter' })
+
+        ref.instance['onRecordingKeydown'](event)
+        await flush()
+
+        expect(shouldSend()).toHaveBeenCalledWith(event)
+        expect(event.defaultPrevented).toBe(true)
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+      })
+
+      it('Enter does not send the recording when the preference says it is a new line (needs Ctrl/Cmd)', async () => {
+        shouldSend().mockReturnValue(false)
+        const ref = await recording()
+        const event = keydown({ key: 'Enter' })
+
+        ref.instance['onRecordingKeydown'](event)
+        await flush()
+
+        expect(event.defaultPrevented).toBe(false)
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(ref.instance['voice'].state()).toBe('recording')
+      })
+
+      it('Escape discards the recording', async () => {
+        const ref = await recording()
+        const event = keydown({ key: 'Escape' })
+
+        ref.instance['onRecordingKeydown'](event)
+
+        expect(event.defaultPrevented).toBe(true)
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(track.stop).toHaveBeenCalled()
+        expect(ref.instance['voice'].state()).toBe('idle')
+      })
+
+      it('a second Enter while the recording is being sent does nothing', async () => {
+        shouldSend().mockReturnValue(true)
+        let respond!: (v: unknown) => void
+        voiceApi.postVoiceMessage.mockReturnValue(
+          new Observable((subscriber) => {
+            respond = (v) => {
+              subscriber.next(v)
+              subscriber.complete()
+            }
+          })
+        )
+        const ref = await recording()
+
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter' }))
+        await flush()
+        expect(ref.instance['voice'].state()).toBe('sending')
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter' }))
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Escape' }))
+        await flush()
+
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+        expect(ref.instance['voice'].state()).toBe('sending')
+        respond({ transcript: 't', path: 'p' })
+        await flush()
+      })
+
+      it('a held-down Enter (key repeat) does not send twice, nor does the auto-send racing with it', async () => {
+        shouldSend().mockReturnValue(true)
+        const ref = await recording()
+
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter', repeat: true }))
+        await flush()
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+
+        // The length limit sends first, then the user's Enter arrives: nothing more is posted.
+        void ref.instance['voice'].stopAndSend()
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Enter' }))
+        await flush()
+
+        expect(voiceApi.postVoiceMessage).toHaveBeenCalledTimes(1)
+      })
+
+      it('keys do nothing when not recording: the textarea keeps its usual behaviour', () => {
+        shouldSend().mockReturnValue(true)
+        const ref = makeComponent()
+        const enter = keydown({ key: 'Enter' })
+
+        ref.instance['onRecordingKeydown'](enter)
+        ref.instance['onRecordingKeydown'](keydown({ key: 'Escape' }))
+
+        expect(enter.defaultPrevented).toBe(false)
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('the textarea Enter still sends the typed message (unchanged behaviour)', async () => {
+        shouldSend().mockReturnValue(true)
+        const ref = makeComponent()
+        ref.instance['inputValue'].set('typed')
+        const event = keydown({ key: 'Enter' })
+
+        ref.instance['onKeydown'](event)
+        await flush()
+
+        expect(event.defaultPrevented).toBe(true)
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'typed', userId: 'default-user' })
+        expect(voiceApi.postVoiceMessage).not.toHaveBeenCalled()
+      })
+
+      it('names the key of the recording hint after the Enter preference', () => {
+        const ref = makeComponent()
+        const preferences = TestBed.inject(USER_PREFERENCES_PORT) as unknown as {
+          enterKeyBehavior: WritableSignal<string>
+        }
+        expect(ref.instance['sendKeyLabel']).toBe('Enter')
+        preferences.enterKeyBehavior.set('newline')
+        expect(ref.instance['sendKeyLabel']).toBe('Ctrl/Cmd+Enter')
+      })
+    })
+
+    it('component-scoped: each chat gets its own recorder', () => {
+      const a = makeComponent()
+      const b = makeComponent()
+      expect(a.injector.get(VoiceRecorderService)).not.toBe(b.injector.get(VoiceRecorderService))
     })
   })
 })

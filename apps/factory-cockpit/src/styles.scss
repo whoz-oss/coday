@@ -1,148 +1,250 @@
 @use '@angular/material' as mat;
+// The AgentOS design tokens (Industry, Terminal, Whoz OSS, light + dark), scoped under the `agentos-shell` element, which
+// index.html wraps around <sf-root>. Single source of truth with the Coday client: nothing is copied here.
+@use 'apps/client/src/app/styles/colors';
+@use 'libs/design-system/src/styles' as ds;
+@use './styles/material' as sfmat;
 
-/* ───────────── Tokens Software Factory ───────────── */
-:root {
-  --sf-bg: #0a0d13;
-  --sf-chrome: #0d1118;
-  --sf-surface: #10141d;
-  --sf-surface-2: #151a25;
-  --sf-outline: #242b3b;
-  --sf-outline-strong: #2f3950;
-  --sf-outline-active: #33486e;
+/*
+ * Software Factory cockpit — global styles.
+ *
+ * Everything visual comes from agentos-ui: tokens (colors.scss, through <agentos-shell>), primitives (.btn, .input...:
+ * ds.agentos-primitives), `ds-*` components. What remains here is what the cockpit alone needs: the `--sf-*` bridge, the
+ * Material theme and its overrides, the `sf-*` utilities and the four button variants. Always var(--token), never a
+ * color of its own.
+ */
 
-  --sf-primary: #c4a1ff; /* IDs, action principale */
-  --sf-primary-deep: #a98cff;
-  --sf-on-primary: #1b1030;
-  --sf-secondary: #5fd4e0; /* workflows, agents, branches */
-  --sf-tertiary: #f0c75e; /* humain, vagues, demande */
+html {
+  color-scheme: light;
 
-  --sf-success: #4ade80;
-  --sf-running: #9dbaf9;
-  --sf-error: #ff4d4f;
-
-  --sf-text-primary: #e7eaf2;
-  --sf-text: #e7eaf2;
-  --sf-text-2: #c9cfdd;
-  --sf-text-muted: #9199ad;
-  --sf-text-faint: #7d859a;
-
-  --sf-font: 'Manrope', system-ui, sans-serif;
-  --sf-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --sf-radius: 16px;
+  &[data-theme='dark'],
+  &[data-theme$='-dark'] {
+    color-scheme: dark;
+  }
 }
 
-/* ───────────── Thème Angular Material (M3, v19+) ───────────── */
-html {
-  color-scheme: dark;
-  @include mat.theme(
-    (
-      color: (
-        primary: mat.$violet-palette,
-        tertiary: mat.$cyan-palette,
-        theme-type: dark,
-      ),
-      typography: (
-        plain-family: 'Manrope, system-ui, sans-serif',
-        brand-family: 'Manrope, system-ui, sans-serif',
-      ),
-      density: -1,
-    )
-  );
+* {
+  box-sizing: border-box;
+}
 
-  @include mat.toolbar-overrides(
-    (
-      container-background-color: var(--sf-chrome),
-    )
-  );
-  @include mat.sidenav-overrides(
-    (
-      container-background-color: var(--sf-chrome),
-      content-background-color: var(--sf-bg),
-      container-shape: 0,
-    )
-  );
-  @include mat.card-overrides(
-    (
-      outlined-container-color: var(--sf-surface),
-      outlined-outline-color: var(--sf-outline),
-      outlined-container-shape: var(--sf-radius),
-    )
-  );
-  @include mat.table-overrides(
-    (
-      background-color: var(--sf-surface),
-      header-headline-color: var(--sf-text-faint),
-      row-item-outline-color: #1a1f2c,
-    )
-  );
-  @include mat.paginator-overrides(
-    (
-      container-background-color: var(--sf-surface),
-    )
-  );
-  @include mat.expansion-overrides(
-    (
-      container-background-color: transparent,
-      header-text-weight: 700,
-    )
-  );
-  @include mat.form-field-overrides(
-    (
-      outlined-outline-color: var(--sf-outline-strong),
-      outlined-focus-outline-color: var(--sf-primary-deep),
-      outlined-focus-label-text-color: var(--sf-primary),
-    )
-  );
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
 }
 
 html,
 body {
   height: 100%;
 }
+
 body {
   margin: 0;
-  background: var(--sf-bg);
-  color: var(--sf-text);
-  font-family: var(--sf-font);
 }
 
-/* ───────────── Utilitaires ───────────── */
-.sf-mono {
-  font-family: var(--sf-mono);
-}
-.sf-muted {
-  color: var(--sf-text-muted);
-}
-.sf-id {
-  font-family: var(--sf-mono);
-  color: var(--sf-primary);
-  font-weight: 700;
-}
-.sf-workflow {
-  font-family: var(--sf-mono);
-  color: var(--sf-secondary);
-}
-.sf-overline {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--sf-text-muted);
-}
-.sf-panel {
-  background: var(--sf-surface);
-  border: 1px solid var(--sf-outline);
-  border-radius: var(--sf-radius);
-}
-.sf-spacer {
-  flex: 1 1 auto;
-}
-.sf-ellipsis {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+agentos-shell {
+  display: block;
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+
+  /* ─────────── --sf-* bridge ───────────
+   * TRANSITIONAL. The components of the cockpit were written against its own `--sf-*` palette. Each one is now an alias of
+   * a contract token (libs/agentos-ui/src/styles/_contract.scss), so the whole app follows the skin and the mode without
+   * a value of its own. New styles must use the contract tokens directly; migrate a component off `--sf-*`, then drop the
+   * alias once nothing reads it.
+   *
+   * Cards sit on --color-bg with a --color-divider border, like the cards of agentos-ui; "inset" areas inside a card use
+   * --color-surface-muted. The `*-text` tones exist because --color-success / --color-warning are fills: as text on a
+   * light page they are not readable, so the text tone is a darker mix (or a contract text token). */
+  --sf-bg: var(--color-bg);
+  --sf-chrome: var(--color-bg);
+  --sf-surface: var(--color-bg);
+  --sf-surface-2: var(--color-surface-muted);
+  --sf-outline: var(--color-divider);
+  --sf-outline-strong: var(--color-neutral-500);
+  --sf-outline-active: var(--color-accent);
+
+  --sf-primary: var(--color-accent);
+  --sf-primary-deep: var(--color-accent-700);
+  --sf-on-primary: var(--color-text-on-accent);
+  --sf-secondary: color-mix(in srgb, var(--color-info) 50%, var(--color-text));
+  --sf-tertiary: var(--color-warning);
+
+  --sf-success: var(--color-success);
+  --sf-running: var(--color-accent);
+  --sf-error: var(--color-error);
+
+  --sf-success-text: color-mix(in srgb, var(--color-success) 70%, var(--color-text));
+  --sf-warning-text: var(--status-pending-text);
+  --sf-error-text: var(--red-deep);
+
+  --sf-text-primary: var(--color-text);
+  --sf-text: var(--color-text);
+  --sf-text-2: var(--color-text-secondary);
+  --sf-text-muted: var(--color-text-secondary);
+  --sf-text-faint: var(--color-text-tertiary);
+
+  --sf-font: var(--font-body);
+  --sf-mono: var(--font-heading);
+  --sf-radius: var(--radius-md, 0);
+
+  /* ─────────── Angular Material (M3), like apps/client ───────────
+   * Emitted here and not on <html>: the font families are var(--font-*), defined by the skin on this element. The color
+   * scheme (light-dark()) is the one of <html>, see above. */
+  @include mat.theme(
+    (
+      color: mat.$azure-palette,
+      typography: (
+        plain-family: 'var(--font-body), system-ui, sans-serif',
+        brand-family: 'var(--font-heading), system-ui, sans-serif',
+      ),
+      density: -1,
+    )
+  );
+  @include sfmat.overrides;
+
+  /* .btn, .btn-primary, .btn-icon, .input, .tag, .tag-neutral, .blueprint-corner (+ Terminal / Whoz OSS rules) */
+  @include ds.agentos-primitives;
+
+  /* Remove inline baseline spacing without changing Material labels or arrow positioning. */
+  .mat-mdc-form-field.mat-form-field-appearance-outline .mat-mdc-select {
+    display: block;
+
+    .mat-mdc-select-trigger {
+      display: flex;
+    }
+  }
+
+  /* ─────────── Utilitaires ─────────── */
+  .sf-mono {
+    font-family: var(--sf-mono);
+  }
+  .sf-muted {
+    color: var(--sf-text-muted);
+  }
+  .sf-id {
+    font-family: var(--sf-mono);
+    color: var(--sf-primary-deep);
+    font-weight: 700;
+  }
+  .sf-workflow {
+    font-family: var(--sf-mono);
+    color: var(--sf-secondary);
+  }
+  .sf-overline {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--sf-text-muted);
+  }
+  /* Card: page background, divider border, radius of the skin (ds.surface-card, without its hover and clipping). */
+  .sf-panel {
+    background: var(--color-bg);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
+  }
+  .sf-spacer {
+    flex: 1 1 auto;
+  }
+  .sf-ellipsis {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  /* Banners (launch, admin, workflows): a tone, a tinted background, a border of the same tone. */
+  .banner {
+    --tone: var(--color-neutral-500);
+    --tone-text: var(--color-text);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md, 0);
+    border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+    border-left-width: 3px;
+    background: color-mix(in srgb, var(--tone) 12%, transparent);
+    color: var(--tone-text);
+    font-size: 13.5px;
+    font-weight: 600;
+
+    mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+    }
+  }
+  .banner--success {
+    --tone: var(--color-success);
+    --tone-text: var(--sf-success-text);
+  }
+  .banner--error {
+    --tone: var(--color-error);
+    --tone-text: var(--sf-error-text);
+  }
+  .banner--warn {
+    --tone: var(--color-warning);
+    --tone-text: var(--sf-warning-text);
+  }
+
+  /* ─────────── Boutons ───────────
+   * The box and the default tones come from the Material overrides (_material.scss), which mirror `.btn-primary` of
+   * agentos-ui. Primary: accent, accent-700 on hover. Secondary: transparent with a divider border. Danger: the
+   * `--red` tokens. Ghost: secondary text. */
+  .mat-mdc-unelevated-button.sf-primary:not(:disabled):hover {
+    --mat-button-filled-container-color: var(--color-accent-700);
+  }
+
+  .mat-mdc-outlined-button.sf-secondary {
+    background: transparent;
+  }
+
+  .mat-mdc-outlined-button.sf-danger {
+    --mat-button-outlined-label-text-color: var(--red);
+    --mat-button-outlined-outline-color: var(--red);
+    --mat-button-outlined-state-layer-color: var(--red);
+
+    &:not(:disabled):hover {
+      --mat-button-outlined-label-text-color: var(--red-deep);
+      --mat-button-outlined-outline-color: var(--red-deep);
+    }
+  }
+
+  /* The confirm button of a destructive dialog is a filled `sf-danger`. */
+  .mat-mdc-unelevated-button.sf-danger {
+    --mat-button-filled-container-color: var(--red);
+    --mat-button-filled-label-text-color: var(--color-text-on-accent);
+    --mat-button-filled-state-layer-color: var(--color-text-on-accent);
+
+    &:not(:disabled):hover {
+      --mat-button-filled-container-color: var(--red-deep);
+    }
+  }
+
+  .mat-mdc-button.sf-ghost {
+    --mat-button-text-label-text-color: var(--color-text-secondary);
+  }
+
+  /* ─────────── Overlays (they live in this element, see core/shell-overlay-container.ts) ─────────── */
+  .mat-mdc-dialog-surface {
+    border: 1px solid var(--color-modal-border);
+  }
+  .mat-mdc-menu-panel,
+  .mat-mdc-select-panel {
+    border: 1px solid var(--color-divider);
+  }
+  .cdk-overlay-backdrop.cdk-overlay-backdrop-showing {
+    background: var(--color-overlay);
+  }
 }
 
 @keyframes sf-spin {
@@ -154,33 +256,31 @@ body {
   animation: sf-spin 1s linear infinite;
 }
 
-/* ───────────── Boutons ───────────── */
-.mat-mdc-unelevated-button.sf-primary {
-  background: linear-gradient(135deg, #d4b8ff, var(--sf-primary-deep));
-  color: var(--sf-on-primary);
-  font-weight: 800;
-  border-radius: 10px;
-}
-.mat-mdc-outlined-button.sf-secondary {
-  background: #141926;
-  border-color: var(--sf-outline-strong);
-  color: var(--sf-text);
-  border-radius: 10px;
-}
-.mat-mdc-outlined-button.sf-danger {
-  border-color: #6b2a2e;
-  color: #f58f8f;
-  border-radius: 10px;
-  font-weight: 700;
-}
-.mat-mdc-button.sf-ghost {
-  color: var(--sf-text-2);
-  border-radius: 10px;
+/* CRT scanlines overlay, terminal dark only, like the Coday client. */
+:is([data-theme='terminal-dark']) agentos-shell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.025) 3px,
+    rgba(255, 255, 255, 0.025) 6px
+  );
 }
 
-/* ───────────── Icônes Material Symbols ───────────── */
+/* Material Symbols icons */
 .material-symbols-outlined {
   font-variation-settings:
     'wght' 400,
     'opsz' 20;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-spin {
+    animation: none;
+  }
 }

@@ -1,0 +1,277 @@
+@use '@angular/material' as mat;
+
+/*
+ * Angular Material overrides of the factory cockpit, mapped on the AgentOS contract tokens (colors.scss) so that Material
+ * components look like agentos-ui: page / card background, divider borders, accent for the selected / focused state,
+ * text tokens, radii from the skin.
+ *
+ * Included once, INSIDE `agentos-shell` (styles.scss): the tokens only exist there, and the CDK overlays (dialogs, select
+ * panels, menus, tooltips) are hosted in that element too (core/shell-overlay-container.ts), so they inherit these
+ * overrides. Token names are the ones of Angular Material 22 (`--mat-<component>-<name>`), written here without prefix.
+ */
+@mixin overrides {
+  @include mat.toolbar-overrides(
+    (
+      container-background-color: var(--color-bg),
+      container-text-color: var(--color-text),
+    )
+  );
+
+  @include mat.sidenav-overrides(
+    (
+      container-background-color: var(--color-bg),
+      container-text-color: var(--color-text),
+      content-background-color: var(--color-bg),
+      content-text-color: var(--color-text),
+      container-shape: 0,
+      scrim-color: var(--color-overlay),
+    )
+  );
+
+  @include mat.card-overrides(
+    (
+      outlined-container-color: var(--color-bg),
+      outlined-outline-color: var(--color-divider),
+      outlined-container-shape: var(--radius-md, 0),
+      subtitle-text-color: var(--color-text-secondary),
+    )
+  );
+
+  @include mat.table-overrides(
+    (
+      background-color: var(--color-bg),
+      header-headline-color: var(--color-text-tertiary),
+      row-item-label-text-color: var(--color-text),
+      row-item-outline-color: var(--color-divider),
+    )
+  );
+
+  @include mat.paginator-overrides(
+    (
+      container-background-color: var(--color-bg),
+      container-text-color: var(--color-text),
+      enabled-icon-color: var(--color-text-secondary),
+      disabled-icon-color: color-mix(in srgb, var(--color-text) 38%, transparent),
+    )
+  );
+
+  @include mat.expansion-overrides(
+    (
+      container-background-color: transparent,
+      container-text-color: var(--color-text),
+      container-shape: var(--radius-md, 0),
+      container-elevation-shadow: none,
+      header-text-color: var(--color-text),
+      header-text-weight: 600,
+      header-description-color: var(--color-text-secondary),
+      header-indicator-color: var(--color-text-secondary),
+      header-hover-state-layer-color: var(--color-bg-hover),
+      header-focus-state-layer-color: var(--color-bg-hover),
+    )
+  );
+
+  @include mat.form-field-overrides(
+    (
+      outlined-container-shape: var(--radius-md, 0),
+      outlined-outline-color: var(--color-divider),
+      outlined-hover-outline-color: var(--color-neutral-500),
+      outlined-focus-outline-color: var(--color-accent),
+      outlined-label-text-color: var(--color-text-secondary),
+      outlined-hover-label-text-color: var(--color-text),
+      outlined-focus-label-text-color: var(--color-accent-700),
+      outlined-input-text-color: var(--color-text),
+      outlined-input-text-placeholder-color: var(--color-neutral-500),
+      outlined-caret-color: var(--color-accent),
+      outlined-error-outline-color: var(--color-error),
+      outlined-error-hover-outline-color: var(--color-error),
+      outlined-error-focus-outline-color: var(--color-error),
+      outlined-error-label-text-color: var(--color-error),
+      outlined-error-focus-label-text-color: var(--color-error),
+      outlined-error-caret-color: var(--color-error),
+      error-text-color: var(--color-error),
+      enabled-select-arrow-color: var(--color-text-secondary),
+      focus-select-arrow-color: var(--color-accent),
+    )
+  );
+
+  @include mat.select-overrides(
+    (
+      panel-background-color: var(--color-surface),
+      enabled-trigger-text-color: var(--color-text),
+      placeholder-text-color: var(--color-neutral-500),
+      enabled-arrow-color: var(--color-text-secondary),
+      focused-arrow-color: var(--color-accent),
+      container-elevation-shadow: var(--shadow-lg),
+    )
+  );
+
+  @include mat.option-overrides(
+    (
+      label-text-color: var(--color-text),
+      selected-state-label-text-color: var(--color-accent-800),
+      selected-state-layer-color: var(--color-accent-100),
+      hover-state-layer-color: var(--color-bg-hover),
+      focus-state-layer-color: var(--color-bg-hover),
+    )
+  );
+
+  @include mat.menu-overrides(
+    (
+      container-color: var(--color-surface),
+      container-shape: var(--radius-md, 0),
+      container-elevation-shadow: var(--shadow-lg),
+      divider-color: var(--color-divider),
+      item-label-text-color: var(--color-text),
+      item-icon-color: var(--color-text-secondary),
+      item-hover-state-layer-color: var(--color-bg-hover),
+      item-focus-state-layer-color: var(--color-bg-hover),
+    )
+  );
+
+  @include mat.dialog-overrides(
+    (
+      container-color: var(--color-modal-bg),
+      container-shape: var(--radius-lg, 0),
+      container-elevation-shadow: var(--color-modal-shadow),
+      subhead-color: var(--color-text),
+      subhead-font: var(--font-heading),
+      subhead-size: 1.125rem,
+      subhead-weight: 600,
+      supporting-text-color: var(--color-text),
+    )
+  );
+
+  /* Inverse surface: dark on a light page, light on a dark one. */
+  @include mat.tooltip-overrides(
+    (
+      container-color: var(--color-neutral-900),
+      container-shape: var(--radius-sm, 0),
+      supporting-text-color: var(--color-bg),
+    )
+  );
+
+  @include mat.slide-toggle-overrides(
+    (
+      track-shape: var(--radius-pill, 0),
+      handle-shape: var(--radius-pill, 0),
+      label-text-color: var(--color-text),
+      track-outline-color: var(--color-neutral-500),
+      selected-track-color: var(--color-accent),
+      selected-hover-track-color: var(--color-accent),
+      selected-focus-track-color: var(--color-accent),
+      selected-pressed-track-color: var(--color-accent),
+      selected-handle-color: var(--color-text-on-accent),
+      selected-hover-handle-color: var(--color-text-on-accent),
+      selected-focus-handle-color: var(--color-text-on-accent),
+      selected-pressed-handle-color: var(--color-text-on-accent),
+      selected-hover-state-layer-color: var(--color-accent),
+      selected-focus-state-layer-color: var(--color-accent),
+      selected-pressed-state-layer-color: var(--color-accent),
+      unselected-track-color: var(--color-surface-muted),
+      unselected-hover-track-color: var(--color-surface-muted),
+      unselected-focus-track-color: var(--color-surface-muted),
+      unselected-pressed-track-color: var(--color-surface-muted),
+      unselected-handle-color: var(--color-neutral-500),
+      unselected-hover-handle-color: var(--color-neutral-600),
+      unselected-focus-handle-color: var(--color-neutral-600),
+      unselected-pressed-handle-color: var(--color-neutral-600),
+    )
+  );
+
+  @include mat.checkbox-overrides(
+    (
+      label-text-color: var(--color-text),
+      selected-icon-color: var(--color-accent),
+      selected-hover-icon-color: var(--color-accent),
+      selected-focus-icon-color: var(--color-accent),
+      selected-pressed-icon-color: var(--color-accent),
+      selected-checkmark-color: var(--color-text-on-accent),
+      selected-hover-state-layer-color: var(--color-accent),
+      selected-focus-state-layer-color: var(--color-accent),
+      unselected-icon-color: var(--color-neutral-500),
+      unselected-hover-icon-color: var(--color-text),
+      unselected-focus-icon-color: var(--color-text),
+    )
+  );
+
+  @include mat.chips-overrides(
+    (
+      container-shape-radius: var(--radius-pill, 0),
+      outline-color: var(--color-divider),
+      label-text-color: var(--color-text),
+      hover-state-layer-color: var(--color-text),
+      focus-state-layer-color: var(--color-text),
+      with-icon-icon-color: var(--color-text-secondary),
+      elevated-selected-container-color: var(--color-accent-100),
+      selected-label-text-color: var(--color-accent-800),
+      selected-hover-state-layer-color: var(--color-accent-800),
+      selected-focus-state-layer-color: var(--color-accent-800),
+      selected-trailing-icon-color: var(--color-accent-800),
+      with-icon-selected-icon-color: var(--color-accent-800),
+    )
+  );
+
+  @include mat.button-toggle-overrides(
+    (
+      shape: var(--radius-md, 0),
+      background-color: transparent,
+      text-color: var(--color-text),
+      state-layer-color: var(--color-text),
+      divider-color: var(--color-divider),
+      selected-state-background-color: var(--color-accent-100),
+      selected-state-text-color: var(--color-accent-800),
+    )
+  );
+
+  @include mat.icon-button-overrides(
+    (
+      container-shape: var(--radius-sm, 0),
+      icon-color: var(--color-text-secondary),
+      state-layer-color: var(--color-text),
+    )
+  );
+
+  @include mat.progress-spinner-overrides(
+    (
+      active-indicator-color: var(--color-accent),
+    )
+  );
+
+  /*
+   * Buttons: the box of `.btn-primary` of agentos-ui (34px, heading font 600, pill radius, accent). The four
+   * `sf-*` variants (styles.scss) only change the tones.
+   */
+  @include mat.button-overrides(
+    (
+      filled-container-color: var(--color-accent),
+      filled-label-text-color: var(--color-text-on-accent),
+      filled-state-layer-color: var(--color-text-on-accent),
+      filled-container-shape: var(--radius-pill, 0),
+      filled-container-height: 34px,
+      filled-horizontal-padding: 14px,
+      filled-label-text-font: var(--font-heading),
+      filled-label-text-size: 15px,
+      filled-label-text-weight: 600,
+      filled-label-text-tracking: 0.04em,
+      outlined-label-text-color: var(--color-text),
+      outlined-outline-color: var(--color-divider),
+      outlined-state-layer-color: var(--color-text),
+      outlined-container-shape: var(--radius-pill, 0),
+      outlined-container-height: 34px,
+      outlined-horizontal-padding: 14px,
+      outlined-label-text-font: var(--font-heading),
+      outlined-label-text-size: 15px,
+      outlined-label-text-weight: 600,
+      outlined-label-text-tracking: 0.04em,
+      text-label-text-color: var(--color-text),
+      text-state-layer-color: var(--color-text),
+      text-container-shape: var(--radius-pill, 0),
+      text-container-height: 34px,
+      text-horizontal-padding: 14px,
+      text-label-text-font: var(--font-heading),
+      text-label-text-size: 15px,
+      text-label-text-weight: 600,
+      text-label-text-tracking: 0.04em,
+    )
+  );
+}

@@ -36,25 +36,24 @@
   <form class="sf-panel launch-form" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
     <mat-form-field appearance="outline" class="field">
       <mat-label>Workflow definition</mat-label>
-      @if (workflowTypes().length > 0) {
-        <mat-select formControlName="workflowType" data-launch-workflow-type="true">
-          @for (type of workflowTypes(); track type) {
-            <mat-option [value]="type">{{ type }}</mat-option>
-          }
-        </mat-select>
-      } @else {
-        <input
-          matInput
-          class="sf-mono"
-          formControlName="workflowType"
-          placeholder="adw_simple_sdlc"
-          data-launch-workflow-type="true"
-        />
-      }
-      @if (form.controls.workflowType.hasError('required')) {
+      <mat-select formControlName="definitionKey" data-launch-workflow-type="true">
+        @for (definition of definitions(); track definitionKey(definition)) {
+          <mat-option [value]="definitionKey(definition)"
+            >{{ definition.workflowType }}&#64;{{ definition.version }} ·
+            {{ definition.definitionHash?.slice(0, 12) }}</mat-option
+          >
+        }
+      </mat-select>
+      @if (form.controls.definitionKey.hasError('required')) {
         <mat-error>Workflow definition is required.</mat-error>
       }
-      <mat-hint>{{ definitionsLoading() ? 'Loading definitions…' : 'workflowType' }}</mat-hint>
+      <mat-hint>{{
+        definitionsLoading()
+          ? 'Loading definitions…'
+          : definitions().length
+            ? 'Choose an exact version. No automatic latest selection.'
+            : 'No workflow version is available.'
+      }}</mat-hint>
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field">
@@ -117,13 +116,22 @@
         mat-flat-button
         class="sf-primary"
         type="submit"
-        [disabled]="submitting() || launchTargetsLoading() || !!launchTargetsError() || namespaces().length === 0"
+        [disabled]="
+          submitting() ||
+          definitionsLoading() ||
+          !!definitionsError() ||
+          definitions().length === 0 ||
+          form.invalid ||
+          launchTargetsLoading() ||
+          !!launchTargetsError() ||
+          namespaces().length === 0
+        "
         data-launch-submit="true"
       >
         <mat-icon>{{ submitting() ? 'hourglass_top' : 'play_arrow' }}</mat-icon>
         {{ submitting() ? 'Launching…' : 'Launch run' }}
       </button>
-      <a mat-stroked-button class="sf-secondary" routerLink="/sandboxes">Cancel</a>
+      <a mat-stroked-button class="sf-secondary" routerLink="/workstreams">Cancel</a>
     </div>
   </form>
 </div>

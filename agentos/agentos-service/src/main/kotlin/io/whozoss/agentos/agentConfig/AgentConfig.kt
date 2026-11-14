@@ -68,7 +68,7 @@ data class AgentConfig(
      * only, an **empty list is an explicit opt-out** rather than an empty allow-list, and an
      * **absent key does not mean "never granted"**: the platform defaults
      * `agentos.exchange.tools.case-enabled-by-default` and
-     * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
+     * `...namespace-enabled-by-default` (both on by default) decide for an agent that stays silent.
      * The namespace key is further gated at run time: whatever this map says, the scope is only
      * granted when the invoking user holds Namespace READ.
      */

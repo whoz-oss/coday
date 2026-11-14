@@ -1004,7 +1004,6 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
             ),
             "open-wf-p12-humangate",
         )
-        @Suppress("UNCHECKED_CAST")
         val interaction = (opened.data as Map<String, Any?>)["interaction"] as Map<String, Any?>
         val persisted = interactions.find(scope, gateNamespace, "wf-p12-humangate", interaction["interactionId"] as String)!!
         assertThat(persisted.status).isEqualTo("waiting")

@@ -57,6 +57,12 @@ interface DisplayField {
 /** An agent's `integrations` entry: null grants every tool of the integration, a list only those. */
 const INTEGRATIONS_PATH_PREFIX = '/integrations/'
 
+/** What the card calls each kind of entity; the enum name lower-cased reads badly for the AI ones. */
+const KIND_LABELS: Record<string, string> = {
+  AI_PROVIDER: 'AI provider',
+  AI_MODEL: 'AI model',
+}
+
 /** A secret the user must type before applying, with the step it belongs to. */
 interface PendingSecret {
   op: ConfigOperationViewDto
@@ -211,10 +217,11 @@ export class ConfigChangeCardComponent implements OnInit {
       })
   }
 
-  /** e.g. `Create auth setting`. */
+  /** e.g. `Create auth setting`, `Update AI provider`. */
   protected actionLabel(op: ConfigOperationViewDto): string {
-    const label = `${op.action} ${op.kind.replace('_', ' ')}`.toLowerCase()
-    return label.charAt(0).toUpperCase() + label.slice(1)
+    const kind = KIND_LABELS[op.kind] ?? op.kind.replace('_', ' ').toLowerCase()
+    const text = `${op.action.toLowerCase()} ${kind}`
+    return text.charAt(0).toUpperCase() + text.slice(1)
   }
 
   protected scopeLabel(op: ConfigOperationViewDto): string {

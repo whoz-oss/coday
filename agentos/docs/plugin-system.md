@@ -155,17 +155,55 @@ The `Credential.data` keys are the ones documented on the SDK `Credential` class
 `password` for `BASIC_AUTH`, and `accessToken` / `refreshToken` / `expiresAt` / `tokenType` / `scope`
 for `OAUTH_TOKENS`.
 
+### Using the credential in BASH commands
+
+The `BASH` plugin hands the credential to its commands as an environment variable **named after the Auth
+Setting**, never as text in the command (which is logged and may be echoed). Bind an Auth Setting to the
+integration (`authSettingName`) and every command can reference the secret of the user running the case. With
+`authSettingName: GITHUB_TOKEN`:
+
+```bash
+curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user
+```
+
+| Variable | Value |
+|---|---|
+| `<NAME>` | the secret: OAuth access token, bearer token, API key, or for `BASIC_AUTH` the password |
+| `<NAME>_USERNAME` | the username, `BASIC_AUTH` only |
+
+`<NAME>` is `ToolContext.authSettingName`, which the service sets together with the credential provider. It
+must be a valid environment variable name (`^[A-Za-z_][A-Za-z0-9_]*$`: letters, digits and underscores, not
+starting with a digit) and must not be one that changes how the shell or the process behaves: `PATH`, `HOME`,
+`USER`, `SHELL`, `PWD`, `OLDPWD`, `IFS`, `ENV`, `BASH_ENV`, `BASHOPTS`, `SHELLOPTS`, `CDPATH`, `PS4`,
+`PROMPT_COMMAND`, `TMPDIR`, `LANG`, `TERM`, or anything starting with `LD_`, `DYLD_` or `BASH_FUNC_` (compared
+case-sensitively). The name is checked before the provider is called, so a name that is invalid, reserved or
+missing answers `AUTH_MISSING` without asking the user to authorize, and the command is not run: rename the
+Auth Setting.
+
+The provider is not called when the tools are built (an OAuth setting may ask the user to authorize): it is
+called by the first command of the run, once, and the outcome is kept for the rest of the run. If the
+bound setting yields no usable credential the command is **not run** and the tool answers `AUTH_MISSING`.
+With no Auth Setting bound (or a run without a user) nothing is injected and commands behave as before.
+Secret values are masked as `***` in the output returned to the LLM, on a best-effort basis only: a command
+can still encode the value, so do not bind a secret to a BASH integration whose commands must not be able
+to read it. Like the other plugins, this works per user only for settings where each user holds their own
+credential.
+
+BASH integrations can only be created at platform or namespace-shared scope (`BASH` is in
+`agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
+to their own commands.
+
 ### User-scope denial for network-reaching types
 
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is
 deep-merged over it and inherits its `authSettingName`. For types whose parameters name a network
 endpoint or a command, that overlay would let any authenticated user point a shared credential at a
-host they control, so those types are refused in both user scopes at the API edge (`POST` -> 403,
+host they control (or, for `BASH`, run a command that reads it), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 
 ## Tool Registration
 

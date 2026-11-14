@@ -3,6 +3,7 @@
     <agentos-exchange-content-viewer
       [file]="ref"
       [content]="selectedContent()"
+      [imageUrl]="imageUrl()"
       [status]="contentStatus()"
       [canView]="canViewSelected()"
       (closeRequested)="onViewerClose()"
@@ -127,6 +128,9 @@
                     [scope]="CASE"
                     [canWrite]="canWriteCase()"
                     [activeFile]="activeFile()"
+                    [selectable]="selectable()"
+                    [selectedPaths]="referencedCasePaths()"
+                    (selectionToggled)="toggleReference($event)"
                     (fileSelected)="onFileSelected($event)"
                     (diffRequested)="openFileDiff($event)"
                     (downloadRequested)="downloadRequested.emit($event)"
@@ -188,60 +192,151 @@
                 </div>
               }
               @default {
-                @if (namespaceBreadcrumb().length > 0 || namespaceFolders().length > 0) {
-                  <agentos-exchange-folder-nav
-                    [breadcrumb]="namespaceBreadcrumb()"
-                    (navigated)="onFolderOpen(NAMESPACE, $event)"
-                  />
-                }
-
-                @if (namespaceFolders().length > 0) {
-                  <ul class="exchange-drawer__folders" role="list">
-                    @for (folder of namespaceFolders(); track folder.path) {
-                      <li role="listitem">
-                        <button
-                          type="button"
-                          class="exchange-drawer__folder"
-                          (click)="onFolderOpen(NAMESPACE, folder.path)"
-                        >
-                          <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
-                            >folder_open</span
-                          >
-                          <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
-                          <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
-                            >chevron_right</span
-                          >
-                        </button>
-                      </li>
+                @if (showNamespaceFilter()) {
+                  <div class="exchange-drawer__filter">
+                    <span class="exchange-drawer__filter-icon material-icons" aria-hidden="true">search</span>
+                    <input
+                      class="exchange-drawer__filter-input"
+                      type="search"
+                      placeholder="Filter files…"
+                      aria-label="Filter namespace files by name or path"
+                      autocomplete="off"
+                      [value]="filterInput()"
+                      (input)="onFilterInput($event)"
+                      (keydown)="onFilterKeydown($event)"
+                    />
+                    @if (filterInput() !== '') {
+                      <button
+                        type="button"
+                        class="exchange-drawer__filter-clear"
+                        title="Clear filter"
+                        aria-label="Clear filter"
+                        (click)="clearFilter()"
+                      >
+                        <span class="material-icons" aria-hidden="true">close</span>
+                      </button>
                     }
-                  </ul>
+                  </div>
                 }
 
-                @if (namespaceFiles().length === 0 && namespaceFolders().length === 0) {
-                  <ds-empty-state
-                    icon="folder_shared"
-                    title="No namespace files"
-                    [hint]="canWriteNamespace() ? 'Upload a file to share it across this namespace.' : undefined"
-                  />
+                @if (filterActive()) {
+                  @switch (namespaceManifestStatus()) {
+                    @case ('error') {
+                      <div class="exchange-drawer__error" role="alert">
+                        <span>Couldn't search namespace files.</span>
+                        <button type="button" class="exchange-drawer__retry" (click)="namespaceFilterRetry.emit()">
+                          Retry
+                        </button>
+                      </div>
+                    }
+                    @case ('ready') {
+                      @if (filteredRows().length === 0) {
+                        <ds-empty-state icon="search_off" [title]="noMatchTitle()" />
+                      } @else {
+                        <ul class="exchange-drawer__tree" role="list">
+                          @for (node of filteredRows(); track node.kind + ':' + node.path) {
+                            <li role="listitem" [style.padding-left.rem]="node.depth * 0.875">
+                              @if (node.kind === 'folder') {
+                                <button
+                                  type="button"
+                                  class="exchange-drawer__folder"
+                                  [title]="'Open ' + node.path"
+                                  (click)="onFilteredFolderOpen(node.path)"
+                                >
+                                  <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
+                                    >folder_open</span
+                                  >
+                                  <span class="exchange-drawer__folder-name">{{ node.name }}</span>
+                                  <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
+                                    >chevron_right</span
+                                  >
+                                </button>
+                              } @else if (node.row; as row) {
+                                <agentos-exchange-item
+                                  [row]="row"
+                                  [active]="isNamespaceFileActive(row.path)"
+                                  [canWrite]="canWriteNamespace()"
+                                  [selectable]="selectable()"
+                                  [selected]="referencedNamespacePaths().has(row.path)"
+                                  (selectionToggled)="toggleReference({ scope: NAMESPACE, path: row.path })"
+                                  (viewRequested)="onFileSelected({ scope: NAMESPACE, path: row.path })"
+                                  (downloadRequested)="downloadRequested.emit({ scope: NAMESPACE, path: row.path })"
+                                  (deleteRequested)="deleteRequested.emit({ scope: NAMESPACE, path: row.path })"
+                                />
+                              }
+                            </li>
+                          }
+                        </ul>
+                        @if (filteredTruncated()) {
+                          <p class="exchange-drawer__more">Showing first {{ maxFilterMatches }} matches</p>
+                        }
+                      }
+                    }
+                    @default {
+                      <div class="exchange-drawer__center">
+                        <ds-spinner size="md" label="Searching namespace files" />
+                      </div>
+                    }
+                  }
                 } @else {
-                  <agentos-exchange-file-list
-                    [rows]="namespaceRows()"
-                    [scope]="NAMESPACE"
-                    [canWrite]="canWriteNamespace()"
-                    [activeFile]="activeFile()"
-                    (fileSelected)="onFileSelected($event)"
-                    (downloadRequested)="downloadRequested.emit($event)"
-                    (deleteRequested)="deleteRequested.emit($event)"
-                  />
-                  @if (namespaceHasMore()) {
-                    <button
-                      type="button"
-                      class="exchange-drawer__retry"
-                      [disabled]="namespaceLoadingMore()"
-                      (click)="loadMoreRequested.emit(NAMESPACE)"
-                    >
-                      {{ namespaceLoadingMore() ? 'Loading…' : 'Load more files' }}
-                    </button>
+                  @if (namespaceBreadcrumb().length > 0 || namespaceFolders().length > 0) {
+                    <agentos-exchange-folder-nav
+                      [breadcrumb]="namespaceBreadcrumb()"
+                      (navigated)="onFolderOpen(NAMESPACE, $event)"
+                    />
+                  }
+
+                  @if (namespaceFolders().length > 0) {
+                    <ul class="exchange-drawer__folders" role="list">
+                      @for (folder of namespaceFolders(); track folder.path) {
+                        <li role="listitem">
+                          <button
+                            type="button"
+                            class="exchange-drawer__folder"
+                            (click)="onFolderOpen(NAMESPACE, folder.path)"
+                          >
+                            <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
+                              >folder_open</span
+                            >
+                            <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
+                            <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
+                              >chevron_right</span
+                            >
+                          </button>
+                        </li>
+                      }
+                    </ul>
+                  }
+
+                  @if (namespaceFiles().length === 0 && namespaceFolders().length === 0) {
+                    <ds-empty-state
+                      icon="folder_shared"
+                      title="No namespace files"
+                      [hint]="canWriteNamespace() ? 'Upload a file to share it across this namespace.' : undefined"
+                    />
+                  } @else {
+                    <agentos-exchange-file-list
+                      [rows]="namespaceRows()"
+                      [scope]="NAMESPACE"
+                      [canWrite]="canWriteNamespace()"
+                      [activeFile]="activeFile()"
+                      [selectable]="selectable()"
+                      [selectedPaths]="referencedNamespacePaths()"
+                      (selectionToggled)="toggleReference($event)"
+                      (fileSelected)="onFileSelected($event)"
+                      (downloadRequested)="downloadRequested.emit($event)"
+                      (deleteRequested)="deleteRequested.emit($event)"
+                    />
+                    @if (namespaceHasMore()) {
+                      <button
+                        type="button"
+                        class="exchange-drawer__retry"
+                        [disabled]="namespaceLoadingMore()"
+                        (click)="loadMoreRequested.emit(NAMESPACE)"
+                      >
+                        {{ namespaceLoadingMore() ? 'Loading…' : 'Load more files' }}
+                      </button>
+                    }
                   }
                 }
               }
@@ -254,6 +349,13 @@
         <p class="exchange-drawer__no-access">No files available.</p>
       }
     </div>
+
+    @if (selectable() && referencedCount() > 0) {
+      <div class="exchange-drawer__selection-bar" role="region" aria-label="Files in the message">
+        <span class="exchange-drawer__selection-count" aria-live="polite">{{ referencedCount() }} in message</span>
+        <button type="button" class="exchange-drawer__retry" (click)="clearReferences()">Clear</button>
+      </div>
+    }
   }
 
   <input

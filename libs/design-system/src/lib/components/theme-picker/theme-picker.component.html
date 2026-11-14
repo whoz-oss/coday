@@ -1,0 +1,14 @@
+<select class="ds-theme-picker__skin" aria-label="Skin" title="Skin" (change)="onVariantChange($event)">
+  @for (v of variants; track v.id) {
+    <option [value]="v.id" [selected]="v.id === theme().variant">{{ v.label }}</option>
+  }
+</select>
+<button
+  type="button"
+  class="ds-theme-picker__mode"
+  [title]="modeTitle()"
+  [attr.aria-label]="modeTitle()"
+  (click)="themes.cycleMode()"
+>
+  <mat-icon aria-hidden="true">{{ modeIcon() }}</mat-icon>
+</button>

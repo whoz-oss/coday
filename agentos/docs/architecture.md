@@ -79,3 +79,25 @@ how many base classes or interfaces a controller inherits from.
 | `api.namespace` | `NamespaceDto`, `NamespaceListItem`, `NamespaceUserListItem`, `NamespaceRoleEntry`, `SyncUserRolesRequest`, `NamespaceAgentDeployRequest` — HTTP DTOs for `/api/namespaces` |
 | `api.user` | `UserDto`, `GroupsByExternalIdsRequest` — HTTP DTOs for `/api/users` |
 | `api.userGroup` | `UserGroupSummary`, `UserGroupSearchResult`, `UserGroupCreateRequest`, `UserGroupUpdateRequest` — HTTP DTOs for `/api/user-groups` |
+
+## Case summary
+
+Each top-level case carries a short summary (`Case.summary`, exposed read-only as `summary` in the REST `Case`) so that an older case can be found again: the case search of the UI matches the title, the id **and** the summary, and the summary is shown as the row tooltip and, while a search is active, as a one-line subtitle under the title. Written by `CaseSummaryService` (package `caseFlow`), it is generated from the conversation, never typed by a user: `PUT /api/cases/{id}` and create ignore it.
+
+**When it is generated.** `CaseServiceImpl` considers a refresh each time a case turn ends (status `IDLE`, same spot as the automatic title). It launches one in the background when:
+
+- the case is top-level: **sub-cases (delegations) are excluded**, their parent's summary covers the work;
+- at least one agent turn has finished (`AgentFinishedEvent`), so the first summary already sees the agent's first answer;
+- and either the case has no summary yet, or at least **3 user messages** came in since the last one (`Case.summaryMessageCount` stores how many user messages the last summary covered; the threshold is `SUMMARY_REFRESH_USER_MESSAGES`).
+
+A case is never summarized twice at once. When the summary is stored, the namespace case-list stream (`namespace-case-list-updated`) is signalled, so open drawers reload their list and show the new summary without a refresh.
+
+**Model and size.** It is the same cheap path as the automatic title: a utility call (`forUtilityCall()`, reasoning effort capped at low) on the **default AI model of the namespace**. The input is the previous summary (so the model updates it instead of starting over) plus the last 12 user and agent text messages, each cut to 1,000 characters, **8,000 characters in total** (the oldest messages are dropped first; images and tool traffic are not sent). The prompt asks for 2 to 3 factual sentences, about 400 characters, in the language of the conversation; the stored text is trimmed and capped at **500 characters**.
+
+**Cost.** About one small utility call per 3 user messages of a case, plus one after its first agent turn: at most roughly 2,500 input tokens and 150 output tokens each, whatever the length of the conversation. Nothing is spent on sub-cases, on cases that never got an agent answer, or on a namespace with no default model.
+
+**Failures.** There is no fallback text, unlike the title: with no default model, no provider, a blank answer or a failed call, nothing is written, the previous summary (if any) stays and the next eligible turn tries again.
+
+**Disabling.** Set `agentos.case.summary-enabled: false` (environment variable `AGENTOS_CASE_SUMMARY_ENABLED=false`), read at startup. No new summary is generated; existing ones are kept and stay searchable.
+
+**Not context compaction.** The summary is a label for humans and for search. It is never sent back to the agent's model and is unrelated to the context compaction planned in #1285, whose summary is written for the model; the two stay separate, even if some generation code is shared later.

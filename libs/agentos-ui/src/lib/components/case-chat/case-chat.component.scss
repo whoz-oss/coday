@@ -291,6 +291,8 @@
   }
 
   &__messages {
+    // Anchor absolute descendants inside the messages scroller, not its outer region.
+    position: relative;
     height: 100%;
     min-width: 0;
     min-height: 0;
@@ -539,6 +541,25 @@
     &--plain {
       white-space: pre-wrap;
     }
+
+    // Voice message: the player sits above the transcript, which wraps like any user bubble
+    &--audio {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
+    }
+  }
+
+  // Transcript of a voice message: plain spoken text, left-aligned with the player, no markdown margins or
+  // indentation, wrapping on words.
+  &__transcript {
+    margin: 0;
+    padding: 0;
+    text-align: left;
+    text-indent: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   // ── Tool calls ─────────────────────────────────────────────────────
@@ -1040,9 +1061,9 @@
     padding-left: 6px;
   }
 
-  // ── Reopen bar (shown when case is terminal) ────────────────────────────────
+  // ── Notice bar (case ended, or its event stream was refused) ───────────────
 
-  &__reopen-bar {
+  &__notice-bar {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1055,14 +1076,14 @@
     background: color-mix(in srgb, var(--color-warning) 6%, transparent);
   }
 
-  &__reopen-label {
+  &__notice-label {
     flex: 1;
     font-size: 12px;
     color: var(--color-text-secondary);
     font-family: var(--font-body);
   }
 
-  &__reopen-btn {
+  &__notice-btn {
     flex: none;
     display: inline-flex;
     align-items: center;

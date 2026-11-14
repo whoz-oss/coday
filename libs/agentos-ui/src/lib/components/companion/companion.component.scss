@@ -1,0 +1,193 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 8px;
+  font-family: var(--font-body, system-ui, sans-serif);
+  background: var(--color-bg, #fff);
+  color: var(--color-text, #111);
+}
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+
+.companion__empty {
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-tertiary, #999);
+}
+
+// ---------------------------------------------------------------------------
+// Group
+// ---------------------------------------------------------------------------
+
+.companion__group {
+  margin-bottom: 10px;
+  border: 1px solid var(--color-divider, #e5e7eb);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.06));
+}
+
+.companion__group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--color-divider, #e5e7eb);
+  background: var(--color-surface-secondary, #f9f9fa);
+}
+
+.companion__group-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary, #555);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text, #111);
+    text-decoration: underline;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Card
+// ---------------------------------------------------------------------------
+
+.companion__card {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-divider, #e5e7eb);
+
+  &:last-of-type {
+    border-bottom: none;
+  }
+
+  &--blocking {
+    border-left: 3px solid var(--color-warning, #d97706);
+  }
+
+  &--error {
+    border-left: 3px solid var(--color-error, #dc2626);
+  }
+}
+
+.companion__card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.companion__title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+
+  &--success {
+    color: var(--color-success, #16a34a);
+  }
+
+  &--error {
+    color: var(--color-error, #dc2626);
+  }
+}
+
+.companion__detail {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #555);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// ---------------------------------------------------------------------------
+// Close button (group-level and card-level)
+// ---------------------------------------------------------------------------
+
+.companion__close-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-tertiary, #aaa);
+  cursor: pointer;
+  line-height: 1;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    color: var(--color-text, #111);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action buttons (approve / deny / options)
+// ---------------------------------------------------------------------------
+
+.companion__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.companion__btn {
+  padding: 4px 10px;
+  border: 1px solid var(--color-divider, #e5e7eb);
+  border-radius: 6px;
+  background: var(--color-surface-secondary, #f3f4f6);
+  color: var(--color-text, #111);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface-hover, #e5e7eb);
+  }
+
+  &--approve {
+    border-color: var(--color-success, #16a34a);
+    background: var(--color-success-bg, #dcfce7);
+  }
+
+  &--deny {
+    border-color: var(--red, #dc2626);
+    background: var(--red-bg, #fee2e2);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Jump-to-case footer button
+// ---------------------------------------------------------------------------
+
+.companion__jump-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-top: 1px solid var(--color-divider, #e5e7eb);
+  background: transparent;
+  color: var(--color-text-tertiary, #aaa);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-text) 4%, transparent);
+    color: var(--color-accent, #5980a6);
+  }
+}

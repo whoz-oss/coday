@@ -12,6 +12,7 @@ import { PhaseSegment } from '../../core/models'
           class="seg"
           [class]="'seg--' + p.tone"
           [class.running]="p.status === 'running'"
+          [class.skipped]="p.status === 'skipped'"
           [style.flex-grow]="p.ratio"
         ></span>
       }
@@ -40,22 +41,26 @@ import { PhaseSegment } from '../../core/models'
     }
     .seg {
       min-width: 4px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm, 0);
     }
     .seg--amber {
-      background: var(--sf-tertiary);
+      background: var(--color-warning);
     }
     .seg--violet {
-      background: var(--sf-primary-deep);
+      background: var(--color-accent-700);
     }
     .seg--green {
-      background: var(--sf-success);
+      background: var(--color-success);
     }
     .seg--cyan {
-      background: var(--sf-secondary);
+      background: var(--color-accent);
     }
     .seg.running {
-      background: repeating-linear-gradient(135deg, #5fd4e0 0 6px, #3aa9b6 6px 12px);
+      background: repeating-linear-gradient(135deg, var(--color-accent) 0 6px, var(--color-accent-700) 6px 12px);
+    }
+    .seg.skipped {
+      background: var(--sf-outline-strong);
+      opacity: 0.55;
     }
     .legend {
       font-family: var(--sf-mono);
@@ -64,7 +69,7 @@ import { PhaseSegment } from '../../core/models'
       white-space: nowrap;
     }
     .legend .current {
-      color: var(--sf-secondary);
+      color: var(--color-accent-700);
     }
   `,
 })
@@ -83,6 +88,7 @@ export class PhaseBarComponent {
           if (p.status === 'indeterminate') return `${p.key} indeterminate`
           if (p.status === 'cancelled') return `${p.key} cancelled`
           if (p.status === 'pending') return `${p.key} waiting`
+          if (p.status === 'skipped') return `${p.key} skipped, not executed`
           return `${p.key} completed`
         })
         .join(', ')

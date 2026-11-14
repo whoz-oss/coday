@@ -144,5 +144,11 @@
         }
       </button>
     }
+
+    @if (toggles.hasAnyItem) {
+      <div class="shell-user-menu__separator"></div>
+    }
+
+    <agentos-companion-push-toggles #toggles />
   </div>
 }

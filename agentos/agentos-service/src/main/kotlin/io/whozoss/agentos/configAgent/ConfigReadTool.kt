@@ -39,7 +39,10 @@ class ConfigReadTool(
         one entity in full. Secrets are always masked as "****".
         Kinds: agent, skill, prompt, integration, auth-setting, namespace (with 'id': its settings and its readiness,
         i.e. whether a message without @mention reaches an agent and, if not, why: no default agent, agent missing,
-        disabled or not deployed), integration-type (the available types and, with id = the type, its parameter
+        disabled or not deployed), ai-provider (name, description, apiType, baseUrl, apiKey, headers: the apiKey and the
+        values of credential headers such as Authorization read as "****"), ai-model (of the visible providers: aiProviderId,
+        apiModelName, alias, description, priority, temperature, maxCompletionTokens, contextWindow, pricing, reasoningEffort,
+        supportsAdvancedExecution; the list names each with its aiProviderId and provider), integration-type (the available types and, with id = the type, its parameter
         schema), deployment (which agents are deployed on the namespace), capabilities (who the user is: super-admin,
         role in the namespace), messaging (which agents have a bot on Telegram or Slack, and how to give an agent one:
         read it whenever the user asks about Telegram, Slack or talking to an agent from a messaging application).
@@ -176,6 +179,8 @@ class ConfigReadTool(
             if (entity.kind == ConfigKind.NAMESPACE) put("administered", configReadService.canAdminister(userId, entity.id))
             entity.enabled?.let { put("enabled", it) }
             entity.integrationType?.let { put("integrationType", it) }
+            entity.aiProviderId?.let { put("aiProviderId", it) }
+            entity.aiProviderName?.let { put("aiProviderName", it) }
             if (entity.fromFilesystem) put("origin", "FILESYSTEM (read-only)")
         }
 

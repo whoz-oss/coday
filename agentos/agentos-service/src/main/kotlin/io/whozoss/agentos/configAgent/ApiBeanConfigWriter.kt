@@ -7,6 +7,10 @@ import io.whozoss.agentos.authSetting.AuthSettingDto
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
+import io.whozoss.agentos.sdk.api.aiProvider.AiModelApi
+import io.whozoss.agentos.sdk.api.aiProvider.AiModelDto
+import io.whozoss.agentos.sdk.api.aiProvider.AiProviderApi
+import io.whozoss.agentos.sdk.api.aiProvider.AiProviderDto
 import io.whozoss.agentos.sdk.api.configChange.ConfigKind
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigApi
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
@@ -46,6 +50,8 @@ class ApiBeanConfigWriter(
     private val integrationConfigApi: IntegrationConfigApi,
     private val authSettingApi: AuthSettingApi,
     private val namespaceApi: NamespaceApi,
+    private val aiProviderApi: AiProviderApi,
+    private val aiModelApi: AiModelApi,
     private val objectMapper: ObjectMapper,
     private val validator: Validator,
 ) : ConfigWriter {
@@ -62,6 +68,8 @@ class ApiBeanConfigWriter(
                 ConfigKind.INTEGRATION -> integrationConfigApi.create(validated(dto, IntegrationConfigDto::class.java)).id
                 ConfigKind.AUTH_SETTING -> authSettingApi.create(validated(dto, AuthSettingDto::class.java)).id
                 ConfigKind.NAMESPACE -> namespaceApi.create(validated(dto, NamespaceDto::class.java)).id
+                ConfigKind.AI_PROVIDER -> aiProviderApi.create(validated(dto, AiProviderDto::class.java)).id
+                ConfigKind.AI_MODEL -> aiModelApi.create(validated(dto, AiModelDto::class.java)).id
             } ?: throw IllegalStateException("The REST API created a $kind without returning its id")
         }
 
@@ -78,6 +86,8 @@ class ApiBeanConfigWriter(
                     ConfigKind.INTEGRATION -> integrationConfigApi.getById(id)
                     ConfigKind.AUTH_SETTING -> authSettingApi.getById(id)
                     ConfigKind.NAMESPACE -> namespaceApi.getById(id)
+                    ConfigKind.AI_PROVIDER -> aiProviderApi.getById(id)
+                    ConfigKind.AI_MODEL -> aiModelApi.getById(id)
                 },
             )
         }
@@ -95,6 +105,8 @@ class ApiBeanConfigWriter(
             ConfigKind.INTEGRATION -> integrationConfigApi.update(id, validated(current, IntegrationConfigDto::class.java))
             ConfigKind.AUTH_SETTING -> authSettingApi.update(id, validated(current, AuthSettingDto::class.java))
             ConfigKind.NAMESPACE -> namespaceApi.update(id, validated(current, NamespaceDto::class.java))
+            ConfigKind.AI_PROVIDER -> aiProviderApi.update(id, validated(current, AiProviderDto::class.java))
+            ConfigKind.AI_MODEL -> aiModelApi.update(id, validated(current, AiModelDto::class.java))
         }
     }
 

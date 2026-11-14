@@ -32,7 +32,7 @@ export interface ConfirmDialogData {
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button [mat-dialog-close]="false">Cancel</button>
-      <button mat-flat-button [class.sf-danger]="data.destructive" [mat-dialog-close]="true">
+      <button mat-stroked-button [class.sf-danger]="data.destructive" [mat-dialog-close]="true">
         {{ data.confirmLabel ?? 'Confirm' }}
       </button>
     </mat-dialog-actions>
@@ -42,9 +42,9 @@ export interface ConfirmDialogData {
       display: inline-block;
       margin-top: 10px;
       padding: 4px 8px;
-      border-radius: 6px;
-      background: var(--sf-surface-2);
-      color: var(--sf-primary);
+      border-radius: var(--radius-sm, 0);
+      background: var(--color-surface-muted);
+      color: var(--color-accent-700);
     }
   `,
 })

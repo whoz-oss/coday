@@ -170,6 +170,25 @@ class IntegrationConfigServiceAuthorizationSpec : StringSpec({
         f.repository.findByUserId(callerId).shouldBeEmpty()
     }
 
+    "create user-global BASH config is refused before any persistence" {
+        val f = fixture()
+
+        shouldThrow<AccessDeniedException> {
+            f.service.createForCaller(caller(), config(nsId = null, userId = callerId, integrationType = "BASH"))
+        }
+        f.repository.findByUserId(callerId).shouldBeEmpty()
+    }
+
+    "create NS-shared BASH config is allowed with namespace WRITE" {
+        val f = fixture()
+        f.grantNamespace(Action.WRITE)
+
+        val saved = f.service.createForCaller(caller(), config(userId = null, integrationType = "BASH"))
+
+        saved.userId shouldBe null
+        saved.integrationType shouldBe "BASH"
+    }
+
     "create user-namespace config of a denied type is refused even with namespace READ" {
         val f = fixture()
         f.grantNamespace(Action.READ)

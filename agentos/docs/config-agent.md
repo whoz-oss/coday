@@ -2,14 +2,14 @@
 
 An agent that names the built-in `AGENTOS_CONFIG` integration can read the AgentOS configuration the
 user can see, diagnose a namespace, and propose changes: agents, skills, prompts, integrations, auth
-settings, agent deployment, namespace settings, and new namespaces with their configuration. The
-agent never writes. The user reviews the exact plan in a card and clicks Apply; the server then
+settings, AI providers and AI models, agent deployment, namespace settings, and new namespaces with
+their configuration. The agent never writes. The user reviews the exact plan in a card and clicks Apply; the server then
 applies it with that user's rights and tells the agent what happened.
 
 The tools are meant to be the agent's only way to configure AgentOS: their description tells it
 never to go through the REST API, a shell or a browser, and to say what is missing instead.
 
-Issue: #1477.
+Issues: #1477, then #1576 (AI providers and AI models).
 
 ## Enabling it
 
@@ -33,7 +33,8 @@ do not go through the Apply click, so such an agent could send what it read else
 dedicated configuration agent without them.
 
 What the agent reads goes to the LLM provider and into the case history. Secrets are masked (auth
-setting credentials, and every integration parameter but the keys that only locate a service), but
+setting credentials, an AI provider's `apiKey` and the values of its credential headers, and every
+integration parameter but the keys that only locate a service), but
 free text is returned in full: an agent's instructions, a prompt, a skill's body, a description. A
 credential pasted into one of them is read like any other text.
 
@@ -65,8 +66,8 @@ created without an explicit `enabled`.
 - **Writes** run in the call of the Apply click (the HTTP request of the card, or the button of a
   Telegram or Slack chat, see [messaging.md](messaging.md)), with the user who clicked authenticated on
   the thread, through the public `*Api` interfaces
-  (`AgentConfigApi`, `SkillApi`, `PromptApi`, `IntegrationConfigApi`, `AuthSettingApi`,
-  `NamespaceApi`, including its `deployAgents` / `undeployAgents`). Their only implementation is the controller's
+  (`AgentConfigApi`, `SkillApi`, `PromptApi`, `IntegrationConfigApi`, `AuthSettingApi`, `AiProviderApi`,
+  `AiModelApi`, `NamespaceApi`, including its `deployAgents` / `undeployAgents`). Their only implementation is the controller's
   method-security proxy, so `@PreAuthorize` and the inline guards apply exactly as for the browser.
   `ApiBeanBridgeAuthorizationSpec` proves it. This goes through the `ConfigWriter` port; phase 2
   swaps it, entity by entity, for the service-level permission methods (`*ForCaller`, #1492).
@@ -76,10 +77,13 @@ created without an explicit `enabled`.
 - **Secrets** are never written by the agent: the plan declares their paths and the user types the
   values in the card. Only real secret fields qualify: the secret fields of the auth setting's own
   `authType` (`/password` for `BASIC_AUTH`, `/apiKey` for `API_KEY`…), paths under `/parameters/` of an
-  integration. A typed key therefore never lands in a plain field nor in a field its type drops. A
+  integration, the secret fields of an AI provider (`/apiKey`, and `/headers/<name>` for a header that
+  carries a credential). A typed key therefore never lands in a plain field nor in a field its type drops. A
   proposal is refused when it contains `****`, a value at a declared secret path, a value at a secret
-  field of its auth setting, or an integration parameter named like a credential (`token`,
-  `password`, `apiKey`, `clientSecret`…).
+  field of its auth setting, an integration parameter named like a credential (`token`,
+  `password`, `apiKey`, `clientSecret`…), a clear-text AI provider `apiKey`, or a clear-text value for an
+  AI provider header named like a credential (`authorization`, `x-api-key`, `api-key`, `apikey`, `token`,
+  `proxy-authorization`, or any name containing `token`, `secret` or `password`).
 - **Bean Validation** runs on every DTO before the in-process call, since `@Valid` only applies to
   HTTP requests: a value the REST API would refuse with 400 is reported `INVALID`.
 - **Reads** (tool and card) use the same rules as the REST read endpoints: a list follows the list
@@ -93,8 +97,8 @@ created without an explicit `enabled`.
 
 ## Plans
 
-`propose` takes operations on `AGENT`, `SKILL`, `PROMPT`, `INTEGRATION`, `AUTH_SETTING` and
-`NAMESPACE`:
+`propose` takes operations on `AGENT`, `SKILL`, `PROMPT`, `INTEGRATION`, `AUTH_SETTING`, `AI_PROVIDER`,
+`AI_MODEL` and `NAMESPACE`:
 
 - `CREATE` carries a `scope` (`namespaceId`: `"current"`, the id of a namespace the user
   administers, `{"$op": "<ref>"}` of a namespace the plan creates, or null for platform; `userId`:
@@ -123,6 +127,20 @@ created without an explicit `enabled`.
 - `UPDATE` targets an `id` and lists `changes` by JSON Pointer path (`/instructions`,
   `/integrations/MY_API`), merged by the server onto the full DTO it re-reads. A path cannot go
   through a list: the whole list is replaced (`/content`, `/subAgents`).
+- An **AI provider** (`read` kind `ai-provider`) has the four layers of an auth setting (platform,
+  namespace-shared, user x namespace, user-global) and the same fields as its REST DTO: `name`,
+  `description`, `apiType` (`OpenAI`, `Anthropic`, `Gemini`, `vLLM`, `Ollama`; immutable once created, a
+  change of `/apiType` is refused), `baseUrl`, `apiKey` and `headers`. `/apiKey` is a declared secret, like
+  `/headers/<name>` for a credential header: the user types them in the card, and a read shows them as
+  `****`. A clear-text `apiKey` or credential header value in a proposal is refused. Providers are
+  unique per `(namespace, user, name)`, case-sensitive.
+- An **AI model** (`read` kind `ai-model`) belongs to a provider (`aiProviderId`) and has no scope or
+  secret of its own: its namespace and user are resolved by the server from the provider. `CREATE`
+  needs `value.aiProviderId`, the id of a provider the user can see or `{"$op": "<ref>"}` of a provider
+  the same plan creates, and takes no `scope`: a `scope`, `value.namespaceId` or `value.userId` that
+  names a scope is refused with a message saying the scope comes from the provider. A model is named by
+  its `alias`, else its `apiModelName`; the read list shows each with its `aiProviderId` and provider name,
+  and reading one by id requires reading its provider. Models are unique per alias within a provider.
 - `ENABLE`, `DISABLE`, `DEPLOY`, `UNDEPLOY` (agents only) target an `id`. `DEPLOY` and `UNDEPLOY`
   act on the current namespace, or on the namespace their `scope` names (one the user administers or
   one the plan creates).
@@ -130,8 +148,9 @@ created without an explicit `enabled`.
 Validation only anticipates what the REST API would refuse (immutable fields, prompt attached after
 creation, unknown target) or what would make the plan ambiguous (unknown or cyclic reference). The
 order is a topological sort of the references, ties broken by kind: namespace creation, auth
-settings, integrations, skills, agent creation, agent update, prompts, enable/disable, deployment,
-namespace update (so a namespace can name as default an agent the same plan creates).
+settings, AI providers, AI models, integrations, skills, agent creation, agent update, prompts,
+enable/disable, deployment, namespace update (so a namespace can name as default an agent the same plan
+creates, and an agent can run on a model the same plan creates).
 
 ### Setting up a new namespace
 
@@ -212,7 +231,7 @@ The tools are granted in `AgentServiceImpl.resolveAgentDefinition` only:
   cannot point a shared credential at an API of their choosing. The supported path is a shared
   integration created by an admin plus the member's own `API_KEY` auth setting in user x namespace
   scope, which wins at resolution.
-- Group deployment, AI providers and AI models are not covered yet, nor deleting a namespace.
+- Group deployment is not covered, nor deleting a namespace, an AI provider or an AI model.
 - Auth settings are not copied: their secrets are typed again in the card.
 - A namespace-shared auth setting is read and changed by id by super-admins only: `AUTH_SETTING` does
   not inherit the namespace's rights in the permission model, for the REST API as for this tool.

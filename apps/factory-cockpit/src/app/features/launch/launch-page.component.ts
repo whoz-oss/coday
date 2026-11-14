@@ -48,7 +48,7 @@ export class LaunchPageComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
 
-  protected readonly workflowTypes = this.launchState.workflowTypes
+  protected readonly definitions = this.launchState.definitions
   protected readonly namespaces = this.launchState.namespaces
   protected readonly submitting = this.launchState.submitting
   protected readonly successMessage = signal<string | null>(null)
@@ -59,7 +59,7 @@ export class LaunchPageComponent {
   protected readonly launchTargetsError = computed(() => this.launchState.namespacesError()?.message ?? null)
 
   protected readonly form = inject(NonNullableFormBuilder).group({
-    workflowType: ['', Validators.required],
+    definitionKey: ['', Validators.required],
     namespaceId: ['', Validators.required],
     title: ['', Validators.maxLength(200)],
     ticket: ['', Validators.maxLength(64)],
@@ -74,18 +74,24 @@ export class LaunchPageComponent {
   )
 
   constructor() {
-    inject(ShellState).crumbs.set([{ label: 'Sandboxes', link: '/sandboxes' }, { label: 'Launch a run' }])
+    inject(ShellState).crumbs.set([{ label: 'Workstreams', link: '/workstreams' }, { label: 'Launch a run' }])
     this.launchState.loadOptions()
     effect(() => {
-      const types = this.workflowTypes()
-      if (types.length === 1 && !this.form.controls.workflowType.value) {
-        this.form.controls.workflowType.setValue(types[0] ?? '')
+      const definitions = this.definitions()
+      if (definitions.length === 1 && !this.form.controls.definitionKey.value) {
+        this.form.controls.definitionKey.setValue(this.definitionKey(definitions[0]))
       }
       const namespaces = this.namespaces()
       if (namespaces.length === 1 && !this.form.controls.namespaceId.value) {
         this.form.controls.namespaceId.setValue(namespaces[0]?.id ?? '')
       }
     })
+  }
+
+  protected definitionKey(
+    definition: { workflowType?: string; version?: string; definitionHash?: string } | undefined
+  ): string {
+    return JSON.stringify([definition?.workflowType, definition?.version, definition?.definitionHash])
   }
 
   /** Invoke the single Factory-owned create-and-submit use case. */
@@ -96,7 +102,12 @@ export class LaunchPageComponent {
       return
     }
 
-    const { workflowType, namespaceId, title, ticket, initialRequest } = this.form.getRawValue()
+    const { definitionKey, namespaceId, title, ticket, initialRequest } = this.form.getRawValue()
+    const definition = this.definitions().find((item) => this.definitionKey(item) === definitionKey)
+    if (this.definitionsLoading() || this.definitionsError() || !definition) {
+      this.errorMessage.set('Select an available workflow version before launching.')
+      return
+    }
     if (
       this.launchTargetsLoading() ||
       this.launchTargetsError() ||
@@ -115,7 +126,9 @@ export class LaunchPageComponent {
     this.launchState
       .launch({
         namespaceId,
-        workflowType,
+        workflowType: definition.workflowType!,
+        definitionVersion: definition.version!,
+        definitionHash: definition.definitionHash!,
         ...(trimmedTitle ? { title: trimmedTitle } : {}),
         ...(trimmedInitialRequest ? { initialRequest: trimmedInitialRequest } : {}),
         ...(trimmedTicket ? { parameters: { ticket: trimmedTicket } } : {}),

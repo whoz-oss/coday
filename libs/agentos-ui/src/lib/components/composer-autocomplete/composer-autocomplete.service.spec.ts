@@ -1,13 +1,15 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { signal, WritableSignal } from '@angular/core'
-import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, ExchangeControllerService, ExchangeManifest, Prompt } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { AgentStateService } from '../../services/agent-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
+import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
-import { ComposerAutocompleteService } from './composer-autocomplete.service'
+import { ComposerAutocompleteService, FILE_CACHE_TTL_MS } from './composer-autocomplete.service'
+import { FileSuggestion } from './file-mention'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -45,24 +47,49 @@ interface TestContext {
   service: ComposerAutocompleteService
   promptState: { listEffective: jest.Mock }
   agentState: { listEffective: jest.Mock }
+  exchange: { getNamespaceFilesManifestExchange: jest.Mock; getCaseFilesManifestExchange: jest.Mock }
 }
 
 function setup(): TestContext {
   const promptState = { listEffective: jest.fn().mockReturnValue(of([])) }
   const agentState = { listEffective: jest.fn().mockReturnValue(of([])) }
+  const exchange = {
+    getNamespaceFilesManifestExchange: jest.fn().mockReturnValue(of(manifest([]))),
+    getCaseFilesManifestExchange: jest.fn().mockReturnValue(of(manifest([]))),
+  }
 
   TestBed.configureTestingModule({
     providers: [
       ComposerAutocompleteService,
       { provide: PromptStateService, useValue: promptState },
       { provide: AgentStateService, useValue: agentState },
+      { provide: ExchangeControllerService, useValue: exchange },
     ],
   })
 
   const service = TestBed.inject(ComposerAutocompleteService)
   service.init(NS)
 
-  return { service, promptState, agentState }
+  return { service, promptState, agentState, exchange }
+}
+
+/** A recursive exchange manifest listing [paths], readable by the caller. */
+function manifest(paths: string[], capability = 'READ'): ExchangeManifest {
+  return {
+    capability,
+    files: paths.map((path) => ({
+      path,
+      filename: path.split('/').pop()!,
+      scope: 'NAMESPACE',
+      size: 1,
+      lastModified: '2026-01-01T00:00:00Z',
+    })),
+  } as ExchangeManifest
+}
+
+/** Build a jest mock for FileAutocompleteComponent.navigate. */
+function mockFileRef(): WritableSignal<FileAutocompleteComponent | undefined> {
+  return refSignal({ navigate: jest.fn() } as unknown as FileAutocompleteComponent)
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +397,321 @@ describe('ComposerAutocompleteService', () => {
       }).not.toThrow()
 
       expect(service.atSuggestions()).toEqual([])
+    }))
+  })
+
+  // -------------------------------------------------------------------------
+  // File # mention
+  // -------------------------------------------------------------------------
+
+  describe('file # mention', () => {
+    const scopes = { namespaceId: NS, caseId: null as string | null }
+    const names = (service: ComposerAutocompleteService): string[] =>
+      service.fileSuggestions().map((f) => `${f.scope}:${f.path}`)
+
+    function setupFiles(
+      namespacePaths: string[] = ['docs/readme.md', 'src/main.ts'],
+      casePaths: string[] = ['notes/todo.md']
+    ): TestContext {
+      const ctx = setup()
+      ctx.exchange.getNamespaceFilesManifestExchange.mockReturnValue(of(manifest(namespacePaths)))
+      ctx.exchange.getCaseFilesManifestExchange.mockReturnValue(of(manifest(casePaths)))
+      ctx.service.enableFileMentions(() => scopes)
+      return ctx
+    }
+
+    afterEach(() => {
+      scopes.caseId = null
+      jest.useRealTimers()
+    })
+
+    it('is not offered until the host enables it', fakeAsync(() => {
+      const { service, exchange } = setup()
+
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      expect(service.fileSuggestions()).toEqual([])
+      expect(exchange.getNamespaceFilesManifestExchange).not.toHaveBeenCalled()
+    }))
+
+    it('opens on #rea and lists the matching namespace file', fakeAsync(() => {
+      const { service, exchange } = setupFiles()
+
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getNamespaceFilesManifestExchange).toHaveBeenCalledWith(NS)
+      expect(names(service)).toEqual(['namespace:docs/readme.md'])
+    }))
+
+    it('opens after a whitespace, never inside a word (C#, a#b)', fakeAsync(() => {
+      const { service } = setupFiles()
+
+      service.onInput('see #rea', { set: jest.fn() })
+      tick(60)
+      expect(service.fileSuggestions()).toHaveLength(1)
+
+      service.onInput('read C#', { set: jest.fn() })
+      tick(60)
+      expect(service.fileSuggestions()).toEqual([])
+
+      service.onInput('a#rea', { set: jest.fn() })
+      tick(60)
+      expect(service.fileSuggestions()).toEqual([])
+    }))
+
+    it('inserts the scope-qualified reference in place of the #prefix', fakeAsync(() => {
+      const { service } = setupFiles()
+      service.onInput('see #rea', { set: jest.fn() })
+      tick(60)
+      const [file] = service.fileSuggestions()
+
+      const inputValue = Object.assign(jest.fn().mockReturnValue('see #rea'), { set: jest.fn() })
+      service.onFileSelected(file!, refSignal(undefined), refSignal(undefined), inputValue)
+
+      expect(inputValue.set).toHaveBeenCalledWith('see namespace:docs/readme.md ')
+      expect(service.fileSuggestions()).toEqual([])
+    }))
+
+    it('uses the completion of the dropdown component when there is one', () => {
+      const { service } = setupFiles()
+      const fileRef = refSignal({
+        completionFor: () => 'namespace:docs/readme.md ',
+      } as unknown as FileAutocompleteComponent)
+      const inputValue = Object.assign(jest.fn().mockReturnValue('#rea'), { set: jest.fn() })
+      const file: FileSuggestion = { scope: 'namespace', path: 'docs/readme.md', filename: 'readme.md' }
+
+      service.onFileSelected(file, fileRef, refSignal(undefined), inputValue)
+
+      expect(inputValue.set).toHaveBeenCalledWith('namespace:docs/readme.md ')
+    })
+
+    it('inside a case, also lists the case exchange, qualified with case:', fakeAsync(() => {
+      scopes.caseId = 'case-1'
+      const { service, exchange } = setupFiles(['docs/readme.md'], ['notes/readme-draft.md'])
+
+      service.onInput('#readme', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getCaseFilesManifestExchange).toHaveBeenCalledWith('case-1')
+      expect(names(service)).toEqual(['namespace:docs/readme.md', 'case:notes/readme-draft.md'])
+      const [file] = service.fileSuggestions().filter((f) => f.scope === 'case')
+      const inputValue = Object.assign(jest.fn().mockReturnValue('#readme'), { set: jest.fn() })
+      service.onFileSelected(file!, refSignal(undefined), refSignal(undefined), inputValue)
+      expect(inputValue.set).toHaveBeenCalledWith('case:notes/readme-draft.md ')
+    }))
+
+    it('outside a case, never asks for a case exchange', fakeAsync(() => {
+      const { service, exchange } = setupFiles()
+
+      service.onInput('#', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getCaseFilesManifestExchange).not.toHaveBeenCalled()
+    }))
+
+    it('stays silent when no file matches (an issue reference like #123)', fakeAsync(() => {
+      const { service } = setupFiles()
+
+      service.onInput('fixes #123', { set: jest.fn() })
+      tick(60)
+
+      expect(service.fileSuggestions()).toEqual([])
+    }))
+
+    it('a scope that answers an error contributes nothing, silently (fail-closed)', fakeAsync(() => {
+      scopes.caseId = 'case-1'
+      const { service, exchange } = setupFiles()
+      exchange.getCaseFilesManifestExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+
+      service.onInput('#readme', { set: jest.fn() })
+      tick(60)
+
+      expect(names(service)).toEqual(['namespace:docs/readme.md'])
+    }))
+
+    it('a scope without capability contributes nothing', fakeAsync(() => {
+      const { service, exchange } = setupFiles()
+      exchange.getNamespaceFilesManifestExchange.mockReturnValue(of(manifest(['docs/readme.md'], 'NONE')))
+
+      service.onInput('#readme', { set: jest.fn() })
+      tick(60)
+
+      expect(service.fileSuggestions()).toEqual([])
+    }))
+
+    it('does not conflict with @: an @ mention opens agents only, a # mention files only', fakeAsync(() => {
+      const { service, agentState } = setupFiles()
+      agentState.listEffective.mockReturnValue(of([makeAgent('alice')]))
+
+      service.onInput('@al', { set: jest.fn() })
+      tick(60)
+      expect(service.atSuggestions()).toHaveLength(1)
+      expect(service.fileSuggestions()).toEqual([])
+
+      service.onInput('@al #rea', { set: jest.fn() })
+      tick(60)
+      expect(service.atSuggestions()).toEqual([])
+      expect(names(service)).toEqual(['namespace:docs/readme.md'])
+
+      service.onInput('@al #rea @al', { set: jest.fn() })
+      tick(60)
+      expect(service.fileSuggestions()).toEqual([])
+      expect(service.atSuggestions()).toHaveLength(1)
+    }))
+
+    it('closes the slash dropdown, and a slash command closes the file one', fakeAsync(() => {
+      const { service, promptState } = setupFiles()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy')]))
+
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+      expect(service.fileSuggestions()).toHaveLength(1)
+
+      service.onInput('/dep', { set: jest.fn() })
+      tick(60)
+      expect(service.fileSuggestions()).toEqual([])
+      expect(service.slashSuggestions()).toHaveLength(1)
+    }))
+
+    it('closes when the word stops being a mention', fakeAsync(() => {
+      const { service } = setupFiles()
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      service.onInput('#rea ', { set: jest.fn() })
+
+      expect(service.fileSuggestions()).toEqual([])
+    }))
+
+    it('ignores an answer that arrives after the mention was closed', fakeAsync(() => {
+      const { service } = setupFiles()
+
+      service.onInput('#rea', { set: jest.fn() })
+      service.onInput('hello', { set: jest.fn() })
+      tick(60)
+
+      expect(service.fileSuggestions()).toEqual([])
+    }))
+
+    it('fetches once per scope and filters locally afterwards', fakeAsync(() => {
+      const { service, exchange } = setupFiles()
+
+      service.onInput('#', { set: jest.fn() })
+      tick(60)
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+      service.onInput('#main', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+      expect(names(service)).toEqual(['namespace:src/main.ts'])
+    }))
+
+    it('answers the keystrokes of a burst with a single request', fakeAsync(() => {
+      const { service, exchange } = setupFiles()
+
+      service.onInput('#r', { set: jest.fn() })
+      service.onInput('#re', { set: jest.fn() })
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+    }))
+
+    it('fetches again once the cache is older than the TTL, so new files appear', fakeAsync(() => {
+      const { service, exchange } = setupFiles(['docs/readme.md'])
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      tick(FILE_CACHE_TTL_MS + 1)
+      exchange.getNamespaceFilesManifestExchange.mockReturnValue(
+        of(manifest(['docs/readme.md', 'docs/read-me-too.md']))
+      )
+      service.onInput('#read', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(2)
+      expect(names(service)).toEqual(['namespace:docs/read-me-too.md', 'namespace:docs/readme.md'])
+    }))
+
+    it('reset() drops the cache and the suggestions', fakeAsync(() => {
+      const { service, exchange } = setupFiles()
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      service.reset()
+      expect(service.fileSuggestions()).toEqual([])
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(2)
+    }))
+
+    it('fetches again when the case changes under the same composer', fakeAsync(() => {
+      scopes.caseId = 'case-1'
+      const { service, exchange } = setupFiles()
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      scopes.caseId = 'case-2'
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      expect(exchange.getCaseFilesManifestExchange).toHaveBeenCalledWith('case-2')
+      expect(exchange.getCaseFilesManifestExchange).toHaveBeenCalledTimes(2)
+    }))
+
+    it('caps the list at 50 files', fakeAsync(() => {
+      const paths = Array.from({ length: 80 }, (_, i) => `dir/file-${i}.txt`)
+      const { service } = setupFiles(paths, [])
+
+      service.onInput('#file', { set: jest.fn() })
+      tick(60)
+
+      expect(service.fileSuggestions()).toHaveLength(50)
+    }))
+
+    it('takes the keyboard: arrows and Enter go to the dropdown, Escape closes it', fakeAsync(() => {
+      const { service } = setupFiles()
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+      const fileRef = mockFileRef()
+
+      const down = new KeyboardEvent('keydown', { key: 'ArrowDown' })
+      expect(service.onKeydown(down, mockPromptRef(), mockAgentRef(), undefined, fileRef)).toBe(true)
+      expect(fileRef()?.navigate).toHaveBeenCalledWith('ArrowDown')
+
+      const enter = new KeyboardEvent('keydown', { key: 'Enter' })
+      expect(service.onKeydown(enter, mockPromptRef(), mockAgentRef(), undefined, fileRef)).toBe(true)
+      expect(fileRef()?.navigate).toHaveBeenCalledWith('Enter')
+
+      const tab = new KeyboardEvent('keydown', { key: 'Tab' })
+      expect(service.onKeydown(tab, mockPromptRef(), mockAgentRef(), undefined, fileRef)).toBe(true)
+
+      const escape = new KeyboardEvent('keydown', { key: 'Escape' })
+      expect(service.onKeydown(escape, mockPromptRef(), mockAgentRef(), undefined, fileRef)).toBe(true)
+      expect(service.fileSuggestions()).toEqual([])
+    }))
+
+    it('lets Enter through when the dropdown is closed', () => {
+      const { service } = setupFiles()
+      const enter = new KeyboardEvent('keydown', { key: 'Enter' })
+
+      expect(service.onKeydown(enter, mockPromptRef(), mockAgentRef(), undefined, mockFileRef())).toBe(false)
+    })
+
+    it('/effort takes precedence and closes the file dropdown', fakeAsync(() => {
+      const { service } = setupFiles()
+      service.enableEffortCommand(() => true)
+      service.onInput('#rea', { set: jest.fn() })
+      tick(60)
+
+      service.onInput('/effort', { set: jest.fn() })
+
+      expect(service.fileSuggestions()).toEqual([])
+      expect(service.effortSuggestions().length).toBeGreaterThan(0)
     }))
   })
 

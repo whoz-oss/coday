@@ -113,6 +113,7 @@ internal fun toolResponseText(
         when (val content = response.output) {
             is MessageContent.Text -> content.content
             is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
+            is MessageContent.Audio -> "[audio ${content.mimeType}]"
         }
     return when {
         response.images.isEmpty() -> text

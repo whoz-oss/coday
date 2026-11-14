@@ -391,4 +391,56 @@ class OAuthFlowServiceUnitSpec :
             val paramNames = (0 until body.size).map { body.name(it) }
             paramNames shouldContain "client_secret"
         }
+
+        // -------------------------------------------------------------------------
+        // Direct connection (no case): startInteractiveConnection / findUsableCredential
+        // -------------------------------------------------------------------------
+
+        "startInteractiveConnection returns the authorization URL and stores the credential once the code arrives" {
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
+            every { httpClient.newCall(any()) } returns
+                mockCall("""{"access_token":"new-token","refresh_token":"rt","expires_in":3600}""")
+            val stored = slot<Credential>()
+            every { credentialService.store(capture(stored)) } answers { stored.captured }
+
+            val url = service().startInteractiveConnection(userId, registeredSetting())
+
+            url.shouldNotBeNull()
+            url shouldContain "https://provider.example.com/auth"
+            url shouldContain "code_challenge_method=S256"
+            verify(timeout = 3000) { credentialService.store(any()) }
+            stored.captured.data["accessToken"] shouldBe "new-token"
+        }
+
+        "startInteractiveConnection returns null when the endpoints cannot be discovered, and registers no flow" {
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { httpClient.newCall(any()) } returns mockCall("", 500)
+
+            service().startInteractiveConnection(userId, discoverableSetting()).shouldBeNull()
+
+            verify(exactly = 0) { pendingRegistry.register(any(), any()) }
+        }
+
+        "startInteractiveConnection returns null when the redirect URI is not configured" {
+            service(redirectUri = "").startInteractiveConnection(userId, registeredSetting()).shouldBeNull()
+
+            service(redirectUri = "").isInteractiveAvailable() shouldBe false
+            service().isInteractiveAvailable() shouldBe true
+            verify(exactly = 0) { pendingRegistry.register(any(), any()) }
+        }
+
+        "findUsableCredential keeps a connection that can still be refreshed and drops one that cannot" {
+            every { credentialService.resolve(userId, authSettingId) } returns validCredential()
+            service().findUsableCredential(userId, authSettingId).shouldNotBeNull()
+
+            every { credentialService.resolve(userId, authSettingId) } returns expiredCredential(withRefreshToken = true)
+            service().findUsableCredential(userId, authSettingId).shouldNotBeNull()
+
+            every { credentialService.resolve(userId, authSettingId) } returns expiredCredential(withRefreshToken = false)
+            service().findUsableCredential(userId, authSettingId).shouldBeNull()
+
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            service().findUsableCredential(userId, authSettingId).shouldBeNull()
+        }
     })
