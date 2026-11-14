@@ -119,8 +119,8 @@
         <span class="scheduled-prompt-form__field-hint">
           Loop agents only. The loop calls the search tool with these params and starts one case per result with
           <code>act.agentName</code>; each case receives the opening message above as its first message. The loop agent
-          should be deployed to a single user, otherwise each user triggers the whole loop. Leave empty to use the
-          agent's own loop configuration.
+          must be deployed to a single user, otherwise the run fails. Leave empty to use the agent's own loop
+          configuration.
         </span>
       </div>
 
