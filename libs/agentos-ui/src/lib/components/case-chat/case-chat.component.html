@@ -100,16 +100,8 @@
             [class.case-chat__header-star--active]="activeCase()?.favorite"
             (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
           />
-          <!-- Stop (kill) — asks for confirmation through the dialog below -->
-          <ds-icon-button
-            icon="cancel"
-            variant="danger"
-            title="Stop case — terminates the agent and all running sub-cases"
-            [disabled]="isTerminal()"
-            (action)="confirmingKill.set(true)"
-          />
-          <!-- Delete -->
-          <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
+          <!-- Destructive actions (stop, delete) live in the overflow menu: both still ask for confirmation -->
+          <ds-kebab-menu [items]="caseMenuItems()" (itemSelected)="onCaseMenuAction($event)" />
         } @else {
           <!-- Confirmation inline -->
           <span class="case-chat__header-confirm">
@@ -615,7 +607,7 @@
           }
 
           @if (isRunning()) {
-            <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
+            <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
           } @else {
             <ds-icon-button
               icon="send"

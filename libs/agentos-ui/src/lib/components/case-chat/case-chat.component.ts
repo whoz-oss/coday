@@ -54,6 +54,8 @@ import {
   CopyButtonComponent,
   DrawerComponent,
   IconButtonComponent,
+  KebabMenuComponent,
+  KebabMenuItem,
 } from '@whoz-oss/design-system'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
@@ -201,6 +203,7 @@ function hasActiveSelection(): boolean {
   selector: 'agentos-case-chat',
   imports: [
     IconButtonComponent,
+    KebabMenuComponent,
     CaseUsageComponent,
     JsonPipe,
     DrawerComponent,
@@ -399,6 +402,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether the kill confirmation dialog is showing. */
   protected readonly confirmingKill = signal(false)
+
+  /**
+   * Overflow menu of the case header: the destructive actions, kept out of the always-visible icons. Both open a
+   * confirmation (dialog for stop, inline for delete) rather than acting directly. Stop is disabled once the case ended.
+   */
+  protected readonly caseMenuItems = computed<KebabMenuItem[]>(() => [
+    { key: 'stop', label: 'Stop case', icon: 'cancel', variant: 'danger', disabled: this.isTerminal() },
+    { key: 'delete', label: 'Delete case', icon: 'delete', variant: 'danger' },
+  ])
+
+  protected onCaseMenuAction(key: string): void {
+    if (key === 'stop' && !this.isTerminal()) this.confirmingKill.set(true)
+    else if (key === 'delete') this.confirmingDelete.set(true)
+  }
 
   /** The case-level reasoning effort shown next to the composer; "default" means each agent's model setting. */
   protected readonly caseEffortLabel = computed(() => effortLabel(this.activeCase()?.reasoningEffort))
