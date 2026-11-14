@@ -101,7 +101,6 @@ import {
   messagingPlatformLabel,
 } from './case-chat.utils'
 import { CaseContinueMessagingComponent } from '../case-continue-messaging/case-continue-messaging.component'
-import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -255,7 +254,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly userState = inject(UserStateService)
   private readonly oauthService = inject(OAuthAgentosService)
   private readonly aiModels = inject(AiModelStateService)
-  private readonly userState = inject(UserStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
