@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
@@ -308,8 +309,8 @@ class ScheduledPromptExecutor(
      * Safe to call multiple times for the same Run (idempotent via MERGE).
      * Transitions the Run to [RunStatus.RUNNING] when UserRuns are created, or directly
      * to [RunStatus.DONE] when no target users exist (e.g. platform-scope ScheduledPrompt).
-     * A scheduled prompt with a [ScheduledPrompt.flowConfiguration] must reach a single user, otherwise the loop would
-     * run once per user: this throws before the transition, and the Run is marked FAILED by the caller.
+     * A LOOP [agentConfig] must reach a single user, otherwise the loop runs once per user, whatever the source of its
+     * payload: this throws before the transition, and the Run is marked FAILED by the caller.
      *
      * The MERGE and the CLAIMED->RUNNING transition run in a single `@Transactional`:
      * if the service crashes between the two, neither orphaned PENDING UserRuns (never
@@ -327,6 +328,7 @@ class ScheduledPromptExecutor(
     fun materialize(
         run: ScheduledPromptRun,
         scheduledPrompt: ScheduledPrompt,
+        agentConfig: AgentConfig,
     ) {
         logger.info {
             "[Executor] Phase A: materialising run=${run.id} sp=${scheduledPrompt.id}"
@@ -348,7 +350,8 @@ class ScheduledPromptExecutor(
             }
 
         // Before the Run moves on: the exception rolls the UserRuns back and SchedulerScanner.claim marks the Run FAILED.
-        check(scheduledPrompt.flowConfiguration == null || count <= 1) {
+        // The risk is the agent, not the payload: N users means N UserRuns, so N loop runs.
+        check(agentConfig.resolvedExecutionMode != ExecutionMode.LOOP || count <= 1) {
             "The loop agent reaches $count users, so the loop would run $count times. " +
                 "Deploy the loop agent to a single user."
         }

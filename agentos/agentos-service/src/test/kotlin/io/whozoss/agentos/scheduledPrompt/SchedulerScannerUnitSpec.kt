@@ -16,6 +16,7 @@ import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -212,16 +213,18 @@ class SchedulerScannerUnitSpec : StringSpec() {
             runs.first().status shouldBe RunStatus.DONE
         }
 
-        "tickClaim with a loop prompt reaching several users: materialize refuses it and the run is FAILED with the reason" {
+        "tickClaim with a LOOP agent reaching several users: materialize refuses it and the run is FAILED with the reason" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
-            val due = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
-            scheduledPromptRepo.save(
-                due.copy(flowConfiguration = com.fasterxml.jackson.databind.ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")),
-            )
+            // no flowConfiguration: the loop agent runs its own loopConfig, once per user it reaches
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
+            val loopAgentService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns activeAgent.copy(executionMode = ExecutionMode.LOOP)
+            }
             val (sc, _) = scannerWithUserRunRepo(
                 scheduledPromptRepo, runRepo,
                 targetUserIdsProvider = { _, _ -> setOf(UUID.randomUUID(), UUID.randomUUID()) },
+                agentConfigService = loopAgentService,
             )
 
             sc.tickClaim()

@@ -197,14 +197,14 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         // Phase A — Materialisation
         // -------------------------------------------------------------------------
 
-        "Phase A: a flowConfiguration is refused, before the Run moves on, when the agent reaches several users" {
-            val flowConfiguration = ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")
+        "Phase A: a LOOP agent reaching several users is refused before the Run moves on, whatever its payload source" {
             forAll(
-                row(flowConfiguration, setOf(userId1, userId2), RunStatus.CLAIMED),
-                row(flowConfiguration, setOf(userId1), RunStatus.RUNNING),
-                row(null, setOf(userId1, userId2), RunStatus.RUNNING),
-            ) { config, targets, expectedStatus ->
-                val sp = makeScheduledPrompt().copy(flowConfiguration = config)
+                row(ExecutionMode.LOOP, setOf(userId1, userId2), RunStatus.CLAIMED),
+                row(ExecutionMode.LOOP, setOf(userId1), RunStatus.RUNNING),
+                row(ExecutionMode.SIMPLE, setOf(userId1, userId2), RunStatus.RUNNING),
+            ) { mode, targets, expectedStatus ->
+                // no flowConfiguration: a LOOP agent then runs its own loopConfig, once per user it reaches
+                val sp = makeScheduledPrompt()
                 val run = makeRun(sp)
                 val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
                 val exec =
@@ -217,14 +217,15 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                         permissionService = mockk(relaxed = true),
                         userService = mockk(relaxed = true),
                     )
+                val agentConfig = makeAgentConfig().copy(executionMode = mode)
 
                 if (expectedStatus == RunStatus.CLAIMED) {
-                    shouldThrow<IllegalStateException> { exec.materialize(run, sp) }.message.orEmpty().also {
+                    shouldThrow<IllegalStateException> { exec.materialize(run, sp, agentConfig) }.message.orEmpty().also {
                         it shouldContain "reaches ${targets.size} users"
                         it shouldContain "single user"
                     }
                 } else {
-                    exec.materialize(run, sp)
+                    exec.materialize(run, sp, agentConfig)
                 }
 
                 runRepo.findById(run.id)!!.status shouldBe expectedStatus
@@ -245,7 +246,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
-            ).materialize(run, sp)
+            ).materialize(run, sp, makeAgentConfig())
 
             val userRuns = userRunRepo.all()
             userRuns.size shouldBe 2
@@ -267,7 +268,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
-            ).materialize(run, sp)
+            ).materialize(run, sp, makeAgentConfig())
 
             val updatedRun = runRepo.all().first { it.id == run.id }
             updatedRun.status shouldBe RunStatus.RUNNING
@@ -288,8 +289,8 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
             )
-            exec.materialize(run, sp)
-            exec.materialize(run, sp)
+            exec.materialize(run, sp, makeAgentConfig())
+            exec.materialize(run, sp, makeAgentConfig())
 
             userRunRepo.all().size shouldBe 1
         }
@@ -314,7 +315,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             )
 
             io.kotest.assertions.throwables.shouldThrow<RuntimeException> {
-                exec.materialize(run, sp)
+                exec.materialize(run, sp, makeAgentConfig())
             }
 
             val updatedRun = runRepo.all().first { it.id == run.id }
@@ -335,7 +336,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
-            ).materialize(run, sp)
+            ).materialize(run, sp, makeAgentConfig())
 
             userRunRepo.all().size shouldBe 0
             val updatedRun = runRepo.all().first { it.id == run.id }
