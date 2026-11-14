@@ -306,6 +306,8 @@ class ScheduledPromptExecutor(
      * Safe to call multiple times for the same Run (idempotent via MERGE).
      * Transitions the Run to [RunStatus.RUNNING] when UserRuns are created, or directly
      * to [RunStatus.DONE] when no target users exist (e.g. platform-scope ScheduledPrompt).
+     * A scheduled prompt with a [ScheduledPrompt.flowConfiguration] must reach a single user, otherwise the loop would
+     * run once per user: this throws before the transition, and the Run is marked FAILED by the caller.
      *
      * The MERGE and the CLAIMED->RUNNING transition run in a single `@Transactional`:
      * if the service crashes between the two, neither orphaned PENDING UserRuns (never
@@ -343,15 +345,15 @@ class ScheduledPromptExecutor(
                 }
             }
 
+        // Before the Run moves on: the exception rolls the UserRuns back and SchedulerScanner.claim marks the Run FAILED.
+        check(scheduledPrompt.flowConfiguration == null || count <= 1) {
+            "The loop agent reaches $count users, so the loop would run $count times. " +
+                "Deploy the loop agent to a single user."
+        }
+
         val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
         runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
 
-        if (scheduledPrompt.flowConfiguration != null && count > 1) {
-            logger.warn {
-                "[Executor] sp=${scheduledPrompt.id} has a flowConfiguration but its agent reaches $count users: " +
-                    "the loop will run $count times. Deploy the loop agent to a single user."
-            }
-        }
         logger.info {
             "[Executor] Phase A complete: run=${run.id} — $count UserRun(s) created, status=$finalStatus"
         }

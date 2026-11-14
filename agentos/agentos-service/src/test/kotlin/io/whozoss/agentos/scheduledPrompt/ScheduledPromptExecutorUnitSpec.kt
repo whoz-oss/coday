@@ -1,13 +1,11 @@
 package io.whozoss.agentos.scheduledPrompt
 
-import ch.qos.logback.classic.Level
-import ch.qos.logback.classic.Logger
-import ch.qos.logback.classic.spi.ILoggingEvent
-import ch.qos.logback.core.read.ListAppender
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.data.forAll
 import io.kotest.data.row
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -42,7 +40,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -198,40 +195,38 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         // Phase A — Materialisation
         // -------------------------------------------------------------------------
 
-        "Phase A: warns when a flowConfiguration reaches several users, and only then" {
-            val executorLogger = LoggerFactory.getLogger(ScheduledPromptExecutor::class.java) as Logger
-            val appender = ListAppender<ILoggingEvent>().also { it.start() }
-            executorLogger.addAppender(appender)
-            try {
-                val flowConfiguration =
-                    FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))
-                forAll(
-                    row(flowConfiguration, setOf(userId1, userId2), true),
-                    row(flowConfiguration, setOf(userId1), false),
-                    row(null, setOf(userId1, userId2), false),
-                ) { config, targets, expectWarning ->
-                    appender.list.clear()
-                    val sp = makeScheduledPrompt().copy(flowConfiguration = config)
-                    val run = makeRun(sp)
-
+        "Phase A: a flowConfiguration is refused, before the Run moves on, when the agent reaches several users" {
+            val flowConfiguration =
+                FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))
+            forAll(
+                row(flowConfiguration, setOf(userId1, userId2), RunStatus.CLAIMED),
+                row(flowConfiguration, setOf(userId1), RunStatus.RUNNING),
+                row(null, setOf(userId1, userId2), RunStatus.RUNNING),
+            ) { config, targets, expectedStatus ->
+                val sp = makeScheduledPrompt().copy(flowConfiguration = config)
+                val run = makeRun(sp)
+                val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+                val exec =
                     executor(
                         spRepo = makeSpRepo(sp),
-                        runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) },
+                        runRepo = runRepo,
                         userRunRepo = makeUserRunRepo(targets),
                         promptService = mockk(relaxed = true),
                         caseService = mockk(relaxed = true),
                         permissionService = mockk(relaxed = true),
                         userService = mockk(relaxed = true),
-                    ).materialize(run, sp)
+                    )
 
-                    val warnings =
-                        appender.list.filter {
-                            it.level == Level.WARN && it.formattedMessage.contains("the loop will run ${targets.size} times")
-                        }
-                    warnings.isNotEmpty() shouldBe expectWarning
+                if (expectedStatus == RunStatus.CLAIMED) {
+                    shouldThrow<IllegalStateException> { exec.materialize(run, sp) }.message.orEmpty().also {
+                        it shouldContain "reaches ${targets.size} users"
+                        it shouldContain "single user"
+                    }
+                } else {
+                    exec.materialize(run, sp)
                 }
-            } finally {
-                executorLogger.detachAppender(appender)
+
+                runRepo.findById(run.id)!!.status shouldBe expectedStatus
             }
         }
 
