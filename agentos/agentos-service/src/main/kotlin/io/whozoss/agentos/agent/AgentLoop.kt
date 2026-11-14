@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -30,14 +31,25 @@ import java.util.UUID
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunnerService]:
  *
- * 1. Resolve the [AgentLoopPayload] from [loopConfig] stored on the [AgentConfig].
+ * 1. Resolve the [AgentLoopPayload] to run (see below).
  * 2. Delegate the workflow to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
  *    when the run could not proceed. Always ends with [AgentFinishedEvent].
  *
- * The triggering message content is not read — configuration lives entirely in [loopConfig].
+ * ## Which payload runs
  *
- * ## Expected loopConfig format
+ * The triggering message *content* is never read. The payload is, in this order:
+ * 1. the `flowConfiguration` of the session context of the last user message
+ *    ([SessionContextKeys.FLOW_CONFIGURATION]), set by whoever starts the run: the scheduler, the UI launch page,
+ *    any API client. The loop does not know who started it;
+ * 2. else [loopConfig], the default persisted on the agent;
+ * 3. else the run is aborted with a [WarnEvent].
+ *
+ * An invalid `flowConfiguration` aborts the run, it never falls back to [loopConfig] (that would run something the
+ * caller did not ask for). A blank `search.tool` or `act.agentName` is invalid. Providing a `flowConfiguration`
+ * grants nothing: the run is bounded by the integrations of the loop agent, not by where its payload comes from.
+ *
+ * ## Payload format
  *
  * ```json
  * {
@@ -51,12 +63,11 @@ import java.util.UUID
  *
  * @param metadata      Agent identity, inherited from [Entity].
  * @param name          Display name of this agent instance.
- * @param objectMapper  Used to parse [loopConfig].
+ * @param objectMapper  Used to parse the payload.
  * @param runner        Executes the workflow.
  * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
  * @param triggerUser   The user who triggered the run.
- * @param loopConfig    The [AgentLoopPayload] persisted on [AgentConfig]. Must be non-null
- *                      and parseable for the run to proceed.
+ * @param loopConfig    The default [AgentLoopPayload] persisted on [AgentConfig].
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -107,7 +118,7 @@ class AgentLoop(
 
             val outcome =
                 try {
-                    val payload = resolvePayload()
+                    val payload = resolvePayload(events)
                     logger.info {
                         "[AgentLoop] '$name' starting — tool=${payload.search.tool}, actAgent=${payload.act.agentName} (caseId=$caseId)"
                     }
@@ -125,7 +136,7 @@ class AgentLoop(
                         shouldContinue = shouldContinue,
                     )
                 } catch (e: InvalidLoopPayloadException) {
-                    logger.error(e) { "[AgentLoop] '$name' invalid loopConfig (caseId=$caseId): ${e.message}" }
+                    logger.error(e) { "[AgentLoop] '$name' invalid payload (caseId=$caseId): ${e.message}" }
                     LoopRunOutcome.Aborted(e.message ?: "Invalid AgentLoop payload")
                 }
 
@@ -179,25 +190,34 @@ class AgentLoop(
         llmModel = null,
     )
 
-    /**
-     * Resolves the [AgentLoopPayload] from [loopConfig].
-     *
-     * @throws InvalidLoopPayloadException when [loopConfig] is null or cannot be parsed.
-     */
-    private fun resolvePayload(): AgentLoopPayload {
-        if (loopConfig == null) {
-            throw InvalidLoopPayloadException("No loopConfig is configured on this agent.")
-        }
+    /** Resolves the payload to run, see the class KDoc; throws [InvalidLoopPayloadException] when there is none or it is invalid. */
+    private fun resolvePayload(events: List<CaseEvent>): AgentLoopPayload {
+        val fromContext =
+            events
+                .filterIsInstance<MessageEvent>()
+                .lastOrNull { it.actor.role == ActorRole.USER }
+                ?.sessionContext
+                ?.get(SessionContextKeys.FLOW_CONFIGURATION)
+        val (source, node) =
+            when {
+                fromContext != null -> "flowConfiguration of the triggering message" to objectMapper.valueToTree<JsonNode>(fromContext)
+                loopConfig != null -> "loopConfig" to loopConfig
+                else ->
+                    throw InvalidLoopPayloadException(
+                        "No flowConfiguration in the context of the triggering message and no loopConfig on this agent.",
+                    )
+            }
         return try {
-            val payload = objectMapper.treeToValue(loopConfig, AgentLoopPayload::class.java)
-            if (payload.search.tool.isBlank()) throw InvalidLoopPayloadException("loopConfig has a blank 'search.tool' field.")
-            logger.info { "[AgentLoop] '$name': payload resolved from loopConfig (tool=${payload.search.tool})" }
+            val payload = objectMapper.treeToValue(node, AgentLoopPayload::class.java)
+            if (payload.search.tool.isBlank()) throw InvalidLoopPayloadException("The $source has a blank 'search.tool' field.")
+            if (payload.act.agentName.isBlank()) throw InvalidLoopPayloadException("The $source has a blank 'act.agentName' field.")
+            logger.info { "[AgentLoop] '$name': payload resolved from $source (tool=${payload.search.tool})" }
             payload
         } catch (e: InvalidLoopPayloadException) {
             throw e
         } catch (e: Exception) {
             throw InvalidLoopPayloadException(
-                "loopConfig could not be parsed as a valid AgentLoopPayload: ${e.message}",
+                "The $source could not be parsed as a valid AgentLoopPayload: ${e.message}",
                 e,
             )
         }

@@ -17,6 +17,7 @@ export interface ScheduledPrompt {
   description?: string
   enabled: boolean
   externalMetadata?: { [key: string]: any }
+  flowConfiguration?: any | null
   id?: string
   lastRunAt?: string
   name: string

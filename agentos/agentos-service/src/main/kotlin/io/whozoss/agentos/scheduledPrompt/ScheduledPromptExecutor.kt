@@ -1,9 +1,14 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -102,7 +107,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 4. Resolve the prompt content directly and inject `"@agentName <content>"` via
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
- *    which is incompatible with the leading `@mention`.
+ *    which is incompatible with the leading `@mention`. A [ScheduledPrompt.flowConfiguration] is handed over in the
+ *    sessionContext of the message, with the untranslated prompt content as its `act.prompt`
+ *    (see [io.whozoss.agentos.agent.AgentLoop]).
  * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
  *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
  *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
@@ -300,6 +307,8 @@ class ScheduledPromptExecutor(
      * Safe to call multiple times for the same Run (idempotent via MERGE).
      * Transitions the Run to [RunStatus.RUNNING] when UserRuns are created, or directly
      * to [RunStatus.DONE] when no target users exist (e.g. platform-scope ScheduledPrompt).
+     * A scheduled prompt with a [ScheduledPrompt.flowConfiguration] must reach a single user, otherwise the loop would
+     * run once per user: this throws before the transition, and the Run is marked FAILED by the caller.
      *
      * The MERGE and the CLAIMED->RUNNING transition run in a single `@Transactional`:
      * if the service crashes between the two, neither orphaned PENDING UserRuns (never
@@ -336,6 +345,12 @@ class ScheduledPromptExecutor(
                     userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
                 }
             }
+
+        // Before the Run moves on: the exception rolls the UserRuns back and SchedulerScanner.claim marks the Run FAILED.
+        check(scheduledPrompt.flowConfiguration == null || count <= 1) {
+            "The loop agent reaches $count users, so the loop would run $count times. " +
+                "Deploy the loop agent to a single user."
+        }
 
         val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
         runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
@@ -410,10 +425,11 @@ class ScheduledPromptExecutor(
                         }
                     }
                     val effectiveContext =
-                        userSessionContextResolver.mergePreferredLanguage(
-                            result.sessionContext,
-                            runContext.preferredLanguage,
-                        )
+                        userSessionContextResolver
+                            .mergePreferredLanguage(
+                                result.sessionContext,
+                                runContext.preferredLanguage,
+                            ).withFlowConfiguration(runContext.flowConfiguration)
                     val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = effectiveContext))
                     awaitLaunch(userRun.id, caseId)
                 }
@@ -483,6 +499,9 @@ class ScheduledPromptExecutor(
             agentName = agentName,
             userExternalId = user.externalId,
             preferredLanguage = preferredLanguage,
+            // Source content, not effectivePromptContent: the loop's cases run for other users, each of whom
+            // gets their own preferredLanguage from FreeCaseStarterForUser, so the loop user's translation is wrong.
+            flowConfiguration = scheduledPrompt.flowConfiguration?.let { flowConfigurationFor(it, prompt = promptContent) },
         )
     }
 
@@ -535,6 +554,7 @@ class ScheduledPromptExecutor(
         val agentName: String,
         val userExternalId: String,
         val preferredLanguage: String? = null,
+        val flowConfiguration: Map<String, Any?>? = null,
         val sessionContext: Map<String, Any?>? = null,
     ) {
         val message: String get() = "@$agentName $promptContent"
@@ -731,6 +751,32 @@ class ScheduledPromptExecutor(
     }
 
     companion object : KLogging() {
+        private val MAPPER = jacksonObjectMapper()
+        private val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
+
+        /**
+         * The stored flowConfiguration with [prompt] as its `act.prompt`, as a plain map (what a persisted message
+         * context holds). The content is not parsed here: a malformed one is left to AgentLoop, which aborts the run.
+         */
+        private fun flowConfigurationFor(
+            stored: JsonNode,
+            prompt: String,
+        ): Map<String, Any?> {
+            val copy = stored.deepCopy<JsonNode>() as? ObjectNode ?: error("flowConfiguration must be a JSON object")
+            (copy.get("act") as? ObjectNode ?: copy.putObject("act")).put("prompt", prompt)
+            return MAPPER.convertValue(copy, MAP_TYPE)
+        }
+
+        /**
+         * Adds [flowConfiguration] under [SessionContextKeys.FLOW_CONFIGURATION], the scheduler's value winning over
+         * any provider key. Returns the context untouched when there is none.
+         */
+        private fun Map<String, Any?>?.withFlowConfiguration(flowConfiguration: Map<String, Any?>?): Map<String, Any?>? =
+            when (flowConfiguration) {
+                null -> this
+                else -> (this ?: emptyMap()) + (SessionContextKeys.FLOW_CONFIGURATION to flowConfiguration)
+            }
+
         private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> =
             when (this) {
                 CaseStatus.KILLED, CaseStatus.ERROR -> {

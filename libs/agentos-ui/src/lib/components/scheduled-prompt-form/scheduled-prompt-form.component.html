@@ -98,6 +98,31 @@
         </span>
       </div>
 
+      <!-- Flow configuration (loop agents) -->
+      <div class="scheduled-prompt-form__field">
+        <label class="scheduled-prompt-form__label" for="sp-flow-configuration">Loop configuration (JSON)</label>
+        <textarea
+          id="sp-flow-configuration"
+          class="scheduled-prompt-form__textarea scheduled-prompt-form__textarea--code"
+          [class.scheduled-prompt-form__textarea--invalid]="
+            flowConfigurationJsonControl.invalid && flowConfigurationJsonControl.touched
+          "
+          rows="10"
+          [placeholder]="flowConfigurationPlaceholder"
+          [formControl]="flowConfigurationJsonControl"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+        @if (flowConfigurationJsonControl.invalid && flowConfigurationJsonControl.touched) {
+          <span class="scheduled-prompt-form__field-error">Invalid JSON.</span>
+        }
+        <span class="scheduled-prompt-form__field-hint">
+          Loop agents only. The loop starts one case per search result with the opening message above; the loop agent
+          must be deployed to a single user, otherwise the run fails. Leave empty to use the agent's own loop
+          configuration.
+        </span>
+      </div>
+
       <!-- ═══════════════════════ RECURRENCE ═══════════════════════ -->
       <fieldset class="scheduled-prompt-form__fieldset">
         <legend class="scheduled-prompt-form__legend">Recurrence</legend>

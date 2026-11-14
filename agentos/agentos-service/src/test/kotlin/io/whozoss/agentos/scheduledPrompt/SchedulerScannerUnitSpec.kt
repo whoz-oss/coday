@@ -6,6 +6,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -209,6 +210,25 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val runs = runRepo.all()
             runs shouldHaveSize 1
             runs.first().status shouldBe RunStatus.DONE
+        }
+
+        "tickClaim with a loop prompt reaching several users: materialize refuses it and the run is FAILED with the reason" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val due = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
+            scheduledPromptRepo.save(
+                due.copy(flowConfiguration = com.fasterxml.jackson.databind.ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")),
+            )
+            val (sc, _) = scannerWithUserRunRepo(
+                scheduledPromptRepo, runRepo,
+                targetUserIdsProvider = { _, _ -> setOf(UUID.randomUUID(), UUID.randomUUID()) },
+            )
+
+            sc.tickClaim()
+
+            val run = runRepo.all().single()
+            run.status shouldBe RunStatus.FAILED
+            run.error!! shouldContain "reaches 2 users"
         }
 
         "tickClaim with 1 due prompt: nextRunAt advanced" {

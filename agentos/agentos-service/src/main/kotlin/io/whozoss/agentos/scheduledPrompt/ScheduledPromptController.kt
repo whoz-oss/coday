@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.swagger.v3.oas.annotations.Operation
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -181,6 +182,7 @@ class ScheduledPromptController(
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
             externalMetadata = resource.externalMetadata,
+            flowConfiguration = resource.flowConfiguration.orNull(),
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -244,6 +246,7 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             externalMetadata = resource.externalMetadata,
+            flowConfiguration = resource.flowConfiguration.orNull(),
         )
 
     companion object : KLogging()
@@ -252,6 +255,9 @@ class ScheduledPromptController(
 // ---------------------------------------------------------------------------
 // DTO <-> Domain conversion extensions
 // ---------------------------------------------------------------------------
+
+// An explicit JSON null counts as no value, like an absent field.
+private fun JsonNode?.orNull(): JsonNode? = this?.takeUnless { it.isNull }
 
 internal fun RecurrenceDto.toDomain(): Recurrence = Recurrence(
     unit = unit,
@@ -295,4 +301,5 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         updatedOn = entity.metadata.modified,
         removed = entity.metadata.removed,
         externalMetadata = entity.externalMetadata,
+        flowConfiguration = entity.flowConfiguration,
     )

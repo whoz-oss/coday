@@ -1,7 +1,12 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -190,6 +195,40 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // Phase A — Materialisation
         // -------------------------------------------------------------------------
+
+        "Phase A: a flowConfiguration is refused, before the Run moves on, when the agent reaches several users" {
+            val flowConfiguration = ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")
+            forAll(
+                row(flowConfiguration, setOf(userId1, userId2), RunStatus.CLAIMED),
+                row(flowConfiguration, setOf(userId1), RunStatus.RUNNING),
+                row(null, setOf(userId1, userId2), RunStatus.RUNNING),
+            ) { config, targets, expectedStatus ->
+                val sp = makeScheduledPrompt().copy(flowConfiguration = config)
+                val run = makeRun(sp)
+                val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+                val exec =
+                    executor(
+                        spRepo = makeSpRepo(sp),
+                        runRepo = runRepo,
+                        userRunRepo = makeUserRunRepo(targets),
+                        promptService = mockk(relaxed = true),
+                        caseService = mockk(relaxed = true),
+                        permissionService = mockk(relaxed = true),
+                        userService = mockk(relaxed = true),
+                    )
+
+                if (expectedStatus == RunStatus.CLAIMED) {
+                    shouldThrow<IllegalStateException> { exec.materialize(run, sp) }.message.orEmpty().also {
+                        it shouldContain "reaches ${targets.size} users"
+                        it shouldContain "single user"
+                    }
+                } else {
+                    exec.materialize(run, sp)
+                }
+
+                runRepo.findById(run.id)!!.status shouldBe expectedStatus
+            }
+        }
 
         "Phase A: materialise creates PENDING UserRuns for each target user" {
             val sp = makeScheduledPrompt()
@@ -981,6 +1020,82 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             // Provider's other context is still present
             @Suppress("UNCHECKED_CAST")
             (sessionContextSlot.captured["userContext"] as Map<String, Any?>)["talentId"] shouldBe "t1"
+        }
+
+        "Phase B: flowConfiguration is sent as a plain map in the sessionContext, with the SOURCE prompt overriding any stored act.prompt, winning over a provider key" {
+            // the stored act.prompt must be overridden by the source content of the scheduled prompt
+            val stored = ObjectMapper().readTree(
+                """{"search": {"tool": "searchAgentUsers", "params": {"agentConfigId": "abc"}}, "act": {"agentName": "Caretaker", "prompt": "stored prompt"}}""",
+            )
+            val sp = makeScheduledPrompt().copy(flowConfiguration = stored)
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(sourceLanguage = "en", title = sp.name)
+                every { it.translate(id = promptTemplateId, targetLanguage = "it", callerNamespaceId = namespaceId) } returns
+                    PromptTranslation(title = "Sintesi", content = listOf("Esegui il report settimanale."))
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1.copy(preferredLanguage = "it")
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+            // the provider sends a key of the same name, and other context that must be kept
+            val provider = mockk<UserContextProvider>().also {
+                every { it.provideUserContext(user1.externalId, namespaceId) } returns
+                    UserContextResult.Success(
+                        mapOf("flowConfiguration" to "from-provider", "userContext" to mapOf("talentId" to "t1")),
+                    )
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                userSessionContextResolver = UserSessionContextResolver(provider),
+            ).processUserRun(userRun)
+
+            val contentSlot = slot<List<MessageContent>>()
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = capture(contentSlot),
+                    sessionContext = capture(sessionContextSlot),
+                )
+            }
+            // the message to the loop agent itself is translated for its user, as before
+            contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content shouldBe
+                "@weekly-agent Esegui il report settimanale."
+            val context = sessionContextSlot.captured
+            context["preferredLanguage"] shouldBe "it"
+            // the cases the loop starts are for other users: their prompt is the untranslated source content
+            context["flowConfiguration"] shouldBe mapOf(
+                "search" to mapOf("tool" to "searchAgentUsers", "params" to mapOf("agentConfigId" to "abc")),
+                "act" to mapOf("agentName" to "Caretaker", "prompt" to "Run your weekly digest report."),
+            )
+            context["userContext"] shouldBe mapOf("talentId" to "t1")
+            // the stored configuration itself is left untouched
+            stored["act"]["prompt"].asText() shouldBe "stored prompt"
         }
 
         "Phase B: sessionContext from UserContextProvider is forwarded to addMessage" {

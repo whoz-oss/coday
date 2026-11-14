@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.scheduledPrompt
 import com.fasterxml.jackson.annotation.JsonFormat
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -146,4 +147,15 @@ data class ScheduledPromptDto(
      * External consumers store their own metadata here (e.g. `isStandard`).
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * What a LOOP agent runs for this scheduled prompt, as an opaque JSON object, like
+     * [io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto.loopConfig] (rejected with 422 for any other agent).
+     * Replaced as a whole on PUT: null clears it. See `io.whozoss.agentos.agent.AgentLoop`.
+     */
+    @field:Schema(
+        description = "Loop payload run by a LOOP agent for this scheduled prompt, overriding the agent's loopConfig.",
+        type = "object",
+        nullable = true,
+    )
+    val flowConfiguration: JsonNode? = null,
 )

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -13,6 +15,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -35,9 +38,10 @@ import java.util.UUID
 /**
  * Unit tests for [AgentLoop].
  *
- * AgentLoop reads its payload exclusively from [AgentLoop.loopConfig] (set at construction
- * from [AgentConfig.loopConfig]). Message content is ignored for payload resolution.
- * These tests cover loopConfig parsing and the mapping of [LoopRunOutcome] to case events.
+ * AgentLoop reads its payload from the `flowConfiguration` of the last user message's session context when there
+ * is one, and from [AgentLoop.loopConfig] (set at construction from [AgentConfig.loopConfig]) otherwise.
+ * Message content is ignored for payload resolution.
+ * These tests cover payload resolution and the mapping of [LoopRunOutcome] to case events.
  * The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
  */
 class AgentLoopUnitSpec :
@@ -99,13 +103,16 @@ class AgentLoopUnitSpec :
             loopConfig = loopConfig,
         )
 
-        fun userMessage(text: String = "start") =
-            MessageEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                actor = Actor(id = "user-1", displayName = "Alice", role = ActorRole.USER),
-                content = listOf(MessageContent.Text(text)),
-            )
+        fun userMessage(
+            text: String = "start",
+            sessionContext: Map<String, Any?>? = null,
+        ) = MessageEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            actor = Actor(id = "user-1", displayName = "Alice", role = ActorRole.USER),
+            content = listOf(MessageContent.Text(text)),
+            sessionContext = sessionContext,
+        )
 
         fun agentMessage(text: String) =
             MessageEvent(
@@ -211,7 +218,8 @@ class AgentLoopUnitSpec :
             emitted shouldHaveSize 3
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             emitted[1].shouldBeInstanceOf<WarnEvent>()
-            emitted.warnMessage() shouldContain "No loopConfig"
+            emitted.warnMessage() shouldContain "No flowConfiguration in the context"
+            emitted.warnMessage() shouldContain "no loopConfig"
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
@@ -227,6 +235,83 @@ class AgentLoopUnitSpec :
             emitted[1].shouldBeInstanceOf<WarnEvent>()
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // flowConfiguration in the context of the triggering message
+        // -------------------------------------------------------------------------
+
+        fun contextPayload(
+            tool: String = "searchAgentUsers",
+            agentName: String = "ContextAgent",
+        ): Map<String, Any?> =
+            mapOf(
+                "search" to mapOf("tool" to tool, "params" to mapOf("agentConfigId" to "abc")),
+                "act" to mapOf("agentName" to agentName, "prompt" to "Hello from the context"),
+            )
+
+        "flowConfiguration in the last user message context takes precedence over loopConfig" {
+            val runner = runnerReturning(completed)
+            val payloadSlot = slot<AgentLoopPayload>()
+            val context = mapOf(SessionContextKeys.FLOW_CONFIGURATION to contextPayload())
+
+            agent(runner = runner).run(listOf(userMessage(sessionContext = context))).toList()
+
+            coVerify { runner.run(capture(payloadSlot), any(), any()) }
+            payloadSlot.captured.search.tool shouldBe "searchAgentUsers"
+            payloadSlot.captured.search.params shouldBe objectMapper.readTree("""{"agentConfigId": "abc"}""")
+            payloadSlot.captured.act shouldBe AgentLoopAct("ContextAgent", "Hello from the context")
+        }
+
+        "an invalid flowConfiguration in the context aborts with a WarnEvent, even with a valid loopConfig" {
+            val runner = runnerReturning(completed)
+            val context = mapOf(SessionContextKeys.FLOW_CONFIGURATION to mapOf("note" to "not a payload"))
+
+            val emitted = agent(runner = runner).run(listOf(userMessage(sessionContext = context))).toList()
+
+            emitted shouldHaveSize 3
+            emitted.warnMessage() shouldContain "flowConfiguration of the triggering message"
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "a blank search tool or act agentName in the context aborts with a WarnEvent" {
+            val runner = runnerReturning(completed)
+
+            forAll(
+                row(contextPayload(tool = " "), "search.tool"),
+                row(contextPayload(agentName = ""), "act.agentName"),
+            ) { payload, field ->
+                val context = mapOf(SessionContextKeys.FLOW_CONFIGURATION to payload)
+
+                agent(runner = runner).run(listOf(userMessage(sessionContext = context))).toList().warnMessage() shouldContain field
+            }
+
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "flowConfiguration given as nested maps, as after persistence, is parsed" {
+            val runner = runnerReturning(completed)
+            // what a case event reloaded from the store holds: plain maps and lists all the way down
+            @Suppress("UNCHECKED_CAST")
+            val persisted =
+                objectMapper.readValue(
+                    objectMapper.writeValueAsString(mapOf(SessionContextKeys.FLOW_CONFIGURATION to contextPayload())),
+                    Map::class.java,
+                ) as Map<String, Any?>
+
+            agent(runner = runner, loopConfig = null).run(listOf(userMessage(sessionContext = persisted))).toList()
+
+            coVerify(exactly = 1) { runner.run(match { it.search.tool == "searchAgentUsers" }, any(), any()) }
+        }
+
+        "only the last user message is read for flowConfiguration" {
+            val runner = runnerReturning(completed)
+            val older = userMessage(sessionContext = mapOf(SessionContextKeys.FLOW_CONFIGURATION to contextPayload(agentName = "Older")))
+            val last = userMessage(sessionContext = mapOf(SessionContextKeys.FLOW_CONFIGURATION to contextPayload(agentName = "Last")))
+
+            agent(runner = runner).run(listOf(older, agentMessage("ok"), last)).toList()
+
+            coVerify(exactly = 1) { runner.run(match { it.act.agentName == "Last" }, any(), any()) }
         }
 
         // -------------------------------------------------------------------------

@@ -1,7 +1,12 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.TextNode
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -21,6 +26,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -562,6 +568,51 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "promptTemplateId round-trips" {
             newService().create(sp()).promptTemplateId shouldBe promptId
+        }
+
+        // -------------------------------------------------------------------------
+        // flowConfiguration — only for LOOP agents
+        // -------------------------------------------------------------------------
+
+        val flowConfiguration: JsonNode =
+            ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")
+
+        fun agentWithMode(mode: ExecutionMode) = defaultAgent().copy(executionMode = mode)
+
+        "flowConfiguration is refused with 422 when it is not for a LOOP agent or not a JSON object, on create and on update" {
+            forAll(
+                row(ExecutionMode.ADVANCED, flowConfiguration, "only allowed for a LOOP agent"),
+                row(ExecutionMode.LOOP, TextNode("not an object"), "must be a JSON object"),
+                row(ExecutionMode.LOOP, ObjectMapper().readTree("[1, 2]"), "must be a JSON object"),
+            ) { mode, config, expectedMessage ->
+                every { agentConfigService.findById(agentConfigId) } returns agentWithMode(mode)
+                val svc = newService()
+                val saved = svc.create(sp(name = "sp-existing"))
+
+                listOf<() -> Unit>(
+                    { svc.create(sp(name = "sp-new").copy(flowConfiguration = config)) },
+                    { svc.update(saved.copy(flowConfiguration = config)) },
+                ).forEach { call ->
+                    shouldThrow<UnprocessableEntityException> { call() }.message shouldContain expectedMessage
+                }
+            }
+        }
+
+        "flowConfiguration on a LOOP agent is saved on create" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+
+            newService().create(sp().copy(flowConfiguration = flowConfiguration)).flowConfiguration shouldBe flowConfiguration
+        }
+
+        "flowConfiguration on a LOOP agent is saved on update, and a null one clears it" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            val svc = newService()
+            val saved = svc.create(sp())
+
+            val withConfig = svc.update(saved.copy(flowConfiguration = flowConfiguration))
+
+            withConfig.flowConfiguration shouldBe flowConfiguration
+            svc.update(withConfig.copy(flowConfiguration = null)).flowConfiguration.shouldBeNull()
         }
 
         // -------------------------------------------------------------------------

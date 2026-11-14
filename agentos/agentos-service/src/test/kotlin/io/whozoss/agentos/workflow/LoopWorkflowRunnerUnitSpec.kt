@@ -222,6 +222,23 @@ class LoopWorkflowRunnerUnitSpec :
             outcome.started shouldBe 1
         }
 
+        "aborts, without executing any tool, when FreeCaseStarterForUser is ambiguous" {
+            val f = Fixture(objectMapper)
+            val search = searchTool(listOf("a"))
+            fun starter(name: String) = mockk<StandardTool<*>>().also { every { it.name } returns name }
+            val first = starter("CASE_A__FreeCaseStarterForUser")
+            val second = starter("CASE_B__FreeCaseStarterForUser")
+
+            val reason = f.runner.run(payload, context(listOf(search, first, second))) { true }.reason()
+
+            reason shouldContain "ambiguous"
+            reason shouldContain "CASE_A__FreeCaseStarterForUser"
+            reason shouldContain "CASE_B__FreeCaseStarterForUser"
+            coVerify(exactly = 0) { search.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { first.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { second.executeWithJson(any(), any()) }
+        }
+
         // -------------------------------------------------------------------------
         // SEARCH phase failures
         // -------------------------------------------------------------------------
@@ -231,6 +248,47 @@ class LoopWorkflowRunnerUnitSpec :
 
             f.runner.run(payload, context(listOf(f.starterTool))) { true }.reason() shouldContain
                 "Search tool 'SearchTalents' is not available"
+        }
+
+        "finds the search tool under its integration prefix" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            val prefixed =
+                mockk<StandardTool<*>>().also { tool ->
+                    every { tool.name } returns "USER_GROUP__SearchTalents"
+                    coEvery { tool.executeWithJson(any(), any()) } returns
+                        ToolExecutionResult(
+                            output = "ok",
+                            success = true,
+                            structuredOutput =
+                                objectMapper.readTree(
+                                    """{"data": [{"entityType": "TALENT", "entityId": "t", "targets": [{"entityType": "User", "entityId": "alice"}]}], "metadata": {"totalCount": 1, "next": null}}""",
+                                ),
+                        )
+                }
+
+            val outcome =
+                f.runner
+                    .run(payload, context(listOf(prefixed, f.starterTool))) { true }
+                    .shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 1
+        }
+
+        "aborts, without executing any tool, when the search tool is ambiguous" {
+            val f = Fixture(objectMapper)
+            fun prefixed(name: String) = mockk<StandardTool<*>>().also { every { it.name } returns name }
+            val first = prefixed("USER_GROUP_A__SearchTalents")
+            val second = prefixed("USER_GROUP_B__SearchTalents")
+
+            val reason = f.runner.run(payload, context(listOf(first, second, f.starterTool))) { true }.reason()
+
+            reason shouldContain "ambiguous"
+            reason shouldContain "USER_GROUP_A__SearchTalents"
+            reason shouldContain "USER_GROUP_B__SearchTalents"
+            coVerify(exactly = 0) { first.executeWithJson(any(), any()) }
+            coVerify(exactly = 0) { second.executeWithJson(any(), any()) }
+            f.calls shouldBe emptyList()
         }
 
         "aborts when the search tool throws" {

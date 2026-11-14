@@ -103,19 +103,13 @@ data class AgentConfigDto(
     )
     val skillSelectors: List<String>? = null,
     /**
-     * Default payload for LOOP-mode agents, stored as a JSON object.
-     *
-     * When provided, it is used as the default [io.whozoss.agentos.workflow.AgentLoopPayload]
-     * when the triggering message carries no parseable payload. A payload present in the
-     * first user message always takes precedence (override).
+     * Default payload for LOOP-mode agents, stored as a JSON object. A `flowConfiguration` in the context of the
+     * start message takes precedence over it, see `io.whozoss.agentos.agent.AgentLoop`.
      *
      * Only meaningful when [executionMode] is LOOP; ignored for SIMPLE and ADVANCED agents.
      */
     @field:Schema(
-        description =
-            "Default AgentLoopPayload for LOOP-mode agents. Used when the triggering message carries no " +
-                "parseable payload. A payload in the first user message always takes precedence. " +
-                "Ignored for SIMPLE and ADVANCED agents.",
+        description = "Default loop payload for LOOP-mode agents, used when the start message carries no flowConfiguration.",
         type = "object",
         nullable = true,
     )

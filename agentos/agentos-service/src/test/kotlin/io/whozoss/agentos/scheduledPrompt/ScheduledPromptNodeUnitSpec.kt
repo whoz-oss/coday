@@ -1,6 +1,9 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -122,5 +125,22 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     "toDomain with null externalMetadataJson produces null externalMetadata" {
         val restored = ScheduledPromptNode.fromDomain(minimalPrompt(externalMetadata = null)).toDomain()
         restored.externalMetadata shouldBe null
+    }
+
+    // -------------------------------------------------------------------------
+    // flowConfiguration — fromDomain / toDomain
+    // -------------------------------------------------------------------------
+
+    val mapper = ObjectMapper()
+
+    "flowConfiguration round-trips through its JSON column: an object, none" {
+        forAll(
+            row(mapper.readTree("""{"search": {"tool": "searchAgentUsers", "params": {"a": [1, 2]}}, "act": {"agentName": "Caretaker"}}""")),
+            row(null),
+        ) { config ->
+            val node = ScheduledPromptNode.fromDomain(minimalPrompt().copy(flowConfiguration = config))
+            (node.flowConfigurationJson == null) shouldBe (config == null)
+            node.toDomain().flowConfiguration shouldBe config
+        }
     }
 })
