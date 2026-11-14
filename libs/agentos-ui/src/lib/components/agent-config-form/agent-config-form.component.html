@@ -157,9 +157,8 @@
             <p class="agent-config-form__field-error" role="alert">Invalid JSON — please fix the syntax.</p>
           }
           <p class="agent-config-form__field-hint">
-            Default payload for this loop agent. Overridden when the launch (the "Launch loop" page or a scheduled
-            prompt) provides an <code class="agent-config-form__code">flowConfiguration</code> in the context of the
-            start message. Leave empty if you always provide it at launch.
+            Default payload for this loop agent. A configuration sent with the start message (launch page, scheduled
+            prompt) takes precedence over it.
           </p>
         </div>
       }

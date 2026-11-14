@@ -107,9 +107,8 @@ data class ScheduledPrompt(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /**
-     * What a LOOP agent runs for this scheduled prompt, as a JSON object, opaque like
-     * [io.whozoss.agentos.agentConfig.AgentConfig.loopConfig]; refused on a non-LOOP agent. It is handed to the run
-     * in the context of the first message, see [io.whozoss.agentos.agent.AgentLoop].
+     * Loop payload a LOOP agent runs for this scheduled prompt, as an opaque JSON object (refused on any other
+     * agent). See [io.whozoss.agentos.agent.AgentLoop].
      */
     val flowConfiguration: JsonNode? = null,
 ) : Entity

@@ -31,16 +31,25 @@ import java.util.UUID
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunnerService]:
  *
- * 1. Resolve the [AgentLoopPayload]: from the `flowConfiguration` of the triggering message's session context
- *    when it has one, from [loopConfig] otherwise (see [resolvePayload]).
+ * 1. Resolve the [AgentLoopPayload] to run (see below).
  * 2. Delegate the workflow to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
  *    when the run could not proceed. Always ends with [AgentFinishedEvent].
  *
- * The triggering message *content* is never read. Its session context is: [SessionContextKeys.FLOW_CONFIGURATION]
- * is how the scheduler and the UI launch page hand a payload to the run, [loopConfig] being the default.
+ * ## Which payload runs
  *
- * ## Expected payload format (in the session context or in loopConfig)
+ * The triggering message *content* is never read. The payload is, in this order:
+ * 1. the `flowConfiguration` of the session context of the last user message
+ *    ([SessionContextKeys.FLOW_CONFIGURATION]), set by whoever starts the run: the scheduler, the UI launch page,
+ *    any API client. The loop does not know who started it;
+ * 2. else [loopConfig], the default persisted on the agent;
+ * 3. else the run is aborted with a [WarnEvent].
+ *
+ * An invalid `flowConfiguration` aborts the run, it never falls back to [loopConfig] (that would run something the
+ * caller did not ask for). A blank `search.tool` or `act.agentName` is invalid. Providing a `flowConfiguration`
+ * grants nothing: the run is bounded by the integrations of the loop agent, not by where its payload comes from.
+ *
+ * ## Payload format
  *
  * ```json
  * {
@@ -58,8 +67,7 @@ import java.util.UUID
  * @param runner        Executes the workflow.
  * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
  * @param triggerUser   The user who triggered the run.
- * @param loopConfig    The default [AgentLoopPayload] persisted on [AgentConfig], used when the triggering message
- *                      has no `flowConfiguration` in its session context.
+ * @param loopConfig    The default [AgentLoopPayload] persisted on [AgentConfig].
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -182,15 +190,7 @@ class AgentLoop(
         llmModel = null,
     )
 
-    /**
-     * Resolves the [AgentLoopPayload] to run, in this order:
-     * 1. `sessionContext[flowConfiguration]` of the last user [MessageEvent] of [events], when present. If it is
-     *    invalid the run is aborted: it never falls back to [loopConfig], which would run something the caller did
-     *    not ask for.
-     * 2. [loopConfig].
-     *
-     * @throws InvalidLoopPayloadException when there is no payload at all, or the one found is invalid.
-     */
+    /** Resolves the payload to run, see the class KDoc; throws [InvalidLoopPayloadException] when there is none or it is invalid. */
     private fun resolvePayload(events: List<CaseEvent>): AgentLoopPayload {
         val fromContext =
             events

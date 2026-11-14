@@ -8,13 +8,9 @@
   </header>
 
   <p class="agent-config-launch__intro">
-    The JSON below is sent as <code class="agent-config-launch__code">flowConfiguration</code> in the context of the
-    start message, exactly as the scheduler does. It takes precedence over
-    <code class="agent-config-launch__code">AgentConfig.loopConfig</code>, which is used when you empty the field. A new
-    Case is created and one case is started per search result. The loop agent needs the integration providing the search
-    tool it calls, and the current loop runner requires a CASE integration granting
-    <code class="agent-config-launch__code">FreeCaseStarterForUser</code>; starting cases for other users requires being
-    an ADMIN of the namespace.
+    The JSON below is sent as <code class="agent-config-launch__code">flowConfiguration</code> with the start message
+    and takes precedence over <code class="agent-config-launch__code">AgentConfig.loopConfig</code>, which is used when
+    you empty the field. One case is started per search result.
   </p>
 
   <div class="agent-config-launch__field">

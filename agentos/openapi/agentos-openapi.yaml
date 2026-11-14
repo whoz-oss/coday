@@ -3936,10 +3936,8 @@ components:
               type: string
         loopConfig:
           $ref: "#/components/schemas/JsonNode"
-          description: "Default AgentLoopPayload for LOOP-mode agents. Used when the\
-            \ triggering message has no flowConfiguration in its sessionContext (sent\
-            \ by the scheduler or the launch page), which takes precedence. Ignored\
-            \ for SIMPLE and ADVANCED agents."
+          description: "Default loop payload for LOOP-mode agents, used when the start\
+            \ message carries no flowConfiguration."
         modelName:
           type: string
         name:
@@ -5115,9 +5113,8 @@ components:
       - toolName
       - type
     JsonNode:
-      description: "What a LOOP agent runs for this scheduled prompt: a loop payload,\
-        \ without act.prompt (the prompt content is used). Null to use the agent's\
-        \ own loopConfig."
+      description: "Loop payload run by a LOOP agent for this scheduled prompt, overriding\
+        \ the agent's loopConfig."
     ListByUserInNamespaceRequest:
       type: object
       properties:
@@ -5928,9 +5925,8 @@ components:
           additionalProperties: {}
         flowConfiguration:
           $ref: "#/components/schemas/JsonNode"
-          description: "What a LOOP agent runs for this scheduled prompt: a loop payload,\
-            \ without act.prompt (the prompt content is used). Null to use the agent's\
-            \ own loopConfig."
+          description: "Loop payload run by a LOOP agent for this scheduled prompt,\
+            \ overriding the agent's loopConfig."
         id:
           type: string
           format: uuid

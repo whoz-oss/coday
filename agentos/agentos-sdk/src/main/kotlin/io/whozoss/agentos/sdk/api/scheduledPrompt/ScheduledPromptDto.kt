@@ -148,13 +148,12 @@ data class ScheduledPromptDto(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /**
-     * What a LOOP agent runs for this scheduled prompt, as a JSON object (rejected with 422 for any other agent).
-     * Opaque for the API, like [io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto.loopConfig]; replaced as a
-     * whole on PUT (null clears it). See [io.whozoss.agentos.agent.AgentLoop] for what it holds and how it is used.
+     * What a LOOP agent runs for this scheduled prompt, as an opaque JSON object, like
+     * [io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto.loopConfig] (rejected with 422 for any other agent).
+     * Replaced as a whole on PUT: null clears it. See `io.whozoss.agentos.agent.AgentLoop`.
      */
     @field:Schema(
-        description = "What a LOOP agent runs for this scheduled prompt: a loop payload, without act.prompt (the " +
-            "prompt content is used). Null to use the agent's own loopConfig.",
+        description = "Loop payload run by a LOOP agent for this scheduled prompt, overriding the agent's loopConfig.",
         type = "object",
         nullable = true,
     )

@@ -15,8 +15,6 @@ package io.whozoss.agentos.caseFlow
  * [PREFERRED_LANGUAGE], [FIRST_NAME] and [LAST_NAME] of [USER_CONTEXT], and [FLOW_CONFIGURATION]. The rest is read
  * by the LLM, which is shown the whole map of the last user message, and by the tools of plugins, which receive the
  * case events.
- *
- * [FLOW_CONFIGURATION] is the only key that drives execution: it is the payload a LOOP agent runs.
  */
 object SessionContextKeys {
     /**
@@ -43,14 +41,8 @@ object SessionContextKeys {
     const val LAST_NAME = "lastName"
 
     /**
-     * The [io.whozoss.agentos.workflow.AgentLoopPayload] a LOOP agent runs, as a JSON object (a map once persisted).
-     *
-     * Unlike the other keys, it drives execution: [io.whozoss.agentos.agent.AgentLoop] reads it from the last user
-     * message and runs it instead of the agent's `loopConfig`. Any initiator may set it (scheduler, launch page,
-     * API client): the loop does not know who started it.
-     *
-     * Setting it grants nothing: the loop runs as the message's author and can only call the tools granted to the
-     * loop agent. What bounds a run is the loop agent's integrations, not `loopConfig`.
+     * The loop payload a LOOP agent runs. Unlike the other keys it drives execution, see
+     * [io.whozoss.agentos.agent.AgentLoop] for how it is used.
      */
     const val FLOW_CONFIGURATION = "flowConfiguration"
 }

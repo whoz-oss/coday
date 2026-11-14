@@ -148,12 +148,8 @@ data class AgentConfig(
      */
     val skillSelectors: List<String>? = null,
     /**
-     * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object.
-     *
-     * When an [AgentLoop] run starts, the last user message is inspected first: if its sessionContext carries an
-     * `flowConfiguration` (see [io.whozoss.agentos.caseFlow.SessionContextKeys.FLOW_CONFIGURATION]), that payload is used
-     * (override), and if it is invalid the run is aborted rather than falling back here. Without one, [loopConfig]
-     * is the payload. If neither exists, the run is aborted with a warning.
+     * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object. A `flowConfiguration` in the context
+     * of the start message takes precedence over it, see [io.whozoss.agentos.agent.AgentLoop].
      *
      * Only meaningful when [executionMode] is [ExecutionMode.LOOP]; ignored otherwise.
      */

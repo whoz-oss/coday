@@ -51,6 +51,13 @@ import java.util.UUID
  *
  * Errors that prevent the whole run return [LoopRunOutcome.Aborted]; per-entity problems are
  * counted in [LoopRunOutcome.Completed] and never stop the loop.
+ *
+ * ## What a loop agent needs
+ *
+ * The integration providing the search tool the payload calls, and a `CASE` integration granting
+ * `FreeCaseStarterForUser`. The user the loop runs as must be an ADMIN of the namespace to start cases for other
+ * users. Grant the loop agent only what its loops need: what bounds a run is its integrations, not where its
+ * payload comes from (see [io.whozoss.agentos.agent.AgentLoop]).
  */
 @Service
 class LoopWorkflowRunnerService(
