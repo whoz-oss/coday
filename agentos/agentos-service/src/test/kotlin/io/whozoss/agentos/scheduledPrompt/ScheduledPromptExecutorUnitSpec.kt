@@ -25,6 +25,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.PromptTranslation
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -1041,7 +1042,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                     PromptTranslation(title = "Sintesi", content = listOf("Esegui il report settimanale."))
             }
             val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
+                every { it.findById(agentId) } returns makeAgentConfig().copy(executionMode = ExecutionMode.LOOP)
                 it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
@@ -1096,6 +1097,54 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             context["userContext"] shouldBe mapOf("talentId" to "t1")
             // the stored configuration itself is left untouched
             stored["act"]["prompt"].asText() shouldBe "stored prompt"
+        }
+
+        "Phase B: a flowConfiguration whose agent is no longer LOOP fails the UserRun, with no Case and no message" {
+            val flowConfiguration = ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")
+            forAll(
+                row(ExecutionMode.SIMPLE),
+                row(ExecutionMode.ADVANCED),
+            ) { mode ->
+                val sp = makeScheduledPrompt().copy(flowConfiguration = flowConfiguration)
+                val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+                val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+                val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
+                val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+                val promptService = mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+                val agentConfigService = mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig().copy(executionMode = mode)
+                    it.stubDeployedAccess()
+                }
+                val userService = mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
+                val caseService = mockk<CaseService>(relaxed = true)
+
+                executor(
+                    spRepo = makeSpRepo(sp),
+                    runRepo = runRepo,
+                    userRunRepo = userRunRepo,
+                    promptService = promptService,
+                    agentConfigService = agentConfigService,
+                    caseService = caseService,
+                    permissionService = mockk(relaxed = true),
+                    userService = userService,
+                ).processUserRun(userRun)
+
+                val updated = userRunRepo.all().first { it.id == userRun.id }
+                updated.status shouldBe UserRunStatus.FAILED
+                updated.error.orEmpty() shouldContain "LOOP"
+                updated.error.orEmpty() shouldContain mode.name
+                verify(exactly = 0) { caseService.create(any()) }
+                verify(exactly = 0) {
+                    caseService.addMessage(caseId = any(), actor = any(), content = any(), sessionContext = any())
+                }
+            }
         }
 
         "Phase B: sessionContext from UserContextProvider is forwarded to addMessage" {

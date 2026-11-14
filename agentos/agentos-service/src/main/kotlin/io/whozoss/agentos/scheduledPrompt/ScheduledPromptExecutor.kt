@@ -16,6 +16,7 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
@@ -109,7 +110,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
  *    which is incompatible with the leading `@mention`. A [ScheduledPrompt.flowConfiguration] is handed over in the
  *    sessionContext of the message, with the untranslated prompt content as its `act.prompt`
- *    (see [io.whozoss.agentos.agent.AgentLoop]).
+ *    (see [io.whozoss.agentos.agent.AgentLoop]); it is for a LOOP agent only, any other agent fails the UserRun.
  * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
  *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
  *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
@@ -474,10 +475,16 @@ class ScheduledPromptExecutor(
         val promptContent =
             prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
                 ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
-        val agentName =
-            checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
+        val agentConfig =
+            checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)) {
                 "AgentConfig ${scheduledPrompt.agentConfigId} not found"
             }
+        val agentName = agentConfig.name
+        // Checked on create/update too, but the agent may have been switched since: fail before any translation call.
+        check(scheduledPrompt.flowConfiguration == null || agentConfig.resolvedExecutionMode == ExecutionMode.LOOP) {
+            "The scheduled prompt has a flowConfiguration but AgentConfig ${scheduledPrompt.agentConfigId} is " +
+                "${agentConfig.resolvedExecutionMode}, not LOOP. Clear the flowConfiguration or set the agent back to LOOP."
+        }
         val preferredLanguage = user.preferredLanguage?.takeIf { it.isNotBlank() }
         val (effectivePromptContent, effectiveCaseTitle) =
             translatePromptForUser(
