@@ -8,7 +8,6 @@
  * Do not edit the class manually.
  */
 import { Recurrence } from './recurrence'
-import { FlowConfiguration } from './flow-configuration'
 import { Planning } from './planning'
 
 export interface ScheduledPrompt {
@@ -18,10 +17,7 @@ export interface ScheduledPrompt {
   description?: string
   enabled: boolean
   externalMetadata?: { [key: string]: any }
-  /**
-   * Only for LOOP agents. The loop calls search.tool with search.params and starts one case per result with act.agentName, whose first message is promptContent. The tool name may be bare or prefixed with its integration (CONFIG__tool).
-   */
-  flowConfiguration?: FlowConfiguration
+  flowConfiguration?: any | null
   id?: string
   lastRunAt?: string
   name: string

@@ -3,6 +3,7 @@ package io.whozoss.agentos.scheduledPrompt
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.NullNode
 import io.mockk.clearAllMocks
@@ -16,9 +17,6 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationActDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationSearchDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptDto
@@ -84,7 +82,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nextRunAt: Instant = fixedNextRun,
         lastRunAt: Instant? = null,
         externalMetadata: Map<String, Any?>? = null,
-        flowConfiguration: FlowConfiguration? = null,
+        flowConfiguration: JsonNode? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -111,7 +109,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning: PlanningDto = planningDto(),
         content: String = promptContent,
         externalMetadata: Map<String, Any?>? = null,
-        flowConfiguration: FlowConfigurationDto? = null,
+        flowConfiguration: JsonNode? = null,
     ) = ScheduledPromptDto(
         id = id,
         namespaceId = nsId,
@@ -587,48 +585,31 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // flowConfiguration — DTO → domain on create, domain → DTO on read, replaced as a whole on update
+    // flowConfiguration — opaque JSON, passed through; replaced as a whole on update
     // -------------------------------------------------------------------------
 
-    val params = ObjectMapper().readTree("""{"agentConfigId": "abc"}""")
-    val flowDomain = FlowConfiguration(
-        search = FlowConfiguration.Search(tool = "searchAgentUsers", params = params),
-        act = FlowConfiguration.Act(agentName = "Caretaker"),
+    val flowConfiguration = ObjectMapper().readTree(
+        """{"search": {"tool": "searchAgentUsers", "params": {"agentConfigId": "abc"}}, "act": {"agentName": "Caretaker"}}""",
     )
 
-    "create maps flowConfiguration to the domain, trimming the names and reading a JSON null params as none" {
-        var capturedEntity: ScheduledPrompt? = null
+    "create hands the flowConfiguration to the service as is, and an explicit JSON null counts as none" {
+        val captured = mutableListOf<ScheduledPrompt>()
         every { service.createWithPrompt(any(), any()) } answers {
-            capturedEntity = firstArg()
+            captured += firstArg<ScheduledPrompt>()
             Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
         }
-        val incoming = FlowConfigurationDto(
-            search = FlowConfigurationSearchDto(tool = "  searchAgentUsers ", params = NullNode.instance),
-            act = FlowConfigurationActDto(agentName = " Caretaker "),
-        )
 
-        controller.create(dto(flowConfiguration = incoming))
+        val exposed = controller.create(dto(flowConfiguration = flowConfiguration)).flowConfiguration
+        controller.create(dto(flowConfiguration = NullNode.instance))
 
-        capturedEntity?.flowConfiguration shouldBe
-            FlowConfiguration(FlowConfiguration.Search(tool = "searchAgentUsers"), FlowConfiguration.Act("Caretaker"))
-    }
-
-    "getById exposes the flowConfiguration of the domain entity" {
-        val id = UUID.randomUUID()
-        val entity = sp(id = id, flowConfiguration = flowDomain)
-        every { service.findById(id, withRemoved = true) } returns entity
-        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
-
-        val result = controller.getById(id).flowConfiguration
-
-        result?.search?.tool shouldBe "searchAgentUsers"
-        result?.search?.params shouldBe params
-        result?.act?.agentName shouldBe "Caretaker"
+        captured[0].flowConfiguration shouldBe flowConfiguration
+        exposed shouldBe flowConfiguration
+        captured[1].flowConfiguration shouldBe null
     }
 
     "update with a null flowConfiguration clears the existing one" {
         val id = UUID.randomUUID()
-        every { service.findById(id) } returns sp(id = id, flowConfiguration = flowDomain)
+        every { service.findById(id) } returns sp(id = id, flowConfiguration = flowConfiguration)
         every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
 
         controller.update(id, dto(id = id)).flowConfiguration shouldBe null

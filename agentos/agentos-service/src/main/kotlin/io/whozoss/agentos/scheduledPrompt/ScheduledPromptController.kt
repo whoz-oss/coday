@@ -1,15 +1,13 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.swagger.v3.oas.annotations.Operation
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationActDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationDto
-import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationSearchDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptApi
@@ -184,7 +182,7 @@ class ScheduledPromptController(
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
             externalMetadata = resource.externalMetadata,
-            flowConfiguration = resource.flowConfiguration?.toDomain(),
+            flowConfiguration = resource.flowConfiguration.orNull(),
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -248,7 +246,7 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             externalMetadata = resource.externalMetadata,
-            flowConfiguration = resource.flowConfiguration?.toDomain(),
+            flowConfiguration = resource.flowConfiguration.orNull(),
         )
 
     companion object : KLogging()
@@ -257,6 +255,9 @@ class ScheduledPromptController(
 // ---------------------------------------------------------------------------
 // DTO <-> Domain conversion extensions
 // ---------------------------------------------------------------------------
+
+// An explicit JSON null counts as no value, like an absent field.
+private fun JsonNode?.orNull(): JsonNode? = this?.takeUnless { it.isNull }
 
 internal fun RecurrenceDto.toDomain(): Recurrence = Recurrence(
     unit = unit,
@@ -269,20 +270,6 @@ internal fun PlanningDto.toDomain(): Planning = Planning(
     endType = endType,
     endDate = endDate,
     maxOccurrenceCount = maxOccurrenceCount,
-)
-
-internal fun FlowConfigurationDto.toDomain(): FlowConfiguration = FlowConfiguration(
-    search = FlowConfiguration.Search(
-        tool = search.tool.trim(),
-        // an explicit JSON null is "no params", like an absent field
-        params = search.params?.takeUnless { it.isNull },
-    ),
-    act = FlowConfiguration.Act(agentName = act.agentName.trim()),
-)
-
-internal fun FlowConfiguration.toDto(): FlowConfigurationDto = FlowConfigurationDto(
-    search = FlowConfigurationSearchDto(tool = search.tool, params = search.params),
-    act = FlowConfigurationActDto(agentName = act.agentName),
 )
 
 internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPromptDto =
@@ -314,5 +301,5 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         updatedOn = entity.metadata.modified,
         removed = entity.metadata.removed,
         externalMetadata = entity.externalMetadata,
-        flowConfiguration = entity.flowConfiguration?.toDto(),
+        flowConfiguration = entity.flowConfiguration,
     )

@@ -1,6 +1,8 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
@@ -18,7 +20,6 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.UserService
-import io.whozoss.agentos.workflow.AgentLoopPayload
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CancellationException
@@ -428,7 +429,7 @@ class ScheduledPromptExecutor(
                             .mergePreferredLanguage(
                                 result.sessionContext,
                                 runContext.preferredLanguage,
-                            ).withFlowConfiguration(runContext.flowPayload)
+                            ).withFlowConfiguration(runContext.flowConfiguration)
                     val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = effectiveContext))
                     awaitLaunch(userRun.id, caseId)
                 }
@@ -500,7 +501,7 @@ class ScheduledPromptExecutor(
             preferredLanguage = preferredLanguage,
             // Source content, not effectivePromptContent: the loop's cases run for other users, each of whom
             // gets their own preferredLanguage from FreeCaseStarterForUser, so the loop user's translation is wrong.
-            flowPayload = scheduledPrompt.flowConfiguration?.toLoopPayload(prompt = promptContent),
+            flowConfiguration = scheduledPrompt.flowConfiguration?.let { flowConfigurationFor(it, prompt = promptContent) },
         )
     }
 
@@ -553,7 +554,7 @@ class ScheduledPromptExecutor(
         val agentName: String,
         val userExternalId: String,
         val preferredLanguage: String? = null,
-        val flowPayload: AgentLoopPayload? = null,
+        val flowConfiguration: Map<String, Any?>? = null,
         val sessionContext: Map<String, Any?>? = null,
     ) {
         val message: String get() = "@$agentName $promptContent"
@@ -754,13 +755,26 @@ class ScheduledPromptExecutor(
         private val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
 
         /**
-         * Adds [payload] under [SessionContextKeys.FLOW_CONFIGURATION] as a plain map, the scheduler's value winning
-         * over any provider key. Returns the context untouched when there is no payload.
+         * The stored flowConfiguration with [prompt] as its `act.prompt`, as a plain map (what a persisted message
+         * context holds). The content is not parsed here: a malformed one is left to AgentLoop, which aborts the run.
          */
-        private fun Map<String, Any?>?.withFlowConfiguration(payload: AgentLoopPayload?): Map<String, Any?>? =
-            when (payload) {
+        private fun flowConfigurationFor(
+            stored: JsonNode,
+            prompt: String,
+        ): Map<String, Any?> {
+            val copy = stored.deepCopy<JsonNode>() as? ObjectNode ?: error("flowConfiguration must be a JSON object")
+            (copy.get("act") as? ObjectNode ?: copy.putObject("act")).put("prompt", prompt)
+            return MAPPER.convertValue(copy, MAP_TYPE)
+        }
+
+        /**
+         * Adds [flowConfiguration] under [SessionContextKeys.FLOW_CONFIGURATION], the scheduler's value winning over
+         * any provider key. Returns the context untouched when there is none.
+         */
+        private fun Map<String, Any?>?.withFlowConfiguration(flowConfiguration: Map<String, Any?>?): Map<String, Any?>? =
+            when (flowConfiguration) {
                 null -> this
-                else -> (this ?: emptyMap()) + (SessionContextKeys.FLOW_CONFIGURATION to MAPPER.convertValue(payload, MAP_TYPE))
+                else -> (this ?: emptyMap()) + (SessionContextKeys.FLOW_CONFIGURATION to flowConfiguration)
             }
 
         private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> =

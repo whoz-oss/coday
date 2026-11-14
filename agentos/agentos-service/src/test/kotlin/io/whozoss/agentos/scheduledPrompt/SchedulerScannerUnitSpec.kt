@@ -217,7 +217,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val runRepo = makeRunRepo()
             val due = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
             scheduledPromptRepo.save(
-                due.copy(flowConfiguration = FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))),
+                due.copy(flowConfiguration = com.fasterxml.jackson.databind.ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")),
             )
             val (sc, _) = scannerWithUserRunRepo(
                 scheduledPromptRepo, runRepo,

@@ -1,5 +1,8 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.TextNode
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.data.forAll
@@ -571,23 +574,27 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         // flowConfiguration — only for LOOP agents
         // -------------------------------------------------------------------------
 
-        val flowConfiguration =
-            FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))
+        val flowConfiguration: JsonNode =
+            ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")
 
         fun agentWithMode(mode: ExecutionMode) = defaultAgent().copy(executionMode = mode)
 
-        "flowConfiguration is refused on a non-LOOP agent, on create and on update" {
-            forAll(row("create"), row("update")) { operation ->
-                every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.ADVANCED)
+        "flowConfiguration is refused with 422 when it is not for a LOOP agent or not a JSON object, on create and on update" {
+            forAll(
+                row(ExecutionMode.ADVANCED, flowConfiguration, "only allowed for a LOOP agent"),
+                row(ExecutionMode.LOOP, TextNode("not an object"), "must be a JSON object"),
+                row(ExecutionMode.LOOP, ObjectMapper().readTree("[1, 2]"), "must be a JSON object"),
+            ) { mode, config, expectedMessage ->
+                every { agentConfigService.findById(agentConfigId) } returns agentWithMode(mode)
                 val svc = newService()
-                val saved = svc.create(sp(name = "sp-$operation"))
-                val withConfig = (if (operation == "create") sp(name = "sp-new") else saved).copy(flowConfiguration = flowConfiguration)
+                val saved = svc.create(sp(name = "sp-existing"))
 
-                val ex =
-                    shouldThrow<UnprocessableEntityException> {
-                        if (operation == "create") svc.create(withConfig) else svc.update(withConfig)
-                    }
-                ex.message shouldContain "flowConfiguration is only allowed for a LOOP agent"
+                listOf<() -> Unit>(
+                    { svc.create(sp(name = "sp-new").copy(flowConfiguration = config)) },
+                    { svc.update(saved.copy(flowConfiguration = config)) },
+                ).forEach { call ->
+                    shouldThrow<UnprocessableEntityException> { call() }.message shouldContain expectedMessage
+                }
             }
         }
 

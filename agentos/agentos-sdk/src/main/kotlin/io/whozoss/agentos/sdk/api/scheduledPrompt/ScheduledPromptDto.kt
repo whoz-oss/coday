@@ -86,43 +86,6 @@ data class PlanningDto(
         get() = endType != SchedulerEndType.OCCURRENCES || maxOccurrenceCount != null
 }
 
-/**
- * What a loop agent runs for a scheduled prompt: the search tool it calls and the agent it starts for each result.
- *
- * The prompt of the started cases is not part of it: it is the scheduled prompt's `promptContent`.
- */
-@Schema(
-    name = "FlowConfiguration",
-    description = "Search tool, its arguments and the agent started for each result, for a LOOP agent.",
-)
-data class FlowConfigurationDto(
-    @field:NotNull(message = "search must not be null")
-    @field:Valid
-    val search: FlowConfigurationSearchDto,
-    @field:NotNull(message = "act must not be null")
-    @field:Valid
-    val act: FlowConfigurationActDto,
-)
-
-/**
- * The SEARCH step: [tool] is called with [params]. The tool name may be bare (`searchAgentUsers`) or
- * prefixed with its integration (`USER_GROUP__searchAgentUsers`).
- */
-@Schema(name = "FlowConfigurationSearch")
-data class FlowConfigurationSearchDto(
-    @field:NotBlank(message = "search.tool must not be blank")
-    val tool: String,
-    /** Opaque object passed as-is to the tool, same as [AgentConfigDto.loopConfig]. */
-    val params: JsonNode? = null,
-)
-
-/** The ACT step: one case is started with [agentName] for each search result. */
-@Schema(name = "FlowConfigurationAct")
-data class FlowConfigurationActDto(
-    @field:NotBlank(message = "act.agentName must not be blank")
-    val agentName: String,
-)
-
 // ---------------------------------------------------------------------------
 // Root DTO
 // ---------------------------------------------------------------------------
@@ -185,16 +148,15 @@ data class ScheduledPromptDto(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /**
-     * Only for LOOP agents (rejected with 422 otherwise). The loop calls `search.tool` with `search.params`
-     * and starts one case per result with `act.agentName`, whose first message is [promptContent].
-     * Replaced as a whole on PUT: null clears it.
+     * What a LOOP agent runs for this scheduled prompt, as a JSON object (rejected with 422 for any other agent).
+     * Opaque for the API, like [io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto.loopConfig]; replaced as a
+     * whole on PUT (null clears it). See [io.whozoss.agentos.agent.AgentLoop] for what it holds and how it is used.
      */
-    @field:Valid
     @field:Schema(
+        description = "What a LOOP agent runs for this scheduled prompt: a loop payload, without act.prompt (the " +
+            "prompt content is used). Null to use the agent's own loopConfig.",
+        type = "object",
         nullable = true,
-        description = "Only for LOOP agents. The loop calls search.tool with search.params and starts one case " +
-            "per result with act.agentName, whose first message is promptContent. The tool name may be bare " +
-            "or prefixed with its integration (CONFIG__tool).",
     )
-    val flowConfiguration: FlowConfigurationDto? = null,
+    val flowConfiguration: JsonNode? = null,
 )

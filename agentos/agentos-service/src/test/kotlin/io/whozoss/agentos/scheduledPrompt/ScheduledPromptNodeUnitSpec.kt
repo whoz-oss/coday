@@ -133,31 +133,14 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
 
     val mapper = ObjectMapper()
 
-    "flowConfiguration round-trips: object params, no params, no configuration" {
+    "flowConfiguration round-trips through its JSON column: an object, none" {
         forAll(
-            row(FlowConfiguration(FlowConfiguration.Search("searchAgentUsers", mapper.readTree("""{"a": "b", "n": {"x": [1, 2]}}""")), FlowConfiguration.Act("Caretaker"))),
-            row(FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))),
+            row(mapper.readTree("""{"search": {"tool": "searchAgentUsers", "params": {"a": [1, 2]}}, "act": {"agentName": "Caretaker"}}""")),
             row(null),
         ) { config ->
             val node = ScheduledPromptNode.fromDomain(minimalPrompt().copy(flowConfiguration = config))
             (node.flowConfigurationJson == null) shouldBe (config == null)
             node.toDomain().flowConfiguration shouldBe config
         }
-    }
-
-    "the stored flowConfiguration has the nested shape of the API, without a params key when there are none" {
-        val withParams = FlowConfiguration(
-            FlowConfiguration.Search("searchAgentUsers", mapper.readTree("""{"agentConfigId": "abc"}""")),
-            FlowConfiguration.Act("Caretaker"),
-        )
-        val withoutParams = withParams.copy(search = FlowConfiguration.Search("searchAgentUsers"))
-
-        fun stored(config: FlowConfiguration) =
-            mapper.readTree(ScheduledPromptNode.fromDomain(minimalPrompt().copy(flowConfiguration = config)).flowConfigurationJson)
-
-        stored(withParams) shouldBe
-            mapper.readTree("""{"search":{"tool":"searchAgentUsers","params":{"agentConfigId":"abc"}},"act":{"agentName":"Caretaker"}}""")
-        stored(withoutParams) shouldBe
-            mapper.readTree("""{"search":{"tool":"searchAgentUsers"},"act":{"agentName":"Caretaker"}}""")
     }
 })

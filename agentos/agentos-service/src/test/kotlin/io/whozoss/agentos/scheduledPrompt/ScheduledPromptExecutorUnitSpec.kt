@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.data.forAll
@@ -196,8 +197,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "Phase A: a flowConfiguration is refused, before the Run moves on, when the agent reaches several users" {
-            val flowConfiguration =
-                FlowConfiguration(FlowConfiguration.Search("searchAgentUsers"), FlowConfiguration.Act("Caretaker"))
+            val flowConfiguration = ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")
             forAll(
                 row(flowConfiguration, setOf(userId1, userId2), RunStatus.CLAIMED),
                 row(flowConfiguration, setOf(userId1), RunStatus.RUNNING),
@@ -1022,15 +1022,12 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             (sessionContextSlot.captured["userContext"] as Map<String, Any?>)["talentId"] shouldBe "t1"
         }
 
-        "Phase B: flowConfiguration is sent as a plain map in the sessionContext with the SOURCE prompt, winning over a provider key" {
-            val flowConfiguration = FlowConfiguration(
-                search = FlowConfiguration.Search(
-                    tool = "searchAgentUsers",
-                    params = com.fasterxml.jackson.databind.ObjectMapper().readTree("""{"agentConfigId": "abc"}"""),
-                ),
-                act = FlowConfiguration.Act(agentName = "Caretaker"),
+        "Phase B: flowConfiguration is sent as a plain map in the sessionContext, with the SOURCE prompt overriding any stored act.prompt, winning over a provider key" {
+            // the stored act.prompt must be overridden by the source content of the scheduled prompt
+            val stored = ObjectMapper().readTree(
+                """{"search": {"tool": "searchAgentUsers", "params": {"agentConfigId": "abc"}}, "act": {"agentName": "Caretaker", "prompt": "stored prompt"}}""",
             )
-            val sp = makeScheduledPrompt().copy(flowConfiguration = flowConfiguration)
+            val sp = makeScheduledPrompt().copy(flowConfiguration = stored)
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
@@ -1097,6 +1094,8 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 "act" to mapOf("agentName" to "Caretaker", "prompt" to "Run your weekly digest report."),
             )
             context["userContext"] shouldBe mapOf("talentId" to "t1")
+            // the stored configuration itself is left untouched
+            stored["act"]["prompt"].asText() shouldBe "stored prompt"
         }
 
         "Phase B: sessionContext from UserContextProvider is forwarded to addMessage" {
