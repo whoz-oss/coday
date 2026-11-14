@@ -109,12 +109,12 @@ the chat with it. Each topic is a chat of its own: its first message starts a ca
 topic, and `/new`, `/cases` and `/case` work in it alone. The General topic is the chat itself. The account is
 linked once, for all its topics.
 
-**Voice messages.** A voice message (Telegram's, or a clip recorded in Slack) is transcribed on the AgentOS server,
-then taken in as the text it says, marked 🎤: the bot first shows that text in the chat, so that the user sees what
-the agent will read, and the case keeps it as a message like any other. An audio file sent as music is
-transcribed too. Nothing of the audio leaves the server: whisper.cpp transcribes it there, after ffmpeg has decoded
-it (see [Configuration](#configuration)). An instance without a transcription model, a voice message longer than
-the limit, or one that could not be transcribed is answered with why. A photo, a file or a sticker is answered with
+**Voice messages.** A voice message (Telegram's, or a clip recorded in Slack) is transcribed with the platform's `WHISPER`
+AI model, the one the voice button of the UI uses, then taken in as the text it says, marked 🎤: the bot first shows
+that text in the chat, so that the user sees what the agent will read, and the case keeps it as a message like any
+other. An audio file sent as music is transcribed too, in the language of the user's profile when it has one. The
+audio is sent to the provider of that model (see [Configuration](#configuration)). An instance without a `WHISPER`
+model, a voice message longer than the limit, or one that could not be transcribed is answered with why. A photo, a file or a sticker is answered with
 what the bot reads, instead of being ignored.
 
 **Continuing a case from the UI.** The header of a case shows a *Continue on Telegram* (or *on Slack*) button for
@@ -136,29 +136,24 @@ Nothing is needed to run bots. Optional properties:
 The Telegram bots poll (`getUpdates`) and the Slack apps hold a Socket Mode connection: the instance needs no
 public URL and nothing reaches it from the outside, which suits an instance behind an access proxy.
 
-**Transcribing voice messages.** Voice messages are transcribed only once a whisper.cpp model is set. The server
-runs two programs, which must be installed where AgentOS runs: `ffmpeg`, which decodes the audio (Ogg Opus from
-Telegram, WebM or MP4 from Slack), and `whisper-cli` from [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
-with a `ggml-*.bin` model (`base` is fast, `small` or `medium` understand French and technical terms better). They
-are server properties, not UI settings, because they are programs the server runs.
+**Transcribing voice messages.** Nothing to install or set for the bots: they use the transcription the UI's voice
+button already uses (`TranscriptionService`). Voice messages are transcribed as soon as a **platform-level** AI model
+carries the alias `WHISPER` (the highest priority wins); the first-run setup creates one for OpenAI and Requesty, and
+a super-admin can add one for any OpenAI-compatible provider (OpenAI, Requesty, vLLM...). Without it the bots say
+that voice messages are not transcribed, and the voice button stays hidden in the UI. The audio is sent to that
+model's provider; its cost is not tracked.
+
+Only the limits are properties of the bots:
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.messaging.transcription.model` | `AGENTOS_MESSAGING_TRANSCRIPTION_MODEL` | empty | Path of the whisper.cpp model. Empty: voice messages are not transcribed, and the bots say so. |
-| `agentos.messaging.transcription.whisper-command` | `AGENTOS_MESSAGING_TRANSCRIPTION_WHISPER_COMMAND` | `whisper-cli` | The whisper.cpp program, by path or on the `PATH`. |
-| `agentos.messaging.transcription.ffmpeg-command` | `AGENTOS_MESSAGING_TRANSCRIPTION_FFMPEG_COMMAND` | `ffmpeg` | The ffmpeg program. |
-| `agentos.messaging.transcription.language` | `AGENTOS_MESSAGING_TRANSCRIPTION_LANGUAGE` | `auto` | The spoken language (`fr`, `en`...), `auto` to detect it. |
 | `agentos.messaging.transcription.max-duration-seconds` | `AGENTOS_MESSAGING_TRANSCRIPTION_MAX_DURATION_SECONDS` | `300` | Longer voice messages are refused. |
 | `agentos.messaging.transcription.max-bytes` | `AGENTOS_MESSAGING_TRANSCRIPTION_MAX_BYTES` | `20971520` | Larger ones are refused (20 MB, Telegram's own limit for a bot). |
-| `agentos.messaging.transcription.timeout-seconds` | `AGENTOS_MESSAGING_TRANSCRIPTION_TIMEOUT_SECONDS` | `120` | A transcription still running then is stopped. |
-| `agentos.messaging.transcription.concurrency` | `AGENTOS_MESSAGING_TRANSCRIPTION_CONCURRENCY` | `1` | Transcriptions at once on the server: whisper uses every core it is given. |
 
-The audio comes from a chat: ffmpeg reads it as untrusted input, from the local file only (`-protocol_whitelist
-file`) and as an audio container only (`-format_whitelist`), so that a playlist or a concat list sent as a voice
-message cannot make it read anything else. The programs run without a shell, with fixed arguments, in a temporary
-directory removed afterwards. A Slack app downloads the clips with its bot token, which it sends to
-`files.slack.com` only; this needs the `files:read` scope, in the manifest AgentOS gives. An app created before
-needs it added (*OAuth & Permissions*), then reinstalled.
+Telegram's voice messages are Ogg Opus, which the transcription API reads as it is, as the clips of Slack (WebM or
+MP4, which Slack may declare as `video/*`: they are sent as the audio they hold). A Slack app downloads the clips
+with its bot token, which it sends to `files.slack.com` only; this needs the `files:read` scope, in the manifest
+AgentOS gives. An app created before needs it added (*OAuth & Permissions*), then reinstalled.
 
 ## How it works
 
@@ -171,7 +166,7 @@ needs it added (*OAuth & Permissions*), then reinstalled.
 | `MessagingIdentity` | A platform account linked to a user through a bot. Unique per account and bot, and per user and bot, among active rows. |
 | `MessagingConversation` | A chat with a bot and the case its next message goes to. The chat moves between cases; the case does not move. |
 | `MessagingGateway` | Takes what the bot of an agent receives: links accounts, checks the user may use the agent, runs the commands, reads, starts and feeds cases (with `@agent` when the case would otherwise go to another agent), transcribes voice messages, applies or rejects a plan. All of it through the endpoints the UI calls, below. |
-| `VoiceTranscriber` | Turns a voice message into text: `WhisperCppTranscriber` runs ffmpeg then whisper.cpp on the server. The adapter downloads the audio (`getFile` on Telegram, the file's private URL on Slack). |
+| `VoiceTranscriber` | Turns a voice message into text: `PlatformVoiceTranscriber` hands the audio to `TranscriptionService`, the platform's `WHISPER` model, as the UI's voice button does. The adapter downloads the audio (`getFile` on Telegram, the file's private URL on Slack). |
 | `MessagingPlanCards` | A configuration plan as a chat shows it, from the card's view (`ConfigChangeViewDto`), with Apply and Reject; the report of an apply. |
 | `MessagingManagedBots` | Takes what the bot manager receives: the creation link, the button that opens Telegram's bot creation, and the new bot, which it attaches and links to its creator. |
 | `MessagingDelivery` | Listens to `CaseEventCreatedEvent`, published by `CaseEventServiceImpl.create` for every stored event, and sends the readable ones to the chat the case's current turn came from; the question of a plan goes as its card. |
