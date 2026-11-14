@@ -2,7 +2,6 @@ package io.whozoss.agentos.permissions
 
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -18,10 +17,6 @@ import java.util.UUID
  * All exceptions result in permission denied (fail-closed).
  */
 @Service
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
-)
 class PermissionServiceImpl(
     private val userService: UserService,
     private val permissionRepository: PermissionRepository,
