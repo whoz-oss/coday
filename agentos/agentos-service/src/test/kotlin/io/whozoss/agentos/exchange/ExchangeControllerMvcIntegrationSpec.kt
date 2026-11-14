@@ -189,6 +189,29 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
         // Case content / download — storage-error mapping (B3 hardening)
         // -------------------------------------------------------------------------
 
+        "GET case content and download hide files when READ is denied" {
+            val caseId = UUID.randomUUID()
+            val path = "private-${UUID.randomUUID()}.txt"
+            val sentinel = "sentinel-${UUID.randomUUID()}"
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns false
+            every { exchangeStorageService.readContent(any(), path) } returns
+                ExchangeFileContent(content = sentinel, etag = "test", mimeType = "text/plain", size = sentinel.length.toLong())
+            every { exchangeStorageService.readBytes(any(), path) } returns (sentinel.toByteArray() to "text/plain")
+
+            for (endpoint in listOf("content", "download")) {
+                val response = mockMvc.perform(get("/api/cases/$caseId/files/$endpoint").param("path", path))
+                    .andExpect(status().isNotFound)
+                    .andReturn().response
+                response.contentAsString.contains(sentinel) shouldBe false
+                response.contentAsString.contains(path) shouldBe false
+                response.getHeader("Content-Disposition") shouldBe null
+            }
+            verify(exactly = 2) { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) }
+            verify(exactly = 0) { exchangeStorageService.readContent(any(), path) }
+            verify(exactly = 0) { exchangeStorageService.readBytes(any(), path) }
+        }
+
         "GET case content returns the file content" {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
@@ -330,6 +353,19 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
         // Case delete
         // -------------------------------------------------------------------------
 
+        "DELETE case file returns 403 and does not delete when WRITE is denied" {
+            val caseId = UUID.randomUUID()
+            val path = "private-${UUID.randomUUID()}.txt"
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
+
+            mockMvc.perform(delete("/api/cases/$caseId/files").param("path", path))
+                .andExpect(status().isForbidden)
+            verify(exactly = 1) { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) }
+            verify(exactly = 0) { exchangeStorageService.delete(any(), path) }
+        }
+
         "DELETE case file returns a success body" {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
@@ -403,6 +439,29 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
 
             mockMvc.perform(get("/api/namespaces/$namespaceId/files/manifest"))
                 .andExpect(status().isNotFound)
+        }
+
+        "GET namespace content and download hide files when READ is denied" {
+            val namespaceId = UUID.randomUUID()
+            val path = "private-${UUID.randomUUID()}.txt"
+            val sentinel = "sentinel-${UUID.randomUUID()}"
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns false
+            every { exchangeStorageService.readContent(any(), path) } returns
+                ExchangeFileContent(content = sentinel, etag = "test", mimeType = "text/plain", size = sentinel.length.toLong())
+            every { exchangeStorageService.readBytes(any(), path) } returns (sentinel.toByteArray() to "text/plain")
+
+            for (endpoint in listOf("content", "download")) {
+                val response = mockMvc.perform(get("/api/namespaces/$namespaceId/files/$endpoint").param("path", path))
+                    .andExpect(status().isNotFound)
+                    .andReturn().response
+                response.contentAsString.contains(sentinel) shouldBe false
+                response.contentAsString.contains(path) shouldBe false
+                response.getHeader("Content-Disposition") shouldBe null
+            }
+            verify(exactly = 2) { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.READ) }
+            verify(exactly = 0) { exchangeStorageService.readContent(any(), path) }
+            verify(exactly = 0) { exchangeStorageService.readBytes(any(), path) }
         }
 
         "GET namespace download streams bytes" {

@@ -20,9 +20,9 @@
 
     <div class="exchange-drawer__sections">
       @if (caseSectionVisible()) {
-        <section class="exchange-drawer__section">
+        <section class="exchange-drawer__section" data-track="ExchangeDrawer-caseSection">
           <div class="exchange-drawer__section-header">
-            <h3 class="exchange-drawer__section-title">Case files</h3>
+            <h3 class="exchange-drawer__section-title" tabindex="-1">Case files</h3>
             <div class="exchange-drawer__section-actions">
               @if (canWriteCase()) {
                 <ds-icon-button
@@ -78,6 +78,10 @@
                 </div>
               }
               @default {
+                <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: CASE, value: caseInput(), status: caseAnnouncement() }" />
+                @if (caseQuery()) {
+                  <ng-container [ngTemplateOutlet]="filterResults" [ngTemplateOutletContext]="{ scope: CASE, query: caseQuery(), status: caseManifestStatus(), tree: caseTree() }" />
+                } @else {
                 @if (caseBreadcrumb().length > 0 || caseFolders().length > 0) {
                   <agentos-exchange-folder-nav
                     [breadcrumb]="caseBreadcrumb()"
@@ -89,7 +93,7 @@
                   <ul class="exchange-drawer__folders" role="list">
                     @for (folder of caseFolders(); track folder.path) {
                       <li role="listitem">
-                        <button type="button" class="exchange-drawer__folder" (click)="onFolderOpen(CASE, folder.path)">
+                        <button type="button" class="exchange-drawer__folder" [attr.data-track]="'ExchangeDrawer-folder_CASE:' + folder.path" (click)="onFolderOpen(CASE, folder.path)">
                           <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
                             >folder_open</span
                           >
@@ -147,6 +151,7 @@
                     </button>
                   }
                 }
+                }
               }
             }
           </div>
@@ -154,9 +159,9 @@
       }
 
       @if (namespaceSectionVisible()) {
-        <section class="exchange-drawer__section">
+        <section class="exchange-drawer__section" data-track="ExchangeDrawer-namespaceSection">
           <div class="exchange-drawer__section-header">
-            <h3 class="exchange-drawer__section-title">Namespace files</h3>
+            <h3 class="exchange-drawer__section-title" tabindex="-1">Namespace files</h3>
             <div class="exchange-drawer__section-actions">
               @if (canWriteNamespace()) {
                 <ds-icon-button
@@ -193,151 +198,71 @@
               }
               @default {
                 @if (showNamespaceFilter()) {
-                  <div class="exchange-drawer__filter">
-                    <span class="exchange-drawer__filter-icon material-icons" aria-hidden="true">search</span>
-                    <input
-                      class="exchange-drawer__filter-input"
-                      type="search"
-                      placeholder="Filter files…"
-                      aria-label="Filter namespace files by name or path"
-                      autocomplete="off"
-                      [value]="filterInput()"
-                      (input)="onFilterInput($event)"
-                      (keydown)="onFilterKeydown($event)"
-                    />
-                    @if (filterInput() !== '') {
-                      <button
-                        type="button"
-                        class="exchange-drawer__filter-clear"
-                        title="Clear filter"
-                        aria-label="Clear filter"
-                        (click)="clearFilter()"
-                      >
-                        <span class="material-icons" aria-hidden="true">close</span>
-                      </button>
-                    }
-                  </div>
+                  <ng-container [ngTemplateOutlet]="filterField" [ngTemplateOutletContext]="{ scope: NAMESPACE, value: namespaceInput(), status: namespaceAnnouncement() }" />
+                }
+                @if (namespaceQuery()) {
+                  <ng-container [ngTemplateOutlet]="filterResults" [ngTemplateOutletContext]="{ scope: NAMESPACE, query: namespaceQuery(), status: namespaceManifestStatus(), tree: namespaceTree() }" />
+                } @else {
+                @if (namespaceBreadcrumb().length > 0 || namespaceFolders().length > 0) {
+                  <agentos-exchange-folder-nav
+                    [breadcrumb]="namespaceBreadcrumb()"
+                    (navigated)="onFolderOpen(NAMESPACE, $event)"
+                  />
                 }
 
-                @if (filterActive()) {
-                  @switch (namespaceManifestStatus()) {
-                    @case ('error') {
-                      <div class="exchange-drawer__error" role="alert">
-                        <span>Couldn't search namespace files.</span>
-                        <button type="button" class="exchange-drawer__retry" (click)="namespaceFilterRetry.emit()">
-                          Retry
-                        </button>
-                      </div>
-                    }
-                    @case ('ready') {
-                      @if (filteredRows().length === 0) {
-                        <ds-empty-state icon="search_off" [title]="noMatchTitle()" />
-                      } @else {
-                        <ul class="exchange-drawer__tree" role="list">
-                          @for (node of filteredRows(); track node.kind + ':' + node.path) {
-                            <li role="listitem" [style.padding-left.rem]="node.depth * 0.875">
-                              @if (node.kind === 'folder') {
-                                <button
-                                  type="button"
-                                  class="exchange-drawer__folder"
-                                  [title]="'Open ' + node.path"
-                                  (click)="onFilteredFolderOpen(node.path)"
-                                >
-                                  <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
-                                    >folder_open</span
-                                  >
-                                  <span class="exchange-drawer__folder-name">{{ node.name }}</span>
-                                  <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
-                                    >chevron_right</span
-                                  >
-                                </button>
-                              } @else if (node.row; as row) {
-                                <agentos-exchange-item
-                                  [row]="row"
-                                  [active]="isNamespaceFileActive(row.path)"
-                                  [canWrite]="canWriteNamespace()"
-                                  [selectable]="selectable()"
-                                  [selected]="referencedNamespacePaths().has(row.path)"
-                                  (selectionToggled)="toggleReference({ scope: NAMESPACE, path: row.path })"
-                                  (viewRequested)="onFileSelected({ scope: NAMESPACE, path: row.path })"
-                                  (downloadRequested)="downloadRequested.emit({ scope: NAMESPACE, path: row.path })"
-                                  (deleteRequested)="deleteRequested.emit({ scope: NAMESPACE, path: row.path })"
-                                />
-                              }
-                            </li>
-                          }
-                        </ul>
-                        @if (filteredTruncated()) {
-                          <p class="exchange-drawer__more">Showing first {{ maxFilterMatches }} matches</p>
-                        }
-                      }
-                    }
-                    @default {
-                      <div class="exchange-drawer__center">
-                        <ds-spinner size="md" label="Searching namespace files" />
-                      </div>
-                    }
-                  }
-                } @else {
-                  @if (namespaceBreadcrumb().length > 0 || namespaceFolders().length > 0) {
-                    <agentos-exchange-folder-nav
-                      [breadcrumb]="namespaceBreadcrumb()"
-                      (navigated)="onFolderOpen(NAMESPACE, $event)"
-                    />
-                  }
-
-                  @if (namespaceFolders().length > 0) {
-                    <ul class="exchange-drawer__folders" role="list">
-                      @for (folder of namespaceFolders(); track folder.path) {
-                        <li role="listitem">
-                          <button
-                            type="button"
-                            class="exchange-drawer__folder"
-                            (click)="onFolderOpen(NAMESPACE, folder.path)"
+                @if (namespaceFolders().length > 0) {
+                  <ul class="exchange-drawer__folders" role="list">
+                    @for (folder of namespaceFolders(); track folder.path) {
+                      <li role="listitem">
+                        <button
+                          type="button"
+                          class="exchange-drawer__folder"
+                          [attr.data-track]="'ExchangeDrawer-folder_NAMESPACE:' + folder.path"
+                          (click)="onFolderOpen(NAMESPACE, folder.path)"
+                        >
+                          <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
+                            >folder_open</span
                           >
-                            <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
-                              >folder_open</span
-                            >
-                            <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
-                            <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
-                              >chevron_right</span
-                            >
-                          </button>
-                        </li>
-                      }
-                    </ul>
-                  }
-
-                  @if (namespaceFiles().length === 0 && namespaceFolders().length === 0) {
-                    <ds-empty-state
-                      icon="folder_shared"
-                      title="No namespace files"
-                      [hint]="canWriteNamespace() ? 'Upload a file to share it across this namespace.' : undefined"
-                    />
-                  } @else {
-                    <agentos-exchange-file-list
-                      [rows]="namespaceRows()"
-                      [scope]="NAMESPACE"
-                      [canWrite]="canWriteNamespace()"
-                      [activeFile]="activeFile()"
-                      [selectable]="selectable()"
-                      [selectedPaths]="referencedNamespacePaths()"
-                      (selectionToggled)="toggleReference($event)"
-                      (fileSelected)="onFileSelected($event)"
-                      (downloadRequested)="downloadRequested.emit($event)"
-                      (deleteRequested)="deleteRequested.emit($event)"
-                    />
-                    @if (namespaceHasMore()) {
-                      <button
-                        type="button"
-                        class="exchange-drawer__retry"
-                        [disabled]="namespaceLoadingMore()"
-                        (click)="loadMoreRequested.emit(NAMESPACE)"
-                      >
-                        {{ namespaceLoadingMore() ? 'Loading…' : 'Load more files' }}
-                      </button>
+                          <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
+                          <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
+                            >chevron_right</span
+                          >
+                        </button>
+                      </li>
                     }
+                  </ul>
+                }
+
+                @if (namespaceFiles().length === 0 && namespaceFolders().length === 0) {
+                  <ds-empty-state
+                    icon="folder_shared"
+                    title="No namespace files"
+                    [hint]="canWriteNamespace() ? 'Upload a file to share it across this namespace.' : undefined"
+                  />
+                } @else {
+                  <agentos-exchange-file-list
+                    [rows]="namespaceRows()"
+                    [scope]="NAMESPACE"
+                    [canWrite]="canWriteNamespace()"
+                    [activeFile]="activeFile()"
+                    [selectable]="selectable()"
+                    [selectedPaths]="referencedNamespacePaths()"
+                    (selectionToggled)="toggleReference($event)"
+                    (fileSelected)="onFileSelected($event)"
+                    (downloadRequested)="downloadRequested.emit($event)"
+                    (deleteRequested)="deleteRequested.emit($event)"
+                  />
+                  @if (namespaceHasMore()) {
+                    <button
+                      type="button"
+                      class="exchange-drawer__retry"
+                      [disabled]="namespaceLoadingMore()"
+                      (click)="loadMoreRequested.emit(NAMESPACE)"
+                    >
+                      {{ namespaceLoadingMore() ? 'Loading…' : 'Load more files' }}
+                    </button>
                   }
+                }
                 }
               }
             }
@@ -349,7 +274,6 @@
         <p class="exchange-drawer__no-access">No files available.</p>
       }
     </div>
-
     @if (selectable() && referencedCount() > 0) {
       <div class="exchange-drawer__selection-bar" role="region" aria-label="Files in the message">
         <span class="exchange-drawer__selection-count" aria-live="polite">{{ referencedCount() }} in message</span>
@@ -357,6 +281,69 @@
       </div>
     }
   }
+
+  <ng-template #filterField let-scope="scope" let-value="value" let-status="status">
+    <div class="exchange-drawer__filter">
+      <span class="exchange-drawer__filter-icon material-icons" aria-hidden="true">search</span>
+      <input #filterInput class="exchange-drawer__filter-input" type="search" placeholder="Filter files…"
+        [attr.aria-label]="scope === CASE ? 'Filter case files by name or path' : 'Filter namespace files by name or path'"
+        [attr.data-track]="scope === CASE ? 'ExchangeDrawer-caseFilterInput' : 'ExchangeDrawer-namespaceFilterInput'"
+        autocomplete="off" [value]="value" (input)="onFilterInput(scope, $event)" (keydown)="onFilterKeydown(scope, $event)" />
+      @if (value) {
+        <button type="button" class="exchange-drawer__filter-clear" title="Clear filter" aria-label="Clear filter" [attr.data-track]="scope === CASE ? 'ExchangeDrawer-caseClearFilter' : 'ExchangeDrawer-namespaceClearFilter'" (click)="clearFilterAndFocus(scope, filterInput)">
+          <span class="material-icons" aria-hidden="true">close</span>
+        </button>
+      }
+    </div>
+    <span class="exchange-drawer__announcement" role="status" aria-live="polite" aria-atomic="true">{{ status }}</span>
+  </ng-template>
+
+  <ng-template #filterResults let-scope="scope" let-query="query" let-status="status" let-tree="tree">
+    @switch (status) {
+      @case ('error') {
+        <div class="exchange-drawer__error" role="alert">
+          <span>Couldn't search {{ scope === CASE ? 'case' : 'namespace' }} files.</span>
+          <button type="button" class="exchange-drawer__retry" (click)="filterRetry.emit(scope)">Retry</button>
+        </div>
+      }
+      @case ('ready') {
+        @if (tree.rows.length === 0) {
+          <ds-empty-state icon="search_off" [title]="'No files match &quot;' + query + '&quot;'" />
+        } @else {
+          <ul class="exchange-drawer__tree" role="list">
+            @for (node of tree.rows; track node.kind + ':' + node.path) {
+              <li role="listitem" [style.padding-left.rem]="node.depth * 0.875">
+                @if (node.kind === 'folder') {
+                  <button type="button" class="exchange-drawer__folder" [title]="'Open ' + node.path" [attr.data-track]="'ExchangeDrawer-filteredFolder_' + scope + ':' + node.path" (click)="openFilteredFolder(scope, node.path)">
+                    <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true">folder_open</span>
+                    <span class="exchange-drawer__folder-name">{{ node.name }}</span>
+                    @if (scope === CASE) {
+                      @if (gitTree().folders.get(node.path); as count) {
+                        <span class="exchange-drawer__git-dot" role="img" [attr.aria-label]="count + (count === 1 ? ' changed file' : ' changed files')">●</span>
+                      }
+                    }
+                    <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true">chevron_right</span>
+                  </button>
+                } @else if (node.row; as row) {
+                  <agentos-exchange-item [row]="row" [scope]="scope" [canWrite]="scope === CASE ? canWriteCase() : canWriteNamespace()"
+                    [active]="activeFile()?.scope === scope && activeFile()?.path === row.path"
+                    [selectable]="selectable()"
+                    [selected]="(scope === CASE ? referencedCasePaths() : referencedNamespacePaths()).has(row.path)"
+                    (selectionToggled)="toggleReference({ scope: scope, path: row.path })"
+                    (viewRequested)="onFileSelected({ scope: scope, path: row.path })"
+                    (diffRequested)="openFileDiff({ scope: scope, path: row.path })"
+                    (downloadRequested)="downloadRequested.emit({ scope: scope, path: row.path })"
+                    (deleteRequested)="deleteRequested.emit({ scope: scope, path: row.path })" />
+                }
+              </li>
+            }
+          </ul>
+          @if (tree.truncated) { <p class="exchange-drawer__more">Showing first {{ maxFilterMatches }} matches</p> }
+        }
+      }
+      @default { <div class="exchange-drawer__center"><ds-spinner size="md" label="Searching files" /></div> }
+    }
+  </ng-template>
 
   <input
     #fileInput

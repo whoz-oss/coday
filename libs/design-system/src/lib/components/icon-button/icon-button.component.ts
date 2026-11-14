@@ -30,6 +30,8 @@ export class IconButtonComponent {
   @Input() title: string = ''
   @Input() disabled: boolean = false
   @Input() variant: IconButtonVariant = 'default'
+  /** Optional automation identifier forwarded to the native button. */
+  @Input() inputTrack: string | null = null
 
   @Output() action = new EventEmitter<void>()
 
