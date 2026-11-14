@@ -58,6 +58,15 @@ export const AGENTOS_ROUTES: Route[] = [
               ),
             children: [
               { path: '', redirectTo: 'users', pathMatch: 'full' },
+              // --- Admin: Messaging (bot manager) ---
+              {
+                path: 'messaging',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/admin-messaging/admin-messaging.component').then(
+                    (m) => m.AdminMessagingComponent
+                  ),
+              },
               // --- Admin: Effective configuration (read-only) ---
               {
                 path: 'configuration',

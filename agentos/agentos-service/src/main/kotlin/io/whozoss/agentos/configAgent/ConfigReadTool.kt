@@ -44,7 +44,8 @@ class ConfigReadTool(
         apiModelName, alias, description, priority, temperature, maxCompletionTokens, contextWindow, pricing, reasoningEffort,
         supportsAdvancedExecution; the list names each with its aiProviderId and provider), integration-type (the available types and, with id = the type, its parameter
         schema), deployment (which agents are deployed on the namespace), capabilities (who the user is: super-admin,
-        role in the namespace).
+        role in the namespace), messaging (which agents have a bot on Telegram or Slack, and how to give an agent one:
+        read it whenever the user asks about Telegram, Slack or talking to an agent from a messaging application).
         'namespaceId' reads another namespace the user administers instead of this one (list the namespaces first).
         Start with 'capabilities' and 'integration-type' before proposing a new integration. When a namespace does
         not answer, read it with kind 'namespace' before anything else.
@@ -122,6 +123,7 @@ class ConfigReadTool(
     ): Any? =
         when (kind) {
             ReadKind.CAPABILITIES -> configNamespaceDiagnosis.capabilities(userId, target)
+            ReadKind.MESSAGING -> configNamespaceDiagnosis.messaging(target)
             ReadKind.INTEGRATION_TYPE -> integrationTypes(id)
             ReadKind.DEPLOYMENT -> deployment(userId, target)
             else -> entities(kind.configKind!!, id, scope, userId, target)

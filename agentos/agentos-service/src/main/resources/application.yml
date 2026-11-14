@@ -358,6 +358,28 @@ agentos:
     # reduce the maximum blocking window. Default: 2 minutes.
     # Override with env var: AGENTOS_OAUTH_FLOW_TIMEOUT_MINUTES
     # flow-timeout-minutes: 2
+  messaging:
+    # Bots are not configured here: they are attached to agents from the UI or the API, and taken into account
+    # at once. See agentos/docs/messaging.md.
+    # Base URL of the AgentOS UI (e.g. https://agentos.example.com), used for the links to a case or to the
+    # profile that the bots send in a chat. Empty: the bots send no link.
+    # Override with env var: AGENTOS_PUBLIC_URL
+    public-url: ${AGENTOS_PUBLIC_URL:}
+    # How long the link a user opens to connect a chat account, or to create a bot, stays valid.
+    # Override with env var: AGENTOS_MESSAGING_LINK_TOKEN_TTL_MINUTES
+    # link-token-ttl-minutes: 10
+    # telegram:
+    #   Override with env var: AGENTOS_MESSAGING_TELEGRAM_API_BASE_URL
+    #   api-base-url: https://api.telegram.org
+    #   Long-polling timeout of getUpdates, in seconds.
+    #   Override with env var: AGENTOS_MESSAGING_TELEGRAM_POLL_TIMEOUT_SECONDS
+    #   poll-timeout-seconds: 25
+    # transcription:
+    #   Voice messages are transcribed on this server by whisper.cpp (whisper-cli), after ffmpeg has decoded them;
+    #   both must be installed. Path of the whisper.cpp model (a ggml-*.bin file). Empty: voice messages are not
+    #   transcribed. The other settings (programs, language, limits) are in agentos/docs/messaging.md.
+    #   Override with env var: AGENTOS_MESSAGING_TRANSCRIPTION_MODEL
+    #   model:
   bootstrap:
     # Enable bootstrap service to run on startup
     # Override with env var: AGENTOS_BOOTSTRAP_ENABLED

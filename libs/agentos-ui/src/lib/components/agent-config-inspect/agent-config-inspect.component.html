@@ -104,5 +104,9 @@
         </ul>
       }
     </ds-card>
+
+    @if (namespaceId) {
+      <agentos-agent-messaging [namespaceId]="namespaceId" [agentId]="agentConfigId" />
+    }
   }
 </ds-page>

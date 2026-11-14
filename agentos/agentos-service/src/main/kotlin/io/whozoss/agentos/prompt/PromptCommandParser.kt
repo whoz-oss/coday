@@ -1,5 +1,6 @@
 package io.whozoss.agentos.prompt
 
+import io.whozoss.agentos.caseFlow.AgentMention
 import io.whozoss.agentos.exception.PromptResolutionException
 import mu.KotlinLogging
 import java.util.UUID
@@ -78,8 +79,12 @@ object PromptCommandParser {
     /**
      * Attempt to parse [text] as a prompt command.
      *
+     * The command may follow a leading `@agent` mention ([AgentMention]), as in `@helper /summarize`: the
+     * command is resolved, and each line it expands to keeps the mention, so that it goes to the agent named,
+     * unless its prompt names its own agent ([ResolvedCommand.agentConfigId]).
+     *
      * @param promptsProvider lazy supplier of the effective prompt list. Called at most
-     *        once, and only when [text] starts with `/`. The caller controls when and
+     *        once, and only when [text], after its mention, starts with `/`. The caller controls when and
      *        how the prompts are loaded (typically via [PromptService.findEffective]).
      * @return a list of resolved strings when [text] is a recognised prompt command,
      *         or `listOf(text)` when it does not start with `/` or matches no known prompt.
@@ -90,9 +95,15 @@ object PromptCommandParser {
         text: String,
         promptsProvider: () -> List<Prompt>,
     ): List<ResolvedCommand> {
-        if (!text.startsWith("/")) return listOf(ResolvedCommand(text, null))
-        val effectivePrompts = promptsProvider()
-        return resolveInternal(text, effectivePrompts, depth = 0, callStack = ArrayDeque())
+        val mention = AgentMention.extractName(text)
+        val command = if (mention == null) text else AgentMention.strip(text)
+        if (!command.startsWith("/")) return listOf(ResolvedCommand(text, null))
+        val resolved = resolveInternal(command, promptsProvider(), depth = 0, callStack = ArrayDeque())
+        return when {
+            mention == null -> resolved
+            resolved == listOf(ResolvedCommand(command, null)) -> listOf(ResolvedCommand(text, null))
+            else -> resolved.map { if (it.agentConfigId == null) it.copy(text = "@$mention ${it.text}") else it }
+        }
     }
 
     private fun resolveInternal(

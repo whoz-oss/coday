@@ -41,6 +41,15 @@ import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepositor
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
+import io.whozoss.agentos.messaging.MessagingBotNodeNeo4jRepository
+import io.whozoss.agentos.messaging.MessagingBotRepository
+import io.whozoss.agentos.messaging.MessagingConversationNodeNeo4jRepository
+import io.whozoss.agentos.messaging.MessagingConversationRepository
+import io.whozoss.agentos.messaging.MessagingIdentityNodeNeo4jRepository
+import io.whozoss.agentos.messaging.MessagingIdentityRepository
+import io.whozoss.agentos.messaging.Neo4jMessagingBotRepository
+import io.whozoss.agentos.messaging.Neo4jMessagingConversationRepository
+import io.whozoss.agentos.messaging.Neo4jMessagingIdentityRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
@@ -126,6 +135,7 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.feedback",
         "io.whozoss.agentos.git",
         "io.whozoss.agentos.integrationConfig",
+        "io.whozoss.agentos.messaging",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.skill",
@@ -289,6 +299,31 @@ class Neo4jPersistenceConfiguration {
     ): UserGroupRepository {
         logger.info { "[Persistence] Neo4jUserGroupRepository active" }
         return Neo4jUserGroupRepository(userGroupNodeNeo4jRepository, childLinkService, neo4jClient)
+    }
+
+    @Bean
+    fun neo4jMessagingBotRepository(
+        messagingBotNodeNeo4jRepository: MessagingBotNodeNeo4jRepository,
+        fieldEncryptor: FieldEncryptor,
+    ): MessagingBotRepository {
+        logger.info { "[Persistence] Neo4jMessagingBotRepository active" }
+        return Neo4jMessagingBotRepository(messagingBotNodeNeo4jRepository, fieldEncryptor)
+    }
+
+    @Bean
+    fun neo4jMessagingIdentityRepository(
+        messagingIdentityNodeNeo4jRepository: MessagingIdentityNodeNeo4jRepository,
+    ): MessagingIdentityRepository {
+        logger.info { "[Persistence] Neo4jMessagingIdentityRepository active" }
+        return Neo4jMessagingIdentityRepository(messagingIdentityNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jMessagingConversationRepository(
+        messagingConversationNodeNeo4jRepository: MessagingConversationNodeNeo4jRepository,
+    ): MessagingConversationRepository {
+        logger.info { "[Persistence] Neo4jMessagingConversationRepository active" }
+        return Neo4jMessagingConversationRepository(messagingConversationNodeNeo4jRepository)
     }
 
     @Bean

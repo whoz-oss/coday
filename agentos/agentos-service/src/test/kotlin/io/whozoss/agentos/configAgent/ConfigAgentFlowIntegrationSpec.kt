@@ -33,10 +33,13 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.messaging.MessagingBot
+import io.whozoss.agentos.messaging.MessagingBotRepository
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.messaging.MessagingPlatform
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
@@ -99,6 +102,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
     @Autowired lateinit var integrationConfigService: IntegrationConfigService
     @Autowired lateinit var promptService: PromptService
     @Autowired lateinit var authSettingService: AuthSettingService
+    @Autowired lateinit var messagingBotRepository: MessagingBotRepository
 
     @MockkBean(relaxed = true) lateinit var userService: UserService
 
@@ -742,6 +746,40 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
             administered["namespaceId"].asText() shouldBe other.id.toString()
             administered["namespaceRole"].asText() shouldBe "ADMIN"
             member["namespaceRole"].asText() shouldBe "MEMBER"
+        }
+
+        "messaging tells which agents have a bot, and how an agent gets one" {
+            // Saved without the service: nothing starts, the read only reports the bot. The test database is shared
+            // with the other contexts, which start the bots they find in it: an account of its own, deleted after,
+            // keeps this one out of the messaging specs.
+            val saved =
+                messagingBotRepository.save(
+                    MessagingBot(
+                        platform = MessagingPlatform.TELEGRAM,
+                        accountId = "cfg-$suffix",
+                        username = "dev_bot",
+                        displayName = "Dev",
+                        url = "https://t.me/bot",
+                        token = "4242:dev-token-dev-token-dev-token-dev-token",
+                        agentId = devAgent.id,
+                        namespaceId = namespace.id,
+                    ),
+                )
+
+            val messaging =
+                try {
+                    read(carol, """{ "kind": "messaging" }""")
+                } finally {
+                    messagingBotRepository.delete(saved.id)
+                }
+
+            messaging["bots"].single().let { bot ->
+                bot["agentName"].asText() shouldBe devAgent.name
+                bot["username"].asText() shouldBe "dev_bot"
+                bot.has("token") shouldBe false
+            }
+            messaging["botCreationWithoutToken"].size() shouldBe 0
+            messaging["howTo"].asText() shouldContain "@BotFather"
         }
 
         "the owner of a personal integration reads it by id even without rights on its namespace, as the REST API allows" {

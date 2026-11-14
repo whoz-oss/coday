@@ -3333,7 +3333,7 @@ class CaseServiceImplSpec :
         // Multi-line prompt resolution
         // -------------------------------------------------------------------------
 
-        "multi-command prompt resolution executes each command as a separate sequential agent turn" {
+        "multi-command prompt resolution executes each command as a separate sequential agent turn, from where the prompt was sent" {
             // Override the default promptService mock to return a real prompt with 3 content lines
             val multiPromptService =
                 mockk<PromptService>(relaxed = true) {
@@ -3392,13 +3392,14 @@ class CaseServiceImplSpec :
                     every { findById(userId) } returns activeUser
                     every { getById(userId) } returns activeUser
                 }
+            val caseEvents = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val service =
                 CaseServiceImpl(
                     agentService,
                     allowAllAgentConfigService,
                     AgentConfigProperties(),
                     InMemoryCaseRepository(),
-                    CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                    caseEvents,
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
@@ -3436,10 +3437,13 @@ class CaseServiceImplSpec :
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("/multi-prompt")),
+                sessionContext = mapOf("page" to "chat"),
             )
             awaiter.join()
 
             runCallCount shouldBe 3
+            caseEvents.findByParent(case.id).filterIsInstance<MessageEvent>().filter { it.actor.role == ActorRole.USER }.map { it.sessionContext } shouldBe
+                List(3) { mapOf("page" to "chat") }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
 
