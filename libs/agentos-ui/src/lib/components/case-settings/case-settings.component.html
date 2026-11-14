@@ -1,52 +1,66 @@
 @if (anyOpen()) {
-  <!-- Mobile only (hidden on desktop): dims the page behind the bottom sheet; a tap on it closes the picker. -->
+  <!-- Mobile only (hidden on desktop): dims the page behind the bottom sheet; a tap on it closes the picker. Not
+       focusable, hidden from assistive technologies: the sheet is a combobox popup, not a modal dialog. -->
   <div class="case-settings__backdrop" aria-hidden="true" (click)="closePickers()"></div>
 }
 @if (effortOpen()) {
-  <div class="case-settings__picker">
+  <!-- A mousedown on the sheet (padding, border) must not move the focus away from the chip either. -->
+  <div class="case-settings__picker" (mousedown)="$event.preventDefault()">
     <agentos-effort-autocomplete
+      [idPrefix]="effortIdPrefix"
       [options]="autocomplete.effortSuggestions()"
       [current]="effort()"
-      (selected)="effortSelected.emit($event)"
+      (selected)="onEffortPicked($event)"
       (dismissed)="closeEffortPicker()"
     />
   </div>
 }
 @if (modelOpen()) {
-  <div class="case-settings__picker">
+  <div class="case-settings__picker" (mousedown)="$event.preventDefault()">
     <agentos-model-autocomplete
+      [idPrefix]="modelIdPrefix"
       [options]="autocomplete.modelSuggestions()"
       [current]="model()"
-      (selected)="modelSelected.emit($event)"
+      (selected)="onModelPicked($event)"
       (dismissed)="closeModelPicker()"
     />
   </div>
 }
+<!-- Select-only combobox (ARIA APG): the focus stays on the chip, the active option is named by
+     aria-activedescendant. The accessible name contains the visible text (WCAG 2.5.3). -->
 <button
   #modelChip
   type="button"
+  role="combobox"
   class="case-settings__chip case-settings__chip--model"
   title="AI model of this case. Click, or type /model, to change it; the agent entry goes back to each agent's own model."
   aria-haspopup="listbox"
   [attr.aria-expanded]="modelOpen()"
-  [attr.aria-label]="'model: ' + modelText()"
+  [attr.aria-controls]="modelListboxId()"
+  [attr.aria-activedescendant]="modelActiveOptionId()"
+  [attr.aria-label]="'AI model: ' + modelText()"
   [disabled]="disabled()"
   (click)="toggleModelPicker()"
   (keydown)="onChipKeydown($event, 'model')"
+  (keyup)="onChipKeyup($event)"
 >
   <span class="case-settings__chip-key">model: </span><span class="case-settings__chip-value">{{ modelText() }}</span>
 </button>
 <button
   #effortChip
   type="button"
+  role="combobox"
   class="case-settings__chip case-settings__chip--effort"
   title="Reasoning effort of this case. Click, or type /effort, to change it; the default entry goes back to the effort of each model. Not applied to Anthropic and Gemini providers."
   aria-haspopup="listbox"
   [attr.aria-expanded]="effortOpen()"
-  [attr.aria-label]="'effort: ' + effortText()"
+  [attr.aria-controls]="effortListboxId()"
+  [attr.aria-activedescendant]="effortActiveOptionId()"
+  [attr.aria-label]="'Reasoning effort: ' + effortText()"
   [disabled]="disabled()"
   (click)="toggleEffortPicker()"
   (keydown)="onChipKeydown($event, 'effort')"
+  (keyup)="onChipKeyup($event)"
 >
   <span class="case-settings__chip-key">effort: </span><span class="case-settings__chip-value">{{ effortText() }}</span>
 </button>

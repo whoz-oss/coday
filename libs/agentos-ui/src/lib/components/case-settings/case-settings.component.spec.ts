@@ -287,13 +287,271 @@ describe('CaseSettingsComponent', () => {
       expect(rendered.efforts[0]!.effort).not.toBeNull()
     })
 
-    it('leaves the keys of a closed picker alone', () => {
+    it('leaves the keys it does not handle alone, closed or open', () => {
       const rendered = render()
 
-      const event = key(chip(rendered.host, 'model'), 'Enter')
+      for (const name of ['Tab', 'a', 'Escape']) {
+        expect(key(chip(rendered.host, 'model'), name).defaultPrevented).toBe(false)
+      }
+      open('model', rendered)
+      for (const name of ['a', 'Shift']) {
+        expect(key(chip(rendered.host, 'model'), name).defaultPrevented).toBe(false)
+      }
+
+      expect(rendered.models).toEqual([])
+    })
+  })
+
+  describe('accessibility (select-only combobox)', () => {
+    const key = (target: EventTarget, name: string, init: KeyboardEventInit = {}): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true, ...init })
+      target.dispatchEvent(event)
+      return event
+    }
+    const open = (kind: 'model' | 'effort', rendered: ReturnType<typeof render>): void => {
+      chip(rendered.host, kind).click()
+      rendered.ref.changeDetectorRef.detectChanges()
+    }
+    const press = (rendered: ReturnType<typeof render>, kind: 'model' | 'effort', name: string): KeyboardEvent => {
+      const event = key(chip(rendered.host, kind), name)
+      rendered.ref.changeDetectorRef.detectChanges()
+      return event
+    }
+    const activeId = (rendered: ReturnType<typeof render>, kind: 'model' | 'effort'): string | null =>
+      chip(rendered.host, kind).getAttribute('aria-activedescendant')
+    const optionIds = (host: HTMLElement, kind: 'model' | 'effort'): string[] =>
+      Array.from(host.querySelectorAll(`agentos-${kind}-autocomplete [role="option"]`)).map((li) => li.id)
+    const outside = (): HTMLButtonElement => {
+      const button = document.createElement('button')
+      document.body.appendChild(button)
+      return button
+    }
+    afterEach(() => (document.body.innerHTML = ''))
+
+    it('makes each chip a combobox with an accessible name that contains its visible text', () => {
+      const { host } = render({ model: 'BIG', effort: ReasoningEffort.HIGH })
+
+      expect(chip(host, 'model').getAttribute('role')).toBe('combobox')
+      expect(chip(host, 'effort').getAttribute('role')).toBe('combobox')
+      expect(chip(host, 'model').getAttribute('aria-label')).toBe('AI model: BIG')
+      expect(chip(host, 'effort').getAttribute('aria-label')).toBe('Reasoning effort: high')
+      // WCAG 2.5.3: the value shown is part of the name.
+      expect(chip(host, 'model').getAttribute('aria-label')).toContain('BIG')
+      expect(chip(host, 'effort').getAttribute('aria-label')).toContain('high')
+    })
+
+    it('points at the listbox and the active option only while open, at elements that exist', () => {
+      const rendered = render({ model: 'SMALL' })
+      expect(chip(rendered.host, 'model').hasAttribute('aria-controls')).toBe(false)
+      expect(chip(rendered.host, 'model').hasAttribute('aria-activedescendant')).toBe(false)
+
+      open('model', rendered)
+      rendered.ref.changeDetectorRef.detectChanges()
+
+      const controls = chip(rendered.host, 'model').getAttribute('aria-controls')!
+      const listbox = document.getElementById(controls)
+      expect(listbox?.getAttribute('role')).toBe('listbox')
+      const active = document.getElementById(activeId(rendered, 'model')!)
+      expect(active?.getAttribute('role')).toBe('option')
+      // Opens on the model in use.
+      expect(active?.textContent).toContain('/model SMALL')
+      expect(listbox?.contains(active)).toBe(true)
+
+      chip(rendered.host, 'model').click()
+      rendered.ref.changeDetectorRef.detectChanges()
+      expect(chip(rendered.host, 'model').hasAttribute('aria-controls')).toBe(false)
+      expect(chip(rendered.host, 'model').hasAttribute('aria-activedescendant')).toBe(false)
+    })
+
+    it('gives the model and the effort pickers ids that never collide', () => {
+      const rendered = render()
+      open('model', rendered)
+      const modelIds = optionIds(rendered.host, 'model')
+      const modelListbox = chip(rendered.host, 'model').getAttribute('aria-controls')!
+      open('effort', rendered)
+      const effortIds = optionIds(rendered.host, 'effort')
+      const effortListbox = chip(rendered.host, 'effort').getAttribute('aria-controls')!
+
+      expect(new Set([...modelIds, ...effortIds, modelListbox, effortListbox]).size).toBe(
+        modelIds.length + effortIds.length + 2
+      )
+      expect(modelIds[0]).toMatch(/^case-settings-\d+-model-option-0$/)
+      expect(effortIds[0]).toMatch(/^case-settings-\d+-effort-option-0$/)
+    })
+
+    it('follows the active option with ArrowDown, ArrowUp, End and Home', () => {
+      const rendered = render()
+      open('model', rendered)
+      rendered.ref.changeDetectorRef.detectChanges()
+      const ids = optionIds(rendered.host, 'model')
+      expect(activeId(rendered, 'model')).toBe(ids[0])
+
+      press(rendered, 'model', 'ArrowDown')
+      expect(activeId(rendered, 'model')).toBe(ids[1])
+      press(rendered, 'model', 'End')
+      expect(activeId(rendered, 'model')).toBe(ids[2])
+      press(rendered, 'model', 'ArrowUp')
+      expect(activeId(rendered, 'model')).toBe(ids[1])
+      press(rendered, 'model', 'Home')
+      expect(activeId(rendered, 'model')).toBe(ids[0])
+    })
+
+    it('marks the model in use as selected, not the active entry', () => {
+      const rendered = render({ model: 'BIG' })
+      open('model', rendered)
+      press(rendered, 'model', 'End')
+
+      const selected = Array.from(rendered.host.querySelectorAll('agentos-model-autocomplete [role="option"]')).map(
+        (li) => li.getAttribute('aria-selected')
+      )
+      expect(selected).toEqual(['false', 'true', 'false'])
+      expect(rendered.host.querySelector('.prompt-autocomplete__item--active')?.textContent).toContain('/model SMALL')
+    })
+
+    it.each(['ArrowDown', 'ArrowUp', 'Enter', ' '])('opens a closed chip on %j, without a click', (name) => {
+      const rendered = render()
+
+      const event = press(rendered, 'effort', name)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(rendered.autocomplete.effortSuggestions().length).toBeGreaterThan(0)
+      expect(chip(rendered.host, 'effort').getAttribute('aria-expanded')).toBe('true')
+      expect(rendered.efforts).toEqual([])
+    })
+
+    it('opens a closed chip on Alt+ArrowDown', () => {
+      const rendered = render()
+
+      key(chip(rendered.host, 'model'), 'ArrowDown', { altKey: true })
+
+      expect(rendered.autocomplete.modelSuggestions().length).toBeGreaterThan(0)
+    })
+
+    it.each(['Enter', ' '])('picks the active entry on %j and emits it', (name) => {
+      const rendered = render()
+      open('model', rendered)
+      press(rendered, 'model', 'ArrowDown')
+
+      const event = press(rendered, 'model', name)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(rendered.models.map((choice) => choice.model)).toEqual(['BIG'])
+    })
+
+    it('does not pick on the click that Space would fire on release', () => {
+      const rendered = render()
+      open('model', rendered)
+
+      const keyup = new KeyboardEvent('keyup', { key: ' ', bubbles: true, cancelable: true })
+      chip(rendered.host, 'model').dispatchEvent(keyup)
+
+      expect(keyup.defaultPrevented).toBe(true)
+    })
+
+    it('closes on Tab without picking, and lets the focus move on', () => {
+      const rendered = render()
+      open('effort', rendered)
+      press(rendered, 'effort', 'ArrowDown')
+
+      const event = press(rendered, 'effort', 'Tab')
 
       expect(event.defaultPrevented).toBe(false)
-      expect(rendered.models).toEqual([])
+      expect(rendered.autocomplete.effortSuggestions()).toEqual([])
+      expect(rendered.efforts).toEqual([])
+    })
+
+    it('cancels the mousedown on an option so that the focus stays where it is', () => {
+      const rendered = render()
+      open('model', rendered)
+
+      const option = rendered.host.querySelector('agentos-model-autocomplete [role="option"]')!
+      const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+      option.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+    })
+
+    it('keeps the focus on the chip after a pick made with the mouse or the keyboard', () => {
+      const rendered = render()
+      open('model', rendered)
+      chip(rendered.host, 'model').focus()
+      press(rendered, 'model', 'Enter')
+      expect(document.activeElement).toBe(chip(rendered.host, 'model'))
+
+      open('effort', rendered)
+      chip(rendered.host, 'effort').focus()
+      rendered.host.querySelectorAll<HTMLElement>('agentos-effort-autocomplete li')[2]!.click()
+      expect(document.activeElement).toBe(chip(rendered.host, 'effort'))
+    })
+
+    it('gives the focus back to the chip when a pick left it on the body', () => {
+      const rendered = render()
+      open('model', rendered)
+      ;(document.activeElement as HTMLElement | null)?.blur()
+
+      rendered.host.querySelectorAll<HTMLElement>('agentos-model-autocomplete li')[1]!.click()
+
+      expect(document.activeElement).toBe(chip(rendered.host, 'model'))
+    })
+
+    it('leaves the focus in the textarea when the picker was opened by the command', () => {
+      const rendered = render()
+      const textarea = document.createElement('textarea')
+      document.body.appendChild(textarea)
+      textarea.focus()
+
+      rendered.autocomplete.onInput('/model b', { set: jest.fn() })
+      rendered.ref.changeDetectorRef.detectChanges()
+      rendered.host.querySelector<HTMLElement>('agentos-model-autocomplete li')!.click()
+
+      expect(rendered.models.map((choice) => choice.model)).toEqual(['BIG'])
+      expect(document.activeElement).toBe(textarea)
+    })
+
+    it('closes the picker when the focus leaves from a chip for something outside', () => {
+      const rendered = render()
+      open('model', rendered)
+      const elsewhere = outside()
+
+      chip(rendered.host, 'model').dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: elsewhere })
+      )
+      rendered.ref.changeDetectorRef.detectChanges()
+
+      expect(rendered.autocomplete.modelSuggestions()).toEqual([])
+    })
+
+    it('keeps the picker open when the focus moves between the chips', () => {
+      const rendered = render()
+      open('model', rendered)
+
+      chip(rendered.host, 'model').dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: chip(rendered.host, 'effort') })
+      )
+
+      expect(rendered.autocomplete.modelSuggestions().length).toBeGreaterThan(0)
+    })
+
+    it('keeps a picker opened by the command open while the focus is in the textarea outside', () => {
+      const rendered = render()
+      const textarea = document.createElement('textarea')
+      document.body.appendChild(textarea)
+      textarea.focus()
+      rendered.autocomplete.onInput('/model', { set: jest.fn() })
+      rendered.ref.changeDetectorRef.detectChanges()
+
+      textarea.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside() }))
+
+      expect(rendered.autocomplete.modelSuggestions().length).toBeGreaterThan(0)
+    })
+
+    it('keeps the backdrop out of the accessibility tree and of the tab order', () => {
+      const rendered = render()
+      open('model', rendered)
+
+      const backdrop = rendered.host.querySelector('.case-settings__backdrop')!
+      expect(backdrop.getAttribute('aria-hidden')).toBe('true')
+      expect(backdrop.hasAttribute('tabindex')).toBe(false)
     })
   })
 

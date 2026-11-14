@@ -30,8 +30,12 @@
 .case-settings__chip {
   flex-shrink: 0;
   max-width: 16rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  // Target size (WCAG 2.5.8): at least 24px tall, 44px on mobile (see below). Centered, so the label stays in the
+  // middle of a taller chip.
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 24px;
   padding: 2px 6px;
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-pill, 0);
@@ -46,6 +50,12 @@
     border-color: var(--color-accent);
   }
 
+  // The picker is open: the chip says so with more than its colour (a tinted background on top of the border).
+  &[aria-expanded='true'] {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+
   &:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 1px;
@@ -55,6 +65,19 @@
     cursor: default;
     opacity: 0.6;
   }
+}
+
+// The chip is a flex container, which cannot ellipsize its own text: the value does. The key keeps its trailing
+// space, which a flex item would otherwise trim.
+.case-settings__chip-key {
+  flex: none;
+  white-space: pre;
+}
+
+.case-settings__chip-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 // ── Mobile: the picker is a bottom sheet ───────────────────────────────────────
@@ -89,9 +112,13 @@
     animation-name: case-settings-sheet-in;
   }
 
-  // Only the value: the key is in the title and the aria-label.
+  // Only the value: the key is in the title and the aria-label. Comfortable to tap (WCAG 2.5.5 level, beyond the
+  // 24px minimum of 2.5.8).
   .case-settings__chip {
     max-width: 7rem;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
   }
 
   .case-settings__chip-key {
@@ -120,5 +147,12 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+// After the mobile block, whose `animation-name` it must override.
+@media (prefers-reduced-motion: reduce) {
+  .case-settings__picker {
+    animation: none;
   }
 }
