@@ -42,8 +42,6 @@ data class ScheduledPromptRun(
     /** The UTC instant for which this slot was scheduled. */
     val scheduledFor: Instant,
     val status: RunStatus,
-    /** Short correlation tag for log tracing (e.g. "sp-<uuid-prefix>-<epoch-second>"). */
-    val correlationId: String,
     val attempt: Int = 0,
     val finishedAt: Instant? = null,
     val error: String? = null,
