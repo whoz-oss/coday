@@ -1,3 +1,13 @@
+## 3.43.0 (2026-11-16)
+
+### 🚀 Features
+
+- **agentos-service:** #35374 started cases inherit the scheduled prompt of the calling case ([#1645](https://github.com/whoz-oss/coday/pull/1645), [#35374](https://github.com/whoz-oss/coday/issues/35374))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.42.0 (2026-11-10)
 
 ### 🚀 Features
