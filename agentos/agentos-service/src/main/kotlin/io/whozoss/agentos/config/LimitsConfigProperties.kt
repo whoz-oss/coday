@@ -116,11 +116,12 @@ data class LimitsConfigProperties(
      *
      * ## Resolution chain
      *
-     * `Case.runCostThreshold ?: Namespace.runCostThreshold ?: this platform default`
+     * `Case.runCostThreshold ?: Namespace.runCostThreshold ?: this platform default`, for a root case
      *
      * On both entities `null` means "inherit from the level above" — never "zero" and never
      * "unlimited". A case that materialises its own value leaves the inherited regime and is
-     * no longer affected by later namespace changes.
+     * no longer affected by later namespace changes. A sub-case does not inherit: it runs within its root
+     * case's run, whose threshold covers the whole tree, and only a threshold set on it applies on top.
      *
      * ## Default
      *
@@ -129,7 +130,7 @@ data class LimitsConfigProperties(
      * `AGENTOS_LIMITS_RUN_COST_THRESHOLD`; an empty value binds to null, i.e. no platform limit.
      *
      * The guard only runs while usage tracking is enabled (`agentos.usage.enabled`), and the value is
-     * materialised on a [io.whozoss.agentos.caseFlow.Case] when it is created: it never reaches an
+     * materialised on a root [io.whozoss.agentos.caseFlow.Case] when it is created: it never reaches an
      * existing case.
      */
     val runCostThreshold: Double? = null,

@@ -24,7 +24,9 @@ class CostRunStopped : RuntimeException("Execution stopped by the user")
 
 /**
  * Shared live accounting for a case and its delegated work. A new human message starts
- * a new cost window; redirects and nested agent invocations share the same window.
+ * a new cost window; redirects and nested agent invocations share the same window: a sub-case's
+ * window is its root case's, and a sub-case has no threshold of its own unless one was set on it,
+ * so the root case's threshold covers the whole tree and one confirmation releases it.
  * Gates hold the actual request, so continuation does not replay tools or prompts.
  * Checks happen between requests: a response already in flight can overshoot the limit.
  */
@@ -224,20 +226,26 @@ class RunCostService(
         }
     }
 
+    /** Only a root case inherits the namespace threshold: a sub-case without its own is covered by its root's. */
     private fun resolveThreshold(case: Case): Double? =
-        case.runCostThreshold ?: namespaces.resolveRunCostThreshold(case.namespaceId)
+        case.runCostThreshold
+            ?: if (case.parentCaseId == null) namespaces.resolveRunCostThreshold(case.namespaceId) else null
 
     private fun newSession(
         case: Case,
         threshold: Double? = resolveThreshold(case),
         allowHistoryFailure: Boolean = false,
     ): Session {
+        val lineage = ancestors(case.id)
+        // A sub-case runs within its root case's run. Its own user messages cannot open a window: a delegation
+        // posts its task, at start and on every resume, with the delegating user's actor.
+        val root = lineage.last()
         val since =
             events
-                .findByParent(case.id)
+                .findByParent(root.id)
                 .filterIsInstance<MessageEvent>()
                 .lastOrNull { it.actor.role == ActorRole.USER }
-                ?.timestamp ?: case.metadata.created
+                ?.timestamp ?: root.metadata.created
         var historyUnavailable = false
         val total = try {
             records.sumCostByCaseTreeSince(case.id, since)
@@ -250,7 +258,7 @@ class RunCostService(
         return Session(
             case.id,
             since,
-            ancestors(case.id).map { it.id }.toSet(),
+            lineage.map { it.id }.toSet(),
             total?.cost ?: 0.0,
             total?.unknownCostCount ?: 0,
             threshold,

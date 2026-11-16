@@ -289,6 +289,22 @@ class CaseControllerSpec :
             verify(exactly = 1) { caseService.create(any(), any()) }
         }
 
+        "create does not give a sub-case the namespace runCostThreshold: its root case's threshold covers it" {
+            val parentId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.hasPermission(callerId.toString(), EntityType.CASE, parentId.toString(), Action.WRITE) } returns true
+            every { namespaceService.resolveRunCostThreshold(namespaceId) } returns 10.0
+            every { caseService.create(any(), any()) } answers {
+                firstArg<Case>().runCostThreshold shouldBe null
+                caseEntity()
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(caseResource(id = null).copy(parentCaseId = parentId))
+
+            verify(exactly = 1) { caseService.create(any(), any()) }
+        }
+
         "create passes the creator's worktree choice to the service" {
             every { userService.getCurrentUser() } returns caller
             every { caseService.create(any(), any()) } returns caseEntity()
