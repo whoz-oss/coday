@@ -252,9 +252,12 @@ Concretely:
 
 ### Deferred to a later sprint
 
-- **Natural-language generation of loop configs.** Requires write-time `loopConfig` validation as a
-  prerequisite — an LLM authoring a fan-out that creates N cases for N real users must never
-  generate-and-run; a human confirms a validated config.
+- **Natural-language generation of loop configs.** Partly delivered (WZ-35375), as **proposal-only** endpoints:
+  `POST /api/agent-configs/{id}/loop-config/generate` proposes the `search` block, and
+  `POST /api/scheduled-prompts/generate` proposes a complete scheduled prompt (loop agent, target agent, prompt,
+  recurrence, planning, and the `flowConfiguration` that now carries the loop configuration on the scheduled prompt,
+  PR #1651). Nothing is generated-and-run: a human reviews the proposal and POSTs it. Write-time validation of
+  `flowConfiguration` content remains open, and is still the prerequisite for anything beyond proposals.
 - **Expression language (JsonPath) for data mapping between steps.** Until then, step-to-step mapping is
   hardcoded but **declared explicitly in the config shape**, so the later change replaces the *evaluation* of the
   mapping without reshaping the data model.
@@ -428,7 +431,7 @@ automatically and on whose behalf, so I understand why it exists and whom to ask
 
 | Scope                                                        | Prerequisite                                                                  |
 |--------------------------------------------------------------|-------------------------------------------------------------------------------|
-| Natural-language generation of loop configs                  | Write-time `loopConfig` validation; human confirmation before first execution |
+| Natural-language generation of loop configs — proposal endpoints delivered (WZ-35375); anything beyond proposals | Write-time `flowConfiguration` validation; human confirmation before first execution |
 | Expression language (JsonPath) for step-to-step data mapping | Declared mapping shape in the US 4 data model                                 |
 
 ### Open points before US 4
