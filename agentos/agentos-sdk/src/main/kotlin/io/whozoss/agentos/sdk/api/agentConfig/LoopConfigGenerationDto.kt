@@ -60,6 +60,10 @@ data class LoopConfigGenerationRequest(
  * prompt) is missing, and must be added before it is set as [AgentConfigDto.loopConfig] or as the
  * `flowConfiguration` of a scheduled prompt. It is null when generation failed; [warning] then says why.
  *
+ * `search.tool` is the **real** name of the tool on the agent, which may differ from the requested `searchToolName`:
+ * a bare name resolves to the tool behind its integration prefix (`searchAgentUsers` gives
+ * `USER_GROUP__searchAgentUsers`), the way the loop itself looks tools up at run time.
+ *
  * [warning] explains why nothing was generated, or flags a result worth a second look: a fallback parse of the LLM
  * output, or an empty params object.
  *
@@ -71,8 +75,9 @@ data class LoopConfigGenerationResult(
     @field:Schema(
         description =
             "Generated search block: `{ \"search\": { \"tool\", \"params\" } }`. It is not a complete loop " +
-                "configuration: the `act` block is missing and must be added by the caller. " +
-                "Null when generation failed (see `warning`).",
+                "configuration: the `act` block is missing and must be added by the caller. `search.tool` is the real " +
+                "name of the tool, possibly prefixed by its integration config (e.g. `USER_GROUP__searchAgentUsers` for " +
+                "a requested `searchAgentUsers`). Null when generation failed (see `warning`).",
         type = "object",
         nullable = true,
     )

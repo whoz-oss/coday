@@ -6,12 +6,14 @@ import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 /**
@@ -36,11 +38,15 @@ data class StructuredLlmResult(
  * scheduled-prompt generation): one non-streaming call with a system prompt and a user message, and a tolerant
  * parse of the answer.
  *
- * ## Threading
+ * ## Threading and timeout
  *
- * `ChatClient.prompt().call().content()` is blocking. [call] is `suspend` and runs it on [dispatcher]
- * (`Dispatchers.IO` by default), so a caller in a coroutine (the `suspend` controller endpoints) never blocks its
- * own thread for an LLM round-trip.
+ * `ChatClient.prompt().call().content()` is blocking. [call] is `suspend` and runs it on the bounded generation
+ * dispatcher ([GenerationConfiguration]), so a caller in a coroutine (the `suspend` controller endpoints) never
+ * blocks its own thread, and generation can never occupy more than a fixed number of IO threads.
+ *
+ * The call is bounded by [timeoutSeconds] (`agentos.generation.timeout-seconds`): past it, the request fails with
+ * [GenerationTimeoutException] (HTTP 504). The underlying HTTP call is not interrupted (Spring AI's blocking call
+ * ignores coroutine cancellation): it runs to completion on its generation thread, which is why that pool is bounded.
  *
  * The client is created with no case id and no usage accumulator: these calls belong to no case.
  *
@@ -62,7 +68,9 @@ data class StructuredLlmResult(
 class StructuredLlmClient(
     private val chatClientProvider: ChatClientProvider,
     private val objectMapper: ObjectMapper,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    @Qualifier(GenerationConfiguration.GENERATION_DISPATCHER) private val dispatcher: CoroutineDispatcher,
+    @Value("\${agentos.generation.timeout-seconds:${GenerationConfiguration.DEFAULT_TIMEOUT_SECONDS}}")
+    private val timeoutSeconds: Long = GenerationConfiguration.DEFAULT_TIMEOUT_SECONDS,
 ) {
     suspend fun call(
         model: AiModel,
@@ -70,14 +78,19 @@ class StructuredLlmClient(
         systemPrompt: String,
         userMessage: String,
     ): StructuredLlmResult {
-        val content =
-            withContext(dispatcher) {
-                chatClientProvider
-                    .getChatClient(modelConfig = model, providerConfig = provider, caseId = null, accumulator = null)
-                    .prompt(Prompt(listOf(SystemMessage(systemPrompt), UserMessage(userMessage))))
-                    .call()
-                    .content()
-            }
+        val answer =
+            withTimeoutOrNull(timeoutSeconds * 1_000) {
+                withContext(dispatcher) {
+                    Answer(
+                        chatClientProvider
+                            .getChatClient(modelConfig = model, providerConfig = provider, caseId = null, accumulator = null)
+                            .prompt(Prompt(listOf(SystemMessage(systemPrompt), UserMessage(userMessage))))
+                            .call()
+                            .content(),
+                    )
+                }
+            } ?: throw GenerationTimeoutException("The LLM (${model.apiModelName}) did not answer within ${timeoutSeconds}s.")
+        val content = answer.content
         val result =
             when {
                 content.isNullOrBlank() -> StructuredLlmResult(json = null, rawText = null)
@@ -89,6 +102,11 @@ class StructuredLlmClient(
         }
         return result
     }
+
+    /** Wraps the LLM content, which may itself be null, so that null from [withTimeoutOrNull] only means a timeout. */
+    private class Answer(
+        val content: String?,
+    )
 
     internal fun parse(text: String): StructuredLlmResult {
         val direct = tryParseObject(text)

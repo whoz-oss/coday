@@ -86,7 +86,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
         val modelResolver = mockk<ModelResolver>()
         val structuredLlmClient = mockk<StructuredLlmClient>()
         val loopConfigGenerationService = mockk<LoopConfigGenerationService>()
-        val scheduledPromptRepository = mockk<ScheduledPromptRepository>()
+        val scheduledPromptService = mockk<ScheduledPromptService>()
         val service =
             ScheduledPromptGenerationService(
                 agentConfigService = agentConfigService,
@@ -94,7 +94,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 modelResolver = modelResolver,
                 structuredLlmClient = structuredLlmClient,
                 loopConfigGenerationService = loopConfigGenerationService,
-                scheduledPromptRepository = scheduledPromptRepository,
+                scheduledPromptService = scheduledPromptService,
                 objectMapper = objectMapper,
                 validator = validator,
                 clock = clock,
@@ -151,7 +151,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
             coEvery { agentService.resolveDefinition(any(), namespaceId, userId) } returns definition
             coEvery { loopConfigGenerationService.generate(any(), any(), any(), any()) } returns
                 LoopConfigGenerationResult(loopConfig = searchBlock)
-            every { scheduledPromptRepository.findByTriple(any(), any(), any()) } returns null
+            every { scheduledPromptService.isNameTaken(any(), any(), any()) } returns false
         }
 
         // -------------------------------------------------------------------------
@@ -176,6 +176,23 @@ class ScheduledPromptGenerationServiceUnitSpec :
             flow["act"]["agentName"].asText() shouldBe "Luigi"
             flow["act"].has("prompt") shouldBe false
             result.warnings shouldBe emptyList()
+            result.rawResponse.shouldBeNull()
+        }
+
+        "rawResponse is the raw text of the step that failed, and never comes with a proposal" {
+            // planning answer unusable
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns StructuredLlmResult(json = null, rawText = "plan raw")
+            service.generate(namespaceId, userId, request()).rawResponse shouldBe "plan raw"
+
+            // planning fine, search answer unusable
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer()
+            coEvery { loopConfigGenerationService.generate(any(), any(), any(), any()) } returns
+                LoopConfigGenerationResult(loopConfig = null, rawResponse = "search raw", warning = "unparseable")
+            service.generate(namespaceId, userId, request()).rawResponse shouldBe "search raw"
+
+            // planning fine but an agent outside the candidates: no proposal, yet the planning answer was usable
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
+            service.generate(namespaceId, userId, request()).rawResponse.shouldBeNull()
         }
 
         "the search call uses the loop agent's definition and gets the target agent's name and id as context" {
@@ -332,7 +349,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
         }
 
         "a name already taken in the namespace keeps the proposal, with a warning" {
-            every { scheduledPromptRepository.findByTriple(namespaceId, null, "Weekly story") } returns mockk(relaxed = true)
+            every { scheduledPromptService.isNameTaken(namespaceId, null, "Weekly story") } returns true
 
             val result = service.generate(namespaceId, userId, request())
 

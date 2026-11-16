@@ -20,6 +20,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import kotlinx.coroutines.Dispatchers
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
@@ -107,7 +108,7 @@ class LoopConfigGenerationServiceUnitSpec : StringSpec({
         val provider = mockk<ChatClientProvider>()
         every { provider.getChatClient(any(), any(), null, null) } returns chatClient
 
-        return LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper), objectMapper)
+        return LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper, Dispatchers.Unconfined), objectMapper)
     }
 
     fun userMessageOf(prompt: Prompt): String = prompt.instructions.last().text
@@ -133,7 +134,7 @@ class LoopConfigGenerationServiceUnitSpec : StringSpec({
 
     "does not call the LLM when the tool is unknown" {
         val provider = mockk<ChatClientProvider>()
-        val svc = LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper), objectMapper)
+        val svc = LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper, Dispatchers.Unconfined), objectMapper)
         val def = definition(emptyList())
 
         svc.generate(def, searchToolName = "SearchTalents", description = "find me something")
@@ -299,7 +300,7 @@ class LoopConfigGenerationServiceUnitSpec : StringSpec({
 
     "auto-select: returns a null search block immediately, explained by the warning, when no tools are available" {
         val provider = mockk<ChatClientProvider>()
-        val svc = LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper), objectMapper)
+        val svc = LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper, Dispatchers.Unconfined), objectMapper)
         val def = definition(emptyList())
 
         val result = svc.generate(def, searchToolName = null, description = "find something")
@@ -439,7 +440,7 @@ class LoopConfigGenerationServiceUnitSpec : StringSpec({
 
     "single-tool: an ambiguous name, or a case starter, is refused without calling the LLM" {
         val provider = mockk<ChatClientProvider>()
-        val svc = LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper), objectMapper)
+        val svc = LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper, Dispatchers.Unconfined), objectMapper)
 
         val ambiguous =
             svc.generate(definition(listOf(mockTool("A__searchAgentUsers"), mockTool("B__searchAgentUsers"))), "searchAgentUsers", "x")

@@ -37,7 +37,7 @@ data class ScheduledPromptGenerationRequest(
     @field:Schema(types = ["string", "null"])
     val namespaceExternalId: String? = null,
     @field:NotBlank(message = "description must not be blank")
-    @field:Size(max = MAX_DESCRIPTION_LENGTH, message = "description must be at most $MAX_DESCRIPTION_LENGTH characters")
+    @field:Size(min = 1, max = MAX_DESCRIPTION_LENGTH, message = "description must be between 1 and $MAX_DESCRIPTION_LENGTH characters")
     val description: String,
     @field:Size(max = MAX_NAME_LENGTH, message = "loopAgentName must be at most $MAX_NAME_LENGTH characters")
     @field:Schema(types = ["string", "null"], description = "LOOP agent running the automation. Inferred when absent.")

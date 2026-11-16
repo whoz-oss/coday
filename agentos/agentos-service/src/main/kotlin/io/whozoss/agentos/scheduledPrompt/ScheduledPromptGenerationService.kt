@@ -54,11 +54,17 @@ import java.util.UUID
  * 5. [assemble]: `flowConfiguration = { search, act: { agentName } }`, without `act.prompt`, which the scheduler sets
  *    from `promptContent` at run time. The whole [ScheduledPromptDto] goes through Bean Validation, and the
  *    `flowConfiguration` is checked to parse as an [AgentLoopPayload] once that prompt is set. A name already taken
- *    by a namespace-shared scheduled prompt is a warning: `POST /api/scheduled-prompts` would answer 409 until it is
- *    renamed.
+ *    by a namespace-shared scheduled prompt ([ScheduledPromptService.isNameTaken]) is a warning:
+ *    `POST /api/scheduled-prompts` would answer 409 until it is renamed.
  *
  * Each step returns a value describing its outcome (warnings included) rather than stopping the method: a part that
  * cannot be determined yields a null proposal and warnings saying why. LLM exceptions are not caught.
+ *
+ * ## rawResponse
+ *
+ * The raw text of an LLM answer is returned only when there is no proposal, and only the one of the step that could
+ * not be used: the search answer when it was unusable, else the planning answer when it was unusable. A returned
+ * proposal never comes with a raw response.
  *
  * ## Known limitation
  *
@@ -74,7 +80,7 @@ class ScheduledPromptGenerationService(
     private val modelResolver: ModelResolver,
     private val structuredLlmClient: StructuredLlmClient,
     private val loopConfigGenerationService: LoopConfigGenerationService,
-    private val scheduledPromptRepository: ScheduledPromptRepository,
+    private val scheduledPromptService: ScheduledPromptService,
     private val objectMapper: ObjectMapper,
     private val validator: Validator,
     private val clock: Clock,
@@ -87,8 +93,9 @@ class ScheduledPromptGenerationService(
         val candidates = candidates(namespaceId, userId, request)
         val plan = plan(namespaceId, userId, request, candidates)
         val fields = resolveFields(request, candidates, plan)
-        val search = fields.complete()?.let { search(it, namespaceId, userId, request) }
-        return assemble(namespaceId, request, plan, fields, search)
+        val complete = fields.complete()
+        val search = complete?.let { search(it, namespaceId, userId, request) }
+        return assemble(namespaceId, request, plan, fields, complete, search)
     }
 
     // -------------------------------------------------------------------------
@@ -153,6 +160,9 @@ class ScheduledPromptGenerationService(
         val skipped: Boolean = false,
     ) {
         val unusable: Boolean get() = !skipped && json == null
+
+        /** The raw text of the answer, when it could not be used; null otherwise. */
+        val unusableRawText: String? get() = rawText.takeIf { unusable }
 
         fun text(key: String): String? = json?.get(key)?.takeIf { it.isTextual }?.asText()?.takeIf { it.isNotBlank() }
 
@@ -431,7 +441,8 @@ class ScheduledPromptGenerationService(
         val block: JsonNode?,
         val decision: GeneratedFieldDecision?,
         val warning: String?,
-        val rawResponse: String?,
+        /** The raw text of the search answer, set only when it could not be used. */
+        val unusableRawText: String?,
     )
 
     private suspend fun search(
@@ -456,7 +467,7 @@ class ScheduledPromptGenerationService(
             block = block,
             decision = block?.let { GeneratedFieldDecision(field = GeneratedField.SEARCH, source = source, value = it.get("tool")?.asText()) },
             warning = result.warning,
-            rawResponse = result.rawResponse,
+            unusableRawText = result.rawResponse,
         )
     }
 
@@ -469,22 +480,22 @@ class ScheduledPromptGenerationService(
         request: ScheduledPromptGenerationRequest,
         plan: PlanOutcome,
         fields: ResolvedFields,
+        complete: CompleteFields?,
         search: SearchOutcome?,
     ): ScheduledPromptGenerationResult {
-        val complete = fields.complete()
         val searchBlock = search?.block
-        val proposal =
+        val (proposal, problems) =
             when {
-                complete == null || searchBlock == null -> null
-                else -> proposal(namespaceId, request, complete, searchBlock)
+                complete == null || searchBlock == null -> {
+                    null to emptyList()
+                }
+
+                else -> {
+                    val draft = proposal(namespaceId, request, complete, searchBlock)
+                    draft to validationProblems(namespaceId, draft, complete, searchBlock)
+                }
             }
-        val validation =
-            when {
-                proposal == null || complete == null -> emptyList()
-                else -> validationProblems(proposal, complete.prompt) + listOfNotNull(nameConflict(namespaceId, complete.name))
-            }
-        val warnings = plan.warnings + fields.warnings + listOfNotNull(search?.warning) + validation.map { it.message }
-        val valid = proposal?.takeIf { validation.none { problem -> problem.blocking } }
+        val valid = proposal?.takeIf { problems.none { it.blocking } }
         if (valid != null && complete != null) {
             logger.info {
                 "[ScheduledPromptGeneration] Proposal for namespace=$namespaceId: loop='${complete.loopAgent.name}', " +
@@ -494,8 +505,12 @@ class ScheduledPromptGenerationService(
         return ScheduledPromptGenerationResult(
             scheduledPrompt = valid,
             decisions = fields.decisions + listOfNotNull(search?.decision),
-            warnings = warnings,
-            rawResponse = (search?.rawResponse ?: plan.rawText).takeIf { valid == null && (plan.unusable || search?.rawResponse != null) },
+            warnings = plan.warnings + fields.warnings + listOfNotNull(search?.warning) + problems.map { it.message },
+            rawResponse =
+                when (valid) {
+                    null -> search?.unusableRawText ?: plan.unusableRawText
+                    else -> null
+                },
         )
     }
 
@@ -514,12 +529,22 @@ class ScheduledPromptGenerationService(
         planning = fields.planning,
         // Never live on creation: a proposal posted unchanged must not start messaging users.
         enabled = false,
-        flowConfiguration =
-            objectMapper.createObjectNode().apply {
-                set<JsonNode>("search", searchBlock)
-                putObject("act").put("agentName", fields.targetAgent.name)
-            },
+        flowConfiguration = flowConfiguration(searchBlock, fields.targetAgent.name, prompt = null),
     )
+
+    /** `{ search, act: { agentName[, prompt] } }`: without [prompt] as proposed, with it as the scheduler runs it. */
+    private fun flowConfiguration(
+        searchBlock: JsonNode,
+        targetAgentName: String,
+        prompt: String?,
+    ): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            set<JsonNode>("search", searchBlock.deepCopy())
+            putObject("act").apply {
+                put("agentName", targetAgentName)
+                prompt?.let { put("prompt", it) }
+            }
+        }
 
     private data class ValidationProblem(
         val message: String,
@@ -527,38 +552,33 @@ class ScheduledPromptGenerationService(
     )
 
     /**
-     * Bean Validation of the whole proposal (blocking: `POST /api/scheduled-prompts` would refuse it), and the check
-     * that its flowConfiguration parses as an [AgentLoopPayload] once the scheduler has set `act.prompt` (a warning:
-     * the scheduled prompt can be created, but its runs would abort).
+     * - Bean Validation of the whole proposal: blocking, `POST /api/scheduled-prompts` would refuse it.
+     * - The flowConfiguration as the scheduler runs it (with `act.prompt`) must parse as an [AgentLoopPayload]: a
+     *   warning, the scheduled prompt can be created but its runs would abort.
+     * - The name must be free in the namespace: a warning, renaming the proposal is enough.
      */
     private fun validationProblems(
+        namespaceId: UUID,
         proposal: ScheduledPromptDto,
-        prompt: String,
+        fields: CompleteFields,
+        searchBlock: JsonNode,
     ): List<ValidationProblem> {
         val violations =
             validator.validate(proposal).map {
                 ValidationProblem("The proposal is invalid: ${it.propertyPath} ${it.message}.", blocking = true)
             }
-        val atRunTime =
-            (proposal.flowConfiguration as ObjectNode).deepCopy().also { (it.get("act") as ObjectNode).put("prompt", prompt) }
+        val atRunTime = flowConfiguration(searchBlock, fields.targetAgent.name, fields.prompt)
         val runnable =
             runCatching { objectMapper.treeToValue(atRunTime, AgentLoopPayload::class.java) }
                 .exceptionOrNull()
                 ?.let { ValidationProblem("The generated flowConfiguration will not run as a loop payload: ${it.message}", blocking = false) }
-        return violations + listOfNotNull(runnable)
+        val nameTaken =
+            ValidationProblem(
+                "A scheduled prompt named '${fields.name}' already exists in this namespace: rename the proposal before creating it.",
+                blocking = false,
+            ).takeIf { scheduledPromptService.isNameTaken(namespaceId, null, fields.name) }
+        return violations + listOfNotNull(runnable, nameTaken)
     }
-
-    /**
-     * The proposal is namespace-shared (`userId = null`), so its name must be free at that scope: the uniqueness that
-     * `POST /api/scheduled-prompts` enforces with a 409. Not blocking: renaming it is enough.
-     */
-    private fun nameConflict(
-        namespaceId: UUID,
-        name: String,
-    ): ValidationProblem? =
-        scheduledPromptRepository.findByTriple(namespaceId, null, name)?.let {
-            ValidationProblem("A scheduled prompt named '$name' already exists in this namespace: rename the proposal before creating it.", blocking = false)
-        }
 
     companion object : KLogging() {
         /** Bound on a generated name: the planning prompt asks for it, and it is enforced here. */
