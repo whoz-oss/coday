@@ -185,16 +185,14 @@ class CaseController(
         val userId = userService.getCurrentUser().id.toString()
         resource.parentCaseId?.let { checkParentCasePermission(userId, it) }
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
-        // A sub-case inherits no threshold: its root case's covers it (see CaseServiceImpl.createCase).
-        val runCostThreshold =
-            if (resource.parentCaseId == null) namespaceService.resolveRunCostThreshold(resource.namespaceId) else null
         val domain =
             Case(
                 metadata = metadata,
                 namespaceId = resource.namespaceId,
                 status = CaseStatus.CREATED,
                 title = resource.title ?: "Case ${metadata.id}",
-                runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
+                // Left unset when the caller gives none: the service materialises the inherited value.
+                runCostThreshold = resource.runCostThreshold,
                 reasoningEffort = resource.reasoningEffort,
                 parentCaseId = resource.parentCaseId,
             )

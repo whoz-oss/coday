@@ -46,8 +46,8 @@ data class Case(
      * Per-case override of the run cost threshold, expressed in the platform's currency unit.
      *
      * **On a root case, `null` means "inherit from the namespace or platform default", never "no limit" or
-     * "zero".** A sub-case runs within its root case's run, whose threshold covers the whole tree: it does not
-     * inherit, and `null` means it has no threshold of its own.
+     * "zero".** A sub-case does not inherit: its usage counts toward its root case's threshold, which covers the
+     * whole tree, and `null` means it has no threshold of its own.
      *
      * This field serves two purposes:
      * - **Upfront configuration**: set before a run when the caller knows the work ahead will

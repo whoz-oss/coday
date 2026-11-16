@@ -13,14 +13,9 @@ import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.sdk.actor.Actor
-import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
-import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CompletionException
 
@@ -43,28 +38,19 @@ class RunCostServiceSpec :
 
         fun runCostService(
             saved: MutableMap<UUID, Case>,
-            namespaceThreshold: Double? = null,
-            events: CaseEventService = mockk { every { findByParent(any()) } returns emptyList() },
-            records: UsageRecordService = mockk { every { sumCostByCaseTreeSince(any(), any()) } returns null },
+            namespaceThreshold: Double?,
         ): RunCostService {
             val repo = mockk<CaseRepository>()
             every { repo.findById(any()) } answers { saved[firstArg()] }
             every { repo.save(any()) } answers { firstArg<Case>().also { saved[it.id] = it } }
+            val events = mockk<CaseEventService>()
+            every { events.findByParent(any()) } returns emptyList()
             val namespaces = mockk<NamespaceService>()
             every { namespaces.resolveRunCostThreshold(any()) } returns namespaceThreshold
+            val records = mockk<UsageRecordService>()
+            every { records.sumCostByCaseTreeSince(any(), any()) } returns null
             return RunCostService(repo, events, namespaces, records, UsageConfigProperties(enabled = true))
         }
-
-        fun userMessage(
-            case: Case,
-            at: Instant,
-        ) = MessageEvent(
-            namespaceId = case.namespaceId,
-            caseId = case.id,
-            timestamp = at,
-            actor = Actor("user", "User", ActorRole.USER),
-            content = listOf(MessageContent.Text("go")),
-        )
 
         "usage is disabled by default before any data access or registration" {
             val cases = mockk<CaseRepository>()
@@ -368,33 +354,6 @@ class RunCostServiceSpec :
                 // One confirmation, on the root, releases the whole tree.
                 service.continueRun(root.id, 10.0)
                 pending.isDone shouldBe true
-            } finally {
-                service.stop(root.id)
-                registration.finish {}
-            }
-        }
-
-        "a sub-case's run is its root case's run: a later delegation message does not open a new cost window" {
-            val root = Case(namespaceId = UUID.randomUUID(), runCostThreshold = 100.0)
-            val child = Case(namespaceId = root.namespaceId, parentCaseId = root.id, runCostThreshold = 5.0)
-            val humanAsked = Instant.parse("2026-11-16T10:00:00Z")
-            val delegationResumed = humanAsked.plusSeconds(60)
-            val events = mockk<CaseEventService>()
-            every { events.findByParent(root.id) } returns listOf(userMessage(root, humanAsked))
-            // A delegation posts its task with the user's actor: that message must not restart the window.
-            every { events.findByParent(child.id) } returns listOf(userMessage(child, delegationResumed))
-            val records = mockk<UsageRecordService>()
-            every { records.sumCostByCaseTreeSince(any(), any()) } returns null
-            every { records.sumCostByCaseTreeSince(child.id, humanAsked) } returns
-                UsageCostAggregate(cost = 6.0, unknownCostCount = 0)
-            val service =
-                runCostService(mutableMapOf(root.id to root, child.id to child), events = events, records = records)
-            val usage = UsageAccumulator()
-            val registration = service.register(child.id, usage)
-            try {
-                service.state(child.id).since shouldBe humanAsked
-                service.state(child.id).cost shouldBe 6.0
-                usage.beforeCall().isDone shouldBe false
             } finally {
                 service.stop(root.id)
                 registration.finish {}

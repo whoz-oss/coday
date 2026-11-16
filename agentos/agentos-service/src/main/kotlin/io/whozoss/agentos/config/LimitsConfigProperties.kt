@@ -120,8 +120,8 @@ data class LimitsConfigProperties(
      *
      * On both entities `null` means "inherit from the level above" — never "zero" and never
      * "unlimited". A case that materialises its own value leaves the inherited regime and is
-     * no longer affected by later namespace changes. A sub-case does not inherit: it runs within its root
-     * case's run, whose threshold covers the whole tree, and only a threshold set on it applies on top.
+     * no longer affected by later namespace changes. A sub-case does not inherit: its usage counts toward its
+     * root case's threshold, which covers the whole tree, and only a threshold set on it applies on top.
      *
      * ## Default
      *

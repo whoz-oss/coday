@@ -194,8 +194,8 @@ class CaseServiceImpl(
         // Materialising at creation rather than resolving at runtime means the case is
         // unaffected by later namespace or platform config changes (same principle as
         // UsageRecord denormalising provider pricing at record time).
-        // Only a root case inherits: a sub-case runs within its root case's run, whose threshold covers the
-        // whole tree (RunCostService), so it keeps a threshold only when its creator sets one.
+        // Only a root case inherits: its threshold covers the usage of its whole delegation tree (RunCostService),
+        // so a sub-case keeps a threshold only when its creator sets one.
         val resolvedThreshold: Double? =
             entity.runCostThreshold
                 ?: if (entity.parentCaseId == null) {
