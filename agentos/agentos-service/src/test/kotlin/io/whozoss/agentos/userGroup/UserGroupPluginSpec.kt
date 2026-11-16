@@ -50,19 +50,25 @@ class UserGroupPluginSpec : StringSpec({
     // provideTools
     // -------------------------------------------------------------------------
 
-    "provideTools returns three tools" {
+    "provideTools returns four tools" {
         val tools = plugin().provideTools(config = null, configName = null, context = context())
-        tools shouldHaveSize 3
+        tools shouldHaveSize 4
         tools.map { it::class.simpleName }.toSet() shouldBe setOf(
             "ListUserGroupMembersTool",
             "ListAgentUsersTool",
             "ListGroupAgentUsersTool",
+            "SearchAgentUsersTool",
         )
     }
 
     "provideTools returns tools with bare names when configName is null" {
         val tools = plugin().provideTools(config = null, configName = null, context = context())
-        tools.map { it.name }.toSet() shouldBe setOf("listMembers", "listAgentUsers", "listGroupAgentUsers")
+        tools.map { it.name }.toSet() shouldBe setOf(
+            "listMembers",
+            "listAgentUsers",
+            "listGroupAgentUsers",
+            "searchAgentUsers",
+        )
     }
 
     "provideTools returns tools with prefixed names when configName is provided" {
@@ -71,11 +77,12 @@ class UserGroupPluginSpec : StringSpec({
             "USER_GROUP__listMembers",
             "USER_GROUP__listAgentUsers",
             "USER_GROUP__listGroupAgentUsers",
+            "USER_GROUP__searchAgentUsers",
         )
     }
 
-    "provideTools returns three tools even when context is null" {
+    "provideTools returns four tools even when context is null" {
         val tools = plugin().provideTools(config = null, configName = null, context = null)
-        tools shouldHaveSize 3
+        tools shouldHaveSize 4
     }
 })

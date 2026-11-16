@@ -5,8 +5,6 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import io.whozoss.agentos.util.coRunCatching
-import mu.KLogging
 import java.util.UUID
 
 /**
@@ -52,20 +50,7 @@ class ListAgentUsersTool(
         through another available tool before calling this one.
         """.trimIndent()
 
-    override val inputSchema: String =
-        """
-        {
-          "type": "object",
-          "properties": {
-            "agentConfigId": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The UUID of the AgentConfig whose audience you want to list."
-            }
-          },
-          "required": ["agentConfigId"]
-        }
-        """.trimIndent()
+    override val inputSchema: String = AGENT_USERS_INPUT_SCHEMA
 
     override val version: String = "1.0.0"
     override val paramType: Class<Input> = Input::class.java
@@ -75,36 +60,15 @@ class ListAgentUsersTool(
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): ToolExecutionResult {
-        if (input == null) {
-            return ToolExecutionResult.error("agentConfigId is required.", errorType = "MISSING_INPUT")
+    ): ToolExecutionResult =
+        retrieveAgentUsers(name, input, context, usersByAgentLoader) { agentConfigId, members ->
+            ToolExecutionResult.success(
+                output = agentUsersSummary(agentConfigId, members),
+                structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList()),
+            )
         }
-        val members =
-            coRunCatching { usersByAgentLoader(input.agentConfigId, context.namespaceId, context.userId) }
-                .onFailure { e -> logger.warn(e) { "[listAgentUsers] Failed to retrieve users for agent ${input.agentConfigId}" } }
-                .getOrElse {
-                    return ToolExecutionResult.error(
-                        "Failed to retrieve users for agent ${input.agentConfigId}.",
-                        errorType = "RETRIEVAL_ERROR",
-                    )
-                }
-                ?: return ToolExecutionResult.error(
-                    "You do not have access to list users for agent ${input.agentConfigId}.",
-                    errorType = "NOT_FOUND",
-                )
 
-        val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
-        val summary =
-            if (members.isEmpty()) {
-                "Agent ${input.agentConfigId} has no users deployed through any UserGroup in this namespace."
-            } else {
-                "Agent ${input.agentConfigId} is accessible to ${members.size} user(s): " +
-                    members.joinToString(", ") { "${it.externalId} (${it.role})" }
-            }
-        return ToolExecutionResult.success(output = summary, structuredOutput = structuredOutput)
-    }
-
-    companion object : KLogging() {
+    companion object {
         private val mapper = jacksonObjectMapper()
 
         /** Shared output schema for all USER_GROUP member-listing tools. */

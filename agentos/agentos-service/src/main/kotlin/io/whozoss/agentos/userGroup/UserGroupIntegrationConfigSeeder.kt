@@ -105,7 +105,7 @@ class UserGroupIntegrationConfigSeeder(
          * Name of the seeded platform configuration — a **contract**, not an implementation
          * detail. Admins type it verbatim to assign the integration to an agent, and it is
          * the prefix of the tool names the LLM sees (`USER_GROUP__listMembers`,
-         * `USER_GROUP__listAgentUsers`, `USER_GROUP__listGroupAgentUsers`).
+         * `USER_GROUP__listAgentUsers`, `USER_GROUP__listGroupAgentUsers`, `USER_GROUP__searchAgentUsers`).
          * Renaming it silently detaches every existing assignment.
          */
         const val DEFAULT_CONFIG_NAME = "USER_GROUP"
