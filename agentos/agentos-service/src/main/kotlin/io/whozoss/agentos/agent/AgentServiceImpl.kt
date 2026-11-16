@@ -18,8 +18,10 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
+import io.whozoss.agentos.exchange.ExchangeGrant
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.ExchangeScopeGuidance
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
@@ -53,6 +55,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
+import java.nio.file.Path
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -256,15 +260,6 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 selectors = agentConfig.skillSelectors,
             )
-        val instructions =
-            buildInstructions(
-                baseInstructions = agentConfig.instructions,
-                agentIntegrations = agentConfig.integrations,
-                resolvedUser = resolvedUser,
-                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
-                docs = agentConfig.docs,
-                resolvedSkills = resolvedSkills,
-            )
         val toolContext =
             context.toToolContext(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
@@ -365,6 +360,30 @@ class AgentServiceImpl(
                 null
             }
         }
+        // Decided here, granted later: the block describes what the run was granted, and the two
+        // decisions carry everything it needs. Keeping them before the tool assembly means a failure
+        // in buildInstructions still happens before resolveToolsForRun's side effects -- an
+        // interactive OAuth prompt, a pooled MCP child process -- and before the grant creates the
+        // scope directories.
+        val exchangeScopes =
+            ResolvedExchangeScopes(
+                case = resolveCaseScope(agentConfig.integrations, context),
+                namespace = resolveNamespaceScope(agentConfig.integrations, context),
+            )
+        val instructions =
+            buildInstructions(
+                baseInstructions = agentConfig.instructions,
+                agentIntegrations = agentConfig.integrations,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+                docs = agentConfig.docs,
+                resolvedSkills = resolvedSkills,
+                exchangeScopesBlock =
+                    ExchangeScopeGuidance.buildBlock(
+                        case = exchangeScopes.case?.access,
+                        namespace = exchangeScopes.namespace?.access,
+                    ),
+            )
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
@@ -381,6 +400,7 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
+        val exchangeTools = grantExchangeTools(exchangeScopes, toolContext)
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -393,10 +413,9 @@ class AgentServiceImpl(
                             )
                         },
                     ) +
-                    buildExchangeTools(agentConfig, context, toolContext) +
+                    exchangeTools +
                     skillTools,
             )
-
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
 
         return ResolvedAgentDefinition(
@@ -694,6 +713,11 @@ class AgentServiceImpl(
      *
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
+     *
+     * [exchangeScopesBlock] is the already-rendered `## File scopes` block of
+     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance], null for every run that was not granted
+     * both exchange scopes. It is passed in rather than computed here because the scopes are
+     * settled earlier, by [resolveCaseScope] and [resolveNamespaceScope].
      */
     private suspend fun buildInstructions(
         baseInstructions: String?,
@@ -702,6 +726,7 @@ class AgentServiceImpl(
         effectiveIntegrationConfigs: List<IntegrationConfig>,
         docs: List<String>? = null,
         resolvedSkills: List<Skill> = emptyList(),
+        exchangeScopesBlock: String? = null,
     ): String {
         val integrationsBlock =
             when {
@@ -758,6 +783,7 @@ class AgentServiceImpl(
         return listOfNotNull(
             baseInstructions.takeUnless { it.isNullOrBlank() },
             integrationsBlock,
+            exchangeScopesBlock,
             userBlock,
             docsBlock,
             skillsBlock,
@@ -861,7 +887,23 @@ class AgentServiceImpl(
     }
 
     /**
-     * Builds the file-exchange tools enabled on [config], scoped to the current run.
+     * The exchange scopes this run gets, decided by [resolveCaseScope] and [resolveNamespaceScope]
+     * before anything is granted.
+     *
+     * A null side is a scope this run does not get, which is how
+     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance.buildBlock] knows to stay silent about it.
+     * Deciding first is what lets the instructions name the scopes without waiting for the tool
+     * assembly, and each side carries the permission answers that decision already paid for.
+     */
+    private data class ResolvedExchangeScopes(
+        val case: ExchangeScope?,
+        val namespace: ExchangeScope?,
+    )
+
+    /**
+     * Builds the file-exchange tools of the scopes [scopes] already holds, and nothing else: who
+     * gets which scope, and read-only or not, is settled by [resolveCaseScope] and
+     * [resolveNamespaceScope] before this runs.
      *
      * The case/namespace exchange is exposed to the agent as a **built-in integration of the
      * file-plugin** (integration type [ExchangeIntegrationTypes.FILE_ACCESS]): we point the plugin's own tools
@@ -880,73 +922,141 @@ class AgentServiceImpl(
      * [io.whozoss.agentos.exchange.ExchangeController] path, which applies no deny-list (users manage
      * their own files); the two views of the same directory can therefore differ for such files.
      *
-     * Gating: the agent's own [AgentConfig.integrations] map decides, with a platform-level fallback
-     * for agents that say nothing at all
-     * ([io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.caseEnabledByDefault] /
-     * [io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.namespaceEnabledByDefault], both off
-     * by default, so an upgrade changes no agent's tool set):
-     * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
-     * - key absent → the platform default decides, and no per-tool filter applies;
-     * - key present, null → granted, all tools;
-     * - key present, non-empty → granted, filtered to the listed tools;
-     * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
-     *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
-     *   root);
-     * - the case scope additionally requires a live [context.caseId]. The run's own directory needs no
-     *   extra gate: the invoking user already holds Case WRITE on that case to have reached this point.
-     *   A directory owned by another case (a family's shared workspace) also requires the user's
-     *   permission on that owner, and is read-only without WRITE on both;
-     * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
-     *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
-     *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
-     *   exchange tools. Read/write when the user also holds Namespace WRITE (admin/super-admin),
-     *   read-only otherwise.
-     *
-     * The default is a decision local to [ExchangeToolGrantService] and never a mutation of
+     * Gating lives in two other places, on purpose. What an agent's own
+     * [AgentConfig.integrations] map means — key absent and the platform default deciding, present
+     * and null, present and filtered, present and empty as an explicit opt-out — is
+     * [io.whozoss.agentos.exchange.ExchangeToolGrantService.resolveCaseGrant] and its siblings. Who
+     * may reach each directory, and whether the scope is writable, is [resolveCaseScope] and
+     * [resolveNamespaceScope]. Neither default is ever written back into
      * [AgentConfig.integrations]: materialising it in the map would leak into the persisted config,
      * the YAML export, and the peer descriptions the redirect tool puts in every agent's prompt.
      */
-    private fun buildExchangeTools(
-        config: AgentConfig,
-        context: AgentExecutionContext,
+    private fun grantExchangeTools(
+        scopes: ResolvedExchangeScopes,
         toolContext: ToolContext,
     ): List<StandardTool<*>> {
-        val integrations = config.integrations
-        val tools = mutableListOf<StandardTool<*>>()
+        // The per-tool sentence only makes sense when there are two surfaces to arbitrate between,
+        // which is why both scopes are decided before either is granted. An agent that ends up with
+        // a single scope keeps the file-plugin's own descriptions byte for byte, and with them its
+        // cached prompt prefix -- the same both-scopes condition [ExchangeScopeGuidance.buildBlock]
+        // applies to the instructions block.
+        val bothGranted = scopes.case != null && scopes.namespace != null
+        return listOfNotNull(scopes.case, scopes.namespace).flatMap { grantScope(it, toolContext, bothGranted) }
+    }
+
+    /**
+     * One exchange scope, decided but not yet granted.
+     *
+     * [userCanWrite] and [access] answer two different questions and must not be folded into one.
+     * The first is the invoking user's right on the directory, and it alone decides what the file
+     * plugin builds. The second is what the prompt says about the scope, which also depends on the
+     * agent's own allowlist: a scope restricted to read tools is described as read-only, but the
+     * tools it did allow are still built from the user's rights. Deriving the plugin's `readOnly`
+     * from the stance instead would make a write tool unreachable as soon as the allowlist names
+     * one that [ExchangeIntegrationTypes.MUTATING_TOOLS] does not know.
+     */
+    private data class ExchangeScope(
+        val root: Path,
+        val configName: String,
+        val grant: ExchangeGrant,
+        val userCanWrite: Boolean,
+        val access: ExchangeScopeGuidance.Access,
+        val toolGuidance: String,
+    )
+
+    /**
+     * The stance to describe for a scope: writable only when the user may write *and* the agent's
+     * own allowlist left a tool to write with.
+     */
+    private fun accessFor(
+        userCanWrite: Boolean,
+        configName: String,
+        grant: ExchangeGrant,
+    ): ExchangeScopeGuidance.Access =
+        ExchangeScopeGuidance.Access.forWrite(
+            userCanWrite && exchangeToolGrantService.grantsMutatingTool(configName, grant.allowedTools),
+        )
+
+    private fun grantScope(
+        scope: ExchangeScope,
+        toolContext: ToolContext,
+        withGuidance: Boolean,
+    ): List<StandardTool<*>> =
+        exchangeToolGrantService.grantTools(
+            root = scope.root,
+            readOnly = !scope.userCanWrite,
+            configName = scope.configName,
+            allowedTools = scope.grant.allowedTools,
+            toolContext = toolContext,
+            scopeGuidance = scope.toolGuidance.takeIf { withGuidance },
+        )
+
+    /**
+     * The case scope of this run, or null when the agent was not granted it or the run has no live
+     * case (a definition preview).
+     *
+     * The run's own directory needs no permission query: the invoking user already holds Case WRITE
+     * on that case to have reached this point. A directory owned by *another* case, a family's
+     * shared workspace, additionally requires that user's permission on the owner, and is read-only
+     * without WRITE on both, because delegation does not confer its rights.
+     */
+    private fun resolveCaseScope(
+        integrations: Map<String, List<String>?>?,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
         val caseId = context.caseId
         val caseCreatedAt = context.caseCreatedAt
+        return when {
+            caseGrant == null || caseId == null || caseCreatedAt == null -> null
+            else -> caseScope(caseGrant, caseId, caseCreatedAt, context)
+        }
+    }
 
-        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
-        if (caseGrant != null && caseId != null && caseCreatedAt != null) {
-            // The agent gets read/write on the case exchange by design (it produces files during a run).
-            // User-facing write is separately gated: the exchange upload/delete endpoints require Case
-            // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            // A directory owned by another case (a family's shared workspace) also requires the
-            // invoking user's permission on that owner: delegation does not confer its rights.
-            val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
-            val userId = context.userId?.toString()
-            val canRead =
-                root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
-            if (canRead) {
+    private fun caseScope(
+        caseGrant: ExchangeGrant,
+        caseId: UUID,
+        caseCreatedAt: Instant,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        // The agent gets read/write on the case exchange by design (it produces files during a run).
+        // User-facing write is separately gated: the exchange upload/delete endpoints require Case
+        // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
+        // A directory owned by another case (a family's shared workspace) also requires the
+        // invoking user's permission on that owner: delegation does not confer its rights.
+        val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
+        val userId = context.userId?.toString()
+        val canRead =
+            root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+        return when {
+            !canRead -> null
+            else -> {
                 val canWrite =
                     root.ownerCaseId == caseId ||
-                        exchangeCapabilityService.canAccessCase(
-                            userId,
-                            caseId,
-                            root,
-                            Action.WRITE,
-                        )
-                tools +=
-                    exchangeToolGrantService.grantTools(
-                        root = root.requireUsable(),
-                        readOnly = !canWrite,
-                        configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                        allowedTools = caseGrant.allowedTools,
-                        toolContext = toolContext,
-                    )
+                        exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                ExchangeScope(
+                    root = root.requireUsable(),
+                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    grant = caseGrant,
+                    userCanWrite = canWrite,
+                    access = accessFor(canWrite, ExchangeIntegrationTypes.CASE_CONFIG_NAME, caseGrant),
+                    toolGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                )
             }
         }
+    }
 
+    /**
+     * The namespace scope of this run, or null when the agent was not granted it or the invoking
+     * user does not hold Namespace READ, the floor every REST namespace-file endpoint enforces via
+     * `@PreAuthorize`. A run without an identified user is denied fail-closed, so a definition
+     * preview resolved without a user reports no namespace exchange tools. Read/write when that
+     * user also holds Namespace WRITE (admin, super-admin included), read-only otherwise.
+     */
+    private fun resolveNamespaceScope(
+        integrations: Map<String, List<String>?>?,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
         // The agent inherits the invoking user's namespace rights. Namespace READ is the floor the
         // REST namespace-file endpoints already enforce via @PreAuthorize, so the agent path must
@@ -955,14 +1065,26 @@ class AgentServiceImpl(
         // permission queries run only once the grant stands, so a scope nobody was granted costs
         // no permission query.
         val namespaceUserId = context.userId?.toString()
-        if (namespaceGrant != null && namespaceUserId != null) {
-            val userCanReadNamespace =
-                exchangeCapabilityService.canRead(
-                    userId = namespaceUserId,
-                    entityType = EntityType.NAMESPACE,
-                    entityId = context.namespaceId.toString(),
-                )
-            if (userCanReadNamespace) {
+        return when {
+            namespaceGrant == null || namespaceUserId == null -> null
+            else -> namespaceScope(namespaceGrant, namespaceUserId, context)
+        }
+    }
+
+    private fun namespaceScope(
+        namespaceGrant: ExchangeGrant,
+        namespaceUserId: String,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        val userCanReadNamespace =
+            exchangeCapabilityService.canRead(
+                userId = namespaceUserId,
+                entityType = EntityType.NAMESPACE,
+                entityId = context.namespaceId.toString(),
+            )
+        return when {
+            !userCanReadNamespace -> null
+            else -> {
                 // Read/write for a namespace admin (Namespace WRITE, super-admin included),
                 // read-only for a plain member.
                 val userCanWriteNamespace =
@@ -971,17 +1093,21 @@ class AgentServiceImpl(
                         entityType = EntityType.NAMESPACE,
                         entityId = context.namespaceId.toString(),
                     )
-                tools +=
-                    exchangeToolGrantService.grantTools(
-                        root = exchangeStorageService.namespaceRoot(context.namespaceId),
-                        readOnly = !userCanWriteNamespace,
-                        configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                        allowedTools = namespaceGrant.allowedTools,
-                        toolContext = toolContext,
-                    )
+                ExchangeScope(
+                    root = exchangeStorageService.namespaceRoot(context.namespaceId),
+                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                    grant = namespaceGrant,
+                    userCanWrite = userCanWriteNamespace,
+                    access =
+                        accessFor(
+                            userCanWriteNamespace,
+                            ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                            namespaceGrant,
+                        ),
+                    toolGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                )
             }
         }
-        return tools
     }
 
     /**

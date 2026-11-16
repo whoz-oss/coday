@@ -236,7 +236,7 @@ class PermissionServiceImpl(
             permissionRepository.listRelationsForUsers(entityType, entityId, userIds)
         } catch (e: Exception) {
             logger.error(e) { "Failed to list relations for users on $entityType:$entityId" }
-            emptyMap() // Fail-closed: return empty map on error
+            throw e
         }
 
     override fun applyShareBatch(

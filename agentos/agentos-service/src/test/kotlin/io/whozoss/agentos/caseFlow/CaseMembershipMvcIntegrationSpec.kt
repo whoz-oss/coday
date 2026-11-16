@@ -1,10 +1,9 @@
 package io.whozoss.agentos.caseFlow
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
@@ -39,8 +38,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class CaseMembershipMvcIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class CaseMembershipMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService

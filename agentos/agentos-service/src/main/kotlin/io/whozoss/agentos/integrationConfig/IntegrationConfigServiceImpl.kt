@@ -4,9 +4,7 @@ import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -40,10 +38,7 @@ class IntegrationConfigServiceImpl(
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                conflictMessage(entity),
-            )
+            throw ConflictException(conflictMessage(entity))
         }
         assertNamespaceSingletonRules(entity)
         assertAutoGrantRules(entity)
@@ -58,10 +53,7 @@ class IntegrationConfigServiceImpl(
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    conflictMessage(entity),
-                )
+                throw ConflictException(conflictMessage(entity))
             }
         assertNamespaceSingletonRules(entity)
         assertAutoGrantRules(entity)
@@ -202,8 +194,7 @@ class IntegrationConfigServiceImpl(
         val entityId = entity.id
 
         fun reject(other: IntegrationConfig): Nothing =
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
+            throw ConflictException(
                 "An IntegrationConfig named '$name' already exists in another layer with " +
                     "integrationType='${other.integrationType}' (this entity wants " +
                     "integrationType='$type'). Overlay layers for the same name must share the " +
@@ -261,8 +252,7 @@ class IntegrationConfigServiceImpl(
 
         val namespaceId = entity.namespaceId
         if (namespaceId == null || entity.userId != null) {
-            throw ResponseStatusException(
-                HttpStatus.UNPROCESSABLE_ENTITY,
+            throw UnprocessableEntityException(
                 "An integration of type '${entity.integrationType}' configures the namespace itself, so it must " +
                     "be namespace-shared (namespaceId set, userId null). It was requested with " +
                     "namespaceId=${entity.namespaceId}, userId=${entity.userId}. A personal or platform-level " +
@@ -275,8 +265,7 @@ class IntegrationConfigServiceImpl(
             .findActiveNamespaceSingleton(namespaceId, entity.integrationType)
             ?.takeIf { it.id != entity.id }
             ?.let { existing ->
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
+                throw ConflictException(
                     "Namespace $namespaceId already has an active '${entity.integrationType}' configuration " +
                         "('${existing.name}'). Update that one, or remove it first.",
                 )
@@ -331,7 +320,7 @@ class IntegrationConfigServiceImpl(
                     "[IntegrationConfigService] singletonKey unique-constraint violation on save " +
                         "(namespaceId=${entity.namespaceId}, integrationType='${entity.integrationType}')"
                 }
-                throw ResponseStatusException(HttpStatus.CONFLICT, singletonConflictMessage(entity), e)
+                throw ConflictException(singletonConflictMessage(entity), e)
             }
             // Catches the race window: two concurrent creates pass the applicative pre-check,
             // both reach `save`, the DB unique constraint on `tripleKey` rejects one of them.
@@ -345,7 +334,7 @@ class IntegrationConfigServiceImpl(
             // Do NOT chain `e` to the logger: the Neo4j driver's `DataIntegrityViolationException`
             // message can echo property values (incl. the offending row's `parameters` JSON which
             // may contain credentials, cf. NFR-SEC-4). The exception is preserved as the cause of
-            // the rethrown `ResponseStatusException` for stack-trace continuity at the framework
+            // the rethrown `ConflictException` for stack-trace continuity at the framework
             // boundary.
             logger.warn {
                 "[IntegrationConfigService] tripleKey unique-constraint violation on save " +

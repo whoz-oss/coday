@@ -16,8 +16,11 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
@@ -213,7 +216,7 @@ class DelegationTool(
     /**
      * Runs a single delegation: starts or resumes the sub-case, waits for completion,
      * loads events, and extracts the result. Never throws — errors are captured as
-     * [DelegationResult.success] = false.
+     * [DelegationResult.success] = false — except a cancellation of the parent run, which unwinds.
      *
      * The [timeoutMs] budget applies to this individual delegation. A timeout kills
      * the sub-case and returns a failure result, leaving sibling delegations unaffected.
@@ -283,7 +286,9 @@ class DelegationTool(
             }
         } catch (error: Exception) {
             outcome = SubCaseOutcome.ERROR
-            finishErrorType = "DELEGATION_ERROR"
+            // The parent run was stopped while waiting: not a delegation failure, keep unwinding.
+            finishErrorType = if (currentCoroutineContext().isActive) "DELEGATION_ERROR" else "INTERRUPTED"
+            currentCoroutineContext().ensureActive()
             DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
                 error = "Delegation failed: ${error.message}", errorType = finishErrorType)
         } finally {

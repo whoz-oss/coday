@@ -8,6 +8,7 @@ import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -15,8 +16,6 @@ import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -158,9 +157,8 @@ class EntityControllerBatchSpec : StringSpec({
     "getByIds rejects oversized input batches with HTTP 400 (DoS protection)" {
         val oversizedIds = List(EntityCrudDelegate.MAX_BATCH_SIZE + 1) { UUID.randomUUID() }
 
-        val ex = shouldThrow<ResponseStatusException> { crudDelegate.getByIds(GetByIdsRequest(ids = oversizedIds)) }
+        shouldThrow<BadRequestException> { crudDelegate.getByIds(GetByIdsRequest(ids = oversizedIds)) }
 
-        ex.statusCode shouldBe HttpStatus.BAD_REQUEST
         verify(exactly = 0) { userService.getCurrentUser() }
         verify(exactly = 0) { service.findByIds(any(), any()) }
     }

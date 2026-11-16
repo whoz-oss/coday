@@ -35,7 +35,9 @@ import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
+import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.ExchangeScopeGuidance
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
@@ -257,7 +259,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // Both exchange scopes are denied unless a test says otherwise, mirroring the shipped defaults.
         every { exchangeToolGrantService.resolveCaseGrant(any()) } returns null
         every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns null
-        every { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns emptyList()
+        every { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any(), any()) } returns emptyList()
 
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
@@ -277,6 +279,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // above and rely on surviving across tests.
         beforeTest {
             every { integrationConfigService.findEffective(any(), null) } returns emptyList()
+            // A granted scope has a way to write unless a test says otherwise; the one that does is
+            // "a scope restricted to read tools is not named as the write target" below.
+            every { exchangeToolGrantService.grantsMutatingTool(any(), any()) } returns true
         }
 
         // -------------------------------------------------------------------------
@@ -380,6 +385,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "case-exchange",
                     allowedTools = null,
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -415,7 +422,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentService.findAgentByName("shared-agent", context)
 
                     verify(exactly = if (canRead) 1 else 0) {
-                        exchangeToolGrantService.grantTools(root.path, !canWrite, "case-exchange", null, any())
+                        exchangeToolGrantService.grantTools(
+                            root.path,
+                            !canWrite,
+                            "case-exchange",
+                            null,
+                            any(),
+                            null,
+                        )
                     }
                 } finally {
                     sharedRoot = null
@@ -448,6 +462,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "case-exchange",
                     allowedTools = listOf("readFile"),
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -480,7 +496,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             // namespace grant is denied fail-closed before any permission query; and with no live
             // case id the case scope is not granted either. Nothing may be built.
             verify(exactly = 0) { exchangeCapabilityService.canRead(any(), any(), any()) }
-            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any(), any()) }
         }
 
         "namespace exchange is granted read-only when the user holds Namespace READ but not WRITE" {
@@ -512,6 +528,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "namespace-exchange",
                     allowedTools = null,
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -536,7 +554,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.resolveDefinition(config.metadata.id, namespaceId, userId = strangerId)
 
             verify(exactly = 0) { exchangeCapabilityService.canWrite(any(), any(), any()) }
-            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any(), any()) }
         }
 
         "namespace exchange is read/write when the invoking user holds Namespace WRITE" {
@@ -572,6 +590,157 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "namespace-exchange",
                     allowedTools = null,
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
+                )
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // The `## File scopes` instructions block. The wording itself belongs to
+        // ExchangeScopeGuidance and is covered by its own spec; what matters here is that the block
+        // is emitted exactly for the runs that can get the choice wrong.
+        // -------------------------------------------------------------------------
+
+        /**
+         * Grants both scopes to one run: a live case (from [context]) plus an invoking user holding
+         * Namespace WRITE. Returns the instantiated agent so a test can read its instructions.
+         */
+        suspend fun agentWithBothScopes(
+            name: String,
+            namespaceWrite: Boolean,
+        ): AgentSimple {
+            val adminId = UUID.randomUUID()
+            every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns Path.of("/tmp/both-case")
+            every { exchangeStorageService.namespaceRoot(namespaceId) } returns Path.of("/tmp/both-ns")
+            every {
+                exchangeCapabilityService.canRead(adminId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns true
+            every {
+                exchangeCapabilityService.canWrite(adminId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns namespaceWrite
+
+            val config =
+                agentConfig(name = name, modelName = "sonnet").copy(
+                    integrations = mapOf("CASE_FILE_EXCHANGE" to null, "NAMESPACE_FILE_EXCHANGE" to null),
+                )
+            // A context carrying a userId takes the deployed-for-this-user lookup, not findByName.
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, adminId, name)
+            } returns listOf(config)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { aiProviderService.resolveProvider(any(), any(), any()) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            return agentService.findAgentByName(name, context.copy(userId = adminId)) as AgentSimple
+        }
+
+        "both scopes granted: the block names them and makes the case the default target" {
+            val instructions = agentWithBothScopes("both-scopes-agent", namespaceWrite = true).instructions ?: ""
+
+            instructions shouldContain "## File scopes"
+            instructions shouldContain "`case-exchange__`"
+            instructions shouldContain "`namespace-exchange__`"
+            instructions shouldContain "Work in the case scope by default"
+            instructions shouldContain "Reach for the namespace scope only when the user asks you"
+        }
+
+        "both scopes granted: each write tool set carries its own scope sentence" {
+            // The companion of "no sentence when only one scope is granted" below: the per-tool
+            // sentence arbitrates between two surfaces, so it is written exactly when there are two.
+            agentWithBothScopes("tool-sentence-agent", namespaceWrite = true)
+
+            verify(exactly = 1) {
+                exchangeToolGrantService.grantTools(
+                    root = Path.of("/tmp/both-case"),
+                    readOnly = false,
+                    configName = "case-exchange",
+                    allowedTools = null,
+                    toolContext = any(),
+                    scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                )
+            }
+            verify(exactly = 1) {
+                exchangeToolGrantService.grantTools(
+                    root = Path.of("/tmp/both-ns"),
+                    readOnly = false,
+                    configName = "namespace-exchange",
+                    allowedTools = null,
+                    toolContext = any(),
+                    scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                )
+            }
+        }
+
+        "a namespace member without WRITE is told the namespace scope is read-only" {
+            // The admin case is the one that needs the prose; a member has no writable namespace tool
+            // at all, so promising them one would make them try and fail.
+            val instructions = agentWithBothScopes("member-scopes-agent", namespaceWrite = false).instructions ?: ""
+
+            instructions shouldContain "## File scopes"
+            instructions shouldContain "The namespace scope is read-only for you"
+            instructions shouldNotContain "Reach for the namespace scope"
+        }
+
+        "a scope restricted to read tools is not named as the write target" {
+            // The stance follows the agent's own allowlist, not only the user's rights. Told to write
+            // in a case scope whose write tools it filtered out, the model would find no case tool,
+            // reach for `namespace-exchange__editFiles`, and produce exactly the cross-scope write
+            // this block exists to prevent.
+            every {
+                exchangeToolGrantService.grantsMutatingTool(ExchangeIntegrationTypes.CASE_CONFIG_NAME, any())
+            } returns false
+
+            val instructions = agentWithBothScopes("read-only-case-agent", namespaceWrite = true).instructions ?: ""
+
+            instructions shouldContain "## File scopes"
+            instructions shouldContain "The case scope is read-only for you on this run"
+            instructions shouldNotContain "Work in the case scope by default"
+            // The stance is prose. What the plugin builds still follows the user's rights alone, so a
+            // write tool the allowlist did name is still granted: folding the two would make any
+            // write tool absent from MUTATING_TOOLS un-grantable.
+            verify {
+                exchangeToolGrantService.grantTools(
+                    any(),
+                    false,
+                    ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
+        }
+
+        "no block and no tool sentence when only the case scope is granted" {
+            // What keeps this change inert for every single-scope agent: with one file surface there
+            // is nothing to arbitrate, so the run pays neither the tokens nor the risk, and the
+            // write tools keep the file-plugin's own descriptions -- and with them the provider's
+            // cached prompt prefix, which a changed description would invalidate.
+            every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns Path.of("/tmp/case-only")
+
+            val config =
+                agentConfig(name = "case-only-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null))
+            every { agentConfigService.findByName(namespaceId, "case-only-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val agent = agentService.findAgentByName("case-only-agent", context) as AgentSimple
+
+            (agent.instructions ?: "") shouldNotContain "## File scopes"
+            verify(exactly = 0) {
+                exchangeToolGrantService.grantTools(
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
                 )
             }
         }

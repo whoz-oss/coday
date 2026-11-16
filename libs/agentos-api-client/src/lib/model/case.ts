@@ -38,6 +38,7 @@ export enum CaseRoleEnum {
   MEMBER = 'MEMBER',
 }
 export enum CaseStatusEnum {
+  CREATED = 'CREATED',
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
   IDLE = 'IDLE',

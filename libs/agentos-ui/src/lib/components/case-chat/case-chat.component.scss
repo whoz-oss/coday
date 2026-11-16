@@ -456,6 +456,11 @@
         padding: 10px 12px 24px;
       }
     }
+
+    // Plain-text content (question / answer): keep the author's line breaks
+    &--plain {
+      white-space: pre-wrap;
+    }
   }
 
   // ── Tool calls ─────────────────────────────────────────────────────
@@ -755,31 +760,10 @@
     overflow-y: auto;
   }
 
-  // Answered question — shown after a QuestionEvent has been resolved
-  &__question-answered {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.4rem 0.75rem;
-    border-radius: 8px;
-    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
-    border-left: 3px solid var(--color-success, #34c759);
-    font-size: 0.8rem;
-    color: var(--color-text-secondary, #6e6e73);
-  }
-
-  &__question-answered-label {
-    font-weight: 600;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-success, #34c759);
-  }
-
-  &__question-answered-text {
-    color: var(--color-text, #1d1d1f);
-    font-size: 0.82rem;
+  // Answer controls attached under the question bubble
+  &__question-controls {
+    width: 100%;
+    min-width: 0;
   }
 
   // Thinking indicator (three bouncing dots)
@@ -932,6 +916,45 @@
     overflow: hidden;
     text-overflow: ellipsis;
     padding-left: 6px;
+  }
+
+  // ── Reopen bar (shown when case is terminal) ────────────────────────────────
+
+  &__reopen-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--color-divider);
+    background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  }
+
+  &__reopen-label {
+    flex: 1;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    font-family: var(--font-body);
+  }
+
+  &__reopen-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 0 14px;
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    border: none;
+    font-size: 12px;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+      background: color-mix(in srgb, var(--color-accent) 85%, black);
+    }
   }
 
   // ── Floating scroll-to-bottom button ───────────────────────────────────────────

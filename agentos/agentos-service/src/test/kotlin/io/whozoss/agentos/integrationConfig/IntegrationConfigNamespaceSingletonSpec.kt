@@ -5,9 +5,9 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -55,28 +55,21 @@ class IntegrationConfigNamespaceSingletonSpec :
             val namespaceId = UUID.randomUUID()
             service.create(config(namespaceId, name = "project-repository"))
 
-            val error = shouldThrow<ResponseStatusException> { service.create(config(namespaceId, name = "another-repository")) }
-
-            error.statusCode shouldBe HttpStatus.CONFLICT
+            shouldThrow<ConflictException> { service.create(config(namespaceId, name = "another-repository")) }
         }
 
         "a user-scoped association is refused: it would redirect provisioning for that member" {
             val service = newService()
 
-            val error =
-                shouldThrow<ResponseStatusException> {
-                    service.create(config(UUID.randomUUID(), userId = UUID.randomUUID()))
-                }
-
-            error.statusCode shouldBe HttpStatus.UNPROCESSABLE_ENTITY
+            shouldThrow<UnprocessableEntityException> {
+                service.create(config(UUID.randomUUID(), userId = UUID.randomUUID()))
+            }
         }
 
         "a platform-scoped association is refused" {
             val service = newService()
 
-            val error = shouldThrow<ResponseStatusException> { service.create(config(namespaceId = null)) }
-
-            error.statusCode shouldBe HttpStatus.UNPROCESSABLE_ENTITY
+            shouldThrow<UnprocessableEntityException> { service.create(config(namespaceId = null)) }
         }
 
         "each namespace may have its own association" {

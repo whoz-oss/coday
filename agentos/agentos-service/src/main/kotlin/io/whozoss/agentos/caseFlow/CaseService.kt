@@ -159,6 +159,26 @@ interface CaseService : EntityService<Case, UUID> {
     fun killCase(caseId: UUID)
 
     /**
+     * Reopen a terminal case by transitioning it back to [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE].
+     *
+     * The case must currently be in a terminal status ([io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED]
+     * or [io.whozoss.agentos.sdk.caseFlow.CaseStatus.ERROR]). Soft-deleted cases are excluded.
+     *
+     * The [io.whozoss.agentos.caseFlow.CaseLaunchGate] is consulted via
+     * [CaseLaunchGate.requireReopenable] — a case whose underlying resource (e.g. Git worktree)
+     * has been removed cannot be reopened.
+     *
+     * No runtime is created by this call. The frontend is expected to reconnect via SSE,
+     * which will rehydrate the runtime on demand.
+     *
+     * @param caseId The unique identifier of the case to reopen
+     * @return The updated case with status [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE]
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if the case is not in a terminal status
+     */
+    fun reopenCase(caseId: UUID): Case
+
+    /**
      * Start a turn that a [CaseLaunchGate] held back, if there is one to start.
      *
      * Resumes a `PENDING` case whose turn was deferred by this process and nothing else: a case

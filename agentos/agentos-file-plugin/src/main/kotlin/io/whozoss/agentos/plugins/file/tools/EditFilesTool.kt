@@ -34,6 +34,7 @@ class EditFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
+    private val scopeGuidance: String? = null,
 ) : StandardTool<EditFilesTool.Input> {
     companion object : KLogging() {
         private const val IO_TIMEOUT = 30L
@@ -50,7 +51,7 @@ class EditFilesTool(
         Edit one or more files in a single tool call. Each edit targets a specific file and specifies an operation:
         "write" replaces the entire file content (or creates it), "patch" replaces specific chunks within an existing file.
         Edits are executed independently: a failure on one file does not prevent others from being processed.
-        """.trimIndent()
+        """.trimIndent().withScopeGuidance(scopeGuidance)
 
     override val version: String = "1.0.0"
 

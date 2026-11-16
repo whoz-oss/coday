@@ -8,7 +8,7 @@ import java.util.UUID
 /**
  * Everything an [io.whozoss.agentos.agent.AgentLoop] run needs from its case and agent definition.
  *
- * @param triggerUser  The user who launched the run, or null when it cannot be resolved.
+ * @param triggerUser  The user who triggered the run, or null when it cannot be resolved.
  * @param tools        Tools resolved for the loop agent — the Search tool is looked up here.
  */
 data class LoopRunContext(

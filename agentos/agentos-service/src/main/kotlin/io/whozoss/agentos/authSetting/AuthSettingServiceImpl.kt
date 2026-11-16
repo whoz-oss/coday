@@ -1,15 +1,14 @@
 package io.whozoss.agentos.authSetting
 
 import io.whozoss.agentos.exception.ConfigNotFoundException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -36,7 +35,7 @@ class AuthSettingServiceImpl(
 ) : AuthSettingService {
     override fun create(entity: AuthSetting): AuthSetting {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
+            throw ConflictException(conflictMessage(entity))
         }
         assertConsistentAuthTypeAcrossLayers(entity)
         return saveOrConflict(entity)
@@ -46,7 +45,7 @@ class AuthSettingServiceImpl(
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
-                throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
+                throw ConflictException(conflictMessage(entity))
             }
         assertConsistentAuthTypeAcrossLayers(entity)
         return saveOrConflict(entity)
@@ -158,8 +157,7 @@ class AuthSettingServiceImpl(
         val entityId = entity.metadata.id
 
         fun reject(other: AuthSetting): Nothing =
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
+            throw ConflictException(
                 "An AuthSetting named '$name' already exists in another layer with " +
                     "authType='${other.authType}' (this entity wants authType='$type'). Overlay " +
                     "layers for the same name must share the same authType to merge correctly at " +
@@ -206,12 +204,12 @@ class AuthSettingServiceImpl(
             }
             // Do NOT chain `e` to the logger: the Neo4j driver's exception message can echo
             // property values (incl. data map values, NFR-SEC-4). The exception is preserved as
-            // the cause of the rethrown ResponseStatusException for stack-trace continuity.
+            // the cause of the rethrown ConflictException for stack-trace continuity.
             logger.warn {
                 "[AuthSettingService] tripleKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
             }
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+            throw ConflictException(conflictMessage(entity), e)
         }
 
     private fun isTripleKeyConflict(e: DataIntegrityViolationException): Boolean {

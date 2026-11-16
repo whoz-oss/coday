@@ -46,6 +46,21 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
         objectMapper = ObjectMapper(),
     )
 
+    /**
+     * The same service with the real [ToolResolverService] instead of the mock, so the allowlist
+     * questions run through the matcher production uses rather than through a stub. Its only
+     * dependency is the registry, and `isToolAllowed` is pure.
+     */
+    private fun serviceWithRealMatcher() =
+        ExchangeToolGrantService(
+            properties = ExchangeToolsConfigProperties(),
+            storageProperties = ExchangeStorageConfigProperties(),
+            reservedEntries = listOf(GitMetadataEntries()),
+            toolRegistryService = toolRegistryService,
+            toolResolverService = ToolResolverService(toolRegistryService),
+            objectMapper = ObjectMapper(),
+        )
+
     private val toolContext =
         ToolContext(
             namespaceId = UUID.randomUUID(),
@@ -68,6 +83,7 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
         grantService: ExchangeToolGrantService,
         root: Path = unmaterialisedRoot("grant-config"),
         readOnly: Boolean = false,
+        scopeGuidance: String? = null,
     ): JsonNode {
         val filePlugin = mockk<ToolPlugin>(relaxed = true)
         every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
@@ -77,6 +93,7 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
             allowedTools = null,
             toolContext = toolContext,
+            scopeGuidance = scopeGuidance,
         )
         val cfg = slot<JsonNode>()
         verify { filePlugin.provideTools(capture(cfg), ExchangeIntegrationTypes.CASE_CONFIG_NAME, any()) }
@@ -299,6 +316,22 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             cfg.get("readOnly").asBoolean() shouldBe true
         }
 
+        "the scope guidance reaches the plugin as a plain string" {
+            val cfg = captureConfig(service(), scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE)
+
+            cfg.get("scopeGuidance").asText() shouldBe ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE
+        }
+
+        "no scopeGuidance key at all when the caller supplied none" {
+            // The plugin reads this key with asText(), which turns a JSON null into the four-letter
+            // string "null" — appended to the description of every write tool it builds. Absent is
+            // also what a FILE_ACCESS integration configured by a user must get: the sentence talks
+            // about cases and namespaces, and only the two exchange scopes are in one.
+            val cfg = captureConfig(service())
+
+            cfg.has("scopeGuidance") shouldBe false
+        }
+
         // -------------------------------------------------------------------------
         // Materialisation
         // -------------------------------------------------------------------------
@@ -368,6 +401,59 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             verify {
                 toolResolverService.isToolAllowed("readFile", ExchangeIntegrationTypes.CASE_CONFIG_NAME, allowlist)
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // grantsMutatingTool: the stance ExchangeScopeGuidance asks for, through the real matcher
+        // -------------------------------------------------------------------------
+
+        "a null allowlist leaves the scope a way to write" {
+            // Null is "all tools", the state of a scope the agent enabled without restricting it.
+            serviceWithRealMatcher().grantsMutatingTool(
+                ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                allowedTools = null,
+            ) shouldBe true
+        }
+
+        "an allowlist of read tools only leaves no way to write" {
+            serviceWithRealMatcher().grantsMutatingTool(
+                ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                allowedTools = listOf("readFile", "listFiles", "searchFiles"),
+            ) shouldBe false
+        }
+
+        "a bare tool name counts, as does the prefixed form" {
+            // Both spellings are what the matcher accepts everywhere else, and an agent's YAML uses
+            // either. A stance that only understood one of them would call a writable scope
+            // read-only on half the configurations.
+            val service = serviceWithRealMatcher()
+
+            service.grantsMutatingTool(
+                ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                allowedTools = listOf("editFiles"),
+            ) shouldBe true
+            service.grantsMutatingTool(
+                ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                allowedTools = listOf("namespace-exchange__remove"),
+            ) shouldBe true
+        }
+
+        "the prefix of another scope does not count" {
+            // `case-exchange__editFiles` in the namespace scope's list is a configuration mistake,
+            // not a write right on the namespace.
+            serviceWithRealMatcher().grantsMutatingTool(
+                ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                allowedTools = listOf("case-exchange__editFiles"),
+            ) shouldBe false
+        }
+
+        "an empty allowlist leaves no way to write" {
+            // An empty list is the explicit opt-out resolveGrant catches upstream, so nothing is
+            // granted at all. Answering false keeps the two consistent if it ever reaches here.
+            serviceWithRealMatcher().grantsMutatingTool(
+                ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                allowedTools = emptyList(),
+            ) shouldBe false
         }
     }
 }

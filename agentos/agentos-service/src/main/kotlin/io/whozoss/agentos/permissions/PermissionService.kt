@@ -171,7 +171,7 @@ interface PermissionService {
      * that hold no relation on the entity are absent from the returned map.
      * Unknown user ids are silently ignored.
      *
-     * Fail-closed: returns an empty map on error.
+     * Errors propagate: an empty map would read as "no current relation" to membership updates.
      *
      * @param entityType The type of entity
      * @param entityId The ID of the entity

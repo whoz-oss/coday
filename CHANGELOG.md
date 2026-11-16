@@ -1,3 +1,186 @@
+## 3.44.0 (2026-11-16)
+
+### 🚀 Features
+
+- **agentos-service:** #35374 add SearchAgentUsersTool ([#1644](https://github.com/whoz-oss/coday/pull/1644), [#35374](https://github.com/whoz-oss/coday/issues/35374))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.43.0 (2026-11-16)
+
+### 🚀 Features
+
+- **agentos-service:** #35374 started cases inherit the scheduled prompt of the calling case ([#1645](https://github.com/whoz-oss/coday/pull/1645), [#35374](https://github.com/whoz-oss/coday/issues/35374))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.42.0 (2026-11-10)
+
+### 🚀 Features
+
+- wz-35031 - handle mentions with link ([1e77d1072](https://github.com/whoz-oss/coday/commit/1e77d1072))
+- wz-35031 - PR review ([23560c2f4](https://github.com/whoz-oss/coday/commit/23560c2f4))
+- wz-35031 - PR review ([21007e15d](https://github.com/whoz-oss/coday/commit/21007e15d))
+- wz-35031 - handle mentions with link ([#1529](https://github.com/whoz-oss/coday/pull/1529))
+
+### 🩹 Fixes
+
+- wz-35031 address review on agent mention parsing ([3bd518862](https://github.com/whoz-oss/coday/commit/3bd518862))
+- wz-35031 address review comments on mention parsing and its tests ([1e74eeb84](https://github.com/whoz-oss/coday/commit/1e74eeb84))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
+## 3.41.0 (2026-11-09)
+
+### 🚀 Features
+
+- wz-35528 - add 50000 member limit to user groups ([84e0639cc](https://github.com/whoz-oss/coday/commit/84e0639cc))
+- wz-35528 - add 50000 member limit to user groups ([#1601](https://github.com/whoz-oss/coday/pull/1601))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
+## 3.40.1 (2026-10-26)
+
+### 🩹 Fixes
+
+- trigger release for WZ-35787 ([11e62cc7d](https://github.com/whoz-oss/coday/commit/11e62cc7d))
+- trigger release for WZ-35787 ([#1491](https://github.com/whoz-oss/coday/pull/1491))
+
+### 🔥 Performance
+
+- WZ-35787 - anchor unread count query on User ([c6dcd2f77](https://github.com/whoz-oss/coday/commit/c6dcd2f77))
+- WZ-35787 - anchor unread count query on User ([#1489](https://github.com/whoz-oss/coday/pull/1489))
+
+### ❤️ Thank You
+
+- mbarroux @mickael-barroux-whoz
+- Mickaël Barroux @mickael-barroux-whoz
+
+## 3.40.0 (2026-10-22)
+
+### 🚀 Features
+
+- reopen a terminated case (service + API) ([#1476](https://github.com/whoz-oss/coday/pull/1476))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.39.0 (2026-10-21)
+
+### 🚀 Features
+
+- **agentos-service:** #WZ-35441 FreeCaseStarter Tool ([#1450](https://github.com/whoz-oss/coday/pull/1450))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.38.1 (2026-10-20)
+
+### 🩹 Fixes
+
+- **agentos:** fix namespace member role changes failing with a 500 ([#1342](https://github.com/whoz-oss/coday/pull/1342))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+
+## 3.38.0 (2026-10-20)
+
+### 🚀 Features
+
+- #35527 bind Forge Agents to the case worktree for files and commands ([#1463](https://github.com/whoz-oss/coday/pull/1463), [#35527](https://github.com/whoz-oss/coday/issues/35527))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.37.0 (2026-10-20)
+
+### 🚀 Features
+
+- wz-35442 - user group list member tool ([#1451](https://github.com/whoz-oss/coday/pull/1451))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.36.1 (2026-10-19)
+
+### 🩹 Fixes
+
+- **server:** close the client connection when AgentOS drops a proxied stream ([#1468](https://github.com/whoz-oss/coday/pull/1468))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.36.0 (2026-10-19)
+
+### 🚀 Features
+
+- **agentos-service:** answer with more links ([#1464](https://github.com/whoz-oss/coday/pull/1464))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.35.2 (2026-10-15)
+
+### 🩹 Fixes
+
+- **agentos-service:** #35451 transform ResponseStatusException to AgentOs <Status>Exception ([#1449](https://github.com/whoz-oss/coday/pull/1449), [#35451](https://github.com/whoz-oss/coday/issues/35451))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.1 (2026-10-15)
+
+### 🩹 Fixes
+
+- #1405 display the user's answer to a queryUser question in the case chat ([#1406](https://github.com/whoz-oss/coday/pull/1406), [#1405](https://github.com/whoz-oss/coday/issues/1405))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.0 (2026-10-14)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention generation tool name ([#1448](https://github.com/whoz-oss/coday/pull/1448))
+
+### 🔥 Performance
+
+- **agentos:** share one Neo4j test harness across Spring test contexts ([#1440](https://github.com/whoz-oss/coday/pull/1440))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.34.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos-service:** stop now ends the agent's turn at once ([#1442](https://github.com/whoz-oss/coday/pull/1442))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.34.0 (2026-10-13)
 
 ### 🚀 Features

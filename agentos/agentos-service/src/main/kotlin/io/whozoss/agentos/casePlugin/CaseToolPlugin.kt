@@ -6,31 +6,53 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.util.stringList
 import mu.KLogging
 import java.util.UUID
 
 /**
- * Internal Spring-managed [ToolPlugin] that provides the CASE integration.
+ * Internal Spring-managed [ToolPlugin] providing the `CASE` integration: everything an agent can do
+ * with *other* cases of its namespace.
+ *
+ * - [ReadCaseTool] (`ReadCase`): reads the transcript of another case.
+ * - [FreeCaseStarterTool] (`FreeCaseStarter`): starts a new, independent case with another agent, for the
+ *   current user.
+ * - [FreeCaseStarterForUserTool] (`FreeCaseStarterForUser`): the same, for a user named by the caller.
  *
  * Like [io.whozoss.agentos.redirect.RedirectToolPlugin], this class is NOT annotated
- * with `@Component` — it is instantiated as a `@Bean` in [CasePluginConfiguration]
- * so that the [caseEventsLoader] lambda can be wired without a circular Spring
- * dependency. [io.whozoss.agentos.tool.ToolRegistryService] collects it alongside
- * PF4J-loaded plugins via `List<ToolPlugin>` constructor injection.
+ * with `@Component`: it is instantiated as a `@Bean` in [CasePluginConfiguration], so that the
+ * [caseEventsLoader] lambda can be wired without a circular Spring dependency.
+ * [io.whozoss.agentos.tool.ToolRegistryService] collects it alongside PF4J-loaded plugins via
+ * `List<ToolPlugin>` constructor injection.
  *
- * An admin creates an [io.whozoss.agentos.integrationConfig.IntegrationConfig] of
- * type `CASE` and assigns it to the relevant
- * [io.whozoss.agentos.agentConfig.AgentConfig] via `integrations`. The tool is
- * then available to that agent for reading other cases in the same namespace.
+ * An admin creates an [io.whozoss.agentos.integrationConfig.IntegrationConfig] of type `CASE` and
+ * assigns it to the relevant [io.whozoss.agentos.agentConfig.AgentConfig] via `integrations`.
+ * The three tools are provided by every config. To grant only some of them, the agent names them in its
+ * `integrations` map (`CASE_x: [ReadCase, FreeCaseStarter]`); an agent that maps the config to `null` receives
+ * all three.
  *
- * @param caseEventsLoader Lambda injected by [CasePluginConfiguration] that loads
- *   the events of a target case. Returns null when the case does not exist or when
- *   its namespace does not match [namespaceId], enforcing namespace isolation.
+ * ## Configuration
+ *
+ * - `includesTechnicalEvents`: read side, shape of the transcript returned by `ReadCase`.
+ * - `agents` / `deniedAgents`: start side, shared by both starter tools. They have no effect on `ReadCase`.
+ *
+ * Starting a case for another user is not a parameter: it is a tool of its own, which an agent has to be
+ * granted, and the service additionally requires the calling user to be ADMIN of the namespace.
+ * `agents` / `deniedAgents` bound what an agent may start. `CASE` is not among the integration types refused in
+ * user scopes ([io.whozoss.agentos.integrationConfig.IntegrationsProperties.userScopeDeniedTypes]): a user overlay
+ * names no endpoint or credential, and what it may widen is bounded by the service.
+ *
+ * @param caseEventsLoader Lambda injected by [CasePluginConfiguration] that loads the events of a
+ *   target case. Returns null when the case does not exist, when its namespace does not match the
+ *   caller's, or when the user may not read it (fail-closed).
+ * @param caseStarterService Starts the cases for [FreeCaseStarterTool]. It reaches `CaseService`
+ *   through a `@Lazy` proxy, so injecting it here does not close the
+ *   `CaseService -> AgentService -> ToolRegistryService -> plugins` cycle.
  */
 class CaseToolPlugin(
     private val caseEventsLoader: (caseId: UUID, namespaceId: UUID, userId: UUID?) -> List<CaseEvent>?,
+    private val caseStarterService: CaseStarterService,
 ) : ToolPlugin {
-
     override val integrationType: String = INTEGRATION_TYPE
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
@@ -41,14 +63,15 @@ class CaseToolPlugin(
     ): List<StandardTool<*>> {
         val namespaceId = context?.namespaceId
         if (namespaceId == null) {
-            logger.warn { "[CaseToolPlugin] No namespaceId in context, cannot provide ReadCaseTool" }
+            logger.warn { "[CaseToolPlugin] No namespaceId in context, cannot provide the case tools" }
             return emptyList()
         }
 
-        val includesTechnicalEvents = config
-            ?.get("includesTechnicalEvents")
-            ?.asBoolean(true)
-            ?: true
+        val includesTechnicalEvents =
+            config
+                ?.get("includesTechnicalEvents")
+                ?.asBoolean(true)
+                ?: true
 
         val userId = context.userId
         return listOf(
@@ -57,29 +80,56 @@ class CaseToolPlugin(
                 includesTechnicalEvents = includesTechnicalEvents,
                 caseEventsLoader = { caseId, ns -> caseEventsLoader(caseId, ns, userId) },
             ),
+            FreeCaseStarterTool(
+                configName = configName,
+                caseStarterService = caseStarterService,
+                allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
+                deniedAgents = config.stringList("deniedAgents").toSet(),
+            ),
+            FreeCaseStarterForUserTool(
+                configName = configName,
+                caseStarterService = caseStarterService,
+                allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
+                deniedAgents = config.stringList("deniedAgents").toSet(),
+            ),
         )
     }
 
     companion object : KLogging() {
         const val INTEGRATION_TYPE = "CASE"
 
-        val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
-            """
-            {
-                "type": "object",
-                "title": "Case Plugin Configuration",
-                "description": "Allows an agent to read the transcript of another case in the same namespace.",
-                "properties": {
+        val CONFIG_SCHEMA: JsonNode =
+            jacksonObjectMapper().readTree(
+                """
+                {
+                  "type": "object",
+                  "title": "Case Plugin Configuration",
+                  "description": "Lets an agent work with other cases of the namespace: read the transcript of a case (ReadCase) and start a new case with another agent, for yourself (FreeCaseStarter) or for another user (FreeCaseStarterForUser). The new case lives on its own: stopping the agent's case does not stop it. It runs in the background, in the same namespace, and its result is not returned to the caller. An agent can be granted only some of the three tools by naming them in its integrations.",
+                  "properties": {
                     "includesTechnicalEvents": {
-                        "type": "boolean",
-                        "title": "Include Technical Events",
-                        "description": "When true (default), the transcript includes all event types (tool calls, agent selections, status changes, etc.). When false, only conversational events are included (messages, questions, answers, warnings, errors).",
-                        "default": true
+                      "type": "boolean",
+                      "title": "Include Technical Events",
+                      "description": "ReadCase: when true (default), the transcript includes all event types (tool calls, agent selections, status changes, etc.). When false, only conversational events are included (messages, questions, answers, warnings, errors).",
+                      "default": true
+                    },
+                    "agents": {
+                      "type": "array",
+                      "title": "Allowed Agents",
+                      "description": "FreeCaseStarter and FreeCaseStarterForUser: glob patterns matching the agent names this integration may start. Use \"*\" for all agents. Examples: [\"*\"], [\"Profile*\", \"Report*\"].",
+                      "items": { "type": "string" },
+                      "default": ["*"]
+                    },
+                    "deniedAgents": {
+                      "type": "array",
+                      "title": "Denied Agents",
+                      "description": "FreeCaseStarter and FreeCaseStarterForUser: exact agent names (case-insensitive) that are never started, even if they match an allowed pattern.",
+                      "items": { "type": "string" },
+                      "uniqueItems": true
                     }
-                },
-                "additionalProperties": false
-            }
-            """.trimIndent()
-        )
+                  },
+                  "additionalProperties": false
+                }
+                """.trimIndent(),
+            )
     }
 }

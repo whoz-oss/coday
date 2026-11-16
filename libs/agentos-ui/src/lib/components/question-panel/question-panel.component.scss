@@ -1,3 +1,8 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
 .question-panel {
   flex-shrink: 0;
   border-radius: 12px;
@@ -10,6 +15,15 @@
   flex-direction: column;
   gap: 0.75rem;
   animation: question-panel-in 0.2s ease;
+
+  // Embedded under the question bubble: no card chrome, the bubble is the visual anchor.
+  &--inline {
+    border: none;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+  }
 
   &__header {
     display: flex;
@@ -44,6 +58,7 @@
 
   &__free-text {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
 
@@ -53,7 +68,10 @@
   }
 
   &__input {
-    flex: 1;
+    flex: 1 1 12rem;
+    min-width: 0;
+    min-height: 32px;
+    box-sizing: border-box;
     padding: 0.45rem 0.75rem;
     border: 1px solid var(--color-border, rgba(0, 0, 0, 0.15));
     border-radius: 8px;
@@ -68,12 +86,18 @@
       border-color: var(--color-primary, #0071e3);
     }
 
+    &:focus-visible {
+      outline: 2px solid var(--color-primary, #0071e3);
+      outline-offset: 2px;
+    }
+
     &::placeholder {
       color: var(--color-text-secondary, #6e6e73);
     }
   }
 
   &__btn {
+    min-height: 32px;
     padding: 0.45rem 1rem;
     border-radius: 8px;
     border: none;
@@ -85,6 +109,11 @@
       opacity 0.15s ease,
       background 0.15s ease;
     white-space: nowrap;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary, #0071e3);
+      outline-offset: 2px;
+    }
 
     &:disabled {
       opacity: 0.4;
@@ -113,8 +142,10 @@
       background: var(--color-surface-secondary, rgba(0, 0, 0, 0.05));
       color: var(--color-primary, #0071e3);
       border: 1px solid var(--color-primary, #0071e3);
+      white-space: normal;
+      text-align: left;
 
-      &:hover {
+      &:not(:disabled):hover {
         background: var(--color-primary, #0071e3);
         color: var(--color-text-inverse, #ffffff);
       }
@@ -136,6 +167,7 @@
 
   &__oauth-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
   }
 }

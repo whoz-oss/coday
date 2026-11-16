@@ -15,6 +15,8 @@ import java.util.UUID
  * **complete** desired set of deployed agents (replace semantics, not delta).
  *
  * The add/remove/admin sets are bounded to 200 entries per request; the server enforces this.
+ * A group can hold at most 50,000 members in total: an update whose resulting roster would exceed
+ * that is rejected with 422.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class UserGroupUpdateRequest(

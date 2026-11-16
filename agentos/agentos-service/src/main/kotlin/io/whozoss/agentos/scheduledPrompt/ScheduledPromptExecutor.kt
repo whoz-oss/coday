@@ -381,10 +381,11 @@ class ScheduledPromptExecutor(
                 return
             }
             when (
-                val result = userSessionContextResolver.resolve(
-                    userExternalId = runContext.userExternalId,
-                    namespaceId = runContext.namespaceId,
-                )
+                val result =
+                    userSessionContextResolver.resolve(
+                        userExternalId = runContext.userExternalId,
+                        namespaceId = runContext.namespaceId,
+                    )
             ) {
                 is UserContextResult.PermanentFailure -> {
                     logger.error {
@@ -408,10 +409,11 @@ class ScheduledPromptExecutor(
                                 " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
                         }
                     }
-                    val effectiveContext = userSessionContextResolver.mergePreferredLanguage(
-                        result.sessionContext,
-                        runContext.preferredLanguage,
-                    )
+                    val effectiveContext =
+                        userSessionContextResolver.mergePreferredLanguage(
+                            result.sessionContext,
+                            runContext.preferredLanguage,
+                        )
                     val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = effectiveContext))
                     awaitLaunch(userRun.id, caseId)
                 }

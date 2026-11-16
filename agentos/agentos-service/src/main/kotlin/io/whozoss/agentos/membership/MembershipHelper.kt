@@ -1,5 +1,6 @@
 package io.whozoss.agentos.membership
 
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -7,8 +8,6 @@ import io.whozoss.agentos.sdk.api.membership.MemberItem
 import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.user.UserService
 import mu.KotlinLogging
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 private val logger = KotlinLogging.logger {}
@@ -24,10 +23,7 @@ private val logger = KotlinLogging.logger {}
 internal fun requireNoDuplicateUserIds(members: List<UserMembershipRole>) {
     val duplicates = members.groupingBy { it.userId }.eachCount().filter { it.value > 1 }.keys
     if (duplicates.isNotEmpty()) {
-        throw ResponseStatusException(
-            HttpStatus.BAD_REQUEST,
-            "members list must not contain duplicate userIds: $duplicates",
-        )
+        throw BadRequestException("members list must not contain duplicate userIds: $duplicates")
     }
 }
 

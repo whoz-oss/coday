@@ -253,12 +253,12 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (c:Case)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
-            WHERE (c.removed IS NULL OR c.removed = false)
-              AND NOT c.status IN ['CREATED']
-              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
-            OPTIONAL MATCH (:User {id: $userId})-[state:WATCHES]->(c)
-            WITH c, state.readAt AS readAt
+        $$"""MATCH (u:User{id: $userId})
+            MATCH (u)-[:ADMIN|MEMBER]->(c:Case)-[:BELONGS_TO]->(:Namespace {id: $namespaceId})
+            WHERE coalesce(c.removed, false) = false AND c.status <> 'CREATED'
+            WITH DISTINCT u, c
+            OPTIONAL MATCH (u)-[w:WATCHES]->(c)
+            WITH c, w.readAt AS readAt
             WHERE readAt IS NULL OR c.modified > readAt
             RETURN count(c)
             """,

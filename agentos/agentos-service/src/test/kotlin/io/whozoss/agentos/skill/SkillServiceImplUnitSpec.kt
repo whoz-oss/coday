@@ -10,7 +10,8 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import org.springframework.web.server.ResponseStatusException
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import java.util.UUID
 
 class SkillServiceImplUnitSpec : StringSpec({
@@ -72,10 +73,9 @@ class SkillServiceImplUnitSpec : StringSpec({
         val existing = Skill(name = "Existing", description = "D", body = "B", namespaceId = namespaceId)
         every { repository.findByNameInNamespace(namespaceId, "Existing") } returns existing
 
-        val ex = shouldThrow<ResponseStatusException> {
+        shouldThrow<ConflictException> {
             service.create(Skill(name = "Existing", description = "D2", body = "B2", namespaceId = namespaceId))
         }
-        ex.statusCode.value() shouldBe 409
     }
 
     "create allows same name in different namespace or platform scope" {
@@ -116,10 +116,9 @@ class SkillServiceImplUnitSpec : StringSpec({
         every { repository.findByIds(listOf(existing.metadata.id), true) } returns listOf(existing)
         every { repository.findByNameInNamespace(namespaceId, "Skill B") } returns other
 
-        val ex = shouldThrow<ResponseStatusException> {
+        shouldThrow<ConflictException> {
             service.update(existing.copy(name = "Skill B"))
         }
-        ex.statusCode.value() shouldBe 409
     }
 
     "update throws 400 when target skill is filesystem-backed (version == null)" {
@@ -132,10 +131,9 @@ class SkillServiceImplUnitSpec : StringSpec({
         )
         every { repository.findByIds(listOf(filesystemSkill.metadata.id), true) } returns listOf(filesystemSkill)
 
-        val ex = shouldThrow<ResponseStatusException> {
+        shouldThrow<BadRequestException> {
             service.update(filesystemSkill.copy(description = "Attempted update"))
         }
-        ex.statusCode.value() shouldBe 400
         verify(exactly = 0) { repository.save(any()) }
     }
 
@@ -174,10 +172,9 @@ class SkillServiceImplUnitSpec : StringSpec({
         )
         every { repository.findByIds(listOf(filesystemSkill.metadata.id), false) } returns listOf(filesystemSkill)
 
-        val ex = shouldThrow<ResponseStatusException> {
+        shouldThrow<BadRequestException> {
             service.delete(filesystemSkill.metadata.id)
         }
-        ex.statusCode.value() shouldBe 400
         verify(exactly = 0) { repository.delete(any()) }
         verify(exactly = 0) { repository.save(any()) }
     }

@@ -25,9 +25,11 @@ object IntegrationTypeConstraints {
      */
     val NAMESPACE_SINGLETON_TYPES: Set<String> = setOf(GIT_REPOSITORY_TYPE)
 
-    fun isNamespaceSingleton(integrationType: String?): Boolean =
-        integrationType?.uppercase() in NAMESPACE_SINGLETON_TYPES
+    fun isNamespaceSingleton(integrationType: String?): Boolean = integrationType?.uppercase() in NAMESPACE_SINGLETON_TYPES
 
     /** The conversational `queryUser` tool. See `io.whozoss.agentos.queryUser.QueryUserToolPlugin`. */
     const val QUERY_USER_TYPE: String = "QUERY_USER"
+
+    /** The USER_GROUP integration (membership + deployment queries). See `io.whozoss.agentos.userGroup.UserGroupToolPlugin`. */
+    const val USER_GROUP_TYPE: String = "USER_GROUP"
 }

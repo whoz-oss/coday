@@ -78,6 +78,25 @@ class GitCaseLaunchGateSpec : StringSpec({
         // instead of keeping the case PENDING indefinitely with nothing to resume it.
         gate.launchDecision(child).shouldBeInstanceOf<LaunchDecision.Refuse>()
     }
+    "requireReopenable allows a terminal case whose workspace is still intact" {
+        // A killed/errored case with a READY workspace must be reopenable.
+        // requireReopenable must NOT check the terminal status — that is the condition we are undoing.
+        every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), binding.copy(status = CaseResourceStatus.READY), root)
+        for (status in listOf(CaseStatus.KILLED, CaseStatus.ERROR)) {
+            cases.save(cases.findById(child)!!.copy(status = status))
+            gate.requireReopenable(child) // must not throw
+        }
+    }
+    "requireReopenable rejects a case whose workspace removal has started" {
+        for (status in listOf(CaseResourceStatus.DELETING, CaseResourceStatus.REMOVED)) {
+            every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), binding.copy(status = status), root)
+            shouldThrow<ConflictException> { gate.requireReopenable(child) }
+        }
+    }
+    "requireReopenable allows a case with no workspace binding (non-git case)" {
+        every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), null, child)
+        gate.requireReopenable(child) // must not throw
+    }
     "an admission deferred by cleanup rechecks readiness when the resource lock becomes available" {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)

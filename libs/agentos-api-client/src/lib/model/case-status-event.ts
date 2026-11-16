@@ -20,6 +20,7 @@ export interface CaseStatusEvent {
 }
 
 export enum CaseStatusEventStatusEnum {
+  CREATED = 'CREATED',
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
   IDLE = 'IDLE',

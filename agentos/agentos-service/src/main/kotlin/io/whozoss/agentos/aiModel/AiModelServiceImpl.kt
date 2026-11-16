@@ -1,11 +1,10 @@
 package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import mu.KLogging
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -36,8 +35,7 @@ class AiModelServiceImpl(
         // they are allowed to accumulate and the highest-priority one wins.
         entity.alias?.let { alias ->
             findByAiProviderAndAlias(entity.aiProviderId, alias)?.let {
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
+                throw ConflictException(
                     "A model config with alias '$alias' already exists in AiProvider ${entity.aiProviderId}",
                 )
             }
@@ -58,8 +56,7 @@ class AiModelServiceImpl(
             findByAiProviderAndAlias(entity.aiProviderId, alias)
                 ?.takeIf { it.id != entity.id }
                 ?.let {
-                    throw ResponseStatusException(
-                        HttpStatus.CONFLICT,
+                    throw ConflictException(
                         "A model config with alias '$alias' already exists in AiProvider ${entity.aiProviderId}",
                     )
                 }

@@ -32,8 +32,14 @@ import java.util.UUID
  *   caller has no direct edge (e.g. transitive namespace-admin access). Same population rules as `favorite`.
  * @property readAt Timestamp of the caller's last read of this case, or null when the case has never
  *   been opened by this user (meaning it is unread). Same population rules as `favorite`.
- * @property scheduledPromptId Id of the ScheduledPrompt that triggered this case, or null when the
- *   case was started by a human user or a delegation tool.
+ * @property scheduledPromptId Id of the ScheduledPrompt this case is attributed to, or null when the
+ *   case was started by a human user or a delegation tool. Set on the case of the scheduled run itself,
+ *   and inherited by any case started from it via a `FreeCaseStarter` tool (one level only: the direct
+ *   caller's value is copied). This covers the AgentLoop pattern — scheduler → loop case → one case per
+ *   entity — where each leaf case is correctly attributed to the scheduled prompt. There is no risk of
+ *   unintended multi-level propagation: the start depth rule prevents a started case from starting
+ *   another one, so only a top-level case can carry a non-null `scheduledPromptId` when calling the
+ *   service.
  * @property runCostThreshold Per-case override of the run cost threshold, in the platform currency
  *   unit. Null means "inherit from the namespace or platform default", never "no limit" or "zero".
  *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement

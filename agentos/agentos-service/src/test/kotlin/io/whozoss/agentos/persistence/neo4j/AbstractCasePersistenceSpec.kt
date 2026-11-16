@@ -184,6 +184,18 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             found.first().scheduledPromptId shouldBe null
         }
 
+        "originCaseId round-trips, and a started case stays out of its origin's tree" {
+            val ns = namespaceRepo.save(namespace())
+            val origin = repo.save(case(ns.id))
+            val started = repo.save(case(ns.id).copy(originCaseId = origin.id))
+
+            val found = repo.findByIds(listOf(started.id)).single()
+            found.originCaseId shouldBe origin.id
+            found.parentCaseId shouldBe null
+            repo.findActiveDescendants(origin.id) shouldBe emptyList()
+            repo.countAncestorDepth(started.id) shouldBe 0
+        }
+
         "save stamps modified on every write and the value round-trips correctly" {
             val ns = namespaceRepo.save(namespace())
             val first = repo.save(case(ns.id))

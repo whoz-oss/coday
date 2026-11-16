@@ -65,6 +65,16 @@ interface CaseLaunchGate {
     /** Reject input when the capability can no longer accept work on this case. */
     fun requireAccepting(caseId: UUID) = Unit
 
+    /**
+     * Reject reopening when the capability's underlying resource no longer exists.
+     *
+     * This is a narrower check than [requireAccepting]: it only vetoes reopening when the
+     * resource itself is gone (e.g. the Git worktree has been removed). It deliberately
+     * omits the terminal-status check so that a killed case whose workspace is still
+     * intact can be transitioned back to IDLE.
+     */
+    fun requireReopenable(caseId: UUID) = Unit
+
     /** Keep a non-terminal case open for fresh input after its resource survives a server shutdown. */
     fun keepOpenOnShutdown(caseId: UUID): Boolean = false
 }
