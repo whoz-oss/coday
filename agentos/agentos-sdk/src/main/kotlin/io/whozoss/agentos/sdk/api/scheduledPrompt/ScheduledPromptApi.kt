@@ -43,4 +43,11 @@ interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
      * calling it on an already-disabled prompt is a no-op that returns the entity unchanged.
      */
     fun disable(id: UUID): ScheduledPromptDto
+
+    /**
+     * POST /api/scheduled-prompts/generate — propose a scheduled prompt driving a LOOP agent from a natural-language
+     * description. Nothing is persisted: the returned proposal is meant to be reviewed, then sent to [create].
+     * Every field of the request but the description is optional; missing ones are decided by an LLM.
+     */
+    suspend fun generate(request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult
 }

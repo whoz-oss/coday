@@ -13,6 +13,8 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptApi
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptEffectiveRequest
+import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationRequest
+import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationResult
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptSearchRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -87,6 +89,7 @@ class ScheduledPromptController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
+    private val scheduledPromptGenerationService: ScheduledPromptGenerationService,
 ) : ScheduledPromptApi {
 
     private val crud =
@@ -232,6 +235,33 @@ class ScheduledPromptController(
         val disabled = scheduledPromptService.disable(id)
         val (sp, content) = scheduledPromptService.findByIdWithContent(disabled.id) ?: (disabled to "")
         return toDto(sp, content)
+    }
+
+    // -------------------------------------------------------------------------
+    // Generation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Proposes a scheduled prompt driving a LOOP agent from a natural-language description. Nothing is persisted.
+     *
+     * Authorized like [resolveEffective] (Namespace READ, for the caller): the proposal only uses agents deployed to
+     * the caller. Creating it afterwards goes through [create] and its own authorization.
+     */
+    @Operation(
+        summary = "Propose a scheduled prompt driving a LOOP agent from a natural-language description",
+        description = "Returns a proposal, nothing is persisted. Every field but the description is optional: " +
+            "missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. " +
+            "The proposed scheduledPrompt can be POSTed as is to /api/scheduled-prompts once reviewed.",
+    )
+    @PostMapping("/generate", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("isAuthenticated()")
+    override suspend fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
+        val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
+            pluralLabel = "scheduled prompts",
+            namespaceId = request.namespaceId,
+            namespaceExternalId = request.namespaceExternalId,
+        )
+        return scheduledPromptGenerationService.generate(scope.namespaceId!!, scope.userId!!, request)
     }
 
     // -------------------------------------------------------------------------
