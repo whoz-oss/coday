@@ -1,3 +1,13 @@
+## 3.45.0 (2026-11-16)
+
+### 🚀 Features
+
+- #35374 #35676 flowConfiguration on scheduled prompts for loop agents ([#1651](https://github.com/whoz-oss/coday/pull/1651), [#35374](https://github.com/whoz-oss/coday/issues/35374), [#35676](https://github.com/whoz-oss/coday/issues/35676))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.44.0 (2026-11-16)
 
 ### 🚀 Features
