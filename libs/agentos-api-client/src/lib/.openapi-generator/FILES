@@ -77,6 +77,7 @@ model/exchange-git-changes.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
+model/generated-field-decision.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
 model/git-workspace-summary.ts
@@ -89,6 +90,8 @@ model/intention-generated-event.ts
 model/list-auth-setting200-response-inner.ts
 model/list-by-user-in-namespace-request.ts
 model/llm-usage.ts
+model/loop-config-generation-request.ts
+model/loop-config-generation-result.ts
 model/member-item.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
@@ -124,6 +127,8 @@ model/question-event.ts
 model/recurrence.ts
 model/run-cost-dto.ts
 model/scheduled-prompt-effective-request.ts
+model/scheduled-prompt-generation-request.ts
+model/scheduled-prompt-generation-result.ts
 model/scheduled-prompt-search-request.ts
 model/scheduled-prompt.ts
 model/skill.ts

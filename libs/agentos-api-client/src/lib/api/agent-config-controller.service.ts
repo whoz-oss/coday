@@ -21,6 +21,10 @@ import { AgentConfigSearchRequest } from '../model/agent-config-search-request'
 import { AgentDefinition } from '../model/agent-definition'
 // @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
+// @ts-ignore
+import { LoopConfigGenerationRequest } from '../model/loop-config-generation-request'
+// @ts-ignore
+import { LoopConfigGenerationResult } from '../model/loop-config-generation-result'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -401,6 +405,104 @@ export class AgentConfigControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<string>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Generate the loop-config search block from a natural-language description
+   * Uses the agent\&#39;s configured LLM to translate a plain-English description into the &#x60;search&#x60; block (&#x60;tool&#x60; and &#x60;params&#x60;) of a loop configuration. The &#x60;act&#x60; block is not generated: the result is a proposal to complete, not a complete loop configuration.
+   * @param id
+   * @param loopConfigGenerationRequest
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public generateLoopConfigAgentConfig(
+    id: string,
+    loopConfigGenerationRequest: LoopConfigGenerationRequest,
+    namespaceId?: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<LoopConfigGenerationResult>
+  public generateLoopConfigAgentConfig(
+    id: string,
+    loopConfigGenerationRequest: LoopConfigGenerationRequest,
+    namespaceId?: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<LoopConfigGenerationResult>>
+  public generateLoopConfigAgentConfig(
+    id: string,
+    loopConfigGenerationRequest: LoopConfigGenerationRequest,
+    namespaceId?: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<LoopConfigGenerationResult>>
+  public generateLoopConfigAgentConfig(
+    id: string,
+    loopConfigGenerationRequest: LoopConfigGenerationRequest,
+    namespaceId?: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling generateLoopConfigAgentConfig.')
+    }
+    if (loopConfigGenerationRequest === null || loopConfigGenerationRequest === undefined) {
+      throw new Error(
+        'Required parameter loopConfigGenerationRequest was null or undefined when calling generateLoopConfigAgentConfig.'
+      )
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/agent-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/loop-config/generate`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<LoopConfigGenerationResult>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: loopConfigGenerationRequest,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
