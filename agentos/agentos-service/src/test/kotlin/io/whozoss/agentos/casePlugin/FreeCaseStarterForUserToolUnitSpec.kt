@@ -67,12 +67,6 @@ class FreeCaseStarterForUserToolUnitSpec :
             tool(configName = "CASE").name shouldBe "CASE__FreeCaseStarterForUser"
         }
 
-        "its name is told apart from the starter for the current user, whichever the prefix" {
-            FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool("CASE__FreeCaseStarterForUser") shouldBe true
-            FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool("CASE__FreeCaseStarter") shouldBe false
-            FreeCaseStarterTool.isFreeCaseStarterTool("CASE__FreeCaseStarterForUser") shouldBe false
-        }
-
         // -------------------------------------------------------------------------
         // userId is required, and handed to the service
         // -------------------------------------------------------------------------

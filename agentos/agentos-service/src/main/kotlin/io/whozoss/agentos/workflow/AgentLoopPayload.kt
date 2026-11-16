@@ -17,7 +17,8 @@ data class AgentLoopSearch(
 )
 
 /**
- * Parsed representation of the JSON payload expected in the `loopConfig` field of an AgentLoop.
+ * Parsed representation of the JSON payload of a loop run, taken from the `flowConfiguration` of the start message or
+ * from the `loopConfig` of the agent; [io.whozoss.agentos.agent.AgentLoop] decides which one runs.
  *
  * Expected JSON format:
  * ```json
@@ -28,7 +29,7 @@ data class AgentLoopSearch(
  *   },
  *   "act": {
  *     "agentName": "talent-analyzer",
- *     "prompt": "Analyse this entity: {entityId}"
+ *     "prompt": "Review this talent's profile."
  *   }
  * }
  * ```

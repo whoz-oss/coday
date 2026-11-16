@@ -104,6 +104,12 @@ export class ScheduledPromptFormComponent implements OnInit {
         nonNullable: true,
         validators: [jsonValidator],
       }),
+
+      // Loop agents: search tool, its params and the agent started for each result
+      flowConfigurationJson: new FormControl<string>('', {
+        nonNullable: true,
+        validators: [jsonValidator],
+      }),
     },
     { validators: [endDateRequiredValidator, occurrenceCountRequiredValidator] }
   )
@@ -147,6 +153,9 @@ export class ScheduledPromptFormComponent implements OnInit {
   protected get externalMetadataJsonControl() {
     return this.form.controls.externalMetadataJson
   }
+  protected get flowConfigurationJsonControl() {
+    return this.form.controls.flowConfigurationJson
+  }
 
   // ---------------------------------------------------------------------------
   // UI state signals
@@ -185,6 +194,19 @@ export class ScheduledPromptFormComponent implements OnInit {
 
   private readonly agentConfigs = signal<AgentConfig[]>([])
   protected readonly availableAgentConfigs = this.agentConfigs.asReadonly()
+
+  /** Shape of the flowConfiguration field, shown as a placeholder. */
+  protected readonly flowConfigurationPlaceholder = JSON.stringify(
+    {
+      search: {
+        tool: 'searchAgentUsers',
+        params: { agentConfigId: '<id of the agent whose users are targeted>' },
+      },
+      act: { agentName: '<agent started for each result>' },
+    },
+    null,
+    2
+  )
 
   private existingPrompt: ScheduledPrompt | null = null
 
@@ -252,6 +274,9 @@ export class ScheduledPromptFormComponent implements OnInit {
     this.occurrenceCountControl.setValue(def.planning.maxOccurrenceCount ?? null)
     this.enabledControl.setValue(def.enabled)
     this.externalMetadataJsonControl.setValue(def.externalMetadata ? JSON.stringify(def.externalMetadata, null, 2) : '')
+    this.flowConfigurationJsonControl.setValue(
+      def.flowConfiguration ? JSON.stringify(def.flowConfiguration, null, 2) : ''
+    )
   }
 
   // ---------------------------------------------------------------------------
@@ -309,6 +334,11 @@ export class ScheduledPromptFormComponent implements OnInit {
         const raw = this.externalMetadataJsonControl.value.trim()
         return raw ? JSON.parse(raw) : null
       })(),
+      // PUT replaces the field: an empty field clears it. The backend refuses it (422) on a non-LOOP agent.
+      flowConfiguration: (() => {
+        const raw = this.flowConfigurationJsonControl.value.trim()
+        return raw ? JSON.parse(raw) : null
+      })(),
     }
 
     const call$ = isEdit ? this.state.update(this.existingPrompt!.id!, payload) : this.state.create(payload)
@@ -319,7 +349,7 @@ export class ScheduledPromptFormComponent implements OnInit {
         this.isSubmitting.set(false)
         if (err.status === 409) {
           this.errorMessage.set(`A scheduled prompt named "${payload.name}" already exists in this scope.`)
-        } else if (err.status === 400) {
+        } else if (err.status === 400 || err.status === 422) {
           this.errorMessage.set(err.error?.message ?? 'Invalid scheduled prompt data.')
         } else {
           this.errorMessage.set('An unexpected error occurred. Please try again.')

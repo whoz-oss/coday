@@ -8,6 +8,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.util.toSlug
 import mu.KLogging
@@ -60,6 +61,7 @@ class ScheduledPromptServiceImpl(
             )
         }
         validateAgentConfigScope(entity, agentConfig)
+        validateFlowConfiguration(entity, agentConfig)
 
         val prompt = promptService.findById(entity.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
@@ -81,6 +83,12 @@ class ScheduledPromptServiceImpl(
     override fun update(entity: ScheduledPrompt): ScheduledPrompt {
         promptService.findById(entity.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
+
+        if (entity.flowConfiguration != null) {
+            val agentConfig = agentConfigService.findById(entity.agentConfigId)
+                ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
+            validateFlowConfiguration(entity, agentConfig)
+        }
 
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
@@ -235,6 +243,23 @@ class ScheduledPromptServiceImpl(
         if (!validScope) {
             throw UnprocessableEntityException(
                 "AgentConfig id=${entity.agentConfigId} does not belong to the ScheduledPrompt's namespace",
+            )
+        }
+    }
+
+    /**
+     * A flowConfiguration is a JSON object, and is only read for a LOOP agent: refuse it elsewhere rather than silently
+     * ignore it. Its content is not validated here, [io.whozoss.agentos.agent.AgentLoop] does when it runs.
+     */
+    private fun validateFlowConfiguration(entity: ScheduledPrompt, agentConfig: AgentConfig) {
+        val flowConfiguration = entity.flowConfiguration ?: return
+        if (!flowConfiguration.isObject) {
+            throw UnprocessableEntityException("flowConfiguration must be a JSON object")
+        }
+        if (agentConfig.resolvedExecutionMode != ExecutionMode.LOOP) {
+            throw UnprocessableEntityException(
+                "flowConfiguration is only allowed for a LOOP agent: AgentConfig id=${entity.agentConfigId} " +
+                    "has execution mode ${agentConfig.resolvedExecutionMode}",
             )
         }
     }

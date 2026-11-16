@@ -148,12 +148,8 @@ data class AgentConfig(
      */
     val skillSelectors: List<String>? = null,
     /**
-     * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object.
-     *
-     * When an [AgentLoop] run starts, the first user message is inspected first: if it contains
-     * a valid [io.whozoss.agentos.workflow.AgentLoopPayload] JSON, that value is used (override).
-     * When the message carries no parseable payload, [loopConfig] is used as the default.
-     * If neither source provides a valid payload, the run is aborted with a warning.
+     * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object. A `flowConfiguration` in the context
+     * of the start message takes precedence over it, see [io.whozoss.agentos.agent.AgentLoop].
      *
      * Only meaningful when [executionMode] is [ExecutionMode.LOOP]; ignored otherwise.
      */

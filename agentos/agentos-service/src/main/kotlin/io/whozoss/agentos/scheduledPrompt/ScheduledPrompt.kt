@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.Entity
@@ -105,4 +106,9 @@ data class ScheduledPrompt(
      * AgentOS persists this field as-is without interpreting its content.
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * Loop payload a LOOP agent runs for this scheduled prompt, as an opaque JSON object (refused on any other
+     * agent). See [io.whozoss.agentos.agent.AgentLoop].
+     */
+    val flowConfiguration: JsonNode? = null,
 ) : Entity

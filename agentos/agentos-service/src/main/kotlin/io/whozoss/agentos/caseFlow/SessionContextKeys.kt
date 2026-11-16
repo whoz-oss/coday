@@ -12,8 +12,9 @@ package io.whozoss.agentos.caseFlow
  * The map's format is not agentos's: it belongs to whoever writes it (the UI's backend, the
  * `UserContextProvider` plugin, the caller of `FreeCaseStarter`), and agentos only carries it. This object
  * holds the few keys agentos itself writes or reads, through the accessors of `SessionContextAccessors.kt`:
- * [PREFERRED_LANGUAGE], and [FIRST_NAME] and [LAST_NAME] of [USER_CONTEXT]. The rest is read by the LLM, which is
- * shown the whole map of the last user message, and by the tools of plugins, which receive the case events.
+ * [PREFERRED_LANGUAGE], [FIRST_NAME] and [LAST_NAME] of [USER_CONTEXT], and [FLOW_CONFIGURATION]. The rest is read
+ * by the LLM, which is shown the whole map of the last user message, and by the tools of plugins, which receive the
+ * case events.
  */
 object SessionContextKeys {
     /**
@@ -38,4 +39,10 @@ object SessionContextKeys {
 
     /** Last name, in [USER_CONTEXT]. */
     const val LAST_NAME = "lastName"
+
+    /**
+     * The loop payload a LOOP agent runs. Unlike the other keys it drives execution, see
+     * [io.whozoss.agentos.agent.AgentLoop] for how it is used.
+     */
+    const val FLOW_CONFIGURATION = "flowConfiguration"
 }

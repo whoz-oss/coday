@@ -113,9 +113,6 @@ class FreeCaseStarterForUserTool(
 
         fun buildToolName(configName: String?): String = configName?.let { "${it}__$TOOL_NAME" } ?: TOOL_NAME
 
-        /** Whether [toolName] is a `FreeCaseStarterForUser` tool, whatever its integration config. */
-        fun isFreeCaseStarterForUserTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
-
         private val INPUT_SCHEMA =
             """
             {

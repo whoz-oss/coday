@@ -8,23 +8,26 @@
   </header>
 
   <p class="agent-config-launch__intro">
-    The loop configuration below is read from <code class="agent-config-launch__code">AgentConfig.loopConfig</code>
-    and will be used by the backend when the agent loop starts. A new Case will be created and one child case will be
-    launched per entity found.
+    The JSON below is sent as <code class="agent-config-launch__code">flowConfiguration</code> with the start message
+    and takes precedence over <code class="agent-config-launch__code">AgentConfig.loopConfig</code>, which is used when
+    you empty the field. One case is started per search result.
   </p>
 
   <div class="agent-config-launch__field">
-    <label class="agent-config-launch__label" for="agent-loop-payload">Loop configuration (read-only)</label>
+    <label class="agent-config-launch__label" for="agent-loop-payload">Loop configuration (JSON)</label>
     <textarea
       id="agent-loop-payload"
       class="agent-config-launch__textarea"
+      [class.agent-config-launch__textarea--invalid]="payloadControl.invalid"
       rows="15"
-      [value]="payloadJson()"
-      [disabled]="isLaunching() || isLoading()"
-      readonly
+      [formControl]="payloadControl"
+      [attr.aria-invalid]="payloadControl.invalid"
       spellcheck="false"
       autocomplete="off"
     ></textarea>
+    @if (payloadControl.invalid) {
+      <p class="agent-config-launch__error" role="alert">Invalid JSON — please fix the syntax.</p>
+    }
   </div>
 
   @if (launchError()) {
@@ -37,7 +40,7 @@
     <button
       class="agent-config-launch__btn agent-config-launch__btn--primary"
       type="button"
-      [disabled]="isLaunching()"
+      [disabled]="isLaunching() || isLoading() || payloadControl.invalid"
       (click)="launch()"
     >
       {{ isLaunching() ? 'Launching\u2026' : 'Launch' }}

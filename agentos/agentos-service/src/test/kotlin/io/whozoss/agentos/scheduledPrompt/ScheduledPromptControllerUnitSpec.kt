@@ -3,6 +3,9 @@ package io.whozoss.agentos.scheduledPrompt
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.NullNode
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -79,6 +82,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nextRunAt: Instant = fixedNextRun,
         lastRunAt: Instant? = null,
         externalMetadata: Map<String, Any?>? = null,
+        flowConfiguration: JsonNode? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -92,6 +96,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nextRunAt = nextRunAt,
         lastRunAt = lastRunAt,
         externalMetadata = externalMetadata,
+        flowConfiguration = flowConfiguration,
     )
 
     fun dto(
@@ -104,6 +109,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning: PlanningDto = planningDto(),
         content: String = promptContent,
         externalMetadata: Map<String, Any?>? = null,
+        flowConfiguration: JsonNode? = null,
     ) = ScheduledPromptDto(
         id = id,
         namespaceId = nsId,
@@ -115,6 +121,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning = planning,
         enabled = enabled,
         externalMetadata = externalMetadata,
+        flowConfiguration = flowConfiguration,
     )
 
     beforeTest {
@@ -575,5 +582,36 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
         val result = controller.update(id, dto(id = id, externalMetadata = incomingMetadata))
         result.externalMetadata shouldBe incomingMetadata
+    }
+
+    // -------------------------------------------------------------------------
+    // flowConfiguration — opaque JSON, passed through; replaced as a whole on update
+    // -------------------------------------------------------------------------
+
+    val flowConfiguration = ObjectMapper().readTree(
+        """{"search": {"tool": "searchAgentUsers", "params": {"agentConfigId": "abc"}}, "act": {"agentName": "Caretaker"}}""",
+    )
+
+    "create hands the flowConfiguration to the service as is, and an explicit JSON null counts as none" {
+        val captured = mutableListOf<ScheduledPrompt>()
+        every { service.createWithPrompt(any(), any()) } answers {
+            captured += firstArg<ScheduledPrompt>()
+            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
+        }
+
+        val exposed = controller.create(dto(flowConfiguration = flowConfiguration)).flowConfiguration
+        controller.create(dto(flowConfiguration = NullNode.instance))
+
+        captured[0].flowConfiguration shouldBe flowConfiguration
+        exposed shouldBe flowConfiguration
+        captured[1].flowConfiguration shouldBe null
+    }
+
+    "update with a null flowConfiguration clears the existing one" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns sp(id = id, flowConfiguration = flowConfiguration)
+        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
+
+        controller.update(id, dto(id = id)).flowConfiguration shouldBe null
     }
 })

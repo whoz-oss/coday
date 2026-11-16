@@ -356,7 +356,7 @@ class SchedulerScanner(
         checkEndConditionAfterAdvance(scheduledPrompt, nextSlot)
 
         if (status == RunStatus.CLAIMED && insertedRun != null) {
-            runCatching { executor.materialize(insertedRun, scheduledPrompt) }
+            runCatching { executor.materialize(insertedRun, scheduledPrompt, agentConfig) }
                 .onFailure { e ->
                     logger.error(e) {
                         "[SchedulerScanner] materialize failed for run=${insertedRun.id} sp=${scheduledPrompt.id} — marking FAILED"
