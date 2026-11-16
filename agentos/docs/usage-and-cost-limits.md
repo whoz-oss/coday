@@ -54,7 +54,7 @@ for a model with no `pricing`, and AgentSimple's tool-round limit applies as wel
 
 ## Runtime behavior
 
-When the platform switch is enabled, every provider request made through an agent's chat client is measured, including compression, structured responses and AgentSimple tool rounds. Anthropic and OpenAI-compatible native metadata provide separate cache counters. Missing prices or unsupported native metadata keep cost unknown; available tokens are still retained. The UI reports a known lower bound alongside unknown usage, never a complete zero estimate.
+When the platform switch is enabled, every provider request made through an agent's chat client is measured, including compression, structured responses and AgentSimple tool rounds. Anthropic and OpenAI-compatible native metadata provide separate cache counters. When a provider of type `OpenAI` (such as the Requesty gateway) reports the request's cost in its response (`usage.cost`, streaming included), that figure is stored instead of the estimate computed from `AiModel.pricing`; otherwise the estimate applies. Missing prices or unsupported native metadata keep cost unknown; available tokens are still retained. The UI reports a known lower bound alongside unknown usage, never a complete zero estimate.
 
 A run's cost window begins at the latest human message in its case. Subsequent agent selections and redirects share that window. Child usage also contributes to ancestor windows, so delegating work cannot evade the parent threshold.
 
