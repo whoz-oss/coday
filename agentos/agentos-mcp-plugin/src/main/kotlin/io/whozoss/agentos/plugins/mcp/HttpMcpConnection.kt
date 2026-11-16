@@ -3,9 +3,7 @@ package io.whozoss.agentos.plugins.mcp
 import io.modelcontextprotocol.client.McpClient
 import io.modelcontextprotocol.client.McpSyncClient
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport
-import io.modelcontextprotocol.spec.McpSchema
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest
-import io.modelcontextprotocol.spec.McpSchema.TextContent
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import mu.KLogging
 import java.net.http.HttpRequest
@@ -74,6 +72,8 @@ class HttpMcpConnection(
 
         val transportBuilder = HttpClientStreamableHttpTransport
             .builder(baseUrl)
+            // Bound to the plugin class loader: see McpJsonMapperFactory for why the SDK default is unsafe.
+            .jsonMapper(McpJsonMapperFactory.mapper)
             .also { if (endpoint != null) it.endpoint(endpoint) }
             .connectTimeout(Duration.ofSeconds(config.timeoutSeconds))
 
@@ -132,7 +132,7 @@ class HttpMcpConnection(
             } catch (e: Exception) {
                 throw McpConnectionException("Tool call '$toolName' failed: ${e.message}", e)
             }
-            val formatted = formatResult(result)
+            val formatted = McpResultFormatter.format(result)
             return if (result.isError == true) {
                 throw McpToolErrorException(toolName, formatted)
             } else {
@@ -161,21 +161,6 @@ class HttpMcpConnection(
         val uri = java.net.URI.create(url)
         if (uri.scheme.equals("http", ignoreCase = true)) {
             logger.warn { "[MCP-HTTP] Sending credentials over cleartext http to '${uri.host}' — use https" }
-        }
-    }
-
-    private fun formatResult(result: McpSchema.CallToolResult): String {
-        val content = result.content() ?: return "(no output)"
-        val parts = content.mapNotNull { item ->
-            when (item) {
-                is TextContent -> item.text()
-                else -> "[${item.type()}: unsupported content type]"
-            }
-        }
-        return when {
-            parts.isEmpty() -> "(no output)"
-            parts.size == 1 -> parts[0]
-            else -> parts.joinToString("\n")
         }
     }
 

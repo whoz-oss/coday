@@ -1,5 +1,6 @@
 package io.whozoss.agentos.plugins.mcp
 
+import com.fasterxml.jackson.core.JacksonException
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.modelcontextprotocol.spec.McpError
@@ -115,6 +116,13 @@ class McpTool(
         internal const val TIMEOUT_OUTPUT =
             "The tool call failed because the integration did not answer in time. The cause is in the server logs."
 
+        /**
+         * What the model sees when the integration answered but its response could not be decoded (a Jackson
+         * failure in the cause chain), as opposed to a server that could not be reached.
+         */
+        internal const val UNREADABLE_RESPONSE_OUTPUT =
+            "The integration answered but its response could not be read. The cause is in the server logs."
+
         /** What the model sees when the integration refused the arguments (JSON-RPC invalid params). */
         internal const val INVALID_PARAMS_OUTPUT =
             "The integration rejected the arguments of the call (JSON-RPC error -32602, invalid params). " +
@@ -137,6 +145,7 @@ class McpTool(
             return when {
                 rejection != null -> rejectedCallOutput(code = rejection.jsonRpcError?.code())
                 causes.any { it is TimeoutException } -> TIMEOUT_OUTPUT
+                causes.any { it is JacksonException } -> UNREADABLE_RESPONSE_OUTPUT
                 else -> TRANSPORT_FAILURE_OUTPUT
             }
         }
