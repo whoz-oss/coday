@@ -38,7 +38,7 @@ data class LoopConfigGenerationRequest(
 /**
  * Response body for the loop-config generation endpoint.
  *
- * [loopConfig] is the complete, ready-to-paste value for [AgentConfigDto.loopConfig]:
+ * [loopConfig] holds the generated **search block** only:
  * ```json
  * {
  *   "search": {
@@ -47,31 +47,36 @@ data class LoopConfigGenerationRequest(
  *   }
  * }
  * ```
- * It is null when generation failed (see [rawResponse] and [warning]).
+ * It is **not** a complete loop configuration: the `act` block (the agent started for each search result, and its
+ * prompt) is missing, and must be added before it is set as [AgentConfigDto.loopConfig] or as the
+ * `flowConfiguration` of a scheduled prompt. It is null when generation failed; [warning] then says why.
  *
- * [rawResponse] carries the raw LLM text for debugging when the structured
- * parse fails — it is null when [loopConfig] was produced successfully.
+ * [warning] explains why nothing was generated, or flags a result worth a second look: a fallback parse of the LLM
+ * output, or an empty params object.
  *
- * [warning] is set when the LLM output required a fallback parse or when
- * the generation succeeded but produced an empty params object.
+ * [rawResponse] only ever carries the raw LLM text, and only when that text could not be used (it holds no JSON object,
+ * or names a tool the agent does not have). It is null otherwise.
  */
 @Schema(name = "LoopConfigGenerationResult")
 data class LoopConfigGenerationResult(
     @field:Schema(
         description =
-            "Complete loopConfig value ready to set on an AgentConfig. " +
-                "Contains `search.tool` and `search.params`. Null when generation failed.",
+            "Generated search block: `{ \"search\": { \"tool\", \"params\" } }`. It is not a complete loop " +
+                "configuration: the `act` block is missing and must be added by the caller. " +
+                "Null when generation failed (see `warning`).",
         type = "object",
         nullable = true,
     )
     val loopConfig: JsonNode?,
     @field:Schema(
-        description = "Raw LLM response text, present only when structured parsing failed.",
+        description = "Raw LLM response text, present only when it could not be used. Never an error message.",
         nullable = true,
     )
     val rawResponse: String? = null,
     @field:Schema(
-        description = "Non-fatal warning (e.g. empty object generated, or fallback parse used).",
+        description =
+            "Human-readable explanation: why nothing was generated, or a caveat on the result " +
+                "(e.g. empty object generated, or fallback parse used).",
         nullable = true,
     )
     val warning: String? = null,

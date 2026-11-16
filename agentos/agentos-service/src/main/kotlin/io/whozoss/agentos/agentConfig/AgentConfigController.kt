@@ -256,24 +256,26 @@ class AgentConfigController(
     /**
      * POST /api/agent-configs/{id}/loop-config/generate
      *
-     * Translates a natural-language [LoopConfigGenerationRequest.description] into a
-     * structured `search.params` JSON object ready to embed in a LOOP-mode agent's
-     * `loopConfig`. The LLM is resolved from the agent's own model configuration.
+     * Translates a natural-language [LoopConfigGenerationRequest.description] into the
+     * search block `{ "search": { "tool", "params" } }` of a loop configuration. It is a proposal,
+     * not a complete loop configuration: the `act` block is missing and is left to the caller.
+     * The LLM is resolved from the agent's own model configuration.
      *
      * Authorization: same as `getDefinition` — READ on the AgentConfig.
      *
      * The [LoopConfigGenerationRequest.searchToolName] must match a tool available to
-     * this agent. When it does not, the response has `params = null` and a descriptive
-     * message in `rawResponse`.
+     * this agent. When it does not, the response has `loopConfig = null` and a descriptive
+     * message in `warning`.
      *
      * @param id  AgentConfig UUID.
      * @param namespaceId  Required for platform-level agent configs (namespaceId = null);
      *   ignored for namespace-scoped ones.
      */
     @Operation(
-        summary = "Generate loop-config search params from a natural-language description",
+        summary = "Generate the loop-config search block from a natural-language description",
         description = "Uses the agent's configured LLM to translate a plain-English description " +
-            "into a structured JSON object for `loopConfig.search.params`.",
+            "into the `search` block (`tool` and `params`) of a loop configuration. The `act` block is not " +
+            "generated: the result is a proposal to complete, not a complete loop configuration.",
     )
     @PostMapping(
         "/{id}/loop-config/generate",
