@@ -13,6 +13,9 @@ import { ScheduledPrompt } from './scheduled-prompt'
 export interface ScheduledPromptGenerationResult {
   decisions: Array<GeneratedFieldDecision>
   rawResponse?: string | null
+  /**
+   * The proposal, absent (null) when a part of it could not be determined: see `warnings`.
+   */
   scheduledPrompt?: ScheduledPrompt
   warnings: Array<string>
 }

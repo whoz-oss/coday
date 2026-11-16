@@ -5245,11 +5245,15 @@ components:
       properties:
         description:
           type: string
-          minLength: 1
+          maxLength: 2000
+          minLength: 0
         searchToolName:
           type: string
-          description: "Name of the search tool to use. When omitted, the LLM picks\
-            \ the best tool from all tools available to this agent."
+          description: "Name of the search tool to use, bare or prefixed by its integration\
+            \ config. When omitted, the LLM picks the best tool from the search tools\
+            \ available to this agent."
+          maxLength: 200
+          minLength: 0
       required:
       - description
     LoopConfigGenerationResult:
@@ -5259,7 +5263,10 @@ components:
           $ref: "#/components/schemas/JsonNode"
           description: "Generated search block: `{ \"search\": { \"tool\", \"params\"\
             \ } }`. It is not a complete loop configuration: the `act` block is missing\
-            \ and must be added by the caller. Null when generation failed (see `warning`)."
+            \ and must be added by the caller. `search.tool` is the real name of the\
+            \ tool, possibly prefixed by its integration config (e.g. `USER_GROUP__searchAgentUsers`\
+            \ for a requested `searchAgentUsers`). Null when generation failed (see\
+            \ `warning`)."
         rawResponse:
           type: string
           description: "Raw LLM response text, present only when it could not be used.\
@@ -6111,7 +6118,7 @@ components:
         description:
           type: string
           maxLength: 2000
-          minLength: 0
+          minLength: 1
         loopAgentName:
           type:
           - string
@@ -6168,6 +6175,8 @@ components:
           - "null"
         scheduledPrompt:
           $ref: "#/components/schemas/ScheduledPrompt"
+          description: "The proposal, absent (null) when a part of it could not be\
+            \ determined: see `warnings`."
         warnings:
           type: array
           items:

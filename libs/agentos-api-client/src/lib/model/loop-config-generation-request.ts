@@ -11,7 +11,7 @@
 export interface LoopConfigGenerationRequest {
   description: string
   /**
-   * Name of the search tool to use. When omitted, the LLM picks the best tool from all tools available to this agent.
+   * Name of the search tool to use, bare or prefixed by its integration config. When omitted, the LLM picks the best tool from the search tools available to this agent.
    */
   searchToolName?: string
 }
