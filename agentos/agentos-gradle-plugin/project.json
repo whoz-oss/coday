@@ -1,0 +1,11 @@
+{
+  "name": "agentos-gradle-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "agentos/agentos-gradle-plugin/src",
+  "tags": [
+    "type:lib",
+    "platform:jvm-agentos",
+    "scope:plugin"
+  ]
+}
