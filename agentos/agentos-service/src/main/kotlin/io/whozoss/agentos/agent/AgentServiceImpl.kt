@@ -4,8 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
-import io.whozoss.agentos.aiModel.AiModelService
-import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.auth.StaticCredentialFactory
@@ -68,8 +66,7 @@ import java.util.UUID
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
     private val toolResolverService: ToolResolverService,
-    private val aiModelService: AiModelService,
-    private val aiProviderService: AiProviderService,
+    private val modelResolver: ModelResolver,
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
@@ -228,19 +225,14 @@ class AgentServiceImpl(
         resolvedUser: User?,
         subCaseManager: SubCaseManager? = null,
     ): ResolvedAgentDefinition {
-        val baseModel =
-            agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
-                ?: findDefaultModelConfig(context.namespaceId)
+        // A named model that does not exist falls back to the namespace default, as it always did.
+        val (modelConfig, providerConfig) =
+            agentConfig.modelName?.let { modelResolver.resolve(context.namespaceId, context.userId, it) }
+                ?: modelResolver.resolve(context.namespaceId, context.userId)
                 ?: throw IllegalArgumentException(
                     "AgentConfig '${agentConfig.name}' could not resolve an AiModel " +
                         "(modelName=${agentConfig.modelName}, namespace=${context.namespaceId}).",
                 )
-        val (modelConfig, providerConfig) =
-            applyOverlaysToModel(
-                baseModel = baseModel,
-                namespaceId = context.namespaceId,
-                userId = context.userId,
-            )
         val effectiveIntegrationConfigs =
             runIntegrationCustomizers.fold(
                 integrationConfigService.findEffective(context.namespaceId, context.userId),
@@ -507,36 +499,6 @@ class AgentServiceImpl(
             loopConfig = definition.loopConfig,
         )
     }
-
-    /**
-     * Resolve the [AiProvider] for a pre-resolved [baseModel].
-     *
-     * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
-     * fetches all four overlay layers in a single query and folds them by precedence.
-     * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
-     */
-    private fun applyOverlaysToModel(
-        baseModel: AiModel,
-        namespaceId: UUID,
-        userId: UUID?,
-    ): Pair<AiModel, AiProvider> {
-        val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
-        val providerConfig =
-            if (userId != null) {
-                aiProviderService.resolveProvider(namespaceId, userId, baseProvider.name)
-            } else {
-                baseProvider
-            }
-
-        logger.info {
-            "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
-                "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
-                "provider='${providerConfig.name}', userId=$userId)"
-        }
-        return baseModel to providerConfig
-    }
-
-    private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
 
     // -------------------------------------------------------------------------
     // Agent instantiation
