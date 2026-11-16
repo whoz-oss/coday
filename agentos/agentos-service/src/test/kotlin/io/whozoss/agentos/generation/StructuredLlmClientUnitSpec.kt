@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import kotlinx.coroutines.Dispatchers
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -56,10 +57,10 @@ class StructuredLlmClientUnitSpec : StringSpec({
         every { chatClient.prompt(capture(sentPrompt)).call().content() } returns llmResponse
         val chatClientProvider = mockk<ChatClientProvider>()
         every { chatClientProvider.getChatClient(any(), any(), null, null) } returns chatClient
-        return StructuredLlmClient(chatClientProvider, objectMapper) to chatClientProvider
+        return StructuredLlmClient(chatClientProvider, objectMapper, Dispatchers.Unconfined) to chatClientProvider
     }
 
-    fun call(llmResponse: String?) = clientAnswering(llmResponse).first.call(model, provider, "system", "user")
+    suspend fun call(llmResponse: String?) = clientAnswering(llmResponse).first.call(model, provider, "system", "user")
 
     "sends the system prompt then the user message, on a client of the given model and provider with no case and no accumulator" {
         val (client, chatClientProvider) = clientAnswering("{}")
@@ -146,7 +147,7 @@ class StructuredLlmClientUnitSpec : StringSpec({
         every { chatClientProvider.getChatClient(any(), any(), null, null) } returns chatClient
 
         shouldThrow<IllegalStateException> {
-            StructuredLlmClient(chatClientProvider, objectMapper).call(model, provider, "system", "user")
+            StructuredLlmClient(chatClientProvider, objectMapper, Dispatchers.Unconfined).call(model, provider, "system", "user")
         }.message shouldBe "provider down"
     }
 })

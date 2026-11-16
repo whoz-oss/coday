@@ -244,24 +244,38 @@ class ScheduledPromptController(
     /**
      * Proposes a scheduled prompt driving a LOOP agent from a natural-language description. Nothing is persisted.
      *
-     * Authorized like [resolveEffective] (Namespace READ, for the caller): the proposal only uses agents deployed to
-     * the caller. Creating it afterwards goes through [create] and its own authorization.
+     * Authorized like creating a namespace-shared scheduled prompt (Namespace **WRITE**): one can only generate what
+     * one could create, and the call is billed to the namespace's model. The namespace is first resolved, with
+     * Namespace READ, by [OverlayScopeAuthorizer.authorizeEffectiveOrThrow], which also yields the caller; WRITE is
+     * then required by [OverlayScopeAuthorizer.authorizeCreateOrThrow]. Both checks need the request body, which is
+     * why this is not a declarative `@PreAuthorize` (see the class KDoc).
+     *
+     * Not part of [ScheduledPromptApi]: the SDK contract stays free of `suspend`, like `generateLoopConfig`, which is
+     * not part of `AgentConfigApi`.
      */
     @Operation(
         summary = "Propose a scheduled prompt driving a LOOP agent from a natural-language description",
         description = "Returns a proposal, nothing is persisted. Every field but the description is optional: " +
             "missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. " +
-            "The proposed scheduledPrompt can be POSTed as is to /api/scheduled-prompts once reviewed.",
+            "The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. " +
+            "Requires WRITE on the namespace.",
     )
     @PostMapping("/generate", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
-    override suspend fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
+    suspend fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
         val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
             pluralLabel = "scheduled prompts",
             namespaceId = request.namespaceId,
             namespaceExternalId = request.namespaceExternalId,
         )
-        return scheduledPromptGenerationService.generate(scope.namespaceId!!, scope.userId!!, request)
+        val namespaceId = requireNotNull(scope.namespaceId) { "authorizeEffectiveOrThrow resolved no namespace" }
+        val callerId = requireNotNull(scope.userId) { "authorizeEffectiveOrThrow resolved no caller" }
+        overlayScopeAuthorizer.authorizeCreateOrThrow(
+            entityLabel = "ScheduledPrompt",
+            requestedNamespaceId = namespaceId,
+            requestedUserId = null,
+        )
+        return scheduledPromptGenerationService.generate(namespaceId, callerId, request)
     }
 
     // -------------------------------------------------------------------------

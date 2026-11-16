@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import mu.KLogging
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -33,11 +36,13 @@ data class StructuredLlmResult(
  * scheduled-prompt generation): one non-streaming call with a system prompt and a user message, and a tolerant
  * parse of the answer.
  *
- * ## Why the LLM is invoked directly (not via ChatClient.stream)
+ * ## Threading
  *
- * The call is short, synchronous and non-streaming, and its result is a small JSON object:
- * `ChatClient.prompt().call().content()` is the idiomatic Spring AI path for that shape. The client is created with
- * no case id and no usage accumulator: these calls belong to no case.
+ * `ChatClient.prompt().call().content()` is blocking. [call] is `suspend` and runs it on [dispatcher]
+ * (`Dispatchers.IO` by default), so a caller in a coroutine (the `suspend` controller endpoints) never blocks its
+ * own thread for an LLM round-trip.
+ *
+ * The client is created with no case id and no usage accumulator: these calls belong to no case.
  *
  * ## Parsing
  *
@@ -47,51 +52,48 @@ data class StructuredLlmResult(
  *
  * An answer that holds no object leaves [StructuredLlmResult.json] null and keeps the raw text, for the caller to
  * report. Exceptions of the LLM call itself are not caught.
+ *
+ * ## Logging
+ *
+ * The content of the answer is never logged, only its length: it can echo agent descriptions, tool schemas and
+ * user-written descriptions, which do not belong in centrally shipped logs.
  */
 @Component
 class StructuredLlmClient(
     private val chatClientProvider: ChatClientProvider,
     private val objectMapper: ObjectMapper,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    fun call(
+    suspend fun call(
         model: AiModel,
         provider: AiProvider,
         systemPrompt: String,
         userMessage: String,
     ): StructuredLlmResult {
-        val chatClient =
-            chatClientProvider.getChatClient(
-                modelConfig = model,
-                providerConfig = provider,
-                caseId = null,
-                accumulator = null,
-            )
         val content =
-            chatClient
-                .prompt(Prompt(listOf(SystemMessage(systemPrompt), UserMessage(userMessage))))
-                .call()
-                .content()
-
-        if (content.isNullOrBlank()) {
-            logger.warn { "[StructuredLlm] The LLM returned no content (model=${model.apiModelName})" }
-            return StructuredLlmResult(json = null, rawText = null)
+            withContext(dispatcher) {
+                chatClientProvider
+                    .getChatClient(modelConfig = model, providerConfig = provider, caseId = null, accumulator = null)
+                    .prompt(Prompt(listOf(SystemMessage(systemPrompt), UserMessage(userMessage))))
+                    .call()
+                    .content()
+            }
+        val result =
+            when {
+                content.isNullOrBlank() -> StructuredLlmResult(json = null, rawText = null)
+                else -> parse(content)
+            }
+        logger.debug {
+            "[StructuredLlm] model=${model.apiModelName}, answer length=${content?.length ?: 0}, " +
+                "json=${result.json != null}, codeFence=${result.usedCodeFence}"
         }
-        logger.debug { "[StructuredLlm] LLM raw response (${content.length} chars): $content" }
-        return parse(content)
+        return result
     }
 
     internal fun parse(text: String): StructuredLlmResult {
-        tryParseObject(text)?.let { return StructuredLlmResult(json = it, rawText = text) }
-
-        extractFromCodeFence(text)?.let { fenced ->
-            tryParseObject(fenced)?.let {
-                logger.info { "[StructuredLlm] Parsed the answer via the code-fence fallback" }
-                return StructuredLlmResult(json = it, rawText = text, usedCodeFence = true)
-            }
-        }
-
-        logger.warn { "[StructuredLlm] The answer holds no JSON object. Raw: $text" }
-        return StructuredLlmResult(json = null, rawText = text)
+        val direct = tryParseObject(text)
+        val fenced = if (direct == null) extractFromCodeFence(text)?.let { tryParseObject(it) } else null
+        return StructuredLlmResult(json = direct ?: fenced, rawText = text, usedCodeFence = fenced != null)
     }
 
     /** Parses [text] as a JSON object, returning null on any parse error or when it is another kind of JSON. */
@@ -103,11 +105,12 @@ class StructuredLlmClient(
      * Handles both ```` ```json ```` and bare ```` ``` ```` fences. Null when there is no complete fence.
      */
     private fun extractFromCodeFence(text: String): String? {
-        val fenceStart = CODE_FENCE_REGEX.find(text) ?: return null
-        val contentStart = fenceStart.range.last + 1
-        val fenceEnd = text.indexOf("```", contentStart)
-        if (fenceEnd == -1) return null
-        return text.substring(contentStart, fenceEnd).trim()
+        val contentStart = CODE_FENCE_REGEX.find(text)?.let { it.range.last + 1 }
+        val fenceEnd = contentStart?.let { text.indexOf("```", it) }?.takeIf { it != -1 }
+        return when {
+            contentStart == null || fenceEnd == null -> null
+            else -> text.substring(contentStart, fenceEnd).trim()
+        }
     }
 
     companion object : KLogging() {

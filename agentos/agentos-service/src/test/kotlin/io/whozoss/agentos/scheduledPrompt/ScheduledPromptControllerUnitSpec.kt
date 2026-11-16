@@ -17,6 +17,7 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
@@ -638,6 +639,17 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     "generate is refused without Namespace READ, before any generation" {
         every { userService.getCurrentUser() } returns regularUser()
         every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
+        val request = ScheduledPromptGenerationRequest(namespaceId = namespaceId, description = "weekly check")
+
+        shouldThrow<AccessDeniedException> { controller.generate(request) }
+
+        coVerify(exactly = 0) { generationService.generate(any(), any(), any()) }
+    }
+
+    "generate requires WRITE on the namespace: Namespace READ alone is refused, before any generation" {
+        every { userService.getCurrentUser() } returns regularUser()
+        every { permissionService.hasPermission(any(), any(), any(), Action.READ) } returns true
+        every { permissionService.hasPermission(any(), any(), any(), Action.WRITE) } returns false
         val request = ScheduledPromptGenerationRequest(namespaceId = namespaceId, description = "weekly check")
 
         shouldThrow<AccessDeniedException> { controller.generate(request) }

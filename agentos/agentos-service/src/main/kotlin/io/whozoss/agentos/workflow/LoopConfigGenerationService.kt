@@ -6,6 +6,7 @@ import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.generation.StructuredLlmClient
 import io.whozoss.agentos.generation.StructuredLlmResult
 import io.whozoss.agentos.sdk.api.agentConfig.LoopConfigGenerationResult
+import io.whozoss.agentos.sdk.tool.StandardTool
 import mu.KLogging
 import org.springframework.stereotype.Service
 
@@ -21,15 +22,10 @@ import org.springframework.stereotype.Service
  *
  * Two modes depending on whether [generate]'s `searchToolName` is provided:
  *
- * **Single-tool mode** (`searchToolName` non-null):
- * 1. Look up the named tool in [ResolvedAgentDefinition.tools] and read its input schema.
- * 2. Instruct the LLM to produce a JSON object matching that schema.
- * 3. Wrap the response in `{ "search": { "tool": "...", "params": ... } }`.
+ * **Single-tool mode** (`searchToolName` non-null): the LLM produces the params of that tool, from its input schema.
  *
- * **Auto-select mode** (`searchToolName` null):
- * 1. Collect all available tools and their schemas.
- * 2. Instruct the LLM to pick the best tool and produce `{ "tool": "...", "params": { ... } }`.
- * 3. Validate that `tool` names a known tool, and wrap in the `{ "search": { ... } }` structure.
+ * **Auto-select mode** (`searchToolName` null): the LLM picks a tool among the agent's tools and produces
+ * `{ "tool": "...", "params": { ... } }`; the tool must be one of them.
  *
  * In both modes an optional `context` is appended to the user message as an "Additional context" block, to hand the
  * LLM identifiers it can use as parameter values (for instance the id of the agent started for each hit).
@@ -44,7 +40,7 @@ import org.springframework.stereotype.Service
  *
  * - Unknown `searchToolName`, or no tool available (auto-select mode): no LLM call.
  * - The LLM returns nothing, returns no JSON object, or (auto-select mode) names no tool or an unknown one.
- * - LLM throws: re-thrown as-is. The controller maps provider errors to HTTP 502.
+ * - LLM throws: re-thrown as-is.
  */
 @Service
 class LoopConfigGenerationService(
@@ -61,7 +57,7 @@ class LoopConfigGenerationService(
      * @param context  Optional extra information appended to the user message, such as ids the LLM may use in params.
      * @return [LoopConfigGenerationResult] with the generated search block, or a null one explained by its warning.
      */
-    fun generate(
+    suspend fun generate(
         definition: ResolvedAgentDefinition,
         searchToolName: String?,
         description: String,
@@ -76,78 +72,129 @@ class LoopConfigGenerationService(
     // Single-tool mode
     // -------------------------------------------------------------------------
 
-    private fun generateSingleTool(
+    private suspend fun generateSingleTool(
         definition: ResolvedAgentDefinition,
         searchToolName: String,
         description: String,
         context: String?,
     ): LoopConfigGenerationResult {
         val tool = definition.tools.find { it.name == searchToolName }
-        if (tool == null) {
-            val available = definition.tools.map { it.name }
-            logger.warn {
-                "[LoopConfigGeneration] Tool '$searchToolName' not found for agent '${definition.name}' " +
-                    "(available: $available)"
+        return when (tool) {
+            null -> {
+                val available = definition.tools.map { it.name }
+                logger.warn {
+                    "[LoopConfigGeneration] Tool '$searchToolName' not found for agent '${definition.name}' (available: $available)"
+                }
+                LoopConfigGenerationResult(
+                    loopConfig = null,
+                    warning = "Tool '$searchToolName' is not available to agent '${definition.name}'. Available tools: $available",
+                )
             }
-            return LoopConfigGenerationResult(
-                loopConfig = null,
-                warning = "Tool '$searchToolName' is not available to agent '${definition.name}'. Available tools: $available",
-            )
-        }
 
-        logger.debug {
-            "[LoopConfigGeneration] Generating params for tool '$searchToolName' " +
-                "(agent=${definition.name}, schema length=${tool.inputSchema.length})"
+            else -> {
+                val userMessage = userMessage(schemaBlock(tool), description, context)
+                val llmResult =
+                    structuredLlmClient.call(definition.resolvedModel, definition.resolvedProvider, SINGLE_TOOL_SYSTEM_PROMPT, userMessage)
+                paramsResult(llmResult, searchToolName)
+            }
         }
+    }
 
-        val userMessage =
-            userMessage(
-                header = "Tool name: $searchToolName\nTool input schema:\n${tool.inputSchema}",
-                description = description,
-                context = context,
-            )
-        val llmResult =
-            structuredLlmClient.call(definition.resolvedModel, definition.resolvedProvider, SINGLE_TOOL_SYSTEM_PROMPT, userMessage)
-        return parseParamsResult(llmResult, searchToolName)
+    /** Single-tool mode: the answer is the params object itself, wrapped in the search block. */
+    private fun paramsResult(
+        llmResult: StructuredLlmResult,
+        searchToolName: String,
+    ): LoopConfigGenerationResult {
+        val params = llmResult.json
+        return when (params) {
+            null -> unusable(llmResult)
+
+            else -> {
+                val warning =
+                    listOfNotNull(
+                        FENCE_WARNING.takeIf { llmResult.usedCodeFence },
+                        EMPTY_OBJECT_WARNING.takeIf { params.size() == 0 },
+                    ).joinToString(" ").takeIf { it.isNotEmpty() }
+                LoopConfigGenerationResult(loopConfig = searchBlock(searchToolName, params), warning = warning)
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
     // Auto-select mode
     // -------------------------------------------------------------------------
 
-    private fun generateAutoSelect(
+    private suspend fun generateAutoSelect(
         definition: ResolvedAgentDefinition,
         description: String,
         context: String?,
     ): LoopConfigGenerationResult {
         val tools = definition.tools.toList()
-        if (tools.isEmpty()) {
-            logger.warn { "[LoopConfigGeneration] No tools available for agent '${definition.name}' (auto-select mode)" }
-            return LoopConfigGenerationResult(
-                loopConfig = null,
-                warning = "No tools are available to agent '${definition.name}'.",
-            )
-        }
-
-        val toolsBlock =
-            tools.joinToString("\n\n") { tool ->
-                "Tool name: ${tool.name}\nTool input schema:\n${tool.inputSchema}"
+        return when {
+            tools.isEmpty() -> {
+                logger.warn { "[LoopConfigGeneration] No tools available for agent '${definition.name}' (auto-select mode)" }
+                LoopConfigGenerationResult(loopConfig = null, warning = "No tools are available to agent '${definition.name}'.")
             }
 
-        logger.debug {
-            "[LoopConfigGeneration] Auto-selecting tool for agent '${definition.name}' " +
-                "from ${tools.size} available tools"
+            else -> {
+                val toolsBlock = tools.joinToString("\n\n") { schemaBlock(it) }
+                val userMessage = userMessage("Available tools:\n$toolsBlock", description, context)
+                val llmResult =
+                    structuredLlmClient.call(definition.resolvedModel, definition.resolvedProvider, AUTO_SELECT_SYSTEM_PROMPT, userMessage)
+                autoSelectResult(llmResult, tools.map { it.name })
+            }
         }
+    }
 
-        val userMessage = userMessage(header = "Available tools:\n$toolsBlock", description = description, context = context)
-        val llmResult =
-            structuredLlmClient.call(definition.resolvedModel, definition.resolvedProvider, AUTO_SELECT_SYSTEM_PROMPT, userMessage)
-        return parseAutoSelectResult(llmResult, tools.map { it.name })
+    /**
+     * Auto-select mode: the answer is `{ "tool": "...", "params": { ... } }`, wrapped in the search block.
+     * The chosen tool must be among [knownToolNames].
+     */
+    private fun autoSelectResult(
+        llmResult: StructuredLlmResult,
+        knownToolNames: List<String>,
+    ): LoopConfigGenerationResult {
+        val node = llmResult.json
+        val chosenTool = node?.get("tool")?.asText()?.takeIf { it.isNotBlank() }
+        return when {
+            node == null -> {
+                unusable(llmResult)
+            }
+
+            chosenTool == null -> {
+                logger.warn { "[LoopConfigGeneration] Auto-select response missing 'tool' field" }
+                LoopConfigGenerationResult(
+                    loopConfig = null,
+                    rawResponse = llmResult.rawText,
+                    warning = "The LLM response did not include a 'tool' field.",
+                )
+            }
+
+            chosenTool !in knownToolNames -> {
+                logger.warn { "[LoopConfigGeneration] Auto-select chose unknown tool '$chosenTool' (known: $knownToolNames)" }
+                LoopConfigGenerationResult(
+                    loopConfig = null,
+                    rawResponse = llmResult.rawText,
+                    warning = "The LLM chose tool '$chosenTool' which is not available to this agent.",
+                )
+            }
+
+            else -> {
+                logger.info { "[LoopConfigGeneration] Auto-select chose tool '$chosenTool'" }
+                val params = node.get("params")?.takeUnless { it.isNull } ?: objectMapper.createObjectNode()
+                LoopConfigGenerationResult(
+                    loopConfig = searchBlock(chosenTool, params),
+                    warning = FENCE_WARNING.takeIf { llmResult.usedCodeFence },
+                )
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
-    // Message and result helpers
+    // Helpers
     // -------------------------------------------------------------------------
+
+    private fun schemaBlock(tool: StandardTool<*>): String = "Tool name: ${tool.name}\nTool input schema:\n${tool.inputSchema}"
 
     /** The user message: [header], the description, and the "Additional context" block when there is a [context]. */
     private fun userMessage(
@@ -171,77 +218,21 @@ class LoopConfigGenerationService(
     /** The LLM answered nothing, or no JSON object: nothing to build, the warning says why. */
     private fun unusable(llmResult: StructuredLlmResult): LoopConfigGenerationResult =
         when {
-            llmResult.returnedNothing -> LoopConfigGenerationResult(loopConfig = null, warning = "The LLM returned no content.")
-            else ->
+            llmResult.returnedNothing -> {
+                LoopConfigGenerationResult(loopConfig = null, warning = "The LLM returned no content.")
+            }
+
+            else -> {
                 LoopConfigGenerationResult(
                     loopConfig = null,
                     rawResponse = llmResult.rawText,
                     warning = "The LLM response could not be parsed as a JSON object.",
                 )
+            }
         }
 
-    /**
-     * Single-tool mode: the answer is the params object itself, wrapped in the search block.
-     */
-    private fun parseParamsResult(
-        llmResult: StructuredLlmResult,
-        searchToolName: String,
-    ): LoopConfigGenerationResult {
-        val params = llmResult.json ?: return unusable(llmResult)
-        if (params.size() == 0) {
-            logger.warn { "[LoopConfigGeneration] LLM returned an empty JSON object for tool '$searchToolName'" }
-        }
-        val warning =
-            listOfNotNull(
-                FENCE_WARNING.takeIf { llmResult.usedCodeFence },
-                EMPTY_OBJECT_WARNING.takeIf { params.size() == 0 },
-            ).joinToString(" ").takeIf { it.isNotEmpty() }
-        return LoopConfigGenerationResult(loopConfig = wrapInSearchBlock(searchToolName, params), warning = warning)
-    }
-
-    /**
-     * Auto-select mode: the answer is `{ "tool": "...", "params": { ... } }`, wrapped in the search block.
-     * Validates that the chosen tool name is among [knownToolNames].
-     */
-    private fun parseAutoSelectResult(
-        llmResult: StructuredLlmResult,
-        knownToolNames: List<String>,
-    ): LoopConfigGenerationResult {
-        val node = llmResult.json ?: return unusable(llmResult)
-
-        val chosenTool = node.get("tool")?.asText()?.takeIf { it.isNotBlank() }
-        if (chosenTool == null) {
-            logger.warn { "[LoopConfigGeneration] Auto-select response missing 'tool' field. Raw: ${llmResult.rawText}" }
-            return LoopConfigGenerationResult(
-                loopConfig = null,
-                rawResponse = llmResult.rawText,
-                warning = "The LLM response did not include a 'tool' field.",
-            )
-        }
-        if (chosenTool !in knownToolNames) {
-            logger.warn { "[LoopConfigGeneration] Auto-select chose unknown tool '$chosenTool' (known: $knownToolNames)" }
-            return LoopConfigGenerationResult(
-                loopConfig = null,
-                rawResponse = llmResult.rawText,
-                warning = "The LLM chose tool '$chosenTool' which is not available to this agent.",
-            )
-        }
-
-        val params = node.get("params")?.takeUnless { it.isNull } ?: objectMapper.createObjectNode()
-        logger.info { "[LoopConfigGeneration] Auto-select chose tool '$chosenTool'" }
-        return LoopConfigGenerationResult(
-            loopConfig = wrapInSearchBlock(chosenTool, params),
-            warning = FENCE_WARNING.takeIf { llmResult.usedCodeFence },
-        )
-    }
-
-    /**
-     * Wraps [params] in the search block:
-     * ```json
-     * { "search": { "tool": "SearchTasks", "params": { ... } } }
-     * ```
-     */
-    private fun wrapInSearchBlock(
+    /** `{ "search": { "tool": "SearchTasks", "params": { ... } } }` */
+    private fun searchBlock(
         searchToolName: String,
         params: JsonNode,
     ): JsonNode =
@@ -256,9 +247,7 @@ class LoopConfigGenerationService(
         private const val FENCE_WARNING = "JSON was extracted from a markdown code fence in the LLM response."
         private const val EMPTY_OBJECT_WARNING = "The LLM returned an empty JSON object. The description may be too vague."
 
-        /**
-         * System prompt for single-tool mode: the tool is known, only the params are generated.
-         */
+        /** System prompt for single-tool mode: the tool is known, only the params are generated. */
         private val SINGLE_TOOL_SYSTEM_PROMPT =
             """
             You are a JSON parameter generator for a search tool.
@@ -280,10 +269,8 @@ class LoopConfigGenerationService(
             """.trimIndent()
 
         /**
-         * System prompt for auto-select mode: the LLM must also choose the right tool.
-         *
-         * The response format is `{ "tool": "<toolName>", "params": { ... } }` so that
-         * both the tool choice and the params are returned in a single parseable object.
+         * System prompt for auto-select mode: the LLM must also choose the right tool, and returns
+         * `{ "tool": "<toolName>", "params": { ... } }`.
          */
         private val AUTO_SELECT_SYSTEM_PROMPT =
             """

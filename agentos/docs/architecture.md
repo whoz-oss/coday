@@ -14,12 +14,13 @@ The SDK is the stable public API. Plugins depend only on `agentos-sdk` (via `com
 | Package | Responsibility |
 |---|---|
 | `agent` | `AgentService` / `AgentRegistry` / `AgentDiscoveryService` — runtime agent lifecycle |
-| `aiModel` | `AiModelRegistry` / `AiModelDiscoveryService` — AI model configuration registry |
+| `aiModel` | `AiModelRegistry` / `AiModelDiscoveryService` — AI model configuration registry; `ModelResolver` — model + provider (with user overlays) for a namespace, shared by agent resolution and the generation features |
 | `aiProvider` | `AiProviderRegistry` / `AiProviderDiscoveryService` — AI provider registry |
 | `caseFlow` | `Case` / `CaseService` / `CaseController` — case (conversation) lifecycle |
 | `caseEvent` | `CaseEvent` subtypes, emitter, SSE controller — event streaming |
 | `chat` | `ChatClientProvider` / `ChatModelFactory` — Spring AI client construction |
 | `entity` | `EntityController` — abstract CRUD base for all REST resources |
+| `generation` | `StructuredLlmClient` — one-shot, non-streaming LLM call returning a small JSON object, run off the caller's thread; shared by the proposal-only generation features (loop-config search block, scheduled-prompt proposal) |
 | `namespace` | `Namespace` / `NamespaceController` — multi-tenancy grouping |
 | `plugin` | `PluginService` — PF4J plugin loading and management |
 | `tool` | `ToolRegistry` / `ToolExecutorService` / `ToolController` — tool registry and execution |
