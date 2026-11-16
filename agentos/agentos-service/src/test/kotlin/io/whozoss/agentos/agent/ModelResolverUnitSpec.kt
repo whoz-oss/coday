@@ -49,12 +49,14 @@ class ModelResolverUnitSpec :
         }
 
         "without a model name, resolves the namespace default model" {
+            // findAiModel(namespaceId) is findAiModel(namespaceId, "default"): the default lives in the
+            // parameter, so the mock only ever sees the two-argument call.
             every { aiModelService.findAiModel(namespaceId) } returns model
 
             resolver.resolve(namespaceId, userId = null)?.first shouldBe model
 
-            verify(exactly = 1) { aiModelService.findAiModel(namespaceId) }
-            verify(exactly = 0) { aiModelService.findAiModel(namespaceId, any()) }
+            verify(exactly = 1) { aiModelService.findAiModel(namespaceId, "default") }
+            verify(exactly = 0) { aiModelService.findAiModel(namespaceId, neq("default")) }
         }
 
         "with a model name, looks that name up" {
