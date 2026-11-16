@@ -1,0 +1,9 @@
+# GRADLE integration (agentos-gradle-plugin): exposes gradle_compile, gradle_tests and
+# gradle_dependency_insight, run through the gradlew of the configured project.
+#
+# {{NAMESPACE_CONFIG_PATH}} resolves to the namespace configPath (the repository root),
+# so this file stays portable across developer machines.
+name: "GRADLE"
+integrationType: "GRADLE"
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}/agentos"
