@@ -282,6 +282,42 @@ paths:
       summary: Export an AgentConfig as a YAML file
       tags:
       - agent-config-controller
+  /api/agent-configs/{id}/loop-config/generate:
+    post:
+      description: "Uses the agent's configured LLM to translate a plain-English description\
+        \ into the `search` block (`tool` and `params`) of a loop configuration. The\
+        \ `act` block is not generated: the result is a proposal to complete, not\
+        \ a complete loop configuration."
+      operationId: generateLoopConfigAgentConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoopConfigGenerationRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoopConfigGenerationResult"
+          description: OK
+      summary: Generate the loop-config search block from a natural-language description
+      tags:
+      - agent-config-controller
   /api/ai-models:
     post:
       operationId: createAiModel
@@ -3062,6 +3098,31 @@ paths:
       summary: Effective scheduled prompts for the authenticated user in a namespace
       tags:
       - scheduled-prompt-controller
+  /api/scheduled-prompts/generate:
+    post:
+      description: "Returns a proposal, nothing is persisted. Every field but the\
+        \ description is optional: missing ones (loop agent, target agent, prompt,\
+        \ recurrence, planning, search tool) are decided by an LLM. The proposed scheduledPrompt\
+        \ is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed.\
+        \ Requires WRITE on the namespace."
+      operationId: generateScheduledPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledPromptGenerationRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPromptGenerationResult"
+          description: OK
+      summary: Propose a scheduled prompt driving a LOOP agent from a natural-language
+        description
+      tags:
+      - scheduled-prompt-controller
   /api/scheduled-prompts/search:
     post:
       operationId: searchScheduledPrompt
@@ -4908,6 +4969,35 @@ components:
       required:
       - caseEventId
       - positive
+    GeneratedFieldDecision:
+      type: object
+      properties:
+        field:
+          type: string
+          enum:
+          - LOOP_AGENT
+          - TARGET_AGENT
+          - PROMPT
+          - NAME
+          - RECURRENCE
+          - PLANNING
+          - SEARCH
+        rationale:
+          type:
+          - string
+          - "null"
+        source:
+          type: string
+          enum:
+          - PROVIDED
+          - INFERRED
+        value:
+          type:
+          - string
+          - "null"
+      required:
+      - field
+      - source
     GetByIdsRequest:
       type: object
       properties:
@@ -5150,6 +5240,35 @@ components:
       - inputTokens
       - outputTokens
       - totalTokens
+    LoopConfigGenerationRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          minLength: 1
+        searchToolName:
+          type: string
+          description: "Name of the search tool to use. When omitted, the LLM picks\
+            \ the best tool from all tools available to this agent."
+      required:
+      - description
+    LoopConfigGenerationResult:
+      type: object
+      properties:
+        loopConfig:
+          $ref: "#/components/schemas/JsonNode"
+          description: "Generated search block: `{ \"search\": { \"tool\", \"params\"\
+            \ } }`. It is not a complete loop configuration: the `act` block is missing\
+            \ and must be added by the caller. Null when generation failed (see `warning`)."
+        rawResponse:
+          type: string
+          description: "Raw LLM response text, present only when it could not be used.\
+            \ Never an error message."
+        warning:
+          type: string
+          description: "Human-readable explanation: why nothing was generated, or\
+            \ a caveat on the result (e.g. empty object generated, or fallback parse\
+            \ used)."
     MemberItem:
       type: object
       properties:
@@ -5986,6 +6105,76 @@ components:
           - string
           - "null"
           format: uuid
+    ScheduledPromptGenerationRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          maxLength: 2000
+          minLength: 0
+        loopAgentName:
+          type:
+          - string
+          - "null"
+          description: LOOP agent running the automation. Inferred when absent.
+          maxLength: 200
+          minLength: 0
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        planning:
+          $ref: "#/components/schemas/Planning"
+        prompt:
+          type:
+          - string
+          - "null"
+          description: Opening message of each started case. Inferred when absent.
+          maxLength: 4000
+          minLength: 0
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
+        searchToolName:
+          type:
+          - string
+          - "null"
+          description: Search tool of the loop agent. Chosen by the LLM when absent.
+          maxLength: 200
+          minLength: 0
+        targetAgentName:
+          type:
+          - string
+          - "null"
+          description: Agent started for each search result. Inferred when absent.
+          maxLength: 200
+          minLength: 0
+      required:
+      - description
+    ScheduledPromptGenerationResult:
+      type: object
+      properties:
+        decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedFieldDecision"
+        rawResponse:
+          type:
+          - string
+          - "null"
+        scheduledPrompt:
+          $ref: "#/components/schemas/ScheduledPrompt"
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+      - decisions
+      - warnings
     ScheduledPromptSearchRequest:
       type: object
       properties:
