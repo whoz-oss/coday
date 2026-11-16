@@ -28,8 +28,10 @@ data class Case(
      */
     val parentCaseId: UUID? = null,
     /**
-     * Id of the [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt] that triggered this case.
-     * Null for cases started by a human user or a delegation tool.
+     * Id of the [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt] that triggered this case: the case of a
+     * scheduled run, or a case started from it with a `FreeCaseStarter` tool, which inherits it
+     * ([io.whozoss.agentos.casePlugin.CaseStarterService]). Null for cases started by a human user or a
+     * delegation tool.
      */
     val scheduledPromptId: UUID? = null,
     /**
