@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -49,7 +50,6 @@ import java.util.UUID
  * test each phase in isolation. These scenarios validate the cross-phase orchestration.
  */
 class ScheduledPromptBatchScenarioSpec : StringSpec() {
-
     private val nowInstant = Instant.parse("2026-01-01T09:00:00Z")
     private val clock = Clock.fixed(nowInstant, ZoneOffset.UTC)
 
@@ -59,31 +59,35 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
     private val userId1: UUID = UUID.fromString("40000000-0000-0000-0000-000000000001")
     private val userId2: UUID = UUID.fromString("40000000-0000-0000-0000-000000000002")
 
+    private val objectMapper = jacksonObjectMapper()
     private val properties = SchedulerProperties(batchSize = 10, leaseMinutes = 30L)
-
-    private val activeAgent = AgentConfig(
-        metadata = EntityMetadata(id = agentId, version = 0L),
-        namespaceId = namespaceId,
-        name = "weekly-agent",
-        enabled = true,
-    )
-    private val promptTemplate = Prompt(
-        metadata = EntityMetadata(id = promptTemplateId),
-        name = "digest-template",
-        content = listOf("Run your weekly digest."),
-    )
-    private val user1 = User(
-        metadata = EntityMetadata(id = userId1),
-        externalId = "user1@example.com",
-        firstname = "Alice",
-        lastname = "Smith",
-    )
-    private val user2 = User(
-        metadata = EntityMetadata(id = userId2),
-        externalId = "user2@example.com",
-        firstname = "Bob",
-        lastname = "Jones",
-    )
+    private val activeAgent =
+        AgentConfig(
+            metadata = EntityMetadata(id = agentId, version = 0L),
+            namespaceId = namespaceId,
+            name = "weekly-agent",
+            enabled = true,
+        )
+    private val promptTemplate =
+        Prompt(
+            metadata = EntityMetadata(id = promptTemplateId),
+            name = "digest-template",
+            content = listOf("Run your weekly digest."),
+        )
+    private val user1 =
+        User(
+            metadata = EntityMetadata(id = userId1),
+            externalId = "user1@example.com",
+            firstname = "Alice",
+            lastname = "Smith",
+        )
+    private val user2 =
+        User(
+            metadata = EntityMetadata(id = userId2),
+            externalId = "user2@example.com",
+            firstname = "Bob",
+            lastname = "Jones",
+        )
 
     // ---------------------------------------------------------------------------
     // Fixture builders
@@ -92,19 +96,20 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
     private fun makeScheduledPrompt(
         spRepo: InMemoryScheduledPromptRepository,
         slot: Instant = Instant.parse("2026-01-01T08:00:00Z"),
-    ): ScheduledPrompt = spRepo.save(
-        ScheduledPrompt(
-            metadata = EntityMetadata(id = UUID.randomUUID()),
-            namespaceId = namespaceId,
-            agentConfigId = agentId,
-            promptTemplateId = promptTemplateId,
-            name = "weekly-digest",
-            recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = LocalTime.of(8, 0)),
-            planning = Planning(startDate = LocalDate.of(2026, 1, 1), endType = SchedulerEndType.NEVER),
-            enabled = true,
-            nextRunAt = slot,
-        ),
-    )
+    ): ScheduledPrompt =
+        spRepo.save(
+            ScheduledPrompt(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                agentConfigId = agentId,
+                promptTemplateId = promptTemplateId,
+                name = "weekly-digest",
+                recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = LocalTime.of(8, 0)),
+                planning = Planning(startDate = LocalDate.of(2026, 1, 1), endType = SchedulerEndType.NEVER),
+                enabled = true,
+                nextRunAt = slot,
+            ),
+        )
 
     /**
      * Build scanner + executor together. Returns both so tests can drive Phase B directly.
@@ -114,43 +119,49 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
         runRepo: InMemoryScheduledPromptRunRepository,
         userRunRepo: InMemoryScheduledPromptUserRunRepository,
         caseService: CaseService,
-        agentConfigService: AgentConfigService = mockk<AgentConfigService>().also {
-            every { it.findById(agentId) } returns activeAgent
-            every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
-        },
-        userService: UserService = mockk<UserService>().also {
-            every { it.findById(userId1) } returns user1
-            every { it.findById(userId2) } returns user2
-        },
+        agentConfigService: AgentConfigService =
+            mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns activeAgent
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
+            },
+        userService: UserService =
+            mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+                every { it.findById(userId2) } returns user2
+            },
     ): Pair<SchedulerScanner, ScheduledPromptExecutor> {
         runRepo.userRunRepository = userRunRepo
-        val promptService = mockk<PromptService>().also {
-            every { it.findById(promptTemplateId) } returns promptTemplate
-        }
-        val executor = ScheduledPromptExecutor(
-            scheduledPromptRepository = spRepo,
-            runRepository = runRepo,
-            userRunRepository = userRunRepo,
-            promptService = promptService,
-            agentConfigService = agentConfigService,
-            caseService = caseService,
-            permissionService = mockk<PermissionService>(relaxed = true),
-            userService = userService,
-            userSessionContextResolver = UserSessionContextResolver(),
-            properties = properties,
-            clock = clock,
-        )
-        val scanner = SchedulerScanner(
-            scheduledPromptRepository = spRepo,
-            runRepository = runRepo,
-            userRunRepository = userRunRepo,
-            agentConfigService = agentConfigService,
-            properties = properties,
-            clock = clock,
-            nextRunCalculatorService = NextRunCalculatorService(clock = clock),
-            executor = executor,
-            executionWindowService = ExecutionWindowService(properties),
-        )
+        val promptService =
+            mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns promptTemplate
+            }
+        val executor =
+            ScheduledPromptExecutor(
+                scheduledPromptRepository = spRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk<PermissionService>(relaxed = true),
+                userService = userService,
+                userSessionContextResolver = UserSessionContextResolver(),
+                objectMapper = objectMapper,
+                properties = properties,
+                clock = clock,
+            )
+        val scanner =
+            SchedulerScanner(
+                scheduledPromptRepository = spRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = agentConfigService,
+                properties = properties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+                executionWindowService = ExecutionWindowService(properties),
+            )
         return scanner to executor
     }
 
@@ -214,10 +225,13 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> setOf(userId1, userId2) }
             makeScheduledPrompt(spRepo)
 
-            val (scanner, executor) = makeComponents(
-                spRepo, runRepo, userRunRepo,
-                caseService = eventuallyIdleCaseService(),
-            )
+            val (scanner, executor) =
+                makeComponents(
+                    spRepo,
+                    runRepo,
+                    userRunRepo,
+                    caseService = eventuallyIdleCaseService(),
+                )
 
             // Phase A: claim the due slot, materialise UserRuns
             scanner.tickClaim()
@@ -246,22 +260,27 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             val sp = makeScheduledPrompt(spRepo, slot = Instant.parse("2026-01-01T08:00:00Z"))
 
             // Simulate crash: insert a CLAIMED Run older than the orphan threshold (5 min)
-            val orphanedRun = ScheduledPromptRun(
-                metadata = EntityMetadata(
-                    id = UUID.randomUUID(),
-                    created = Instant.parse("2025-12-31T08:00:00Z"),
-                ),
-                scheduledPromptId = sp.id,
-                scheduledFor = Instant.parse("2025-12-31T08:00:00Z"),
-                status = RunStatus.CLAIMED,
-                correlationId = "orphaned-claimed",
-            )
+            val orphanedRun =
+                ScheduledPromptRun(
+                    metadata =
+                        EntityMetadata(
+                            id = UUID.randomUUID(),
+                            created = Instant.parse("2025-12-31T08:00:00Z"),
+                        ),
+                    scheduledPromptId = sp.id,
+                    scheduledFor = Instant.parse("2025-12-31T08:00:00Z"),
+                    status = RunStatus.CLAIMED,
+                    correlationId = "orphaned-claimed",
+                )
             runRepo.insert(orphanedRun)
 
-            val (scanner, _) = makeComponents(
-                spRepo, runRepo, userRunRepo,
-                caseService = eventuallyIdleCaseService(),
-            )
+            val (scanner, _) =
+                makeComponents(
+                    spRepo,
+                    runRepo,
+                    userRunRepo,
+                    caseService = eventuallyIdleCaseService(),
+                )
 
             // tickClaim: sweep marks orphan FAILED (unblocking hasActive guard),
             // then claims the due slot -> materialises -> RUNNING.
@@ -280,15 +299,16 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             val sp = makeScheduledPrompt(spRepo, slot = Instant.parse("2026-01-01T10:00:00Z")) // not due
 
             // Simulate crash: Run is RUNNING, UserRun settled, but the Run was never closed.
-            val orphanedRun = runRepo.insert(
-                ScheduledPromptRun(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    scheduledPromptId = sp.id,
-                    scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
-                    status = RunStatus.RUNNING,
-                    correlationId = "orphaned-running",
-                ),
-            )
+            val orphanedRun =
+                runRepo.insert(
+                    ScheduledPromptRun(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        scheduledPromptId = sp.id,
+                        scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
+                        status = RunStatus.RUNNING,
+                        correlationId = "orphaned-running",
+                    ),
+                )
             userRunRepo.materialize(orphanedRun.id, agentId, namespaceId)
             userRunRepo.markTerminal(
                 userRunRepo.findByRunId(orphanedRun.id).first().id,
@@ -296,10 +316,13 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 nowInstant,
             )
 
-            val (scanner, _) = makeComponents(
-                spRepo, runRepo, userRunRepo,
-                caseService = mockk(relaxed = true),
-            )
+            val (scanner, _) =
+                makeComponents(
+                    spRepo,
+                    runRepo,
+                    userRunRepo,
+                    caseService = mockk(relaxed = true),
+                )
 
             // tickClaim sweeps the orphaned RUNNING run -> DONE
             scanner.tickClaim()
@@ -316,49 +339,56 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
 
             // batchSize = 2 -> 3 batches needed for 5 UserRuns
             val smallBatchProperties = SchedulerProperties(batchSize = 2, leaseMinutes = 30L)
-            val userService = mockk<UserService>().also { svc ->
-                userIds.forEach { id ->
-                    every { svc.findById(id) } returns User(
-                        metadata = EntityMetadata(id = id),
-                        externalId = "$id@example.com",
-                        firstname = "User",
-                        lastname = id.toString().take(6),
-                    )
+            val userService =
+                mockk<UserService>().also { svc ->
+                    userIds.forEach { id ->
+                        every { svc.findById(id) } returns
+                            User(
+                                metadata = EntityMetadata(id = id),
+                                externalId = "$id@example.com",
+                                firstname = "User",
+                                lastname = id.toString().take(6),
+                            )
+                    }
                 }
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns activeAgent
-                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
-            }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns activeAgent
+                    every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
+                }
 
             runRepo.userRunRepository = userRunRepo
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns promptTemplate
-            }
-            val executor = ScheduledPromptExecutor(
-                scheduledPromptRepository = spRepo,
-                runRepository = runRepo,
-                userRunRepository = userRunRepo,
-                promptService = promptService,
-                agentConfigService = agentConfigService,
-                caseService = eventuallyIdleCaseService(),
-                permissionService = mockk(relaxed = true),
-                userService = userService,
-                userSessionContextResolver = UserSessionContextResolver(),
-                properties = smallBatchProperties,
-                clock = clock,
-            )
-            val scanner = SchedulerScanner(
-                scheduledPromptRepository = spRepo,
-                runRepository = runRepo,
-                userRunRepository = userRunRepo,
-                agentConfigService = agentConfigService,
-                properties = smallBatchProperties,
-                clock = clock,
-                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
-                executor = executor,
-                executionWindowService = ExecutionWindowService(smallBatchProperties),
-            )
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns promptTemplate
+                }
+            val executor =
+                ScheduledPromptExecutor(
+                    scheduledPromptRepository = spRepo,
+                    runRepository = runRepo,
+                    userRunRepository = userRunRepo,
+                    promptService = promptService,
+                    agentConfigService = agentConfigService,
+                    caseService = eventuallyIdleCaseService(),
+                    permissionService = mockk(relaxed = true),
+                    userService = userService,
+                    userSessionContextResolver = UserSessionContextResolver(),
+                    objectMapper = objectMapper,
+                    properties = smallBatchProperties,
+                    clock = clock,
+                )
+            val scanner =
+                SchedulerScanner(
+                    scheduledPromptRepository = spRepo,
+                    runRepository = runRepo,
+                    userRunRepository = userRunRepo,
+                    agentConfigService = agentConfigService,
+                    properties = smallBatchProperties,
+                    clock = clock,
+                    nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                    executor = executor,
+                    executionWindowService = ExecutionWindowService(smallBatchProperties),
+                )
 
             // Phase A
             scanner.tickClaim()
@@ -387,15 +417,16 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> setOf(userId1) }
             val sp = makeScheduledPrompt(spRepo, slot = Instant.parse("2026-01-01T10:00:00Z")) // not due
 
-            val orphanedRun = runRepo.insert(
-                ScheduledPromptRun(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    scheduledPromptId = sp.id,
-                    scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
-                    status = RunStatus.RUNNING,
-                    correlationId = "orphaned-running-failed",
-                ),
-            )
+            val orphanedRun =
+                runRepo.insert(
+                    ScheduledPromptRun(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        scheduledPromptId = sp.id,
+                        scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
+                        status = RunStatus.RUNNING,
+                        correlationId = "orphaned-running-failed",
+                    ),
+                )
             userRunRepo.materialize(orphanedRun.id, agentId, namespaceId)
             userRunRepo.markTerminal(
                 userRunRepo.findByRunId(orphanedRun.id).first().id,
@@ -404,10 +435,13 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 "Case creation failed",
             )
 
-            val (scanner, _) = makeComponents(
-                spRepo, runRepo, userRunRepo,
-                caseService = mockk(relaxed = true),
-            )
+            val (scanner, _) =
+                makeComponents(
+                    spRepo,
+                    runRepo,
+                    userRunRepo,
+                    caseService = mockk(relaxed = true),
+                )
 
             scanner.tickClaim()
 

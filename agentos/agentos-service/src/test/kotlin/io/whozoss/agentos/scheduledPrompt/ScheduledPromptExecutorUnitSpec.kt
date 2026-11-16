@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.data.forAll
@@ -17,6 +18,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -31,7 +33,6 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.User
@@ -65,7 +66,6 @@ import java.util.UUID
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScheduledPromptExecutorUnitSpec : StringSpec() {
-
     private val nowInstant = Instant.parse("2026-01-01T09:00:00Z")
     private val clock = Clock.fixed(nowInstant, ZoneOffset.UTC)
 
@@ -76,54 +76,63 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
     private val userId2: UUID = UUID.fromString("40000000-0000-0000-0000-000000000002")
     private val caseId: UUID = UUID.fromString("50000000-0000-0000-0000-000000000001")
 
-    private val properties = SchedulerProperties(
-        batchSize = 5,
-        leaseMinutes = 30L,
-    )
+    private val properties =
+        SchedulerProperties(
+            batchSize = 5,
+            leaseMinutes = 30L,
+        )
 
-    private val user1 = User(
-        metadata = EntityMetadata(id = userId1),
-        externalId = "user1@example.com",
-        firstname = "Alice",
-        lastname = "Smith",
-    )
-    private val user2 = User(
-        metadata = EntityMetadata(id = userId2),
-        externalId = "user2@example.com",
-        firstname = "Bob",
-        lastname = "Jones",
-    )
+    private val user1 =
+        User(
+            metadata = EntityMetadata(id = userId1),
+            externalId = "user1@example.com",
+            firstname = "Alice",
+            lastname = "Smith",
+        )
+    private val user2 =
+        User(
+            metadata = EntityMetadata(id = userId2),
+            externalId = "user2@example.com",
+            firstname = "Bob",
+            lastname = "Jones",
+        )
 
-    private fun makeScheduledPrompt(nsId: UUID? = namespaceId) = ScheduledPrompt(
-        metadata = EntityMetadata(id = UUID.randomUUID()),
-        namespaceId = nsId,
-        agentConfigId = agentId,
-        promptTemplateId = promptTemplateId,
-        name = "Weekly Digest",
-        recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = LocalTime.of(9, 0)),
-        planning = Planning(startDate = LocalDate.of(2026, 1, 1), endType = SchedulerEndType.NEVER),
-        nextRunAt = nowInstant,
-    )
+    private val objectMapper = jacksonObjectMapper()
 
-    private fun makeRun(sp: ScheduledPrompt) = ScheduledPromptRun(
-        metadata = EntityMetadata(id = UUID.randomUUID()),
-        scheduledPromptId = sp.id,
-        scheduledFor = nowInstant,
-        status = RunStatus.CLAIMED,
-        correlationId = "test-run",
-    )
+    private fun makeScheduledPrompt(nsId: UUID? = namespaceId) =
+        ScheduledPrompt(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            namespaceId = nsId,
+            agentConfigId = agentId,
+            promptTemplateId = promptTemplateId,
+            name = "Weekly Digest",
+            recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = LocalTime.of(9, 0)),
+            planning = Planning(startDate = LocalDate.of(2026, 1, 1), endType = SchedulerEndType.NEVER),
+            nextRunAt = nowInstant,
+        )
 
-    private fun makePromptTemplate(content: String = "Run your weekly digest report.") = Prompt(
-        metadata = EntityMetadata(id = promptTemplateId),
-        name = "digest-template",
-        content = listOf(content),
-    )
+    private fun makeRun(sp: ScheduledPrompt) =
+        ScheduledPromptRun(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            scheduledPromptId = sp.id,
+            scheduledFor = nowInstant,
+            status = RunStatus.CLAIMED,
+            correlationId = "test-run",
+        )
 
-    private fun makeAgentConfig(name: String = "weekly-agent") = AgentConfig(
-        metadata = EntityMetadata(id = agentId),
-        namespaceId = namespaceId,
-        name = name,
-    )
+    private fun makePromptTemplate(content: String = "Run your weekly digest report.") =
+        Prompt(
+            metadata = EntityMetadata(id = promptTemplateId),
+            name = "digest-template",
+            content = listOf(content),
+        )
+
+    private fun makeAgentConfig(name: String = "weekly-agent") =
+        AgentConfig(
+            metadata = EntityMetadata(id = agentId),
+            namespaceId = namespaceId,
+            name = name,
+        )
 
     /** Stubs deployed access via the same query used by the interactive @mention flow. */
     private fun AgentConfigService.stubDeployedAccess(agentName: String = "weekly-agent") {
@@ -164,8 +173,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
      * Build an [InMemoryScheduledPromptUserRunRepository] whose graph-traversal materialize
      * returns [targetUserIds] for any `(agentConfigId, namespaceId)` pair.
      */
-    private fun makeUserRunRepo(targetUserIds: Set<UUID> = emptySet()) =
-        InMemoryScheduledPromptUserRunRepository { _, _ -> targetUserIds }
+    private fun makeUserRunRepo(targetUserIds: Set<UUID> = emptySet()) = InMemoryScheduledPromptUserRunRepository { _, _ -> targetUserIds }
 
     private fun executor(
         spRepo: ScheduledPromptRepository,
@@ -187,6 +195,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         permissionService = permissionService,
         userSessionContextResolver = userSessionContextResolver,
         caseService = caseService,
+        objectMapper = objectMapper,
         properties = properties,
         clock = clock,
     )
@@ -280,15 +289,16 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
             val userRunRepo = makeUserRunRepo(setOf(userId1))
 
-            val exec = executor(
-                spRepo = makeSpRepo(sp),
-                runRepo = runRepo,
-                userRunRepo = userRunRepo,
-                promptService = mockk(relaxed = true),
-                caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
-            )
+            val exec =
+                executor(
+                    spRepo = makeSpRepo(sp),
+                    runRepo = runRepo,
+                    userRunRepo = userRunRepo,
+                    promptService = mockk(relaxed = true),
+                    caseService = mockk(relaxed = true),
+                    permissionService = mockk(relaxed = true),
+                    userService = mockk(relaxed = true),
+                )
             exec.materialize(run, sp, makeAgentConfig())
             exec.materialize(run, sp, makeAgentConfig())
 
@@ -300,19 +310,21 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val run = makeRun(sp)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
 
-            val throwingUserRunRepo = mockk<ScheduledPromptUserRunRepository>().also {
-                every { it.materialize(run.id, agentId, namespaceId) } throws RuntimeException("Simulated Neo4j failure")
-            }
+            val throwingUserRunRepo =
+                mockk<ScheduledPromptUserRunRepository>().also {
+                    every { it.materialize(run.id, agentId, namespaceId) } throws RuntimeException("Simulated Neo4j failure")
+                }
 
-            val exec = executor(
-                spRepo = makeSpRepo(sp),
-                runRepo = runRepo,
-                userRunRepo = throwingUserRunRepo,
-                promptService = mockk(relaxed = true),
-                caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
-            )
+            val exec =
+                executor(
+                    spRepo = makeSpRepo(sp),
+                    runRepo = runRepo,
+                    userRunRepo = throwingUserRunRepo,
+                    promptService = mockk(relaxed = true),
+                    caseService = mockk(relaxed = true),
+                    permissionService = mockk(relaxed = true),
+                    userService = mockk(relaxed = true),
+                )
 
             io.kotest.assertions.throwables.shouldThrow<RuntimeException> {
                 exec.materialize(run, sp, makeAgentConfig())
@@ -351,33 +363,39 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.all().first()
             // Transition to RUNNING so processUserRun can mark it terminal
             userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10)
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
-                it.stubDeployedAccess("weekly-agent")
-            }
-            val createdCase = Case(
-                metadata = EntityMetadata(id = caseId),
-                namespaceId = namespaceId,
-            )
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-                every { it.findActiveRuntime(caseId) } returns null
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
+                    it.stubDeployedAccess("weekly-agent")
+                }
+            val createdCase =
+                Case(
+                    metadata = EntityMetadata(id = caseId),
+                    namespaceId = namespaceId,
+                )
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                    every { it.findActiveRuntime(caseId) } returns null
+                }
             val permissionService = mockk<PermissionService>(relaxed = true)
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -412,7 +430,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             actorSlot.captured.role shouldBe ActorRole.USER
             actorSlot.captured.id shouldBe userId1.toString()
-            val text = contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content
+            val text =
+                contentSlot.captured
+                    .filterIsInstance<MessageContent.Text>()
+                    .first()
+                    .content
             text shouldBe "@weekly-agent Run your weekly digest report."
         }
 
@@ -424,20 +446,24 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns null
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns null
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -459,20 +485,24 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate(content = "")
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate(content = "")
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -498,29 +528,35 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val runtime = mockk<CaseRuntime>(relaxed = true).also {
-                every { it.statusFlow } returns MutableStateFlow(CaseStatus.IDLE)
-            }
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns runtime
-            }
+            val runtime =
+                mockk<CaseRuntime>(relaxed = true).also {
+                    every { it.statusFlow } returns MutableStateFlow(CaseStatus.IDLE)
+                }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns runtime
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -540,29 +576,35 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val runtime = mockk<CaseRuntime>(relaxed = true).also {
-                every { it.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
-            }
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns runtime
-            }
+            val runtime =
+                mockk<CaseRuntime>(relaxed = true).also {
+                    every { it.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
+                }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns runtime
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -581,39 +623,46 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         }
 
         "Phase B: monitorLaunch closes UserRun as TIMEOUT on timeout (Case still RUNNING)" {
-            val shortTimeoutProperties = SchedulerProperties(
-                batchSize = 5,
-                launchTimeoutSeconds = 0L,
-                leaseMinutes = 30L,
-            )
+            val shortTimeoutProperties =
+                SchedulerProperties(
+                    batchSize = 5,
+                    launchTimeoutSeconds = 0L,
+                    leaseMinutes = 30L,
+                )
 
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
             val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
-            val runtime = mockk<CaseRuntime>(relaxed = true).also {
-                every { it.statusFlow } returns statusFlow
-            }
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns runtime
-            }
+            val runtime =
+                mockk<CaseRuntime>(relaxed = true).also {
+                    every { it.statusFlow } returns statusFlow
+                }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns runtime
+                }
 
             ScheduledPromptExecutor(
                 scheduledPromptRepository = makeSpRepo(sp),
@@ -625,6 +674,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 permissionService = mockk(relaxed = true),
                 userSessionContextResolver = UserSessionContextResolver(),
                 caseService = caseService,
+                objectMapper = objectMapper,
                 properties = shortTimeoutProperties,
                 clock = clock,
             ).processUserRun(userRun)
@@ -641,28 +691,33 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
             val caseSlot = slot<Case>()
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(capture(caseSlot)) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(capture(caseSlot)) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -686,45 +741,52 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             // Prompt with sourceLanguage="en", title mirrors scheduledPrompt.name
-            val prompt = makePromptTemplate().copy(
-                sourceLanguage = "en",
-                title = sp.name,
-            )
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns prompt
-                every {
-                    it.translate(
-                        id = promptTemplateId,
-                        targetLanguage = "it",
-                        callerNamespaceId = namespaceId,
-                    )
-                } returns PromptTranslation(
-                    title = "Sintesi settimanale",
-                    content = listOf("Esegui il report settimanale."),
+            val prompt =
+                makePromptTemplate().copy(
+                    sourceLanguage = "en",
+                    title = sp.name,
                 )
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns prompt
+                    every {
+                        it.translate(
+                            id = promptTemplateId,
+                            targetLanguage = "it",
+                            callerNamespaceId = namespaceId,
+                        )
+                    } returns
+                        PromptTranslation(
+                            title = "Sintesi settimanale",
+                            content = listOf("Esegui il report settimanale."),
+                        )
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
             val userWithLanguage = user1.copy(preferredLanguage = "it")
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns userWithLanguage
-            }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns userWithLanguage
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
             val caseSlot = slot<Case>()
             val contentSlot = slot<List<MessageContent>>()
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(capture(caseSlot)) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(capture(caseSlot)) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -749,7 +811,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                     sessionContext = any(),
                 )
             }
-            val text = contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content
+            val text =
+                contentSlot.captured
+                    .filterIsInstance<MessageContent.Text>()
+                    .first()
+                    .content
             text shouldBe "@weekly-agent Esegui il report settimanale."
         }
 
@@ -757,29 +823,34 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(sourceLanguage = "en")
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(sourceLanguage = "en")
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
             // User's preferredLanguage matches the prompt's sourceLanguage
             val userWithEnglish = user1.copy(preferredLanguage = "en")
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns userWithEnglish
-            }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns userWithEnglish
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -800,36 +871,42 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(
-                    sourceLanguage = "en",
-                    title = sp.name,
-                )
-                every {
-                    it.translate(any(), any(), any())
-                } throws RuntimeException("No AI model configured")
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns
+                        makePromptTemplate().copy(
+                            sourceLanguage = "en",
+                            title = sp.name,
+                        )
+                    every {
+                        it.translate(any(), any(), any())
+                    } throws RuntimeException("No AI model configured")
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
             val userWithLanguage = user1.copy(preferredLanguage = "it")
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns userWithLanguage
-            }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns userWithLanguage
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
             val caseSlot = slot<Case>()
             val contentSlot = slot<List<MessageContent>>()
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(capture(caseSlot)) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(capture(caseSlot)) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -852,7 +929,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                     sessionContext = any(),
                 )
             }
-            val text = contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content
+            val text =
+                contentSlot.captured
+                    .filterIsInstance<MessageContent.Text>()
+                    .first()
+                    .content
             text shouldBe "@weekly-agent Run your weekly digest report."
             val updated = userRunRepo.all().first { it.id == userRun.id }
             updated.status shouldBe UserRunStatus.DONE
@@ -866,28 +947,33 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
             val userWithLanguage = user1.copy(preferredLanguage = "fr")
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns userWithLanguage
-            }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns userWithLanguage
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -916,28 +1002,33 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
             // user1 has no preferredLanguage (null)
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -967,34 +1058,40 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
             val userWithLanguage = user1.copy(preferredLanguage = "fr")
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns userWithLanguage
-            }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns userWithLanguage
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
             // Provider also sends 'preferredLanguage' — should NOT override the user's stored value
             val providerContext = mapOf("preferredLanguage" to "de", "userContext" to mapOf("talentId" to "t1"))
-            val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(userWithLanguage.externalId, namespaceId) } returns
-                    UserContextResult.Success(providerContext)
-            }
+            val provider =
+                mockk<UserContextProvider>().also {
+                    every { it.provideUserContext(userWithLanguage.externalId, namespaceId) } returns
+                        UserContextResult.Success(providerContext)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -1024,84 +1121,99 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             (sessionContextSlot.captured["userContext"] as Map<String, Any?>)["talentId"] shouldBe "t1"
         }
 
-        "Phase B: flowConfiguration is sent as a plain map in the sessionContext, with the SOURCE prompt overriding any stored act.prompt, winning over a provider key" {
-            // the stored act.prompt must be overridden by the source content of the scheduled prompt
-            val stored = ObjectMapper().readTree(
-                """{"search": {"tool": "searchAgentUsers", "params": {"agentConfigId": "abc"}}, "act": {"agentName": "Caretaker", "prompt": "stored prompt"}}""",
-            )
-            val sp = makeScheduledPrompt().copy(flowConfiguration = stored)
-            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
-            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
-            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
-
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(sourceLanguage = "en", title = sp.name)
-                every { it.translate(id = promptTemplateId, targetLanguage = "it", callerNamespaceId = namespaceId) } returns
-                    PromptTranslation(title = "Sintesi", content = listOf("Esegui il report settimanale."))
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig().copy(executionMode = ExecutionMode.LOOP)
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1.copy(preferredLanguage = "it")
-            }
-            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
-            // the provider sends a key of the same name, and other context that must be kept
-            val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(user1.externalId, namespaceId) } returns
-                    UserContextResult.Success(
-                        mapOf("flowConfiguration" to "from-provider", "userContext" to mapOf("talentId" to "t1")),
+        "Phase B: flowConfiguration is sent as a plain map in the sessionContext, with the SOURCE prompt overriding " +
+            "any stored act.prompt, winning over a provider key" {
+                // the stored act.prompt must be overridden by the source content of the scheduled prompt
+                val stored =
+                    ObjectMapper().readTree(
+                        """{"search": {"tool": "searchAgentUsers", "params": {"agentConfigId": "abc"}}, "act": {"agentName": "Caretaker", "prompt": "stored prompt"}}""",
                     )
-            }
+                val sp = makeScheduledPrompt().copy(flowConfiguration = stored)
+                val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+                val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+                val userRunRepo =
+                    makeUserRunRepo(setOf(userId1)).also {
+                        it.materialize(run.id, agentId, namespaceId)
+                    }
+                val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            executor(
-                spRepo = makeSpRepo(sp),
-                runRepo = runRepo,
-                userRunRepo = userRunRepo,
-                promptService = promptService,
-                agentConfigService = agentConfigService,
-                caseService = caseService,
-                permissionService = mockk(relaxed = true),
-                userService = userService,
-                userSessionContextResolver = UserSessionContextResolver(provider),
-            ).processUserRun(userRun)
+                val promptService =
+                    mockk<PromptService>().also {
+                        every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(sourceLanguage = "en", title = sp.name)
+                        every { it.translate(id = promptTemplateId, targetLanguage = "it", callerNamespaceId = namespaceId) } returns
+                            PromptTranslation(title = "Sintesi", content = listOf("Esegui il report settimanale."))
+                    }
+                val agentConfigService =
+                    mockk<AgentConfigService>().also {
+                        every { it.findById(agentId) } returns makeAgentConfig().copy(executionMode = ExecutionMode.LOOP)
+                        it.stubDeployedAccess()
+                    }
+                val userService =
+                    mockk<UserService>().also {
+                        every { it.findById(userId1) } returns user1.copy(preferredLanguage = "it")
+                    }
+                val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+                val caseService =
+                    mockk<CaseService>(relaxed = true).also {
+                        every { it.create(any()) } returns createdCase
+                        every { it.findActiveRuntime(caseId) } returns null
+                        every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                    }
+                // the provider sends a key of the same name, and other context that must be kept
+                val provider =
+                    mockk<UserContextProvider>().also {
+                        every { it.provideUserContext(user1.externalId, namespaceId) } returns
+                            UserContextResult.Success(
+                                mapOf("flowConfiguration" to "from-provider", "userContext" to mapOf("talentId" to "t1")),
+                            )
+                    }
 
-            val contentSlot = slot<List<MessageContent>>()
-            val sessionContextSlot = slot<Map<String, Any?>>()
-            verify(exactly = 1) {
-                caseService.addMessage(
-                    caseId = caseId,
-                    actor = any(),
-                    content = capture(contentSlot),
-                    sessionContext = capture(sessionContextSlot),
-                )
+                executor(
+                    spRepo = makeSpRepo(sp),
+                    runRepo = runRepo,
+                    userRunRepo = userRunRepo,
+                    promptService = promptService,
+                    agentConfigService = agentConfigService,
+                    caseService = caseService,
+                    permissionService = mockk(relaxed = true),
+                    userService = userService,
+                    userSessionContextResolver = UserSessionContextResolver(provider),
+                ).processUserRun(userRun)
+
+                val contentSlot = slot<List<MessageContent>>()
+                val sessionContextSlot = slot<Map<String, Any?>>()
+                verify(exactly = 1) {
+                    caseService.addMessage(
+                        caseId = caseId,
+                        actor = any(),
+                        content = capture(contentSlot),
+                        sessionContext = capture(sessionContextSlot),
+                    )
+                }
+                // the message to the loop agent itself is translated for its user, as before
+                contentSlot.captured
+                    .filterIsInstance<MessageContent.Text>()
+                    .first()
+                    .content shouldBe
+                    "@weekly-agent Esegui il report settimanale."
+                val context = sessionContextSlot.captured
+                context["preferredLanguage"] shouldBe "it"
+                // the cases the loop starts are for other users: their prompt is the untranslated source content
+                context["flowConfiguration"] shouldBe
+                    mapOf(
+                        "search" to mapOf("tool" to "searchAgentUsers", "params" to mapOf("agentConfigId" to "abc")),
+                        "act" to mapOf("agentName" to "Caretaker", "prompt" to "Run your weekly digest report."),
+                    )
+                context["userContext"] shouldBe mapOf("talentId" to "t1")
+                // the stored configuration itself is left untouched
+                stored["act"]["prompt"].asText() shouldBe "stored prompt"
             }
-            // the message to the loop agent itself is translated for its user, as before
-            contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content shouldBe
-                "@weekly-agent Esegui il report settimanale."
-            val context = sessionContextSlot.captured
-            context["preferredLanguage"] shouldBe "it"
-            // the cases the loop starts are for other users: their prompt is the untranslated source content
-            context["flowConfiguration"] shouldBe mapOf(
-                "search" to mapOf("tool" to "searchAgentUsers", "params" to mapOf("agentConfigId" to "abc")),
-                "act" to mapOf("agentName" to "Caretaker", "prompt" to "Run your weekly digest report."),
-            )
-            context["userContext"] shouldBe mapOf("talentId" to "t1")
-            // the stored configuration itself is left untouched
-            stored["act"]["prompt"].asText() shouldBe "stored prompt"
-        }
 
         "Phase B: a flowConfiguration whose agent is no longer LOOP fails the UserRun, with no Case and no message" {
-            val flowConfiguration = ObjectMapper().readTree("""{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""")
+            val flowConfiguration =
+                ObjectMapper().readTree(
+                    """{"search": {"tool": "searchAgentUsers"}, "act": {"agentName": "Caretaker"}}""",
+                )
             forAll(
                 row(ExecutionMode.SIMPLE),
                 row(ExecutionMode.ADVANCED),
@@ -1109,21 +1221,25 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 val sp = makeScheduledPrompt().copy(flowConfiguration = flowConfiguration)
                 val run = makeRun(sp).copy(status = RunStatus.RUNNING)
                 val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-                val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                    it.materialize(run.id, agentId, namespaceId)
-                }
+                val userRunRepo =
+                    makeUserRunRepo(setOf(userId1)).also {
+                        it.materialize(run.id, agentId, namespaceId)
+                    }
                 val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-                val promptService = mockk<PromptService>().also {
-                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
-                }
-                val agentConfigService = mockk<AgentConfigService>().also {
-                    every { it.findById(agentId) } returns makeAgentConfig().copy(executionMode = mode)
-                    it.stubDeployedAccess()
-                }
-                val userService = mockk<UserService>().also {
-                    every { it.findById(userId1) } returns user1
-                }
+                val promptService =
+                    mockk<PromptService>().also {
+                        every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                    }
+                val agentConfigService =
+                    mockk<AgentConfigService>().also {
+                        every { it.findById(agentId) } returns makeAgentConfig().copy(executionMode = mode)
+                        it.stubDeployedAccess()
+                    }
+                val userService =
+                    mockk<UserService>().also {
+                        every { it.findById(userId1) } returns user1
+                    }
                 val caseService = mockk<CaseService>(relaxed = true)
 
                 executor(
@@ -1152,31 +1268,37 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
             val expectedContext = mapOf("userContext" to mapOf("talentId" to "t1"))
-            val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(expectedContext)
-            }
+            val provider =
+                mockk<UserContextProvider>().also {
+                    every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(expectedContext)
+                }
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -1207,24 +1329,29 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
-            val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
+            val provider =
+                mockk<UserContextProvider>().also {
+                    every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
+                }
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -1246,25 +1373,30 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
-            val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(any(), any()) } returns
-                    UserContextResult.PermanentFailure("User not found in external system (404)")
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
+            val provider =
+                mockk<UserContextProvider>().also {
+                    every { it.provideUserContext(any(), any()) } returns
+                        UserContextResult.PermanentFailure("User not found in external system (404)")
+                }
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -1286,25 +1418,30 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
-            val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(any(), any()) } returns
-                    UserContextResult.TransientFailure("External service timeout (503)")
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
+            val provider =
+                mockk<UserContextProvider>().also {
+                    every { it.provideUserContext(any(), any()) } returns
+                        UserContextResult.TransientFailure("External service timeout (503)")
+                }
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -1331,15 +1468,17 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             // → catch block in processUserRun calls markFailed → userRunRepository.markTerminal FAILED
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             // runRepository that throws on findById
-            val throwingRunRepo = mockk<ScheduledPromptRunRepository>().also {
-                every { it.findById(run.id) } throws RuntimeException("DB unavailable")
-            }
+            val throwingRunRepo =
+                mockk<ScheduledPromptRunRepository>().also {
+                    every { it.findById(run.id) } throws RuntimeException("DB unavailable")
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -1359,20 +1498,23 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         "processUserRun: markFailed fails (DB down) → exception swallowed, no rethrow" {
             // Both resolveContext (findById) and markTerminal throw → processUserRun must not propagate
             val sp = makeScheduledPrompt()
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(UUID.randomUUID(), agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(UUID.randomUUID(), agentId, namespaceId)
+                }
             // Claim a userRun from the in-memory repo so we have a valid id
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             // runRepository throws → resolveContext throws → catch block → markFailed called
-            val throwingRunRepo = mockk<ScheduledPromptRunRepository>().also {
-                every { it.findById(any()) } throws RuntimeException("DB unavailable")
-            }
+            val throwingRunRepo =
+                mockk<ScheduledPromptRunRepository>().also {
+                    every { it.findById(any()) } throws RuntimeException("DB unavailable")
+                }
             // userRunRepository also throws on markTerminal → markFailed swallows the error
-            val throwingUserRunRepo = mockk<ScheduledPromptUserRunRepository>().also {
-                every { it.markTerminal(any(), any(), any(), any()) } throws RuntimeException("DB also down")
-            }
+            val throwingUserRunRepo =
+                mockk<ScheduledPromptUserRunRepository>().also {
+                    every { it.markTerminal(any(), any(), any(), any()) } throws RuntimeException("DB also down")
+                }
 
             // Must not throw — the exception in markFailed is swallowed by runCatching in markFailed
             executor(
@@ -1394,41 +1536,45 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val realRunRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                // No active runtime → closeUserRun is called with findById result
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    // No active runtime → closeUserRun is called with findById result
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             // Wrap userRunRepo to make markTerminal throw on the first call (from closeUserRun)
             // but still track the actual state so we can verify the UserRun stays RUNNING
-            val throwingOnMarkTerminalRepo = object : ScheduledPromptUserRunRepository by userRunRepo {
-                override fun markTerminal(
-                    id: UUID,
-                    status: UserRunStatus,
-                    now: Instant,
-                    error: String?,
-                ): ScheduledPromptUserRun {
-                    throw RuntimeException("DB write failed")
+            val throwingOnMarkTerminalRepo =
+                object : ScheduledPromptUserRunRepository by userRunRepo {
+                    override fun markTerminal(
+                        id: UUID,
+                        status: UserRunStatus,
+                        now: Instant,
+                        error: String?,
+                    ): ScheduledPromptUserRun = throw RuntimeException("DB write failed")
                 }
-            }
 
             // processUserRun catches the exception from closeUserRun → calls markFailed
             // but markFailed also uses the same repo (throwingOnMarkTerminalRepo) → also throws
@@ -1463,51 +1609,58 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> userIds }
             userRunRepo.materialize(run.id, agentId, namespaceId)
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
-            }
-            val userService = mockk<UserService>().also { svc ->
-                userIds.forEach { uid ->
-                    every { svc.findById(uid) } returns User(
-                        metadata = EntityMetadata(id = uid),
-                        externalId = "$uid@example.com",
-                        firstname = "User",
-                        lastname = uid.toString().take(6),
-                    )
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
                 }
-            }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
+                }
+            val userService =
+                mockk<UserService>().also { svc ->
+                    userIds.forEach { uid ->
+                        every { svc.findById(uid) } returns
+                            User(
+                                metadata = EntityMetadata(id = uid),
+                                externalId = "$uid@example.com",
+                                firstname = "User",
+                                lastname = uid.toString().take(6),
+                            )
+                    }
+                }
             // Each Case immediately reaches IDLE so processUserRun marks UserRun DONE quickly.
             val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
-            val caseService = mockk<CaseService>(relaxed = true).also { svc ->
-                every { svc.create(any()) } answers {
-                    val id = UUID.randomUUID()
-                    val flow = MutableStateFlow(CaseStatus.IDLE)
-                    val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
-                    runtimeMap[id] = rt
-                    Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+            val caseService =
+                mockk<CaseService>(relaxed = true).also { svc ->
+                    every { svc.create(any()) } answers {
+                        val id = UUID.randomUUID()
+                        val flow = MutableStateFlow(CaseStatus.IDLE)
+                        val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
+                        runtimeMap[id] = rt
+                        Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                    }
+                    every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
                 }
-                every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
-            }
 
             val testDispatcher = UnconfinedTestDispatcher()
-            val exec = ScheduledPromptExecutor(
-                scheduledPromptRepository = makeSpRepo(sp),
-                runRepository = runRepo,
-                userRunRepository = userRunRepo,
-                userService = userService,
-                promptService = promptService,
-                agentConfigService = agentConfigService,
-                permissionService = mockk(relaxed = true),
-                userSessionContextResolver = UserSessionContextResolver(),
-                caseService = caseService,
-                properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
-                clock = clock,
-                dispatcher = testDispatcher,
-            )
+            val exec =
+                ScheduledPromptExecutor(
+                    scheduledPromptRepository = makeSpRepo(sp),
+                    runRepository = runRepo,
+                    userRunRepository = userRunRepo,
+                    userService = userService,
+                    promptService = promptService,
+                    agentConfigService = agentConfigService,
+                    permissionService = mockk(relaxed = true),
+                    userSessionContextResolver = UserSessionContextResolver(),
+                    caseService = caseService,
+                    objectMapper = objectMapper,
+                    properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
+                    clock = clock,
+                    dispatcher = testDispatcher,
+                )
 
             runTest(testDispatcher) {
                 exec.start()
@@ -1532,44 +1685,50 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> userIds }
             userRunRepo.materialize(run.id, agentId, namespaceId)
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
-            }
-            val userService = mockk<UserService>().also { svc ->
-                every { svc.findById(userId1) } returns user1
-                every { svc.findById(userId2) } returns user2
-            }
-            val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
-            val caseService = mockk<CaseService>(relaxed = true).also { svc ->
-                every { svc.create(any()) } answers {
-                    val id = UUID.randomUUID()
-                    val flow = MutableStateFlow(CaseStatus.IDLE)
-                    val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
-                    runtimeMap[id] = rt
-                    Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
                 }
-                every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
-            }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
+                }
+            val userService =
+                mockk<UserService>().also { svc ->
+                    every { svc.findById(userId1) } returns user1
+                    every { svc.findById(userId2) } returns user2
+                }
+            val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
+            val caseService =
+                mockk<CaseService>(relaxed = true).also { svc ->
+                    every { svc.create(any()) } answers {
+                        val id = UUID.randomUUID()
+                        val flow = MutableStateFlow(CaseStatus.IDLE)
+                        val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
+                        runtimeMap[id] = rt
+                        Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                    }
+                    every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
+                }
 
             val testDispatcher = UnconfinedTestDispatcher()
-            val exec = ScheduledPromptExecutor(
-                scheduledPromptRepository = makeSpRepo(sp),
-                runRepository = runRepo,
-                userRunRepository = userRunRepo,
-                userService = userService,
-                promptService = promptService,
-                agentConfigService = agentConfigService,
-                permissionService = mockk(relaxed = true),
-                userSessionContextResolver = UserSessionContextResolver(),
-                caseService = caseService,
-                properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
-                clock = clock,
-                dispatcher = testDispatcher,
-            )
+            val exec =
+                ScheduledPromptExecutor(
+                    scheduledPromptRepository = makeSpRepo(sp),
+                    runRepository = runRepo,
+                    userRunRepository = userRunRepo,
+                    userService = userService,
+                    promptService = promptService,
+                    agentConfigService = agentConfigService,
+                    permissionService = mockk(relaxed = true),
+                    userSessionContextResolver = UserSessionContextResolver(),
+                    caseService = caseService,
+                    objectMapper = objectMapper,
+                    properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
+                    clock = clock,
+                    dispatcher = testDispatcher,
+                )
 
             runTest(testDispatcher) {
                 exec.start()
@@ -1593,58 +1752,67 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> allUserIds }
             userRunRepo.materialize(run.id, agentId, namespaceId)
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
-            }
-            val userService = mockk<UserService>().also { svc ->
-                normalUserIds.forEach { uid ->
-                    every { svc.findById(uid) } returns User(
-                        metadata = EntityMetadata(id = uid),
-                        externalId = "$uid@example.com",
-                        firstname = "User",
-                        lastname = uid.toString().take(6),
-                    )
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
                 }
-                // Simulate missing user for the failing UserRun — resolveContext will throw.
-                every { svc.findById(failingUserId) } returns null
-            }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
+                }
+            val userService =
+                mockk<UserService>().also { svc ->
+                    normalUserIds.forEach { uid ->
+                        every { svc.findById(uid) } returns
+                            User(
+                                metadata = EntityMetadata(id = uid),
+                                externalId = "$uid@example.com",
+                                firstname = "User",
+                                lastname = uid.toString().take(6),
+                            )
+                    }
+                    // Simulate missing user for the failing UserRun — resolveContext will throw.
+                    every { svc.findById(failingUserId) } returns null
+                }
             val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
-            val caseService = mockk<CaseService>(relaxed = true).also { svc ->
-                every { svc.create(any()) } answers {
-                    val id = UUID.randomUUID()
-                    val flow = MutableStateFlow(CaseStatus.IDLE)
-                    val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
-                    runtimeMap[id] = rt
-                    Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+            val caseService =
+                mockk<CaseService>(relaxed = true).also { svc ->
+                    every { svc.create(any()) } answers {
+                        val id = UUID.randomUUID()
+                        val flow = MutableStateFlow(CaseStatus.IDLE)
+                        val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
+                        runtimeMap[id] = rt
+                        Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                    }
+                    every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
                 }
-                every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
-            }
 
             val testDispatcher = UnconfinedTestDispatcher()
-            val exec = ScheduledPromptExecutor(
-                scheduledPromptRepository = makeSpRepo(sp),
-                runRepository = runRepo,
-                userRunRepository = userRunRepo,
-                userService = userService,
-                promptService = promptService,
-                agentConfigService = agentConfigService,
-                permissionService = mockk(relaxed = true),
-                userSessionContextResolver = UserSessionContextResolver(),
-                caseService = caseService,
-                properties = SchedulerProperties(batchSize = 10, leaseMinutes = 30L, emptyPollDelayMs = 10L),
-                clock = clock,
-                dispatcher = testDispatcher,
-            )
+            val exec =
+                ScheduledPromptExecutor(
+                    scheduledPromptRepository = makeSpRepo(sp),
+                    runRepository = runRepo,
+                    userRunRepository = userRunRepo,
+                    userService = userService,
+                    promptService = promptService,
+                    agentConfigService = agentConfigService,
+                    permissionService = mockk(relaxed = true),
+                    userSessionContextResolver = UserSessionContextResolver(),
+                    caseService = caseService,
+                    objectMapper = objectMapper,
+                    properties = SchedulerProperties(batchSize = 10, leaseMinutes = 30L, emptyPollDelayMs = 10L),
+                    clock = clock,
+                    dispatcher = testDispatcher,
+                )
 
             runTest(testDispatcher) {
                 exec.start()
                 // Wait until all 6 UserRuns reach a terminal state (DONE or FAILED).
                 withTimeout(5_000L) {
-                    while (userRunRepo.all().count { it.status == UserRunStatus.DONE || it.status == UserRunStatus.FAILED } < allUserIds.size) {
+                    while (userRunRepo.all().count { it.status == UserRunStatus.DONE || it.status == UserRunStatus.FAILED } <
+                        allUserIds.size
+                    ) {
                         delay(10L)
                     }
                 }
@@ -1682,27 +1850,30 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
 
             // Real ExecutionWindowService with the fixed clock — Thursday 09:00 is outside
             // the weekend-only window, so isWithinExecutionWindow() returns false.
-            val closedWindowService = ExecutionWindowService(
-                properties = SchedulerProperties(windows = listOf("FRIDAY 22:00", "MONDAY 05:00")),
-                clock = clock,
-            )
+            val closedWindowService =
+                ExecutionWindowService(
+                    properties = SchedulerProperties(windows = listOf("FRIDAY 22:00", "MONDAY 05:00")),
+                    clock = clock,
+                )
 
             val testDispatcher = UnconfinedTestDispatcher()
-            val exec = ScheduledPromptExecutor(
-                scheduledPromptRepository = makeSpRepo(sp),
-                runRepository = runRepo,
-                userRunRepository = spyUserRunRepo,
-                userService = mockk(relaxed = true),
-                promptService = mockk(relaxed = true),
-                agentConfigService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userSessionContextResolver = UserSessionContextResolver(),
-                caseService = mockk(relaxed = true),
-                properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, pausedPollDelayMs = 10L),
-                clock = clock,
-                dispatcher = testDispatcher,
-                executionWindowService = closedWindowService,
-            )
+            val exec =
+                ScheduledPromptExecutor(
+                    scheduledPromptRepository = makeSpRepo(sp),
+                    runRepository = runRepo,
+                    userRunRepository = spyUserRunRepo,
+                    userService = mockk(relaxed = true),
+                    promptService = mockk(relaxed = true),
+                    agentConfigService = mockk(relaxed = true),
+                    permissionService = mockk(relaxed = true),
+                    userSessionContextResolver = UserSessionContextResolver(),
+                    caseService = mockk(relaxed = true),
+                    objectMapper = objectMapper,
+                    properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, pausedPollDelayMs = 10L),
+                    clock = clock,
+                    dispatcher = testDispatcher,
+                    executionWindowService = closedWindowService,
+                )
 
             runTest(testDispatcher) {
                 exec.start()
@@ -1727,31 +1898,37 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess()
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
             // Provider returns Success(null) — intentional no-context
-            val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(null)
-            }
+            val provider =
+                mockk<UserContextProvider>().also {
+                    every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(null)
+                }
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -1788,21 +1965,25 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubNoDeployedAccess()  // user lost deployment access
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubNoDeployedAccess() // user lost deployment access
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val caseService = mockk<CaseService>(relaxed = true)
 
             executor(
@@ -1827,27 +2008,32 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns makeAgentConfig()
-                it.stubDeployedAccess()  // user still in deployment graph
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns makeAgentConfig()
+                    it.stubDeployedAccess() // user still in deployment graph
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
             val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
+            val caseService =
+                mockk<CaseService>(relaxed = true).also {
+                    every { it.create(any()) } returns createdCase
+                    every { it.findActiveRuntime(caseId) } returns null
+                    every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -1869,20 +2055,24 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
+            val userRunRepo =
+                makeUserRunRepo(setOf(userId1)).also {
+                    it.materialize(run.id, agentId, namespaceId)
+                }
             val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
-            val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns makePromptTemplate()
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns null
-            }
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns user1
-            }
+            val promptService =
+                mockk<PromptService>().also {
+                    every { it.findById(promptTemplateId) } returns makePromptTemplate()
+                }
+            val agentConfigService =
+                mockk<AgentConfigService>().also {
+                    every { it.findById(agentId) } returns null
+                }
+            val userService =
+                mockk<UserService>().also {
+                    every { it.findById(userId1) } returns user1
+                }
 
             executor(
                 spRepo = makeSpRepo(sp),

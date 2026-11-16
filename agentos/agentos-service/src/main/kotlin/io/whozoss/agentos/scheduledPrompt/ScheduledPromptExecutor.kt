@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
@@ -139,6 +140,7 @@ class ScheduledPromptExecutor(
     private val permissionService: PermissionService,
     private val userSessionContextResolver: UserSessionContextResolver,
     private val caseService: CaseService,
+    private val objectMapper: ObjectMapper,
     private val properties: SchedulerProperties,
     private val clock: Clock,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -760,22 +762,21 @@ class ScheduledPromptExecutor(
         }
     }
 
-    companion object : KLogging() {
-        private val MAPPER = jacksonObjectMapper()
-        private val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
+    /**
+     * The stored flowConfiguration with [prompt] as its `act.prompt`, as a plain map (what a persisted message
+     * context holds). The content is not parsed here: a malformed one is left to AgentLoop, which aborts the run.
+     */
+    private fun flowConfigurationFor(
+        stored: JsonNode,
+        prompt: String,
+    ): Map<String, Any?> {
+        val copy = stored.deepCopy<JsonNode>() as? ObjectNode ?: error("flowConfiguration must be a JSON object")
+        (copy.get("act") as? ObjectNode ?: copy.putObject("act")).put("prompt", prompt)
+        return objectMapper.convertValue(copy, MAP_TYPE)
+    }
 
-        /**
-         * The stored flowConfiguration with [prompt] as its `act.prompt`, as a plain map (what a persisted message
-         * context holds). The content is not parsed here: a malformed one is left to AgentLoop, which aborts the run.
-         */
-        private fun flowConfigurationFor(
-            stored: JsonNode,
-            prompt: String,
-        ): Map<String, Any?> {
-            val copy = stored.deepCopy<JsonNode>() as? ObjectNode ?: error("flowConfiguration must be a JSON object")
-            (copy.get("act") as? ObjectNode ?: copy.putObject("act")).put("prompt", prompt)
-            return MAPPER.convertValue(copy, MAP_TYPE)
-        }
+    companion object : KLogging() {
+        private val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
 
         /**
          * Adds [flowConfiguration] under [SessionContextKeys.FLOW_CONFIGURATION], the scheduler's value winning over
