@@ -1,3 +1,13 @@
+## 3.44.0 (2026-11-16)
+
+### 🚀 Features
+
+- **agentos-service:** #35374 add SearchAgentUsersTool ([#1644](https://github.com/whoz-oss/coday/pull/1644), [#35374](https://github.com/whoz-oss/coday/issues/35374))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.43.0 (2026-11-16)
 
 ### 🚀 Features
