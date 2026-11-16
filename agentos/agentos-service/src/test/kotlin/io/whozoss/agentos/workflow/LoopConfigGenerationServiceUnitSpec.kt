@@ -391,4 +391,64 @@ class LoopConfigGenerationServiceUnitSpec : StringSpec({
         result.rawResponse.shouldBeNull()
         result.warning.shouldNotBeNull()
     }
+
+    // -------------------------------------------------------------------------
+    // Search candidates and tool lookup (the loop's own rule)
+    // -------------------------------------------------------------------------
+
+    "auto-select: the case starters are never offered as the search tool" {
+        val svc = service("""{"tool":"USER_GROUP__searchAgentUsers","params":{}}""")
+        val def =
+            definition(
+                listOf(
+                    mockTool("USER_GROUP__searchAgentUsers"),
+                    mockTool("CASE__FreeCaseStarterForUser"),
+                    mockTool("CASE__FreeCaseStarter"),
+                ),
+            )
+
+        svc.generate(def, searchToolName = null, description = "my team")
+
+        val message = userMessageOf(sentPrompt.captured)
+        message shouldContain "USER_GROUP__searchAgentUsers"
+        message shouldNotContain "FreeCaseStarter"
+    }
+
+    "auto-select: an LLM that still names a case starter is refused, and an agent with only case starters has no search tool" {
+        val starters = listOf(mockTool("CASE__FreeCaseStarterForUser"))
+
+        val chosen =
+            service("""{"tool":"CASE__FreeCaseStarterForUser","params":{}}""")
+                .generate(definition(starters + mockTool("SearchTasks")), null, "something")
+        val none = service("{}").generate(definition(starters), null, "something")
+
+        chosen.loopConfig.shouldBeNull()
+        chosen.warning!! shouldContain "CASE__FreeCaseStarterForUser"
+        none.loopConfig.shouldBeNull()
+        none.warning!! shouldContain "No search tools"
+    }
+
+    "single-tool: a bare name finds the prefixed tool, and the search block names the real tool" {
+        val svc = service("""{"agentConfigId":"abc"}""")
+        val def = definition(listOf(mockTool("USER_GROUP__searchAgentUsers")))
+
+        val result = svc.generate(def, searchToolName = "searchAgentUsers", description = "my team")
+
+        result.loopConfig!!["search"]["tool"].asText() shouldBe "USER_GROUP__searchAgentUsers"
+    }
+
+    "single-tool: an ambiguous name, or a case starter, is refused without calling the LLM" {
+        val provider = mockk<ChatClientProvider>()
+        val svc = LoopConfigGenerationService(StructuredLlmClient(provider, objectMapper), objectMapper)
+
+        val ambiguous =
+            svc.generate(definition(listOf(mockTool("A__searchAgentUsers"), mockTool("B__searchAgentUsers"))), "searchAgentUsers", "x")
+        val starter = svc.generate(definition(listOf(mockTool("CASE__FreeCaseStarterForUser"))), "FreeCaseStarterForUser", "x")
+
+        ambiguous.loopConfig.shouldBeNull()
+        ambiguous.warning!! shouldContain "ambiguous"
+        starter.loopConfig.shouldBeNull()
+        starter.warning!! shouldContain "not available"
+        verify(exactly = 0) { provider.getChatClient(any(), any(), any(), any()) }
+    }
 })

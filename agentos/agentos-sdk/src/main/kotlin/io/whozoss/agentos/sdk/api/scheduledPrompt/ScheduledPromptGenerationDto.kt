@@ -106,6 +106,7 @@ data class GeneratedFieldDecision(
  */
 @Schema(name = "ScheduledPromptGenerationResult")
 data class ScheduledPromptGenerationResult(
+    @field:Schema(description = "The proposal, absent (null) when a part of it could not be determined: see `warnings`.")
     val scheduledPrompt: ScheduledPromptDto?,
     val decisions: List<GeneratedFieldDecision> = emptyList(),
     val warnings: List<String> = emptyList(),

@@ -7,6 +7,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
@@ -27,6 +28,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -69,7 +71,7 @@ class AgentConfigController(
     private val agentConfigService: AgentConfigService,
     private val agentService: AgentService,
     private val userService: UserService,
-    permissionService: PermissionService,
+    private val permissionService: PermissionService,
     @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
     private val loopConfigGenerationService: LoopConfigGenerationService,
 ) : AgentConfigApi {
@@ -261,7 +263,9 @@ class AgentConfigController(
      * not a complete loop configuration: the `act` block is missing and is left to the caller.
      * The LLM is resolved from the agent's own model configuration.
      *
-     * Authorization: same as `getDefinition` — READ on the AgentConfig.
+     * Authorization: READ on the AgentConfig (declarative), then WRITE on the namespace it is resolved in, the bar
+     * of `POST /api/scheduled-prompts/generate`: the call is billed to the namespace's model, and its output is only
+     * useful to someone who can configure a loop there.
      *
      * The [LoopConfigGenerationRequest.searchToolName] must match a tool available to
      * this agent. When it does not, the response has `loopConfig = null` and a descriptive
@@ -298,6 +302,9 @@ class AgentConfigController(
                     "namespaceId query parameter is required for platform-level agent configs",
                 )
         val resolvedUserId = userService.getCurrentUser().metadata.id
+        if (!permissionService.hasPermission(resolvedUserId.toString(), EntityType.NAMESPACE, resolvedNamespaceId.toString(), Action.WRITE)) {
+            throw AccessDeniedException("Generating a loop configuration requires WRITE on namespace $resolvedNamespaceId")
+        }
         val definition =
             agentService.resolveDefinition(
                 agentConfigId = id,

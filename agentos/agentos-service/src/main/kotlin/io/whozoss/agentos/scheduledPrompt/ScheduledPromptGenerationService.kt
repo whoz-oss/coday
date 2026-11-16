@@ -53,7 +53,9 @@ import java.util.UUID
  *    loop agent's own tools and model, given the target agent's name and id as context.
  * 5. [assemble]: `flowConfiguration = { search, act: { agentName } }`, without `act.prompt`, which the scheduler sets
  *    from `promptContent` at run time. The whole [ScheduledPromptDto] goes through Bean Validation, and the
- *    `flowConfiguration` is checked to parse as an [AgentLoopPayload] once that prompt is set.
+ *    `flowConfiguration` is checked to parse as an [AgentLoopPayload] once that prompt is set. A name already taken
+ *    by a namespace-shared scheduled prompt is a warning: `POST /api/scheduled-prompts` would answer 409 until it is
+ *    renamed.
  *
  * Each step returns a value describing its outcome (warnings included) rather than stopping the method: a part that
  * cannot be determined yields a null proposal and warnings saying why. LLM exceptions are not caught.
@@ -72,6 +74,7 @@ class ScheduledPromptGenerationService(
     private val modelResolver: ModelResolver,
     private val structuredLlmClient: StructuredLlmClient,
     private val loopConfigGenerationService: LoopConfigGenerationService,
+    private val scheduledPromptRepository: ScheduledPromptRepository,
     private val objectMapper: ObjectMapper,
     private val validator: Validator,
     private val clock: Clock,
@@ -478,7 +481,7 @@ class ScheduledPromptGenerationService(
         val validation =
             when {
                 proposal == null || complete == null -> emptyList()
-                else -> validationProblems(proposal, complete.prompt)
+                else -> validationProblems(proposal, complete.prompt) + listOfNotNull(nameConflict(namespaceId, complete.name))
             }
         val warnings = plan.warnings + fields.warnings + listOfNotNull(search?.warning) + validation.map { it.message }
         val valid = proposal?.takeIf { validation.none { problem -> problem.blocking } }
@@ -544,6 +547,18 @@ class ScheduledPromptGenerationService(
                 ?.let { ValidationProblem("The generated flowConfiguration will not run as a loop payload: ${it.message}", blocking = false) }
         return violations + listOfNotNull(runnable)
     }
+
+    /**
+     * The proposal is namespace-shared (`userId = null`), so its name must be free at that scope: the uniqueness that
+     * `POST /api/scheduled-prompts` enforces with a 409. Not blocking: renaming it is enough.
+     */
+    private fun nameConflict(
+        namespaceId: UUID,
+        name: String,
+    ): ValidationProblem? =
+        scheduledPromptRepository.findByTriple(namespaceId, null, name)?.let {
+            ValidationProblem("A scheduled prompt named '$name' already exists in this namespace: rename the proposal before creating it.", blocking = false)
+        }
 
     companion object : KLogging() {
         /** Bound on a generated name: the planning prompt asks for it, and it is enforced here. */

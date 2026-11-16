@@ -3,6 +3,8 @@ package io.whozoss.agentos.workflow
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.ResolvedAgentDefinition
+import io.whozoss.agentos.casePlugin.FreeCaseStarterForUserTool
+import io.whozoss.agentos.casePlugin.FreeCaseStarterTool
 import io.whozoss.agentos.generation.StructuredLlmClient
 import io.whozoss.agentos.generation.StructuredLlmResult
 import io.whozoss.agentos.sdk.api.agentConfig.LoopConfigGenerationResult
@@ -23,9 +25,15 @@ import org.springframework.stereotype.Service
  * Two modes depending on whether [generate]'s `searchToolName` is provided:
  *
  * **Single-tool mode** (`searchToolName` non-null): the LLM produces the params of that tool, from its input schema.
+ * The tool is found with [lookupTool], the rule the loop itself applies at run time: its exact name, else its name
+ * behind an integration prefix (`searchAgentUsers` finds `USER_GROUP__searchAgentUsers`). Several matches are refused
+ * as ambiguous. The search block names the tool by its real name, so that the loop finds the same one.
  *
- * **Auto-select mode** (`searchToolName` null): the LLM picks a tool among the agent's tools and produces
+ * **Auto-select mode** (`searchToolName` null): the LLM picks a tool among the agent's search candidates and produces
  * `{ "tool": "...", "params": { ... } }`; the tool must be one of them.
+ *
+ * In both modes the case starters (`FreeCaseStarter`, `FreeCaseStarterForUser`) are not search candidates: a LOOP
+ * agent always has one, since it starts a case per result, and the loop would otherwise call it as its search.
  *
  * In both modes an optional `context` is appended to the user message as an "Additional context" block, to hand the
  * LLM identifiers it can use as parameter values (for instance the id of the agent started for each hit).
@@ -38,7 +46,7 @@ import org.springframework.stereotype.Service
  * [LoopConfigGenerationResult.loopConfig] is null; [LoopConfigGenerationResult.rawResponse] only ever carries the raw
  * LLM text, and only when the answer could not be used.
  *
- * - Unknown `searchToolName`, or no tool available (auto-select mode): no LLM call.
+ * - Unknown or ambiguous `searchToolName`, or no search candidate (auto-select mode): no LLM call.
  * - The LLM returns nothing, returns no JSON object, or (auto-select mode) names no tool or an unknown one.
  * - LLM throws: re-thrown as-is.
  */
@@ -78,10 +86,19 @@ class LoopConfigGenerationService(
         description: String,
         context: String?,
     ): LoopConfigGenerationResult {
-        val tool = definition.tools.find { it.name == searchToolName }
-        return when (tool) {
-            null -> {
-                val available = definition.tools.map { it.name }
+        val candidates = searchCandidates(definition)
+        val matches = lookupTool(candidates, searchToolName)
+        val tool = matches.singleOrNull()
+        return when {
+            tool != null -> {
+                val userMessage = userMessage(schemaBlock(tool), description, context)
+                val llmResult =
+                    structuredLlmClient.call(definition.resolvedModel, definition.resolvedProvider, SINGLE_TOOL_SYSTEM_PROMPT, userMessage)
+                paramsResult(llmResult, tool.name)
+            }
+
+            matches.isEmpty() -> {
+                val available = candidates.map { it.name }
                 logger.warn {
                     "[LoopConfigGeneration] Tool '$searchToolName' not found for agent '${definition.name}' (available: $available)"
                 }
@@ -92,10 +109,12 @@ class LoopConfigGenerationService(
             }
 
             else -> {
-                val userMessage = userMessage(schemaBlock(tool), description, context)
-                val llmResult =
-                    structuredLlmClient.call(definition.resolvedModel, definition.resolvedProvider, SINGLE_TOOL_SYSTEM_PROMPT, userMessage)
-                paramsResult(llmResult, searchToolName)
+                val names = matches.map { it.name }
+                logger.warn { "[LoopConfigGeneration] Tool '$searchToolName' is ambiguous for agent '${definition.name}': $names" }
+                LoopConfigGenerationResult(
+                    loopConfig = null,
+                    warning = "Tool '$searchToolName' is ambiguous for agent '${definition.name}': $names. Use its prefixed name.",
+                )
             }
         }
     }
@@ -129,11 +148,11 @@ class LoopConfigGenerationService(
         description: String,
         context: String?,
     ): LoopConfigGenerationResult {
-        val tools = definition.tools.toList()
+        val tools = searchCandidates(definition)
         return when {
             tools.isEmpty() -> {
-                logger.warn { "[LoopConfigGeneration] No tools available for agent '${definition.name}' (auto-select mode)" }
-                LoopConfigGenerationResult(loopConfig = null, warning = "No tools are available to agent '${definition.name}'.")
+                logger.warn { "[LoopConfigGeneration] No search tool available for agent '${definition.name}' (auto-select mode)" }
+                LoopConfigGenerationResult(loopConfig = null, warning = "No search tools are available to agent '${definition.name}'.")
             }
 
             else -> {
@@ -194,6 +213,10 @@ class LoopConfigGenerationService(
     // Helpers
     // -------------------------------------------------------------------------
 
+    /** The agent's tools that can serve as the loop's search: all but the case starters. */
+    private fun searchCandidates(definition: ResolvedAgentDefinition): List<StandardTool<*>> =
+        definition.tools.filterNot { tool -> NON_SEARCH_TOOLS.any { lookupTool(listOf(tool), it).isNotEmpty() } }
+
     private fun schemaBlock(tool: StandardTool<*>): String = "Tool name: ${tool.name}\nTool input schema:\n${tool.inputSchema}"
 
     /** The user message: [header], the description, and the "Additional context" block when there is a [context]. */
@@ -244,6 +267,9 @@ class LoopConfigGenerationService(
         }
 
     companion object : KLogging() {
+        /** Tools a LOOP agent has to start the cases of its results, never to search with. */
+        private val NON_SEARCH_TOOLS = listOf(FreeCaseStarterTool.TOOL_NAME, FreeCaseStarterForUserTool.TOOL_NAME)
+
         private const val FENCE_WARNING = "JSON was extracted from a markdown code fence in the LLM response."
         private const val EMPTY_OBJECT_WARNING = "The LLM returned an empty JSON object. The description may be too vague."
 

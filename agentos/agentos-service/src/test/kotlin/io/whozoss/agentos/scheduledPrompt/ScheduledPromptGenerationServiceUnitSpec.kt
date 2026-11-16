@@ -86,6 +86,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
         val modelResolver = mockk<ModelResolver>()
         val structuredLlmClient = mockk<StructuredLlmClient>()
         val loopConfigGenerationService = mockk<LoopConfigGenerationService>()
+        val scheduledPromptRepository = mockk<ScheduledPromptRepository>()
         val service =
             ScheduledPromptGenerationService(
                 agentConfigService = agentConfigService,
@@ -93,6 +94,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 modelResolver = modelResolver,
                 structuredLlmClient = structuredLlmClient,
                 loopConfigGenerationService = loopConfigGenerationService,
+                scheduledPromptRepository = scheduledPromptRepository,
                 objectMapper = objectMapper,
                 validator = validator,
                 clock = clock,
@@ -149,6 +151,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
             coEvery { agentService.resolveDefinition(any(), namespaceId, userId) } returns definition
             coEvery { loopConfigGenerationService.generate(any(), any(), any(), any()) } returns
                 LoopConfigGenerationResult(loopConfig = searchBlock)
+            every { scheduledPromptRepository.findByTriple(any(), any(), any()) } returns null
         }
 
         // -------------------------------------------------------------------------
@@ -326,6 +329,15 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
             result.scheduledPrompt.shouldNotBeNull().planning shouldBe PlanningDto(startDate = today, endType = SchedulerEndType.NEVER)
             result.warnings.joinToString() shouldContain "planning"
+        }
+
+        "a name already taken in the namespace keeps the proposal, with a warning" {
+            every { scheduledPromptRepository.findByTriple(namespaceId, null, "Weekly story") } returns mockk(relaxed = true)
+
+            val result = service.generate(namespaceId, userId, request())
+
+            result.scheduledPrompt.shouldNotBeNull()
+            result.warnings.joinToString() shouldContain "already exists"
         }
 
         "a failed search step yields no proposal, with its warning and raw response" {

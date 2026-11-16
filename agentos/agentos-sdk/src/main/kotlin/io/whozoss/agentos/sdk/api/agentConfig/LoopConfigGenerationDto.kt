@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.agentConfig
 import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 
 /**
  * Request body for the loop-config generation endpoint.
@@ -17,23 +18,31 @@ import jakarta.validation.constraints.NotBlank
  * and selects the most appropriate one itself, returning both the chosen tool name and the
  * generated params.
  *
- * @param description     Natural-language description of the desired search parameters.
+ * @param description     Natural-language description of the desired search parameters, bounded like
+ *   `ScheduledPromptGenerationRequest.description`: it is injected verbatim into the LLM prompt.
  *   Example: "I want to target the owners of the tasks starting this week"
- * @param searchToolName  Optional. Name of the search tool to use. When null, the LLM
- *   picks the best tool from all tools available to the agent.
+ * @param searchToolName  Optional. Name of the search tool to use, bare or prefixed by its integration config. When
+ *   null, the LLM picks the best tool from the search tools available to the agent.
  */
 @Schema(name = "LoopConfigGenerationRequest")
 data class LoopConfigGenerationRequest(
     @field:NotBlank(message = "description must not be blank")
+    @field:Size(max = MAX_DESCRIPTION_LENGTH, message = "description must be at most $MAX_DESCRIPTION_LENGTH characters")
     val description: String,
+    @field:Size(max = MAX_TOOL_NAME_LENGTH, message = "searchToolName must be at most $MAX_TOOL_NAME_LENGTH characters")
     @field:Schema(
         description =
-            "Name of the search tool to use. When omitted, the LLM picks the best tool " +
-                "from all tools available to this agent.",
+            "Name of the search tool to use, bare or prefixed by its integration config. When omitted, the LLM " +
+                "picks the best tool from the search tools available to this agent.",
         nullable = true,
     )
     val searchToolName: String? = null,
-)
+) {
+    companion object {
+        const val MAX_DESCRIPTION_LENGTH = 2000
+        const val MAX_TOOL_NAME_LENGTH = 200
+    }
+}
 
 /**
  * Response body for the loop-config generation endpoint.
