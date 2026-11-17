@@ -1,3 +1,36 @@
+## 3.46.0 (2026-11-17)
+
+### 🚀 Features
+
+- wz-35375 - LLM loop config generation ([e1bc4781b](https://github.com/whoz-oss/coday/commit/e1bc4781b))
+- #35375 POST /api/scheduled-prompts/generate proposes a full scheduled loop from a description ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- wz-35375 - open api ([7bc1a6ca8](https://github.com/whoz-oss/coday/commit/7bc1a6ca8))
+- wz-35375 - generate api client ([826b3818e](https://github.com/whoz-oss/coday/commit/826b3818e))
+- wz-35375 - generate api client ([c710c8887](https://github.com/whoz-oss/coday/commit/c710c8887))
+- wz-35375 - generate api doc and client ([798d7fb58](https://github.com/whoz-oss/coday/commit/798d7fb58))
+- #35375 end-user summary of the generated scheduled prompt ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- wz-35375 - generate api doc and client ([f053208be](https://github.com/whoz-oss/coday/commit/f053208be))
+- wz-35375 - log prompt to select tools ([3043eae71](https://github.com/whoz-oss/coday/commit/3043eae71))
+- #35375 baseFlowConfiguration, a configuration the generation only enriches ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- wz-35375 - generate api doc and client ([a067e8ab0](https://github.com/whoz-oss/coday/commit/a067e8ab0))
+- wz-35375 - fix unit test ([f1f4ce437](https://github.com/whoz-oss/coday/commit/f1f4ce437))
+- #35375 base arrays are combined with the generated values ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- wz-35375 - fix unit test ([cf6ca94d3](https://github.com/whoz-oss/coday/commit/cf6ca94d3))
+- #35375 LLM generation of scheduled loop configurations ([#1665](https://github.com/whoz-oss/coday/pull/1665), [#35375](https://github.com/whoz-oss/coday/issues/35375))
+
+### 🩹 Fixes
+
+- #35375 address review of PR 1665 on search tool selection ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- #35375 address second review of PR 1665 ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- #35375 no smart cast needed on the search outcome ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- #35375 summary is plain Markdown, asked as text and normalized ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+- #35375 address human review of PR 1665 ([#35375](https://github.com/whoz-oss/coday/issues/35375))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.45.0 (2026-11-16)
 
 ### 🚀 Features
