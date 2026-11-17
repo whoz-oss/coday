@@ -140,6 +140,16 @@ class StructuredLlmClientUnitSpec : StringSpec({
         }
     }
 
+    "callText returns the answer as plain text, trimmed, and null when there is none" {
+        forAll(
+            row<String?, String?>("**Bold**\n- item\n", "**Bold**\n- item"),
+            row<String?, String?>("  \n ", null),
+            row<String?, String?>(null, null),
+        ) { answer, expected ->
+            clientAnswering(answer).first.callText(model, provider, "system", "user") shouldBe expected
+        }
+    }
+
     "lets an exception of the LLM call propagate" {
         val chatClient = mockk<ChatClient>(relaxed = true)
         every { chatClient.prompt(any<Prompt>()).call().content() } throws IllegalStateException("provider down")

@@ -34,9 +34,10 @@ data class StructuredLlmResult(
 }
 
 /**
- * Shared plumbing of the generation features that ask an LLM for a small JSON object (loop-config generation,
- * scheduled-prompt generation): one non-streaming call with a system prompt and a user message, and a tolerant
- * parse of the answer.
+ * Shared plumbing of the generation features: one non-streaming LLM call with a system prompt and a user message.
+ * [call] asks for a small JSON object and parses the answer tolerantly (loop-config generation, scheduled-prompt
+ * generation); [callText] returns the answer as plain text, for outputs that are prose, such as a Markdown summary,
+ * which do not survive being wrapped in a JSON string (models flatten or escape their line breaks).
  *
  * ## Threading and timeout
  *
@@ -78,6 +79,38 @@ class StructuredLlmClient(
         systemPrompt: String,
         userMessage: String,
     ): StructuredLlmResult {
+        val content = complete(model, provider, systemPrompt, userMessage)
+        val result =
+            when {
+                content.isNullOrBlank() -> StructuredLlmResult(json = null, rawText = null)
+                else -> parse(content)
+            }
+        logger.debug {
+            "[StructuredLlm] model=${model.apiModelName}, answer length=${content?.length ?: 0}, " +
+                "json=${result.json != null}, codeFence=${result.usedCodeFence}"
+        }
+        return result
+    }
+
+    /** The answer as plain text, trimmed; null when the LLM returned nothing. Same threading and timeout as [call]. */
+    suspend fun callText(
+        model: AiModel,
+        provider: AiProvider,
+        systemPrompt: String,
+        userMessage: String,
+    ): String? {
+        val content = complete(model, provider, systemPrompt, userMessage)?.trim()?.takeIf { it.isNotEmpty() }
+        logger.debug { "[StructuredLlm] model=${model.apiModelName}, text answer length=${content?.length ?: 0}" }
+        return content
+    }
+
+    /** The blocking LLM call, on the generation dispatcher and bounded by [timeoutSeconds]. */
+    private suspend fun complete(
+        model: AiModel,
+        provider: AiProvider,
+        systemPrompt: String,
+        userMessage: String,
+    ): String? {
         val answer =
             withTimeoutOrNull(timeoutSeconds * 1_000) {
                 withContext(dispatcher) {
@@ -90,17 +123,7 @@ class StructuredLlmClient(
                     )
                 }
             } ?: throw GenerationTimeoutException("The LLM (${model.apiModelName}) did not answer within ${timeoutSeconds}s.")
-        val content = answer.content
-        val result =
-            when {
-                content.isNullOrBlank() -> StructuredLlmResult(json = null, rawText = null)
-                else -> parse(content)
-            }
-        logger.debug {
-            "[StructuredLlm] model=${model.apiModelName}, answer length=${content?.length ?: 0}, " +
-                "json=${result.json != null}, codeFence=${result.usedCodeFence}"
-        }
-        return result
+        return answer.content
     }
 
     /** Wraps the LLM content, which may itself be null, so that null from [withTimeoutOrNull] only means a timeout. */
