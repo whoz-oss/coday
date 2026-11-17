@@ -71,12 +71,13 @@ Two GitHub Actions workflows in `.github/workflows/`:
   JVM projects are handled separately: `nx show projects --affected --projects="tag:platform:jvm" --json --quiet`
   resolves affected names first, then `nx run-many` is called with explicit names (tag filter can't
   be forwarded to Gradle executors directly).
-- **`release.yml`**: Push to master — 5 jobs in sequence:
-  1. `check-release` — detects releasable commits since last tag
-  2. `release` — runs `nx release` (version bump, changelog, GitHub release, npm publish for Node projects)
-  3. `desktop-release` — macOS runner, signs and packages `.pkg` for `tag:platform:npm` desktop apps, uploads to GitHub Release
-  4. `compute-jvm-projects` — resolves `tag:platform:jvm` projects via `nx show projects --json --quiet | jq -c '.'`
-  5. `publish-agentos-artifacts` — matrix job over the dynamic list, publishes each JVM project to GitHub Packages
+- **`release.yml`**: Push to master — 4 jobs:
+  1. `release` — runs `nx release` (version bump, changelog, GitHub release, npm publish for `platform:npm` projects)
+  2. `upload-agentos-jars` — builds AgentOS JARs and uploads them to the GitHub Release
+  3. `compute-jvm-projects` — resolves `tag:platform:jvm` projects via `nx show projects --json --quiet | jq -c '.'`
+  4. `publish-agentos-artifacts` — matrix job over the dynamic list, publishes each JVM project to GitHub Packages
+
+  The desktop `.pkg` job was removed. `desktop` and `desktop-twin` no longer carry `platform:npm`, so they are not part of `nx release`.
 
 ## Release System
 
