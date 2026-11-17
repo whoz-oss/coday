@@ -41,6 +41,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         flowType.startsWith("forge.")
 
     override fun validate(context: StepValidationContext): StepValidationVerdict {
+        val role = context.agentName.removeSuffix("Factory")
         val domainState = context.run.domainState
         val specPath = (domainState["spec_path"] as? String)
             ?: (context.fragmentInputs["spec_path"] as? String)
@@ -89,12 +90,24 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 val readOnlyViolation = checkReadOnlyWorkspace(context)
                 if (readOnlyViolation != null) return readOnlyViolation
                 val outputs = extractOutputs(context.report)
+                val required = if (context.stepId == "ux-assessment") "ux_applicable" else "tech_spec_applicable"
+                if (outputs[required] !is Boolean) {
+                    return StepValidationVerdict.Rejected(
+                        reasonCode = "MISSING_ASSESSMENT_OUTPUT",
+                        findings = listOf(NewFinding(
+                            code = "MISSING_ASSESSMENT_OUTPUT",
+                            severity = FindingSeverity.CRITICAL,
+                            message = "Forge assessment requires a Boolean $required output.",
+                            stepId = context.stepId,
+                        )),
+                    )
+                }
                 val nextState = LinkedHashMap(domainState)
-                if (context.stepId == "ux-assessment" || context.agentName == "ForgeUXDesigner") {
+                if (context.stepId == "ux-assessment" || role == "ForgeUXDesigner") {
                     val uxApplicable = outputs["ux_applicable"] as? Boolean ?: false
                     nextState["ux_applicable"] = uxApplicable
                 }
-                if (context.stepId == "technical-assessment" || context.agentName == "ForgeTechDesigner") {
+                if (context.stepId == "technical-assessment" || role == "ForgeTechDesigner") {
                     val trivial = outputs["trivial"] as? Boolean ?: false
                     val techApplicable = outputs["tech_spec_applicable"] as? Boolean ?: !trivial
                     nextState["tech_spec_applicable"] = techApplicable
@@ -147,6 +160,28 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                         ),
                     )
                 }
+                val ids = steps.map { it["id"] as? String }
+                val malformed = steps.any { step ->
+                    val paths = step["file_paths"] as? List<*>
+                    (step["id"] as? String).isNullOrBlank() ||
+                        (step["title"] as? String).isNullOrBlank() ||
+                        (step["verification"] as? String).isNullOrBlank() ||
+                        paths.isNullOrEmpty() || paths.any { path ->
+                            path !is String || path.isBlank() || path.startsWith('/') ||
+                                path.split('/').any { segment -> segment == ".." || segment == "." }
+                        }
+                } || ids.size != ids.distinct().size
+                if (malformed) {
+                    return StepValidationVerdict.Rejected(
+                        reasonCode = "INVALID_DELIVERY_PLAN_STEP",
+                        findings = listOf(NewFinding(
+                            code = "INVALID_DELIVERY_PLAN_STEP",
+                            severity = FindingSeverity.CRITICAL,
+                            message = "Each delivery step needs a distinct id, title, relative file_paths and verification command.",
+                            stepId = context.stepId,
+                        )),
+                    )
+                }
                 val baseState = LinkedHashMap(acceptedSpec.newDomainState ?: domainState)
                 val revisions = LinkedHashMap(
                     @Suppress("UNCHECKED_CAST")
@@ -167,12 +202,12 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 val lockViolation = checkSpecWriteLock(context, specPath, watched[specPath])
                 if (lockViolation != null) return lockViolation
 
-                if (context.agentName == "ForgeVerifier") {
+                if (role == "ForgeVerifier") {
                     val readOnlyViolation = checkReadOnlyWorkspace(context)
                     if (readOnlyViolation != null) return readOnlyViolation
                 }
 
-                if (context.agentName == "ForgeBuilder") {
+                if (role == "ForgeBuilder") {
                     @Suppress("UNCHECKED_CAST")
                     val planStep = context.fragmentInputs["step"] as? Map<String, Any?>
                     val allowedFiles = (planStep?.get("file_paths") as? List<*>)
@@ -285,6 +320,19 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         domainState["revisions"] = revisions
 
         val outputs = extractOutputs(context.report)
+        if (context.flowType == ForgeBmadCatalogContributor.FLOW_PRODUCT_SPEC) {
+            val brief = (outputs["run_brief"] as? String)?.takeIf { it.isNotBlank() && it.length <= 16_000 }
+                ?: return StepValidationVerdict.Rejected(
+                    reasonCode = "MISSING_RUN_BRIEF",
+                    findings = listOf(NewFinding(
+                        code = "MISSING_RUN_BRIEF",
+                        severity = FindingSeverity.MAJOR,
+                        message = "Product specification must provide a bounded run_brief output for downstream fragments.",
+                        stepId = context.stepId,
+                    )),
+                )
+            domainState["run_brief"] = brief
+        }
         outputs["question_evidence"]?.let { domainState["question_evidence"] = it }
 
         return StepValidationVerdict.Accepted(newDomainState = domainState)

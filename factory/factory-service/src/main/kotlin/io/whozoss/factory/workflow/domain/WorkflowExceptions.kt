@@ -31,6 +31,7 @@ object WorkflowErrorCodes {
     const val WORKFLOW_DEFINITION_INVALID = "WORKFLOW_DEFINITION_INVALID"
     const val WORKFLOW_DEFINITION_AMBIGUOUS = "WORKFLOW_DEFINITION_AMBIGUOUS"
     const val WORKFLOW_DEFINITION_MISMATCH = "WORKFLOW_DEFINITION_MISMATCH"
+    const val WORKFLOW_DEFINITION_PLUGIN_MANAGED = "WORKFLOW_DEFINITION_PLUGIN_MANAGED"
 
     /**
      * 400 — the workflow definition declares an execution plugin
@@ -122,7 +123,9 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.TRUST_CONTEXT_UNAVAILABLE,
     WorkflowErrorCodes.UNAUTHENTICATED_ACTOR,
     -> 401
-    WorkflowErrorCodes.FACTORY_ONLY_EVIDENCE -> 403
+    WorkflowErrorCodes.FACTORY_ONLY_EVIDENCE,
+    WorkflowErrorCodes.WORKFLOW_DEFINITION_PLUGIN_MANAGED,
+    -> 403
     WorkflowErrorCodes.WORKFLOW_NOT_FOUND,
     WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND,
     WorkflowErrorCodes.INTERACTION_NOT_FOUND,

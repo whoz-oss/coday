@@ -51,6 +51,24 @@ class AgentStepResultValidationTest {
     }
 
     @Test
+    fun `persists bounded structured business outputs`() {
+        val node = json("""{"status":"PASS","summary":"assessed","claims":{"modifiedFiles":[]},"outputs":{"ux_applicable":true,"delivery_plan":{"steps":[{"id":"one"}]}}}""")
+        assertThat(AgentStepResultValidation.validateBusiness(node)).isTrue()
+        val parsed = AgentStepResultValidation.parseBusiness(node)
+        assertThat(parsed.outputs["ux_applicable"]).isEqualTo(true)
+        assertThat((parsed.outputs["delivery_plan"] as Map<*, *>)["steps"]).isInstanceOf(List::class.java)
+    }
+
+    @Test
+    fun `rejects unbounded or malformed business outputs`() {
+        val oversized = "x".repeat(AgentStepResultLimits.OUTPUTS_BYTES)
+        val node = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"outputs":{"value":"$oversized"}}""")
+        assertThat(AgentStepResultValidation.violations(node).map { it.path }).contains("result.outputs")
+        val malformed = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"outputs":[]}""")
+        assertThat(AgentStepResultValidation.violations(malformed).map { it.path }).contains("result.outputs")
+    }
+
+    @Test
     fun `rejects a null or non-object payload`() {
         assertThat(AgentStepResultValidation.validateBusiness(null)).isFalse()
         assertThat(AgentStepResultValidation.validateBusiness(json("[]"))).isFalse()
