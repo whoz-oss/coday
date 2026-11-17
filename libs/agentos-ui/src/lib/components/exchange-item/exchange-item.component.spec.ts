@@ -1,4 +1,5 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
+import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { COPY_FEEDBACK_MS } from '../../services/clipboard.utils'
 import { ExchangeFileRow, ExchangeItemComponent } from './exchange-item.component'
 
@@ -16,6 +17,7 @@ describe('ExchangeItemComponent copy relative path', () => {
   function setup(override: Partial<ExchangeFileRow> = {}) {
     const fixture = TestBed.createComponent(ExchangeItemComponent)
     fixture.componentRef.setInput('row', { ...row, ...override })
+    fixture.componentRef.setInput('scope', ExchangeFileEntryScopeEnum.NAMESPACE)
     fixture.detectChanges()
     const el = fixture.nativeElement as HTMLElement
     const buttons = () => Array.from(el.querySelectorAll<HTMLButtonElement>('.exchange-item__actions button'))
@@ -87,6 +89,7 @@ describe('ExchangeItemComponent selection', () => {
     TestBed.configureTestingModule({ imports: [ExchangeItemComponent] })
     const fixture = TestBed.createComponent(ExchangeItemComponent)
     fixture.componentRef.setInput('row', { ...row, ...override })
+    fixture.componentRef.setInput('scope', ExchangeFileEntryScopeEnum.NAMESPACE)
     fixture.componentRef.setInput('selectable', selectable)
     fixture.componentRef.setInput('selected', selected)
     const toggled = jest.fn()
