@@ -6,23 +6,25 @@
   letter-spacing: 0.02em;
 }
 
-.tag--accent {
+// The variant class sits on the host element itself (see `host` in the component), so the rules target
+// `:host(...)`: a plain `.tag--accent` would only reach elements of the template, and there are none.
+
+:host(.tag--accent) {
   background: var(--color-accent-100, #eef6ff);
   color: var(--color-accent-800, #2c455d);
 }
 
-.tag--neutral {
+:host(.tag--neutral) {
   background: var(--color-neutral-100, #f5f5f8);
   color: var(--color-neutral-800, #424244);
 }
 
-.tag--outline {
+:host(.tag--outline) {
   border: 1px solid var(--color-accent, #5980a6);
   color: var(--color-accent, #5980a6);
 }
 
-// Something that needs attention, with the tokens of `ds-notice` warning. The variant class sits on the host
-// element itself (see `host` in the component), hence `:host(...)`.
+// Something that needs attention, with the tokens of `ds-notice` warning.
 :host(.tag--warning) {
   background: color-mix(in srgb, var(--color-warning, #ff9500) 14%, transparent);
   color: var(--color-warning, #ff9500);
