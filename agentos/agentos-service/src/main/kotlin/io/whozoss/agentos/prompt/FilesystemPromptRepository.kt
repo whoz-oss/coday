@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.ConfigFile
 import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
@@ -160,13 +161,27 @@ class FilesystemPromptRepository(
     // Internal helpers
     // -------------------------------------------------------------------------
 
+    /**
+     * Every prompt file of [namespaceId]'s `configPath`, with the persisted namespace-shared prompt that
+     * masks it, if any (the rule of [findByParent]). Personal prompts never mask a file.
+     */
+    override fun configFiles(namespaceId: UUID): List<ConfigFile<Prompt>> {
+        val configPath = configPathOf(namespaceId) ?: return emptyList()
+        val entries = cacheRegistry.getEntries(Path.of(configPath, PROMPTS_SUBDIR))
+        if (entries.isEmpty()) return emptyList()
+        val persisted = delegate.findByParent(namespaceId).associateBy { it.name.lowercase() }
+        return entries
+            .map { ConfigFile(it.value.inNamespace(namespaceId), Path.of(configPath), it.file, persisted[it.value.name.lowercase()]) }
+            .sortedBy { it.entity.name }
+    }
+
+    private fun configPathOf(namespaceId: UUID): String? = namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
+
     private fun filesystemPrompts(
         namespaceId: UUID,
         excludeNames: Set<String> = emptySet(),
     ): List<Prompt> {
-        val configPath =
-            namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
-                ?: return emptyList()
+        val configPath = configPathOf(namespaceId) ?: return emptyList()
         val directory = Path.of(configPath, PROMPTS_SUBDIR)
         return cacheRegistry
             .getAll(directory)

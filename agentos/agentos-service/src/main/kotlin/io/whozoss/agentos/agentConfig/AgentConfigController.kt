@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.beans.factory.annotation.Qualifier
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.configFile.agentFileModel
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -196,7 +197,7 @@ class AgentConfigController(
         val entity =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        val yaml = yamlExportMapper.writeValueAsString(toExportModel(entity))
+        val yaml = yamlExportMapper.writeValueAsString(agentFileModel(entity))
         val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
         return ResponseEntity
             .ok()
@@ -316,29 +317,3 @@ internal fun toDto(entity: AgentConfig) =
         loopConfig = entity.loopConfig,
     )
 
-/**
- * Produces the filesystem-ready export model from a persisted [AgentConfig].
- *
- * Scope fields (`id`, `namespaceId`, `enabled`, `advancedExecution`, `externalMetadata`) are
- * intentionally excluded — they are persistence artefacts with no meaning in a YAML file.
- * Only the fields that [FilesystemAgentConfigRepository] reads are included, so the exported
- * file can be dropped directly into the namespace `agents/` directory.
- *
- * The map is built explicitly rather than via a data class so that null, blank and empty top-level
- * values can be omitted without a per-field `@JsonInclude` annotation. Doing it here rather than
- * with a mapper-level inclusion policy is what keeps the filtering out of the `integrations` map,
- * whose entries are kept verbatim: a null value (all tools of the integration) and an empty list
- * (explicit opt-out) are distinct states the re-import must see unchanged.
- */
-private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
-    buildMap {
-        put("name", entity.name)
-        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
-        entity.instructions?.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
-        entity.modelName?.takeIf { it.isNotBlank() }?.let { put("modelName", it) }
-        entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
-        entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
-        entity.delegationTimeoutSeconds?.let { put("delegationTimeoutSeconds", it) }
-        entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }
-        entity.skillSelectors?.takeIf { it.isNotEmpty() }?.let { put("skillSelectors", it) }
-    }

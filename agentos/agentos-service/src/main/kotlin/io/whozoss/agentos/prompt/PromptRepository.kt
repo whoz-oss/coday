@@ -1,6 +1,7 @@
 package io.whozoss.agentos.prompt
 
 import io.whozoss.agentos.entity.EntityRepository
+import io.whozoss.agentos.plugin.filesystem.ConfigFileSource
 import java.util.UUID
 
 /**
@@ -10,7 +11,9 @@ import java.util.UUID
  * for the given namespace — user-scoped overlays are excluded.
  * Platform-level prompts (namespaceId == null, userId == null) are retrieved via [findPlatform].
  */
-interface PromptRepository : EntityRepository<Prompt, UUID> {
+interface PromptRepository :
+    EntityRepository<Prompt, UUID>,
+    ConfigFileSource<Prompt> {
     /**
      * Find all non-removed platform-level prompts (namespaceId IS NULL AND userId IS NULL).
      */

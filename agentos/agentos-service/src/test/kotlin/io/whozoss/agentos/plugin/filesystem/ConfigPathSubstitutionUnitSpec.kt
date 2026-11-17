@@ -117,4 +117,29 @@ class ConfigPathSubstitutionUnitSpec :
 
             result?.get("workingDirectory")?.textValue() shouldBe "{{NAMESPACE_CONFIG_PATH}}/x"
         }
+
+        "tokenizeConfigPath puts the token back wherever the whole configPath appears" {
+            val input =
+                JsonNodeFactory.instance.objectNode().apply {
+                    put("workingDirectory", configPath)
+                    put("command", "$configPath/scripts/build.sh --config=$configPath/x.json")
+                    putArray("args").add("$configPath/../repo").add("unrelated")
+                    put("timeout", 30)
+                }
+
+            val result = tokenizeConfigPath(input, configPath)!!
+
+            result.get("workingDirectory").textValue() shouldBe "{{NAMESPACE_CONFIG_PATH}}"
+            result.get("command").textValue() shouldBe
+                "{{NAMESPACE_CONFIG_PATH}}/scripts/build.sh --config={{NAMESPACE_CONFIG_PATH}}/x.json"
+            result.get("args").map { it.textValue() } shouldBe listOf("{{NAMESPACE_CONFIG_PATH}}/../repo", "unrelated")
+            result.get("timeout").intValue() shouldBe 30
+            substituteConfigPath(result, configPath) shouldBe input
+        }
+
+        "tokenizeConfigPath leaves a path that only starts with configPath alone" {
+            val input = JsonNodeFactory.instance.objectNode().put("rootPath", "$configPath-old/x")
+
+            tokenizeConfigPath(input, configPath)!!.get("rootPath").textValue() shouldBe "$configPath-old/x"
+        }
     })

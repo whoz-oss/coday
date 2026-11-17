@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.ConfigFile
 import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
@@ -123,6 +124,22 @@ class FilesystemAgentConfigRepository(
     }
 
     /**
+     * Every agent file of [namespaceId]'s `configPath`, with the persisted agent of the namespace that
+     * masks it, if any: the same name rule as [findByParent], disabled agents included.
+     */
+    override fun configFiles(namespaceId: UUID): List<ConfigFile<AgentConfig>> {
+        val configPath = configPathOf(namespaceId) ?: return emptyList()
+        val entries = cacheRegistry.getEntries(Path.of(configPath, AGENTS_SUBDIR))
+        if (entries.isEmpty()) return emptyList()
+        val persisted = delegate.findByParent(namespaceId, withDisabled = true).associateBy { it.name.lowercase() }
+        return entries
+            .map { ConfigFile(it.value.inNamespace(namespaceId), Path.of(configPath), it.file, persisted[it.value.name.lowercase()]) }
+            .sortedBy { it.entity.name }
+    }
+
+    private fun configPathOf(namespaceId: UUID): String? = namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
+
+    /**
      * Loads and returns agent configs from the filesystem for [parentId].
      *
      * When [excludeNames] is provided, any filesystem agent whose lowercased name
@@ -132,9 +149,7 @@ class FilesystemAgentConfigRepository(
         parentId: UUID,
         excludeNames: Set<String> = emptySet(),
     ): List<AgentConfig> {
-        val configPath =
-            namespaceRepository.findByIds(listOf(parentId)).firstOrNull()?.configPath
-                ?: return emptyList()
+        val configPath = configPathOf(parentId) ?: return emptyList()
         val directory = Path.of(configPath, AGENTS_SUBDIR)
         return cacheRegistry
             .getAll(directory)

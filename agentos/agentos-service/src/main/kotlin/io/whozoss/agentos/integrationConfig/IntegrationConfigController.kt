@@ -3,6 +3,7 @@ package io.whozoss.agentos.integrationConfig
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
+import io.whozoss.agentos.configFile.integrationFileModel
 import io.whozoss.agentos.entity.ScopeParams
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
@@ -202,7 +203,7 @@ class IntegrationConfigController(
         val caller = callerOf()
         // withRemoved=false: the export path must not serve deleted configs in clear text.
         val entity = integrationConfigService.getByIdForCaller(caller, id, Action.WRITE, withRemoved = false)
-        val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(toExportModel(entity))
+        val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(integrationFileModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
         return ResponseEntity
             .ok()
@@ -277,23 +278,3 @@ fun toDto(entity: IntegrationConfig) =
         authSettingName = entity.authSettingName,
         autoGrant = entity.autoGrant,
     )
-
-/**
- * Produces the filesystem-ready export model from a persisted [IntegrationConfig].
- *
- * Built explicitly via `buildMap` so that null/empty values are omitted without a
- * mapper-level inclusion policy — consistent with [AgentConfigController] and
- * [PromptController]. The [parameters] field is a [JsonNode] that the YAML mapper
- * serialises natively; a null value means no parameters were set, so the key is omitted.
- */
-private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
-    buildMap {
-        put("name", entity.name)
-        put("integrationType", entity.integrationType)
-        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
-        entity.parameters?.let { put("parameters", it) }
-        entity.authSettingName?.takeIf { it.isNotBlank() }?.let { put("authSettingName", it) }
-        // Only emitted when set: `autoGrant: false` is the default, and writing it on every export
-        // would add noise to files whose point is to be read and diffed by humans.
-        if (entity.autoGrant) put("autoGrant", true)
-    }
