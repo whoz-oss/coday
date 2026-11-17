@@ -517,7 +517,7 @@ class ScheduledPromptGenerationService(
                             targetAgentDescription = complete.targetAgent.description,
                             prompt = complete.prompt,
                             searchTool = block.get("tool")?.asText().orEmpty(),
-                            searchToolDescription = search.toolDescription,
+                            searchToolDescription = search?.toolDescription,
                             searchParams = block.get("params"),
                         ),
                     language = userService.findById(userId)?.preferredLanguage?.takeIf { it.isNotBlank() },
