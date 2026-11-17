@@ -500,22 +500,42 @@ class LoopConfigGenerationServiceUnitSpec : StringSpec({
         systemMessageOf(sentPrompt.captured) shouldContain "Base parameters"
     }
 
-    "enrich keeps every base value, merges nested objects, and never merges arrays item by item" {
+    "enrich keeps every base value, merges nested objects, and combines arrays without losing or duplicating items" {
         val svc = service("{}")
         forAll(
             // the LLM adds a key
             row("""{"a": 1}""", """{"b": 2}""", """{"b": 2, "a": 1}"""),
-            // the LLM changes a base value: the base wins
+            // the LLM changes a base scalar: the base wins
             row("""{"a": 1}""", """{"a": 9}""", """{"a": 1}"""),
             // the LLM nulls a base value: the base wins
             row("""{"a": {"x": 1}}""", """{"a": null}""", """{"a": {"x": 1}}"""),
             // nested objects are merged the same way
             row("""{"a": {"x": 1}}""", """{"a": {"x": 9, "y": 2}}""", """{"a": {"x": 1, "y": 2}}"""),
-            // an array of the base wins as a whole
-            row("""{"a": ["X"]}""", """{"a": ["Y", "Z"]}""", """{"a": ["X"]}"""),
+            // arrays are combined: base items first, then the new ones
+            row("""{"a": ["X"]}""", """{"a": ["Y", "Z"]}""", """{"a": ["X", "Y", "Z"]}"""),
+            // an item already in the base is not repeated, nor one the LLM repeats
+            row("""{"a": ["X", "Y"]}""", """{"a": ["Y", "Z", "Z"]}""", """{"a": ["X", "Y", "Z"]}"""),
+            // the LLM drops a base item: it is kept
+            row("""{"a": ["X", "Y"]}""", """{"a": ["Z"]}""", """{"a": ["X", "Y", "Z"]}"""),
+            // object items are compared as a whole
+            row("""{"a": [{"k": 1}]}""", """{"a": [{"k": 1}, {"k": 2}]}""", """{"a": [{"k": 1}, {"k": 2}]}"""),
+            // nested arrays are combined too
+            row("""{"f": {"s": ["A"]}}""", """{"f": {"s": ["B"]}}""", """{"f": {"s": ["A", "B"]}}"""),
+            // a type mismatch keeps the base value
+            row("""{"a": ["X"]}""", """{"a": "Y"}""", """{"a": ["X"]}"""),
         ) { base, generated, expected ->
             svc.enrich(objectMapper.readTree(base), objectMapper.readTree(generated)) shouldBe objectMapper.readTree(expected)
         }
         svc.enrich(null, objectMapper.readTree("""{"a": 1}""")) shouldBe objectMapper.readTree("""{"a": 1}""")
+    }
+
+    "single-tool: a criterion added to a base list ends up next to the base value" {
+        val svc = service("""{"startDatePeriod": ["NEXT_WEEK"]}""")
+        val def = definition(listOf(mockTool("SearchTasks")))
+
+        val result =
+            svc.generate(def, "SearchTasks", "this week and next week", baseParams = objectMapper.readTree("""{"startDatePeriod": ["THIS_WEEK"]}"""))
+
+        result.loopConfig!!["search"]["params"]["startDatePeriod"] shouldBe objectMapper.readTree("""["THIS_WEEK", "NEXT_WEEK"]""")
     }
 })

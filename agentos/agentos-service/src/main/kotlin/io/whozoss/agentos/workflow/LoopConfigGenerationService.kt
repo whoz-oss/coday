@@ -43,8 +43,8 @@ import org.springframework.stereotype.Service
  *
  * An optional `baseParams` object is a starting point the generation only **enriches**, typically by adding criteria.
  * The LLM is shown it and told to keep it, and the rule does not rest on the LLM alone: the base is merged back over
- * its answer ([enrich]), so that every base value survives as given, nested objects included, and the LLM can only
- * add keys. In auto-select mode, the base parameters are those of whichever tool the LLM picks: pass a tool name
+ * its answer ([enrich]), so that nothing of the base is lost: objects are merged key by key, arrays are combined
+ * (base items first, new items appended), and a base scalar always wins. In auto-select mode, the base parameters are those of whichever tool the LLM picks: pass a tool name
  * with them when they belong to a given tool.
  *
  * The LLM call and the parse of its answer are those of [StructuredLlmClient].
@@ -270,7 +270,7 @@ class LoopConfigGenerationService(
             baseParams?.let {
                 appendLine()
                 appendLine()
-                appendLine("Base parameters (keep every one as given, only add what the description asks for):")
+                appendLine("Base parameters (keep every one, only add what the description asks for, including new values in a list):")
                 append(objectMapper.writeValueAsString(it))
             }
             context?.takeIf { it.isNotBlank() }?.let {
@@ -282,25 +282,40 @@ class LoopConfigGenerationService(
         }
 
     /**
-     * [generated] enriching [base]: every value of [base] is kept as given, the LLM only adds keys. Nested objects
-     * present on both sides are enriched the same way; any other value of [base] wins as a whole (an array of
-     * criteria is not merged item by item). Without a [base], [generated] as is.
+     * [generated] enriching [base]: nothing of [base] is lost, the LLM can only add.
+     * - Objects on both sides: every key of [base] is kept, enriched recursively; keys only in [generated] are added.
+     * - Arrays on both sides: the items of [base] first, in their order, then the items of [generated] not already
+     *   there (an added criterion value, e.g. `NEXT_WEEK` next to `THIS_WEEK`). Equal items are not duplicated.
+     * - Anything else: the [base] value wins as a whole (a scalar, or a type mismatch between the two sides).
+     *
+     * Without a [base], [generated] as is.
      */
     internal fun enrich(
         base: JsonNode?,
         generated: JsonNode,
     ): JsonNode =
         when {
-            base == null || !base.isObject || !generated.isObject -> {
-                base?.deepCopy<JsonNode>() ?: generated
+            base == null -> {
+                generated
+            }
+
+            base.isObject && generated.isObject -> {
+                (generated.deepCopy<JsonNode>() as ObjectNode).also { merged ->
+                    base.fields().forEach { (key, baseValue) ->
+                        merged.set<JsonNode>(key, enrich(baseValue, merged.get(key)?.takeUnless { it.isNull } ?: baseValue))
+                    }
+                }
+            }
+
+            base.isArray && generated.isArray -> {
+                objectMapper.createArrayNode().also { merged ->
+                    base.forEach { merged.add(it.deepCopy()) }
+                    generated.filterNot { item -> base.contains(item) }.distinct().forEach { merged.add(it.deepCopy()) }
+                }
             }
 
             else -> {
-                (generated.deepCopy<JsonNode>() as ObjectNode).also { merged ->
-                    base.fields().forEach { (key, baseValue) ->
-                        merged.set<JsonNode>(key, enrich(baseValue, merged.get(key) ?: baseValue))
-                    }
-                }
+                base.deepCopy()
             }
         }
 
@@ -357,8 +372,8 @@ class LoopConfigGenerationService(
             - uses the ids given in the additional context when the schema asks for them
             - uses null for optional fields that are not mentioned
             - does NOT invent fields that are not in the schema
-            - when "Base parameters" are given: keeps every one of them with its value unchanged, and only adds the
-              parameters the description asks for (typically extra criteria)
+            - when "Base parameters" are given: keeps every one of them, and only adds what the description asks for:
+              new parameters, or new values in an existing list (typically extra criteria)
 
             Output the raw JSON object with no explanation, no markdown, no code fences.
             Start your response with '{' and end it with '}'.
@@ -391,8 +406,8 @@ class LoopConfigGenerationService(
             - Use null for optional fields that are not mentioned.
             - Do NOT invent fields that are not in the schema.
             - Do NOT add explanation, markdown, or code fences.
-            - When "Base parameters" are given: keep every one of them with its value unchanged in params, and only add
-              the parameters the description asks for (typically extra criteria).
+            - When "Base parameters" are given: keep every one of them in params, and only add what the description
+              asks for: new parameters, or new values in an existing list (typically extra criteria).
             - Start your response with '{' and end it with '}'.
             """.trimIndent()
     }
