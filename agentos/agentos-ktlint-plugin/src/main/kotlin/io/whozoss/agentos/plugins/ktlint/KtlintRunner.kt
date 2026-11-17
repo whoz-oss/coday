@@ -4,7 +4,6 @@ import com.pinterest.ktlint.rule.engine.api.Code
 import com.pinterest.ktlint.rule.engine.api.KtLintRuleEngine
 import com.pinterest.ktlint.rule.engine.api.LintError
 import com.pinterest.ktlint.ruleset.standard.StandardRuleSetProvider
-import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -29,9 +28,16 @@ class KtlintRunner(
         return violations
     }
 
-    /** @see StyleRunner.format */
+    /**
+     * @see StyleRunner.format
+     *
+     * The file is read and written with non-interruptible I/O ([java.io.File.readText] and [java.io.File.writeText],
+     * plain streams): the worker thread may already be interrupted when it gets here (cancellation or timeout, the
+     * engine does not look at interruption while it parses), and an interruptible channel would then fail after
+     * having truncated the file, leaving it empty.
+     */
     override fun format(file: Path): FormatResult {
-        val original = Files.readString(file)
+        val original = file.toFile().readText(charset = Charsets.UTF_8)
         val findings = mutableListOf<Pair<KtlintViolation, Boolean>>()
         val formatted =
             engine.format(code = codeOf(file = file)) { lintError, corrected ->
@@ -39,7 +45,9 @@ class KtlintRunner(
             }
         val modified = formatted != original
         if (modified) {
-            Files.writeString(file, formatted)
+            // Not Files.writeString: it truncates the file, then writes through an interruptible FileChannel; on an
+            // interrupted thread the write fails with ClosedByInterruptException and the file stays empty.
+            file.toFile().writeText(text = formatted, charset = Charsets.UTF_8)
         }
         return FormatResult(
             file = relativeName(file = file),

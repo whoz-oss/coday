@@ -34,7 +34,9 @@ internal class BoundedKtlintRun(
      * Validates [timeoutSeconds] and [files], then runs [action] on the resolved files within [timeoutSeconds].
      *
      * On expiry the worker is interrupted: [ensureRunning] stops it before the next file, the file in progress is
-     * finished first because the engine does not check interruption while parsing.
+     * finished first because the engine does not check interruption while parsing. The same happens when the
+     * calling thread is interrupted while waiting (cancellation of the calling coroutine, see the tools' `execute`):
+     * the worker is cancelled, the interrupt flag is restored and the answer is `ERROR: ktlint interrupted.`.
      *
      * @param onTimeout text appended to the timeout error, e.g. the files already modified.
      * @return the report of [action], or a text starting with `ERROR` (invalid timeout, invalid files, timeout, failure).

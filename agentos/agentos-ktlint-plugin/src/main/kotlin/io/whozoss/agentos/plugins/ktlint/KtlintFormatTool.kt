@@ -3,6 +3,8 @@ package io.whozoss.agentos.plugins.ktlint
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -10,10 +12,12 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Tool that autocorrects the ktlint violations of Kotlin files, REWRITING them in place.
  *
  * Works on files only (never a whole tree) and is time-boxed by a mandatory `timeoutSeconds`: when it expires,
- * the files already rewritten stay modified and are listed.
+ * the files already rewritten stay modified and are listed. Cancelling the call stops the run between two files
+ * (the file in progress is finished first).
  *
  * The business logic ([format]) is blocking and returns a String starting with `ERROR` on problems;
- * [execute] maps it to a [ToolExecutionResult] (`KTLINT_ERROR` error type).
+ * [execute] runs it interruptibly on [Dispatchers.IO] and maps it to a [ToolExecutionResult]
+ * (`KTLINT_ERROR` error type).
  */
 class KtlintFormatTool internal constructor(
     private val bounded: BoundedKtlintRun,
@@ -55,14 +59,27 @@ and the violations ktlint cannot autocorrect, which must be fixed by hand."""
                 ),
         )
 
+    /**
+     * Runs [format] with [runInterruptible] on [Dispatchers.IO]: cancelling the calling coroutine (the user stops the
+     * case) interrupts the thread waiting for the run, which cancels the worker (see [BoundedKtlintRun]) so no file
+     * is rewritten after the file in progress, and the caller receives the cancellation instead of a result.
+     */
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
         val timeoutSeconds = input?.timeoutSeconds
         return when {
-            input == null || timeoutSeconds == null -> missingTimeoutResult()
-            else -> format(files = input.files.orEmpty(), timeoutSeconds = timeoutSeconds).toToolExecutionResult()
+            input == null || timeoutSeconds == null -> {
+                missingTimeoutResult()
+            }
+
+            else -> {
+                runInterruptible(
+                    context = Dispatchers.IO,
+                    block = { format(files = input.files.orEmpty(), timeoutSeconds = timeoutSeconds) },
+                ).toToolExecutionResult()
+            }
         }
     }
 

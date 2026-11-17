@@ -3,6 +3,8 @@ package io.whozoss.agentos.plugins.ktlint
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import java.nio.file.Path
 
 /**
@@ -11,7 +13,7 @@ import java.nio.file.Path
  * Works on files only (never a whole tree) and is time-boxed by a mandatory `timeoutSeconds`.
  *
  * The business logic ([check]) is blocking and returns a String starting with `ERROR` on problems;
- * [execute] maps it to a [ToolExecutionResult] (`KTLINT_ERROR` error type).
+ * [execute] runs it interruptibly on [Dispatchers.IO] and maps it to a [ToolExecutionResult] (`KTLINT_ERROR` error type).
  */
 class KtlintCheckTool internal constructor(
     private val bounded: BoundedKtlintRun,
@@ -51,14 +53,27 @@ Returns one line per violation: file:line:column message (rule-id), flagged [aut
                 ),
         )
 
+    /**
+     * Runs [check] with [runInterruptible] on [Dispatchers.IO]: cancelling the calling coroutine (the user stops the
+     * case) interrupts the thread waiting for the run, which cancels the worker (see [BoundedKtlintRun]), and the
+     * caller receives the cancellation instead of a result.
+     */
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
         val timeoutSeconds = input?.timeoutSeconds
         return when {
-            input == null || timeoutSeconds == null -> missingTimeoutResult()
-            else -> check(files = input.files.orEmpty(), timeoutSeconds = timeoutSeconds).toToolExecutionResult()
+            input == null || timeoutSeconds == null -> {
+                missingTimeoutResult()
+            }
+
+            else -> {
+                runInterruptible(
+                    context = Dispatchers.IO,
+                    block = { check(files = input.files.orEmpty(), timeoutSeconds = timeoutSeconds) },
+                ).toToolExecutionResult()
+            }
         }
     }
 
