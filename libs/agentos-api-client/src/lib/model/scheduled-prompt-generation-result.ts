@@ -17,5 +17,9 @@ export interface ScheduledPromptGenerationResult {
    * The proposal, absent (null) when a part of it could not be determined: see `warnings`.
    */
   scheduledPrompt?: ScheduledPrompt
+  /**
+   * Markdown summary of the proposal for a non-technical end user, in their preferred language: a bold schedule and the agent\'s name on the opening line, then `- ` bullets for what is selected each time and what is done for each item. Render it as Markdown. Null when there is no proposal or when it could not be written.
+   */
+  summary?: string | null
   warnings: Array<string>
 }
