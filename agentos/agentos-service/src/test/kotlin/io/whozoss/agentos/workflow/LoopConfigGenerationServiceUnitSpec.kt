@@ -3,6 +3,8 @@ package io.whozoss.agentos.workflow
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -451,5 +453,69 @@ class LoopConfigGenerationServiceUnitSpec : StringSpec({
         starter.loopConfig.shouldBeNull()
         starter.warning!! shouldContain "not available"
         verify(exactly = 0) { provider.getChatClient(any(), any(), any(), any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // Base parameters: kept as given, only enriched
+    // -------------------------------------------------------------------------
+
+    val baseParams = objectMapper.readTree("""{"agentConfigId": "d715a9da", "filters": {"status": "ACTIVE"}}""")
+
+    "single-tool: the base parameters are shown to the LLM, and kept even when the LLM drops or changes them" {
+        // the LLM drops agentConfigId, rewrites filters.status, and adds two criteria
+        val svc = service("""{"filters": {"status": "ANY", "country": "FR"}, "startDatePeriod": ["THIS_WEEK"]}""")
+        val def = definition(listOf(mockTool("searchAgentUsers")))
+
+        val result = svc.generate(def, "searchAgentUsers", "French users, this week", baseParams = baseParams)
+
+        userMessageOf(sentPrompt.captured) shouldContain "Base parameters"
+        userMessageOf(sentPrompt.captured) shouldContain "d715a9da"
+        result.loopConfig!!["search"]["params"] shouldBe
+            objectMapper.readTree(
+                """{"agentConfigId": "d715a9da", "filters": {"status": "ACTIVE", "country": "FR"}, "startDatePeriod": ["THIS_WEEK"]}""",
+            )
+    }
+
+    "auto-select: the base parameters are kept in the params of the chosen tool" {
+        val svc = service("""{"tool": "SearchTasks", "params": {"startDatePeriod": ["THIS_WEEK"]}}""")
+        val def = definition(listOf(mockTool("SearchTasks"), mockTool("SearchTalents")))
+
+        val result = svc.generate(def, null, "tasks this week", baseParams = baseParams)
+
+        val params = result.loopConfig!!["search"]["params"]
+        params["agentConfigId"].asText() shouldBe "d715a9da"
+        params["filters"]["status"].asText() shouldBe "ACTIVE"
+        params["startDatePeriod"][0].asText() shouldBe "THIS_WEEK"
+    }
+
+    "no base-parameters block without base parameters, or with an empty object, and both system prompts explain it" {
+        val tool = mockTool("SearchTalents")
+
+        listOf(null, objectMapper.createObjectNode()).forEach { empty ->
+            service("{}").generate(definition(listOf(tool)), "SearchTalents", "x", baseParams = empty)
+            userMessageOf(sentPrompt.captured) shouldNotContain "Base parameters"
+            systemMessageOf(sentPrompt.captured) shouldContain "Base parameters"
+        }
+        service("""{"tool":"SearchTalents","params":{}}""").generate(definition(listOf(tool)), null, "x")
+        systemMessageOf(sentPrompt.captured) shouldContain "Base parameters"
+    }
+
+    "enrich keeps every base value, merges nested objects, and never merges arrays item by item" {
+        val svc = service("{}")
+        forAll(
+            // the LLM adds a key
+            row("""{"a": 1}""", """{"b": 2}""", """{"b": 2, "a": 1}"""),
+            // the LLM changes a base value: the base wins
+            row("""{"a": 1}""", """{"a": 9}""", """{"a": 1}"""),
+            // the LLM nulls a base value: the base wins
+            row("""{"a": {"x": 1}}""", """{"a": null}""", """{"a": {"x": 1}}"""),
+            // nested objects are merged the same way
+            row("""{"a": {"x": 1}}""", """{"a": {"x": 9, "y": 2}}""", """{"a": {"x": 1, "y": 2}}"""),
+            // an array of the base wins as a whole
+            row("""{"a": ["X"]}""", """{"a": ["Y", "Z"]}""", """{"a": ["X"]}"""),
+        ) { base, generated, expected ->
+            svc.enrich(objectMapper.readTree(base), objectMapper.readTree(generated)) shouldBe objectMapper.readTree(expected)
+        }
+        svc.enrich(null, objectMapper.readTree("""{"a": 1}""")) shouldBe objectMapper.readTree("""{"a": 1}""")
     }
 })

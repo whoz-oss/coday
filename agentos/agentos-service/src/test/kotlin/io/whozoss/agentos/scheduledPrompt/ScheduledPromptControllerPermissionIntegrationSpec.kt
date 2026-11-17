@@ -409,7 +409,7 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
         // POST /generate — request validation runs before the method (and before any LLM call)
         // -------------------------------------------------------------------------
 
-        "POST /generate returns 400 for an oversized, blank, or namespace-less request, before any generation" {
+        "POST /generate returns 400 for an oversized, blank, or namespace-less request, or a non-object base, before any generation" {
             permissionService.grantPermission(
                 alice.id.toString(),
                 EntityType.NAMESPACE,
@@ -421,6 +421,7 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
                 """{"namespaceId": "${namespace.id}", "description": "${"x".repeat(2001)}"}""",
                 """{"namespaceId": "${namespace.id}", "description": "   "}""",
                 """{"namespaceId": "${namespace.id}", "description": "weekly", "prompt": "${"x".repeat(4001)}"}""",
+                """{"namespaceId": "${namespace.id}", "description": "weekly", "baseFlowConfiguration": [1, 2]}""",
                 """{"description": "weekly"}""",
             ).forEach { body ->
                 mockMvc.perform(

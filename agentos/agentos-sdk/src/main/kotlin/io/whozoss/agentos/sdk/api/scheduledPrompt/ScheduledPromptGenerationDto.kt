@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.api.scheduledPrompt
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -37,20 +38,42 @@ data class ScheduledPromptGenerationRequest(
     @field:Schema(types = ["string", "null"])
     val namespaceExternalId: String? = null,
     @field:NotBlank(message = "description must not be blank")
-    @field:Size(min = 1, max = MAX_DESCRIPTION_LENGTH, message = "description must be between 1 and $MAX_DESCRIPTION_LENGTH characters")
+    @field:Size(
+        min = 1,
+        max = MAX_DESCRIPTION_LENGTH,
+        message = "description must be between 1 and $MAX_DESCRIPTION_LENGTH characters"
+    )
     val description: String,
     @field:Size(max = MAX_NAME_LENGTH, message = "loopAgentName must be at most $MAX_NAME_LENGTH characters")
     @field:Schema(types = ["string", "null"], description = "LOOP agent running the automation. Inferred when absent.")
     val loopAgentName: String? = null,
     @field:Size(max = MAX_NAME_LENGTH, message = "targetAgentName must be at most $MAX_NAME_LENGTH characters")
-    @field:Schema(types = ["string", "null"], description = "Agent started for each search result. Inferred when absent.")
+    @field:Schema(
+        types = ["string", "null"],
+        description = "Agent started for each search result. Inferred when absent."
+    )
     val targetAgentName: String? = null,
     @field:Size(max = MAX_PROMPT_LENGTH, message = "prompt must be at most $MAX_PROMPT_LENGTH characters")
-    @field:Schema(types = ["string", "null"], description = "Opening message of each started case. Inferred when absent.")
+    @field:Schema(
+        types = ["string", "null"],
+        description = "Opening message of each started case. Inferred when absent."
+    )
     val prompt: String? = null,
     @field:Size(max = MAX_NAME_LENGTH, message = "searchToolName must be at most $MAX_NAME_LENGTH characters")
-    @field:Schema(types = ["string", "null"], description = "Search tool of the loop agent. Chosen by the LLM when absent.")
+    @field:Schema(
+        types = ["string", "null"],
+        description = "Search tool of the loop agent. Chosen by the LLM when absent."
+    )
     val searchToolName: String? = null,
+    @field:Schema(
+        ref = "#/components/schemas/JsonNode",
+        description =
+            "Flow configuration to start from, `{ search: { tool, params }, act: { agentName, prompt } }`, every part " +
+                "optional. The generation only enriches it: `search.tool` is used as the search tool, `search.params` " +
+                "are kept as they are and only completed, `act.agentName` is the target agent and `act.prompt` the " +
+                "prompt. An explicit request field wins over its counterpart here.",
+    )
+    val baseFlowConfiguration: JsonNode? = null,
     @field:Valid
     val recurrence: RecurrenceDto? = null,
     @field:Valid
@@ -61,7 +84,19 @@ data class ScheduledPromptGenerationRequest(
     val isNamespaceIdentifierValid: Boolean
         get() = (namespaceId == null) != (namespaceExternalId == null)
 
+    /** A JSON object, bounded like the other free inputs: it is injected into LLM prompts. An explicit null is none. */
+    @get:AssertTrue(
+        message = "baseFlowConfiguration must be a JSON object of at most $MAX_BASE_FLOW_CONFIGURATION_LENGTH characters",
+    )
+    @get:JsonIgnore
+    val isBaseFlowConfigurationValid: Boolean
+        get() =
+            baseFlowConfiguration == null ||
+                baseFlowConfiguration.isNull ||
+                (baseFlowConfiguration.isObject && baseFlowConfiguration.toString().length <= MAX_BASE_FLOW_CONFIGURATION_LENGTH)
+
     companion object {
+        const val MAX_BASE_FLOW_CONFIGURATION_LENGTH = 10_000
         const val MAX_DESCRIPTION_LENGTH = 2000
         const val MAX_PROMPT_LENGTH = 4000
         const val MAX_NAME_LENGTH = 200
@@ -118,9 +153,9 @@ data class ScheduledPromptGenerationResult(
         types = ["string", "null"],
         description =
             "Markdown summary of the proposal for a non-technical end user, in their preferred language: a bold " +
-                "schedule and the agent's name on the opening line, then `- ` bullets for what is selected each time " +
-                "and what is done for each item. Render it as Markdown. Null when there is no proposal or when it " +
-                "could not be written.",
+                    "schedule and the agent's name on the opening line, then `- ` bullets for what is selected each time " +
+                    "and what is done for each item. Render it as Markdown. Null when there is no proposal or when it " +
+                    "could not be written.",
     )
     val summary: String? = null,
     val decisions: List<GeneratedFieldDecision> = emptyList(),

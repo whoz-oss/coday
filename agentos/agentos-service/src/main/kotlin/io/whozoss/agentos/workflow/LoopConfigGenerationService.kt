@@ -2,6 +2,7 @@ package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.casePlugin.FreeCaseStarterForUserTool
 import io.whozoss.agentos.casePlugin.FreeCaseStarterTool
@@ -38,6 +39,14 @@ import org.springframework.stereotype.Service
  * In both modes an optional `context` is appended to the user message as an "Additional context" block, to hand the
  * LLM identifiers it can use as parameter values (for instance the id of the agent started for each hit).
  *
+ * ## Base parameters
+ *
+ * An optional `baseParams` object is a starting point the generation only **enriches**, typically by adding criteria.
+ * The LLM is shown it and told to keep it, and the rule does not rest on the LLM alone: the base is merged back over
+ * its answer ([enrich]), so that every base value survives as given, nested objects included, and the LLM can only
+ * add keys. In auto-select mode, the base parameters are those of whichever tool the LLM picks: pass a tool name
+ * with them when they belong to a given tool.
+ *
  * The LLM call and the parse of its answer are those of [StructuredLlmClient].
  *
  * ## Error handling
@@ -63,6 +72,7 @@ class LoopConfigGenerationService(
      *   LLM choose among them.
      * @param description  Natural-language description of the desired search criteria.
      * @param context  Optional extra information appended to the user message, such as ids the LLM may use in params.
+     * @param baseParams  Optional params object to start from: kept as given, only enriched (see the class KDoc).
      * @return [LoopConfigGenerationResult] with the generated search block, or a null one explained by its warning.
      */
     suspend fun generate(
@@ -70,11 +80,14 @@ class LoopConfigGenerationService(
         searchToolName: String?,
         description: String,
         context: String? = null,
-    ): LoopConfigGenerationResult =
-        when (searchToolName) {
-            null -> generateAutoSelect(definition, description, context)
-            else -> generateSingleTool(definition, searchToolName, description, context)
+        baseParams: JsonNode? = null,
+    ): LoopConfigGenerationResult {
+        val base = baseParams?.takeIf { it.isObject && it.size() > 0 }
+        return when (searchToolName) {
+            null -> generateAutoSelect(definition, description, context, base)
+            else -> generateSingleTool(definition, searchToolName, description, context, base)
         }
+    }
 
     // -------------------------------------------------------------------------
     // Single-tool mode
@@ -85,21 +98,22 @@ class LoopConfigGenerationService(
         searchToolName: String,
         description: String,
         context: String?,
+        baseParams: JsonNode?,
     ): LoopConfigGenerationResult {
         val candidates = searchCandidates(definition)
         val matches = lookupTool(candidates, searchToolName)
         val tool = matches.singleOrNull()
         return when {
             tool != null -> {
-                val userMessage = userMessage(schemaBlock(tool), description, context)
+                val userMessage = userMessage(schemaBlock(tool), description, context, baseParams)
                 val llmResult =
                     structuredLlmClient.call(
-                        definition.resolvedModel,
-                        definition.resolvedProvider,
-                        SINGLE_TOOL_SYSTEM_PROMPT,
-                        userMessage
+                        model = definition.resolvedModel,
+                        provider = definition.resolvedProvider,
+                        systemPrompt = SINGLE_TOOL_SYSTEM_PROMPT,
+                        userMessage = userMessage,
                     )
-                paramsResult(llmResult, tool.name)
+                paramsResult(llmResult, tool.name, baseParams)
             }
 
             matches.isEmpty() -> {
@@ -124,16 +138,18 @@ class LoopConfigGenerationService(
         }
     }
 
-    /** Single-tool mode: the answer is the params object itself, wrapped in the search block. */
+    /** Single-tool mode: the answer is the params object itself, enriching [baseParams], wrapped in the search block. */
     private fun paramsResult(
         llmResult: StructuredLlmResult,
         searchToolName: String,
+        baseParams: JsonNode?,
     ): LoopConfigGenerationResult {
-        val params = llmResult.json
-        return when (params) {
+        val generated = llmResult.json
+        return when (generated) {
             null -> unusable(llmResult)
 
             else -> {
+                val params = enrich(baseParams, generated)
                 val warning =
                     listOfNotNull(
                         FENCE_WARNING.takeIf { llmResult.usedCodeFence },
@@ -152,6 +168,7 @@ class LoopConfigGenerationService(
         definition: ResolvedAgentDefinition,
         description: String,
         context: String?,
+        baseParams: JsonNode?,
     ): LoopConfigGenerationResult {
         val tools = searchCandidates(definition)
         return when {
@@ -165,8 +182,8 @@ class LoopConfigGenerationService(
 
             else -> {
                 val toolsBlock = tools.joinToString("\n\n") { schemaBlock(it) }
-                val userMessage = userMessage("Available tools:\n$toolsBlock", description, context)
-                logger.debug { "call LLM to select tool with prompt: $userMessage" }
+                val userMessage = userMessage("Available tools:\n$toolsBlock", description, context, baseParams)
+                logger.debug { "[LoopConfigGeneration] Auto-selecting among ${tools.size} tools (message length=${userMessage.length})" }
                 val llmResult =
                     structuredLlmClient.call(
                         definition.resolvedModel,
@@ -174,7 +191,7 @@ class LoopConfigGenerationService(
                         AUTO_SELECT_SYSTEM_PROMPT,
                         userMessage
                     )
-                autoSelectResult(llmResult, tools.map { it.name })
+                autoSelectResult(llmResult, tools.map { it.name }, baseParams)
             }
         }
     }
@@ -186,6 +203,7 @@ class LoopConfigGenerationService(
     private fun autoSelectResult(
         llmResult: StructuredLlmResult,
         knownToolNames: List<String>,
+        baseParams: JsonNode?,
     ): LoopConfigGenerationResult {
         val node = llmResult.json
         val chosenTool = node?.get("tool")?.asText()?.takeIf { it.isNotBlank() }
@@ -214,9 +232,9 @@ class LoopConfigGenerationService(
 
             else -> {
                 logger.info { "[LoopConfigGeneration] Auto-select chose tool '$chosenTool'" }
-                val params = node.get("params")?.takeUnless { it.isNull } ?: objectMapper.createObjectNode()
+                val generated = node.get("params")?.takeUnless { it.isNull } ?: objectMapper.createObjectNode()
                 LoopConfigGenerationResult(
-                    loopConfig = searchBlock(chosenTool, params),
+                    loopConfig = searchBlock(chosenTool, enrich(baseParams, generated)),
                     warning = FENCE_WARNING.takeIf { llmResult.usedCodeFence },
                 )
             }
@@ -234,22 +252,55 @@ class LoopConfigGenerationService(
     private fun schemaBlock(tool: StandardTool<*>): String =
         "Tool name: ${tool.name}\nTool input schema:\n${tool.inputSchema}"
 
-    /** The user message: [header], the description, and the "Additional context" block when there is a [context]. */
+    /**
+     * The user message: [header], the description, the "Base parameters" block when there are [baseParams], and the
+     * "Additional context" block when there is a [context].
+     */
     private fun userMessage(
         header: String,
         description: String,
         context: String?,
+        baseParams: JsonNode?,
     ): String =
         buildString {
             appendLine(header)
             appendLine()
             appendLine("User description:")
             append(description)
+            baseParams?.let {
+                appendLine()
+                appendLine()
+                appendLine("Base parameters (keep every one as given, only add what the description asks for):")
+                append(objectMapper.writeValueAsString(it))
+            }
             context?.takeIf { it.isNotBlank() }?.let {
                 appendLine()
                 appendLine()
                 appendLine("Additional context:")
                 append(it)
+            }
+        }
+
+    /**
+     * [generated] enriching [base]: every value of [base] is kept as given, the LLM only adds keys. Nested objects
+     * present on both sides are enriched the same way; any other value of [base] wins as a whole (an array of
+     * criteria is not merged item by item). Without a [base], [generated] as is.
+     */
+    internal fun enrich(
+        base: JsonNode?,
+        generated: JsonNode,
+    ): JsonNode =
+        when {
+            base == null || !base.isObject || !generated.isObject -> {
+                base?.deepCopy<JsonNode>() ?: generated
+            }
+
+            else -> {
+                (generated.deepCopy<JsonNode>() as ObjectNode).also { merged ->
+                    base.fields().forEach { (key, baseValue) ->
+                        merged.set<JsonNode>(key, enrich(baseValue, merged.get(key) ?: baseValue))
+                    }
+                }
             }
         }
 
@@ -297,6 +348,7 @@ class LoopConfigGenerationService(
             Given:
             - the tool's JSON Schema (its accepted input)
             - a natural-language description of what the user wants to search for
+            - optionally, a "Base parameters" block: parameters to start from
             - optionally, an "Additional context" block that may provide ids to use in params
 
             Produce ONLY a valid JSON object that:
@@ -305,6 +357,8 @@ class LoopConfigGenerationService(
             - uses the ids given in the additional context when the schema asks for them
             - uses null for optional fields that are not mentioned
             - does NOT invent fields that are not in the schema
+            - when "Base parameters" are given: keeps every one of them with its value unchanged, and only adds the
+              parameters the description asks for (typically extra criteria)
 
             Output the raw JSON object with no explanation, no markdown, no code fences.
             Start your response with '{' and end it with '}'.
@@ -321,6 +375,7 @@ class LoopConfigGenerationService(
             Given:
             - a list of available tools, each with its name and JSON Schema
             - a natural-language description of what the user wants to search for
+            - optionally, a "Base parameters" block: parameters to start from
             - optionally, an "Additional context" block that may provide ids to use in params
 
             Select the most appropriate tool and produce ONLY a JSON object in this exact format:
@@ -336,6 +391,8 @@ class LoopConfigGenerationService(
             - Use null for optional fields that are not mentioned.
             - Do NOT invent fields that are not in the schema.
             - Do NOT add explanation, markdown, or code fences.
+            - When "Base parameters" are given: keep every one of them with its value unchanged in params, and only add
+              the parameters the description asks for (typically extra criteria).
             - Start your response with '{' and end it with '}'.
             """.trimIndent()
     }
