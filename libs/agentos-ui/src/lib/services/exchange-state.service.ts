@@ -64,10 +64,13 @@ interface ExchangeScopeView {
   capability: ExchangeDirectoryListingCapabilityEnum
 }
 
-/** Client deadline and cooldown bound retries; neither guarantees server-side cancellation. */
-const MANIFEST_TIMEOUT_MS = 15000
-const MANIFEST_TIMEOUT_COOLDOWN_MS = 15000
-const MANIFEST_ERROR_COOLDOWN_MS = 3000
+/**
+ * Client deadline and cooldown bound retries; neither guarantees server-side cancellation. The server walks
+ * every file of the scope (dependency folders included), so the deadline only catches a scan that is stuck.
+ */
+export const MANIFEST_TIMEOUT_MS = 60000
+export const MANIFEST_TIMEOUT_COOLDOWN_MS = 15000
+export const MANIFEST_ERROR_COOLDOWN_MS = 3000
 
 const NEUTRAL_LOADING: ExchangeScopeView = {
   status: 'loading',
