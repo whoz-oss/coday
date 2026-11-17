@@ -81,6 +81,9 @@ dependencies {
     // AgentOS SDK - Contains plugin interfaces
     compileOnly("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
+    // Coroutines (runInterruptible in the tools) are exposed by the SDK and provided by the service classloader at runtime, never bundled
+    compileOnly(libs.kotlinx.coroutines.core)
+
     // PF4J - Required for @Extension annotation processing
     compileOnly(libs.pf4j)
     kapt(libs.pf4j)
@@ -90,6 +93,7 @@ dependencies {
 
     // Testing
     testImplementation("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
+    testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.bundles.jackson)
     testImplementation(libs.bundles.testing.common)
     testImplementation(libs.pf4j)

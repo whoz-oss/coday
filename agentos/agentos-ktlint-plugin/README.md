@@ -18,7 +18,8 @@ An invalid config (missing, relative or nonexistent `projectDirectory`) register
 - `ktlint_format`: autocorrects the given files in place, then lists the modified files and the violations left to fix by hand.
 
 Both tools take files only (directories are refused) and a mandatory `timeoutSeconds`. On timeout,
-`ktlint_format` lists the files it already rewrote.
+`ktlint_format` lists the files it already rewrote. Cancelling the call (stopping the case) stops the run between two files.
+The file in progress is finished first, since the engine does not check interruption while parsing.
 
 ## Packaging
 
