@@ -9,6 +9,8 @@ integrations:
   MEMORY:
   GITHUB:
   GIT:
+  KTLINT:
+    - ktlint_format
   ATLASSIAN_JIRA:
   ATLASSIAN_CONFLUENCE:
   ATLASSIAN_CONFLUENCE_SEARCH:

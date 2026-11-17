@@ -1,9 +1,7 @@
 rootProject.name = "agentos"
 
-
 // Enable version catalog
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
-
 
 includeBuild("agentos-sdk")
 includeBuild("agentos-git")
@@ -14,6 +12,7 @@ includeBuild("agentos-file-plugin")
 includeBuild("agentos-tmux-plugin")
 includeBuild("agentos-bash-plugin")
 includeBuild("agentos-gradle-plugin")
+includeBuild("agentos-ktlint-plugin")
 includeBuild("agentos-mcp-plugin")
 includeBuild("agentos-http-plugin")
 includeBuild("agentos-git-plugin")
