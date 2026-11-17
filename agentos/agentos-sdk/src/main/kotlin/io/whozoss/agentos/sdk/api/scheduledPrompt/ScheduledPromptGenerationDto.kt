@@ -102,12 +102,25 @@ data class GeneratedFieldDecision(
  * [scheduledPrompt] is null when a part of it could not be determined or the whole is invalid; [warnings] then say
  * why. [warnings] may also flag caveats on a non-null proposal.
  *
+ * [summary] tells a non-technical end user, in a few lines of Markdown and in their preferred language, what the
+ * proposal does: when it runs, what is selected each time, and what is done for each item. It is written from the
+ * final values of [scheduledPrompt], and is null when there is no proposal or when it could not be written (a
+ * warning then says so). [decisions] is its technical counterpart.
+ *
  * [rawResponse] carries the raw LLM text, only when an LLM answer could not be used.
  */
 @Schema(name = "ScheduledPromptGenerationResult")
 data class ScheduledPromptGenerationResult(
     @field:Schema(description = "The proposal, absent (null) when a part of it could not be determined: see `warnings`.")
     val scheduledPrompt: ScheduledPromptDto?,
+    @field:Schema(
+        types = ["string", "null"],
+        description =
+            "Short Markdown summary of the proposal for a non-technical end user, in their preferred language: " +
+                "when it runs, what is selected each time and what is done for each item. Null when there is no " +
+                "proposal or when it could not be written.",
+    )
+    val summary: String? = null,
     val decisions: List<GeneratedFieldDecision> = emptyList(),
     val warnings: List<String> = emptyList(),
     @field:Schema(types = ["string", "null"])

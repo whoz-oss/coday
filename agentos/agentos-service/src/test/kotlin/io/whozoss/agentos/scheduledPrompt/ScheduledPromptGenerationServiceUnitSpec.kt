@@ -37,6 +37,8 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationReque
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.workflow.LoopConfigGenerationService
 import io.mockk.every
 import jakarta.validation.Validation
@@ -87,6 +89,8 @@ class ScheduledPromptGenerationServiceUnitSpec :
         val structuredLlmClient = mockk<StructuredLlmClient>()
         val loopConfigGenerationService = mockk<LoopConfigGenerationService>()
         val scheduledPromptService = mockk<ScheduledPromptService>()
+        val summaryService = mockk<ScheduledPromptSummaryService>()
+        val userService = mockk<UserService>()
         val service =
             ScheduledPromptGenerationService(
                 agentConfigService = agentConfigService,
@@ -95,6 +99,8 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 structuredLlmClient = structuredLlmClient,
                 loopConfigGenerationService = loopConfigGenerationService,
                 scheduledPromptService = scheduledPromptService,
+                summaryService = summaryService,
+                userService = userService,
                 objectMapper = objectMapper,
                 validator = validator,
                 clock = clock,
@@ -152,6 +158,9 @@ class ScheduledPromptGenerationServiceUnitSpec :
             coEvery { loopConfigGenerationService.generate(any(), any(), any(), any()) } returns
                 LoopConfigGenerationResult(loopConfig = searchBlock)
             every { scheduledPromptService.isNameTaken(any(), any(), any()) } returns false
+            every { userService.findById(any()) } returns null
+            coEvery { summaryService.summarize(any(), any(), any(), any()) } returns
+                ScheduledPromptSummaryService.SummaryOutcome(summary = "**Every Monday**, *Luigi* will: tell a story", warning = null)
         }
 
         // -------------------------------------------------------------------------
@@ -355,6 +364,47 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
             result.scheduledPrompt.shouldNotBeNull()
             result.warnings.joinToString() shouldContain "already exists"
+        }
+
+        // -------------------------------------------------------------------------
+        // Summary
+        // -------------------------------------------------------------------------
+
+        "a proposal comes with the summary, written from the final values in the caller's preferred language" {
+            val input = slot<ScheduledPromptSummaryService.SummaryInput>()
+            every { userService.findById(userId) } returns
+                User(metadata = EntityMetadata(id = userId), externalId = "u", preferredLanguage = "fr")
+            coEvery { summaryService.summarize(namespaceId, userId, capture(input), "fr") } returns
+                ScheduledPromptSummaryService.SummaryOutcome(summary = "résumé", warning = null)
+
+            val result = service.generate(namespaceId, userId, request(targetAgentName = "Luigi", prompt = "My prompt"))
+
+            result.summary shouldBe "résumé"
+            input.captured.targetAgentName shouldBe "Luigi"
+            input.captured.prompt shouldBe "My prompt"
+            input.captured.recurrence shouldBe recurrence
+            input.captured.searchTool shouldBe "searchAgentUsers"
+            input.captured.searchParams shouldBe searchBlock["search"]["params"]
+        }
+
+        "no proposal means no summary call" {
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
+
+            val result = service.generate(namespaceId, userId, request())
+
+            result.summary.shouldBeNull()
+            coVerify(exactly = 0) { summaryService.summarize(any(), any(), any(), any()) }
+        }
+
+        "a failed summary keeps the proposal, with the summary's warning" {
+            coEvery { summaryService.summarize(any(), any(), any(), any()) } returns
+                ScheduledPromptSummaryService.SummaryOutcome(summary = null, warning = "No summary could be generated.")
+
+            val result = service.generate(namespaceId, userId, request())
+
+            result.scheduledPrompt.shouldNotBeNull()
+            result.summary.shouldBeNull()
+            result.warnings shouldContainExactly listOf("No summary could be generated.")
         }
 
         "a failed search step yields no proposal, with its warning and raw response" {

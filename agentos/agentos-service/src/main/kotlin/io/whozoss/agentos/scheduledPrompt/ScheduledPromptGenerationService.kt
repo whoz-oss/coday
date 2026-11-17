@@ -23,6 +23,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationResul
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.workflow.AgentLoopPayload
 import io.whozoss.agentos.workflow.LoopConfigGenerationService
+import io.whozoss.agentos.user.UserService
 import jakarta.validation.Validator
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -38,7 +39,7 @@ import java.util.UUID
  * Every field of [ScheduledPromptGenerationRequest] but the description is optional. A provided field always wins;
  * a missing one is decided by an LLM.
  *
- * ## Pipeline (at most two LLM calls)
+ * ## Pipeline (at most three LLM calls)
  *
  * 1. [candidates], no LLM: the agents deployed to the caller, split into LOOP agents (persisted ones only: a
  *    filesystem agent cannot back a scheduled prompt) and target agents (every non-LOOP agent). A provided name that
@@ -56,6 +57,8 @@ import java.util.UUID
  *    `flowConfiguration` is checked to parse as an [AgentLoopPayload] once that prompt is set. A name already taken
  *    by a namespace-shared scheduled prompt ([ScheduledPromptService.isNameTaken]) is a warning:
  *    `POST /api/scheduled-prompts` would answer 409 until it is renamed.
+ * 6. [summary], only when there is a proposal: [ScheduledPromptSummaryService] writes the end-user summary from the
+ *    final values, in the caller's preferred language. A failed summary keeps the proposal, with a warning.
  *
  * Each step returns a value describing its outcome (warnings included) rather than stopping the method: a part that
  * cannot be determined yields a null proposal and warnings saying why. LLM exceptions are not caught.
@@ -81,6 +84,8 @@ class ScheduledPromptGenerationService(
     private val structuredLlmClient: StructuredLlmClient,
     private val loopConfigGenerationService: LoopConfigGenerationService,
     private val scheduledPromptService: ScheduledPromptService,
+    private val summaryService: ScheduledPromptSummaryService,
+    private val userService: UserService,
     private val objectMapper: ObjectMapper,
     private val validator: Validator,
     private val clock: Clock,
@@ -95,7 +100,12 @@ class ScheduledPromptGenerationService(
         val fields = resolveFields(request, candidates, plan)
         val complete = fields.complete()
         val search = complete?.let { search(it, namespaceId, userId, request) }
-        return assemble(namespaceId, request, plan, fields, complete, search)
+        val assembled = assemble(namespaceId, request, plan, fields, complete, search)
+        val summary = summary(namespaceId, userId, request, assembled, complete, search)
+        return assembled.copy(
+            summary = summary?.summary,
+            warnings = assembled.warnings + listOfNotNull(summary?.warning),
+        )
     }
 
     // -------------------------------------------------------------------------
@@ -443,6 +453,8 @@ class ScheduledPromptGenerationService(
         val warning: String?,
         /** The raw text of the search answer, set only when it could not be used. */
         val unusableRawText: String?,
+        /** What the chosen search tool does, as the tool describes itself; used by the summary. */
+        val toolDescription: String?,
     )
 
     private suspend fun search(
@@ -468,7 +480,50 @@ class ScheduledPromptGenerationService(
             decision = block?.let { GeneratedFieldDecision(field = GeneratedField.SEARCH, source = source, value = it.get("tool")?.asText()) },
             warning = result.warning,
             unusableRawText = result.rawResponse,
+            toolDescription =
+                block?.get("tool")?.asText()?.let { tool -> definition.tools.firstOrNull { it.name == tool }?.description },
         )
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. Summary
+    // -------------------------------------------------------------------------
+
+    /** The end-user summary of a returned proposal; null when there is no proposal (nothing to summarize). */
+    private suspend fun summary(
+        namespaceId: UUID,
+        userId: UUID,
+        request: ScheduledPromptGenerationRequest,
+        result: ScheduledPromptGenerationResult,
+        complete: CompleteFields?,
+        search: SearchOutcome?,
+    ): ScheduledPromptSummaryService.SummaryOutcome? {
+        val block = search?.block
+        return when {
+            result.scheduledPrompt == null || complete == null || block == null -> {
+                null
+            }
+
+            else -> {
+                summaryService.summarize(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    input =
+                        ScheduledPromptSummaryService.SummaryInput(
+                            description = request.description,
+                            recurrence = complete.recurrence,
+                            planning = complete.planning,
+                            targetAgentName = complete.targetAgent.name,
+                            targetAgentDescription = complete.targetAgent.description,
+                            prompt = complete.prompt,
+                            searchTool = block.get("tool")?.asText().orEmpty(),
+                            searchToolDescription = search.toolDescription,
+                            searchParams = block.get("params"),
+                        ),
+                    language = userService.findById(userId)?.preferredLanguage?.takeIf { it.isNotBlank() },
+                )
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
