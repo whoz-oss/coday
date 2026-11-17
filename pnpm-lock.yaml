@@ -258,6 +258,9 @@ importers:
       '@angular/core':
         specifier: 'catalog:'
         version: 22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.1)
+      diff:
+        specifier: 8.0.4
+        version: 8.0.4
       diff2html:
         specifier: 3.4.56
         version: 3.4.56

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Prompt } from '@whoz-oss/agentos-api-client'
+import { ConfigFileKindEnum, Prompt } from '@whoz-oss/agentos-api-client'
 import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -9,6 +9,9 @@ import { createRowFilter } from '../../utils/filter-rows'
 import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
+import { injectConfigFileStatuses } from '../../services/config-files.service'
+import { ConfigFileOverridesNoticeComponent } from '../config-file-status/config-file-overrides-notice.component'
+import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 interface PromptRow {
   key: string
   prompt: Prompt
@@ -23,6 +26,8 @@ interface PromptRow {
     TagComponent,
     TableFilterComponent,
     RowDeleteActionComponent,
+    ConfigFileTagComponent,
+    ConfigFileOverridesNoticeComponent,
   ],
   templateUrl: './namespace-prompts.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,6 +39,7 @@ export class NamespacePromptsComponent {
   private readonly promptState = inject(PromptStateService)
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
+  protected readonly configFiles = injectConfigFileStatuses(this.namespaceId, ConfigFileKindEnum.PROMPT, this.refresh$)
   protected readonly isLoading = signal(true)
   protected readonly deletion = createRowDeletionState()
   protected readonly rows = signal<PromptRow[]>([])

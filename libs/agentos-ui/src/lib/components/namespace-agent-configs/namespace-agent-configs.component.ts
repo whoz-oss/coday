@@ -1,13 +1,21 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService, AgentConfigExecutionModeEnum } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  AgentConfigControllerService,
+  AgentConfigExecutionModeEnum,
+  ConfigFileKindEnum,
+} from '@whoz-oss/agentos-api-client'
 import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, of, switchMap } from 'rxjs'
 import { createRowFilter } from '../../utils/filter-rows'
 import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
+import { injectConfigFileStatuses } from '../../services/config-files.service'
+import { ConfigFileOverridesNoticeComponent } from '../config-file-status/config-file-overrides-notice.component'
+import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 interface AgentConfigRow {
   key: string
   config: AgentConfig
@@ -22,6 +30,8 @@ interface AgentConfigRow {
     TagComponent,
     TableFilterComponent,
     RowDeleteActionComponent,
+    ConfigFileTagComponent,
+    ConfigFileOverridesNoticeComponent,
   ],
   templateUrl: './namespace-agent-configs.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,6 +43,7 @@ export class NamespaceAgentConfigsComponent {
   private readonly controller = inject(AgentConfigControllerService)
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
+  protected readonly configFiles = injectConfigFileStatuses(this.namespaceId, ConfigFileKindEnum.AGENT, this.refresh$)
   protected readonly isLoading = signal(true)
   protected readonly deletion = createRowDeletionState()
   protected readonly rows = signal<AgentConfigRow[]>([])

@@ -20,11 +20,12 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
-  AiModel,
   AgentConfigControllerService,
-  AgentConfigExecutionModeEnum,
   AgentConfigDefaultsControllerService,
+  AgentConfigExecutionModeEnum,
   AgentConfigExportService,
+  AiModel,
+  ConfigFileKindEnum,
   IntegrationConfig,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
@@ -50,6 +51,7 @@ import {
 import { SkillStateService } from '../../services/skill-state.service'
 import { CONFIG_AGENT_TYPE, isConfigAgentExposed } from './config-agent-exposure'
 import { buildModelOptions, ModelOptions } from './model-options'
+import { ConfigFileBannerComponent } from '../config-file-status/config-file-banner.component'
 
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
@@ -173,7 +175,7 @@ interface SkillRow {
  */
 @Component({
   selector: 'agentos-agent-config-form',
-  imports: [ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
+  imports: [ConfigFileBannerComponent, ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
   templateUrl: './agent-config-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -196,6 +198,9 @@ export class AgentConfigFormComponent implements OnInit {
    * (route is /admin/agent-configs/... and has no :namespaceId segment).
    */
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+  /** The config this form edits, for the banner that says when it masks a file of the namespace. */
+  protected readonly configFileKind = ConfigFileKindEnum.AGENT
+  protected readonly configFileId = this.route.snapshot.paramMap.get('agentConfigId') ?? undefined
 
   /** True when editing/creating a platform-level config (namespaceId IS NULL). */
   protected readonly isPlatformMode = !this.namespaceId

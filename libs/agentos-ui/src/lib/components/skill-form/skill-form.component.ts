@@ -2,9 +2,10 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import { Skill } from '@whoz-oss/agentos-api-client'
+import { ConfigFileKindEnum, Skill } from '@whoz-oss/agentos-api-client'
 import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { SkillStateService } from '../../services/skill-state.service'
+import { ConfigFileBannerComponent } from '../config-file-status/config-file-banner.component'
 
 /** One editable resource file: a relative path and its text content. */
 interface ResourceRow {
@@ -25,7 +26,7 @@ interface ResourceRow {
  */
 @Component({
   selector: 'agentos-skill-form',
-  imports: [ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
+  imports: [ConfigFileBannerComponent, ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
   templateUrl: './skill-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -36,6 +37,9 @@ export class SkillFormComponent implements OnInit {
   private readonly skillState = inject(SkillStateService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+  /** The config this form edits, for the banner that says when it masks a file of the namespace. */
+  protected readonly configFileKind = ConfigFileKindEnum.SKILL
+  protected readonly configFileId = this.route.snapshot.paramMap.get('skillId') ?? undefined
 
   /** True when editing a platform-level skill (no namespaceId in route). */
   protected readonly isPlatformMode = !this.namespaceId

@@ -4,6 +4,14 @@
       &larr; Integrations
     </button>
   </ds-section-header>
+  @if (isEditMode() && namespaceId) {
+    <agentos-config-file-banner
+      [kind]="configFileKind"
+      noun="integration"
+      [namespaceId]="namespaceId"
+      [configId]="configFileId"
+    />
+  }
 
   @if (isLoading()) {
     <p class="ds-hint">Loading&hellip;</p>

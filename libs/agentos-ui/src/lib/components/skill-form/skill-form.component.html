@@ -8,6 +8,14 @@
       <ds-tag headerMeta variant="outline">Platform level</ds-tag>
     }
   </ds-section-header>
+  @if (isEditMode() && namespaceId) {
+    <agentos-config-file-banner
+      [kind]="configFileKind"
+      noun="skill"
+      [namespaceId]="namespaceId"
+      [configId]="configFileId"
+    />
+  }
 
   @if (isLoading()) {
     <p class="ds-hint">Loading&hellip;</p>

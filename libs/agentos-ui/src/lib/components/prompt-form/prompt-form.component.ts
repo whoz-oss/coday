@@ -11,10 +11,17 @@ import {
   Validators,
 } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService, Prompt, PromptParameter } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  AgentConfigControllerService,
+  ConfigFileKindEnum,
+  Prompt,
+  PromptParameter,
+} from '@whoz-oss/agentos-api-client'
 import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { catchError, of } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
+import { ConfigFileBannerComponent } from '../config-file-status/config-file-banner.component'
 
 /**
  * PromptFormComponent — full-page create / edit form for a prompt.
@@ -50,7 +57,7 @@ import { PromptStateService } from '../../services/prompt-state.service'
  */
 @Component({
   selector: 'agentos-prompt-form',
-  imports: [ReactiveFormsModule, DS_PAGE_KIT],
+  imports: [ConfigFileBannerComponent, ReactiveFormsModule, DS_PAGE_KIT],
   templateUrl: './prompt-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -62,6 +69,9 @@ export class PromptFormComponent implements OnInit {
   private readonly agentConfigController = inject(AgentConfigControllerService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+  /** The config this form edits, for the banner that says when it masks a file of the namespace. */
+  protected readonly configFileKind = ConfigFileKindEnum.PROMPT
+  protected readonly configFileId = this.route.snapshot.paramMap.get('promptId') ?? undefined
   /** True when loaded from /admin/prompts — platform scope, no namespaceId in route. */
   protected readonly isPlatformMode = !this.namespaceId
 
