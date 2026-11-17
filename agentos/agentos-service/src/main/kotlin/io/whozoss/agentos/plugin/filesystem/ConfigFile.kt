@@ -34,4 +34,7 @@ data class ConfigFile<T>(
  */
 interface ConfigFileSource<T> {
     fun configFiles(namespaceId: UUID): List<ConfigFile<T>> = emptyList()
+
+    /** Reads the config files of [namespaceId] again on the next call, after AgentOS wrote one of them. */
+    fun reloadConfigFiles(namespaceId: UUID) {}
 }

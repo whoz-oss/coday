@@ -155,6 +155,10 @@ class FilesystemIntegrationConfigRepository(
             .sortedBy { it.entity.name }
     }
 
+    override fun reloadConfigFiles(namespaceId: UUID) {
+        configPathOf(namespaceId)?.let { cacheRegistry.invalidate(Path.of(it, INTEGRATIONS_SUBDIR)) }
+    }
+
     private fun configPathOf(namespaceId: UUID): String? = namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
 
     private fun filesystemConfigs(

@@ -52,4 +52,7 @@ interface PromptRepository :
      * @return the number of prompts that were soft-deleted
      */
     fun softDeleteByAgentConfigId(agentConfigId: UUID): Int
+
+    /** How many non-removed prompts, of any scope, are linked to [agentConfigId]: what deleting it would delete. */
+    fun countActiveByAgentConfigId(agentConfigId: UUID): Int
 }

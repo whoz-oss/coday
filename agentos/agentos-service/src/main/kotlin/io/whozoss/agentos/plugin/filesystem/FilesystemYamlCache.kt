@@ -50,6 +50,11 @@ class FilesystemYamlCache<T>(
 
     fun getAll(): List<T> = getEntries().map { it.value }
 
+    /** Forgets the loaded entries: the next read scans the directory again, whatever the [ttl]. */
+    fun invalidate() {
+        entry = null
+    }
+
     fun getEntries(): List<FilesystemEntry<T>> {
         val now = Instant.now()
         val current = entry
@@ -136,6 +141,11 @@ class FilesystemYamlCacheRegistry<T>(
     fun getAll(directory: Path): List<T> = cacheFor(directory).getAll()
 
     fun getEntries(directory: Path): List<FilesystemEntry<T>> = cacheFor(directory).getEntries()
+
+    /** Makes the next read of [directory] scan it again, e.g. right after AgentOS wrote one of its files. */
+    fun invalidate(directory: Path) {
+        caches[directory]?.invalidate()
+    }
 
     private fun cacheFor(directory: Path): FilesystemYamlCache<T> =
         caches.computeIfAbsent(directory) { dir ->

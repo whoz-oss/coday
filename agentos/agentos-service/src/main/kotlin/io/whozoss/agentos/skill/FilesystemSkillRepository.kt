@@ -143,6 +143,10 @@ class FilesystemSkillRepository(
             .map { ConfigFile(it.value.inNamespace(namespaceId), Path.of(configPath), it.file, persisted[it.value.name.lowercase()]) }
     }
 
+    override fun reloadConfigFiles(namespaceId: UUID) {
+        configPathOf(namespaceId)?.let { cacheRegistry.invalidate(Path.of(it, SKILLS_SUBDIR)) }
+    }
+
     private fun configPathOf(namespaceId: UUID): String? = namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
 
     private fun filesystemSkills(

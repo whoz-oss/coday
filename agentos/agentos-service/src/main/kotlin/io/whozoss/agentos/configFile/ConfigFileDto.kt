@@ -2,6 +2,7 @@ package io.whozoss.agentos.configFile
 
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
+import jakarta.validation.constraints.NotBlank
 import java.util.UUID
 
 /** Where AgentOS takes a config defined by a file of the namespace's `configPath`. */
@@ -62,6 +63,37 @@ data class ConfigFileDiffDto(
     val files: List<ConfigFileDiffEntryDto>,
     @field:Schema(description = "What of the database copy its file cannot hold, in words for the user.")
     val notes: List<String> = emptyList(),
+    @field:Schema(description = "Hash of the files as AgentOS read them, to send back with write-to-file.")
+    val fileHash: String,
+    @field:Schema(description = "Names of the other namespaces that read the same configPath: writing the file changes them too.")
+    val alsoReadBy: List<String> = emptyList(),
+    @field:Schema(
+        description =
+            "Why the copy cannot be written to its file now, in words for the user: the notes, a credential in " +
+                "clear, and what deleting the copy would delete with it. Empty when write-to-file is possible.",
+    )
+    val cannotWrite: List<String> = emptyList(),
+    @field:Schema(description = "Why the copy cannot be discarded now: what deleting it would delete with it. Empty when it can.")
+    val cannotDiscard: List<String> = emptyList(),
+)
+
+@Schema(name = "ConfigFileWriteRequest")
+data class ConfigFileWriteRequestDto(
+    @field:NotBlank
+    @field:Schema(description = "The fileHash of the diff the user looked at: the write is refused if the file changed since.")
+    val expectedFileHash: String,
+)
+
+@Schema(name = "ConfigFileWriteResult")
+data class ConfigFileWriteResultDto(
+    @field:Schema(description = "Path of the file relative to the namespace's configPath.")
+    val path: String,
+    @field:Schema(description = "False when nothing had to be written: the copy already said the same as its file, or it was discarded.")
+    val written: Boolean,
+    @field:Schema(description = "True when the database copy is deleted, so that AgentOS reads the file again.")
+    val copyDeleted: Boolean,
+    @field:Schema(description = "When the copy could not be deleted: what happened, in words for the user.", nullable = true)
+    val message: String? = null,
 )
 
 @Schema(name = "ConfigFileDiffEntry")

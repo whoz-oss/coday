@@ -101,6 +101,9 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
      * In-memory: only deletes the scheduled prompts (no access to PromptRepository).
      * Sufficient for unit tests of AgentConfigServiceImpl.
      */
+    override fun countActiveByAgentConfigId(agentConfigId: UUID): Int =
+        delegate.findAll().count { it.agentConfigId == agentConfigId && !it.metadata.removed }
+
     override fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int {
         val toDelete = delegate.findAll().filter { it.agentConfigId == agentConfigId && !it.metadata.removed }
         toDelete.forEach { delegate.delete(it.metadata.id) }

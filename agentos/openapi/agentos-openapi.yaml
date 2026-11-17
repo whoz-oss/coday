@@ -251,6 +251,27 @@ paths:
           description: OK
       tags:
       - agent-config-controller
+  /api/agent-configs/{id}/discard-copy:
+    post:
+      operationId: agentConfigDiscardCopyConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Delete the database copy of an agent that overrides a file: AgentOS\
+        \ reads the file again"
+      tags:
+      - config-file-controller
   /api/agent-configs/{id}/enable:
     post:
       operationId: enableAgentConfig
@@ -298,6 +319,27 @@ paths:
       summary: Export an AgentConfig as a YAML file
       tags:
       - agent-config-controller
+  /api/agent-configs/{id}/file:
+    get:
+      operationId: agentConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+          description: OK
+      summary: "Download an agent that overrides a file, as that file"
+      tags:
+      - config-file-controller
   /api/agent-configs/{id}/file-diff:
     get:
       operationId: agentConfigFileDiff
@@ -316,6 +358,33 @@ paths:
                 $ref: "#/components/schemas/ConfigFileDiff"
           description: OK
       summary: Compare an agent that overrides a file with that file
+      tags:
+      - config-file-controller
+  /api/agent-configs/{id}/write-to-file:
+    post:
+      operationId: agentConfigWriteToFileConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigFileWriteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Write an agent that overrides a file to that file, then delete the\
+        \ database copy"
       tags:
       - config-file-controller
   /api/ai-models:
@@ -2216,6 +2285,27 @@ paths:
           description: OK
       tags:
       - integration-config-controller
+  /api/integration-configs/{id}/discard-copy:
+    post:
+      operationId: integrationConfigDiscardCopyConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Delete the database copy of an integration that overrides a file:\
+        \ AgentOS reads the file again"
+      tags:
+      - config-file-controller
   /api/integration-configs/{id}/export:
     get:
       description: "Returns the integration config as a downloadable YAML file, ready\
@@ -2245,6 +2335,27 @@ paths:
       summary: Export an IntegrationConfig as a YAML file
       tags:
       - integration-config-controller
+  /api/integration-configs/{id}/file:
+    get:
+      operationId: integrationConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+          description: OK
+      summary: "Download an integration that overrides a file, as that file"
+      tags:
+      - config-file-controller
   /api/integration-configs/{id}/file-diff:
     get:
       operationId: integrationConfigFileDiff
@@ -2263,6 +2374,33 @@ paths:
                 $ref: "#/components/schemas/ConfigFileDiff"
           description: OK
       summary: Compare an integration that overrides a file with that file
+      tags:
+      - config-file-controller
+  /api/integration-configs/{id}/write-to-file:
+    post:
+      operationId: integrationConfigWriteToFileConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigFileWriteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Write an integration that overrides a file to that file, then delete\
+        \ the database copy"
       tags:
       - config-file-controller
   /api/integration-types:
@@ -3329,6 +3467,27 @@ paths:
           description: OK
       tags:
       - prompt-controller
+  /api/prompts/{id}/discard-copy:
+    post:
+      operationId: promptDiscardCopyConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Delete the database copy of a prompt that overrides a file: AgentOS\
+        \ reads the file again"
+      tags:
+      - config-file-controller
   /api/prompts/{id}/export:
     get:
       description: "Returns the prompt as a downloadable YAML file, ready to be placed\
@@ -3363,6 +3522,27 @@ paths:
       summary: Export a Prompt as a YAML file
       tags:
       - prompt-controller
+  /api/prompts/{id}/file:
+    get:
+      operationId: promptFileConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+          description: OK
+      summary: "Download a prompt that overrides a file, as that file"
+      tags:
+      - config-file-controller
   /api/prompts/{id}/file-diff:
     get:
       operationId: promptFileDiffConfigFile
@@ -3422,6 +3602,33 @@ paths:
       summary: Translate prompt content into a target language
       tags:
       - prompt-controller
+  /api/prompts/{id}/write-to-file:
+    post:
+      operationId: promptWriteToFileConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigFileWriteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Write a prompt that overrides a file to that file, then delete the\
+        \ database copy"
+      tags:
+      - config-file-controller
   /api/scheduled-prompts:
     post:
       operationId: createScheduledPrompt
@@ -3758,6 +3965,48 @@ paths:
       summary: Update a Skill
       tags:
       - skill-controller
+  /api/skills/{id}/discard-copy:
+    post:
+      operationId: skillDiscardCopyConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Delete the database copy of a skill that overrides a file: AgentOS\
+        \ reads the file again"
+      tags:
+      - config-file-controller
+  /api/skills/{id}/file:
+    get:
+      operationId: skillFileConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+          description: OK
+      summary: "Download a skill that overrides a file, as a zip of its folder"
+      tags:
+      - config-file-controller
   /api/skills/{id}/file-diff:
     get:
       operationId: skillFileDiffConfigFile
@@ -3776,6 +4025,33 @@ paths:
                 $ref: "#/components/schemas/ConfigFileDiff"
           description: OK
       summary: Compare a skill that overrides a file with that file
+      tags:
+      - config-file-controller
+  /api/skills/{id}/write-to-file:
+    post:
+      operationId: skillWriteToFileConfigFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigFileWriteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileWriteResult"
+          description: OK
+      summary: "Write a skill that overrides a file to its folder, then delete the\
+        \ database copy"
       tags:
       - config-file-controller
   /api/tools:
@@ -5268,10 +5544,33 @@ components:
       description: "A database copy and the file it masks, both rendered in the file\
         \ format, so that only the differences AgentOS acts on show."
       properties:
+        alsoReadBy:
+          type: array
+          description: "Names of the other namespaces that read the same configPath:\
+            \ writing the file changes them too."
+          items:
+            type: string
+        cannotDiscard:
+          type: array
+          description: "Why the copy cannot be discarded now: what deleting it would\
+            \ delete with it. Empty when it can."
+          items:
+            type: string
+        cannotWrite:
+          type: array
+          description: "Why the copy cannot be written to its file now, in words for\
+            \ the user: the notes, a credential in clear, and what deleting the copy\
+            \ would delete with it. Empty when write-to-file is possible."
+          items:
+            type: string
         configId:
           type: string
           format: uuid
           description: Id of the database copy.
+        fileHash:
+          type: string
+          description: "Hash of the files as AgentOS read them, to send back with\
+            \ write-to-file."
         files:
           type: array
           description: "One entry per file: the file itself, plus the resources of\
@@ -5299,7 +5598,11 @@ components:
           type: string
           description: Path of the masked file relative to the namespace's configPath.
       required:
+      - alsoReadBy
+      - cannotDiscard
+      - cannotWrite
       - configId
+      - fileHash
       - files
       - kind
       - modified
@@ -5322,6 +5625,38 @@ components:
           description: Path relative to the namespace's configPath.
       required:
       - path
+    ConfigFileWriteRequest:
+      type: object
+      properties:
+        expectedFileHash:
+          type: string
+          description: "The fileHash of the diff the user looked at: the write is\
+            \ refused if the file changed since."
+          minLength: 1
+      required:
+      - expectedFileHash
+    ConfigFileWriteResult:
+      type: object
+      properties:
+        copyDeleted:
+          type: boolean
+          description: "True when the database copy is deleted, so that AgentOS reads\
+            \ the file again."
+        message:
+          type: string
+          description: "When the copy could not be deleted: what happened, in words\
+            \ for the user."
+        path:
+          type: string
+          description: Path of the file relative to the namespace's configPath.
+        written:
+          type: boolean
+          description: "False when nothing had to be written: the copy already said\
+            \ the same as its file, or it was discarded."
+      required:
+      - copyDeleted
+      - path
+      - written
     ConfigOperationResultDto:
       type: object
       properties:

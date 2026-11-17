@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.ninjasquad.springmockk.MockkBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
@@ -23,9 +24,12 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.nio.file.Files
@@ -62,6 +66,12 @@ class ConfigFileControllerPermissionIntegrationSpec : StringSpec() {
     private lateinit var namespace: Namespace
     private lateinit var agent: AgentConfig
     private lateinit var integration: IntegrationConfig
+    private lateinit var configRoot: java.nio.file.Path
+
+    private fun fileHashOf(diffPath: String): String {
+        val body = mockMvc.perform(get(diffPath)).andExpect(status().isOk).andReturn().response.contentAsString
+        return Regex("\"fileHash\":\"([0-9a-f]+)\"").find(body)!!.groupValues[1]
+    }
 
     private fun user(isAdmin: Boolean = false): User {
         val id = UUID.randomUUID()
@@ -106,6 +116,7 @@ class ConfigFileControllerPermissionIntegrationSpec : StringSpec() {
                 .resolve("repo.yaml")
                 .writeText("name: repo\nintegrationType: FILE_ACCESS\nparameters:\n  rootPath: /srv/code\n")
             namespace = namespaceService.update(namespace.copy(configPath = root.toString()))
+            configRoot = root
         }
 
         "a namespace member lists its config files and sees the copies that mask them" {
@@ -147,6 +158,47 @@ class ConfigFileControllerPermissionIntegrationSpec : StringSpec() {
 
             mockMvc.perform(get("/api/agent-configs/${agent.id}/file-diff")).andExpect(status().isNotFound)
             mockMvc.perform(get("/api/integration-configs/${integration.id}/file-diff")).andExpect(status().isNotFound)
+        }
+    
+        "a namespace admin writes a copy to its file, and AgentOS reads the file again" {
+            grant(PermissionRelation.ADMIN)
+            val hash = fileHashOf("/api/agent-configs/${agent.id}/file-diff")
+
+            mockMvc
+                .perform(
+                    post("/api/agent-configs/${agent.id}/write-to-file")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"expectedFileHash":"$hash"}"""),
+                ).andExpect(status().isOk)
+                .andExpect(jsonPath("$.written").value(true))
+                .andExpect(jsonPath("$.copyDeleted").value(true))
+
+            Files.readString(configRoot.resolve("agents/coday.yaml")) shouldContain "Answer in French."
+            mockMvc
+                .perform(get("/api/namespaces/${namespace.id}/config-files"))
+                .andExpect(jsonPath("$[0].state").value("FILE"))
+        }
+
+        "a namespace member can neither write a copy to its file nor discard it" {
+            grant(PermissionRelation.MEMBER)
+
+            mockMvc
+                .perform(
+                    post("/api/agent-configs/${agent.id}/write-to-file")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"expectedFileHash":"any"}"""),
+                ).andExpect(status().isNotFound)
+            mockMvc.perform(post("/api/agent-configs/${agent.id}/discard-copy")).andExpect(status().isNotFound)
+            mockMvc.perform(get("/api/agent-configs/${agent.id}/file")).andExpect(status().isNotFound)
+        }
+
+        "a namespace admin downloads a copy as its file" {
+            grant(PermissionRelation.ADMIN)
+
+            mockMvc
+                .perform(get("/api/agent-configs/${agent.id}/file"))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"coday.yaml\""))
         }
     }
 }
