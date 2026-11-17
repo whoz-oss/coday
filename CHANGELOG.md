@@ -1,3 +1,16 @@
+## 3.47.0 (2026-11-17)
+
+### 🚀 Features
+
+- wz-35375 - add generate endpoint to SDK ([1c46000b6](https://github.com/whoz-oss/coday/commit/1c46000b6))
+- wz-35375 - add generate endpoint to SDK ([06514ff2f](https://github.com/whoz-oss/coday/commit/06514ff2f))
+- wz-35375 - add generate endpoint to SDK ([#1675](https://github.com/whoz-oss/coday/pull/1675))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.46.0 (2026-11-17)
 
 ### 🚀 Features
