@@ -98,6 +98,7 @@ fun createWorkflowInstance(
         instance["ticket"] = command.ticket
     }
     command.controllerRequest?.let { instance["controllerRequest"] = it.toJson() }
+    command.caseTitleExplicit?.let { instance["caseTitleExplicit"] = it }
     val projection = linkedMapOf<String, Any?>(
         "schemaVersion" to "2",
         "workflowId" to command.workflowId,

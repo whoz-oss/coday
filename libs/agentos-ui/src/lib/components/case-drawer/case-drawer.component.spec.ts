@@ -352,6 +352,15 @@ describe('CaseDrawerComponent', () => {
       expect(component['renameError']()).toBeNull()
     })
 
+    it('does not confirm the case id fallback as an actual title', () => {
+      const component = makeComponent([{ id: 'a', namespaceId: 'ns', role: CaseRoleEnum.ADMIN } as Case])
+      const emitted = captureRenames(component)
+      component['startRename'](editedNode('a'))
+      component['commitRename']()
+      expect(emitted).toEqual([])
+      expect(component['renameError']()).toBe('Name cannot be empty')
+    })
+
     it('emits the trimmed title and leaves edit mode on commit', () => {
       const component = makeComponent([CASE_A])
       const emitted = captureRenames(component)
@@ -364,12 +373,23 @@ describe('CaseDrawerComponent', () => {
       expect(component['editingCaseId']()).toBeNull()
     })
 
-    it('does not emit when the title is unchanged (nothing to persist)', () => {
+    it('confirms an unchanged title on explicit commit', () => {
       const component = makeComponent([CASE_A])
       const emitted = captureRenames(component)
 
       component['startRename'](editedNode())
       component['commitRename']()
+
+      expect(emitted).toEqual([{ id: 'a', title: 'Old name' }])
+      expect(component['editingCaseId']()).toBeNull()
+    })
+
+    it('does not rename on an unchanged blur', () => {
+      const component = makeComponent([CASE_A])
+      const emitted = captureRenames(component)
+
+      component['startRename'](editedNode())
+      component['onRenameBlur']()
 
       expect(emitted).toEqual([])
       expect(component['editingCaseId']()).toBeNull()
@@ -572,6 +592,22 @@ describe('CaseDrawerComponent', () => {
       input.dispatchEvent(new Event('blur'))
 
       expect(emitted).toEqual([{ id: 'a', title: 'New name' }])
+    })
+
+    it('confirms an unchanged title through the button after focus moves from the input', () => {
+      const ref = makeComponentRef([CASE_A])
+      const emitted: Array<{ id: string; title: string }> = []
+      ref.instance.renameRequested.subscribe((event) => emitted.push(event))
+
+      host(ref).querySelector<HTMLButtonElement>('[title="Rename case"]')!.click()
+      render(ref)
+      const input = host(ref).querySelector<HTMLInputElement>('.case-tree-node__name-input')!
+      const confirm = host(ref).querySelector<HTMLButtonElement>('[title="Confirm this title, even if unchanged"]')!
+      input.dispatchEvent(new FocusEvent('blur', { relatedTarget: confirm }))
+      expect(ref.instance['editingCaseId']()).toBe('a')
+      confirm.click()
+
+      expect(emitted).toEqual([{ id: 'a', title: 'Old name' }])
     })
 
     it('renders the validation message as an alert tied to the input', () => {

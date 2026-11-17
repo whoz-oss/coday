@@ -126,6 +126,89 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  describe('header edit intent', () => {
+    function open(title?: string): ComponentRef<CaseChatComponent> {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', title } as Case])
+      const ref = makeComponent()
+      ref.instance['startEdit']()
+      return ref
+    }
+
+    it('does not send a title when only the threshold is changed, even if no title exists', () => {
+      const ref = open()
+      const updates: unknown[] = []
+      ref.instance.updateRequested.subscribe((event) => updates.push(event))
+      ref.instance['draftThreshold'].set('25')
+      ref.instance['commitEdit']()
+      expect(updates).toEqual([{ id: 'c-1', runCostThreshold: 25 }])
+      ref.destroy()
+    })
+
+    it('sends an edited title even if it equals the original', () => {
+      const ref = open('Original')
+      const updates: unknown[] = []
+      ref.instance.updateRequested.subscribe((event) => updates.push(event))
+      ref.instance['onDraftTitleInput']('Original')
+      ref.instance['commitEdit']()
+      expect(updates).toEqual([{ id: 'c-1', title: 'Original', runCostThreshold: undefined }])
+      ref.destroy()
+    })
+
+    it('confirms the untouched title through the explicit confirmation action', () => {
+      const ref = open('Original')
+      const updates: unknown[] = []
+      ref.instance.updateRequested.subscribe((event) => updates.push(event))
+      ref.instance['confirmTitle']()
+      expect(updates).toEqual([{ id: 'c-1', title: 'Original', runCostThreshold: undefined }])
+      ref.destroy()
+    })
+
+    it('reports an empty confirmation without blocking a subsequent threshold-only save', () => {
+      const ref = open()
+      const updates: unknown[] = []
+      ref.instance.updateRequested.subscribe((event) => updates.push(event))
+      ref.instance['confirmTitle']()
+      expect(ref.instance['titleError']()).toBe('Case title cannot be empty.')
+      ref.instance['draftThreshold'].set('25')
+      ref.instance['commitEdit']()
+      expect(updates).toEqual([{ id: 'c-1', runCostThreshold: 25 }])
+      ref.destroy()
+    })
+
+    it('explains an invalid threshold when confirming a title', () => {
+      const ref = open('Original')
+      const updates: unknown[] = []
+      ref.instance.updateRequested.subscribe((event) => updates.push(event))
+      ref.instance['draftThreshold'].set('-1')
+      ref.instance['confirmTitle']()
+      expect(ref.instance['thresholdError']()).toBe('Cost limit must be a non-negative number.')
+      expect(updates).toEqual([])
+      ref.destroy()
+    })
+
+    it('rejects an unparseable number input and clears the error when it is edited', () => {
+      const ref = open('Original')
+      const updates: unknown[] = []
+      ref.instance.updateRequested.subscribe((event) => updates.push(event))
+      ref.instance['onDraftThresholdInput']({ target: { value: '', validity: { badInput: true } } } as unknown as Event)
+      ref.instance['confirmTitle']()
+      expect(ref.instance['thresholdError']()).toBe('Cost limit must be a non-negative number.')
+      expect(updates).toEqual([])
+      ref.instance['onDraftThresholdInput']({ target: { value: '10', validity: { badInput: false } } } as unknown as Event)
+      expect(ref.instance['thresholdError']()).toBeNull()
+      ref.destroy()
+    })
+
+    it('treats Enter in the title as an explicit confirmation', () => {
+      const ref = open('Original')
+      const updates: unknown[] = []
+      ref.instance.updateRequested.subscribe((event) => updates.push(event))
+      ref.instance['onEditKeydown'](new KeyboardEvent('keydown', { key: 'Enter' }), true)
+      expect(updates).toEqual([{ id: 'c-1', title: 'Original', runCostThreshold: undefined }])
+      ref.destroy()
+    })
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })

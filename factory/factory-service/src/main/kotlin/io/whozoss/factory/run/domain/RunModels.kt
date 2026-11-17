@@ -148,6 +148,8 @@ data class RunRecord(
     val appliedValidationUpdates: Set<String> = emptySet(),
     val activeEscalation: RunEscalationRecord? = null,
     val maxTotalFragments: Int = DEFAULT_MAX_TOTAL_FRAGMENTS,
+    /** Original user instruction, persisted independently of plugin-owned domain state. */
+    val initialRequest: String? = null,
 ) {
     fun toView(): RunView = RunView(
         runId = runId,

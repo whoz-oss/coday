@@ -185,6 +185,14 @@ class CaseController(
         val userId = userService.getCurrentUser().id.toString()
         resource.parentCaseId?.let { checkParentCasePermission(userId, it) }
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val namingInstructions = resource.namingInstructions
+        val namingPrefix = resource.namingPrefix
+        if (namingInstructions != null && (resource.parentCaseId != null || namingInstructions.isBlank() || namingInstructions.length > 4000)) {
+            throw io.whozoss.agentos.exception.BadRequestException("Naming instructions must be nonblank, at most 4000 characters, and only on root cases")
+        }
+        if (namingPrefix != null && !Regex("^[A-Z][A-Z0-9]{1,15}-[0-9]{1,12}$").matches(namingPrefix)) {
+            throw io.whozoss.agentos.exception.BadRequestException("Invalid naming prefix")
+        }
         val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
             Case(
@@ -192,6 +200,9 @@ class CaseController(
                 namespaceId = resource.namespaceId,
                 status = CaseStatus.CREATED,
                 title = resource.title ?: "Case ${metadata.id}",
+                titleEditGeneration = resource.title?.takeIf { namingInstructions == null }?.let { UUID.randomUUID().toString() },
+                namingInstructions = resource.namingInstructions,
+                namingPrefix = resource.namingPrefix,
                 runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
                 reasoningEffort = resource.reasoningEffort,
                 parentCaseId = resource.parentCaseId,
@@ -233,10 +244,17 @@ class CaseController(
         // namespaceId and status are mass-assignment-guarded by edit: namespaceId is the
         // transitivity key for permissions; status is driven by the runtime lifecycle, not PUT.
         // The change is applied again to the fresh case if a concurrent write wins.
+        val requestedTitle = resource.title.takeIf { resource.titleChange != false }
+        val titleEditGeneration = requestedTitle?.let { UUID.randomUUID().toString() }
         val updated =
             caseService.edit(id) { existing ->
                 existing.copy(
-                    title = resource.title ?: existing.title,
+                    title = requestedTitle ?: existing.title,
+                    titleEditGeneration = titleEditGeneration ?: existing.titleEditGeneration,
+                    namingInstructions = if (titleEditGeneration != null) null else existing.namingInstructions,
+                    namingPrefix = if (titleEditGeneration != null) null else existing.namingPrefix,
+                    namingLeaseOwner = if (titleEditGeneration != null) null else existing.namingLeaseOwner,
+                    namingLeaseUntil = if (titleEditGeneration != null) null else existing.namingLeaseUntil,
                     // runCostThreshold: keep the existing value when the caller omits the field
                     // (null in DTO = not provided, not an explicit reset). An explicit reset to
                     // the inherited regime is not supported via PUT — the value materialised at

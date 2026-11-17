@@ -40,6 +40,22 @@ open class Neo4jCaseRepository(
             .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
+    override fun findPendingNaming(limit: Int): List<Case> =
+        caseNodeNeo4jRepository.findPendingNaming(limit).map { it.toDomain() }
+
+    override fun purgeExpiredNaming(cutoff: Instant, limit: Int): Long =
+        caseNodeNeo4jRepository.purgeExpiredNaming(cutoff, limit)
+
+    override fun completeNaming(candidate: Case, title: String): Case? =
+        candidate.namingLeaseOwner?.let { owner ->
+            caseNodeNeo4jRepository.completeNaming(candidate.id.toString(), owner, candidate.title, title)?.toDomain()
+        }
+
+    override fun claimNaming(candidate: Case, owner: String, now: Instant, leaseUntil: Instant): Case? =
+        candidate.metadata.version?.let { version ->
+            caseNodeNeo4jRepository.claimNaming(candidate.id.toString(), version, owner, now, leaseUntil)?.toDomain()
+        }
+
     override fun findByParent(parentId: UUID): List<Case> =
         caseNodeNeo4jRepository
             .findActiveByNamespaceId(parentId.toString())
@@ -73,7 +89,7 @@ open class Neo4jCaseRepository(
     override fun delete(id: UUID): Boolean =
         findByIds(listOf(id))
             .firstOrNull()
-            ?.let { case -> saveChange(case) { it.copy(metadata = it.metadata.markAsRemoved()) } }
+            ?.let { case -> saveChange(case) { it.copy(metadata = it.metadata.markAsRemoved(), namingInstructions = null, namingPrefix = null, namingLeaseOwner = null, namingLeaseUntil = null) } }
             ?.also { logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id" } } != null
 
     override fun findActiveByParentCaseId(parentCaseId: UUID): List<Case> =
@@ -96,7 +112,7 @@ open class Neo4jCaseRepository(
     @Transactional
     override fun deleteByParent(parentId: UUID): Int {
         val active = caseNodeNeo4jRepository.findActiveByNamespaceId(parentId.toString())
-        caseNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
+        caseNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true, namingInstructions = null, namingPrefix = null, namingLeaseOwner = null, namingLeaseUntil = null) })
         logger.debug { "[Neo4jCaseRepository] Soft-deleted ${active.size} cases under namespace $parentId" }
         return active.size
     }

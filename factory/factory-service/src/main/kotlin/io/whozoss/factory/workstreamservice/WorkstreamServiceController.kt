@@ -243,6 +243,9 @@ class WorkstreamServiceController(
         val caller = resolveCaller(user, namespaceId)
         val request = body ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         if (request.keys.any { it !in START_FIELDS }) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        for (field in listOf("title", "ticket", "initialRequest")) {
+            if (request[field] != null && request[field] !is String) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "$field must be a string.")
+        }
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val workflowType = (request["workflowType"] as? String)?.trim()
             ?.takeIf { ID_PATTERN.matches(it) }
@@ -252,7 +255,7 @@ class WorkstreamServiceController(
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "title must not exceed $MAX_TITLE characters.")
         }
         val ticket = (request["ticket"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
-        if (ticket != null && !TICKET_PATTERN.matches(ticket)) {
+        if (ticket != null && (ticket.length > MAX_TICKET_LENGTH || ticket.any { it.isISOControl() })) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "ticket is invalid.")
         }
         val key = idempotencyKey?.trim()?.takeIf { KEY_PATTERN.matches(it) }
@@ -271,7 +274,7 @@ class WorkstreamServiceController(
             command = CreateWorkflowRunService.Command(
                 workflowType = workflowType,
                 title = title,
-                initialRequest = null,
+                initialRequest = (request["initialRequest"] as? String)?.trim()?.takeIf { it.isNotEmpty() },
                 parameters = ticket?.let { mapOf("ticket" to it) } ?: emptyMap(),
                 idempotencyKey = "svc:${caller.userId}:$key",
                 definitionVersion = optionalPin(request, "definitionVersion"),
@@ -389,13 +392,13 @@ class WorkstreamServiceController(
         const val DEFAULT_LIST_LIMIT = 50
         const val MAX_LIST_LIMIT = 200
         const val MAX_TITLE = 200
+        const val MAX_TICKET_LENGTH = 2048
 
         val ID_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
         val STEP_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
         val KEY_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
-        val TICKET_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
         val REASON_PATTERN = Regex("^[A-Za-z0-9._-]{1,64}$")
-        val START_FIELDS = setOf("workflowType", "title", "ticket", "definitionVersion", "definitionHash")
+        val START_FIELDS = setOf("workflowType", "title", "ticket", "initialRequest", "definitionVersion", "definitionHash")
         val RETRY_FIELDS = setOf("stepId", "expectedRevision", "reasonCode")
     }
 }

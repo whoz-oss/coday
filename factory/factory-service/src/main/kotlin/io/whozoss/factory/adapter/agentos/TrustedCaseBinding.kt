@@ -41,4 +41,28 @@ data class TrustedCaseBinding(
     val externalUserId: String? = null,
     /** Optional title used only when this binding creates a new AgentOS case. */
     val title: String? = null,
+    val namingInstructions: String? = null,
+    val namingPrefix: String? = null,
 )
+
+/** Formats a new step case from its durable attempt number. */
+fun stepCaseTitle(stepLabel: String, attemptNumber: Int): String = "$stepLabel #$attemptNumber"
+
+/** Extracts a Jira key from a reference and combines it with an explicit title. */
+fun rootCaseTitle(ticket: String?, explicitTitle: String?): String? {
+    val key = ticket?.let { JIRA_KEY.find(it)?.value }
+    return listOfNotNull(key, explicitTitle?.trim()?.takeIf { it.isNotEmpty() })
+        .joinToString(" ").takeIf { it.isNotEmpty() }
+}
+
+/** Root metadata persisted by Factory on new workflows; null marker preserves legacy behavior. */
+fun rootCaseNaming(instance: Map<String, Any?>): Triple<String?, String?, String?> {
+    val ticket = instance["ticket"] as? String
+    val explicit = instance["caseTitleExplicit"] as? Boolean
+    val title = instance["title"] as? String
+    val instructions = if (explicit == false) ((instance["controllerRequest"] as? Map<*, *>)?.get("text") as? String)?.takeIf { it.isNotBlank() } else null
+    val resultTitle = if (explicit == null) title else rootCaseTitle(ticket, title.takeIf { explicit })
+    return Triple(resultTitle, instructions, rootCaseTitle(ticket, null).takeIf { instructions != null })
+}
+
+private val JIRA_KEY = Regex("(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,15}-[0-9]{1,12}(?![A-Za-z0-9])")

@@ -186,6 +186,25 @@ class CaseControllerSpec :
             verify(exactly = 1) { caseListUpdateBroadcaster.publishCaseCreated(namespaceId) }
         }
 
+        "create records a pending naming request without exposing its instructions" {
+            //given
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+            every { caseService.create(any(), any()) } answers { firstArg<Case>() }
+            val request = caseResource(title = "WZ-35428").copy(
+                namingInstructions = "Analyze login", namingPrefix = "WZ-35428",
+            )
+
+            //when
+            val result = controller.create(request)
+
+            //then
+            verify(exactly = 1) {
+                caseService.create(match { it.namingInstructions == "Analyze login" && it.namingPrefix == "WZ-35428" }, any())
+            }
+            result.namingInstructions shouldBe null
+        }
+
         "create preserves runCostThreshold from the request" {
             val threshold = 42.5
             val r = caseResource(id = null).copy(runCostThreshold = threshold)
@@ -1008,6 +1027,55 @@ class CaseControllerSpec :
             controller.update(existing.metadata.id, payload)
 
             verify(exactly = 1) { caseService.edit(existing.metadata.id, any()) }
+        }
+
+        "a manual rename to the unchanged title prevents an in-flight generated title" {
+            //given
+            val original = caseEntity(title = "provisional title")
+            var stored = original
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } answers { listOf(stored) }
+                every { save(any()) } answers { firstArg<Case>().also { stored = it } }
+            }
+            val naming = CaseNamingService(
+                aiModelService = mockk { every { findAiModel(any()) } returns null },
+                aiProviderService = mockk(),
+                chatClientProvider = mockk(),
+                caseRepository = repository,
+            )
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.edit(original.id, any()) } answers {
+                secondArg<(Case) -> Case>()(stored).also { stored = it }
+            }
+            val message = io.whozoss.agentos.sdk.caseEvent.MessageEvent(
+                namespaceId = namespaceId,
+                caseId = original.id,
+                actor = io.whozoss.agentos.sdk.actor.Actor(id = callerId.toString(), displayName = "User", role = io.whozoss.agentos.sdk.actor.ActorRole.USER),
+                content = listOf(io.whozoss.agentos.sdk.caseEvent.MessageContent.Text("generated fallback")),
+            )
+
+            //when
+            controller.update(original.id, caseResource(id = original.id, title = original.title))
+            naming.nameCase(original, listOf(message)) { }
+
+            //then
+            stored.title shouldBe "provisional title"
+            verify(exactly = 0) { repository.save(any()) }
+        }
+
+        "an update marked as non-title preserves concurrent generated title and pending intent" {
+            //given
+            val existing = caseEntity(title = "generated title").copy(namingInstructions = "private request", namingPrefix = "WZ-35428")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.edit(existing.id, any()) } answers { secondArg<(Case) -> Case>()(existing) }
+            val stalePayload = caseResource(id = existing.id, title = "old title").copy(titleChange = false, runCostThreshold = 10.0)
+
+            //when
+            val updated = controller.update(existing.id, stalePayload)
+
+            //then
+            updated.title shouldBe "generated title"
+            verify(exactly = 1) { caseService.edit(existing.id, match { change -> change(existing).namingInstructions == "private request" }) }
         }
 
         "update throws 404 when the Case does not exist" {

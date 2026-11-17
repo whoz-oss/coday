@@ -320,6 +320,47 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `canonical workflow creation retains explicit title intent across idempotent retries`() {
+        registerDefinition()
+        registerWorkstream()
+        val base = mapOf("namespaceId" to namespace, "workflowType" to "wf-http")
+
+        val created = createRun(base, "title-intent")
+        val replay = createRun(base, "title-intent")
+        val differentIntent = createRun(base + ("title" to "Wf http"), "title-intent")
+
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat((data(created.body)["instance"] as Map<*, *>)["caseTitleExplicit"]).isEqualTo(false)
+        assertThat(differentIntent.statusCode).isEqualTo(HttpStatus.CONFLICT)
+
+        val explicit = createRun(base + ("title" to "Wf http"), "explicit-title-intent")
+        assertThat((data(explicit.body)["instance"] as Map<*, *>)["caseTitleExplicit"]).isEqualTo(true)
+    }
+
+    @Test
+    fun `canonical create rejects incorrect types for optional naming fields`() {
+        registerDefinition()
+        registerWorkstream()
+        val base = mapOf("namespaceId" to namespace, "workflowType" to "wf-http")
+        listOf("title", "initialRequest").forEachIndexed { index, field ->
+            assertInvalidStart(createRun(base + (field to 42), "invalid-name-$index"))
+        }
+        assertInvalidStart(createRun(base + ("parameters" to mapOf("ticket" to 42)), "invalid-ticket"))
+    }
+
+    @Test
+    fun `canonical create rejects a different Jira reference on idempotent replay`() {
+        registerDefinition()
+        registerWorkstream()
+        val base = mapOf("namespaceId" to namespace, "workflowType" to "wf-http")
+        val created = createRun(base + ("parameters" to mapOf("ticket" to "WZ-1")), "ticket-identity")
+        val changed = createRun(base + ("parameters" to mapOf("ticket" to "WZ-2")), "ticket-identity")
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(changed.statusCode).isEqualTo(HttpStatus.CONFLICT)
+    }
+
+    @Test
     fun `explicit versions coexist launch independently and keep active runs pinned on replay`() {
         registerDefinition()
         registerWorkstream()
@@ -552,6 +593,35 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `compatibility start accepts omitted title without requiring instructions`() {
+        registerWorkstream()
+        registerDefinition()
+        val body = mapOf(
+            "workflow" to mapOf("workflowId" to "wf-optional-title", "workflowType" to "wf-http"),
+            "execution" to mapOf("namespaceId" to namespace, "runtimeId" to "agentos-primary", "kind" to "agentos", "agentId" to "runner"),
+        )
+        val response = restTemplate.exchange("/api/factory/workflows/wf-optional-title/start", HttpMethod.POST, HttpEntity(body, headers()), jsonType())
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat((data(response.body)["instance"] as Map<*, *>)["caseTitleExplicit"]).isEqualTo(false)
+    }
+
+    @Test
+    fun `collection compatibility start accepts ticket without title or instructions`() {
+        registerWorkstream()
+        registerDefinition()
+        val body = mapOf(
+            "workflow" to mapOf("workflowId" to "wf-ticket-only", "workflowType" to "wf-http", "ticket" to "WZ-42"),
+            "execution" to mapOf("namespaceId" to namespace, "runtimeId" to "factory-dashboard", "kind" to "agentos", "agentId" to "factory-agent"),
+        )
+        val response = restTemplate.exchange("/api/factory/workflows/start", HttpMethod.POST, HttpEntity(body, headers()), jsonType())
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        val instance = data(response.body)["instance"] as Map<*, *>
+        assertThat(instance["caseTitleExplicit"]).isEqualTo(false)
+        assertThat(instance["ticket"]).isEqualTo("WZ-42")
+        assertThat(instance["controllerRequest"]).isNull()
+    }
+
+    @Test
     fun `start returns 201 with the created snapshot and detail returns existing`() {
         registerWorkstream()
         registerDefinition()
@@ -631,7 +701,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `start requires a bounded controller request`() {
+    fun `cockpit compatibility start accepts no instructions`() {
         registerWorkstream()
         registerDefinition()
         val startBody = mapOf(
@@ -653,9 +723,8 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             HttpEntity(startBody, headers()),
             jsonType(),
         )
-        assertThat(start.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        val error = start.body?.get("error") as? Map<*, *>
-        assertThat(error?.get("code")).isEqualTo("INVALID_START_REQUEST")
+        assertThat(start.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(start.body)["controllerRequest"]).isNull()
     }
 
     @Test

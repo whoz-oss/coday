@@ -84,12 +84,15 @@
         placeholder="Readable run title"
         data-launch-title="true"
       />
-      <mat-hint>Factory generates a readable title if omitted.</mat-hint>
+      <mat-hint>If omitted, the case may be named from the instructions or by AgentOS.</mat-hint>
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field">
       <mat-label>Jira ticket (optional)</mat-label>
       <input matInput class="sf-mono" formControlName="ticket" placeholder="ABC-123" data-launch-ticket="true" />
+      @if (form.controls.ticket.hasError('maxlength')) {
+        <mat-error>The Jira ticket must not exceed 64 characters.</mat-error>
+      }
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field field--wide">

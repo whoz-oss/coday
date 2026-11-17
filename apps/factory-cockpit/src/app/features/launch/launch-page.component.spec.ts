@@ -141,6 +141,31 @@ describe('LaunchPageComponent namespace launch', () => {
     expect(navigate).toHaveBeenCalledWith(['/sessions', 'generated-id'], { queryParams: { namespaceId: NS2 } })
   })
 
+  it.each([
+    [{ ticket: 'ABC-1' }, { parameters: { ticket: 'ABC-1' } }],
+    [{ title: 'A title' }, { title: 'A title' }],
+    [{ initialRequest: 'First line\nSecond line' }, { initialRequest: 'First line\nSecond line' }],
+    [{ title: '  ', ticket: '  ', initialRequest: '  ' }, {}],
+    [{ ticket: 'ABC-1', initialRequest: 'Request' }, { parameters: { ticket: 'ABC-1' }, initialRequest: 'Request' }],
+    [{ title: 'A title', ticket: 'ABC-1' }, { title: 'A title', parameters: { ticket: 'ABC-1' } }],
+    [{ title: 'A title', initialRequest: 'Request' }, { title: 'A title', initialRequest: 'Request' }],
+  ])('submits optional inputs independently: %j', async (inputs, expected) => {
+    const service = api()
+    await setup(service)
+    form().patchValue({ definitionKey: KEY, namespaceId: NS1, ...inputs })
+    jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+
+    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
+
+    expect(service.createWorkflowRun.mock.calls[0][0]).toEqual({
+      namespaceId: NS1,
+      workflowType: 'delivery',
+      definitionVersion: '1.0.0',
+      definitionHash: HASH,
+      ...expected,
+    })
+  })
+
   it('requires an explicit choice when versions coexist and submits the chosen version and hash', async () => {
     const service = api({
       getWorkflowDefinitions: jest.fn().mockReturnValue(

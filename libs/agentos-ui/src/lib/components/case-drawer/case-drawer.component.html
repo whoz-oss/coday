@@ -250,14 +250,24 @@
             (click)="$event.stopPropagation()"
             (input)="onRenameInput($any($event.target).value)"
             (keydown)="onRenameKeydown($event)"
-            (blur)="onRenameBlur()"
+            (blur)="onRenameBlur($event)"
           />
+          <button
+            type="button"
+            title="Confirm this title, even if unchanged"
+            (pointerdown)="onConfirmPointerDown($event)"
+            (keydown)="onRenameKeydown($event)"
+            (click)="commitRename(true)"
+            (blur)="onRenameBlur($event)"
+          >
+            Confirm title
+          </button>
           @if (renameError(); as error) {
             <p class="case-tree-node__rename-error" role="alert" [id]="'rename-error-' + node.id">{{ error }}</p>
           }
         </div>
       } @else {
-        <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
+        <button type="button" class="case-tree-node__select" [attr.data-case-title-id]="node.id" (click)="onItemSelected(node.id)">
           <span class="case-tree-node__name">{{ node.name }}</span>
           @if (isSearchActive() && node.summary) {
             <span class="case-tree-node__summary">{{ node.summary }}</span>

@@ -46,12 +46,11 @@ class CaseNamingServiceUnitSpec :
                 apiModelName = "test-model",
             )
 
-        fun makeCase() =
-            Case(
-                metadata = EntityMetadata(),
-                namespaceId = namespaceId,
-                status = CaseStatus.IDLE,
-            )
+        var currentCase: Case? = null
+        fun makeCase(title: String? = null): Case {
+            val case = Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.IDLE)
+            return (title?.let { case.copy(title = it) } ?: case).also { currentCase = it }
+        }
 
         fun messageEvent(
             text: String,
@@ -76,8 +75,7 @@ class CaseNamingServiceUnitSpec :
         ): CaseNamingService {
             val caseRepository =
                 mockk<CaseRepository> {
-                    // reload-before-save: return empty so the ?: case fallback kicks in
-                    every { findByIds(any(), any()) } returns emptyList()
+                    every { findByIds(any(), any()) } answers { listOfNotNull(currentCase) }
                     every { save(any()) } answers {
                         val c = firstArg<Case>()
                         savedCases.add(c)
@@ -147,6 +145,20 @@ class CaseNamingServiceUnitSpec :
 
             saved.single().title shouldBe "Hello, I need help with Kotlin"
             emitted.filterIsInstance<CaseUpdatedEvent>().single().title shouldBe "Hello, I need help with Kotlin"
+        }
+
+        "ordinary naming fallback preserves multiple recent user messages" {
+            //given
+            val saved = mutableListOf<Case>()
+            val service = buildService(aiModelService = mockk { every { findAiModel(any()) } returns null }, savedCases = saved)
+            val case = makeCase()
+
+            //when
+            service.nameCase(case, listOf(messageEvent("First message", case.id), messageEvent("Second message", case.id))) { }
+
+            //then
+            saved.single().title shouldBe "First message\nSecond message"
+            service.shutdown()
         }
 
         "truncates fallback title to 50 characters when first message is long" {
@@ -342,6 +354,334 @@ class CaseNamingServiceUnitSpec :
 
             saved shouldBe emptyList<Case>()
             emitted shouldBe emptyList<CaseEvent>()
+        }
+
+        "preserves a manual rename completed while title generation was in flight" {
+            //given
+            val case = makeCase()
+            val renamed = case.copy(title = "Manual title")
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } returns listOf(renamed)
+                every { save(any()) } answers { firstArg() }
+            }
+            val service = CaseNamingService(
+                mockk { every { findAiModel(any()) } returns null },
+                mockk(), mockk(), repository,
+            )
+            val events = mutableListOf<CaseEvent>()
+
+            //when
+            service.nameCase(case, listOf(messageEvent("Generate a title", case.id))) { events.add(it) }
+
+            //then
+            verify(exactly = 0) { repository.save(any()) }
+            events shouldBe emptyList<CaseEvent>()
+        }
+
+        "preserves a manual rename that wins an optimistic locking race" {
+            //given
+            val case = makeCase()
+            val renamed = case.copy(title = "Manual title")
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } returnsMany listOf(listOf(case), listOf(renamed))
+                every { save(any()) } throws org.springframework.dao.OptimisticLockingFailureException("concurrent rename")
+            }
+            val service = CaseNamingService(
+                mockk { every { findAiModel(any()) } returns null },
+                mockk(), mockk(), repository,
+            )
+            val events = mutableListOf<CaseEvent>()
+
+            //when
+            service.nameCase(case, listOf(messageEvent("Generate a title", case.id))) { events.add(it) }
+
+            //then
+            verify(exactly = 1) { repository.save(any()) }
+            events shouldBe emptyList<CaseEvent>()
+        }
+
+        "a manually set default-looking title is never automatically replaced later" {
+            //given
+            val case = makeCase().copy(titleEditGeneration = "manual-edit")
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } returns listOf(case)
+                every { save(any()) } answers { firstArg() }
+            }
+            val service = CaseNamingService(
+                mockk { every { findAiModel(any()) } returns null },
+                mockk(), mockk(), repository,
+            )
+            val events = mutableListOf<CaseEvent>()
+
+            //when
+            service.nameCase(case, listOf(messageEvent("Generate a title", case.id))) { events.add(it) }
+
+            //then
+            verify(exactly = 0) { repository.save(any()) }
+            events shouldBe emptyList<CaseEvent>()
+        }
+
+        "a concurrent manual rename to the same title wins after an optimistic conflict" {
+            //given
+            val case = makeCase()
+            val renamed = case.copy(titleEditGeneration = "manual-edit-1")
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } returnsMany listOf(listOf(case), listOf(renamed))
+                every { save(any()) } throws org.springframework.dao.OptimisticLockingFailureException("concurrent rename")
+            }
+            val service = CaseNamingService(
+                mockk { every { findAiModel(any()) } returns null },
+                mockk(), mockk(), repository,
+            )
+            val events = mutableListOf<CaseEvent>()
+
+            //when
+            service.nameCase(case, listOf(messageEvent("Generate a title", case.id))) { events.add(it) }
+
+            //then
+            verify(exactly = 1) { repository.save(any()) }
+            events shouldBe emptyList<CaseEvent>()
+        }
+
+        "names Factory instructions with the Jira key and the normal fallback when no model is available" {
+            //given
+            val saved = mutableListOf<Case>()
+            val service = buildService(aiModelService = mockk { every { findAiModel(any()) } returns null }, savedCases = saved)
+            val case = makeCase(title = "WZ-35428")
+            val emitted = mutableListOf<CaseEvent>()
+
+            //when
+            service.nameFromInstructions(case, "Analyse the issue and implement the fix", "WZ-35428") { emitted.add(it) }
+
+            //then
+            saved.single().title shouldBe "WZ-35428 Analyse the issue and implement the fix"
+            emitted.filterIsInstance<CaseUpdatedEvent>().single().title shouldBe saved.single().title
+        }
+
+        "Factory naming keeps Jira prefix and normal fallback when model generation fails" {
+            //given
+            val provider = mockk<ChatClientProvider>()
+            provider.stub(stubbedChatClientThrows())
+            val saved = mutableListOf<Case>()
+            val service = buildService(chatClientProvider = provider, savedCases = saved)
+            val case = makeCase(title = "WZ-35428")
+
+            //when
+            service.nameFromInstructions(case, "Investigate login\nand update tests", "WZ-35428") { }
+
+            //then
+            saved.single().title shouldBe "WZ-35428 Investigate login"
+        }
+
+        "Factory naming cannot overwrite same-title manual edit after optimistic conflict" {
+            //given
+            val case = makeCase().copy(title = "WZ-35428")
+            val renamed = case.copy(titleEditGeneration = "manual-edit")
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } returnsMany listOf(listOf(case), listOf(renamed))
+                every { save(any()) } throws org.springframework.dao.OptimisticLockingFailureException("concurrent rename")
+            }
+            val service = CaseNamingService(
+                mockk { every { findAiModel(any()) } returns null }, mockk(), mockk(), repository,
+            )
+            val events = mutableListOf<CaseEvent>()
+
+            //when
+            service.nameFromInstructions(case, "Investigate login", "WZ-35428") { events.add(it) }
+
+            //then
+            verify(exactly = 1) { repository.save(any()) }
+            events shouldBe emptyList<CaseEvent>()
+        }
+
+        "manual title fence avoids even a model lookup for Factory naming" {
+            //given
+            val case = makeCase().copy(titleEditGeneration = "manual")
+            val modelService = mockk<AiModelService>(relaxed = true)
+            val service = buildService(aiModelService = modelService)
+
+            //when
+            service.nameFromInstructions(case, "Confidential instructions", "WZ-35428") { }
+
+            //then
+            verify(exactly = 0) { modelService.findAiModel(any()) }
+        }
+
+        "generates a single-line Factory title and retains the Jira key" {
+            //given
+            val provider = mockk<ChatClientProvider>()
+            provider.stub(stubbedChatClient("Repair login\nExtra detail"))
+            val saved = mutableListOf<Case>()
+            val service = buildService(chatClientProvider = provider, savedCases = saved)
+            val case = makeCase(title = "WZ-35428")
+
+            //when
+            service.nameFromInstructions(case, "Investigate login", "WZ-35428") { }
+
+            //then
+            saved.single().title shouldBe "WZ-35428 Repair login"
+        }
+
+        "ordinary automatic naming never clears a concurrently pending Factory naming intent" {
+            //given
+            val original = makeCase()
+            val pending = original.copy(namingInstructions = "Factory request", namingPrefix = "WZ-35428")
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } returns listOf(pending)
+                every { save(any()) } answers { firstArg() }
+            }
+            val service = CaseNamingService(mockk { every { findAiModel(any()) } returns null }, mockk(), mockk(), repository)
+
+            //when
+            service.nameCase(original, listOf(messageEvent("Ordinary message", original.id))) { }
+
+            //then
+            verify(exactly = 0) { repository.save(any()) }
+            service.shutdown()
+        }
+
+        "an expired naming lease cannot publish even before another claimant arrives" {
+            //given
+            val case = makeCase(title = "WZ-35428").copy(namingInstructions = "Repair login", namingLeaseOwner = "worker", namingLeaseUntil = java.time.Instant.parse("2026-01-01T00:00:00Z"))
+            val repository = mockk<CaseRepository> {
+                every { completeNaming(any(), any()) } returns null
+                every { findByIds(any(), any()) } returns listOf(case)
+                every { save(any()) } answers { firstArg() }
+            }
+            val service = CaseNamingService(mockk { every { findAiModel(any()) } returns null }, mockk(), mockk(), repository,
+                clock = java.time.Clock.fixed(java.time.Instant.parse("2026-01-01T00:00:01Z"), java.time.ZoneOffset.UTC))
+
+            //when
+            service.nameFromInstructions(case, "Repair login", "WZ-35428") { }
+
+            //then
+            verify(exactly = 0) { repository.save(any()) }
+            service.shutdown()
+        }
+
+        "expired naming owner cannot publish after a successor reclaimed the intent" {
+            //given
+            val original = makeCase(title = "WZ-35428").copy(namingInstructions = "Repair login", namingPrefix = "WZ-35428", namingLeaseOwner = "old-owner")
+            val successor = original.copy(namingLeaseOwner = "new-owner")
+            val repository = mockk<CaseRepository> {
+                every { completeNaming(any(), any()) } returns null
+                every { findByIds(any(), any()) } returns listOf(successor)
+                every { save(any()) } answers { firstArg() }
+            }
+            val service = CaseNamingService(mockk { every { findAiModel(any()) } returns null }, mockk(), mockk(), repository)
+            val events = mutableListOf<CaseEvent>()
+
+            //when
+            service.nameFromInstructions(original, "Repair login", "WZ-35428") { events.add(it) }
+
+            //then
+            verify(exactly = 0) { repository.save(any()) }
+            events shouldBe emptyList<CaseEvent>()
+            service.shutdown()
+        }
+
+        "a blocked model call times out and naming uses fallback without waiting for network release" {
+            //given
+            val case = makeCase()
+            val entered = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            val chatClient = mockk<ChatClient>()
+            val request = mockk<ChatClient.ChatClientRequestSpec>()
+            val response = mockk<ChatClient.CallResponseSpec>()
+            every { chatClient.prompt(any<org.springframework.ai.chat.prompt.Prompt>()) } returns request
+            every { request.call() } returns response
+            every { response.content() } answers {
+                entered.countDown()
+                while (release.count > 0) {
+                    try { release.await() } catch (_: InterruptedException) { }
+                }
+                "Late model title"
+            }
+            val providerClient = mockk<ChatClientProvider>()
+            providerClient.stub(chatClient)
+            val saved = mutableListOf<Case>()
+            val repository = mockk<CaseRepository> {
+                every { findByIds(any(), any()) } returns listOf(case)
+                every { save(any()) } answers { firstArg<Case>().also { saved.add(it) } }
+            }
+            val service = CaseNamingService(
+                mockk { every { findAiModel(any()) } returns model },
+                mockk { every { getById(any()) } returns provider }, providerClient, repository,
+                namingCallTimeoutMs = 100,
+            )
+            try {
+                //when
+                service.nameCase(case, listOf(messageEvent("Fallback title", case.id))) { }
+                //then
+                entered.count shouldBe 0L
+                release.count shouldBe 1L
+                saved.single().title shouldBe "Fallback title"
+            } finally {
+                release.countDown()
+                service.shutdown()
+            }
+        }
+
+        "a stalled model call does not block the naming sweep caller" {
+            //given
+            val pending = makeCase(title = "WZ-35428").copy(namingInstructions = "Repair login", namingPrefix = "WZ-35428")
+            val entered = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            val repository = mockk<CaseRepository> {
+                every { purgeExpiredNaming(any(), any()) } returns 0L
+                every { findPendingNaming(any()) } returns listOf(pending)
+                every { claimNaming(any(), any(), any(), any()) } answers { pending.copy(namingLeaseOwner = secondArg<String>()) }
+                every { findByIds(any(), any()) } returns emptyList()
+            }
+            val modelService = mockk<AiModelService> {
+                every { findAiModel(any()) } answers { entered.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS); null }
+            }
+            val service = CaseNamingService(modelService, mockk(), mockk(), repository)
+            try {
+                //when
+                service.sweepPendingNaming()
+                //then
+                entered.await(5, java.util.concurrent.TimeUnit.SECONDS) shouldBe true
+                release.count shouldBe 1L
+            } finally {
+                release.countDown()
+                service.shutdown()
+            }
+        }
+
+        "persisted naming intent resumes without a live runtime and is cleared once processed" {
+            //given
+            val pending = makeCase(title = "WZ-35428").copy(namingInstructions = "Repair login", namingPrefix = "WZ-35428")
+            val saved = java.util.concurrent.CompletableFuture<Case>()
+            var lastClaimOwner: String? = null
+            var lastLeaseUntil: java.time.Instant? = null
+            val repository = mockk<CaseRepository> {
+                every { purgeExpiredNaming(any(), any()) } returns 0L
+                every { findPendingNaming(any()) } returns listOf(pending)
+                every { claimNaming(any(), any(), any(), any()) } answers {
+                    lastClaimOwner = secondArg<String>()
+                    lastLeaseUntil = arg(3)
+                    pending.copy(namingLeaseOwner = lastClaimOwner, namingLeaseUntil = lastLeaseUntil)
+                }
+                every { findByIds(any(), any()) } answers {
+                    listOf(pending.copy(namingLeaseOwner = lastClaimOwner, namingLeaseUntil = lastLeaseUntil))
+                }
+                every { completeNaming(any(), any()) } answers {
+                    firstArg<Case>().copy(title = secondArg(), namingInstructions = null, namingPrefix = null, namingLeaseOwner = null, namingLeaseUntil = null).also { saved.complete(it) }
+                }
+                every { save(any()) } answers { firstArg<Case>().also { saved.complete(it) } }
+            }
+            val service = CaseNamingService(mockk { every { findAiModel(any()) } returns null }, mockk(), mockk(), repository)
+
+            //when
+            service.sweepPendingNaming()
+            val result = saved.get(5, java.util.concurrent.TimeUnit.SECONDS)
+
+            //then
+            result.title shouldBe "WZ-35428 Repair login"
+            result.namingInstructions shouldBe null
+            result.namingPrefix shouldBe null
+            service.shutdown()
         }
 
         "emits CaseUpdatedEvent with correct caseId and namespaceId" {

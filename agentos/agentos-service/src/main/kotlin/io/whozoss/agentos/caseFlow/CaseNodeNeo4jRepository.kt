@@ -10,6 +10,47 @@ import java.time.Instant
  * Spring Data Neo4j repository for [CaseNode].
  */
 interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
+    /** Bounded oldest pending case naming work, independent from in-memory runtimes. */
+    @Transactional(readOnly = true)
+    @Query($$"""MATCH (c:Case) WHERE c.namingInstructions IS NOT NULL AND coalesce(c.removed, false) = false
+        AND (c.namingLeaseUntil IS NULL OR c.namingLeaseUntil <= datetime())
+        RETURN c ORDER BY c.created ASC, c.id ASC LIMIT $limit""")
+    fun findPendingNaming(limit: Int): List<CaseNode>
+
+    /** Purge old pending inputs while fencing workers by the node version. */
+    @Transactional
+    @Query($$"""MATCH (c:Case) WHERE c.namingInstructions IS NOT NULL AND c.created < $cutoff
+        WITH c ORDER BY c.created ASC, c.id ASC LIMIT $limit
+        SET c.version = c.version
+        WITH c WHERE c.namingInstructions IS NOT NULL AND c.created < $cutoff
+        REMOVE c.namingInstructions, c.namingPrefix, c.namingLeaseOwner, c.namingLeaseUntil
+        SET c.version = c.version + 1
+        RETURN count(c)""")
+    fun purgeExpiredNaming(cutoff: Instant, limit: Int): Long
+
+    /** Verify lease and manual-edit fence under the same database lock as the title write. */
+    @Transactional
+    @Query($$"""MATCH (c:Case {id: $id})
+        SET c.version = c.version
+        WITH c WHERE c.namingLeaseOwner = $owner AND c.namingLeaseUntil > datetime()
+            AND c.namingInstructions IS NOT NULL AND c.title = $expectedTitle
+            AND c.titleEditGeneration IS NULL AND coalesce(c.removed, false) = false
+        SET c.title = $title, c.modified = datetime(), c.version = c.version + 1
+        REMOVE c.namingInstructions, c.namingPrefix, c.namingLeaseOwner, c.namingLeaseUntil
+        RETURN c""")
+    fun completeNaming(id: String, owner: String, expectedTitle: String, title: String): CaseNode?
+
+    /** Lock the case before testing its version and lease; only one claimant wins. */
+    @Transactional
+    @Query($$"""MATCH (c:Case {id: $id})
+        SET c.version = c.version
+        WITH c WHERE c.version = $version AND c.namingInstructions IS NOT NULL
+            AND coalesce(c.removed, false) = false AND c.titleEditGeneration IS NULL
+            AND (c.namingLeaseUntil IS NULL OR c.namingLeaseUntil <= $now)
+        SET c.namingLeaseOwner = $owner, c.namingLeaseUntil = $leaseUntil, c.version = c.version + 1
+        RETURN c""")
+    fun claimNaming(id: String, version: Long, owner: String, now: Instant, leaseUntil: Instant): CaseNode?
+
     /**
      * Find all non-removed cases belonging to a namespace, ordered by creation time.
      *

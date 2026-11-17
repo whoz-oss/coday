@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.api.case
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -122,4 +123,22 @@ data class CaseDto(
                 "Must be null for a sub-case.",
     )
     val worktree: Boolean? = null,
+    /** PUT intent: false ignores echoed title, true explicitly renames; null preserves legacy behavior. */
+    @field:Schema(
+        types = ["boolean", "null"],
+        description = "PUT only. false ignores title, preserving pending automatic naming; true explicitly renames a non-null title even when unchanged. " +
+            "Omitted or null preserves legacy behavior: a non-null title is treated as a rename. " +
+            "Legacy read-modify-write clients can overwrite newer titles; omit title or send false for non-title updates.",
+        accessMode = Schema.AccessMode.WRITE_ONLY,
+    )
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val titleChange: Boolean? = null,
+    /** Create-only instructions for asynchronous case naming; never returned. */
+    @field:Schema(description = "Create-only nonblank instructions, at most 4000 characters; root cases only. Not returned.", accessMode = Schema.AccessMode.WRITE_ONLY)
+    @field:jakarta.validation.constraints.Size(max = 4000)
+    val namingInstructions: String? = null,
+    /** Create-only, already extracted Jira key for asynchronous naming. */
+    @field:Schema(description = "Create-only Jira key prefix, for example WZ-123; not returned.", accessMode = Schema.AccessMode.WRITE_ONLY)
+    @field:jakarta.validation.constraints.Size(max = 32)
+    val namingPrefix: String? = null,
 )

@@ -4800,6 +4800,19 @@ components:
         namespaceId:
           type: string
           format: uuid
+        namingInstructions:
+          type: string
+          description: "Create-only nonblank instructions, at most 4000 characters;\
+            \ root cases only. Not returned."
+          maxLength: 4000
+          minLength: 0
+          writeOnly: true
+        namingPrefix:
+          type: string
+          description: "Create-only Jira key prefix, for example WZ-123; not returned."
+          maxLength: 32
+          minLength: 0
+          writeOnly: true
         parentCaseId:
           type: string
           format: uuid
@@ -4848,6 +4861,16 @@ components:
             \ Read-only: ignored on create and update."
         title:
           type: string
+        titleChange:
+          type:
+          - boolean
+          - "null"
+          description: "PUT only. false ignores title, preserving pending automatic\
+            \ naming; true explicitly renames a non-null title even when unchanged.\
+            \ Omitted or null preserves legacy behavior: a non-null title is treated as a\
+            \ rename. Legacy read-modify-write clients can overwrite newer titles;\
+            \ omit title or send false for non-title updates."
+          writeOnly: true
         worktree:
           type: boolean
           description: "Create only. Whether a new top-level case gets the worktree\

@@ -248,7 +248,13 @@ export class CaseStateService {
       this.patchFields(caseId, patch)
       // Keep required fields such as namespaceId. Undefined values are omitted from
       // JSON; the server treats an omitted threshold as "keep existing".
-      const payload: Case = { ...existing, ...patch, runCostThreshold: patch.runCostThreshold }
+      // The generated client does not yet expose the backend's PUT intent field.
+      const payload: Case & { titleChange: boolean } = {
+        ...existing,
+        ...patch,
+        runCostThreshold: patch.runCostThreshold,
+        titleChange: patch.title !== undefined,
+      }
       return this.caseController.updateCase(caseId, payload).pipe(
         tap((updated) => {
           state.confirmed = { ...existing, title: updated.title, runCostThreshold: updated.runCostThreshold }

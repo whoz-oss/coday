@@ -1,11 +1,14 @@
 import { CaseGitBadgeComponent } from '../case-workspace/case-git-badge.component'
 import { WorkspaceView } from '../../services/case-workspace.service'
 import {
+  afterNextRender,
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
   ElementRef,
+  inject,
+  Injector,
   input,
   output,
   signal,
@@ -217,6 +220,8 @@ export class CaseDrawerComponent {
 
   /** Title the editor was seeded with, used to skip a no-op rename. */
   private renameOriginal = ''
+  private readonly injector = inject(Injector)
+  private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef)
 
   /**
    * A case appears on exactly one row, so one edited case means one input and a singular query
@@ -307,8 +312,8 @@ export class CaseDrawerComponent {
 
   /** Open the inline editor on a row, seeded with its current label. */
   protected startRename(node: CaseTreeItem): void {
-    this.renameOriginal = node.name
-    this.editingTitle.set(node.name)
+    this.renameOriginal = this.cases().find((item) => item.id === node.id)?.title ?? ''
+    this.editingTitle.set(this.renameOriginal)
     this.renameError.set(null)
     this.selectedForId = null
     this.editingCaseId.set(node.id)
@@ -323,11 +328,13 @@ export class CaseDrawerComponent {
     if (event.key === 'Enter') {
       event.preventDefault()
       event.stopPropagation()
-      this.commitRename()
+      this.commitRename(true)
     } else if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
+      const id = this.editingCaseId()
       this.cancelRename()
+      if (id) this.restoreRenameFocus(id)
     }
   }
 
@@ -341,10 +348,19 @@ export class CaseDrawerComponent {
    * input still being document.activeElement: a real focus move updates it, a window
    * deactivation does not. The browser refocuses the input on return, so the edit carries on.
    */
-  protected onRenameBlur(): void {
+  protected onConfirmPointerDown(event: PointerEvent): void {
+    // Keep focus on the input until click, including browsers that do not focus buttons on click.
+    event.preventDefault()
+  }
+
+  protected onRenameBlur(event?: FocusEvent): void {
     if (!this.editingCaseId()) return
-    if (this.renameInput()?.nativeElement === document.activeElement) return
-    if (caseTitleError(this.editingTitle().trim())) this.cancelRename()
+    // Moving between the input and confirmation button stays inside the editor.
+    const editor = this.renameInput()?.nativeElement.parentElement
+    if (event?.relatedTarget instanceof Node && editor?.contains(event.relatedTarget)) return
+    if (editor?.contains(document.activeElement)) return
+    const title = this.editingTitle().trim()
+    if (caseTitleError(title) || title === this.renameOriginal) this.cancelRename()
     else this.commitRename()
   }
 
@@ -352,7 +368,7 @@ export class CaseDrawerComponent {
    * Validate the draft and emit the rename. Idempotent by construction: the first call clears
    * [editingCaseId], so the blur that follows an Enter (or a second Enter) is a no-op.
    */
-  protected commitRename(): void {
+  protected commitRename(restoreFocus = false): void {
     const id = this.editingCaseId()
     if (!id) return
     const title = this.editingTitle().trim()
@@ -363,9 +379,21 @@ export class CaseDrawerComponent {
     }
     this.editingCaseId.set(null)
     this.renameError.set(null)
-    // Unchanged title: nothing to persist, so no request.
-    if (title === this.renameOriginal) return
+    if (restoreFocus) this.restoreRenameFocus(id)
+    // Explicit confirmation is a rename even when the title is unchanged.
     this.renameRequested.emit({ id, title })
+  }
+
+  /** Restore keyboard focus to the row, or the filter if the row no longer matches. */
+  private restoreRenameFocus(id: string): void {
+    afterNextRender(() => {
+      const buttons = this.hostElement.nativeElement.querySelectorAll<HTMLButtonElement>('[data-case-title-id]')
+      const target = Array.from(buttons).find((button) => button.dataset['caseTitleId'] === id)
+      const sidebar = this.hostElement.nativeElement.closest('agentos-shell-sidebar')
+      const filter = sidebar?.querySelector<HTMLInputElement>('input[aria-label="Filter cases"]')
+      if (target) target.focus()
+      else filter?.focus()
+    }, { injector: this.injector })
   }
 
   protected cancelRename(): void {

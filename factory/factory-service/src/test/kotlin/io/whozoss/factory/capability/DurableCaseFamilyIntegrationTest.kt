@@ -97,7 +97,7 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
     private fun agentStep(id: String, dependsOn: List<String> = emptyList()): WorkflowStepDefinition =
         WorkflowStepDefinition(id, "Step $id", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "architect"), dependsOn)
 
-    private fun startSession(workflowType: String, workflowId: String, steps: List<Map<String, Any?>>) {
+    private fun startSession(workflowType: String, workflowId: String, steps: List<Map<String, Any?>>, ticket: String? = null, caseTitleExplicit: Boolean? = null, instructions: String? = null) {
         val raw = linkedMapOf<String, Any?>(
             "schemaVersion" to "1",
             "workflowType" to workflowType,
@@ -118,7 +118,8 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         workflowService.start(
             scope,
             namespace,
-            WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType"),
+            WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType", ticket = ticket, caseTitleExplicit = caseTitleExplicit,
+                controllerRequest = instructions?.let { io.whozoss.factory.workflow.domain.ControllerRequestInput(it, namespace, "2026-01-01T00:00:00Z", "alice", "test") }),
             ControllerExecutionInput(runtimeId = "test-runtime", kind = "agentos", agentId = "runner", namespaceId = namespace),
         )
     }
@@ -150,10 +151,12 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         val createdCaseParents = CopyOnWriteArrayList<Pair<String, String?>>()
         /** caseId → optional title carried by the trusted binding. */
         val createdCaseTitles = CopyOnWriteArrayList<Pair<String, String?>>()
+        val bindings = CopyOnWriteArrayList<TrustedCaseBinding>()
         private val knownCases = ConcurrentHashMap.newKeySet<String>()
 
         override fun createOrRecoverExecution(binding: TrustedCaseBinding, workflowId: String, stepId: String): CaseHandle {
             createdCaseParents.add(binding.caseId to binding.parentCaseId)
+            bindings.add(binding)
             createdCaseTitles.add(binding.caseId to binding.title)
             val recovered = !knownCases.add(binding.caseId)
             return CaseHandle(caseId = binding.caseId, namespaceId = binding.namespaceId, recovered = recovered)
@@ -236,6 +239,38 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
             .isEqualTo("Session case-concurrent")
     }
 
+    @Test
+    fun `a new explicitly titled workflow prefixes its root case with the Jira key`() {
+        val workflowId = isolatedWorkflowId("wf-titled-root")
+        startSession("titled-root", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())),
+            ticket = "https://whoz.atlassian.net/browse/WZ-35428", caseTitleExplicit = true)
+        val adapter = CaseFamilyAdapter()
+
+        service(adapter).resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
+
+        assertThat(adapter.createdCaseTitles.single().second).isEqualTo("WZ-35428 Session titled-root")
+    }
+
+    @Test
+    fun `new roots preserve independent title ticket and instructions inputs`() {
+        val combinations = listOf(
+            Triple(false, "WZ-35428", "Analyze login"), Triple(false, null, "Analyze login"),
+            Triple(false, "WZ-35428", null), Triple(false, null, null),
+            Triple(true, "WZ-35428", "Analyze login"), Triple(true, null, "Analyze login"),
+        )
+        combinations.forEachIndexed { index, (explicit, ticket, instructions) ->
+            val workflowId = isolatedWorkflowId("wf-naming-$index")
+            startSession("naming-$index", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())), ticket, explicit, instructions)
+            val adapter = CaseFamilyAdapter()
+            service(adapter).resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
+            val binding = adapter.bindings.single()
+            val expectedTitle = if (explicit) listOfNotNull(ticket, "Session naming-$index").joinToString(" ") else ticket
+            assertThat(binding.title).isEqualTo(expectedTitle)
+            assertThat(binding.namingInstructions).isEqualTo(if (explicit) null else instructions)
+            assertThat(binding.namingPrefix).isEqualTo(ticket.takeIf { !explicit && instructions != null })
+        }
+    }
+
     // ----- 2. Crash after reservation ⇒ same root case, no recreation -----
 
     @Test
@@ -291,7 +326,7 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(b.caseId).isNotEqualTo(root)
         // The child sub-case reaches the AgentOS boundary with the root as parent.
         assertThat(adapter.createdCaseParents.firstOrNull { it.first == b.caseId }?.second).isEqualTo(root)
-        assertThat(adapter.createdCaseTitles.firstOrNull { it.first == b.caseId }?.second).isEqualTo("architect")
+        assertThat(adapter.createdCaseTitles.firstOrNull { it.first == b.caseId }?.second).isEqualTo("Step B #1")
     }
 
     // ----- 4. Retry of a failed step ⇒ new sub-case, same worktree --------
@@ -360,6 +395,7 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         adapter.createdCaseParents.clear()
         service.resolveAndRecord(scope, namespace, workflowId, agentStep("B", listOf("A")), repoRoot)
         assertThat(adapter.createdCaseParents.firstOrNull { it.first == retryCaseId }?.second).isEqualTo(root)
+        assertThat(adapter.createdCaseTitles.firstOrNull { it.first == retryCaseId }?.second).isEqualTo("Step B #2")
         assertThat(adapter.startTurns).contains(retryCaseId)
     }
 

@@ -170,6 +170,17 @@ describe('CaseStateService', () => {
       expect(svc.cases()[0].title).toBe('New')
     })
 
+    it('sends explicit rename intent even for the current title', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([titledCase('a', 'Old')])))
+      svc.loadCases('ns-1')
+
+      svc.renameCase('a', 'Old').subscribe()
+
+      expect(controllerMock.updateCase).toHaveBeenCalledWith(
+        'a', expect.objectContaining({ title: 'Old', titleChange: true })
+      )
+    })
+
     it('reverts the optimistic title when the request fails', () => {
       const svc = makeService(jest.fn().mockReturnValue(of([titledCase('a', 'Old')])))
       svc.loadCases('ns-1')
@@ -248,6 +259,19 @@ describe('CaseStateService', () => {
       svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe()
 
       expect(svc.cases()[0].runCostThreshold).toBe(20)
+    })
+
+    it('marks a threshold-only save as non-renaming and accepts the server title', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a', { title: 'Before' })])))
+      svc.loadCases('ns-1')
+      controllerMock.updateCase.mockReturnValue(of(fieldCase('a', { title: 'Generated', runCostThreshold: 20 })))
+
+      svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe()
+
+      expect(controllerMock.updateCase).toHaveBeenCalledWith(
+        'a', expect.objectContaining({ title: 'Before', titleChange: false, runCostThreshold: 20 })
+      )
+      expect(svc.cases()[0].title).toBe('Generated')
     })
 
     it('reverts the optimistic patch when the request fails', () => {

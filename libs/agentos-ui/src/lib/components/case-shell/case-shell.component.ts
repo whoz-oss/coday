@@ -375,7 +375,7 @@ export class CaseShellComponent {
   protected onCaseUpdateRequested(event: { id: string; title?: string; runCostThreshold?: number | null }): void {
     this.caseState
       .updateCaseFields(event.id, {
-        title: event.title,
+        ...(event.title !== undefined ? { title: event.title } : {}),
         // Convert null ("clear the threshold") to undefined (Case type doesn't carry null)
         runCostThreshold: event.runCostThreshold ?? undefined,
       })
