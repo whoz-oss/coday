@@ -1,18 +1,31 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 
-/** Which tool exchanges are replayed in full, and which keep their image attachments. */
+/**
+ * Which tool exchanges are replayed in full, which keep their image attachments, and, under a
+ * [ToolHistoryReplay] other than FULL, which past exchanges are dropped or have their result omitted.
+ */
 data class ToolReplayPlan(
     private val detailedRequestIds: Set<String>,
     private val mediaRequestIds: Set<String>,
+    private val droppedRequestIds: Set<String> = emptySet(),
+    private val omittedRequestIds: Set<String> = emptySet(),
 ) {
     fun isDetailed(requestId: String): Boolean = requestId in detailedRequestIds
 
     fun hasAttachedMedia(requestId: String): Boolean = requestId in mediaRequestIds
+
+    /** Past exchange removed entirely (call and result) by [ToolHistoryReplay.NONE]. */
+    fun isDropped(requestId: String): Boolean = requestId in droppedRequestIds
+
+    /** Past exchange kept as a call whose result is replaced by a placeholder ([ToolHistoryReplay.CALLS_ONLY]). */
+    fun isResultOmitted(requestId: String): Boolean = requestId in omittedRequestIds
 }
 
 /**
@@ -25,11 +38,16 @@ data class ToolReplayPlan(
  *
  * Setting [maxDetailedChars] to [Int.MAX_VALUE] disables text compression entirely
  * (AgentSimple behaviour: all exchanges are detailed, only the image cap applies).
+ *
+ * [historyReplay] decides what happens to the exchanges of past turns (see [ToolHistoryReplay]): those are
+ * dropped or have their result omitted, never get media (so they do not consume [maxAttachedImages]), and
+ * dropped ones are left out of the walk entirely. Exchanges of the current turn are walked as under FULL.
  */
 class ToolReplayPlanner(
     private val maxDetailedChars: Int,
     private val maxAttachedImages: Int,
     private val imageCharCost: Int,
+    private val historyReplay: ToolHistoryReplay = ToolHistoryReplay.FULL,
 ) {
     /**
      * Immutable state of the newest-first walk after considering one exchange.
@@ -49,20 +67,38 @@ class ToolReplayPlanner(
     fun plan(events: List<CaseEvent>): ToolReplayPlan {
         val responses = events.filterIsInstance<ToolResponseEvent>().associateBy { it.toolRequestId }
 
+        // A request is past when it precedes the last user message; without one, nothing is past.
+        val lastUserIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val pastRequestIds =
+            when (historyReplay) {
+                ToolHistoryReplay.FULL -> emptySet()
+                else ->
+                    events
+                        .withIndex()
+                        .filter { (index, event) -> event is ToolRequestEvent && index < lastUserIndex }
+                        .mapTo(mutableSetOf()) { (_, event) -> (event as ToolRequestEvent).toolRequestId }
+            }
+        val droppedIds = if (historyReplay == ToolHistoryReplay.NONE) pastRequestIds else emptySet()
+        val omittedIds = if (historyReplay == ToolHistoryReplay.CALLS_ONLY) pastRequestIds else emptySet()
+
         val kept =
             events
                 .filterIsInstance<ToolRequestEvent>()
+                .filterNot { it.toolRequestId in droppedIds }
                 .asReversed()
                 .asSequence()
                 .map { it to responses[it.toolRequestId] }
-                .runningFold(START) { acc, (request, response) -> acc.next(request, response) }
-                .drop(1)
+                .runningFold(START) { acc, (request, response) ->
+                    acc.next(request, response, resultOmitted = request.toolRequestId in omittedIds)
+                }.drop(1)
                 .takeWhile { it.fits }
                 .toList()
 
         return ToolReplayPlan(
             detailedRequestIds = kept.mapTo(mutableSetOf()) { it.requestId },
             mediaRequestIds = kept.filter { it.withMedia }.mapTo(mutableSetOf()) { it.requestId },
+            droppedRequestIds = droppedIds,
+            omittedRequestIds = omittedIds,
         )
     }
 
@@ -73,10 +109,18 @@ class ToolReplayPlanner(
     private fun Step.next(
         request: ToolRequestEvent,
         response: ToolResponseEvent?,
+        resultOmitted: Boolean,
     ): Step {
         val responseImages = response?.images.orEmpty()
-        val attachMedia = responseImages.isNotEmpty() && images + responseImages.size <= maxAttachedImages
-        val cost = charCost(request, response, attachMedia)
+        val attachMedia =
+            !resultOmitted && responseImages.isNotEmpty() && images + responseImages.size <= maxAttachedImages
+        val cost =
+            if (resultOmitted) {
+                // Only the call survives: its arguments plus the constant placeholder.
+                (request.args?.length ?: 0).toLong() + TOOL_RESULT_OMITTED.length.toLong()
+            } else {
+                charCost(request, response, attachMedia)
+            }
         val fits = chars + cost <= maxDetailedChars
         return Step(
             requestId = request.toolRequestId,

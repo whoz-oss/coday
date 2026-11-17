@@ -19,13 +19,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * 3. Silent fail (WarnEvent emitted, no agent selected)
  *
  * [imageCharCost] and [maxAttachedImages] bound how tool-response images are replayed
- * into an agent's LLM context (see [AgentAdvancedContext]).
+ * into an agent's LLM context (see [AgentAdvancedContext]). [toolHistoryReplay] decides how the
+ * tool calls and results of previous turns are replayed (see [ToolHistoryReplay]).
  *
  * Override with environment variables (Spring Boot relaxed binding):
  * - AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS (explicit application.yml binding)
  * - AGENTOS_DEFAULTS_AGENT_NAME
  * - AGENTOS_DEFAULTS_IMAGE_CHAR_COST
  * - AGENTOS_DEFAULTS_MAX_ATTACHED_IMAGES
+ * - AGENTOS_DEFAULTS_TOOL_HISTORY_REPLAY
  *
  * Example (application.yml):
  * ```yaml
@@ -35,6 +37,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     agent-name: copilot
  *     image-char-cost: 6000
  *     max-attached-images: 20
+ *     tool-history-replay: CALLS_ONLY
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.defaults")
@@ -55,6 +58,12 @@ data class AgentConfigProperties(
     val imageCharCost: Int = 6_000,
     /** Maximum images attached as Media across the whole prompt, newest first. */
     val maxAttachedImages: Int = 20,
+    /**
+     * How the tool calls and results of previous turns are replayed into the LLM context: [ToolHistoryReplay.FULL]
+     * (default, unchanged), [ToolHistoryReplay.CALLS_ONLY] (keep calls, omit results) or [ToolHistoryReplay.NONE].
+     * Persistence and what tools receive in `ToolContext.caseEvents` are never affected.
+     */
+    val toolHistoryReplay: ToolHistoryReplay = ToolHistoryReplay.FULL,
 ) {
     init {
         require(delegationTimeoutSeconds > 0) { "agentos.defaults.delegation-timeout-seconds must be positive" }

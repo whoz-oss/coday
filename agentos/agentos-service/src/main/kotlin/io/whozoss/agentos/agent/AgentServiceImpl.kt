@@ -717,6 +717,7 @@ class AgentServiceImpl(
                         imageCharCost = agentConfigProperties.imageCharCost,
                         maxAttachedImages = agentConfigProperties.maxAttachedImages,
                         redirectGuideline = redirectGuideline,
+                        toolHistoryReplay = agentConfigProperties.toolHistoryReplay,
                     )
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -761,6 +762,7 @@ class AgentServiceImpl(
                     requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                    toolHistoryReplay = agentConfigProperties.toolHistoryReplay,
                 )
             }
         }

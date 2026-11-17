@@ -696,6 +696,115 @@ class AgentAdvancedContextSpec :
         }
 
         // -------------------------------------------------------------------------
+        // Tool history replay (past turns)
+        // -------------------------------------------------------------------------
+
+        fun contextWith(replay: ToolHistoryReplay) =
+            AgentAdvancedContext(
+                chatClient = mockk(),
+                tools = emptyList(),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+                toolHistoryReplay = replay,
+            )
+
+        fun pastImage() = MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 10, height = 10)
+
+        /** Past exchanges r1 (with an image, args {"a":1}) and r2; then the current turn's r3. */
+        fun twoTurnHistory() =
+            listOf(
+                userMessage("first"),
+                toolRequest("r1", "TOOL__r1", """{"a":1}"""),
+                ToolResponseEvent(
+                    namespaceId = ns,
+                    caseId = case,
+                    toolRequestId = "r1",
+                    toolName = "TOOL__r1",
+                    output = MessageContent.Text("RESULT-1"),
+                    images = listOf(pastImage()),
+                ),
+                toolRequest("r2", "TOOL__r2", """{"b":2}"""),
+                toolResponse("r2", "TOOL__r2", "RESULT-2"),
+                userMessage("second"),
+                toolRequest("r3", "TOOL__r3", """{"c":3}"""),
+                toolResponse("r3", "TOOL__r3", "RESULT-3"),
+            )
+
+        fun List<org.springframework.ai.chat.messages.Message>.toolResults() =
+            filterIsInstance<ToolResponseMessage>().flatMap { it.responses }.map { it.responseData() }
+
+        fun List<org.springframework.ai.chat.messages.Message>.assertToolCallsAnswered() {
+            forEachIndexed { index, message ->
+                if (message is AssistantMessage && message.toolCalls.isNotEmpty()) {
+                    val next = getOrNull(index + 1).shouldBeInstanceOf<ToolResponseMessage>()
+                    next.responses.map { it.id() } shouldBe message.toolCalls.map { it.id() }
+                }
+            }
+        }
+
+        "FULL replays past tool calls, results and images unchanged" {
+            val messages = contextWith(ToolHistoryReplay.FULL).convertEventsToMessages(twoTurnHistory())
+
+            messages.assertToolCallsAnswered()
+            messages.toolResults() shouldBe listOf("RESULT-1", "RESULT-2", "RESULT-3")
+            messages.filterIsInstance<UserMessage>().count { it.media.isNotEmpty() } shouldBe 1
+        }
+
+        "CALLS_ONLY keeps past calls with their args, omits their results and attaches no past image" {
+            val messages = contextWith(ToolHistoryReplay.CALLS_ONLY).convertEventsToMessages(twoTurnHistory())
+
+            messages.assertToolCallsAnswered()
+            val calls = messages.filterIsInstance<AssistantMessage>().flatMap { it.toolCalls }
+            calls.map { it.id() } shouldBe listOf("r1", "r2", "r3")
+            calls.map { it.arguments() } shouldBe listOf("""{"a":1}""", """{"b":2}""", """{"c":3}""")
+            messages.toolResults() shouldBe listOf(TOOL_RESULT_OMITTED, TOOL_RESULT_OMITTED, "RESULT-3")
+            messages.filterIsInstance<UserMessage>().none { it.media.isNotEmpty() } shouldBe true
+        }
+
+        "CALLS_ONLY keeps a past call detailed even when the char budget would summarize it" {
+            val messages = contextWith(ToolHistoryReplay.CALLS_ONLY).convertEventsToMessages(twoTurnHistory(), maxDetailedChars = 1)
+
+            // the past exchanges cost args + placeholder, over this tiny budget, yet they stay as calls:
+            // only the budget-bound current turn exchange may be summarized
+            val pastCalls = messages.filterIsInstance<AssistantMessage>().flatMap { it.toolCalls }.map { it.id() }
+            ("r1" in pastCalls && "r2" in pastCalls) shouldBe true
+        }
+
+        "NONE removes past calls and results, keeps the current turn and both user messages" {
+            val messages = contextWith(ToolHistoryReplay.NONE).convertEventsToMessages(twoTurnHistory())
+
+            messages.assertToolCallsAnswered()
+            messages.filterIsInstance<AssistantMessage>().flatMap { it.toolCalls }.map { it.id() } shouldBe listOf("r3")
+            messages.toolResults() shouldBe listOf("RESULT-3")
+            messages.filterIsInstance<UserMessage>().none { it.media.isNotEmpty() } shouldBe true
+            messages.filterIsInstance<AssistantMessage>().none { it.text.isNullOrEmpty() && it.toolCalls.isEmpty() } shouldBe true
+            messages.filterIsInstance<UserMessage>() shouldHaveSize 2
+        }
+
+        "NONE does not touch the intention messages nor the step summaries of the current turn" {
+            val events =
+                listOf(
+                    userMessage("first"),
+                    intention("old plan", "TOOL__old"),
+                    toolRequest("p1", "TOOL__old"),
+                    toolResponse("p1", "TOOL__old", "old result"),
+                    userMessage("second"),
+                    toolRequest("c1", "TOOL__x"),
+                    toolResponse("c1", "TOOL__x", "x".repeat(100)),
+                    toolRequest("c2", "TOOL__x"),
+                    toolResponse("c2", "TOOL__x", "y".repeat(100)),
+                )
+            val messages = contextWith(ToolHistoryReplay.NONE).convertEventsToMessages(events, maxDetailedChars = 120)
+
+            // the intention of the past turn is still rendered
+            messages.filterIsInstance<AssistantMessage>().any { it.text?.contains("old plan") == true } shouldBe true
+            // the past exchange is gone, the older current-turn one was summarized by the budget
+            messages.filterIsInstance<AssistantMessage>().flatMap { it.toolCalls }.map { it.id() } shouldBe listOf("c2")
+            messages.filterIsInstance<AssistantMessage>().count { it.text?.contains("[Step summary]") == true } shouldBe 1
+        }
+
+        // -------------------------------------------------------------------------
         // QuestionEvent and AnswerEvent conversion
         // -------------------------------------------------------------------------
 

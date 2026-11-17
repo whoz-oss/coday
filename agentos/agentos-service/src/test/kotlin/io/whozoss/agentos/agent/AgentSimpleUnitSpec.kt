@@ -13,6 +13,14 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.kotest.matchers.collections.shouldHaveSize
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.messages.ToolResponseMessage
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
@@ -40,6 +48,7 @@ class AgentSimpleUnitSpec :
             instructions: String? = null,
             reasoningEffort: ReasoningEffort? = null,
             requestedReasoningEffort: ReasoningEffort? = null,
+            toolHistoryReplay: ToolHistoryReplay = ToolHistoryReplay.FULL,
         ): AgentSimple =
             AgentSimple(
                 metadata = EntityMetadata(id = agentId),
@@ -51,6 +60,7 @@ class AgentSimpleUnitSpec :
                 llmModel = "test-model",
                 reasoningEffort = reasoningEffort,
                 requestedReasoningEffort = requestedReasoningEffort,
+                toolHistoryReplay = toolHistoryReplay,
             )
 
         fun userMessage(
@@ -422,6 +432,168 @@ class AgentSimpleUnitSpec :
             val contextMsg = promptMessages.filterIsInstance<UserMessage>()
                 .firstOrNull { it.text.contains("<session-context>") }
             contextMsg.shouldBeNull()
+        }
+
+        // -------------------------------------------------------------------------
+        // Tool history replay (past turns)
+        // -------------------------------------------------------------------------
+
+        /** Two turns: past exchanges r1 (with an image) and r2, then the current turn's r3. */
+        fun twoTurnHistory(
+            namespaceId: UUID,
+            caseId: UUID,
+        ): List<CaseEvent> {
+            fun request(
+                id: String,
+                args: String,
+            ) = ToolRequestEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = id,
+                toolName = "TOOL__$id",
+                args = args,
+            )
+
+            fun response(
+                id: String,
+                output: String,
+                images: List<MessageContent.Image> = emptyList(),
+            ) = ToolResponseEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = id,
+                toolName = "TOOL__$id",
+                output = MessageContent.Text(output),
+                images = images,
+            )
+            val image = MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 10, height = 10)
+            return listOf(
+                userMessage(namespaceId, caseId, "first"),
+                request("r1", """{"a":1}"""),
+                response("r1", "RESULT-1", listOf(image)),
+                request("r2", """{"b":2}"""),
+                response("r2", "RESULT-2"),
+                userMessage(namespaceId, caseId, "second"),
+                request("r3", """{"c":3}"""),
+                response("r3", "RESULT-3"),
+            )
+        }
+
+        fun List<Message>.assertWellFormed() {
+            forEachIndexed { index, message ->
+                if (message is AssistantMessage && message.hasToolCalls()) {
+                    val next = getOrNull(index + 1)
+                    (next is ToolResponseMessage) shouldBe true
+                    (next as ToolResponseMessage).responses.map { it.id() } shouldBe message.toolCalls.map { it.id() }
+                }
+            }
+            // no assistant message may be left empty (no text and no tool call)
+            filterIsInstance<AssistantMessage>().none { it.text.isNullOrEmpty() && it.toolCalls.isEmpty() } shouldBe true
+        }
+
+        "FULL replays past tool calls, results and images unchanged" {
+            val history = twoTurnHistory(UUID.randomUUID(), UUID.randomUUID())
+            val agent = makeAgent(UUID.randomUUID(), mockk(relaxed = true))
+
+            val messages = agent.convertEventsToMessages(history)
+
+            messages.assertWellFormed()
+            val results = messages.filterIsInstance<ToolResponseMessage>().flatMap { it.responses }.map { it.responseData() }
+            results shouldBe listOf("RESULT-1", "RESULT-2", "RESULT-3")
+            messages.filterIsInstance<UserMessage>().count { it.media.isNotEmpty() } shouldBe 1
+        }
+
+        "CALLS_ONLY keeps past tool calls with their args, replaces their results and attaches no past image" {
+            val history = twoTurnHistory(UUID.randomUUID(), UUID.randomUUID())
+            val agent = makeAgent(UUID.randomUUID(), mockk(relaxed = true), toolHistoryReplay = ToolHistoryReplay.CALLS_ONLY)
+
+            val messages = agent.convertEventsToMessages(history)
+
+            messages.assertWellFormed()
+            val calls = messages.filterIsInstance<AssistantMessage>().flatMap { it.toolCalls }
+            calls.map { it.id() } shouldBe listOf("r1", "r2", "r3")
+            calls.map { it.arguments() } shouldBe listOf("""{"a":1}""", """{"b":2}""", """{"c":3}""")
+            val results = messages.filterIsInstance<ToolResponseMessage>().flatMap { it.responses }.map { it.responseData() }
+            results shouldBe listOf(TOOL_RESULT_OMITTED, TOOL_RESULT_OMITTED, "RESULT-3")
+            messages.filterIsInstance<UserMessage>().none { it.media.isNotEmpty() } shouldBe true
+        }
+
+        "NONE removes past tool calls and results, without leaving an empty AssistantMessage" {
+            val history = twoTurnHistory(UUID.randomUUID(), UUID.randomUUID())
+            val agent = makeAgent(UUID.randomUUID(), mockk(relaxed = true), toolHistoryReplay = ToolHistoryReplay.NONE)
+
+            val messages = agent.convertEventsToMessages(history)
+
+            messages.assertWellFormed()
+            val calls = messages.filterIsInstance<AssistantMessage>().flatMap { it.toolCalls }
+            calls.map { it.id() } shouldBe listOf("r3")
+            messages.filterIsInstance<AssistantMessage>().all { it.toolCalls.isNotEmpty() } shouldBe true
+            messages.filterIsInstance<ToolResponseMessage>().flatMap { it.responses }.map { it.responseData() } shouldBe
+                listOf("RESULT-3")
+            messages.filterIsInstance<UserMessage>().none { it.media.isNotEmpty() } shouldBe true
+            // both user messages are kept
+            messages.filterIsInstance<UserMessage>() shouldHaveSize 2
+        }
+
+        "NONE and CALLS_ONLY replay the current turn in full, even when its exchanges were accumulated mid-run" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val history = twoTurnHistory(namespaceId, caseId)
+            // the current turn grows: a second call of the same turn, as AgentSimple's runEvents would add
+            val extra =
+                listOf(
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "r4",
+                        toolName = "TOOL__r4",
+                        args = """{"d":4}""",
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "r4",
+                        toolName = "TOOL__r4",
+                        output = MessageContent.Text("RESULT-4"),
+                    ),
+                )
+
+            listOf(ToolHistoryReplay.CALLS_ONLY, ToolHistoryReplay.NONE).forEach { mode ->
+                val agent = makeAgent(UUID.randomUUID(), mockk(relaxed = true), toolHistoryReplay = mode)
+
+                val messages = agent.convertEventsToMessages(history + extra)
+
+                messages.assertWellFormed()
+                messages.filterIsInstance<ToolResponseMessage>().flatMap { it.responses }.map { it.responseData() }.takeLast(2) shouldBe
+                    listOf("RESULT-3", "RESULT-4")
+            }
+        }
+
+        "an AnswerEvent does not make earlier tool results past" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val question =
+                QuestionEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = "A", question = "Which?")
+            val history =
+                listOf(
+                    userMessage(namespaceId, caseId, "go"),
+                    ToolRequestEvent(namespaceId = namespaceId, caseId = caseId, toolRequestId = "r1", toolName = "TOOL__a", args = "{}"),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "r1",
+                        toolName = "TOOL__a",
+                        output = MessageContent.Text("RESULT-1"),
+                    ),
+                    question,
+                    question.createAnswer(Actor("user1", "User One", ActorRole.USER), "this one"),
+                )
+            val agent = makeAgent(agentId, mockk(relaxed = true), toolHistoryReplay = ToolHistoryReplay.NONE)
+
+            val messages = agent.convertEventsToMessages(history)
+
+            messages.filterIsInstance<ToolResponseMessage>().single().responses.single().responseData() shouldBe "RESULT-1"
         }
 
         "should stop collecting chunks and still emit AgentFinishedEvent when shouldContinue flips to false mid-stream" {

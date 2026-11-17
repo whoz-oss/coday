@@ -42,6 +42,8 @@ data class AgentAdvancedContext(
      * them carries a non-blank guideline. See [AgentServiceImpl.resolveRedirectGuideline].
      */
     val redirectGuideline: String? = null,
+    /** How tool calls/results of previous turns are replayed. Default mirrors [AgentConfigProperties.toolHistoryReplay]. */
+    val toolHistoryReplay: ToolHistoryReplay = ToolHistoryReplay.FULL,
 ) {
     /**
      * Build the complete message list for a single LLM call.
@@ -87,6 +89,7 @@ data class AgentAdvancedContext(
                 maxDetailedChars = maxDetailedChars,
                 maxAttachedImages = maxAttachedImages,
                 imageCharCost = imageCharCost,
+                historyReplay = toolHistoryReplay,
             ).plan(events)
 
         val lastUserMsgIndex =
@@ -150,10 +153,14 @@ data class AgentAdvancedContext(
         plan: ToolReplayPlan,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> =
-        if (plan.isDetailed(event.toolRequestId)) {
-            toDetailedToolMessages(event, plan, responsesByRequestId)
-        } else {
-            listOf(toToolSummaryMessage(event, responsesByRequestId))
+        when {
+            plan.isDropped(event.toolRequestId) -> emptyList()
+            // A past exchange whose result is omitted always keeps its call: it costs only its args, and a
+            // step summary would lose the arguments this mode exists to preserve.
+            plan.isResultOmitted(event.toolRequestId) || plan.isDetailed(event.toolRequestId) ->
+                toDetailedToolMessages(event, plan, responsesByRequestId)
+
+            else -> listOf(toToolSummaryMessage(event, responsesByRequestId))
         }
 
     private fun toDetailedToolMessages(
@@ -170,7 +177,7 @@ data class AgentAdvancedContext(
         // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
         // available, or synthesize a placeholder so the message list stays well-formed.
         val response = responsesByRequestId[event.toolRequestId]
-        val responseText = response?.let { toolResponseText(it, plan) } ?: "[No response recorded]"
+        val responseText = toolResponseSlotText(event.toolRequestId, response, plan)
 
         messages.add(
             ToolResponseMessage

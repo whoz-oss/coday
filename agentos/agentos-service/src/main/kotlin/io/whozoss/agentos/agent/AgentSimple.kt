@@ -118,6 +118,8 @@ class AgentSimple(
      * Mirrors [AgentConfigProperties.maxAttachedImages] (default 20).
      */
     val maxAttachedImages: Int = 20,
+    /** How tool calls/results of previous turns are replayed. Mirrors [AgentConfigProperties.toolHistoryReplay]. */
+    val toolHistoryReplay: ToolHistoryReplay = ToolHistoryReplay.FULL,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -483,6 +485,7 @@ class AgentSimple(
                 maxDetailedChars = Int.MAX_VALUE,
                 maxAttachedImages = maxAttachedImages,
                 imageCharCost = 0,
+                historyReplay = toolHistoryReplay,
             ).plan(events)
 
         val lastUserMessageIndex =
@@ -503,19 +506,23 @@ class AgentSimple(
                 }
 
                 is ToolRequestEvent -> {
-                    // Accumulate tool calls to attach to next AssistantMessage.
-                    // Spring AI's AnthropicChatModel calls ModelOptionsUtils.jsonToMap() on
-                    // the args string when rebuilding history — it crashes on blank/empty input.
-                    // Normalise null or blank args to "{}" (valid JSON, safe empty object).
-                    val safeArgs = event.args?.takeIf { it.isNotBlank() } ?: "{}"
-                    toolCallsForCurrentMessage.add(
-                        AssistantMessage.ToolCall(
-                            event.toolRequestId,
-                            "function",
-                            event.toolName,
-                            safeArgs,
-                        ),
-                    )
+                    // A dropped past exchange (ToolHistoryReplay.NONE) contributes neither its call nor its
+                    // response, so no AssistantMessage can end up with empty tool calls.
+                    if (!plan.isDropped(event.toolRequestId)) {
+                        // Accumulate tool calls to attach to next AssistantMessage.
+                        // Spring AI's AnthropicChatModel calls ModelOptionsUtils.jsonToMap() on
+                        // the args string when rebuilding history — it crashes on blank/empty input.
+                        // Normalise null or blank args to "{}" (valid JSON, safe empty object).
+                        val safeArgs = event.args?.takeIf { it.isNotBlank() } ?: "{}"
+                        toolCallsForCurrentMessage.add(
+                            AssistantMessage.ToolCall(
+                                event.toolRequestId,
+                                "function",
+                                event.toolName,
+                                safeArgs,
+                            ),
+                        )
+                    }
                 }
 
                 // QuestionEvent: the agent asked the user a question and terminated its run.
@@ -590,7 +597,7 @@ class AgentSimple(
         val toolResponseMessages =
             pendingToolCalls.map { toolCall ->
                 val response = toolResponses[toolCall.id()]
-                val output = response?.let { toolResponseText(it, plan) } ?: "[No response recorded]"
+                val output = toolResponseSlotText(toolCall.id(), response, plan)
                 ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
             }
         messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())

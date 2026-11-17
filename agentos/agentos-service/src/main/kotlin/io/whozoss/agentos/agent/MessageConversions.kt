@@ -15,6 +15,15 @@ import org.springframework.util.MimeType
 import java.util.Base64
 
 /**
+ * Text standing in for the result of a past tool exchange under [ToolHistoryReplay.CALLS_ONLY].
+ *
+ * A constant on purpose: no id, no tool name, no dynamic text, so the prompt stays byte-stable for the
+ * provider's prompt cache.
+ */
+internal const val TOOL_RESULT_OMITTED =
+    "[Result omitted from context. Call the tool again if you need current data.]"
+
+/**
  * Regex patterns for the XML conversation tags injected by [MessageEvent.toSpringAiMessage].
  * Used to strip any tags the LLM may have hallucinated in its own response text.
  */
@@ -122,6 +131,22 @@ internal fun toolResponseText(
         else -> text + "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
     }
 }
+
+/**
+ * The text of the [ToolResponseMessage] slot of one tool exchange, whatever its state in [plan]:
+ * the constant [TOOL_RESULT_OMITTED] when its result is omitted, the rendered [response] when there is one,
+ * and a `[No response recorded]` placeholder otherwise so that every tool call keeps its response.
+ */
+internal fun toolResponseSlotText(
+    requestId: String,
+    response: ToolResponseEvent?,
+    plan: ToolReplayPlan,
+): String =
+    when {
+        plan.isResultOmitted(requestId) -> TOOL_RESULT_OMITTED
+        response != null -> toolResponseText(response, plan)
+        else -> "[No response recorded]"
+    }
 
 /**
  * Render a [QuestionEvent] as the text of the [AssistantMessage] replayed to the LLM.

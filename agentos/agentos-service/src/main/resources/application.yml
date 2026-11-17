@@ -327,6 +327,15 @@ agentos:
   # Maximum tool-response images attached as Media across a whole prompt (newest first).
   # Override with env var: AGENTOS_DEFAULTS_MAX_ATTACHED_IMAGES
   # max-attached-images: 20
+  # How tool calls/results of PREVIOUS turns (before the last user message) are replayed into the LLM context.
+  # Persistence, the UI and the events handed to tools are never affected, only the prompt.
+  #   FULL       - replay them as they are (default).
+  #   CALLS_ONLY - keep each call with its arguments, replace its result by a short placeholder and attach no
+  #                image: cheaper, and the model still knows what it already did (recommended lightweight mode).
+  #   NONE       - drop past calls and results entirely; only safe for agents whose tools are read-only.
+  # The current turn is always replayed in full.
+  # Override with env var: AGENTOS_DEFAULTS_TOOL_HISTORY_REPLAY
+  # tool-history-replay: FULL
   anthropic:
   # Activate Anthropic prompt caching (CONVERSATION_HISTORY strategy) on every Anthropic chat model
   # instance. Caches the system prompt, tool definitions, and the conversation history across API

@@ -107,6 +107,7 @@ internal val KNOWN_SETTINGS: List<KnownSetting> =
         property("agentos.defaults.agent-name", "Fallback agent of a namespace without a default"),
         property("agentos.defaults.image-char-cost", "Context cost of one tool-response image"),
         property("agentos.defaults.max-attached-images", "Tool-response images attached to a prompt"),
+        property("agentos.defaults.tool-history-replay", "Replay of past-turn tool calls: FULL, CALLS_ONLY or NONE"),
         property("agentos.case.idle-eviction-grace-ms", "Delay before an idle case runtime is evicted"),
         property("agentos.case.sse-heartbeat-interval-ms", "Interval of the SSE keep-alive frames"),
         // --- Prompts and scheduler ---
