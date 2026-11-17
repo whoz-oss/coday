@@ -1,7 +1,6 @@
 package io.whozoss.agentos.sdk.api.scheduledPrompt
 
 import io.whozoss.agentos.sdk.api.common.EntityCrudApi
-import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
 import java.util.UUID
 
 /**
@@ -43,4 +42,6 @@ interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
      * calling it on an already-disabled prompt is a no-op that returns the entity unchanged.
      */
     fun disable(id: UUID): ScheduledPromptDto
+
+    fun generate(request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult
 }
