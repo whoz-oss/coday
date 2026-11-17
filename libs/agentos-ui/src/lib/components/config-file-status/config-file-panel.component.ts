@@ -11,7 +11,13 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop'
 import { HttpErrorResponse } from '@angular/common/http'
-import { ConfigFile, ConfigFileDiff, ConfigFileDiffEntry, ConfigFileStateEnum } from '@whoz-oss/agentos-api-client'
+import {
+  ConfigFile,
+  ConfigFileDiff,
+  ConfigFileDiffEntry,
+  ConfigFileKindEnum,
+  ConfigFileStateEnum,
+} from '@whoz-oss/agentos-api-client'
 import {
   ButtonDirective,
   CardComponent,
@@ -32,7 +38,7 @@ import {
   Subject,
   switchMap,
 } from 'rxjs'
-import { ConfigFilesService, downloadName } from '../../services/config-files.service'
+import { ConfigFilesService } from '../../services/config-files.service'
 import { ConfigFileDiffRow, configFileDiffRows } from './config-file-diff-rows'
 
 type Action = 'write' | 'discard'
@@ -49,8 +55,9 @@ const PREFIX: Record<ConfigFileDiffRow['kind'], string> = { same: '  ', removed:
  * On the form of a config defined by a file of the namespace (#1673):
  * - read from its file: says that saving it here creates a database copy that masks the file;
  * - a database copy that masks its file: shows how the copy differs from the file, and lets the user
- *   write the copy to the file, download it as that file, or discard it. Once the copy is gone it emits
- *   [settled], for the form to leave a page whose config no longer exists.
+ *   write the copy to the file or discard the changes made in AgentOS. The form's Export as YAML is the
+ *   way to keep them by hand. Once the copy is gone it emits [settled], for the form to leave a page
+ *   whose config no longer exists.
  */
 @Component({
   selector: 'agentos-config-file-panel',
@@ -107,6 +114,8 @@ export class ConfigFilePanelComponent {
   protected readonly canWrite = computed(() => (this.diff()?.cannotWrite ?? []).length === 0)
   protected readonly canDiscard = computed(() => (this.diff()?.cannotDiscard ?? []).length === 0)
   protected readonly confirmation = computed(() => this.confirmationOf(this.pending()))
+  /** The forms of agents, integrations and prompts end with Export as YAML; a skill's form has none. */
+  protected readonly exportable = computed(() => this.file()?.kind !== ConfigFileKindEnum.SKILL)
 
   constructor() {
     const overriding = toObservable(this.file).pipe(
@@ -162,26 +171,6 @@ export class ConfigFilePanelComponent {
     })
   }
 
-  protected download(): void {
-    const file = this.file()
-    const result = this.diff()
-    if (!file || !result) return
-    this.service
-      .download(file.kind, file.configId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (blob) => {
-          const url = URL.createObjectURL(blob)
-          const anchor = document.createElement('a')
-          anchor.href = url
-          anchor.download = downloadName(file.kind, result.path)
-          anchor.click()
-          URL.revokeObjectURL(url)
-        },
-        error: (error: unknown) => this.actionError.set(messageOf(error)),
-      })
-  }
-
   protected statusOf(entry: ConfigFileDiffEntry): string {
     if (entry.fileContent == null) return 'only in this copy'
     if (entry.configContent == null) return 'only in the file'
@@ -224,10 +213,11 @@ export class ConfigFilePanelComponent {
       }
     }
     if (result?.modified) {
+      const keep = this.exportable() ? ' Export it as YAML first to keep them.' : ''
       return {
-        title: 'Discard this copy?',
-        message: `AgentOS reads ${path} again and the changes made here are lost. Download the file first to keep them.`,
-        label: 'Discard',
+        title: 'Discard the changes?',
+        message: `The changes made in AgentOS are lost and AgentOS reads ${path} again.${keep}`,
+        label: 'Discard changes',
       }
     }
     return {

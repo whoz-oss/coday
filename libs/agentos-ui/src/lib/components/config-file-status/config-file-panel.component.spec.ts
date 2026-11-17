@@ -93,8 +93,9 @@ describe('ConfigFilePanelComponent', () => {
     expect(rows).toContain('− integrations:')
     expect(rows).toContain('+ instructions: Answer in French.')
     expect(button('Write to file').disabled).toBe(false)
-    expect(button('Download file')).toBeTruthy()
-    expect(button('Discard this copy')).toBeTruthy()
+    expect(button('Discard changes')).toBeTruthy()
+    // The form already ends with Export as YAML.
+    expect(button('Download file')).toBeUndefined()
   })
 
   it('writes the copy to its file once confirmed, with the hash of the file it showed', async () => {
@@ -114,7 +115,7 @@ describe('ConfigFilePanelComponent', () => {
     expect(settled).toHaveBeenCalled()
   })
 
-  it('says why a write failed and keeps the download at hand', async () => {
+  it('says why a write failed and points to the export of the form', async () => {
     const writeToFile = jest.fn().mockReturnValue(
       throwError(
         () =>
@@ -136,7 +137,7 @@ describe('ConfigFilePanelComponent', () => {
     expect(element.textContent).toContain(
       "AgentOS is not allowed to write in agents of this namespace's config folder."
     )
-    expect(element.textContent).toContain('You can download the file and put it in place yourself.')
+    expect(element.textContent).toContain('You can export it as YAML at the bottom of this form')
     expect(settled).not.toHaveBeenCalled()
   })
 
@@ -148,7 +149,7 @@ describe('ConfigFilePanelComponent', () => {
 
     expect(element.textContent).toContain(reason)
     expect(button('Write to file').disabled).toBe(true)
-    expect(button('Discard this copy').disabled).toBe(false)
+    expect(button('Discard changes').disabled).toBe(false)
   })
 
   it('offers only to use the file again when the copy says the same', async () => {
@@ -162,6 +163,19 @@ describe('ConfigFilePanelComponent', () => {
     expect(button('Write to file')).toBeUndefined()
     button('Use the file again').click()
     fixture.detectChanges()
+    ;(element.querySelector('.ds-confirm-dialog__button--confirm') as HTMLButtonElement).click()
+
+    expect(discard).toHaveBeenCalledWith(ConfigFileKindEnum.AGENT, 'copy')
+    expect(settled).toHaveBeenCalled()
+  })
+
+  it('discards the changes once confirmed', async () => {
+    const discard = jest.fn().mockReturnValue(of({ ...deleted, written: false }))
+    const { fixture, element, settled, button } = await render(entry(ConfigFileStateEnum.OVERRIDDEN, true), { discard })
+
+    button('Discard changes').click()
+    fixture.detectChanges()
+    expect(element.querySelector('[role="dialog"]')?.textContent).toContain('Discard the changes?')
     ;(element.querySelector('.ds-confirm-dialog__button--confirm') as HTMLButtonElement).click()
 
     expect(discard).toHaveBeenCalledWith(ConfigFileKindEnum.AGENT, 'copy')

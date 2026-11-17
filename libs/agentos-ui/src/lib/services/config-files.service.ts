@@ -7,15 +7,13 @@ import {
   ConfigFileKindEnum,
   ConfigFileWriteResult,
 } from '@whoz-oss/agentos-api-client'
-import { catchError, map, Observable, of, switchMap } from 'rxjs'
+import { catchError, Observable, of, switchMap } from 'rxjs'
 
 export type ConfigFileKind = ConfigFileKindEnum
 
-const OCTET_STREAM = { httpHeaderAccept: 'application/octet-stream' } as never
-
 /**
  * Which configs of a namespace come from the files of its configPath, which database copies mask those
- * files, and the actions on such a copy: write it to its file, download it as that file, discard it (#1673).
+ * files, and the actions on such a copy: write it to its file, or discard it (#1673).
  */
 @Injectable({ providedIn: 'root' })
 export class ConfigFilesService {
@@ -68,27 +66,6 @@ export class ConfigFilesService {
         return this.api.promptDiscardCopyConfigFile(id)
     }
   }
-
-  /** The copy as the file a write would write: one file, or a zip of a skill's folder. */
-  download(kind: ConfigFileKind, id: string): Observable<Blob> {
-    const blob = (request: Observable<unknown>) => request.pipe(map((body) => body as Blob))
-    switch (kind) {
-      case ConfigFileKindEnum.AGENT:
-        return blob(this.api.agentConfigFile(id, 'body', false, OCTET_STREAM))
-      case ConfigFileKindEnum.INTEGRATION:
-        return blob(this.api.integrationConfigFile(id, 'body', false, OCTET_STREAM))
-      case ConfigFileKindEnum.SKILL:
-        return blob(this.api.skillFileConfigFile(id, 'body', false, OCTET_STREAM))
-      case ConfigFileKindEnum.PROMPT:
-        return blob(this.api.promptFileConfigFile(id, 'body', false, OCTET_STREAM))
-    }
-  }
-}
-
-/** The name the download of the file at [path] is saved under: the file itself, or its folder zipped for a skill. */
-export function downloadName(kind: ConfigFileKind, path: string): string {
-  const segments = path.split('/')
-  return kind === ConfigFileKindEnum.SKILL ? `${segments.at(-2) ?? 'skill'}.zip` : (segments.at(-1) ?? path)
 }
 
 /** The config files of one kind of a namespace, as a list needs them. */
