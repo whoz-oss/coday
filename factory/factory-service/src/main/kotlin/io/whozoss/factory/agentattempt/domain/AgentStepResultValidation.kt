@@ -7,8 +7,7 @@ import io.whozoss.factory.workflow.domain.WorkflowTicket
 /** Strict validation of the structured business result schema. */
 object AgentStepResultValidation {
 
-    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "outputs", "expected_amendment_seq", "expectedAmendmentSeq", "selectedRoutes")
-    private val mapper = ObjectMapper()
+    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq", "selectedRoutes")
     private val ARTIFACT_FIELDS = setOf("kind", "encoding", "content")
     private val CLAIM_FIELDS = setOf("modifiedFiles", "deliveryAnalysis")
     private val DELIVERY_ANALYSIS_FIELDS = setOf("changeType", "ticket", "title", "baseBranch")
@@ -53,12 +52,6 @@ object AgentStepResultValidation {
                 routes.any { !it.isTextual || !safe.matches(it.asText()) } ||
                 routes.map { it.asText() }.distinct().size != routes.size() || status?.asText() != "PASS"
             ) add("result.selectedRoutes", "INVALID_SELECTION", "must be 1–16 distinct route names, only on PASS")
-        }
-        value.get("outputs")?.let { outputs ->
-            if (!outputs.isObject || outputs.size() > 40 ||
-                outputs.fieldNames().asSequence().any { !Regex("^[A-Za-z][A-Za-z0-9_.-]{0,127}$").matches(it) } ||
-                outputs.toString().toByteArray(Charsets.UTF_8).size > AgentStepResultLimits.OUTPUTS_BYTES
-            ) add("result.outputs", "INVALID_OUTPUTS", "must be a bounded JSON object with safe keys")
         }
         requiredText(value, "summary", "result.summary", AgentStepResultLimits.SUMMARY)
 
@@ -188,7 +181,6 @@ object AgentStepResultValidation {
             ),
             artifacts = artifacts,
             findings = findings,
-            outputs = value.get("outputs")?.let { mapper.convertValue(it, Map::class.java) as Map<String, Any?> } ?: emptyMap(),
             expectedAmendmentSeq = value.get("expected_amendment_seq")?.asLong() ?: value.get("expectedAmendmentSeq")?.asLong(),
             selectedRoutes = value.get("selectedRoutes")?.map { it.asText() },
         )

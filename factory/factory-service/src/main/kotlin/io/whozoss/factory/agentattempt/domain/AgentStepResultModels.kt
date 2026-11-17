@@ -51,7 +51,6 @@ object AgentStepResultLimits {
     const val FINDING_FILE = 1024
     const val DELIVERY_ANALYSIS_TITLE = 200
     const val DELIVERY_ANALYSIS_BASE_BRANCH = 255
-    const val OUTPUTS_BYTES = 65536
 
     /** Default capability lifetime: 2 hours (supports long-running active agent turns). */
     const val CAPABILITY_TTL_SECONDS = 2L * 60L * 60L
@@ -116,8 +115,6 @@ data class AgentStepResultBusiness(
     val claims: AgentStepResultClaim,
     val artifacts: List<AgentStepResultArtifact> = emptyList(),
     val findings: List<AgentStepResultFinding> = emptyList(),
-    /** Plugin-owned business values; Factory persists them but does not treat them as proof. */
-    val outputs: Map<String, Any?> = emptyMap(),
     /**
      * Authoritative amendment counter the result was produced against
      * (compare-and-set); `null` on a submission that does not depend on an
@@ -200,7 +197,6 @@ data class AgentStepResultSubmitted(
     val findings: List<AgentStepResultFinding>,
     val submittedAt: String,
     val resultHash: String,
-    val outputs: Map<String, Any?> = emptyMap(),
     /**
      * Amendment sequence the worker declared at submission time. Kept on the
      * durable record so a divergent replay is a semantic collision, never a

@@ -55,11 +55,6 @@ paths:
                       type: string
                       minLength: 1
                       maxLength: 2000
-                    outputs:
-                      type: object
-                      maxProperties: 40
-                      description: Optional bounded, plugin-validated business outputs (for example Forge assessments and delivery_plan). These are claims until checked by a step validator.
-                      additionalProperties: true
                     claims:
                       type: object
                       additionalProperties: false

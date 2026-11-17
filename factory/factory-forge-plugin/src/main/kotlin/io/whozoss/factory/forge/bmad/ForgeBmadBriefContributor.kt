@@ -54,8 +54,8 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
                 sections += """
                     ## Forge BMAD — Read-Only Assessment Contract
                     - Inspect `$specPath` in read-only mode. Do NOT modify `$specPath` or any repository file.
-                    - For UX assessment (`ForgeUXDesigner`), return `ux_applicable: Boolean` in your report outputs.
-                    - For Technical assessment (`ForgeTechDesigner`), return `tech_spec_applicable: Boolean` (or `trivial: Boolean` with `trivial_scope: { file_paths: [...], verification: "..." }`).
+                    - For UX assessment (`ForgeUXDesigner`), return `ux_applicable: Boolean` in the Forge business-output artifact.
+                    - For Technical assessment (`ForgeTechDesigner`), return `tech_spec_applicable: Boolean` (or `trivial: Boolean` with `trivial_scope: { file_paths: [...], verification: "..." }`) in that artifact.
                 """.trimIndent()
             }
 
@@ -76,7 +76,7 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
                     sections += """
                         ## Forge BMAD — Technical Design & Structured Delivery Plan Contract
                         - Amend the `## Technical` section of `$specPath` and update `$memlogPath`.
-                        - Return the structured delivery plan in your report outputs as `delivery_plan.steps[]` (each step with `id`, `title`, `file_paths`, and `verification`). Do NOT write a separate `DELIVERY_PLAN.md` file (D8).
+                        - Return the structured delivery plan in the Forge business-output artifact as `delivery_plan.steps[]` (each step with `id`, `title`, `file_paths`, and `verification`). Do NOT write a separate `DELIVERY_PLAN.md` file (D8).
                     """.trimIndent()
                 }
             }

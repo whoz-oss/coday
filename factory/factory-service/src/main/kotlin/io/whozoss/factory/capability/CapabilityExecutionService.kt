@@ -979,7 +979,7 @@ class CapabilityExecutionService(
     private fun resultSubmissionInstruction(): String =
         "- Call FACTORY_WORKER__submitStepResult only when the work is complete. " +
             "Use Factory attemptId '{{FACTORY_ATTEMPT_ID}}' and Idempotency-Key '{{FACTORY_SUBMISSION_ID}}'. " +
-            "Provide status, a concise business summary, claims.modifiedFiles, and relevant outputs/findings/artifacts; " +
+            "Provide status, a concise business summary, claims.modifiedFiles, and only the relevant findings/artifacts; " +
             "the tool schema is authoritative for field constraints."
 
     /**
@@ -1759,7 +1759,6 @@ class CapabilityExecutionService(
                                 "claims" to accepted.claims,
                                 "findings" to accepted.findings,
                                 "artifacts" to accepted.artifacts,
-                                "outputs" to accepted.outputs,
                             ).let { outputs -> accepted.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                         )
                     } else {
@@ -1797,7 +1796,6 @@ class CapabilityExecutionService(
                                     "claims" to accepted.claims,
                                     "findings" to accepted.findings,
                                     "artifacts" to accepted.artifacts,
-                                    "outputs" to accepted.outputs,
                                     "selectedRoutes" to accepted.selectedRoutes,
                                 ),
                                 "attemptId" to attemptId,
@@ -2123,7 +2121,6 @@ class CapabilityExecutionService(
                             "claims" to acceptedResult.claims,
                             "findings" to acceptedResult.findings,
                             "artifacts" to acceptedResult.artifacts,
-                            "outputs" to acceptedResult.outputs,
                         ).let { outputs -> acceptedResult.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                         evidence = mapOf("resultId" to acceptedResult.resultId, "source" to "factory-step-result"),
                     )
@@ -2145,7 +2142,6 @@ class CapabilityExecutionService(
                             "claims" to acceptedResult.claims,
                             "findings" to acceptedResult.findings,
                             "artifacts" to acceptedResult.artifacts,
-                            "outputs" to acceptedResult.outputs,
                         ),
                         evidence = mapOf(
                             "resultId" to acceptedResult.resultId,
