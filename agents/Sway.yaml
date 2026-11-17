@@ -10,6 +10,8 @@ integrations:
   GITHUB:
     - gh
   GIT:
+  KTLINT:
+    - ktlint_format
   DELEGATE:
     - Nxay
     - Daemonay
