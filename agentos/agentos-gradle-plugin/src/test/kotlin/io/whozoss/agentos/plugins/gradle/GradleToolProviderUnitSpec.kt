@@ -68,6 +68,26 @@ class GradleToolProviderUnitSpec :
 
         // --- valid config ---
 
+        "configSchema should describe the gradlewDirectory next to the projectDirectory" {
+            val properties = provider.configSchema.get("properties")
+
+            properties.has("gradlewDirectory") shouldBe true
+            properties.get("gradlewDirectory").get("description").asText() shouldContain "relative to the project directory"
+            provider.configSchema.get("required").toString() shouldBe """["projectDirectory"]"""
+        }
+
+        "a gradlewDirectory that climbs out of the project directory should return an empty tool list" {
+            withTempProject { dir ->
+                provider.provideTools(json("""{"projectDirectory": "$dir", "gradlewDirectory": "../elsewhere"}"""), "TEST").shouldBeEmpty()
+            }
+        }
+
+        "a gradlewDirectory inside the project directory should return the three tools" {
+            withTempProject { dir ->
+                provider.provideTools(json("""{"projectDirectory": "$dir", "gradlewDirectory": "backend"}"""), "TEST") shouldHaveSize 3
+            }
+        }
+
         "valid config should return the three tools prefixed with the config name" {
             withTempProject { dir ->
                 val tools = provider.provideTools(json("""{"projectDirectory": "$dir"}"""), "MY_PROJECT")

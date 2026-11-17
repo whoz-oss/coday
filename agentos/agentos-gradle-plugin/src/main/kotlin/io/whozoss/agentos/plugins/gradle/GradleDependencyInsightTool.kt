@@ -24,7 +24,6 @@ class GradleDependencyInsightTool(
         val dependency: String? = null,
         val subproject: String? = null,
         val configuration: String? = null,
-        val gradlewPath: String? = null,
         val timeoutSeconds: Int? = null,
     )
 
@@ -40,7 +39,6 @@ Targeting:
   - 'subproject' selects the Gradle module. ${GradleRunner.SUBPROJECT_NAME_HINT} Leave null for the root project.
   - 'configuration' defaults to '$DEFAULT_CONFIGURATION' (e.g. 'compileClasspath', 'testRuntimeClasspath').
 'timeoutSeconds' is mandatory (1 to ${ToolTimeout.MAX_SECONDS}): the run is killed when it is exceeded.
-${GradleRunner.GRADLEW_NOT_FOUND_HINT}
 
 Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) followed by the condensed Gradle output."""
 
@@ -66,7 +64,6 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
                         ToolSchema.string(
                             "Optional configuration to inspect. Defaults to '$DEFAULT_CONFIGURATION'.",
                         ),
-                    "gradlewPath" to ToolSchema.string(GradleRunner.GRADLEW_PATH_PARAM_DESCRIPTION),
                     "timeoutSeconds" to
                         ToolSchema.integer(
                             ToolTimeout.PARAM_DESCRIPTION +
@@ -87,7 +84,6 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
                 dependency = dependency,
                 subproject = params.subproject,
                 configuration = params.configuration,
-                gradlewPath = params.gradlewPath,
                 timeoutSeconds = timeoutSeconds,
             )
         }
@@ -97,7 +93,6 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
         dependency: String,
         subproject: String? = null,
         configuration: String? = null,
-        gradlewPath: String? = null,
         timeoutSeconds: Int,
     ): String {
         ToolTimeout.validate(timeoutSeconds)?.let { return "ERROR: $it" }
@@ -105,7 +100,7 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
 
         val gradlew =
             try {
-                runner.resolveGradlew(gradlewPath)
+                runner.resolveGradlew()
             } catch (e: GradlewNotFoundException) {
                 return "ERROR: ${e.message}"
             }
@@ -125,7 +120,12 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
                     "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}).\n\n${condense(result.rawOutput)}"
             }
             val report = condense(result.rawOutput)
-            if (result.exitCode == 0) report else "FAILURE (exit ${result.exitCode})\n$report"
+            if (result.exitCode == 0) {
+                report
+            } else {
+                val hint = runner.compositeBuildHint(result.exitCode, !subproject.isNullOrBlank(), gradlew)
+                "FAILURE (exit ${result.exitCode})\n$report" + (hint?.let { "\n\n$it" } ?: "")
+            }
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
             logger.warn { "[GradleDependencyInsightTool] interrupted" }

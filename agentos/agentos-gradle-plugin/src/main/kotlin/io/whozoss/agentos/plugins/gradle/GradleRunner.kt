@@ -1,6 +1,7 @@
 package io.whozoss.agentos.plugins.gradle
 
 import java.io.File
+import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -8,8 +9,11 @@ import kotlin.time.Duration.Companion.minutes
  * Shared Gradle process launcher used by all Gradle tools.
  *
  * Handles:
- * - `gradlew` binary resolution (walks up from [projectDir], reports subdirectory candidates)
- * - the Gradle specifics of a launch (JAVA_HOME, bounded output, `--quiet` noise filtering)
+ * - `gradlew` resolution: the one that sits in [gradleDir], the `gradlewDirectory` of the integration (the project
+ *   directory itself when it has none). Nothing is searched elsewhere and the agent cannot name another location.
+ * - the Gradle specifics of a launch: a minimal environment (see [isInheritedVariable]), optional JAVA_HOME,
+ *   bounded output, `--quiet` noise filtering
+ * - the hint to give when a run that targeted no module fails on a composite build ([compositeBuildHint])
  *
  * Timeout, process tree kill (also on interruption) and bounded output drain are done by [ProcessLauncher],
  * shared with every tool of the plugin that launches a process.
@@ -17,72 +21,124 @@ import kotlin.time.Duration.Companion.minutes
  * [run] is safe to call from any thread: each call owns its process.
  */
 class GradleRunner(
+    /** Root of the project: nothing outside it is ever run. File paths given by the agent are relative to it. */
     val projectDir: File,
     /** Max time to wait for the stdout drain to finish once the process exited or was killed. */
     private val drainGrace: Duration = ProcessSpec.DEFAULT_DRAIN_GRACE,
-) {
     /**
-     * Resolves the `gradlew` executable to use.
-     *
-     * - A non-blank [explicitPath] wins and is returned as-is.
-     * - Otherwise the nearest `gradlew` is searched by walking up from [projectDir].
-     *
-     * @throws GradlewNotFoundException when none is found. The message tells the caller (an LLM agent)
-     * how to recover: `gradlew` found in a direct subdirectory (e.g. `backend/`) are listed,
-     * and the `gradlewPath` parameter is named.
+     * JDK Gradle runs on, passed as `JAVA_HOME`. Null leaves the `JAVA_HOME` of the service as it is (it is one of
+     * the inherited variables), else the `java` found on its `PATH`.
      */
-    fun resolveGradlew(explicitPath: String? = null): String {
-        explicitPath?.takeIf { it.isNotBlank() }?.let { return it }
-        var dir: File? = projectDir
-        while (dir != null) {
-            val candidate = File(dir, "gradlew")
-            if (candidate.isFile) return candidate.absolutePath
-            dir = dir.parentFile
-        }
-        throw GradlewNotFoundException(notFoundMessage())
-    }
+    private val javaHome: String? = null,
+    /**
+     * Names of the variables of the service environment to pass to Gradle on top of the default set. Everything
+     * else is hidden from the build: the environment of the service holds secrets (LLM keys, tokens) that a build
+     * and the tests it runs must not see.
+     */
+    private val inheritedEnvironment: Set<String> = emptySet(),
+    /** The directory that contains `gradlew`, inside [projectDir]. Null means [projectDir] itself. */
+    gradlewDirectory: File? = null,
+) {
+    /** The directory that contains `gradlew`, where the Gradle build starts. */
+    val gradleDir: File = gradlewDirectory ?: projectDir
 
     /**
-     * Directory the Gradle process must run in for [gradlew].
+     * Resolves the `gradlew` executable: the file named `gradlew` in [gradleDir]. Both the directory and the file must
+     * be inside [projectDir] once symbolic links are resolved, so the plugin never runs an executable that lives
+     * elsewhere on the machine.
      *
-     * [projectDir] when `gradlew` sits in it or in one of its ancestors (Gradle finds the build by walking up).
-     * Otherwise (`gradlew` in a subdirectory such as `backend/`, or elsewhere) the `gradlew` own directory,
-     * because Gradle only looks for `settings.gradle(.kts)` upwards.
+     * @throws GradlewNotFoundException when there is none or it resolves outside [projectDir]. The message points at
+     * the `gradlewDirectory` of the integration and lists the direct subdirectories of [projectDir] that hold one.
      */
-    fun workDirFor(gradlew: String): File {
-        val gradlewDir = File(gradlew).absoluteFile.parentFile ?: return projectDir
-        val project = projectDir.absoluteFile
-        val gradlewDirIsProjectAncestor =
-            generateSequence(project) { it.parentFile }.any { it == gradlewDir }
-        return if (gradlewDirIsProjectAncestor) projectDir else gradlewDir
+    fun resolveGradlew(): String {
+        val dir = gradleDir.absoluteFile.normalize()
+        if (!isInsideProject(dir)) {
+            throw GradlewNotFoundException(
+                "'gradlewDirectory' ('$gradleDir') resolves outside the project directory '$projectDir': refused.",
+            )
+        }
+        val gradlew = File(dir, GRADLEW)
+        if (!gradlew.isFile) throw GradlewNotFoundException(notFoundMessage())
+        if (!isInsideProject(gradlew)) {
+            throw GradlewNotFoundException(
+                "The gradlew of '$gradleDir' resolves outside the project directory '$projectDir': refused.",
+            )
+        }
+        return gradlew.path
     }
+
+    /** True when [file], once symbolic links are resolved, is [projectDir] or lies under it. */
+    private fun isInsideProject(file: File): Boolean =
+        try {
+            file.canonicalFile.toPath().startsWith(projectDir.canonicalFile.toPath())
+        } catch (e: IOException) {
+            false
+        }
+
+    /** Directory the Gradle process runs in for [gradlew]: the one that contains it, where the build starts. */
+    fun workDirFor(gradlew: String): File = File(gradlew).absoluteFile.parentFile ?: projectDir
 
     private fun notFoundMessage(): String {
-        val base = "gradlew not found in '$projectDir' or any of its parent directories. "
+        val base = "gradlew not found in '$gradleDir'. "
         val candidates =
             projectDir
                 .listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
                 .orEmpty()
-                .map { File(it, "gradlew") }
-                .filter { it.isFile }
+                .filter { File(it, GRADLEW).isFile }
                 .map { it.absolutePath }
                 .sorted()
-        return if (candidates.isEmpty()) {
-            base +
-                "No gradlew in its direct subdirectories either. Locate it " +
-                "(e.g. with a file search tool), then retry with param 'gradlewPath' " +
-                "set to its absolute path."
-        } else {
-            base +
-                "Found in subdirectories: ${candidates.joinToString(", ")}. " +
-                "Retry with param 'gradlewPath' set to the right absolute path; " +
-                "the build then runs from that gradlew's directory."
-        }
+        val where =
+            if (candidates.isEmpty()) {
+                "None in the direct subdirectories of '$projectDir' either. "
+            } else {
+                "Found in subdirectories of '$projectDir': ${candidates.joinToString(", ")}. "
+            }
+        return base + where +
+            "Set 'gradlewDirectory' in the GRADLE integration to the directory that contains gradlew " +
+            "(relative to 'projectDirectory'). This is a configuration issue, not something to retry."
     }
 
     /**
-     * Launches [command] inside [workDir] (default [projectDir]), merging stderr into stdout.
-     * Injects [extraEnv] on top of JAVA_HOME.
+     * Names (directory names) of the builds that the `settings.gradle(.kts)` of the directory [from] includes with
+     * `includeBuild(...)`. Commented lines are ignored. Only [from] is read, never its parents. Empty when there is
+     * no settings file there or no included build.
+     */
+    fun includedBuilds(from: File): List<String> {
+        val settings =
+            SETTINGS_FILES.map { name -> File(from.absoluteFile, name) }.firstOrNull { it.isFile }
+                ?: return emptyList()
+        val text =
+            try {
+                settings.readLines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+            } catch (e: IOException) {
+                return emptyList()
+            }
+        return INCLUDE_BUILD.findAll(text).map { File(it.groupValues[1]).name }.distinct().toList()
+    }
+
+    /**
+     * Hint to append to a failed run that targeted no module ([targetsModule] false) while the build includes
+     * other builds: a task run without a module may target the root build only, so the agent must name the module.
+     * Null when the run succeeded, targeted a module, or the build includes nothing.
+     */
+    fun compositeBuildHint(
+        exitCode: Int,
+        targetsModule: Boolean,
+        gradlew: String,
+    ): String? {
+        if (exitCode == 0 || targetsModule) return null
+        val included = includedBuilds(workDirFor(gradlew))
+        if (included.isEmpty()) return null
+        return "Note: this build includes other builds (${included.joinToString(", ")}). " +
+            "A task run without 'subproject' may target the root build only, not the included ones: " +
+            "retry with 'subproject' set to the one to target (e.g. '${included.first()}')."
+    }
+
+    /**
+     * Launches [command] inside [workDir] (default [gradleDir]), merging stderr into stdout.
+     *
+     * The process gets the variables [isInheritedVariable] lets through, then `JAVA_HOME` when a JDK is configured,
+     * then [extraEnv] on top.
      *
      * Timeout, kill and interruption behave as in [ProcessLauncher.run]. The output is bounded to
      * [MAX_OUTPUT_CHARS]: a note at its end tells when it was cut.
@@ -94,17 +150,23 @@ class GradleRunner(
         command: List<String>,
         extraEnv: Map<String, String> = emptyMap(),
         timeout: Duration = DEFAULT_TIMEOUT_MINUTES.minutes,
-        workDir: File = projectDir,
+        workDir: File = gradleDir,
     ): RunResult {
+        val env: Map<String, String> =
+            buildMap {
+                if (javaHome != null) put("JAVA_HOME", javaHome)
+                putAll(extraEnv)
+            }
         val result =
             ProcessLauncher.run(
                 ProcessSpec(
                     command = command,
                     timeout = timeout,
                     workDir = workDir,
-                    env = mapOf("JAVA_HOME" to System.getProperty("java.home")) + extraEnv,
+                    env = env,
                     maxOutputChars = MAX_OUTPUT_CHARS,
                     drainGrace = drainGrace,
+                    inheritEnvironment = { name -> isInheritedVariable(name, inheritedEnvironment) },
                     label = "gradle",
                 ),
             )
@@ -135,30 +197,52 @@ class GradleRunner(
 
         private const val TRUNCATION_NOTE = "\n[Gradle output truncated at $MAX_OUTPUT_CHARS chars]"
 
-        /** Single source of truth for the `gradlewPath` tool param description, shared by all Gradle tools. */
-        const val GRADLEW_PATH_PARAM_DESCRIPTION =
-            "Optional absolute path to the gradlew executable. " +
-                "When provided, overrides the auto-resolved gradlew from the project directory, " +
-                "and the build runs from that gradlew's directory when it is not in the project directory or a parent. " +
-                "Use it when gradlew lives in a subdirectory (e.g. 'backend/gradlew'). " +
-                "Leave null to auto-resolve."
+        private const val GRADLEW = "gradlew"
+
+        private val SETTINGS_FILES = listOf("settings.gradle.kts", "settings.gradle")
+
+        /** `includeBuild("x")` (Kotlin DSL) and `includeBuild 'x'` / `includeBuild('x')` (Groovy DSL). */
+        private val INCLUDE_BUILD = Regex("""includeBuild\s*\(?\s*["']([^"']+)["']""")
+
+        /**
+         * Variables of the service environment that Gradle gets by default: what a build needs to start and to reach
+         * its dependencies (path, home, JDK, locale, proxies, certificates, Gradle's own settings). Every secret of
+         * the service (LLM keys, tokens, database settings) is left out. A proxy variable may carry credentials in
+         * its URL: it is the one default that can.
+         */
+        private val INHERITED_NAMES =
+            setOf(
+                "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "TZ",
+                "LANG", "LANGUAGE", "TERM", "JAVA_HOME",
+                "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+                "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+                "SSL_CERT_FILE", "SSL_CERT_DIR",
+                "GRADLE_USER_HOME", "GRADLE_OPTS", "GRADLE_RO_DEP_CACHE",
+            )
+
+        /** Locale variables (`LC_ALL`, `LC_CTYPE`...). */
+        private const val LOCALE_PREFIX = "LC_"
+
+        /**
+         * True when the variable [name] of the service environment reaches Gradle: it is in the default set, it is a
+         * locale variable, or the integration lists it in [extra].
+         */
+        internal fun isInheritedVariable(
+            name: String,
+            extra: Set<String> = emptySet(),
+        ): Boolean = name in INHERITED_NAMES || name.startsWith(LOCALE_PREFIX) || name in extra
 
         /** Single source of truth for how the agent must name a subproject, shared by all Gradle tools. */
         const val SUBPROJECT_NAME_HINT =
-            "Subproject name = directory name of the module only (last path segment): " +
-                "'integration-git' for folder 'integration/integration-git'. " +
-                "Never a path or a prefix such as 'integration:integration-git'."
-
-        /** Single source of truth for the gradlew-not-found hint appended to the Gradle tool descriptions. */
-        const val GRADLEW_NOT_FOUND_HINT =
-            "If gradlew is not found (e.g. it lives in a subdirectory such as 'backend/'), " +
-                "the tool returns an ERROR listing candidates: retry with 'gradlewPath' set to the right absolute path."
+            "Gradle project path of the module, without the leading ':': 'cli' for a top-level module, " +
+                "'feature:core' for a nested module (folder 'feature/core' by default). " +
+                "In a composite build (includeBuild), an included build is addressed by its name, e.g. 'agentos-service'."
     }
 }
 
 /**
- * Raised by [GradleRunner.resolveGradlew] when no `gradlew` is found.
- * The message is written to guide an LLM agent towards a successful retry.
+ * Raised by [GradleRunner.resolveGradlew] when no usable `gradlew` is found.
+ * The message tells that it is a configuration issue: the agent cannot fix it by retrying.
  */
 class GradlewNotFoundException(
     message: String,
