@@ -138,13 +138,15 @@ To check again, re-run this tool."""
     ): ToolExecutionResult {
         val params = input ?: return missingTimeoutResult()
         val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
-        return runTests(
-            testFilter = params.testFilter,
-            subproject = params.subproject,
-            gradlewPath = params.gradlewPath,
-            targets = params.targets,
-            timeoutSeconds = timeoutSeconds,
-        ).toToolExecutionResult()
+        return runInterruptibleTool {
+            runTests(
+                testFilter = params.testFilter,
+                subproject = params.subproject,
+                gradlewPath = params.gradlewPath,
+                targets = params.targets,
+                timeoutSeconds = timeoutSeconds,
+            )
+        }
     }
 
     fun runTests(

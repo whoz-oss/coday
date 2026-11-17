@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 
 /**
  * Maps the String answer of a Gradle tool business method to a [ToolExecutionResult]:
@@ -18,6 +20,19 @@ internal fun String.toToolExecutionResult(): ToolExecutionResult =
 
 /** The agent did not provide the mandatory `timeoutSeconds`: nothing is run, the answer names the parameter. */
 internal fun missingTimeoutResult(): ToolExecutionResult = "ERROR: ${ToolTimeout.MISSING_MESSAGE}".toToolExecutionResult()
+
+/**
+ * Runs the blocking body of a Gradle tool on the IO dispatcher, interruptibly, and maps its answer with
+ * [toToolExecutionResult].
+ *
+ * The bodies wait on the Gradle process for up to [ToolTimeout.MAX_SECONDS] seconds. Called straight from the
+ * suspending `execute`, they would hold a dispatcher thread for that whole time and never see the cancellation of
+ * the run: stopping the case would leave Gradle running to its end. With [runInterruptible] the cancellation
+ * interrupts the waiting thread, [ProcessLauncher] kills the whole process tree, and the cancellation reaches the
+ * caller, whatever the body answers once interrupted.
+ */
+internal suspend fun runInterruptibleTool(body: () -> String): ToolExecutionResult =
+    runInterruptible(Dispatchers.IO, body).toToolExecutionResult()
 
 /** Tool name, prefixed with `<configName>__` when the integration config has a name (same rule as the other plugins). */
 internal fun prefixedToolName(
