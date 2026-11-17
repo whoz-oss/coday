@@ -18,8 +18,9 @@
 }
 h1 {
   margin: 0;
+  font-family: var(--font-heading);
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 .titles p {
@@ -39,12 +40,6 @@ h1 {
   width: 160px;
 }
 
-mat-chip-listbox {
-  --mat-chip-selected-container-color: #2a2145;
-  --mat-chip-selected-label-text-color: #e3d6ff;
-  --mat-chip-outline-color: var(--sf-outline-strong);
-}
-
 /* Table */
 .table-wrap {
   overflow: hidden;
@@ -53,9 +48,10 @@ table {
   width: 100%;
 }
 th.mat-mdc-header-cell {
-  background: var(--sf-chrome);
+  background: var(--color-surface-muted);
+  font-family: var(--font-heading);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -63,10 +59,10 @@ td.mat-mdc-cell {
   height: 60px;
 }
 tr.row--active {
-  background: #111827;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
 tr.mat-mdc-row:hover {
-  background: #141a26;
+  background: var(--color-bg-hover);
 }
 
 .name {
@@ -76,7 +72,7 @@ tr.mat-mdc-row:hover {
   color: var(--sf-text-2);
 }
 .name--active {
-  color: var(--sf-primary);
+  color: var(--color-accent-700);
   font-weight: 700;
   text-decoration: none;
 }
@@ -132,7 +128,7 @@ sf-phase-bar {
   padding-left: 20px;
   font-size: 13px;
   color: var(--sf-text-muted);
-  border-top: 1px solid #1a1f2c;
+  border-top: 1px solid var(--color-divider);
   b {
     color: var(--sf-text);
   }
@@ -160,11 +156,11 @@ sf-phase-bar {
 .sw {
   width: 10px;
   height: 10px;
-  border-radius: 3px;
-  background: #7a68b8;
+  border-radius: var(--radius-sm, 0);
+  background: var(--color-neutral-500);
 }
 .sw--active {
-  background: var(--sf-secondary);
+  background: var(--color-accent);
 }
 
 .bars {
@@ -191,8 +187,8 @@ sf-phase-bar {
   height: 14px;
 }
 .bar-fill {
-  border-radius: 0 4px 4px 0;
-  background: #7a68b8;
+  border-radius: 0 var(--radius-sm, 0) var(--radius-sm, 0) 0;
+  background: var(--color-neutral-500);
 }
 .bar-val {
   text-align: right;
@@ -201,8 +197,8 @@ sf-phase-bar {
   color: var(--sf-text);
 }
 .bar-row.active .bar-fill {
-  background: var(--sf-secondary);
+  background: var(--color-accent);
 }
 .bar-row.active .bar-val {
-  color: var(--sf-secondary);
+  color: var(--color-accent-700);
 }

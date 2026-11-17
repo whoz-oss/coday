@@ -28,6 +28,8 @@ class CreateWorkflowRunService(
          * field). Carried through for completeness; amendment logic is Lot E.
          */
         val expectedAmendmentSeq: Long? = null,
+        val definitionVersion: String? = null,
+        val definitionHash: String? = null,
     )
 
     fun create(
@@ -80,6 +82,8 @@ class CreateWorkflowRunService(
                     )
                 },
                 expectedAmendmentSeq = command.expectedAmendmentSeq,
+                definitionVersion = command.definitionVersion,
+                definitionHash = command.definitionHash,
             ),
             ControllerExecutionInput(
                 runtimeId = "factory-control-plane",

@@ -14,6 +14,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * user redirect the shared credential to a host they control. Those types are therefore refused in
  * the two user scopes at the API edge; platform and namespace-shared configs are unaffected.
  *
+ * `BASH` is denied for a related reason: its commands are arbitrary, and they receive the secret of the bound Auth
+ * Setting as environment variables. A user overlay of a shared `BASH` config (which inherits its `authSettingName`),
+ * or a user config naming a namespace-shared Auth Setting, could therefore run a command that exfiltrates a shared
+ * credential.
+ *
  * `CASE` is deliberately not on the list. Its parameters name no endpoint, credential or command, so an overlay
  * cannot redirect anything: it can only narrow or widen which agents the starter tools may start. That is bounded
  * by the service, which only starts an agent deployed to the target user, and `FreeCaseStarterForUser` requires
@@ -27,7 +32,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * ```yaml
  * agentos:
  *   integrations:
- *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
+ *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.integrations")
@@ -37,7 +42,7 @@ data class IntegrationsProperties(
      * may create or update in a user scope. Setting the list replaces the default entirely: an
      * instance that wants to allow one of the defaults must list the others explicitly.
      */
-    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT"),
+    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH"),
     /**
      * Integration types that may set [IntegrationConfig.autoGrant], i.e. be handed to every agent
      * in the config's scope without the agent naming it. Setting the list replaces the default
@@ -48,7 +53,7 @@ data class IntegrationsProperties(
      * platform scope hands a tool to *every agent of the environment at once*; on a type that
      * reaches the network, that is an unreviewed, environment-wide capability grant. The codebase
      * already carries this caution elsewhere: [userScopeDeniedTypes] forbids user-level overlays of
-     * `HTTP_API`, `MCP_*` and `GIT` for a closely related reason.
+     * `HTTP_API`, `MCP_*`, `GIT` and `BASH` for a closely related reason.
      *
      * Override with environment variable (Spring Boot relaxed binding):
      * - `AGENTOS_INTEGRATIONS_AUTO_GRANTABLE_TYPES` (comma-separated, replaces the default list)

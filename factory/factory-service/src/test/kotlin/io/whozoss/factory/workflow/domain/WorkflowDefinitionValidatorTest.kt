@@ -7,10 +7,10 @@ import org.junit.jupiter.api.Test
  * Unit tests of the declarative session format accepted by
  * [WorkflowDefinitionValidator] (W8.2).
  *
- * The format is intentionally minimal: a step is exactly
- * `id` + `name` + `dependsOn` + `responsibility { kind, name }`. No
+ * The legacy format remains `id` + `name` + `dependsOn` + `responsibility`.
+ * Explicit prose contracts are covered by [ExplicitStepContractTest]. No
  * orchestration property (`gate`, `retry`, `onFailure`, `briefTemplate`…) is
- * accepted — orchestration lives in an external Coday agent, not in the file.
+ * accepted — orchestration remains controlled by Factory, not by prose.
  */
 class WorkflowDefinitionValidatorTest {
 

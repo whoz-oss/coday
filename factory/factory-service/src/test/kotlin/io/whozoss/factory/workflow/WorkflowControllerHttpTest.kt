@@ -71,11 +71,11 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         )
     }
 
-    private fun registerDefinition() {
+    private fun registerDefinition(version: String = "1.0.0") {
         val raw = linkedMapOf<String, Any?>(
             "schemaVersion" to "1",
             "workflowType" to "wf-http",
-            "version" to "1.0.0",
+            "version" to version,
             "title" to "HTTP workflow",
             "steps" to listOf(
                 linkedMapOf(
@@ -91,7 +91,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             scope,
             WorkflowDefinitionRecord(
                 workflowType = "wf-http",
-                version = "1.0.0",
+                version = version,
                 definitionHash = hashWorkflowDefinition(validated.definition),
                 definition = validated.definition,
             ),
@@ -163,7 +163,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
                 "failureCode", "resultEvidenceId", "environmentRef", "expectedEnvironmentRevision",
                 "resumptionContext", "expectedAmendmentSeq", "revision", "createdAt", "startedAt",
                 "activeDurationMs", "activeSince", "waitingDurationMs", "waitingSince", "completedAt",
-                "terminal", "sealingClass",
+                "terminal", "sealingClass", "effectiveMandate",
             ),
         )
         assertThat(first["status"]).isEqualTo("running")
@@ -171,13 +171,17 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(first["agentName"]).isEqualTo("builder")
         assertThat(first["attemptNumber"]).isEqualTo(1)
         assertThat(byId.getValue("attempt-2")["status"]).isEqualTo("pending")
+        assertThat(first["effectiveMandate"]).isEqualTo("Human-readable step mandate")
+        assertThat(byId.getValue("attempt-2")["effectiveMandate"]).isNull()
 
         // No secret or internal execution field ever crosses the boundary.
         val serialized = response.body.toString()
         assertThat(serialized).doesNotContain(secretOwner)
         assertThat(serialized).doesNotContain("ownerToken")
         assertThat(serialized).doesNotContain("capabilityToken")
-        assertThat(serialized).doesNotContain("brief")
+        assertThat(first).doesNotContainKey("brief")
+        assertThat(first).doesNotContainKey("contextEnvelope")
+        assertThat(serialized).doesNotContain("cap-secret", "cmd-secret", "turn-secret")
         assertThat(serialized).doesNotContain("leaseExpiresAt")
         assertThat(serialized).doesNotContain("commandId")
         assertThat(serialized).doesNotContain("lastObservedEventId")
@@ -250,7 +254,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             capabilityToken = "cap-secret",
             turnCorrelation = "turn-secret",
             commandId = "cmd-secret",
-            brief = "brief-secret",
+            brief = "Human-readable step mandate",
         )
 
     @Test
@@ -313,6 +317,65 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(data(created.body)["controllerRequest"]).isNull()
         assertThat(data(created.body)["title"]).isEqualTo("Wf http")
+    }
+
+    @Test
+    fun `explicit versions coexist launch independently and keep active runs pinned on replay`() {
+        registerDefinition()
+        registerWorkstream()
+        val firstHash = service.getDefinition(scope, "wf-http", "1.0.0")!!["definitionHash"] as String
+        val base = mapOf("namespaceId" to namespace, "workflowType" to "wf-http")
+        val firstRequest = base + mapOf("definitionVersion" to "1.0.0", "definitionHash" to firstHash)
+        val first = createRun(firstRequest, "pin-first")
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        registerDefinition("2.0.0")
+        val secondHash = service.getDefinition(scope, "wf-http", "2.0.0")!!["definitionHash"] as String
+        val secondRequest = base + mapOf("definitionVersion" to "2.0.0", "definitionHash" to secondHash)
+        val second = createRun(secondRequest, "pin-second")
+        assertThat(second.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(first.body)["definitionVersion"]).isEqualTo("1.0.0")
+        assertThat(data(first.body)["definitionHash"]).isEqualTo(firstHash)
+        assertThat(data(second.body)["definitionVersion"]).isEqualTo("2.0.0")
+        assertThat(data(second.body)["definitionHash"]).isEqualTo(secondHash)
+        val replay = createRun(firstRequest, "pin-first")
+        assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(data(replay.body)["workflowId"]).isEqualTo(data(first.body)["workflowId"])
+        assertThat(data(replay.body)["definitionVersion"]).isEqualTo("1.0.0")
+        val switched = createRun(secondRequest, "pin-first")
+        assertThat(switched.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat((switched.body?.get("error") as Map<*, *>)["code"]).isEqualTo("WORKFLOW_IDENTITY_CONFLICT")
+        val implicit = createRun(base, "no-version")
+        assertThat(implicit.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat((implicit.body?.get("error") as Map<*, *>)["code"]).isEqualTo("WORKFLOW_DEFINITION_AMBIGUOUS")
+        val pinnedReplay = createRun(base, "pin-first")
+        assertThat(pinnedReplay.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(data(pinnedReplay.body)["definitionVersion"]).isEqualTo("1.0.0")
+    }
+
+    @Test
+    fun `explicit selection rejects partial malformed missing stale or foreign definitions`() {
+        registerDefinition()
+        registerWorkstream()
+        val base = mapOf("namespaceId" to namespace, "workflowType" to "wf-http")
+        val hash = service.getDefinition(scope, "wf-http", "1.0.0")!!["definitionHash"] as String
+        listOf(
+            mapOf("definitionVersion" to "1.0.0"),
+            mapOf("definitionHash" to hash),
+            mapOf("definitionVersion" to 2, "definitionHash" to hash),
+            mapOf("definitionVersion" to "", "definitionHash" to hash),
+            mapOf("definitionVersion" to null, "definitionHash" to hash),
+            mapOf("definitionVersion" to "1.0.0", "definitionHash" to "bad"),
+        ).forEachIndexed { index, selection -> assertInvalidStart(createRun(base + selection, "invalid-selection-$index")) }
+        val missing = createRun(base + mapOf("definitionVersion" to "9.0.0", "definitionHash" to hash), "missing-version")
+        assertThat(missing.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        val stale = createRun(base + mapOf("definitionVersion" to "1.0.0", "definitionHash" to "0".repeat(64)), "stale-hash")
+        assertThat(stale.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat((stale.body?.get("error") as Map<*, *>)["code"]).isEqualTo("WORKFLOW_DEFINITION_MISMATCH")
+        val foreign = mapOf<String, Any?>("schemaVersion" to "1", "workflowType" to "foreign-only", "version" to "1.0.0", "steps" to listOf(mapOf("id" to "gate", "name" to "Gate", "responsibility" to mapOf("kind" to "human"))))
+        service.registerDefinition(TenantScope("foreign-org", "foreign-ws"), WorkflowDefinitionRecord("foreign-only", "1.0.0", hashWorkflowDefinition(foreign), foreign))
+        val foreignAttempt = createRun(base + mapOf("workflowType" to "foreign-only", "definitionVersion" to "1.0.0", "definitionHash" to hashWorkflowDefinition(foreign)), "foreign-version")
+        assertThat(foreignAttempt.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(service.listProjections(scope, namespace, "active")["items"] as List<*>).isEmpty()
     }
 
     @Test

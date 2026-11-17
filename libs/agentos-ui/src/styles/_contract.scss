@@ -99,10 +99,11 @@
  *
  * ── Theme variants ───────────────────────────────────────────────────────
  *   The variants are listed in ONE table, THEME_VARIANT_DEFINITIONS in
- *   libs/agentos-ui/src/lib/services/theme.service.ts (id, label, description, supported modes):
- *     industry   light + dark   (default; the attribute-less light theme)
+ *   libs/agentos-ui/src/lib/services/theme.service.ts (id, label, description, supported modes). The default
+ *   variant is DEFAULT_THEME_VARIANT (whoz-oss) in the same file, independent of the order of the table:
+ *     whoz-oss   light + dark   (default)
+ *     industry   light + dark   (the attribute-less light theme: no data-theme attribute in light mode)
  *     terminal   light + dark
- *     whoz-oss  light + dark
  *   Each variant defines the full token list above, scoped under agentos-shell:
  *     - Industry: the base `agentos-shell` block and its dark block
  *     - Terminal: one block per mode

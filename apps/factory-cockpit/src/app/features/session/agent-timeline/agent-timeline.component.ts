@@ -131,6 +131,8 @@ export class AgentTimelineComponent {
         return 'indeterminate state'
       case 'cancelled':
         return 'cancelled'
+      case 'skipped':
+        return 'skipped, not executed'
     }
   }
 

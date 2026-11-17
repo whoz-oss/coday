@@ -34,6 +34,8 @@ data class WorkflowInstanceNode(
     val rootCaseId: String? = null,
     /** Authoritative plan-amendment counter of the run (Lot E). */
     val amendmentSeq: Long = 0L,
+    /** Exact `workflowType@version` pin for fast deletion checks; null on legacy nodes. */
+    val pinnedDefinition: String? = null,
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
 ) {
@@ -75,6 +77,11 @@ data class WorkflowInstanceNode(
                 projection = objectMapper.writeJson(record.projection),
                 rootCaseId = record.rootCaseId,
                 amendmentSeq = record.amendmentSeq,
+                pinnedDefinition = run {
+                    val type = record.instance["workflowType"] as? String
+                    val version = record.instance["definitionVersion"] as? String
+                    if (!type.isNullOrBlank() && !version.isNullOrBlank()) "$type@$version" else null
+                },
             )
     }
 }

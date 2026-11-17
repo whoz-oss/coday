@@ -12,12 +12,12 @@ class IntegrationConfigScopePolicyUnitSpec : StringSpec({
     val userId = UUID.randomUUID()
     val defaultPolicy = IntegrationConfigScopePolicy(IntegrationsProperties())
 
-    "the default denied list covers every network-reaching integration type" {
+    "the default denied list covers every network-reaching or command-running integration type" {
         IntegrationsProperties().userScopeDeniedTypes shouldContainExactly
-            listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT")
+            listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH")
     }
 
-    listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT").forEach { type ->
+    listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH").forEach { type ->
         "a user-scoped $type config is denied with an AccessDeniedException naming the type" {
             val exception =
                 shouldThrow<AccessDeniedException> {
@@ -29,6 +29,10 @@ class IntegrationConfigScopePolicyUnitSpec : StringSpec({
 
     "a shared (non user-scoped) config of a denied type is allowed" {
         shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = null, integrationType = "MCP_HTTP") }
+    }
+
+    "a shared (non user-scoped) BASH config is allowed" {
+        shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = null, integrationType = "BASH") }
     }
 
     "a user-scoped config of a type outside the list is allowed" {

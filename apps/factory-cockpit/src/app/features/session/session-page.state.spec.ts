@@ -87,6 +87,25 @@ describe('SessionPageState', () => {
     expect(state.selectedEvents()).toEqual([{ id: 'code-event' }])
   })
 
+  it('retains an inactive routing step selection without inventing a timeline execution', () => {
+    sessions.set('run-1', {
+      phase: { stepId: 'architect' },
+      lanes: [],
+      events: [],
+      routingSteps: [{ id: 'backend', status: 'skipped', activation: 'not_selected', executed: false }],
+      phaseByStepId: new Map([['backend', { stepId: 'backend', stepStatus: 'skipped' }]]),
+      eventsByStepId: new Map([['backend', []]]),
+    })
+    const state = TestBed.inject(SessionPageState)
+    state.selectSession('run-1')
+    state.selection.set({ stepId: 'backend' })
+    state.reconcileSelection()
+    expect(state.selection()).toEqual({ stepId: 'backend' })
+    expect(state.selectedPhase()?.stepStatus).toBe('skipped')
+    expect(state.selectedAttempt()).toBeNull()
+    expect(state.selectedEvents()).toEqual([])
+  })
+
   it('preserves an existing attempt selection across refresh and deterministically falls back when it disappears', () => {
     const session: any = {
       phase: { stepId: 'agent' },

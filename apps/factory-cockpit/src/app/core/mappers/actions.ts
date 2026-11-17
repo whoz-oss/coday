@@ -151,6 +151,8 @@ export function extractAttempts(payload: unknown): AgentAttempt[] {
       status: getString(obj, 'status') ?? 'unknown',
       caseId: getString(obj, 'caseId') ?? '',
     }
+    const effectiveMandate = getString(obj, 'effectiveMandate')
+    if (effectiveMandate) attempt.effectiveMandate = effectiveMandate
     const failureCode = getString(obj, 'failureCode')
     if (failureCode) attempt.failureCode = failureCode
     const resultEvidenceId = getString(obj, 'resultEvidenceId')

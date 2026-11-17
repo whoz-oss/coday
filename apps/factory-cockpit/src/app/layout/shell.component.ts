@@ -4,6 +4,7 @@ import { MatToolbarModule } from '@angular/material/toolbar'
 import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatSlideToggleModule } from '@angular/material/slide-toggle'
+import { ThemePickerComponent } from '@whoz-oss/design-system'
 import { FactoryStore } from '../core/factory.store'
 import { ShellState } from '../core/shell-state'
 import { UsdPipe } from '../shared/pipes/format.pipes'
@@ -24,6 +25,7 @@ interface NavItem {
     MatSidenavModule,
     MatIconModule,
     MatSlideToggleModule,
+    ThemePickerComponent,
     UsdPipe,
   ],
   templateUrl: './shell.component.html',
@@ -38,6 +40,5 @@ export class ShellComponent {
     { label: 'Workstreams', icon: 'grid_view', link: '/workstreams' },
     { label: 'History', icon: 'history', link: '/historique' },
     { label: 'Workflows', icon: 'account_tree', link: '/workflows' },
-    { label: 'Settings', icon: 'settings', link: '/reglages' },
   ]
 }

@@ -6,6 +6,7 @@ import {
   FactoryApiError,
   FactoryApiService,
   NamespaceOption,
+  WorkflowDefinition,
   extractNamespaceOptions,
   generateCorrelationId,
 } from './factory-api.service'
@@ -16,7 +17,7 @@ import { extractWorkflowDefinitions } from './workflow-definitions-state.service
 export class LaunchStateService {
   private readonly api = inject(FactoryApiService)
 
-  readonly workflowTypes = signal<string[]>([])
+  readonly definitions = signal<WorkflowDefinition[]>([])
   readonly namespaces = signal<NamespaceOption[]>([])
   readonly loading = signal(false)
   readonly definitionsError = signal<FactoryApiError | null>(null)
@@ -44,12 +45,14 @@ export class LaunchStateService {
     })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe(({ definitions, namespaces }) => {
-        const types = new Set<string>()
-        for (const definition of extractWorkflowDefinitions(definitions)) {
-          const type = definition.workflowType
-          if (typeof type === 'string' && type.trim()) types.add(type.trim())
-        }
-        this.workflowTypes.set([...types])
+        this.definitions.set(
+          extractWorkflowDefinitions(definitions).filter(
+            (definition) =>
+              !!definition.workflowType &&
+              !!definition.version &&
+              /^[0-9a-f]{64}$/.test(definition.definitionHash ?? '')
+          )
+        )
         this.namespaces.set(extractNamespaceOptions(namespaces))
       })
   }

@@ -28,6 +28,11 @@ import java.util.UUID
  * @param credentialProvider Pre-scoped credential supplier for the integration this tool
  *   belongs to. Returns the user's stored credential (OAuth tokens, API keys, etc.) or
  *   null if not yet authenticated. Null when no AuthSetting is bound to the integration.
+ *   Set together with [authSettingName].
+ * @param toolRequestId Identifier of the ToolRequestEvent that caused this invocation, when available.
+ * @param authSettingName The name of the Auth Setting bound to the integration this tool belongs to. Set
+ *   together with [credentialProvider], null when no provider is bound. Plugins may use it to label the
+ *   credential (the BASH plugin names the environment variable carrying the secret after it).
  */
 data class ToolContext(
     val namespaceId: UUID,
@@ -36,8 +41,8 @@ data class ToolContext(
     val caseEvents: List<CaseEvent>,
     val agentName: String? = null,
     val credentialProvider: CredentialProvider? = null,
-    /** Identifier of the ToolRequestEvent that caused this invocation, when available. */
     val toolRequestId: String? = null,
+    val authSettingName: String? = null,
 ) {
     /**
      * The case the tool runs in: the case of the first of [caseEvents], or null when there are no events

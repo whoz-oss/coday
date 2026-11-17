@@ -17,6 +17,7 @@ import {
   ReasoningEffort,
   ToolRequestEvent,
   ToolResponseEvent,
+  User,
   VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
@@ -29,6 +30,7 @@ import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
@@ -108,6 +110,7 @@ describe('CaseChatComponent — submit with attachments', () => {
           },
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
+        { provide: UserStateService, useValue: { currentUser: signal<User | null>(null) } },
         {
           provide: USER_PREFERENCES_PORT,
           useValue: {
@@ -1079,12 +1082,34 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(item?.kind === 'question' && item.answer).toBe(fromA)
     })
 
-    it('labels the answer with the respondent name, falling back to You for an unnamed user', () => {
+    it('labels an answer You for the current user and by name for anyone else, falling back to You when unnamed', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-1' } as User)
       const ref = makeComponent()
-      const named = answer('a-1', 'u-1', 'blue')
-      const unnamed = { ...named, actor: { id: 'u-1', role: ActorRoleEnum.USER } }
-      expect(ref.instance['answerLabel'](named)).toBe('Someone')
+      const mine = {
+        ...answer('a-1', 'u-1', 'blue'),
+        actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'Me' },
+      }
+      const theirs = answer('a-2', 'u-2', 'red')
+      const unnamed = { ...theirs, actor: { id: 'u-2', role: ActorRoleEnum.USER } } as unknown as AnswerEvent
+
+      expect(ref.instance['answerLabel'](mine)).toBe('You')
+      expect(ref.instance['answerLabel'](theirs)).toBe('Someone')
       expect(ref.instance['answerLabel'](unnamed)).toBe('You')
+
+      // The labels follow the signal: before the user is loaded, nobody is 'You' by id.
+      userState.currentUser.set(null)
+      expect(ref.instance['answerLabel'](mine)).toBe('Me')
+    })
+
+    it('labels the message of a collaborator with their name, and your own with You', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-1' } as User)
+      const ref = makeComponent()
+
+      expect(ref.instance['actorLabel']({ id: 'u-1', role: ActorRoleEnum.USER, displayName: 'Me' })).toBe('You')
+      expect(ref.instance['actorLabel']({ id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' })).toBe('Bob')
+      expect(ref.instance['actorLabel']({ id: 'a-1', role: ActorRoleEnum.AGENT, displayName: 'Dev' })).toBe('Dev')
     })
 
     it('only treats an unanswered, non-OAuth question as pending (focus target)', () => {

@@ -12,6 +12,9 @@
       "options": {
         "lintFilePatterns": ["libs/design-system/**/*.ts", "libs/design-system/**/*.html"]
       }
+    },
+    "test": {
+      "options": { "passWithNoTests": true }
     }
   }
 }

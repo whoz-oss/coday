@@ -15,8 +15,13 @@ class BashCommandExecutorUnitSpec : StringSpec({
 
     val dir: File = Files.createTempDirectory("bash-executor-spec").toRealPath().toFile()
 
-    fun run(command: String, timeoutSeconds: Long = 10L, maxOutputChars: Int = 100_000): BashExecutionResult =
-        BashCommandExecutor.execute(command, dir, timeoutSeconds, maxOutputChars)
+    fun run(
+        command: String,
+        timeoutSeconds: Long = 10L,
+        maxOutputChars: Int = 100_000,
+        environment: Map<String, String> = emptyMap(),
+    ): BashExecutionResult =
+        BashCommandExecutor.execute(command, dir, timeoutSeconds, maxOutputChars, environment)
 
     fun completed(command: String, maxOutputChars: Int = 100_000): BashExecutionResult.Completed =
         run(command, maxOutputChars = maxOutputChars).shouldBeInstanceOf<BashExecutionResult.Completed>()
@@ -84,6 +89,19 @@ class BashCommandExecutorUnitSpec : StringSpec({
         result.stdout shouldNotContain "__AGENTOS_PWD_"
         result.workingDirectory shouldBe null
         (result.exitCode != 0) shouldBe true
+    }
+
+    "an environment variable passed to the executor should be visible to the command" {
+        val result =
+            run("echo \$FOO-\$BAR", environment = mapOf("FOO" to "foo value", "BAR" to "bar"))
+                .shouldBeInstanceOf<BashExecutionResult.Completed>()
+        result.stdout shouldBe "foo value-bar\n"
+    }
+
+    "an environment variable should not leak into the next execution" {
+        run("true", environment = mapOf("LEAKY_VAR" to "x"))
+        val result = completed("printf %s \"\${LEAKY_VAR-unset}\"")
+        result.stdout shouldBe "unset"
     }
 
     "a command exceeding the timeout should return Timeout" {

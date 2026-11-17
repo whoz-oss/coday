@@ -1,7 +1,8 @@
 # FACTORY_WORKER and FACTORY_WORKSTREAM via HTTP_API (local trial)
 
-Two standard AgentOS `HTTP_API` integrations call Factory directly: `FACTORY_WORKER` (a worker submits one step
-result) and `FACTORY_WORKSTREAM` (read workflows, start a workflow, request a retry). **Nothing is run, built or
+Three standard AgentOS `HTTP_API` integrations call Factory directly: `FACTORY_WORKER` (a worker submits one step
+result), `FACTORY_WORKSTREAM` (read workflows, start a workflow, request a retry), and `FACTORY_AUTHORING`
+(validate and register immutable definitions; no execution). **Nothing is run, built or
 configured by this document; it lists what you do yourself.**
 
 ## One credential for both
@@ -15,7 +16,17 @@ a Factory JWT. There is no authorization on top: any authenticated user can use 
 | Integration | Purpose | Credential | Attached to |
 |---|---|---|---|
 | `FACTORY_WORKER` | Worker submits one step result | a Factory JWT | Factory workers |
-| `FACTORY_WORKSTREAM` | Read workflows, start a workflow, request a retry | a Factory JWT | **Only the steering agents you choose** |
+| `FACTORY_WORKSTREAM` | Read workflows, start a workflow, request a retry | an operator Factory JWT | **Only the steering agents you choose** |
+| `FACTORY_AUTHORING` | List/get definitions, validate, register immutable versions | an operator Factory JWT, never an attempt-result capability | **Only trusted authoring agents** |
+
+A Factory JWT is an ordinary operator identity, even if its subject is named `factory-worker`; it is not a
+narrow worker capability and currently has no role-based restriction. Do not hand such an operator credential
+to untrusted workers assuming it is result-only. Opaque attempt-result capability tokens are not operator JWTs
+and cannot authenticate registry requests in `auth` mode. No special admin escalation is introduced here.
+In `local` mode there is no credential isolation: all calls are the personal OS user. Do not expose that mode
+to untrusted agents or networks. In `auth` mode the existing trusted proxy must strip spoofable identity headers.
+The default membership resolver maps operators to the local-dev organization; production tenant mapping must
+come from the deployment's trusted membership resolver, not from model arguments.
 
 **Security modes** (`FACTORY_SECURITY_MODE`, default `local`):
 
@@ -55,6 +66,12 @@ header (`factory/factory-service/openapi/factory-worker-http-api-submit-step-res
 workflow, step and namespace from the durable attempt, within the organization of the caller, so the worker passes
 nothing else. The brief given to the worker contains its `attemptId` and `Idempotency-Key`.
 
+### Explicit route choices
+
+Refresh the existing FACTORY_AUTHORING and FACTORY_WORKER HTTP_API spec caches (or reload the integration) after deploying Factory. No AgentOS/plugin changes are required. Authoring steps optionally carry `decision: {"mode":"single|multiple","routes":[{"name":"frontend","target":"implement-front"},{"name":"backend","target":"implement-back"}]}`; the common step declares `join: "<decision-step-id>"` and depends on every target. Initial scope is one decision group, 2–16 distinct single-step branches and one explicit join, no nested/overlapping/multi-step routes. Ordinary dependencies remain AND.
+
+Worker PASS results of decisions require `selectedRoutes`, e.g. `["frontend"]`, `["backend"]`, or `["frontend","backend"]` in multiple mode. These are names, never target IDs. Omit the field for ordinary steps, FAIL and NEEDS_RESEARCH. Invalid selections are rejected; routing is accepted only after configured validators/oracles succeed and persisted with result/attempt attribution before downstream execution. Nonselected branches remain skipped/never executed; the join waits for every selected success. The workflow authoring skill includes a full canonical example. Scheduling remains sequential.
+
 ## Old tool -> new tool
 
 | Former bridge tool | HTTP_API tool (integration `FACTORY_WORKSTREAM`) | Route |
@@ -84,18 +101,17 @@ The OpenAPI document is `factory/factory-service/openapi/factory-workstream-http
 
 ## AgentOS
 
-Restart AgentOS with its generic HTTP_API unsecure-HTTP opt-in enabled:
+The actual generic HTTP_API policy permits local/plain HTTP by default. For a local Factory, leave
+`AGENTOS_HTTP_API_DISALLOW_UNSECURE` unset or set it to `false`; `true` restricts outbound calls to public HTTPS.
+`AGENTOS_HTTP_API_ALLOW_UNSECURE` is not the current setting. Restart AgentOS when changing the policy or deploying
+the rebuilt HTTP plugin. Prefer public HTTPS and strict policy for remote deployments.
 
-```bash
-export AGENTOS_HTTP_API_ALLOW_UNSECURE=true
-# start AgentOS with your usual command
-```
-
-Factory exposes these two read-only spec URLs without a bearer (they are on the authentication filter's public
+Factory exposes these read-only spec URLs without a bearer (they are on the authentication filter's public
 allow-list):
 
 - `FACTORY_WORKER`: `http://127.0.0.1:8141/api/factory/openapi/factory-worker.yaml`
 - `FACTORY_WORKSTREAM`: `http://127.0.0.1:8141/api/factory/openapi/factory-workstream.yaml`
+- `FACTORY_AUTHORING`: `http://127.0.0.1:8141/api/factory/openapi/factory-authoring.yaml`
 
 In the AgentOS UI:
 
@@ -110,6 +126,69 @@ In the AgentOS UI:
 4. **Agents**: add `FACTORY_WORKSTREAM` explicitly to the steering agents only. Expected log:
    `HTTP_API integration 'FACTORY_WORKSTREAM': providing 8 tool(s)`.
 
+## Authoring installation (existing users must opt in)
+
+Rebuild/redeploy Factory (the dedicated spec is packaged by `processResources`) and restart Factory when replacing
+its binaries. Use the existing AgentOS `HTTP_API` plugin unchanged. No AgentOS rebuild, new plugin type or automatic
+credential/agent migration is needed.
+
+In the intended AgentOS namespace, create an Integration named **FACTORY_AUTHORING**, Type **HTTP_API**, using the
+ordinary operator's **BEARER_TOKEN Auth Setting** (token only, never stored in skill/YAML/source). Set Document URL
+to `http://127.0.0.1:8141/api/factory/openapi/factory-authoring.yaml`, Base URL to `http://127.0.0.1:8141`, and enable
+**Allow mutations**. Keep all operation/tag/path filters empty. Use your deployed HTTPS addresses instead when remote.
+The saved config payload (not a complete Integration entity, and containing no credential) is:
+
+```json
+{
+  "spec": {"url": "http://127.0.0.1:8141/api/factory/openapi/factory-authoring.yaml"},
+  "baseUrl": "http://127.0.0.1:8141",
+  "allowMutations": true
+}
+```
+
+Use the existing per-agent tool allowlist to restrict authoring tools to trusted agents. Standard HTTP_API
+confirmation semantics remain unchanged: GET operations need no confirmation; non-GET operations request
+confirmation on every call in the advanced agent. Simple agents do not enforce that confirmation, so restrict
+write tools with the per-agent allowlist. Enabling mutations, attaching an integration or authorizing registration
+does not bypass tool confirmation gates or authorize launch. The skill and OpenAPI document cannot bypass them.
+
+Explicitly attach **FACTORY_AUTHORING** to the authoring agent through the AgentOS agent editor. Attach
+**FACTORY_WORKSTREAM** separately only if the agent should be able to launch/inspect runs. Without an explicit
+integration binding the runtime grants none of its tools. Expected provider log:
+`HTTP_API integration 'FACTORY_AUTHORING': providing 4 tool(s)`:
+
+| Tool | Route |
+|---|---|
+| `FACTORY_AUTHORING__list_definitions` | `GET /api/factory/workflow-definitions` |
+| `FACTORY_AUTHORING__get_definition` | `GET /api/factory/workflow-definitions/{workflowType}/{version}` |
+| `FACTORY_AUTHORING__validate_definition` | `POST /api/factory/workflow-definitions/validate` |
+| `FACTORY_AUTHORING__register_definition` | `POST /api/factory/workflow-definitions` |
+
+Install the existing `factory-workflow-authoring` skill via **one** established mechanism:
+
+- Filesystem namespace: copy `factory/tools/skills/factory-workflow-authoring/` to
+  `<namespace.configPath>/skills/factory-workflow-authoring/` (or use `factory/tools` as that namespace's configPath
+  if appropriate). Add `factory-workflow-authoring` to the existing agent's `skillSelectors`; preserve other selectors
+  and integration bindings. Discovery is flat `skills/<name>/SKILL.md`, cached up to five minutes.
+- Persisted namespace: as a namespace admin, create/update a Skill through the AgentOS Skills UI or real
+  `POST /api/skills` with `namespaceId`, `name`, `description`, `body` (Markdown body without the frontmatter).
+  Select its exact name in the agent's skill picker (`skillSelectors`). No manual workflow-definition file import
+  is involved; this installs reusable guidance, not a workflow.
+
+Verify `GET /api/skills/effective?namespaceId=<uuid>` offers that name, and the agent definition shows the skill
+selector and integration bindings. Recreate/reload the agent on the next invocation after config changes; existing
+instantiated sessions may retain their prior tool set. New deployments should verify the four live tool names,
+not merely the presence of a skill file. The `readSkill` tool loads the selected skill body on demand.
+
+The skill contains exact structured `body` examples for validation→registration→**separate explicitly requested**
+launch. An identical canonical registration replay returns the same type/version/hash (`201`); differing content
+at that identity is `409`, never replacement. The optional UI `If-None-Match: *` precondition is intentionally not
+exposed by the authoring tool because it rejects even identical replays. Definitions remain organization-wide;
+launch requires `namespaceId` mapped in that organization, and the workstream's allowed types remain enforced.
+`FACTORY_WORKSTREAM__start_workflow` now accepts `definitionVersion` plus `definitionHash` together in `body`;
+use the exact registration response. Old callers without pins retain legacy behavior. Refresh the workstream spec
+cache (default 60 minutes, or restart/config change) to see the new fields. Registration never creates a run.
+
 ## Source tests you run yourself
 
 ```bash
@@ -119,6 +198,13 @@ In the AgentOS UI:
   --tests '*WorkstreamServiceControllerHttpTest' \
   --tests '*AgentStepResultControllerHttpTest' \
   --tests '*FactoryOpenApiControllerHttpTest' \
+  --tests '*WorkflowDefinitionAdminIntegrationTest' \
+  --tests '*WorkflowDefinitionAuthoringAuthTest' \
+  --console=plain
+
+./agentos/gradlew -p agentos :agentos-http-plugin:test \
+  --tests '*HttpApiToolProviderUnitSpec' \
+  --tests '*HttpApiConfigSchemaUnitSpec' \
   --console=plain
 ```
 
@@ -128,5 +214,5 @@ In the AgentOS UI:
   `nx run factory-service:generate-openapi-spec` (needs a forked boot, so it is not part of the unit tests).
 - A non-assigned integration exposing no tools is AgentOS agent-binding behaviour; verify it with one agent that
   has the integration and one that does not.
-- Plain HTTP must be explicitly enabled in AgentOS with `AGENTOS_HTTP_API_ALLOW_UNSECURE=true`.
-  This setting permits HTTP to any host, not only loopback; keep it disabled unless the deployment requires it.
+- Plain HTTP/private destinations follow `AGENTOS_HTTP_API_DISALLOW_UNSECURE` (unset/false allows them;
+  true restricts to public HTTPS). This is not restricted to loopback.

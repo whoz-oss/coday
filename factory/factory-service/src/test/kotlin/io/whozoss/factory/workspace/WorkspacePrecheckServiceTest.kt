@@ -45,13 +45,6 @@ class WorkspacePrecheckServiceTest {
     }
 
     @Test
-    fun `an inaccessible namespace fails with NAMESPACE_INACCESSIBLE`() {
-        every { readPort.isNamespaceAccessible(namespace, any()) } returns false
-
-        assertCode({ service().precheck(scope, namespace) }, WorkspacePrecheckCodes.NAMESPACE_INACCESSIBLE)
-    }
-
-    @Test
     fun `provisioning disabled fails with GIT_WORKSPACES_DISABLED`() {
         stubNamespaceAccessible()
 
@@ -132,7 +125,7 @@ class WorkspacePrecheckServiceTest {
 
         assertThat(report.enabled).isTrue
         assertThat(report.unverified).contains("agents")
-        assertThat(report.verified).contains("namespace", "gitWorkspaces", "gitConfiguration", "autoWorktree", "workstream")
+        assertThat(report.verified).contains("gitWorkspaces", "gitConfiguration", "autoWorktree", "workstream")
     }
 
     @Test
@@ -146,11 +139,11 @@ class WorkspacePrecheckServiceTest {
 
         assertThat(report.enabled).isTrue
         assertThat(report.unverified).isEmpty()
-        assertThat(report.verified).contains("namespace", "agents")
+        assertThat(report.verified).contains("agents")
     }
 
     @Test
-    fun `a classical run with requireGitWorkspace=false skips Git association checks while verifying namespace, workstream and agents`() {
+    fun `a classical run with requireGitWorkspace=false skips Git association checks while verifying workstream and agents`() {
         stubNamespaceAccessible()
         stubWorkstream()
         every { readPort.availableAgents(namespace, any()) } returns listOf("architect")
@@ -163,7 +156,7 @@ class WorkspacePrecheckServiceTest {
         )
 
         assertThat(report.enabled).isTrue
-        assertThat(report.verified).containsExactly("namespace", "workstream", "agents")
+        assertThat(report.verified).containsExactly("workstream", "agents")
         verify(exactly = 0) { readPort.namespaceGitState(any(), any()) }
     }
 

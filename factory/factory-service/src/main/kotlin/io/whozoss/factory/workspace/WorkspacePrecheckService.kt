@@ -54,16 +54,6 @@ class WorkspacePrecheckService(
         val verified = ArrayList<String>()
         val unverified = ArrayList<String>()
 
-        // 1. Namespace accessibility.
-        if (!readPort.isNamespaceAccessible(namespaceId, callerExternalUserId)) {
-            throw WorkspacePrecheckException(
-                WorkspacePrecheckCodes.NAMESPACE_INACCESSIBLE,
-                "The namespace '$namespaceId' is not accessible to the caller.",
-                details = mapOf("namespaceId" to namespaceId, "remedy" to "Grant the caller READ access to the namespace."),
-            )
-        }
-        verified += "namespace"
-
         if (requireGitWorkspace) {
             // 2. Git workspaces enabled (Factory kill-switch).
             if (!properties.gitWorkspacesEnabled) {

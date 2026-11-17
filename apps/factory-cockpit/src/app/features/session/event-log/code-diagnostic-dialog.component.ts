@@ -89,24 +89,24 @@ export type CodeDiagnosticDialogData = NonNullable<RunEvent['codeDiagnostic']>
       align-items: center;
       gap: 10px;
       margin-bottom: 16px;
-      color: var(--sf-text-muted);
-      font-family: var(--sf-mono);
+      color: var(--color-text-secondary);
+      font-family: var(--font-heading);
       font-size: 12px;
     }
     .state {
       padding: 3px 8px;
-      border: 1px solid var(--sf-outline);
-      border-radius: 999px;
+      border: 1px solid var(--color-divider);
+      border-radius: var(--radius-pill, 0);
       text-transform: uppercase;
       font-weight: 700;
     }
     .state--passed {
-      color: var(--sf-success);
+      color: var(--sf-success-text);
     }
     .state--failed,
     .state--timed_out,
     .state--refused {
-      color: var(--sf-error);
+      color: var(--sf-error-text);
     }
     h3 {
       margin: 18px 0 8px;
@@ -118,22 +118,22 @@ export type CodeDiagnosticDialogData = NonNullable<RunEvent['codeDiagnostic']>
     pre,
     .mono,
     dd {
-      font-family: var(--sf-mono);
+      font-family: var(--font-heading);
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
     pre {
       margin: 0;
       padding: 10px;
-      border-radius: 6px;
-      background: var(--sf-chrome);
-      color: var(--sf-text);
+      border-radius: var(--radius-sm, 0);
+      background: var(--color-surface-muted);
+      color: var(--color-text);
       font-size: 12px;
       line-height: 1.5;
     }
     .truncated {
       margin-left: 6px;
-      color: var(--sf-tertiary);
+      color: var(--sf-warning-text);
       font-size: 11px;
       font-weight: 500;
     }
@@ -145,7 +145,7 @@ export type CodeDiagnosticDialogData = NonNullable<RunEvent['codeDiagnostic']>
       font-size: 12px;
     }
     dt {
-      color: var(--sf-text-muted);
+      color: var(--color-text-secondary);
     }
     dd {
       margin: 0;

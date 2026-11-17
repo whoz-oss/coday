@@ -1,0 +1,53 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ds-theme-picker__skin {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-md, 0);
+  background: var(--color-surface, #dcdcde);
+  color: var(--color-text, #1d1f20);
+  font-family: var(--font-body, sans-serif);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+
+  &:focus-visible {
+    border-color: var(--color-accent, #5980a6);
+  }
+}
+
+.ds-theme-picker__mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-pill, 0);
+  background: transparent;
+  color: var(--color-text, #1d1f20);
+  cursor: pointer;
+  transition: background 120ms ease;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent, #5980a6);
+    outline-offset: 2px;
+  }
+
+  mat-icon {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+    line-height: 1;
+  }
+}

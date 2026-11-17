@@ -425,6 +425,7 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `legacy answer overload fails closed instead of dropping answering identity`() {
         val (adapter, _) = build()
 

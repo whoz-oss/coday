@@ -1,5 +1,11 @@
 package io.whozoss.factory.agentattempt
 
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import java.nio.file.Path
+import io.whozoss.factory.proxy.AgentOsProxyClient
+import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
@@ -183,6 +189,39 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         assertThat(adapter.reconcileCalls.get()).isEqualTo(1)
         assertThat(adapter.observeCalls.get()).isZero()
         assertThat(adapter.startTurns).isEmpty()
+    }
+
+    @Test
+    fun `recovery finalizes before continuation with missing proxy throwing proxy and failed enqueue`() {
+        for (mode in listOf("absent", "unavailable", "enqueue-fails")) {
+            val id = "continuation-$mode"
+            attempts.register(scope, attempt(id))
+            claimToRunning(id, "crashed-worker", leaseTtlMs = 0)
+            val adapter = FakeAdapter(
+                reconcileVerdict = { AgentOsExecutionVerdict.Succeeded(emptyMap()) },
+                observeVerdict = { error("must not observe") },
+            )
+            val proxy = if (mode == "absent") null else mockk<AgentOsProxyClient>()
+            proxy?.let { client ->
+                every { client.resolveRepoRoot(namespace, any()) } answers {
+                    assertThat(status(id)).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+                    error("AgentOS unavailable")
+                }
+            }
+            val submitter = mockk<SessionRunSubmissionService>()
+            val root = Path.of(".").toAbsolutePath().normalize().toString()
+            every { submitter.submit(scope, namespace, "wf-recovery", root, "attempt-recovered:$id", null) } answers {
+                assertThat(status(id)).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+                if (mode == "enqueue-fails") error("outbox unavailable")
+                SessionRunSubmissionService.SubmissionResult("submission", true, false, "pending")
+            }
+            val report = BridgeRecoveryWorker(attempts, adapter,
+                sessionRunSubmissionService = submitter, agentOsProxyClient = proxy).recover()
+            assertThat(report.finalized).isEqualTo(1)
+            assertThat(report.skipped).isZero()
+            assertThat(status(id)).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+            verify(exactly = 1) { submitter.submit(scope, namespace, "wf-recovery", root, "attempt-recovered:$id", null) }
+        }
     }
 
     @Test

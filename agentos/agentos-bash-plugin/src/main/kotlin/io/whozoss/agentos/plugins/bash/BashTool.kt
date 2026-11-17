@@ -20,11 +20,23 @@ import java.io.File
  *   is replaced by the value supplied by the LLM.
  *
  * The `inputSchema` is generated accordingly so the LLM sees the right contract.
+ *
+ * **Auth Setting.** When one is bound to the integration, the secret of the user running the case is
+ * available to the command as environment variables named after that Auth Setting ([BashAuthVariables]:
+ * `$GITHUB_TOKEN` for a setting named `GITHUB_TOKEN`, plus `$GITHUB_TOKEN_USERNAME` for basic auth). It is resolved
+ * by the first command that runs, shared by the tools of the integration through [auth], and never put in
+ * the command text. If the binding yields no usable credential, or the Auth Setting name cannot be a variable
+ * name, the command is not run and the tool answers `AUTH_MISSING`. The secret value is replaced by `***` in
+ * the stdout and stderr returned to the LLM; this is defence in depth, not a guarantee: a command can encode a
+ * value, and the output is truncated before the replacement. With no Auth Setting bound, nothing changes.
+ *
+ * @param auth The run's authentication; defaults to [BashRunAuth.NONE] (no variable injected).
  */
 class BashTool(
     private val toolConfig: BashToolConfig,
     private val integrationConfig: BashIntegrationConfig,
     configName: String? = null,
+    private val auth: BashRunAuth = BashRunAuth.NONE,
 ) : StandardTool<BashTool.Input> {
     private val isParameterised: Boolean = toolConfig.command.contains(PARAMETERS_PLACEHOLDER)
 
@@ -87,20 +99,39 @@ class BashTool(
                     errorType = "INVALID_INPUT",
                 )
 
+        // Resolved after the input check: an invalid call must not prompt the user to authorize.
+        val variables =
+            when (val authEnvironment = auth.environment()) {
+                is BashAuthEnvironment.None -> null
+                is BashAuthEnvironment.Variables -> authEnvironment
+                is BashAuthEnvironment.Missing -> return ToolExecutionResult.error(
+                    output = "Error: ${authEnvironment.reason}",
+                    errorType = "AUTH_MISSING",
+                    errorMessage = authEnvironment.reason,
+                )
+            }
+
         val workDir = resolveWorkingDirectory()
         val timeout = toolConfig.timeoutSeconds ?: integrationConfig.defaultTimeoutSeconds
 
         logger.debug { "Executing tool '${toolConfig.name}' in ${workDir.absolutePath} (timeout: ${timeout}s)" }
 
-        return when (val result = BashCommandExecutor.execute(resolvedCommand, workDir, timeout)) {
+        val result =
+            BashCommandExecutor.execute(
+                command = resolvedCommand,
+                workingDirectory = workDir,
+                timeoutSeconds = timeout,
+                environment = variables?.values ?: emptyMap(),
+            )
+        return when (result) {
             is BashExecutionResult.Completed ->
                 when {
                     result.exitCode != 0 -> ToolExecutionResult.error(
-                        output = formatCompleted(result),
+                        output = formatCompleted(result, variables),
                         errorType = "NONZERO_EXIT",
                         errorMessage = "Command exited with code ${result.exitCode}",
                     )
-                    else -> ToolExecutionResult.success(formatCompleted(result))
+                    else -> ToolExecutionResult.success(formatCompleted(result, variables))
                 }
             is BashExecutionResult.Timeout -> ToolExecutionResult.error(
                 output = "Error: command timed out after ${result.timeoutSeconds} seconds",
@@ -137,15 +168,18 @@ class BashTool(
         }
     }
 
-    private fun formatCompleted(result: BashExecutionResult.Completed): String =
-        buildString {
-            if (result.stdout.isNotBlank()) {
-                append(result.stdout)
+    private fun formatCompleted(result: BashExecutionResult.Completed, variables: BashAuthEnvironment.Variables?): String {
+        fun redacted(text: String): String = variables?.redact(text) ?: text
+        val stdout = redacted(result.stdout)
+        val stderr = redacted(result.stderr)
+        return buildString {
+            if (stdout.isNotBlank()) {
+                append(stdout)
             }
-            if (result.stderr.isNotBlank()) {
+            if (stderr.isNotBlank()) {
                 if (isNotEmpty()) append("\n\n")
                 append("Stderr:\n")
-                append(result.stderr)
+                append(stderr)
             }
             if (result.exitCode != 0) {
                 if (isNotEmpty()) append("\n\n")
@@ -160,4 +194,5 @@ class BashTool(
                 append(it)
             }
         }
+    }
 }

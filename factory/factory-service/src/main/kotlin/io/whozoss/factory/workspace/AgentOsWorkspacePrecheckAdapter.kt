@@ -28,12 +28,12 @@ class AgentOsWorkspacePrecheckAdapter(
 
     override fun isNamespaceAccessible(namespaceId: String, callerExternalUserId: String?): Boolean =
         runCatching { proxy.fetchNamespace(namespaceId, callerExternalUserId) != null }
-            .onFailure { logger.debug(it) { "Namespace '$namespaceId' could not be read; treating it as inaccessible" } }
+            .onFailure { logger.warn(it) { "Namespace '$namespaceId' could not be read (caller='$callerExternalUserId'); treating it as inaccessible" } }
             .getOrDefault(false)
 
     override fun namespaceGitState(namespaceId: String, callerExternalUserId: String?): NamespaceGitState? {
         val raw = runCatching { proxy.fetchNamespaceGit(namespaceId, callerExternalUserId) }
-            .onFailure { logger.debug(it) { "Namespace Git state for '$namespaceId' is unavailable" } }
+            .onFailure { logger.warn(it) { "Namespace Git state for '$namespaceId' is unavailable (caller='$callerExternalUserId')" } }
             .getOrNull()
             ?: return null
         return NamespaceGitState(
