@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.NullNode
 import io.mockk.clearAllMocks
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -15,16 +17,20 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptDto
+import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationRequest
+import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationResult
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.springframework.security.access.AccessDeniedException
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -42,8 +48,9 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     // same namespaceService/userService/permissionService mocks.
     val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
     val overlayScopeAuthorizer = OverlayScopeAuthorizer(permissionService, userService, externalIdentifierResolver)
+    val generationService = mockk<ScheduledPromptGenerationService>()
     val controller = ScheduledPromptController(
-        service, userService, permissionService, overlayScopeAuthorizer,
+        service, userService, permissionService, overlayScopeAuthorizer, generationService,
     )
 
     val namespaceId: UUID = UUID.randomUUID()
@@ -613,5 +620,40 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
 
         controller.update(id, dto(id = id)).flowConfiguration shouldBe null
+    }
+
+    // -------------------------------------------------------------------------
+    // generate — authorized like /effective, then delegated
+    // -------------------------------------------------------------------------
+
+    "generate delegates to the generation service with the authorized namespace and the caller" {
+        val request = ScheduledPromptGenerationRequest(namespaceId = namespaceId, description = "weekly check")
+        val expected = ScheduledPromptGenerationResult(scheduledPrompt = null, warnings = listOf("w"))
+        coEvery { generationService.generate(namespaceId, userId, request) } returns expected
+
+        controller.generate(request) shouldBe expected
+
+        coVerify(exactly = 1) { generationService.generate(namespaceId, userId, request) }
+    }
+
+    "generate is refused without Namespace READ, before any generation" {
+        every { userService.getCurrentUser() } returns regularUser()
+        every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
+        val request = ScheduledPromptGenerationRequest(namespaceId = namespaceId, description = "weekly check")
+
+        shouldThrow<AccessDeniedException> { controller.generate(request) }
+
+        coVerify(exactly = 0) { generationService.generate(any(), any(), any()) }
+    }
+
+    "generate requires WRITE on the namespace: Namespace READ alone is refused, before any generation" {
+        every { userService.getCurrentUser() } returns regularUser()
+        every { permissionService.hasPermission(any(), any(), any(), Action.READ) } returns true
+        every { permissionService.hasPermission(any(), any(), any(), Action.WRITE) } returns false
+        val request = ScheduledPromptGenerationRequest(namespaceId = namespaceId, description = "weekly check")
+
+        shouldThrow<AccessDeniedException> { controller.generate(request) }
+
+        coVerify(exactly = 0) { generationService.generate(any(), any(), any()) }
     }
 })

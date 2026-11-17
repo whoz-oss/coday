@@ -18,6 +18,7 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
+import io.whozoss.agentos.aiModel.ModelResolver
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthService
 import io.whozoss.agentos.auth.AuthServiceFactory
@@ -85,6 +86,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolResolverService: ToolResolverService = mockk()
     private val aiModelService: AiModelService = mockk()
     private val aiProviderService: AiProviderService = mockk()
+    private val modelResolver = ModelResolver(aiModelService, aiProviderService)
     private val namespaceService: NamespaceService = mockk()
     private val integrationConfigService: IntegrationConfigService = mockk(relaxed = true)
     private val userService: UserService = mockk(relaxed = true)
@@ -126,8 +128,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
             toolResolverService = toolResolverService,
-            aiModelService = aiModelService,
-            aiProviderService = aiProviderService,
+            modelResolver = modelResolver,
             namespaceService = namespaceService,
             integrationConfigService = integrationConfigService,
             userService = userService,
@@ -778,8 +779,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 AgentServiceImpl(
                     chatClientProvider = chatClientProvider,
                     toolResolverService = toolResolverService,
-                    aiModelService = aiModelService,
-                    aiProviderService = aiProviderService,
+                    modelResolver = modelResolver,
                     namespaceService = namespaceService,
                     integrationConfigService = integrationConfigService,
                     userService = userService,
@@ -1126,8 +1126,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 AgentServiceImpl(
                     chatClientProvider = chatClientProvider,
                     toolResolverService = toolResolverService,
-                    aiModelService = aiModelService,
-                    aiProviderService = aiProviderService,
+                    modelResolver = modelResolver,
                     namespaceService = namespaceService,
                     integrationConfigService = localIntegrationService,
                     userService = userService,

@@ -112,4 +112,11 @@ interface ScheduledPromptService : EntityService<ScheduledPrompt, UUID>, Ownersh
      * Uses a single batch [io.whozoss.agentos.prompt.PromptService.findByIds] call to avoid N+1 queries.
      */
     fun withContent(sps: List<ScheduledPrompt>): List<Pair<ScheduledPrompt, String>>
+
+    /**
+     * Whether a non-removed scheduled prompt already holds [name] at the exact scope `(namespaceId, userId)`: the
+     * uniqueness [createWithPrompt] enforces with a [io.whozoss.agentos.exception.ConflictException]. Names are
+     * compared as their slug, like that check.
+     */
+    fun isNameTaken(namespaceId: UUID?, userId: UUID?, name: String): Boolean
 }

@@ -22,11 +22,14 @@ import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.ResultActions
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.request
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.LocalDate
 import java.util.UUID
@@ -406,6 +409,53 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // POST /generate — Namespace WRITE required, checked before any generation
+        // -------------------------------------------------------------------------
+
+        "POST /generate returns 403 for a namespace MEMBER (READ only) and for a user with no namespace permission" {
+            val body = """{"namespaceId": "${namespace.id}", "description": "weekly check"}"""
+
+            // no permission at all: refused by the READ check that resolves the namespace
+            performGenerate(body).andExpect(status().isForbidden)
+
+            // MEMBER: READ passes, WRITE is refused
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+            performGenerate(body).andExpect(status().isForbidden)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST /generate — request validation runs before the method (and before any LLM call)
+        // -------------------------------------------------------------------------
+
+        "POST /generate returns 400 for an oversized, blank, or namespace-less request, or a non-object base, before any generation" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.ADMIN,
+            )
+
+            listOf(
+                """{"namespaceId": "${namespace.id}", "description": "${"x".repeat(2001)}"}""",
+                """{"namespaceId": "${namespace.id}", "description": "   "}""",
+                """{"namespaceId": "${namespace.id}", "description": "weekly", "prompt": "${"x".repeat(4001)}"}""",
+                """{"namespaceId": "${namespace.id}", "description": "weekly", "baseFlowConfiguration": [1, 2]}""",
+                """{"description": "weekly"}""",
+            ).forEach { body ->
+                mockMvc.perform(
+                    post("/api/scheduled-prompts/generate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body),
+                ).andExpect(status().isBadRequest)
+            }
+        }
+
+        // -------------------------------------------------------------------------
         // Cross-user isolation: bob cannot mutate alice's namespace resources
         // -------------------------------------------------------------------------
 
@@ -445,6 +495,29 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
             mockMvc.perform(delete("/api/scheduled-prompts/${sp.id}"))
                 .andExpect(status().isNotFound)
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Request helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * `generate` is a `suspend` controller method, so Spring MVC starts async processing and MockMvc
+     * reports the provisional 200 unless the async result is dispatched. An exception thrown by the
+     * method (e.g. the `AccessDeniedException` of the namespace checks) is that async result, and only
+     * the dispatch maps it to its real status. Requests rejected before the method runs (bean
+     * validation) are answered synchronously and must not use this helper.
+     */
+    private fun performGenerate(body: String): ResultActions {
+        val started =
+            mockMvc
+                .perform(
+                    post("/api/scheduled-prompts/generate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body),
+                ).andExpect(request().asyncStarted())
+                .andReturn()
+        return mockMvc.perform(asyncDispatch(started))
     }
 
     // -------------------------------------------------------------------------

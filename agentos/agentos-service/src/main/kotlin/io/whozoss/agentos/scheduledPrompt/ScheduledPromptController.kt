@@ -13,6 +13,8 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptApi
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptEffectiveRequest
+import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationRequest
+import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptGenerationResult
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptSearchRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -87,6 +89,7 @@ class ScheduledPromptController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
+    private val scheduledPromptGenerationService: ScheduledPromptGenerationService,
 ) : ScheduledPromptApi {
 
     private val crud =
@@ -232,6 +235,51 @@ class ScheduledPromptController(
         val disabled = scheduledPromptService.disable(id)
         val (sp, content) = scheduledPromptService.findByIdWithContent(disabled.id) ?: (disabled to "")
         return toDto(sp, content)
+    }
+
+    // -------------------------------------------------------------------------
+    // Generation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Proposes a scheduled prompt driving a LOOP agent from a natural-language description. Nothing is persisted.
+     *
+     * Authorized like creating a namespace-shared scheduled prompt (Namespace **WRITE**): one can only generate what
+     * one could create, and the call is billed to the namespace's model. The namespace is first resolved, with
+     * Namespace READ, by [OverlayScopeAuthorizer.authorizeEffectiveOrThrow], which also yields the caller; WRITE is
+     * then required by [OverlayScopeAuthorizer.authorizeCreateOrThrow]. Both checks need the request body, which is
+     * why this is not a declarative `@PreAuthorize` (see the class KDoc).
+     *
+     * Not part of [ScheduledPromptApi]: the SDK contract stays free of `suspend`, like `generateLoopConfig`, which is
+     * not part of `AgentConfigApi`.
+     */
+    @Operation(
+        summary = "Propose a scheduled prompt driving a LOOP agent from a natural-language description",
+        description = "Returns a proposal, nothing is persisted. Every field but the description is optional: " +
+            "missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. " +
+            "The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. " +
+            "Requires WRITE on the namespace.",
+    )
+    @PostMapping("/generate", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("isAuthenticated()")
+    suspend fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
+        val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
+            pluralLabel = "scheduled prompts",
+            namespaceId = request.namespaceId,
+            namespaceExternalId = request.namespaceExternalId,
+        )
+        val namespaceId = requireNotNull(scope.namespaceId) { "authorizeEffectiveOrThrow resolved no namespace" }
+        val callerId = requireNotNull(scope.userId) { "authorizeEffectiveOrThrow resolved no caller" }
+        overlayScopeAuthorizer.authorizeCreateOrThrow(
+            entityLabel = "ScheduledPrompt",
+            requestedNamespaceId = namespaceId,
+            requestedUserId = null,
+        )
+        logger.info {
+            "[ScheduledPrompt] Generating a scheduled prompt proposal in namespace $namespaceId (user=$callerId, " +
+                "base=${request.baseFlowConfiguration != null})"
+        }
+        return scheduledPromptGenerationService.generate(namespaceId, callerId, request)
     }
 
     // -------------------------------------------------------------------------

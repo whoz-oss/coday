@@ -13,8 +13,11 @@ import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigApi
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
 import io.whozoss.agentos.sdk.api.agentConfig.AgentDefinitionDto
+import io.whozoss.agentos.sdk.api.agentConfig.LoopConfigGenerationRequest
+import io.whozoss.agentos.sdk.api.agentConfig.LoopConfigGenerationResult
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
+import io.whozoss.agentos.workflow.LoopConfigGenerationService
 import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -68,6 +71,7 @@ class AgentConfigController(
     private val userService: UserService,
     permissionService: PermissionService,
     @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
+    private val loopConfigGenerationService: LoopConfigGenerationService,
 ) : AgentConfigApi {
     private val crud =
         EntityCrudDelegate(
@@ -246,6 +250,70 @@ class AgentConfigController(
             advancedExecution = definition.executionMode == ExecutionMode.ADVANCED,
             namespaceId = definition.namespaceId,
             userId = definition.userId,
+        )
+    }
+
+    /**
+     * POST /api/agent-configs/{id}/loop-config/generate
+     *
+     * Translates a natural-language [LoopConfigGenerationRequest.description] into the
+     * search block `{ "search": { "tool", "params" } }` of a loop configuration. It is a proposal,
+     * not a complete loop configuration: the `act` block is missing and is left to the caller.
+     * The LLM is resolved from the agent's own model configuration.
+     *
+     * Authorization: WRITE on the AgentConfig, declarative. For a namespace-scoped agent it is held by the namespace
+     * ADMINs, the bar of `POST /api/scheduled-prompts/generate`: the call is billed to the namespace's model, and its
+     * output is only useful to someone who can configure a loop there. For a platform agent it is super-admin only.
+     *
+     * The [LoopConfigGenerationRequest.searchToolName] must match a tool available to
+     * this agent. When it does not, the response has `loopConfig = null` and a descriptive
+     * message in `warning`.
+     *
+     * @param id  AgentConfig UUID.
+     * @param namespaceId  Required for platform-level agent configs (namespaceId = null);
+     *   ignored for namespace-scoped ones.
+     */
+    @Operation(
+        summary = "Generate the loop-config search block from a natural-language description",
+        description = "Uses the agent's configured LLM to translate a plain-English description " +
+            "into the `search` block (`tool` and `params`) of a loop configuration. The `act` block is not " +
+            "generated: the result is a proposal to complete, not a complete loop configuration.",
+    )
+    @PostMapping(
+        "/{id}/loop-config/generate",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    @HideOnAccessDenied
+    suspend fun generateLoopConfig(
+        @PathVariable id: UUID,
+        @RequestParam(required = false) namespaceId: UUID?,
+        @Valid @RequestBody request: LoopConfigGenerationRequest,
+    ): LoopConfigGenerationResult {
+        val agentConfig =
+            agentConfigService.findById(id)
+                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val resolvedNamespaceId =
+            agentConfig.namespaceId ?: namespaceId
+                ?: throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "namespaceId query parameter is required for platform-level agent configs",
+                )
+        val resolvedUserId = userService.getCurrentUser().metadata.id
+        logger.info {
+            "[AgentConfig] Generating loop config for agent $id in namespace $resolvedNamespaceId " +
+                "(user=$resolvedUserId, tool=${request.searchToolName ?: "<auto>"})"
+        }
+        val definition =
+            agentService.resolveDefinition(
+                agentConfigId = id,
+                namespaceId = resolvedNamespaceId,
+                userId = resolvedUserId,
+            )
+        return loopConfigGenerationService.generate(
+            definition = definition,
+            searchToolName = request.searchToolName,
+            description = request.description,
         )
     }
 

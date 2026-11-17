@@ -30,7 +30,8 @@ class AgentConfigControllerExportSpec : StringSpec({
     val agentService = mockk<AgentService>()
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = AgentConfigController(service, agentService, userService, permissionService, yamlExportMapper())
+    val loopConfigGenerationService = mockk<io.whozoss.agentos.workflow.LoopConfigGenerationService>(relaxed = true)
+    val controller = AgentConfigController(service, agentService, userService, permissionService, yamlExportMapper(), loopConfigGenerationService)
 
     val namespaceId = UUID.randomUUID()
 

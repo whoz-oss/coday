@@ -223,6 +223,9 @@ class ScheduledPromptServiceImpl(
         }
     }
 
+    override fun isNameTaken(namespaceId: UUID?, userId: UUID?, name: String): Boolean =
+        repository.findByTriple(namespaceId, userId, name) != null
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

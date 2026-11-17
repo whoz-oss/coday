@@ -14,12 +14,13 @@ The SDK is the stable public API. Plugins depend only on `agentos-sdk` (via `com
 | Package | Responsibility |
 |---|---|
 | `agent` | `AgentService` / `AgentRegistry` / `AgentDiscoveryService` — runtime agent lifecycle |
-| `aiModel` | `AiModelRegistry` / `AiModelDiscoveryService` — AI model configuration registry |
+| `aiModel` | `AiModelRegistry` / `AiModelDiscoveryService` — AI model configuration registry; `ModelResolver` — model + provider (with user overlays) for a namespace, shared by agent resolution and the generation features |
 | `aiProvider` | `AiProviderRegistry` / `AiProviderDiscoveryService` — AI provider registry |
 | `caseFlow` | `Case` / `CaseService` / `CaseController` — case (conversation) lifecycle |
 | `caseEvent` | `CaseEvent` subtypes, emitter, SSE controller — event streaming |
 | `chat` | `ChatClientProvider` / `ChatModelFactory` — Spring AI client construction |
 | `entity` | `EntityController` — abstract CRUD base for all REST resources |
+| `generation` | `StructuredLlmClient` — one-shot, non-streaming LLM call returning a small JSON object, run on a bounded dispatcher (`agentos.generation.max-concurrent-calls`) with a timeout (`agentos.generation.timeout-seconds`); shared by the proposal-only generation features (loop-config search block, scheduled-prompt proposal) |
 | `namespace` | `Namespace` / `NamespaceController` — multi-tenancy grouping |
 | `plugin` | `PluginService` — PF4J plugin loading and management |
 | `tool` | `ToolRegistry` / `ToolExecutorService` / `ToolController` — tool registry and execution |
@@ -63,6 +64,14 @@ bodies and responses.
 Because routing annotations live exclusively on the controller (never on the interface
 or on `EntityController`), Spring MVC cannot register duplicate routes regardless of
 how many base classes or interfaces a controller inherits from.
+
+**Exception: the `suspend` generation endpoints are not part of any `*Api` interface.**
+`POST /api/agent-configs/{id}/loop-config/generate` and `POST /api/scheduled-prompts/generate`
+exist only on their controllers (and in the OpenAPI spec). They are `suspend`, because they wait on
+LLM calls, and a `suspend` method in an `*Api` interface would force every Feign implementor to be
+coroutine-aware. Their DTOs still live in `api.*`; consumers call them through the generated client
+or declare the method on their own Feign interface. `AgentConfigApi.getDefinition` predates this rule
+and stays `suspend`.
 
 | Package | Responsibility |
 |---|---|

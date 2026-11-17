@@ -20,6 +20,10 @@ import { ScheduledPrompt } from '../model/scheduled-prompt'
 // @ts-ignore
 import { ScheduledPromptEffectiveRequest } from '../model/scheduled-prompt-effective-request'
 // @ts-ignore
+import { ScheduledPromptGenerationRequest } from '../model/scheduled-prompt-generation-request'
+// @ts-ignore
+import { ScheduledPromptGenerationResult } from '../model/scheduled-prompt-generation-result'
+// @ts-ignore
 import { ScheduledPromptSearchRequest } from '../model/scheduled-prompt-search-request'
 
 // @ts-ignore
@@ -316,6 +320,87 @@ export class ScheduledPromptControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<ScheduledPrompt>('patch', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Propose a scheduled prompt driving a LOOP agent from a natural-language description
+   * Returns a proposal, nothing is persisted. Every field but the description is optional: missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. Requires WRITE on the namespace.
+   * @param scheduledPromptGenerationRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public generateScheduledPrompt(
+    scheduledPromptGenerationRequest: ScheduledPromptGenerationRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<ScheduledPromptGenerationResult>
+  public generateScheduledPrompt(
+    scheduledPromptGenerationRequest: ScheduledPromptGenerationRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<ScheduledPromptGenerationResult>>
+  public generateScheduledPrompt(
+    scheduledPromptGenerationRequest: ScheduledPromptGenerationRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<ScheduledPromptGenerationResult>>
+  public generateScheduledPrompt(
+    scheduledPromptGenerationRequest: ScheduledPromptGenerationRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (scheduledPromptGenerationRequest === null || scheduledPromptGenerationRequest === undefined) {
+      throw new Error(
+        'Required parameter scheduledPromptGenerationRequest was null or undefined when calling generateScheduledPrompt.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/scheduled-prompts/generate`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<ScheduledPromptGenerationResult>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: scheduledPromptGenerationRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
