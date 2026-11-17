@@ -11,6 +11,7 @@ import { Recurrence } from './recurrence'
 import { Planning } from './planning'
 
 export interface ScheduledPromptGenerationRequest {
+  baseFlowConfiguration?: any | null
   description: string
   /**
    * LOOP agent running the automation. Inferred when absent.

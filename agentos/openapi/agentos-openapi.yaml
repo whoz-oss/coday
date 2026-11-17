@@ -6115,6 +6115,14 @@ components:
     ScheduledPromptGenerationRequest:
       type: object
       properties:
+        baseFlowConfiguration:
+          $ref: "#/components/schemas/JsonNode"
+          description: "Flow configuration to start from, `{ search: { tool, params\
+            \ }, act: { agentName, prompt } }`, every part optional. The generation\
+            \ only enriches it: `search.tool` is used as the search tool, `search.params`\
+            \ are kept as they are and only completed, `act.agentName` is the target\
+            \ agent and `act.prompt` the prompt. An explicit request field wins over\
+            \ its counterpart here."
         description:
           type: string
           maxLength: 2000
