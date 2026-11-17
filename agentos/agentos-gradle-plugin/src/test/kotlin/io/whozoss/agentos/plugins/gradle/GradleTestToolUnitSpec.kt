@@ -222,7 +222,7 @@ class GradleTestToolUnitSpec :
         // --- tool contract ---
 
         "runTests returns ERROR mentioning targets when mixed with legacy params" {
-            val result = tool.runTests(listOf("pkg.A*"), null, null, listOf(TestTarget("a")), timeoutSeconds = 60)
+            val result = tool.runTests(listOf("pkg.A*"), null, listOf(TestTarget("a")), timeoutSeconds = 60)
 
             result shouldStartWith "ERROR"
             result shouldContain "targets"
@@ -461,7 +461,7 @@ class GradleTestToolUnitSpec :
                 val result = GradleTestTool(root).runTests(null, timeoutSeconds = 60)
 
                 result shouldStartWith "ERROR"
-                result shouldContain "gradlewPath"
+                result shouldContain "gradlewDirectory"
             } finally {
                 root.deleteRecursively()
             }

@@ -35,7 +35,6 @@ class GradleTestTool(
     data class Input(
         val testFilter: List<String>? = null,
         val subproject: String? = null,
-        val gradlewPath: String? = null,
         val targets: List<TestTarget>? = null,
         val timeoutSeconds: Int? = null,
     )
@@ -44,7 +43,7 @@ class GradleTestTool(
 
     override val description: String =
         """Run tests in the project using Gradle. Supports multiple test frameworks.
-Pass an optional Gradle subproject to narrow execution to a single module (avoids running all modules).
+Pass an optional Gradle subproject to narrow execution to a single module (avoids running all modules). Without it the root build runs; on a composite build (includeBuild), pass 'subproject' to target one of its included builds.
 ${GradleRunner.SUBPROJECT_NAME_HINT}
 'timeoutSeconds' is mandatory (1 to ${ToolTimeout.MAX_SECONDS}): the run is killed when it is exceeded.
 Pass an optional list of test filters; the tool auto-detects the framework from the filter syntax.
@@ -69,7 +68,6 @@ testBalloon filter syntax (only for testBalloon suites, detected by '↘' separa
   These filters are passed via TESTBALLOON_INCLUDE_PATTERNS env var.
 
 You may mix both syntaxes in the same testFilter list.
-${GradleRunner.GRADLEW_NOT_FOUND_HINT}
 Returns a structured summary: total/passed/failed counts,
 and for each failure: class, method, exception type, message, relevant stacktrace frames and the root cause
 (the last 'Caused by:' with its frames). Nothing more exists to find: no hidden detail in build/ files.
@@ -99,9 +97,8 @@ To check again, re-run this tool."""
                         ToolSchema.string(
                             "Optional Gradle subproject name. ${GradleRunner.SUBPROJECT_NAME_HINT} " +
                                 "When provided, only that module's tests are executed via ':<subproject>:test'. " +
-                                "Leave blank or null to run tests in all modules.",
+                                "Leave blank or null to run the tests of the root build.",
                         ),
-                    "gradlewPath" to ToolSchema.string(GradleRunner.GRADLEW_PATH_PARAM_DESCRIPTION),
                     "targets" to
                         ToolSchema.objectArray(
                             description =
@@ -142,7 +139,6 @@ To check again, re-run this tool."""
             runTests(
                 testFilter = params.testFilter,
                 subproject = params.subproject,
-                gradlewPath = params.gradlewPath,
                 targets = params.targets,
                 timeoutSeconds = timeoutSeconds,
             )
@@ -152,7 +148,6 @@ To check again, re-run this tool."""
     fun runTests(
         testFilter: List<String>?,
         subproject: String? = null,
-        gradlewPath: String? = null,
         targets: List<TestTarget>? = null,
         timeoutSeconds: Int,
     ): String {
@@ -165,7 +160,7 @@ To check again, re-run this tool."""
             }
         val gradlew =
             try {
-                runner.resolveGradlew(gradlewPath)
+                runner.resolveGradlew()
             } catch (e: GradlewNotFoundException) {
                 return "ERROR: ${e.message}"
             }
@@ -204,7 +199,7 @@ To check again, re-run this tool."""
                     "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}"
             }
 
-            val xmlReports = parser.collect(runner.projectDir, runId)
+            val xmlReports = parser.collect(runner.gradleDir, runId)
             logger.info { "[GradleTestTool] xml reports found: ${xmlReports.size}" }
 
             if (xmlReports.isEmpty()) {
@@ -212,7 +207,9 @@ To check again, re-run this tool."""
                 return if (result.exitCode == 0) {
                     "SUCCESS (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput}"
                 } else {
-                    "FAILURE (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput}"
+                    val hint = runner.compositeBuildHint(result.exitCode, tasks.any { it.subproject != null }, gradlew)
+                    "FAILURE (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput}" +
+                        (hint?.let { "\n\n$it" } ?: "")
                 }
             }
 
@@ -226,7 +223,7 @@ To check again, re-run this tool."""
             "ERROR: ${e.message}"
         } finally {
             initScript.delete()
-            parser.delete(runner.projectDir, runId)
+            parser.delete(runner.gradleDir, runId)
         }
     }
 

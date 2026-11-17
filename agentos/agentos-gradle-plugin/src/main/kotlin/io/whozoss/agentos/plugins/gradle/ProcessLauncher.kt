@@ -16,6 +16,8 @@ import kotlin.time.Duration.Companion.seconds
  * @property timeout the process (and its whole tree) is killed when it runs longer.
  * @property workDir directory the process runs in.
  * @property env entries added to the inherited environment (they win over inherited ones).
+ * @property inheritEnvironment tells which variables of the parent environment the process inherits, by name:
+ * the others are removed before [env] is added. Everything by default.
  * @property maxOutputChars max chars of the merged stdout+stderr kept; the first ones are kept.
  * @property drainGrace max time to wait for the output drain once the process exited or was killed:
  * a background child may keep the pipe open long after.
@@ -28,6 +30,7 @@ internal data class ProcessSpec(
     val env: Map<String, String>,
     val maxOutputChars: Int,
     val drainGrace: Duration = DEFAULT_DRAIN_GRACE,
+    val inheritEnvironment: (String) -> Boolean = { true },
     val label: String,
 ) {
     companion object {
@@ -74,6 +77,7 @@ internal object ProcessLauncher : KLogging() {
             ProcessBuilder(spec.command)
                 .directory(spec.workDir)
                 .redirectErrorStream(true)
+        builder.environment().keys.retainAll { spec.inheritEnvironment(it) }
         builder.environment().putAll(spec.env)
         val process = builder.start()
 

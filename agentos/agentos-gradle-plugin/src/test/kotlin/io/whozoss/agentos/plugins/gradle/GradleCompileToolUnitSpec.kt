@@ -155,8 +155,9 @@ class GradleCompileToolUnitSpec :
                 root.resolve("settings.gradle.kts").createNewFile()
                 val sub = root.resolve("sub").also { it.mkdirs() }
 
-                val tool = GradleCompileTool(GradleRunner(sub))
-                tool.resolveProjectRoot() shouldBe root
+                GradleCompileTool(GradleRunner(root)).resolveProjectRoot() shouldBe root
+                // the settings file of a parent is not looked for
+                GradleCompileTool(GradleRunner(root, gradlewDirectory = sub)).resolveProjectRoot() shouldBe null
             } finally {
                 root.deleteRecursively()
             }
@@ -196,6 +197,48 @@ class GradleCompileToolUnitSpec :
                 result shouldNotBe null
                 result!!.first shouldBe "cli"
                 result.second shouldBe srcFile.absolutePath
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+        "resolveTargets refuses a file outside the build directory, even one that would belong to a module" {
+            val root = Files.createTempDirectory("agentos-compile-outside").toFile()
+            try {
+                val build = root.resolve("build-dir").also { it.mkdirs() }
+                build.resolve("settings.gradle.kts").createNewFile()
+                val sibling = root.resolve("sibling").also { it.mkdirs() }
+                sibling.resolve("build.gradle.kts").createNewFile()
+                val outside = sibling.resolve("src/Foo.kt").also {
+                    it.parentFile.mkdirs()
+                    it.createNewFile()
+                }
+
+                val tool = GradleCompileTool(GradleRunner(root, gradlewDirectory = build))
+
+                tool.resolveTargets(resolvedSubproject = null, resolvedFile = outside.absolutePath) shouldBe null
+                tool.resolveTargets(resolvedSubproject = null, resolvedFile = "/etc/passwd") shouldBe null
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+        "resolveTargets resolves a relative file from the project directory when the build is in a subdirectory" {
+            val root = Files.createTempDirectory("agentos-compile-relative").toFile()
+            try {
+                val backend = root.resolve("backend").also { it.mkdirs() }
+                backend.resolve("settings.gradle.kts").createNewFile()
+                val cli = backend.resolve("cli").also { it.mkdirs() }
+                cli.resolve("build.gradle.kts").createNewFile()
+                cli.resolve("src/Foo.kt").also {
+                    it.parentFile.mkdirs()
+                    it.createNewFile()
+                }
+
+                val tool = GradleCompileTool(GradleRunner(root, gradlewDirectory = backend))
+
+                tool.resolveTargets(resolvedSubproject = null, resolvedFile = "backend/cli/src/Foo.kt") shouldBe
+                    ("cli" to "backend/cli/src/Foo.kt")
             } finally {
                 root.deleteRecursively()
             }
@@ -252,7 +295,7 @@ class GradleCompileToolUnitSpec :
                 val result = GradleCompileTool(GradleRunner(root)).compile(subproject = null, file = null, timeoutSeconds = 60)
 
                 result shouldStartWith "ERROR"
-                result shouldContain "gradlewPath"
+                result shouldContain "gradlewDirectory"
             } finally {
                 root.deleteRecursively()
             }

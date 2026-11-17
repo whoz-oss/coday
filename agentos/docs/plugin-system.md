@@ -33,10 +33,46 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-mcp-plugin` | `MCP_STDIO`, `MCP_HTTP` | Tools of a local (stdio) or remote (HTTP) MCP server |
 | `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
+| `agentos-gradle-plugin` | `GRADLE` | Structured Gradle tools (`gradle_compile`, `gradle_tests`, `gradle_dependency_insight`) run through the `gradlew` of a configured directory (see [GRADLE integration](#gradle-integration)) |
 
 `./gradlew deployPlugins` must be re-run after changing any plugin (it cleans, rebuilds and
 copies every plugin JAR into `plugins/`). For a one-shot local run, `./gradlew bootRunWithPlugins`
 deploys the plugins and then boots `agentos-service`.
+
+### GRADLE integration
+
+The `GRADLE` integration exposes three tools, named `<configName>__<tool>` like the other plugins:
+`gradle_compile` (main and test sources, compiler diagnostics parsed), `gradle_tests` (results read from the
+JUnit XML reports, with `--tests` and testBalloon filters) and `gradle_dependency_insight`. Each call must give
+a `timeoutSeconds` (1 to 300): the run is killed beyond it, and cancelling the case kills the whole Gradle
+process tree.
+
+```yaml
+name: GRADLE
+integrationType: GRADLE
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"   # root of the project: nothing outside it is ever run
+  gradlewDirectory: backend                       # directory that contains gradlew, inside projectDirectory (default: projectDirectory)
+  javaHome: /path/to/jdk                          # optional, passed as JAVA_HOME
+  inheritEnvironment: [ORG_GRADLE_PROJECT_token]  # optional, see below
+```
+
+What is executed is decided by the configuration, never by the agent: the tools have no path parameter.
+`gradlew` is looked for in `gradlewDirectory` only (no search in the parent directories or the
+subdirectories) and both the directory and the file must be inside `projectDirectory`, symbolic links
+resolved. The `settings.gradle(.kts)` read for module detection and for the composite-build note is the one of
+`gradlewDirectory`. For a repository with several Gradle builds, declare one integration per build.
+
+Gradle does not inherit the environment of the service. It gets an allow-list: `PATH`, `HOME`, `USER`,
+`LOGNAME`, `SHELL`, `TMPDIR`/`TMP`/`TEMP`, `TZ`, `LANG`/`LANGUAGE`/`LC_*`, `TERM`, `JAVA_HOME`, the proxy
+variables, `SSL_CERT_FILE`/`SSL_CERT_DIR` and `GRADLE_USER_HOME`/`GRADLE_OPTS`/`GRADLE_RO_DEP_CACHE`, so the LLM
+keys and tokens of the service are not visible to the build or its tests. A variable a build really needs is
+listed in `inheritEnvironment`. A proxy variable can carry credentials in its URL: it is the one default that can.
+
+The tools run the build of the repository (`gradlew`, `build.gradle.kts`, `buildSrc`, the wrapper distribution
+URL, init scripts) with the rights of the AgentOS service. An agent that can write to the repository can
+therefore get code executed through them, as with the `BASH` integration: the confinement and the environment
+filter reduce the blast radius, they are not a sandbox. Give the integration only to agents you trust with that.
 
 ## Filesystem Plugin
 

@@ -36,13 +36,16 @@ private fun awaitCondition(
     return condition()
 }
 
+/** Variables a shell adds by itself to the environment it runs in. */
+private val SHELL_OWN_VARIABLES = setOf("PWD", "OLDPWD", "SHLVL", "_")
+
 class GradleRunnerUnitSpec :
     StringSpec({
 
         val tmpDir = File(System.getProperty("java.io.tmpdir"))
         val runner = GradleRunner(tmpDir)
 
-        // ── timeout ─────────────────────────────────────────────────────────────────────────
+        // ── timeout ───────────────────────────────────────────────────────────────
 
         "run returns timedOut=true and kills process before wall-clock exceeds timeout" {
             // sleep for 60 s — should be killed well before that
@@ -72,7 +75,7 @@ class GradleRunnerUnitSpec :
             result.rawOutput shouldContain "partial output"
         }
 
-        // ── interruption ────────────────────────────────────────────────────────────────────────
+        // ── interruption ───────────────────────────────────────────────────────────────
 
         "interrupting run kills the whole process tree and keeps the interrupt flag" {
             withTempDir("agentos-run-interrupt") { root ->
@@ -109,7 +112,7 @@ class GradleRunnerUnitSpec :
             }
         }
 
-        // ── drain ───────────────────────────────────────────────────────────────────────────
+        // ── drain ───────────────────────────────────────────────────────────────
 
         "run does not block on a background child that keeps the pipe open after the process exited" {
             val impatient = GradleRunner(tmpDir, drainGrace = 300.milliseconds)
@@ -124,7 +127,7 @@ class GradleRunnerUnitSpec :
             elapsed shouldBeLessThan 2_000L
         }
 
-        // ── normal exit ──────────────────────────────────────────────────────────────────
+        // ── normal exit ───────────────────────────────────────────────────────────────
 
         "run captures output and exit code on normal exit" {
             val command = listOf("sh", "-c", "echo hello; exit 0")
@@ -141,7 +144,7 @@ class GradleRunnerUnitSpec :
             result.exitCode shouldBe 42
         }
 
-        // ── concurrency ──────────────────────────────────────────────────────────────────
+        // ── concurrency ───────────────────────────────────────────────────────────────
 
         "two concurrent runs do not block each other beyond their own duration" {
             // Each process sleeps 1 s and then exits. If they were sequential, total ≥ 2 s.
@@ -163,18 +166,69 @@ class GradleRunnerUnitSpec :
             elapsed shouldBeLessThan 2_500L
         }
 
-        // ── environment and output bound ─────────────────────────────────────────────────────
+        // ── environment and output bound ──────────────────────────────────────────────────────────
 
-        "run injects JAVA_HOME of the running JVM" {
+        "run sets JAVA_HOME to the configured javaHome" {
+            val result = GradleRunner(tmpDir, javaHome = "/configured/jdk").run(listOf("sh", "-c", "echo \$JAVA_HOME"))
+
+            result.rawOutput.trim() shouldBe "/configured/jdk"
+        }
+
+        "run leaves the JAVA_HOME of the environment alone without a javaHome" {
             val result = runner.run(listOf("sh", "-c", "echo \$JAVA_HOME"))
 
-            result.rawOutput.trim() shouldBe System.getProperty("java.home")
+            result.rawOutput.trim() shouldBe (System.getenv("JAVA_HOME") ?: "")
         }
 
         "run lets extraEnv override JAVA_HOME" {
             val result = runner.run(listOf("sh", "-c", "echo \$JAVA_HOME"), extraEnv = mapOf("JAVA_HOME" to "/custom/jdk"))
 
             result.rawOutput.trim() shouldBe "/custom/jdk"
+        }
+
+        "run only passes the allowed variables of the service environment" {
+            val names =
+                runner
+                    .run(listOf("env"))
+                    .rawOutput
+                    .lines()
+                    .filter { it.contains('=') }
+                    .map { it.substringBefore('=') }
+
+            names.filterNot { it in SHELL_OWN_VARIABLES || GradleRunner.isInheritedVariable(it) } shouldBe emptyList()
+            ("PATH" in names) shouldBe true
+        }
+
+        "run lets extraEnv add a variable the default set does not carry" {
+            val result = runner.run(listOf("sh", "-c", "echo \$AGENTOS_GRADLE_PROBE"), extraEnv = mapOf("AGENTOS_GRADLE_PROBE" to "yes"))
+
+            result.rawOutput.trim() shouldBe "yes"
+        }
+
+        "run passes a variable of the service environment only when the integration lists it" {
+            // any variable of the test process that the default set leaves out, if there is one
+            val secret = System.getenv().keys.firstOrNull { !GradleRunner.isInheritedVariable(it) }
+            if (secret != null) {
+                val hidden = GradleRunner(tmpDir).run(listOf("printenv", secret))
+                val listed = GradleRunner(tmpDir, inheritedEnvironment = setOf(secret)).run(listOf("printenv", secret))
+
+                hidden.exitCode shouldBe 1
+                listed.exitCode shouldBe 0
+            }
+        }
+
+        "the default environment carries the build basics and no secret-looking variable" {
+            listOf("PATH", "HOME", "JAVA_HOME", "LANG", "LC_ALL", "GRADLE_USER_HOME", "HTTPS_PROXY").forEach {
+                GradleRunner.isInheritedVariable(it) shouldBe true
+            }
+            listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "SPRING_NEO4J_AUTHENTICATION_PASSWORD").forEach {
+                GradleRunner.isInheritedVariable(it) shouldBe false
+            }
+        }
+
+        "an integration can add a variable to the default environment" {
+            GradleRunner.isInheritedVariable("ORG_GRADLE_PROJECT_token") shouldBe false
+            GradleRunner.isInheritedVariable("ORG_GRADLE_PROJECT_token", setOf("ORG_GRADLE_PROJECT_token")) shouldBe true
         }
 
         "run bounds the output and says so at its end" {
@@ -185,18 +239,26 @@ class GradleRunnerUnitSpec :
             (result.rawOutput.length < GradleRunner.MAX_OUTPUT_CHARS + 100) shouldBe true
         }
 
-        // ── resolveGradlew ──────────────────────────────────────────────────────────────────────
+        // ── resolveGradlew ──────────────────────────────────────────────────────────
 
-        "resolveGradlew finds gradlew in a parent directory" {
-            withTempDir("agentos-gradlew-parent") { root ->
+        "resolveGradlew finds the gradlew of the project directory" {
+            withTempDir("agentos-gradlew-project") { root ->
                 val gradlew = root.resolve("gradlew").also { it.createNewFile() }
-                val sub = root.resolve("cli").also { it.mkdirs() }
 
-                GradleRunner(sub).resolveGradlew() shouldBe gradlew.absolutePath
+                GradleRunner(root).resolveGradlew() shouldBe gradlew.path
             }
         }
 
-        "resolveGradlew throws and lists gradlew candidates found in direct subdirectories" {
+        "resolveGradlew does not look in the parent directories" {
+            withTempDir("agentos-gradlew-no-parent") { root ->
+                root.resolve("gradlew").createNewFile()
+                val sub = root.resolve("cli").also { it.mkdirs() }
+
+                shouldThrow<GradlewNotFoundException> { GradleRunner(sub).resolveGradlew() }
+            }
+        }
+
+        "resolveGradlew does not look in the subdirectories, but lists them in the error" {
             withTempDir("agentos-gradlew-subdir") { root ->
                 val gradlew =
                     root.resolve("backend/gradlew").also {
@@ -206,54 +268,234 @@ class GradleRunnerUnitSpec :
 
                 val error = shouldThrow<GradlewNotFoundException> { GradleRunner(root).resolveGradlew() }
 
-                error.message!! shouldContain gradlew.absolutePath
-                error.message!! shouldContain "gradlewPath"
+                error.message!! shouldContain gradlew.parentFile.absolutePath
+                error.message!! shouldContain "gradlewDirectory"
             }
         }
 
-        "resolveGradlew throws with a search hint when no gradlew exists anywhere nearby" {
+        "resolveGradlew says it is a configuration issue when there is no gradlew at all" {
             withTempDir("agentos-gradlew-none") { root ->
                 val error = shouldThrow<GradlewNotFoundException> { GradleRunner(root).resolveGradlew() }
 
                 error.message!! shouldContain root.absolutePath
-                error.message!! shouldContain "gradlewPath"
-                error.message!! shouldContain "file search tool"
+                error.message!! shouldContain "gradlewDirectory"
+                error.message!! shouldContain "configuration issue"
             }
         }
 
-        "resolveGradlew returns the explicit path as-is when provided" {
-            withTempDir("agentos-gradlew-explicit") { root ->
-                GradleRunner(root).resolveGradlew("/some/where/gradlew") shouldBe "/some/where/gradlew"
+        "resolveGradlew refuses a gradlew that is a symbolic link leaving the project directory" {
+            withTempDir("agentos-gradlew-link") { root ->
+                val project = root.resolve("project").also { it.mkdirs() }
+                val target = root.resolve("elsewhere").also { it.createNewFile() }
+                Files.createSymbolicLink(project.resolve("gradlew").toPath(), target.toPath())
+
+                val error = shouldThrow<GradlewNotFoundException> { GradleRunner(project).resolveGradlew() }
+
+                error.message!! shouldContain "outside the project directory"
             }
         }
 
-        "resolveGradlew ignores a blank explicit path and auto-resolves" {
-            withTempDir("agentos-gradlew-blank") { root ->
-                shouldThrow<GradlewNotFoundException> { GradleRunner(root).resolveGradlew("  ") }
+        "resolveGradlew accepts a gradlew that is a symbolic link staying inside the project directory" {
+            withTempDir("agentos-gradlew-inner-link") { root ->
+                val real = root.resolve("tools/gradlew-real").also {
+                    it.parentFile.mkdirs()
+                    it.createNewFile()
+                }
+                val link = root.resolve("gradlew")
+                Files.createSymbolicLink(link.toPath(), real.toPath())
+
+                GradleRunner(root).resolveGradlew() shouldBe link.path
             }
         }
 
-        // ── workDirFor ────────────────────────────────────────────────────────────────────────
+        // ── includedBuilds / compositeBuildHint ───────────────────────────────────────────
 
-        "workDirFor keeps projectDir when gradlew sits in projectDir or an ancestor" {
-            withTempDir("agentos-workdir-ancestor") { root ->
-                val sub = root.resolve("cli").also { it.mkdirs() }
-                val runnerInSub = GradleRunner(sub)
+        "resolveGradlew finds the gradlew of the gradlewDirectory, inside the project" {
+            withTempDir("agentos-gradlew-dir") { root ->
+                val gradlew =
+                    root.resolve("backend/gradlew").also {
+                        it.parentFile.mkdirs()
+                        it.createNewFile()
+                    }
 
-                runnerInSub.workDirFor(root.resolve("gradlew").absolutePath) shouldBe sub
-                runnerInSub.workDirFor(sub.resolve("gradlew").absolutePath) shouldBe sub
+                GradleRunner(root, gradlewDirectory = gradlew.parentFile).resolveGradlew() shouldBe gradlew.path
             }
         }
 
-        "workDirFor uses the gradlew directory when gradlew sits in a subdirectory" {
-            withTempDir("agentos-workdir-subdir") { root ->
+        "resolveGradlew prefers the gradlewDirectory over the gradlew of the project directory" {
+            withTempDir("agentos-gradlew-prefer") { root ->
+                root.resolve("gradlew").createNewFile()
+                val nested =
+                    root.resolve("backend/gradlew").also {
+                        it.parentFile.mkdirs()
+                        it.createNewFile()
+                    }
+
+                GradleRunner(root, gradlewDirectory = nested.parentFile).resolveGradlew() shouldBe nested.path
+            }
+        }
+
+        "resolveGradlew does not fall back to the project directory when the gradlewDirectory has no gradlew" {
+            withTempDir("agentos-gradlew-nofallback") { root ->
+                root.resolve("gradlew").createNewFile()
                 val backend = root.resolve("backend").also { it.mkdirs() }
 
-                GradleRunner(root).workDirFor(backend.resolve("gradlew").absolutePath) shouldBe backend
+                val error = shouldThrow<GradlewNotFoundException> { GradleRunner(root, gradlewDirectory = backend).resolveGradlew() }
+
+                error.message!! shouldContain backend.absolutePath
+                error.message!! shouldContain "gradlewDirectory"
             }
         }
 
-        // ── run workDir ────────────────────────────────────────────────────────────────────
+        "resolveGradlew refuses a gradlewDirectory outside the project directory" {
+            withTempDir("agentos-gradlew-dir-outside") { root ->
+                val project = root.resolve("project").also { it.mkdirs() }
+                val outside = root.resolve("outside").also { it.mkdirs() }
+                outside.resolve("gradlew").createNewFile()
+
+                val error = shouldThrow<GradlewNotFoundException> { GradleRunner(project, gradlewDirectory = outside).resolveGradlew() }
+
+                error.message!! shouldContain "outside the project directory"
+            }
+        }
+
+        "resolveGradlew refuses a gradlewDirectory that climbs out of the project with .." {
+            withTempDir("agentos-gradlew-dir-climb") { root ->
+                val project = root.resolve("project").also { it.mkdirs() }
+                root.resolve("gradlew").createNewFile()
+
+                val error = shouldThrow<GradlewNotFoundException> { GradleRunner(project, gradlewDirectory = File(project, "..")).resolveGradlew() }
+
+                error.message!! shouldContain "outside the project directory"
+            }
+        }
+
+        "resolveGradlew refuses a gradlewDirectory that is a symbolic link leaving the project directory" {
+            withTempDir("agentos-gradlew-dir-link") { root ->
+                val project = root.resolve("project").also { it.mkdirs() }
+                val outside = root.resolve("outside").also { it.mkdirs() }
+                outside.resolve("gradlew").createNewFile()
+                val link = project.resolve("backend")
+                Files.createSymbolicLink(link.toPath(), outside.toPath())
+
+                val error = shouldThrow<GradlewNotFoundException> { GradleRunner(project, gradlewDirectory = link).resolveGradlew() }
+
+                error.message!! shouldContain "outside the project directory"
+            }
+        }
+
+        "resolveGradlew refuses a gradlew of the gradlewDirectory that is a symbolic link leaving the project" {
+            withTempDir("agentos-gradlew-dir-filelink") { root ->
+                val project = root.resolve("project").also { it.mkdirs() }
+                val backend = project.resolve("backend").also { it.mkdirs() }
+                val target = root.resolve("elsewhere").also { it.createNewFile() }
+                Files.createSymbolicLink(backend.resolve("gradlew").toPath(), target.toPath())
+
+                val error = shouldThrow<GradlewNotFoundException> { GradleRunner(project, gradlewDirectory = backend).resolveGradlew() }
+
+                error.message!! shouldContain "outside the project directory"
+            }
+        }
+
+        "the gradleDir is the gradlewDirectory, else the project directory" {
+            withTempDir("agentos-gradledir") { root ->
+                val backend = root.resolve("backend").also { it.mkdirs() }
+
+                GradleRunner(root).gradleDir shouldBe root
+                GradleRunner(root, gradlewDirectory = backend).gradleDir shouldBe backend
+            }
+        }
+
+        "run starts the build in the gradlewDirectory by default" {
+            withTempDir("agentos-run-default-dir") { root ->
+                val backend = root.resolve("backend").also { it.mkdirs() }
+
+                val result = GradleRunner(root, gradlewDirectory = backend).run(listOf("pwd"))
+
+                result.rawOutput shouldContain "backend"
+            }
+        }
+
+        "includedBuilds lists the builds of the settings file by directory name and skips commented ones" {
+            withTempDir("agentos-included-builds") { root ->
+                root.resolve("settings.gradle.kts").writeText(
+                    """
+                    rootProject.name = "x"
+                    includeBuild("agentos-sdk")
+                    includeBuild("../shared/agentos-git")
+                    // includeBuild("commented")
+                    """.trimIndent(),
+                )
+
+                GradleRunner(root).includedBuilds(root) shouldBe listOf("agentos-sdk", "agentos-git")
+            }
+        }
+
+        "includedBuilds reads the Groovy DSL syntax too" {
+            withTempDir("agentos-included-groovy") { root ->
+                root.resolve("settings.gradle").writeText(
+                    """
+                    includeBuild 'one'
+                    includeBuild('two')
+                    """.trimIndent(),
+                )
+
+                GradleRunner(root).includedBuilds(root) shouldBe listOf("one", "two")
+            }
+        }
+
+        "includedBuilds is empty without a settings file or without included builds" {
+            withTempDir("agentos-included-none") { root ->
+                GradleRunner(root).includedBuilds(root) shouldBe emptyList<String>()
+
+                root.resolve("settings.gradle.kts").writeText("// nothing included")
+
+                GradleRunner(root).includedBuilds(root) shouldBe emptyList<String>()
+            }
+        }
+
+        "includedBuilds does not read the settings file of a parent directory" {
+            withTempDir("agentos-included-parent") { root ->
+                root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
+                val sub = root.resolve("backend").also { it.mkdirs() }
+
+                GradleRunner(root).includedBuilds(sub) shouldBe emptyList<String>()
+            }
+        }
+
+        "compositeBuildHint names the included builds when a run without module fails" {
+            withTempDir("agentos-composite-hint") { root ->
+                root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
+
+                val hint = GradleRunner(root).compositeBuildHint(1, false, root.resolve("gradlew").absolutePath)
+
+                hint!! shouldContain "agentos-sdk"
+                hint shouldContain "subproject"
+            }
+        }
+
+        "compositeBuildHint is silent on success, when a module was targeted, and without included builds" {
+            withTempDir("agentos-composite-silent") { root ->
+                val gradlew = root.resolve("gradlew").absolutePath
+                val runner = GradleRunner(root)
+                root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
+
+                runner.compositeBuildHint(0, false, gradlew) shouldBe null
+                runner.compositeBuildHint(1, true, gradlew) shouldBe null
+
+                root.resolve("settings.gradle.kts").writeText("// nothing included")
+
+                runner.compositeBuildHint(1, false, gradlew) shouldBe null
+            }
+        }
+
+        // ── workDirFor / run workDir ─────────────────────────────────────────────────────
+
+        "workDirFor is the directory that contains gradlew" {
+            withTempDir("agentos-workdir") { root ->
+                GradleRunner(root).workDirFor(root.resolve("gradlew").absolutePath) shouldBe root
+            }
+        }
 
         "run executes the command inside the given workDir" {
             withTempDir("agentos-run-workdir") { root ->

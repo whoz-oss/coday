@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
 import java.io.File
+import java.io.IOException
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -17,7 +18,7 @@ import kotlin.time.Duration.Companion.seconds
  *   When [file] is provided without [subproject], the tool walks up from the file's directory
  *   looking for the nearest `build.gradle.kts` / `build.gradle`. The Gradle module name is
  *   derived from that directory's name relative to the project root.
- *   If neither file nor subproject is given, the whole project is compiled.
+ *   If neither file nor subproject is given, the root build is compiled.
  *
  * The business logic ([compile]) is blocking and returns a String starting with `ERROR` / `FAILURE` on problems;
  * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
@@ -32,7 +33,6 @@ class GradleCompileTool(
     data class Input(
         val subproject: String? = null,
         val file: String? = null,
-        val gradlewPath: String? = null,
         val timeoutSeconds: Int? = null,
     )
 
@@ -49,9 +49,8 @@ Subproject and file targeting:
     diagnostics from other files in the same module are listed separately.
   - If both 'subproject' and 'file' are given, 'subproject' is used for compilation scope
     and 'file' is used only for diagnostic filtering.
-  - Leave both null to compile all modules.
+  - Leave both null to compile the root build. On a composite build (includeBuild), pass 'subproject' to target one of its included builds.
 'timeoutSeconds' is mandatory (1 to ${ToolTimeout.MAX_SECONDS}): the run is killed when it is exceeded.
-${GradleRunner.GRADLEW_NOT_FOUND_HINT}
 
 Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (file, line, column, message)."""
 
@@ -68,7 +67,7 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
                         ToolSchema.string(
                             "Optional Gradle subproject name. ${GradleRunner.SUBPROJECT_NAME_HINT} " +
                                 "When provided, only that module is compiled via ':<subproject>:testClasses'. " +
-                                "Takes priority over 'file' for compilation scope. Leave null to compile all modules.",
+                                "Takes priority over 'file' for compilation scope. Leave null to compile the root build.",
                         ),
                     "file" to
                         ToolSchema.string(
@@ -77,7 +76,6 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
                                 "and to filter diagnostics so that the target file's errors appear first. " +
                                 "Leave null when targeting a whole module or the whole project.",
                         ),
-                    "gradlewPath" to ToolSchema.string(GradleRunner.GRADLEW_PATH_PARAM_DESCRIPTION),
                     "timeoutSeconds" to
                         ToolSchema.integer(
                             ToolTimeout.PARAM_DESCRIPTION +
@@ -96,7 +94,6 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             compile(
                 subproject = params.subproject,
                 file = params.file,
-                gradlewPath = params.gradlewPath,
                 timeoutSeconds = timeoutSeconds,
             )
         }
@@ -105,7 +102,6 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
     fun compile(
         subproject: String? = null,
         file: String? = null,
-        gradlewPath: String? = null,
         timeoutSeconds: Int,
     ): String {
         ToolTimeout.validate(timeoutSeconds)?.let { return "ERROR: $it" }
@@ -119,7 +115,7 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
 
         val gradlew =
             try {
-                runner.resolveGradlew(gradlewPath)
+                runner.resolveGradlew()
             } catch (e: GradlewNotFoundException) {
                 return "ERROR: ${e.message}"
             }
@@ -138,7 +134,9 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
                     "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}"
             }
             val diagnostics = diagnosticParser.parse(result.rawOutput)
-            diagnosticParser.buildSummary(result.exitCode, diagnostics, result.rawOutput, fileFilter)
+            val summary = diagnosticParser.buildSummary(result.exitCode, diagnostics, result.rawOutput, fileFilter)
+            val hint = runner.compositeBuildHint(result.exitCode, effectiveSubproject != null, gradlew)
+            if (hint == null) summary else "$summary\n\n$hint"
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
             logger.warn { "[GradleCompileTool] interrupted" }
@@ -178,12 +176,14 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
 
     /**
      * Walks up from [file]'s directory looking for the nearest `build.gradle.kts` or `build.gradle`.
-     * Returns the Gradle module name (`:name`) or null when no build script is found before the project root.
+     * Returns the Gradle module name (`:name`) or null when no build script is found before the build root.
      *
-     * The project root is identified as the directory containing `settings.gradle.kts` or `settings.gradle`.
+     * The build root is the directory of the integration that contains `gradlew` and `settings.gradle(.kts)`
+     * ([resolveProjectRoot]). A [file] outside it, symbolic links resolved, is refused: the walk never leaves the build.
      */
     internal fun detectModule(file: File): String? {
         val projectRoot = resolveProjectRoot() ?: return null
+        if (!isInsideBuild(file)) return null
         var dir: File? = if (file.isDirectory) file else file.parentFile
         while (dir != null && dir != projectRoot.parentFile) {
             val hasBuild =
@@ -200,18 +200,19 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
     }
 
     /**
-     * Finds the project root (directory containing `settings.gradle(.kts)`) by walking up from [runner.projectDir].
+     * The root of the build: [GradleRunner.gradleDir] when it holds a `settings.gradle(.kts)`, else null.
+     * Nothing above it is looked at: put `gradlewDirectory` on the directory that holds the settings file.
      */
-    internal fun resolveProjectRoot(): File? {
-        var dir: File? = runner.projectDir
-        while (dir != null) {
-            if (dir.resolve("settings.gradle.kts").isFile || dir.resolve("settings.gradle").isFile) {
-                return dir
-            }
-            dir = dir.parentFile
+    internal fun resolveProjectRoot(): File? =
+        runner.gradleDir.takeIf { it.resolve("settings.gradle.kts").isFile || it.resolve("settings.gradle").isFile }
+
+    /** True when [file], once symbolic links are resolved, is the build directory or lies under it. */
+    private fun isInsideBuild(file: File): Boolean =
+        try {
+            file.canonicalFile.toPath().startsWith(runner.gradleDir.canonicalFile.toPath())
+        } catch (e: IOException) {
+            false
         }
-        return null
-    }
 
     internal fun buildCommand(
         gradlew: String,

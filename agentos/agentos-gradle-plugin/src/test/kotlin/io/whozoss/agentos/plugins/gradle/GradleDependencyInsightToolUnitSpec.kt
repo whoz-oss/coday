@@ -126,7 +126,7 @@ class GradleDependencyInsightToolUnitSpec :
 
                 val result =
                     GradleDependencyInsightTool(GradleRunner(root))
-                        .dependencyInsight("thymeleaf", "cloud-utils", null, null, 60)
+                        .dependencyInsight("thymeleaf", "cloud-utils", null, 60)
 
                 result shouldContain "org.thymeleaf:thymeleaf-spring6:3.1.2.RELEASE"
                 result shouldNotContain "Variant"
@@ -145,7 +145,7 @@ class GradleDependencyInsightToolUnitSpec :
 
                 val result =
                     GradleDependencyInsightTool(GradleRunner(root))
-                        .dependencyInsight("thymeleaf", null, "nope", null, 60)
+                        .dependencyInsight("thymeleaf", null, "nope", 60)
 
                 result shouldStartWith "FAILURE (exit 1)"
                 result shouldContain "Configuration not found"
@@ -159,7 +159,7 @@ class GradleDependencyInsightToolUnitSpec :
             try {
                 fakeGradlew(root, "sleep 60")
 
-                val result = GradleDependencyInsightTool(GradleRunner(root)).dependencyInsight("x", null, null, null, 1)
+                val result = GradleDependencyInsightTool(GradleRunner(root)).dependencyInsight("x", null, null, 1)
 
                 result shouldStartWith "ERROR"
                 result shouldContain "timed out after 1 seconds"
@@ -171,17 +171,17 @@ class GradleDependencyInsightToolUnitSpec :
         "dependencyInsight returns an actionable ERROR when no gradlew can be found" {
             val root = Files.createTempDirectory("agentos-insight-no-gradlew").toFile()
             try {
-                val result = GradleDependencyInsightTool(GradleRunner(root)).dependencyInsight("x", null, null, null, 60)
+                val result = GradleDependencyInsightTool(GradleRunner(root)).dependencyInsight("x", null, null, 60)
 
                 result shouldStartWith "ERROR"
-                result shouldContain "gradlewPath"
+                result shouldContain "gradlewDirectory"
             } finally {
                 root.deleteRecursively()
             }
         }
 
         "dependencyInsight rejects a blank dependency" {
-            val result = GradleDependencyInsightTool(GradleRunner(File("/fake"))).dependencyInsight("  ", null, null, null, 60)
+            val result = GradleDependencyInsightTool(GradleRunner(File("/fake"))).dependencyInsight("  ", null, null, 60)
 
             result shouldStartWith "ERROR"
             result shouldContain "dependency"
@@ -190,7 +190,7 @@ class GradleDependencyInsightToolUnitSpec :
         "dependencyInsight rejects a timeoutSeconds outside 1..300" {
             val tool = GradleDependencyInsightTool(GradleRunner(File("/fake")))
             listOf(0, -5, 301).forEach {
-                val result = tool.dependencyInsight("x", null, null, null, it)
+                val result = tool.dependencyInsight("x", null, null, it)
 
                 result shouldStartWith "ERROR"
                 result shouldContain "timeoutSeconds"
