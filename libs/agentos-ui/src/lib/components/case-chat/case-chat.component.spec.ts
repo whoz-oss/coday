@@ -772,6 +772,32 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', null)
     })
 
+    it('picking from the chip keeps the text of the composer: nothing typed is lost', () => {
+      loadCase()
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello world')
+
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', 'BIG')
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('hello world')
+    })
+
+    it('picking after typing the command removes the command', () => {
+      loadCase()
+      const ref = makeComponent()
+
+      ref.instance['inputValue'].set('/model')
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      expect(ref.instance['inputValue']()).toBe('')
+
+      ref.instance['inputValue'].set('/effort h')
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
     it('keeps the text and sends nothing when the case is not in the loaded list', async () => {
       const ref = open()
       ref.instance['inputValue'].set('/model BIG')

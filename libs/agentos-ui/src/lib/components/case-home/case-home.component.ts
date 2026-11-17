@@ -48,6 +48,7 @@ import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomp
 import { CaseSettingsComponent } from '../case-settings/case-settings.component'
 import { EffortOption, parseEffortCommand } from '../composer-autocomplete/effort-command'
 import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
+import { stripSettingsCommand } from '../composer-autocomplete/settings-command'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import {
   buildReferenceMention,
@@ -466,27 +467,34 @@ export class CaseHomeComponent implements OnInit {
     return !this.isCreating() && !this.pendingCaseId()
   }
 
-  /** Hold the effort picked after /effort (or with the chip) for the case to create, and clear the command. */
+  /** Hold the effort picked after /effort (or with the chip) for the case to create, and remove the command only. */
   protected onEffortSelected(option: EffortOption): void {
     this.autocomplete.effortSuggestions.set([])
     if (!this.canChangeSettings()) return
     this.reasoningEffort.set(option.effort)
-    this.clearComposer()
+    this.removeSettingsCommand()
   }
 
-  /** Hold the model picked after /model (null = each agent's own) for the case to create, and clear the command. */
+  /** Hold the model picked after /model (null = each agent's own) for the case to create, and remove the command. */
   protected onModelSelected(choice: ModelChoice): void {
     this.autocomplete.modelSuggestions.set([])
     if (!this.canChangeSettings()) return
     this.modelName.set(choice.model)
-    this.clearComposer()
+    this.removeSettingsCommand()
   }
 
-  private clearComposer(): void {
-    this.inputValue.set('')
+  /**
+   * A choice made from the chip leaves the composer alone: its text, its cursor, the attachments. Only a typed
+   * `/model` or `/effort` command is removed, and the textarea is touched only when the text really changes.
+   */
+  private removeSettingsCommand(): void {
+    const current = this.inputValue()
+    const next = stripSettingsCommand(current)
+    if (next === current) return
+    this.inputValue.set(next)
     const input = this.composerInput()?.nativeElement
     if (input) {
-      input.value = ''
+      input.value = next
       this.resizeComposer(input)
     }
   }

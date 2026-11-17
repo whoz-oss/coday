@@ -28,6 +28,7 @@ import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
+import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { CaseHomeComponent } from './case-home.component'
@@ -859,6 +860,51 @@ describe('CaseHomeComponent — first message with attachments', () => {
       expect(ref.instance['modelName']()).toBeNull()
       expect(ref.instance['reasoningEffort']()).toBeNull()
       expect(api.createCase).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('picking from the chip keeps what is typed in the composer, the attachments and the references', () => {
+      const ref = open()
+      ref.instance['inputValue'].set('hello world')
+      attachments(ref).addFiles([new File(['x'], 'a.pdf')])
+
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+
+      expect(ref.instance['modelName']()).toBe('BIG')
+      expect(ref.instance['reasoningEffort']()).toBe(EFFORT_OPTIONS[4]!.effort)
+      expect(ref.instance['inputValue']()).toBe('hello world')
+      expect(attachments(ref).attachments()).toHaveLength(1)
+      ref.destroy()
+    })
+
+    it('leaves the textarea itself alone when the choice was made from the chip', () => {
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.instance.ngOnInit()
+      ref.changeDetectorRef.detectChanges()
+      const textarea = (ref.location.nativeElement as HTMLElement).querySelector('textarea')!
+      textarea.value = 'hello world'
+      textarea.dispatchEvent(new Event('input'))
+      const assigned = jest.spyOn(textarea, 'value', 'set')
+
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+
+      expect(assigned).not.toHaveBeenCalled()
+      expect(textarea.value).toBe('hello world')
+      ref.destroy()
+    })
+
+    it('picking after typing the command removes the command', () => {
+      const ref = open()
+
+      ref.instance['inputValue'].set('/model')
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      expect(ref.instance['inputValue']()).toBe('')
+
+      ref.instance['inputValue'].set('/effort h')
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+      expect(ref.instance['inputValue']()).toBe('')
       ref.destroy()
     })
 

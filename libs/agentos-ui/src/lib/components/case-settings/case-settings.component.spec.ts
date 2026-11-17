@@ -204,6 +204,22 @@ describe('CaseSettingsComponent', () => {
       expect(rendered.autocomplete.effortSuggestions().length).toBeGreaterThan(0)
     })
 
+    it('dismisses without any change detection in between: the listeners do not wait for an effect', () => {
+      const rendered = render()
+      // Opened straight through the shared service, nothing rendered or detected since.
+      rendered.autocomplete.showModelChoices()
+
+      pointerDown(document.body)
+
+      expect(rendered.autocomplete.modelSuggestions()).toEqual([])
+
+      rendered.autocomplete.showEffortLevels()
+      const event = key(document.body, 'Escape')
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(rendered.autocomplete.effortSuggestions()).toEqual([])
+    })
+
     it('closes the picker when the backdrop is tapped', () => {
       const rendered = render()
       open('model', rendered)

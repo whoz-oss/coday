@@ -3,10 +3,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
+  DestroyRef,
   ElementRef,
   inject,
   input,
+  NgZone,
   output,
   viewChild,
 } from '@angular/core'
@@ -41,10 +42,12 @@ const OPENING_KEYS: ReadonlySet<string> = new Set(['ArrowDown', 'ArrowUp', 'Ente
  *
  * Dismissal: while a picker is open, a pointerdown outside this component (its chips and pickers are inside)
  * closes it, and so does Escape anywhere — the textarea delegation of [ComposerAutocompleteService.onKeydown]
- * only sees the keys typed in the textarea, not those typed with the focus on a chip. The document listeners are
- * registered only while a picker is open, in the capture phase so that the Escape that closes a picker does not
- * also reach a surrounding drawer. Clicking the chip of the open picker closes it. Up to 600px wide the picker is
- * a bottom sheet over a backdrop (see the stylesheet).
+ * only sees the keys typed in the textarea, not those typed with the focus on a chip. The two document listeners
+ * are registered once, in the capture phase, and return at once while nothing is open: the capture phase lets the
+ * Escape that closes a picker be stopped before it reaches a surrounding drawer, and a permanent registration does
+ * not depend on when an effect would run. They are registered outside the zone, so that a key or a click elsewhere
+ * does not trigger a change detection; closing a picker re-enters it. Clicking the chip of the open picker closes
+ * it. Up to 600px wide the picker is a bottom sheet over a backdrop (see the stylesheet).
  *
  * Accessibility: each chip is a select-only combobox (ARIA APG), a native button given `role="combobox"`. The
  * focus stays on the chip while its picker is open; `aria-controls` names the listbox and `aria-activedescendant`
@@ -68,6 +71,7 @@ export class CaseSettingsComponent {
   protected readonly autocomplete = inject(ComposerAutocompleteService)
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   private readonly document = inject(DOCUMENT)
+  private readonly zone = inject(NgZone)
 
   /** Unique per instance: a page may hold several composers (and so several of these). */
   private readonly idBase = `case-settings-${nextInstanceId++}`
@@ -114,18 +118,16 @@ export class CaseSettingsComponent {
   )
 
   constructor() {
-    // Listen on the document only while a picker is open.
-    effect((onCleanup) => {
-      if (!this.anyOpen()) return
-      const doc = this.document
-      const onPointerDown = (event: Event) => this.onDocumentPointerDown(event)
-      const onKeydown = (event: KeyboardEvent) => this.onDocumentKeydown(event)
+    const doc = this.document
+    const onPointerDown = (event: Event) => this.onDocumentPointerDown(event)
+    const onKeydown = (event: KeyboardEvent) => this.onDocumentKeydown(event)
+    this.zone.runOutsideAngular(() => {
       doc.addEventListener('pointerdown', onPointerDown, true)
       doc.addEventListener('keydown', onKeydown, true)
-      onCleanup(() => {
-        doc.removeEventListener('pointerdown', onPointerDown, true)
-        doc.removeEventListener('keydown', onKeydown, true)
-      })
+    })
+    inject(DestroyRef).onDestroy(() => {
+      doc.removeEventListener('pointerdown', onPointerDown, true)
+      doc.removeEventListener('keydown', onKeydown, true)
     })
   }
 
@@ -224,19 +226,20 @@ export class CaseSettingsComponent {
 
   /** A pointerdown outside the component dismisses the open picker. */
   private onDocumentPointerDown(event: Event): void {
+    if (!this.anyOpen()) return
     const target = event.target
     if (target instanceof Node && this.host.nativeElement.contains(target)) return
-    this.closePickers()
+    this.zone.run(() => this.closePickers())
   }
 
   /** Escape anywhere dismisses the open picker, and gives the focus back to the chip that opened it. */
   private onDocumentKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape') return
+    if (event.key !== 'Escape' || !this.anyOpen()) return
     event.preventDefault()
     event.stopPropagation()
     const chip = this.modelOpen() ? this.modelChip() : this.effortChip()
     const focusInside = this.host.nativeElement.contains(this.document.activeElement)
-    this.closePickers()
+    this.zone.run(() => this.closePickers())
     if (focusInside) chip?.nativeElement.focus()
   }
 
