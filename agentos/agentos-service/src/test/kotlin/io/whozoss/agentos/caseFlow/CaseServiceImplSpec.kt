@@ -264,6 +264,7 @@ class CaseServiceImplSpec :
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 },
             coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
+            namespaceRunCostThreshold: Double? = null,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -274,7 +275,7 @@ class CaseServiceImplSpec :
             val namespaceService =
                 mockk<NamespaceService> {
                     every { findById(namespaceId) } returns namespace
-                    every { resolveRunCostThreshold(any()) } returns null
+                    every { resolveRunCostThreshold(any()) } returns namespaceRunCostThreshold
                 }
             return CaseServiceImpl(
                 agentService = agentService,
@@ -2488,6 +2489,38 @@ class CaseServiceImplSpec :
             val subCase = service.getById(subCaseId)
             subCase.namespaceId shouldBe namespaceId
             subCase.parentCaseId shouldBe parentCase.id
+        }
+
+        "a root case takes the namespace run cost threshold at creation" {
+            val service = buildService(namespaceRunCostThreshold = 2.0)
+
+            service.create(Case(namespaceId = namespaceId)).runCostThreshold shouldBe 2.0
+        }
+
+        "a delegated sub-case does not take the namespace run cost threshold: its root case's threshold covers it" {
+            val service = buildService(namespaceRunCostThreshold = 2.0)
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+
+            val runtime =
+                service.startSubCase(
+                    parentCaseId = parentCase.id,
+                    namespaceId = namespaceId,
+                    agentName = agentName,
+                    task = "do something",
+                    userId = userId,
+                )
+
+            service.getById(runtime.id).runCostThreshold shouldBe null
+        }
+
+        "a sub-case keeps a run cost threshold its creator sets explicitly" {
+            val service = buildService(namespaceRunCostThreshold = 2.0)
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+
+            val child =
+                service.create(Case(namespaceId = namespaceId, parentCaseId = parentCase.id, runCostThreshold = 5.0))
+
+            child.runCostThreshold shouldBe 5.0
         }
 
         "create links a case to the parent it names" {

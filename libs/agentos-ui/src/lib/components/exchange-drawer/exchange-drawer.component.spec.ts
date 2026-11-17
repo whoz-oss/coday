@@ -29,7 +29,7 @@ describe('ExchangeDrawerComponent namespace filter', () => {
     const changed = jest.fn()
     const folderOpened = jest.fn()
     const fileSelected = jest.fn()
-    fixture.componentInstance.namespaceFilterChanged.subscribe(changed)
+    fixture.componentInstance.filterChanged.subscribe(({ scope, query }) => { if (scope === ExchangeFileEntryScopeEnum.NAMESPACE) changed(query) })
     fixture.componentInstance.folderOpened.subscribe(folderOpened)
     fixture.componentInstance.fileSelected.subscribe(fileSelected)
     fixture.detectChanges()
@@ -52,7 +52,7 @@ describe('ExchangeDrawerComponent namespace filter', () => {
     expect(input.getAttribute('aria-label')).toBeTruthy()
   })
 
-  it('does not offer the filter on an empty namespace', () => {
+  it('hides the filter on an empty namespace and shows it when the listing gains a file', () => {
     TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
     const fixture = TestBed.createComponent(ExchangeDrawerComponent)
     fixture.componentRef.setInput('namespaceStatus', 'ready')
@@ -60,6 +60,47 @@ describe('ExchangeDrawerComponent namespace filter', () => {
     fixture.componentRef.setInput('caseStatus', 'ready')
     fixture.detectChanges()
     expect(fixture.nativeElement.querySelector('input[type="search"]')).toBeNull()
+    fixture.componentRef.setInput('namespaceFiles', [{ path: 'new.txt', name: 'new.txt', directory: false }])
+    fixture.detectChanges()
+    expect(fixture.nativeElement.querySelector('input[aria-label="Filter namespace files by name or path"]')).not.toBeNull()
+    fixture.componentRef.setInput('namespaceFiles', [])
+    fixture.detectChanges()
+    expect(fixture.nativeElement.querySelector('input[type="search"]')).toBeNull()
+    fixture.destroy()
+  })
+
+  it('keeps an active namespace filter usable if the listing becomes empty, then hides it on clear', fakeAsync(() => {
+    const { fixture, el, changed, type } = setup()
+    document.body.appendChild(el)
+    fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
+    fixture.componentRef.setInput('namespaceManifest', manifest)
+    type('guide')
+    fixture.componentRef.setInput('namespaceFiles', [])
+    fixture.componentRef.setInput('namespaceFolders', [])
+    fixture.componentRef.setInput('namespaceManifest', [])
+    fixture.detectChanges()
+    expect(el.querySelector<HTMLInputElement>('input[type="search"]')?.value).toBe('guide')
+    expect(text(el)).toContain('No files match')
+    el.querySelector<HTMLButtonElement>('.exchange-drawer__filter-clear')!.click()
+    fixture.detectChanges()
+    expect(changed).toHaveBeenLastCalledWith('')
+    expect(el.querySelector('input[type="search"]')).toBeNull()
+    expect(document.activeElement).toBe(el.querySelector('.exchange-drawer__section-title'))
+    expect(text(el)).toContain('No namespace files')
+    fixture.destroy()
+    el.remove()
+  }))
+
+  it('shows the namespace filter for a folder or a breadcrumb even with no current files', () => {
+    const { fixture, el } = setup()
+    fixture.componentRef.setInput('namespaceFiles', [])
+    fixture.detectChanges()
+    expect(el.querySelector('input[type="search"]')).not.toBeNull()
+    fixture.componentRef.setInput('namespaceFolders', [])
+    fixture.componentRef.setInput('namespaceBreadcrumb', [{ label: 'docs', path: 'docs' }])
+    fixture.detectChanges()
+    expect(el.querySelector('input[type="search"]')).not.toBeNull()
+    fixture.destroy()
   })
 
   it('debounces the query, then hides the browse view behind a spinner until the manifest arrives', fakeAsync(() => {
@@ -140,11 +181,11 @@ describe('ExchangeDrawerComponent namespace filter', () => {
     const { fixture, el, type } = setup()
     fixture.componentRef.setInput('namespaceManifestStatus', 'error')
     const retry = jest.fn()
-    fixture.componentInstance.namespaceFilterRetry.subscribe(retry)
+    fixture.componentInstance.filterRetry.subscribe(retry)
     type('x')
     expect(el.querySelector('[role="alert"]')?.textContent).toContain("Couldn't search namespace files")
     el.querySelector<HTMLButtonElement>('[role="alert"] button')!.click()
-    expect(retry).toHaveBeenCalled()
+    expect(retry).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.NAMESPACE)
   }))
 
   it('hints when the matches were cut', fakeAsync(() => {
@@ -349,7 +390,7 @@ describe('ExchangeDrawerComponent referenced files', () => {
       { path: 'docs/api/spec.yaml', filename: 'spec.yaml', size: 1, lastModified: '2026-01-01T00:00:00Z', scope: NS },
     ])
     fixture.componentRef.setInput('namespaceManifestStatus', 'ready')
-    const input = el.querySelector<HTMLInputElement>('input[type="search"]')!
+    const input = el.querySelector<HTMLInputElement>('[data-track="ExchangeDrawer-namespaceFilterInput"]')!
     input.value = 'spec'
     input.dispatchEvent(new Event('input'))
     tick(150)
@@ -360,7 +401,7 @@ describe('ExchangeDrawerComponent referenced files', () => {
     expect(toggled).toHaveBeenCalledWith({ ref: { scope: NS, path: 'docs/api/spec.yaml' }, referenced: true })
     reference({ scope: NS, path: 'docs/api/spec.yaml' })
     expect(box('spec.yaml').checked).toBe(true)
-    el.querySelector<HTMLButtonElement>('.exchange-drawer__filter-clear')!.click()
+    el.querySelector<HTMLButtonElement>('[data-track="ExchangeDrawer-namespaceClearFilter"]')!.click()
     fixture.detectChanges()
     expect(bar()!.textContent).toContain('1 in message')
   }))

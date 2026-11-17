@@ -31,7 +31,7 @@ export interface Case {
    */
   role?: CaseRoleEnum
   /**
-   * Per-case override of the run cost threshold, in the platform currency unit. Null means inherit from the namespace or platform default (never \"no limit\" or \"zero\"). Set upfront for costly runs, or written by the enforcement mechanism on continuation.
+   * Per-case override of the run cost threshold, in the platform currency unit. On a root case, null means inherit from the namespace or platform default (never \"no limit\" or \"zero\"). A sub-case does not inherit: its root case\'s threshold covers the whole tree, and null means it has no threshold of its own. Set upfront for costly runs, or written by the enforcement mechanism on continuation.
    */
   runCostThreshold?: number
   scheduledPromptId?: string

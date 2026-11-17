@@ -24,7 +24,9 @@ class CostRunStopped : RuntimeException("Execution stopped by the user")
 
 /**
  * Shared live accounting for a case and its delegated work. A new human message starts
- * a new cost window; redirects and nested agent invocations share the same window.
+ * a new cost window; redirects and nested agent invocations share the same window. A sub-case has
+ * no threshold of its own unless one was set on it, so the root case's threshold covers the whole
+ * tree and one confirmation releases it.
  * Gates hold the actual request, so continuation does not replay tools or prompts.
  * Checks happen between requests: a response already in flight can overshoot the limit.
  */
@@ -224,8 +226,10 @@ class RunCostService(
         }
     }
 
+    /** Only a root case inherits the namespace threshold: a sub-case without its own is covered by its root's. */
     private fun resolveThreshold(case: Case): Double? =
-        case.runCostThreshold ?: namespaces.resolveRunCostThreshold(case.namespaceId)
+        case.runCostThreshold
+            ?: if (case.parentCaseId == null) namespaces.resolveRunCostThreshold(case.namespaceId) else null
 
     private fun newSession(
         case: Case,
