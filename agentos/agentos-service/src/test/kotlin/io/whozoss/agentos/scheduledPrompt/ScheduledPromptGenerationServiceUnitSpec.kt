@@ -17,7 +17,6 @@ import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
-import io.mockk.isNull
 import io.mockk.mockk
 import io.mockk.slot
 import io.whozoss.agentos.agent.AgentService
@@ -110,7 +109,8 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 clock = clock,
             )
 
-        val recurrence = RecurrenceDto(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.MONDAY), timeUtc = LocalTime.of(9, 0))
+        val recurrence =
+            RecurrenceDto(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.MONDAY), timeUtc = LocalTime.of(9, 0))
         val planning = PlanningDto(startDate = today, endType = SchedulerEndType.NEVER)
         val searchBlock =
             objectMapper.readTree("""{"search": {"tool": "searchAgentUsers", "params": {"agentConfigId": "x"}}}""")
@@ -159,16 +159,24 @@ class ScheduledPromptGenerationServiceUnitSpec :
         beforeTest {
             clearAllMocks()
             every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns
-                listOf(loopA, loopB, luigi, mario)
-            every { modelResolver.resolve(namespaceId, userId) } returns (mockk<AiModel>(relaxed = true) to mockk<AiProvider>(relaxed = true))
+                    listOf(loopA, loopB, luigi, mario)
+            every {
+                modelResolver.resolve(
+                    namespaceId,
+                    userId
+                )
+            } returns (mockk<AiModel>(relaxed = true) to mockk<AiProvider>(relaxed = true))
             coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer()
             coEvery { agentService.resolveDefinition(any(), namespaceId, userId) } returns definition
             coEvery { loopConfigGenerationService.generate(any(), any(), any(), any(), any()) } returns
-                LoopConfigGenerationResult(loopConfig = searchBlock)
+                    LoopConfigGenerationResult(loopConfig = searchBlock)
             every { scheduledPromptService.isNameTaken(any(), any(), any()) } returns false
             every { userService.findById(any()) } returns null
             coEvery { summaryService.summarize(any(), any(), any(), any()) } returns
-                ScheduledPromptSummaryService.SummaryOutcome(summary = "**Every Monday**, *Luigi* will: tell a story", warning = null)
+                    ScheduledPromptSummaryService.SummaryOutcome(
+                        summary = "**Every Monday**, *Luigi* will: tell a story",
+                        warning = null
+                    )
         }
 
         // -------------------------------------------------------------------------
@@ -198,24 +206,42 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         "rawResponse is the raw text of the step that failed, and never comes with a proposal" {
             // planning answer unusable
-            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns StructuredLlmResult(json = null, rawText = "plan raw")
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns StructuredLlmResult(
+                json = null,
+                rawText = "plan raw"
+            )
             service.generate(namespaceId, userId, request()).rawResponse shouldBe "plan raw"
 
             // planning fine, search answer unusable
             coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer()
             coEvery { loopConfigGenerationService.generate(any(), any(), any(), any(), any()) } returns
-                LoopConfigGenerationResult(loopConfig = null, rawResponse = "search raw", warning = "unparseable")
+                    LoopConfigGenerationResult(loopConfig = null, rawResponse = "search raw", warning = "unparseable")
             service.generate(namespaceId, userId, request()).rawResponse shouldBe "search raw"
 
             // planning fine but an agent outside the candidates: no proposal, yet the planning answer was usable
-            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
+            coEvery {
+                structuredLlmClient.call(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+                )
+            } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
             service.generate(namespaceId, userId, request()).rawResponse.shouldBeNull()
         }
 
         "the search call uses the loop agent's definition and gets the target agent's name and id as context" {
             val context = slot<String>()
-            coEvery { loopConfigGenerationService.generate(definition, "searchAgentUsers", any(), capture(context), any()) } returns
-                LoopConfigGenerationResult(loopConfig = searchBlock)
+            coEvery {
+                loopConfigGenerationService.generate(
+                    definition,
+                    "searchAgentUsers",
+                    any(),
+                    capture(context),
+                    any()
+                )
+            } returns
+                    LoopConfigGenerationResult(loopConfig = searchBlock)
 
             service.generate(namespaceId, userId, request(searchToolName = "searchAgentUsers"))
 
@@ -231,28 +257,33 @@ class ScheduledPromptGenerationServiceUnitSpec :
         }
 
         "decisions tell provided fields from inferred ones" {
-            val result = service.generate(namespaceId, userId, request(targetAgentName = "luigi", recurrence = recurrence))
+            val result =
+                service.generate(namespaceId, userId, request(targetAgentName = "luigi", recurrence = recurrence))
 
             result.decisions.associate { it.field to it.source } shouldBe
-                mapOf(
-                    GeneratedField.LOOP_AGENT to GeneratedFieldSource.INFERRED,
-                    GeneratedField.TARGET_AGENT to GeneratedFieldSource.PROVIDED,
-                    GeneratedField.PROMPT to GeneratedFieldSource.INFERRED,
-                    GeneratedField.NAME to GeneratedFieldSource.INFERRED,
-                    GeneratedField.RECURRENCE to GeneratedFieldSource.PROVIDED,
-                    GeneratedField.PLANNING to GeneratedFieldSource.INFERRED,
-                    GeneratedField.SEARCH to GeneratedFieldSource.INFERRED,
-                )
+                    mapOf(
+                        GeneratedField.LOOP_AGENT to GeneratedFieldSource.INFERRED,
+                        GeneratedField.TARGET_AGENT to GeneratedFieldSource.PROVIDED,
+                        GeneratedField.PROMPT to GeneratedFieldSource.INFERRED,
+                        GeneratedField.NAME to GeneratedFieldSource.INFERRED,
+                        GeneratedField.RECURRENCE to GeneratedFieldSource.PROVIDED,
+                        GeneratedField.PLANNING to GeneratedFieldSource.INFERRED,
+                        GeneratedField.SEARCH to GeneratedFieldSource.INFERRED,
+                    )
             result.decisions.first { it.field == GeneratedField.TARGET_AGENT }.value shouldBe "Luigi"
             result.decisions.first { it.field == GeneratedField.LOOP_AGENT }.rationale shouldBe "because"
         }
 
         "provided values win over the LLM's answer" {
             coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns
-                planAnswer(mapOf("targetAgentName" to "Mario", "prompt" to "LLM prompt"))
+                    planAnswer(mapOf("targetAgentName" to "Mario", "prompt" to "LLM prompt"))
 
             val proposal =
-                service.generate(namespaceId, userId, request(targetAgentName = "Luigi", prompt = "My prompt")).scheduledPrompt.shouldNotBeNull()
+                service.generate(
+                    namespaceId,
+                    userId,
+                    request(targetAgentName = "Luigi", prompt = "My prompt")
+                ).scheduledPrompt.shouldNotBeNull()
 
             proposal.promptContent shouldBe "My prompt"
             proposal.flowConfiguration!!["act"]["agentName"].asText() shouldBe "Luigi"
@@ -263,7 +294,13 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 service.generate(
                     namespaceId,
                     userId,
-                    request(loopAgentName = "LoopA", targetAgentName = "Luigi", prompt = "p", recurrence = recurrence, planning = planning),
+                    request(
+                        loopAgentName = "LoopA",
+                        targetAgentName = "Luigi",
+                        prompt = "p",
+                        recurrence = recurrence,
+                        planning = planning
+                    ),
                 )
 
             coVerify(exactly = 0) { structuredLlmClient.call(any(), any(), any(), any()) }
@@ -271,14 +308,27 @@ class ScheduledPromptGenerationServiceUnitSpec :
         }
 
         "a generated name longer than the bound is cut to it" {
-            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer(mapOf("name" to "x".repeat(200)))
+            coEvery {
+                structuredLlmClient.call(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+                )
+            } returns planAnswer(mapOf("name" to "x".repeat(200)))
 
             service.generate(namespaceId, userId, request()).scheduledPrompt.shouldNotBeNull().name.length shouldBe
-                ScheduledPromptGenerationService.MAX_GENERATED_NAME_LENGTH
+                    ScheduledPromptGenerationService.MAX_GENERATED_NAME_LENGTH
         }
 
         "a single LOOP candidate is picked without asking the LLM for it" {
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(loopA, luigi)
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    null
+                )
+            } returns listOf(loopA, luigi)
 
             val result = service.generate(namespaceId, userId, request())
 
@@ -290,9 +340,13 @@ class ScheduledPromptGenerationServiceUnitSpec :
             val platformLoop = agent("LoopA", ExecutionMode.LOOP, platform = true)
             val filesystemLoop = agent("FsLoop", ExecutionMode.LOOP, filesystem = true)
             every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns
-                listOf(platformLoop, loopA, filesystemLoop, luigi)
+                    listOf(platformLoop, loopA, filesystemLoop, luigi)
 
-            service.generate(namespaceId, userId, request()).scheduledPrompt.shouldNotBeNull().agentConfigId shouldBe loopA.metadata.id
+            service.generate(
+                namespaceId,
+                userId,
+                request()
+            ).scheduledPrompt.shouldNotBeNull().agentConfigId shouldBe loopA.metadata.id
         }
 
         // -------------------------------------------------------------------------
@@ -312,7 +366,15 @@ class ScheduledPromptGenerationServiceUnitSpec :
         "the base search.tool is the search tool, reported as provided, and its params are the base parameters" {
             val result = service.generate(namespaceId, userId, request(baseFlowConfiguration = base))
 
-            coVerify { loopConfigGenerationService.generate(definition, "searchAgentUsers", any(), any(), base["search"]["params"]) }
+            coVerify {
+                loopConfigGenerationService.generate(
+                    definition,
+                    "searchAgentUsers",
+                    any(),
+                    any(),
+                    base["search"]["params"]
+                )
+            }
             result.decisions.first { it.field == GeneratedField.SEARCH }.source shouldBe GeneratedFieldSource.PROVIDED
         }
 
@@ -332,7 +394,12 @@ class ScheduledPromptGenerationServiceUnitSpec :
             service.generate(
                 namespaceId,
                 userId,
-                request(loopAgentName = "LoopA", recurrence = recurrence, planning = planning, baseFlowConfiguration = base),
+                request(
+                    loopAgentName = "LoopA",
+                    recurrence = recurrence,
+                    planning = planning,
+                    baseFlowConfiguration = base
+                ),
             )
 
             coVerify(exactly = 0) { structuredLlmClient.call(any(), any(), any(), any()) }
@@ -343,17 +410,34 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 service.generate(
                     namespaceId,
                     userId,
-                    request(targetAgentName = "Mario", prompt = "My prompt", searchToolName = "otherTool", baseFlowConfiguration = base),
+                    request(
+                        targetAgentName = "Mario",
+                        prompt = "My prompt",
+                        searchToolName = "otherTool",
+                        baseFlowConfiguration = base
+                    ),
                 )
 
             val proposal = result.scheduledPrompt.shouldNotBeNull()
             proposal.flowConfiguration!!["act"]["agentName"].asText() shouldBe "Mario"
             proposal.promptContent shouldBe "My prompt"
-            coVerify { loopConfigGenerationService.generate(any(), "otherTool", any(), any(), base["search"]["params"]) }
+            coVerify {
+                loopConfigGenerationService.generate(
+                    any(),
+                    "otherTool",
+                    any(),
+                    any(),
+                    base["search"]["params"]
+                )
+            }
         }
 
         "a partial base only provides what it holds" {
-            service.generate(namespaceId, userId, request(baseFlowConfiguration = json("""{"search": {"params": {"a": 1}}}""")))
+            service.generate(
+                namespaceId,
+                userId,
+                request(baseFlowConfiguration = json("""{"search": {"params": {"a": 1}}}"""))
+            )
 
             // no tool in the base: the tool is still selected; the params are still the base
             coVerify { loopConfigGenerationService.generate(any(), null, any(), any(), json("""{"a": 1}""")) }
@@ -385,7 +469,10 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 service.generate(
                     namespaceId,
                     userId,
-                    request(searchToolName = "searchAgentUsers", baseFlowConfiguration = json("""{"search": {"tool": 42}}""")),
+                    request(
+                        searchToolName = "searchAgentUsers",
+                        baseFlowConfiguration = json("""{"search": {"tool": 42}}""")
+                    ),
                 )
             }
         }
@@ -400,8 +487,9 @@ class ScheduledPromptGenerationServiceUnitSpec :
                     ),
                 ),
             ) { node ->
-                validator.validate(request(baseFlowConfiguration = node)).map { it.message }.joinToString() shouldContain
-                    "baseFlowConfiguration"
+                validator.validate(request(baseFlowConfiguration = node)).map { it.message }
+                    .joinToString() shouldContain
+                        "baseFlowConfiguration"
             }
             validator.validate(request(baseFlowConfiguration = base)) shouldBe emptySet()
             validator.validate(request(baseFlowConfiguration = NullNode.instance)) shouldBe emptySet()
@@ -419,7 +507,13 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 row(request(targetAgentName = "LoopA"), "Mario"),
                 row(request(loopAgentName = "Luigi"), "LoopB"),
             ) { req, available ->
-                shouldThrow<BadRequestException> { service.generate(namespaceId, userId, req) }.message shouldContain available
+                shouldThrow<BadRequestException> {
+                    service.generate(
+                        namespaceId,
+                        userId,
+                        req
+                    )
+                }.message shouldContain available
             }
         }
 
@@ -428,7 +522,13 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 row(listOf(luigi, mario)),
                 row(listOf(loopA, loopB)),
             ) { agents ->
-                every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns agents
+                every {
+                    agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                        namespaceId,
+                        userId,
+                        null
+                    )
+                } returns agents
                 shouldThrow<UnprocessableEntityException> { service.generate(namespaceId, userId, request()) }
             }
         }
@@ -455,7 +555,10 @@ class ScheduledPromptGenerationServiceUnitSpec :
         }
 
         "an LLM answer with no JSON object yields no proposal and the raw text" {
-            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns StructuredLlmResult(json = null, rawText = "sorry")
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns StructuredLlmResult(
+                json = null,
+                rawText = "sorry"
+            )
 
             val result = service.generate(namespaceId, userId, request())
 
@@ -465,7 +568,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         "an invalid recurrence from the LLM yields no proposal" {
             coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns
-                planAnswer(mapOf("recurrence" to mapOf("unit" to "DAY", "timeUtc" to "09:00")))
+                    planAnswer(mapOf("recurrence" to mapOf("unit" to "DAY", "timeUtc" to "09:00")))
 
             val result = service.generate(namespaceId, userId, request())
 
@@ -475,11 +578,14 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         "an invalid planning from the LLM falls back to from-today-never-ends, with a warning" {
             coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns
-                planAnswer(mapOf("planning" to mapOf("startDate" to today.toString(), "endType" to "ON_DATE")))
+                    planAnswer(mapOf("planning" to mapOf("startDate" to today.toString(), "endType" to "ON_DATE")))
 
             val result = service.generate(namespaceId, userId, request())
 
-            result.scheduledPrompt.shouldNotBeNull().planning shouldBe PlanningDto(startDate = today, endType = SchedulerEndType.NEVER)
+            result.scheduledPrompt.shouldNotBeNull().planning shouldBe PlanningDto(
+                startDate = today,
+                endType = SchedulerEndType.NEVER
+            )
             result.warnings.joinToString() shouldContain "planning"
         }
 
@@ -499,9 +605,9 @@ class ScheduledPromptGenerationServiceUnitSpec :
         "a proposal comes with the summary, written from the final values in the caller's preferred language" {
             val input = slot<ScheduledPromptSummaryService.SummaryInput>()
             every { userService.findById(userId) } returns
-                User(metadata = EntityMetadata(id = userId), externalId = "u", preferredLanguage = "fr")
+                    User(metadata = EntityMetadata(id = userId), externalId = "u", preferredLanguage = "fr")
             coEvery { summaryService.summarize(namespaceId, userId, capture(input), "fr") } returns
-                ScheduledPromptSummaryService.SummaryOutcome(summary = "résumé", warning = null)
+                    ScheduledPromptSummaryService.SummaryOutcome(summary = "résumé", warning = null)
 
             val result = service.generate(namespaceId, userId, request(targetAgentName = "Luigi", prompt = "My prompt"))
 
@@ -514,7 +620,14 @@ class ScheduledPromptGenerationServiceUnitSpec :
         }
 
         "no proposal means no summary call" {
-            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
+            coEvery {
+                structuredLlmClient.call(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+                )
+            } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
 
             val result = service.generate(namespaceId, userId, request())
 
@@ -524,7 +637,10 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         "a failed summary keeps the proposal, with the summary's warning" {
             coEvery { summaryService.summarize(any(), any(), any(), any()) } returns
-                ScheduledPromptSummaryService.SummaryOutcome(summary = null, warning = "No summary could be generated.")
+                    ScheduledPromptSummaryService.SummaryOutcome(
+                        summary = null,
+                        warning = "No summary could be generated."
+                    )
 
             val result = service.generate(namespaceId, userId, request())
 
@@ -535,7 +651,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         "a failed search step yields no proposal, with its warning and raw response" {
             coEvery { loopConfigGenerationService.generate(any(), any(), any(), any(), any()) } returns
-                LoopConfigGenerationResult(loopConfig = null, rawResponse = "raw", warning = "no tool")
+                    LoopConfigGenerationResult(loopConfig = null, rawResponse = "raw", warning = "no tool")
 
             val result = service.generate(namespaceId, userId, request())
 
