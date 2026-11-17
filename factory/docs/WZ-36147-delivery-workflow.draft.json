@@ -1,0 +1,28 @@
+{
+  "execution": {
+    "plugin": "forge"
+  },
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "entry": [
+        "Read the supplied Jira ticket and reachable source specification in the assigned workstream. Obtain current evidence; do not trust a launch-time status claim or chat text."
+      ],
+      "exit": [
+        "Submit one Factory result: status PASS only if the ticket is Ready and its source is sufficient; claims.modifiedFiles must be empty. In the summary and evidence artifacts, include the observed ticket key and status, source locator and revision, evidence references, and reasoning.",
+        "If the ticket is not Ready or evidence is insufficient, submit an evidenced non-PASS result explaining what must change. A later retry must inspect fresh evidence."
+      ],
+      "id": "delivery-preflight",
+      "mission": "Decide whether the ticket is sufficiently specified and currently Ready for delivery. Do not groom, edit Jira, approve the design packet or modify repository files.",
+      "name": "Check delivery readiness",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    }
+  ],
+  "title": "Forge delivery — draft preflight step",
+  "version": "0.1.0",
+  "workflowType": "forge.delivery"
+}

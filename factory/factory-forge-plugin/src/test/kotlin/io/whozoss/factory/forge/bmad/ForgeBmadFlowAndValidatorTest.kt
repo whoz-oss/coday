@@ -728,7 +728,7 @@ class ForgeBmadFlowAndValidatorTest {
     }
 
     @Test
-    fun `reviewer findings in Factory 249 standard result shape become Forge findings`() {
+    fun `reviewer findings in Factory standard result shape become Forge findings`() {
         val verdict = validator.validate(StepValidationContext(
             run = RunView(runId = "r-review", runType = "forge-bmad"),
             flowType = "forge.code-review", stepId = "code-review", agentName = "ForgeReviewer",

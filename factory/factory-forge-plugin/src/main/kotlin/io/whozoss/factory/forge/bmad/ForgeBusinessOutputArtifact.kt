@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 
 /**
  * Forge-owned machine-readable values carried by Factory's existing artifact field.
- * JSON is plain Markdown content, so the Factory 249 worker schema and persistence
+ * JSON is plain Markdown content, so the Factory worker schema and persistence
  * can transport it without a service-level result extension.
  */
 internal object ForgeBusinessOutputArtifact {
