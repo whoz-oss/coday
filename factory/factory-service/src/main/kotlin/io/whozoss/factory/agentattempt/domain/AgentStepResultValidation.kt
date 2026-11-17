@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode
 /** Strict validation of the structured business result schema. */
 object AgentStepResultValidation {
 
-    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq")
+    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq", "selectedRoutes")
     private val ARTIFACT_FIELDS = setOf("kind", "encoding", "content")
     private val CLAIM_FIELDS = setOf("modifiedFiles", "deliveryAnalysis")
     private val DELIVERY_ANALYSIS_FIELDS = setOf("changeType", "ticket", "title", "baseBranch")
@@ -43,6 +43,13 @@ object AgentStepResultValidation {
             status == null -> add("result.status", "REQUIRED", "is required")
             !status.isTextual -> add("result.status", "TYPE_STRING", "must be a string")
             status.asText() !in STATUSES -> add("result.status", "ENUM", "must be PASS, FAIL, or NEEDS_RESEARCH")
+        }
+        value.get("selectedRoutes")?.let { routes ->
+            val safe = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+            if (!routes.isArray || routes.size() !in 1..16 ||
+                routes.any { !it.isTextual || !safe.matches(it.asText()) } ||
+                routes.map { it.asText() }.distinct().size != routes.size() || status?.asText() != "PASS"
+            ) add("result.selectedRoutes", "INVALID_SELECTION", "must be 1–16 distinct route names, only on PASS")
         }
         requiredText(value, "summary", "result.summary", AgentStepResultLimits.SUMMARY)
 
@@ -173,6 +180,7 @@ object AgentStepResultValidation {
             artifacts = artifacts,
             findings = findings,
             expectedAmendmentSeq = value.get("expected_amendment_seq")?.asLong() ?: value.get("expectedAmendmentSeq")?.asLong(),
+            selectedRoutes = value.get("selectedRoutes")?.map { it.asText() },
         )
     }
 }

@@ -2,6 +2,7 @@ package io.whozoss.factory.workflow.service
 
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.CaseEventView
+import io.whozoss.factory.agentattempt.domain.toCheckedJsonObject
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
@@ -9,11 +10,22 @@ import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
 import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableException
+import io.whozoss.factory.persistence.OrganizationScope
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
+import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
+import io.whozoss.factory.capability.NeedsResearchRouter
+import io.whozoss.factory.capability.CapabilityOutcome
+import io.whozoss.factory.workflow.domain.ProjectionValidation
+import io.whozoss.factory.workflow.domain.WorkflowException
+import io.whozoss.factory.workflow.domain.WorkflowStepContract
+import io.whozoss.factory.workflow.domain.WorkflowDecision
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.proxy.AgentOsUnavailableException
 import io.whozoss.factory.proxy.UsageTrackingUnavailableException
 import io.whozoss.factory.sdk.spi.FactoryWorkflowExecutionPolicy
+import io.whozoss.factory.workflow.domain.LegacyStepContract
 import io.whozoss.factory.workflow.domain.AllowedActionDto
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
@@ -118,7 +130,7 @@ class WorkflowService(
      * plugin is refused when the manager is unavailable.
      */
     private val pluginManager: PluginManager? = null,
-    private val needsResearchRouter: io.whozoss.factory.capability.NeedsResearchRouter? = null,
+    private val needsResearchRouter: NeedsResearchRouter? = null,
     private val idempotencyRepository: IdempotencyRepository? = null,
     private val objectMapper: ObjectMapper? = null,
 ) {
@@ -166,20 +178,20 @@ class WorkflowService(
         repository.findDefinition(scope, workflowType, version)?.let { definitionJson(it) }
 
     @Transactional
-    fun registerDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord) {
+    fun registerDefinition(scope: OrganizationScope, record: WorkflowDefinitionRecord) {
         repository.saveDefinition(scope, record)
     }
 
     @Transactional
-    fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean =
+    fun deleteDefinition(scope: OrganizationScope, workflowType: String, version: String): Boolean =
         repository.deleteDefinition(scope, workflowType, version)
 
     @Transactional(readOnly = true)
-    fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): Map<String, Any?> =
+    fun listDefinitions(scope: OrganizationScope): Map<String, Any?> =
         mapOf("items" to repository.listDefinitions(scope).map { definitionJson(it) })
 
     @Transactional(readOnly = true)
-    fun getDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Map<String, Any?>? =
+    fun getDefinition(scope: OrganizationScope, workflowType: String, version: String): Map<String, Any?>? =
         repository.findDefinition(scope, workflowType, version)?.let { definitionJson(it) }
 
     private fun definitionJson(record: WorkflowDefinitionRecord): Map<String, Any?> = mapOf(
@@ -187,6 +199,8 @@ class WorkflowService(
         "version" to record.version,
         "definitionHash" to record.definitionHash,
         "definition" to record.definition,
+        "legacyContracts" to record.toPolicyDefinition().steps.filter { it.contract == null }
+            .associate { it.id to LegacyStepContract.metadata(it) },
     )
 
     // ------------------------------------------------------------------
@@ -324,10 +338,10 @@ class WorkflowService(
         controllerExecution: Map<String, Any?>?,
     ): WorkflowHttpResult {
         val validation = WorkflowProjectionValidator.validate(projection, workflowId)
-        if (validation is io.whozoss.factory.workflow.domain.ProjectionValidation.Invalid) {
+        if (validation is ProjectionValidation.Invalid) {
             throw workflowException(validation.error.code, "Workflow projection is invalid.", validation.error.details)
         }
-        val normalized = (validation as io.whozoss.factory.workflow.domain.ProjectionValidation.Valid).normalized
+        val normalized = (validation as ProjectionValidation.Valid).normalized
         val hash = CanonicalHash.workflowProjectionHash(normalized)
         val record = WorkflowProjectionRecord(
             namespaceId = namespaceId,
@@ -375,7 +389,31 @@ class WorkflowService(
         controllerExecution: ControllerExecutionInput,
         repoRoot: String? = null,
     ): WorkflowHttpResult {
-        val definitionRecord = resolveUniqueDefinition(scope, command.workflowType)
+        // Resolve an existing run from its pinned identity, never from the registry's current candidates.
+        val existing = repository.findInstance(scope, namespaceId, command.workflowId)
+        val selectedVersion = command.definitionVersion
+        val selectedHash = command.definitionHash
+        if ((selectedVersion == null) != (selectedHash == null) ||
+            (selectedVersion != null && (selectedVersion.isBlank() || selectedVersion.length > 128 ||
+                selectedHash == null || !Regex("[0-9a-f]{64}").matches(selectedHash)))
+        ) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "definitionVersion and a canonical definitionHash are required together.")
+        }
+        val pinnedVersion = existing?.instance?.get("definitionVersion") as? String
+        val definitionRecord = when {
+            selectedVersion != null -> repository.findDefinition(scope, command.workflowType, selectedVersion)
+                ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND)
+            pinnedVersion != null -> repository.findDefinition(scope, command.workflowType, pinnedVersion)
+                ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND)
+            else -> resolveUniqueDefinition(scope, command.workflowType)
+        }
+        if (selectedHash != null && definitionRecord.definitionHash != selectedHash) {
+            throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH, "The selected definition changed. Reload and select it again.")
+        }
+        if (existing != null && (definitionRecord.version != pinnedVersion ||
+                definitionRecord.definitionHash != existing.instance["definitionHash"])) {
+            throw workflowException(WorkflowErrorCodes.WORKFLOW_IDENTITY_CONFLICT, "An existing run cannot change its pinned definition.")
+        }
         // Resolve the declared execution plugin BEFORE any persistence or external
         // effect: an absent/unknown plugin must refuse the start explicitly.
         val executionPolicy = definitionRecord.executionPolicy ?: executionPolicyOf(definitionRecord.definition)
@@ -387,14 +425,13 @@ class WorkflowService(
             steps = definitionRecord.toPolicyDefinition().steps,
             executionPolicy = executionPolicy,
         )
-        val existing = repository.findInstance(scope, namespaceId, command.workflowId)
         if (existing != null) {
             if (existing.status != "active") throw workflowException(WorkflowErrorCodes.WORKFLOW_REMOVED)
             val hash = CanonicalHash.workflowStartCommandHash(command, definitionInput)
             if (existing.creationCommandHash != hash) {
                 throw workflowException(WorkflowErrorCodes.WORKFLOW_IDENTITY_CONFLICT)
             }
-            val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot)
+            val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot, controllerExecution.actorId)
             return WorkflowHttpResult(
                 200,
                 mapOf(
@@ -419,7 +456,7 @@ class WorkflowService(
         )
         repository.insertInstance(scope, record)
         publishProjectionRow(scope, namespaceId, command.workflowId, created.projection, command.workflowType, definitionRecord, controllerExecution)
-        val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot)
+        val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot, controllerExecution.actorId)
         sseHub.publish(scope, namespaceId, mapOf("workflowId" to command.workflowId, "namespaceId" to namespaceId, "revision" to 1))
         return WorkflowHttpResult(
             201,
@@ -439,6 +476,7 @@ class WorkflowService(
         namespaceId: String,
         command: WorkflowStartCommand,
         repoRoot: String?,
+        actorId: String? = null,
     ): SessionRunSubmissionService.SubmissionResult {
         val submitter = sessionRunSubmissionService
             ?: throw workflowException(
@@ -447,7 +485,7 @@ class WorkflowService(
             )
         val resolvedRoot = repoRoot?.takeIf { it.isNotBlank() }
             ?: agentOsProxyClient
-                ?.let { client -> runCatching { client.resolveRepoRoot(namespaceId, null) }.getOrNull() }
+                ?.let { client -> runCatching { client.resolveRepoRoot(namespaceId, actorId) }.getOrNull() }
                 ?.takeIf { it.isNotBlank() }
             ?: Path.of(".").toAbsolutePath().normalize().toString()
         return submitter.submit(scope, namespaceId, command.workflowId, resolvedRoot, "start", command.ticket)
@@ -482,7 +520,7 @@ class WorkflowService(
         )
         try {
             repository.publishProjection(scope, record, 0)
-        } catch (_: io.whozoss.factory.workflow.domain.WorkflowException) {
+        } catch (_: WorkflowException) {
             // A projection already exists for this workflow (e.g. replayed start); keep it.
         }
     }
@@ -806,7 +844,7 @@ class WorkflowService(
 
     private fun refreshResultCapabilityForAgentAnswer(
         scope: TenantScope,
-        attempt: io.whozoss.factory.agentattempt.domain.DurableAgentAttempt,
+        attempt: DurableAgentAttempt,
         questionEventId: String,
     ) {
         val service = agentStepResultService ?: return
@@ -1174,16 +1212,19 @@ class WorkflowService(
     ) {
         if (interaction.interactionType != CHECKPOINT_INTERACTION_TYPE) return
         val runner = sessionRunService ?: return
-        val root = repoRoot ?: resolveRepoRoot(namespaceId)
+        val instance = repository.findInstance(scope, namespaceId, workflowId)
+        val actorId = (instance?.instance?.get("controllerExecution") as? Map<*, *>)?.get("actorId") as? String
+            ?: (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
+        val root = repoRoot ?: resolveRepoRoot(namespaceId, actorId)
         logger.debug { "Auto-resuming session $workflowId after checkpoint ${interaction.interactionId}" }
         runner.runSession(scope, namespaceId, workflowId, root)
     }
 
     /** The namespace repo root, or the process working directory when AgentOS cannot resolve it. */
-    private fun resolveRepoRoot(namespaceId: String): Path =
+    private fun resolveRepoRoot(namespaceId: String, actorId: String? = null): Path =
         agentOsProxyClient
             ?.let { client ->
-                runCatching { client.resolveRepoRoot(namespaceId, null) }
+                runCatching { client.resolveRepoRoot(namespaceId, actorId) }
                     .getOrNull()
                     ?.takeIf { it.isNotBlank() }
                     ?.let(Path::of)
@@ -1265,7 +1306,7 @@ class WorkflowService(
             ),
         )
         idempotency.find(scope, scopedKey)?.let { cached ->
-            if (cached.requestHash != requestHash) throw io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException()
+            if (cached.requestHash != requestHash) throw IdempotencyKeyCollisionException()
             val response = mapper.readValue(cached.responsePayload, Map::class.java).entries.associate { it.key.toString() to it.value }
             return WorkflowHttpResult(200, response + ("idempotent" to true))
         }
@@ -1293,26 +1334,26 @@ class WorkflowService(
         }
         val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, predecessor.attemptId)
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "No accepted NEEDS_RESEARCH result is available for the authoritative predecessor.")
-        if (accepted.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
+        if (accepted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
             throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The authoritative predecessor result is not NEEDS_RESEARCH.")
         }
         val result = evidenceRepository.list(scope, namespaceId, workflowId, stepId)
-            .singleOrNull { it.kind == io.whozoss.factory.capability.NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND && it.facts["attemptId"] == predecessor.attemptId && it.facts["resultId"] == accepted.resultId }
+            .singleOrNull { it.kind == NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND && it.facts["attemptId"] == predecessor.attemptId && it.facts["resultId"] == accepted.resultId }
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The accepted NEEDS_RESEARCH proof is missing or ambiguous.")
         val facts = result.facts
         @Suppress("UNCHECKED_CAST")
         val persona = (result.source?.get("persona") as? String) ?: step.responsibility.name
         if (persona == null) throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The research step has no assigned agent.")
-        val outcome = io.whozoss.factory.capability.CapabilityOutcome.AgentNeedsResearch(
+        val outcome = CapabilityOutcome.AgentNeedsResearch(
             stepId = stepId,
             persona = persona,
             attemptId = facts["attemptId"] as? String,
             resultId = facts["resultId"] as? String,
             summary = facts["summary"] as? String
                 ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The accepted NEEDS_RESEARCH result has no summary."),
-            findings = facts["findings"] as? List<Map<String, Any?>> ?: emptyList(),
-            artifacts = facts["artifacts"] as? List<Map<String, Any?>> ?: emptyList(),
-            claims = facts["claims"] as? Map<String, Any?> ?: emptyMap(),
+            findings = facts["findings"] as? List<*> ?: emptyList(),
+            artifacts = facts["artifacts"] as? List<*> ?: emptyList(),
+            claims = (facts["claims"] as? Map<*, *>)?.toCheckedJsonObject() ?: emptyMap(),
         )
         val successorId = (needsResearchRouter ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Research resumption is unavailable."))
             .resume(scope, namespaceId, workflowId, step, outcome, normalized, actorId)
@@ -1977,6 +2018,9 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             name = step["name"] as String,
             responsibility = WorkflowStepResponsibility(kind, responsibility?.get("name") as? String),
             dependsOn = (step["dependsOn"] as? List<*>)?.map { it as String } ?: emptyList(),
+            contract = WorkflowStepContract.fromJson(step),
+            decision = WorkflowDecision.parse(step["decision"]),
+            join = step["join"] as? String,
         )
     }
     return WorkflowPolicyDefinition(workflowType = workflowType, version = version, definitionHash = definitionHash, steps = steps)

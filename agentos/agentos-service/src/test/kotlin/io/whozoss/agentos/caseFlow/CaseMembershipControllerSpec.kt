@@ -3,11 +3,13 @@ package io.whozoss.agentos.caseFlow
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -23,7 +25,8 @@ import java.util.UUID
  * Unit tests for [CaseMembershipController].
  *
  * Covers: existence gate, delegation to [PermissionService.applyShareBatch],
- * self-modification filtering, and the return of the resulting member list.
+ * self-modification filtering, the namespace-membership rule for every invitation (super-admins
+ * included), and the return of the resulting member list.
  */
 class CaseMembershipControllerSpec :
     StringSpec({
@@ -64,6 +67,27 @@ class CaseMembershipControllerSpec :
                 permissionService.listUsersWithPermission(EntityType.CASE, caseId.toString(), PermissionRelation.MEMBER)
             } returns memberIds
         }
+
+        /** Stubs the direct relations found on the case and on its namespace for any looked-up user ids. */
+        fun stubRelations(
+            onCase: Map<String, PermissionRelation> = emptyMap(),
+            onNamespace: Map<String, PermissionRelation> = emptyMap(),
+        ) {
+            every {
+                permissionService.listRelationsForUsers(EntityType.CASE, caseId.toString(), any())
+            } answers { onCase.filterKeys { it in thirdArg<Collection<String>>() } }
+            every {
+                permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), any())
+            } answers { onNamespace.filterKeys { it in thirdArg<Collection<String>>() } }
+        }
+
+        val targetUser =
+            User(
+                metadata = EntityMetadata(id = targetUserId),
+                externalId = "target@example.com",
+                email = "target@example.com",
+                isAdmin = false,
+            )
 
         beforeTest { clearAllMocks() }
 
@@ -111,6 +135,7 @@ class CaseMembershipControllerSpec :
             val members = listOf(UserMembershipRole(targetUserId, "MEMBER"))
             every { caseService.getById(caseId) } returns caseEntity
             every { userService.getCurrentUser() } returns caller
+            stubRelations(onNamespace = mapOf(targetUserId.toString() to PermissionRelation.MEMBER))
             every {
                 permissionService.applyShareBatch(
                     EntityType.CASE,
@@ -119,13 +144,6 @@ class CaseMembershipControllerSpec :
                 )
             } returns listOf(targetUserId.toString())
             stubCurrentMembers(memberIds = listOf(targetUserId.toString()))
-            val targetUser =
-                User(
-                    metadata = EntityMetadata(id = targetUserId),
-                    externalId = "target@example.com",
-                    email = "target@example.com",
-                    isAdmin = false,
-                )
             every { userService.findByIds(listOf(targetUserId)) } returns listOf(targetUser)
 
             val result = controller.updateMembers(caseId, members)
@@ -149,6 +167,7 @@ class CaseMembershipControllerSpec :
                 )
             every { caseService.getById(caseId) } returns caseEntity
             every { userService.getCurrentUser() } returns caller
+            stubRelations(onNamespace = mapOf(targetUserId.toString() to PermissionRelation.MEMBER))
             every {
                 permissionService.applyShareBatch(
                     EntityType.CASE,
@@ -157,13 +176,6 @@ class CaseMembershipControllerSpec :
                 )
             } returns listOf(targetUserId.toString())
             stubCurrentMembers(memberIds = listOf(targetUserId.toString()))
-            val targetUser =
-                User(
-                    metadata = EntityMetadata(id = targetUserId),
-                    externalId = "target@example.com",
-                    email = "target@example.com",
-                    isAdmin = false,
-                )
             every { userService.findByIds(listOf(targetUserId)) } returns listOf(targetUser)
 
             controller.updateMembers(caseId, members)
@@ -220,5 +232,77 @@ class CaseMembershipControllerSpec :
                     listOf(targetUserId.toString() to null),
                 )
             }
+            // Revocations never trigger the namespace lookups
+            verify(exactly = 0) { permissionService.listRelationsForUsers(any(), any(), any()) }
+        }
+
+        "updateMembers lets a non-super-admin invite a member of the case's namespace" {
+            every { caseService.getById(caseId) } returns caseEntity
+            every { userService.getCurrentUser() } returns caller
+            stubRelations(onNamespace = mapOf(targetUserId.toString() to PermissionRelation.ADMIN))
+            every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(targetUserId.toString())
+            stubCurrentMembers(memberIds = listOf(targetUserId.toString()))
+            every { userService.findByIds(listOf(targetUserId)) } returns listOf(targetUser)
+
+            controller.updateMembers(caseId, listOf(UserMembershipRole(targetUserId, "ADMIN")))
+
+            verify(exactly = 1) {
+                permissionService.applyShareBatch(
+                    EntityType.CASE,
+                    caseId.toString(),
+                    listOf(targetUserId.toString() to PermissionRelation.ADMIN),
+                )
+            }
+        }
+
+        "updateMembers rejects a non-super-admin inviting a user outside the case's namespace" {
+            every { caseService.getById(caseId) } returns caseEntity
+            every { userService.getCurrentUser() } returns caller
+            stubRelations() // no relation on the case nor on the namespace
+
+            val ex =
+                shouldThrow<UnprocessableEntityException> {
+                    controller.updateMembers(caseId, listOf(UserMembershipRole(targetUserId, "MEMBER")))
+                }
+
+            ex.message shouldContain targetUserId.toString()
+            verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
+        }
+
+        "updateMembers does not require namespace membership to change the role of an existing case member" {
+            every { caseService.getById(caseId) } returns caseEntity
+            every { userService.getCurrentUser() } returns caller
+            stubRelations(onCase = mapOf(targetUserId.toString() to PermissionRelation.MEMBER))
+            every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(targetUserId.toString())
+            stubCurrentMembers(adminIds = listOf(targetUserId.toString()))
+            every { userService.findByIds(listOf(targetUserId)) } returns listOf(targetUser)
+
+            controller.updateMembers(caseId, listOf(UserMembershipRole(targetUserId, "ADMIN")))
+
+            verify(exactly = 1) {
+                permissionService.applyShareBatch(
+                    EntityType.CASE,
+                    caseId.toString(),
+                    listOf(targetUserId.toString() to PermissionRelation.ADMIN),
+                )
+            }
+            verify(exactly = 0) {
+                permissionService.listRelationsForUsers(EntityType.NAMESPACE, any(), any())
+            }
+        }
+
+        "updateMembers rejects a super-admin inviting a user outside the case's namespace" {
+            val superAdmin = caller.copy(isAdmin = true)
+            every { caseService.getById(caseId) } returns caseEntity
+            every { userService.getCurrentUser() } returns superAdmin
+            stubRelations() // no relation on the case nor on the namespace
+
+            val ex =
+                shouldThrow<UnprocessableEntityException> {
+                    controller.updateMembers(caseId, listOf(UserMembershipRole(targetUserId, "MEMBER")))
+                }
+
+            ex.message shouldContain targetUserId.toString()
+            verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
         }
     })

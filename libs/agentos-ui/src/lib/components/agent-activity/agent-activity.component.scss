@@ -10,6 +10,8 @@
 }
 
 .agent-activity {
+  // Keep the visually hidden live region inside the activity row's scroll context.
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;

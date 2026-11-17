@@ -35,3 +35,6 @@
 
 // ── Badges — badge-base, badge(), badge-success/warning/error/info ────────────
 @forward 'badges';
+
+// ── AgentOS primitives — .btn, .input, .tag, .blueprint-corner (include inside `agentos-shell`) ──
+@forward 'agentos-primitives';

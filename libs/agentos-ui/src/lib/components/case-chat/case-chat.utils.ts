@@ -1,4 +1,27 @@
-import { AnswerEvent, CaseEvent, CaseStatusEventStatusEnum, QuestionEvent } from '@whoz-oss/agentos-api-client'
+import {
+  Actor,
+  ActorRoleEnum,
+  AnswerEvent,
+  CaseEvent,
+  CaseStatusEventStatusEnum,
+  QuestionEvent,
+} from '@whoz-oss/agentos-api-client'
+
+/**
+ * Label above a turn of the conversation, for messages and question answers alike.
+ *
+ * - an agent turn: its display name, 'Agent' when it has none;
+ * - a human turn from the current user: 'You';
+ * - a human turn from someone else (a collaborator on a shared case): their display name;
+ * - no display name (legacy events), or current user not loaded yet: the name when there is one, 'You' otherwise.
+ *
+ * Ids are compared regardless of the UUID letter case, like the respondent check of [findLegitimateAnswer].
+ */
+export function senderLabel(actor: Actor, currentUserId: string | null | undefined): string {
+  if (actor.role !== ActorRoleEnum.USER) return actor.displayName || 'Agent'
+  if (currentUserId && actor.id?.toLowerCase() === currentUserId.toLowerCase()) return 'You'
+  return actor.displayName || 'You'
+}
 
 /**
  * Finds the legitimate answer of a question, mirroring the backend rule

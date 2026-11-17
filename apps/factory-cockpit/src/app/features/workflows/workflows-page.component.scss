@@ -1,51 +1,39 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
 .page {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-width: 1200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .page-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 16px;
 }
 .titles {
-  flex: 1;
+  flex: 1 1 220px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 h1 {
   margin: 0;
+  font-family: var(--font-heading);
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 .titles p {
   margin: 0;
   font-size: 14px;
-}
-
-.banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid;
-  font-size: 13.5px;
-  font-weight: 600;
-}
-.banner mat-icon {
-  width: 18px;
-  height: 18px;
-  font-size: 18px;
-}
-.banner--warn {
-  color: var(--sf-tertiary);
-  border-color: #5a4818;
-  background: #1d180b;
 }
 
 .state {
@@ -69,19 +57,21 @@ h1 {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
   gap: 16px;
 }
 
 /* Card as anchor link */
 .wf-card {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 14px;
   padding: 18px 20px;
-  border-radius: 12px;
-  border: 1px solid var(--sf-outline);
-  background: var(--sf-surface);
+  border-radius: var(--radius-md, 0);
+  border: 1px solid var(--color-divider);
+  background: var(--color-bg);
   text-decoration: none;
   color: inherit;
   cursor: pointer;
@@ -90,16 +80,16 @@ h1 {
     border-color 0.15s ease;
 }
 .wf-card:hover {
-  background: #141a26;
-  border-color: var(--sf-outline-active);
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
 }
 .wf-card:focus-visible {
-  outline: 2px solid var(--sf-primary);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 .wf-card__titles {
-  flex: 1;
+  flex: 1 1 180px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -123,9 +113,9 @@ h1 {
   font-size: 12px;
   color: var(--sf-text-muted);
   padding: 4px 10px;
-  border: 1px solid var(--sf-outline-strong);
-  border-radius: 999px;
-  background: var(--sf-surface-2);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-pill, 0);
+  background: var(--color-surface-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }

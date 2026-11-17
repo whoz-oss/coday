@@ -1,5 +1,12 @@
 package io.whozoss.factory.workflow
 
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
+import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
+import io.whozoss.factory.adapter.agentos.CaseHandle
+import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
+import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.service.AgentStepQuestionService
+import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
@@ -35,6 +42,7 @@ import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -76,6 +84,12 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var attemptRepository: AgentStepAttemptRepository
+
+    @Autowired
+    private lateinit var durableAttempts: DurableAgentAttemptService
+
+    @Autowired
+    private lateinit var questions: AgentStepQuestionService
 
     @TempDir
     lateinit var repoRoot: Path
@@ -243,6 +257,104 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
             .filter { it.kind == NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND }
         assertThat(proof).hasSize(1)
         assertThat(proof.single().outcome).isEqualTo(NeedsResearchRouter.NEEDS_RESEARCH_OUTCOME)
+    }
+
+    @Test
+    fun `non-routing queryUser waits for agent completion then resumes from the finalized attempt`() {
+        val workflowId = "wf-query-user-resume"
+        startSession("query-user-resume", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
+        val capability = mockk<CapabilityExecutionService>()
+        every { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") } returns false
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
+            CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired("s1", "architect"), attemptId = "attempt-1")
+        val service = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub)
+
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        // A repeated continuation while queryUser is still unanswered cannot approve an agent step.
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+
+        // The answer resumes the same agent turn. Its eventual durable finalization, not a human
+        // checkpoint approval, permits the outbox continuation to replay the outcome.
+        every { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") } returns true
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
+            CapabilityExecution(CapabilityOutcome.AgentCompleted("s1", "architect", "PASS", emptyMap()), attemptId = "attempt-1")
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
+        verify(exactly = 2) { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) }
+        assertThat(interactionRepository.list(scope, namespace, workflowId, false)).isEmpty()
+    }
+
+    @Test
+    fun `waiting resolution re-arms an agent that became resumable after the initial check`() {
+        val workflowId = "wf-waiting-recheck"
+        startSession("waiting-recheck", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
+        val capability = mockk<CapabilityExecutionService>()
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
+            CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired("s1", "architect"), attemptId = "attempt")
+        val runner = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub)
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        every { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") } returnsMany listOf(false, true)
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
+            CapabilityExecution(CapabilityOutcome.AgentCompleted("s1", "architect", "PASS", emptyMap()), attemptId = "successor")
+
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        verify(exactly = 2) { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") }
+        verify(exactly = 0) { capability.hasFinalizedAttempt(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `answering an agent question registers successor attempt N+1 and resumes the agent step and its dependents`() {
+        writeScript("pass", "exit 0")
+        writeManifest("check" to "./factory/verification/pass")
+        val workflowId = "wf-question-successor"
+        startSession("question-successor", workflowId, listOf(
+            stepJson("s1", "agent", "architect", emptyList()),
+            stepJson("s2", "code", "check", listOf("s1")),
+        ))
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+            val binding = firstArg<TrustedCaseBinding>()
+            CaseHandle(binding.caseId, binding.namespaceId, false)
+        }
+        var answered = false
+        every { adapter.observeTurnResult(any(), any(), any(), any()) } answers {
+            AgentOsObservationResult(if (answered) AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "done"))
+                else AgentOsExecutionVerdict.WaitingHuman("question"))
+        }
+        val capability = CapabilityExecutionService(CapabilityResolver(), workflowRepository, evidenceRepository,
+            interactionRepository, attemptRepository, durableAttempts, adapter)
+        val runner = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub)
+
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(statusOf(workflowId, "s2")).isEqualTo(WorkflowStatuses.PENDING)
+        val predecessor = durableAttempts.findLatestForStep(scope, namespace, workflowId, "s1")!!
+        assertThat(predecessor.status).isEqualTo(AgentAttemptStatus.WAITING_HUMAN)
+        // Persist the legacy channel's question fixture; use the real transactional answer
+        // service to close it and atomically supersede/register N+1. No recovery scanner runs.
+        val interaction = interactionRepository.insert(scope, HumanInteractionRecord(
+            "successor-question", namespace, workflowId, "s1", "agent_question", "waiting", 1,
+            mapOf("attemptId" to predecessor.attemptId, "prompt" to "Proceed?", "questionType" to "FREE_TEXT"),
+        ))
+        val answer = questions.answer(scope, namespace, workflowId, interaction.interactionId, interaction.revision, "Proceed", "alice")
+        val successor = durableAttempts.findLatestForStep(scope, namespace, workflowId, "s1")!!
+        assertThat(successor.attemptId).isEqualTo(answer.successorAttemptId)
+        assertThat(successor.attemptNumber).isEqualTo(2)
+        assertThat(successor.status).isEqualTo(AgentAttemptStatus.PENDING)
+        assertThat(durableAttempts.find(scope, namespace, workflowId, "s1", predecessor.attemptId)!!.status)
+            .isEqualTo(AgentAttemptStatus.SUPERSEDED)
+        assertThat(interactionRepository.find(scope, namespace, workflowId, interaction.interactionId)!!.status).isEqualTo("closed")
+        answered = true
+
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "s2")).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(durableAttempts.find(scope, namespace, workflowId, "s1", successor.attemptId)!!.status)
+            .isEqualTo(AgentAttemptStatus.SUCCEEDED)
+        verify(exactly = 1) { adapter.startTurn(match<TrustedCaseBinding> { it.attemptId == successor.attemptId }, any(), any()) }
+        val evidenceCount = evidenceRepository.list(scope, namespace, workflowId).size
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId)).hasSize(evidenceCount)
     }
 
     // ----- tests ---------------------------------------------------------
@@ -540,6 +652,43 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
 
         assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "oracle-result" }).isEmpty()
+    }
+
+    @Test
+    fun `a step with no matching oracles succeeds even when oracleExecutionService is absent`() {
+        writeScript("pass", "exit 0")
+        writeManifest("check" to "./factory/verification/pass")
+        val workflowId = "wf-no-oracle-service"
+        startSession(
+            "unrelated-no-service-dag",
+            workflowId,
+            listOf(stepJson("s1", "code", "check", emptyList())),
+        )
+        val registry = mockk<OracleDefinitionRegistry>()
+        every { registry.list() } returns emptyList()
+        val runnerWithoutOracleService = SessionRunService(
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            CapabilityExecutionService(
+                CapabilityResolver(),
+                workflowRepository,
+                evidenceRepository,
+                interactionRepository,
+                attemptRepository,
+                durableAgentAttemptService = mockk<DurableAgentAttemptService>(relaxed = true),
+                agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
+                agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
+            ),
+            sseHub,
+            oracleDefinitionRegistry = registry,
+            oracleExecutionService = null,
+        )
+
+        val result = runnerWithoutOracleService.runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
     }
 
     @Test

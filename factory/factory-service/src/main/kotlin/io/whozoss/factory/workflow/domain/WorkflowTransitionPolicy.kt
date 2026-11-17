@@ -178,13 +178,19 @@ object WorkflowTransitionPolicy {
         ) {
             return deny("REVISION_CONFLICT", "revision_mismatch")
         }
+        if (declared.decision != null) {
+            // Only the sequencer can atomically accept a decision and activate its branches.
+            return deny("ROUTING_SEQUENCER_REQUIRED", "decision_transitions_require_validated_sequencer")
+        }
         val currentStatus = current["status"] as? String
         if (currentStatus == null || request.requestedStatus !in WorkflowStatuses.TRANSITIONS[currentStatus].orEmpty()) {
             return deny("ILLEGAL_TRANSITION", "transition_not_allowed")
         }
         if (request.requestedStatus in setOf(WorkflowStatuses.READY, WorkflowStatuses.RUNNING, WorkflowStatuses.COMPLETED)) {
-            val missing = declared.dependsOn.filter { stepStatus(instanceSteps, it) != WorkflowStatuses.COMPLETED }
-            if (missing.isNotEmpty()) return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", missing)
+            val statuses = instanceSteps.associate { it["id"].toString() to it["status"].toString() }
+            if (!WorkflowRouting.dependenciesSatisfied(declared, definition.steps, statuses)) {
+                return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", declared.dependsOn)
+            }
         }
         val factoryOracle = declared.responsibility.kind == ResponsibilityKind.CODE &&
             execution.kind == "factory-oracle" && execution.runtimeId == "factory-dashboard"
@@ -299,8 +305,10 @@ object WorkflowTransitionPolicy {
             return deny("ACTOR_NOT_AUTHORIZED", "step_is_not_human_owned")
         }
         if (current["status"] != WorkflowStatuses.READY) return deny("ILLEGAL_TRANSITION", "human_step_is_not_ready")
-        val missing = declared.dependsOn.filter { stepStatus(instanceSteps, it) != WorkflowStatuses.COMPLETED }
-        if (missing.isNotEmpty()) return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", missing)
+        val statuses = instanceSteps.associate { it["id"].toString() to it["status"].toString() }
+        if (!WorkflowRouting.dependenciesSatisfied(declared, definition.steps, statuses)) {
+            return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", declared.dependsOn)
+        }
         if (request.requestedStatus != WorkflowStatuses.WAITING_HUMAN || request.evidenceIds.isNotEmpty()) {
             return deny("ACTOR_NOT_AUTHORIZED", "human_gate_opener_can_only_open_checkpoint")
         }
@@ -401,7 +409,7 @@ object WorkflowTransitionPolicy {
         if (request.requestedStatus == WorkflowStatuses.COMPLETED) {
             for (step in definition.steps) {
                 if (previous[step.id] == WorkflowStatuses.PENDING &&
-                    step.dependsOn.all { previous[it] == WorkflowStatuses.COMPLETED }
+                    WorkflowRouting.dependenciesSatisfied(step, definition.steps, previous)
                 ) {
                     previous[step.id] = WorkflowStatuses.READY
                 }
@@ -409,7 +417,7 @@ object WorkflowTransitionPolicy {
         }
         val statuses = previous.values.toList()
         val status = when {
-            statuses.all { it == WorkflowStatuses.COMPLETED } -> WorkflowStatuses.COMPLETED
+            statuses.all { it == WorkflowStatuses.COMPLETED || it == WorkflowStatuses.SKIPPED } -> WorkflowStatuses.COMPLETED
             statuses.any { it == WorkflowStatuses.FAILED } -> WorkflowStatuses.FAILED
             statuses.any { it == WorkflowStatuses.WAITING_HUMAN } -> WorkflowStatuses.WAITING_HUMAN
             statuses.any { it == WorkflowStatuses.BLOCKED } -> WorkflowStatuses.BLOCKED

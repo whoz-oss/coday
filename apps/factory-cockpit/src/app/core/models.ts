@@ -9,7 +9,16 @@ export interface PhaseSegment {
   label?: string
   ratio: number // part de la durée totale (0–1)
   tone: Tone
-  status: 'done' | 'failed' | 'blocked' | 'cancelled' | 'indeterminate' | 'running' | 'waiting_human' | 'pending'
+  status:
+    | 'done'
+    | 'failed'
+    | 'blocked'
+    | 'cancelled'
+    | 'indeterminate'
+    | 'running'
+    | 'waiting_human'
+    | 'pending'
+    | 'skipped'
 }
 
 export type RunCardState = 'pending' | 'running' | 'waiting_human' | 'blocked' | 'succeeded' | 'failed'
@@ -145,7 +154,7 @@ export interface CostSummary {
 export interface SessionStep {
   key: string
   tone: Tone
-  status: 'done' | 'running' | 'failed' | 'blocked' | 'waiting_human' | 'pending'
+  status: 'done' | 'running' | 'failed' | 'blocked' | 'waiting_human' | 'pending' | 'skipped'
   durationSec?: number
 }
 
@@ -158,6 +167,7 @@ export type TimelineStepStatus =
   | 'failed'
   | 'indeterminate'
   | 'cancelled'
+  | 'skipped'
 
 export interface TimelineBlock {
   label: string
@@ -235,6 +245,8 @@ export interface RunEvent {
  * `GET /api/factory/workflows/:id/attempts`.
  */
 export interface AgentAttempt {
+  /** Frozen mandate dispatched for this exact attempt, absent when not available. */
+  effectiveMandate?: string
   attemptId: string
   stepId: string
   attemptNumber: number
@@ -496,6 +508,8 @@ export interface ParentRunDetail {
 }
 
 export interface SessionDetail {
+  /** Authoritative routing diagram including inactive never-executed steps. */
+  routingSteps?: import('./factory-api.service').FullWorkflowStep[]
   id: string
   sandbox: string
   goal: string

@@ -1,7 +1,7 @@
 <ds-drawer position="end" [(open)]="exchangeOpen" drawerWidth="400px" [mobileFullWidth]="true">
   <div dsDrawerSide class="case-chat__drawer-side">
     @if (drawerPanel() === 'members') {
-      <agentos-case-members [caseId]="caseId" (closeRequested)="exchangeOpen.set(false)" />
+      <agentos-case-members [caseId]="caseId" [namespaceId]="namespaceId" (closeRequested)="exchangeOpen.set(false)" />
     } @else {
       <agentos-exchange-shell
         [active]="exchangeOpen()"
@@ -75,6 +75,7 @@
           <ds-icon-button
             icon="folder"
             variant="default"
+            inputTrack="CaseChat-openFiles"
             [title]="'Files (' + exchangeFileCount() + ')'"
             (action)="openFilesPanel()"
           />
@@ -173,7 +174,7 @@
                 >
                   @if (item.isFirstInGroup) {
                     <span class="case-chat__role-label">
-                      {{ item.event.actor.role === 'USER' ? 'You' : item.event.actor.displayName || 'Agent' }}
+                      {{ actorLabel(item.event.actor) }}
                       @if (agentModelAttribution(item.event); as modelAttribution) {
                         <span class="case-chat__role-model">({{ modelAttribution }})</span>
                       }

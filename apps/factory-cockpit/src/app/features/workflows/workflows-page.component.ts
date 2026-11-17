@@ -11,7 +11,7 @@ import { WorkflowDefinitionsStateService } from '../../core/workflow-definitions
  * Read-only list of registered workflow definitions.
  *
  * Each card is a router link navigating to the detail page
- * (`/workflows/:type/:version`) where the full definition JSON is displayed.
+ * (`/workflows/:type/:version`) with a dependency diagram and per-step instructions editor.
  * There is no in-place expansion: the list stays flat and stable.
  */
 @Component({

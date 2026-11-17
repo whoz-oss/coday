@@ -87,13 +87,16 @@ catalogs:
     tsx: '4.20.6'
     typescript: '6.0.3'
     typescript-eslint: '8.68.0'
-ignoredBuiltDependencies:
-  - '@parcel/watcher'
-  - 'lmdb'
-  - 'msgpackr-extract'
-  - 'unrs-resolver'
 onlyBuiltDependencies:
-  - '@openapitools/openapi-generator-cli'
-  - '@swc/core'
-  - 'esbuild'
-  - 'nx'
+  - "@nestjs/core"
+  - "@openapitools/openapi-generator-cli"
+  - "@parcel/watcher"
+  - "@swc/core"
+  - "electron"
+  - "electron-winstaller"
+  - "esbuild"
+  - "less"
+  - "lmdb"
+  - "msgpackr-extract"
+  - "nx"
+  - "unrs-resolver"

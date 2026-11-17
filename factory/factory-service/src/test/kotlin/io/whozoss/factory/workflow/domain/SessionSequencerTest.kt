@@ -24,6 +24,17 @@ class SessionSequencerTest {
         LinkedHashMap(pairs.toMap())
 
     @Test
+    fun `ordinary workflows remain live with running or runnable steps but fail an unsatisfied ready deadlock`() {
+        val steps = listOf(step("a"), step("b", "a"))
+        assertThat(SessionSequencer.terminalStatus(steps, statuses("a" to WorkflowStatuses.RUNNING, "b" to WorkflowStatuses.PENDING)))
+            .isEqualTo(WorkflowStatuses.RUNNING)
+        assertThat(SessionSequencer.terminalStatus(steps, statuses("a" to WorkflowStatuses.COMPLETED, "b" to WorkflowStatuses.READY)))
+            .isEqualTo(WorkflowStatuses.READY)
+        assertThat(SessionSequencer.terminalStatus(steps, statuses("a" to WorkflowStatuses.FAILED, "b" to WorkflowStatuses.READY)))
+            .isEqualTo(WorkflowStatuses.FAILED)
+    }
+
+    @Test
     fun `initial statuses mark root steps ready and dependents pending`() {
         val steps = listOf(step("a"), step("b", "a"))
 

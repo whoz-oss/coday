@@ -133,7 +133,7 @@ class ToolResolverService(
         val enrichedContext =
             config.authSettingName?.let { name ->
                 credentialProviderFactory(name)?.let { provider ->
-                    context.copy(credentialProvider = provider)
+                    context.copy(credentialProvider = provider, authSettingName = name)
                 }
             } ?: context
         val tools =

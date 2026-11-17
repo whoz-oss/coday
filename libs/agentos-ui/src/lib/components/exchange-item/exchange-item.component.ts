@@ -4,6 +4,7 @@ import { EntityCardBadge, IconButtonComponent } from '@whoz-oss/design-system'
 import { GitFileStatus } from '../../services/exchange-environment.service'
 import { GIT_FILE_LABELS } from '../../services/exchange-git-tree.utils'
 import { formatDate, formatSize, getFileIcon } from '../../services/exchange-content.utils'
+import { ExchangeScope } from '../../services/exchange-state.service'
 import { injectCopyFeedback } from '../../services/clipboard.utils'
 
 /** View-model for one dense file row. */
@@ -36,6 +37,7 @@ export interface ExchangeFileRow {
 })
 export class ExchangeItemComponent {
   readonly row = input.required<ExchangeFileRow>()
+  readonly scope = input.required<ExchangeScope>()
   readonly active = input<boolean>(false)
   readonly canWrite = input<boolean>(false)
   /** Offers a checkbox to pick the row (never on a missing, i.e. deleted, row). */

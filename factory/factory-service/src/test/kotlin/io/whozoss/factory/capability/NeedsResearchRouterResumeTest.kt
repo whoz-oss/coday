@@ -123,7 +123,7 @@ class NeedsResearchRouterResumeTest {
         verify(exactly = 1) { stepAttempts.insert(scope, match { it.attemptId == successorId }) }
 
         // The brief addresses the SUCCESSOR identifiers and actually carries the engineer's text.
-        val brief = successor.brief!!
+        val brief = successor.brief
         assertThat(brief).doesNotContain("att-1")
         assertThat(brief).contains("attemptId '$successorId'").contains("factory:$successorId:result")
         assertThat(brief).contains(context).contains("no read access to the repository")

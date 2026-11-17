@@ -17,6 +17,7 @@ import io.whozoss.factory.workflow.domain.ControllerRequestInput
 import io.whozoss.factory.workflow.domain.WorkflowActionsResponseDto
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowExecution
+import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.domain.workflowException
@@ -192,7 +193,7 @@ class WorkflowController(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
-        val allowedFields = setOf("namespaceId", "caseId", "workflowType", "title", "initialRequest", "parameters")
+        val allowedFields = setOf("namespaceId", "caseId", "workflowType", "title", "initialRequest", "parameters", "definitionVersion", "definitionHash")
         if (request.keys.any { it !in allowedFields }) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         }
@@ -200,6 +201,11 @@ class WorkflowController(
             ?: throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID, "A valid namespaceId is required.")
         val workflowType = request["workflowType"] as? String
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        for (field in listOf("definitionVersion", "definitionHash")) {
+            if (request.containsKey(field) && (request[field] !is String || (request[field] as String).isBlank())) {
+                throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "$field must be a nonblank string.")
+            }
+        }
         val suppliedKey = idempotencyKey?.trim()?.takeIf { it.isNotEmpty() }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "Idempotency-Key is required.")
         val parameters = (request["parameters"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
@@ -223,6 +229,8 @@ class WorkflowController(
                     initialRequest = request["initialRequest"] as? String,
                     parameters = parameters,
                     idempotencyKey = suppliedKey,
+                    definitionVersion = request["definitionVersion"] as? String,
+                    definitionHash = request["definitionHash"] as? String,
                 ),
                 repoRoot,
             ),
@@ -1073,7 +1081,7 @@ class WorkflowController(
         )
     }
 
-    private fun parseEvidence(raw: Any?, workflowId: String, namespaceId: String): io.whozoss.factory.workflow.domain.WorkflowEvidenceItem {
+    private fun parseEvidence(raw: Any?, workflowId: String, namespaceId: String): WorkflowEvidenceItem {
         val evidence = (raw as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_EVIDENCE)
         val allowed = setOf("workflowId", "stepId", "kind", "outcome", "facts", "idempotencyKey")
@@ -1090,7 +1098,7 @@ class WorkflowController(
         }
         val stepId = evidence["stepId"] as? String
         val outcome = evidence["outcome"] as? String
-        return io.whozoss.factory.workflow.domain.WorkflowEvidenceItem(
+        return WorkflowEvidenceItem(
             evidenceId = UUID.randomUUID().toString(),
             namespaceId = namespaceId,
             workflowId = workflowId,

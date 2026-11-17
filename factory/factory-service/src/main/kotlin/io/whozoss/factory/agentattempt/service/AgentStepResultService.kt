@@ -2,6 +2,8 @@ package io.whozoss.factory.agentattempt.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.agentattempt.domain.AgentStepResultLimits
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapability
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
@@ -15,6 +17,12 @@ import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.persistence.AgentStepResultRepository
 import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.domain.WorkflowDecision
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
+import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
+import io.whozoss.factory.agentattempt.domain.ResultCapabilityInvalidException
+import io.whozoss.factory.agentattempt.domain.ResultSemanticCollisionException
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -63,6 +71,7 @@ class AgentStepResultService(
     private val idempotency: IdempotencyRepository,
     private val attempts: AgentStepAttemptRepository,
     private val objectMapper: ObjectMapper,
+    private val workflowRepository: WorkflowRepository? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -102,7 +111,7 @@ class AgentStepResultService(
         runtimeId: String,
         refreshKey: String,
         now: Instant = Instant.now(),
-        ttlSeconds: Long = io.whozoss.factory.agentattempt.domain.AgentStepResultLimits.CAPABILITY_TTL_SECONDS,
+        ttlSeconds: Long = AgentStepResultLimits.CAPABILITY_TTL_SECONDS,
     ): IssuedCapability = results.refresh(scope, observed, runtimeId, refreshKey, now, ttlSeconds)
 
     /**
@@ -113,14 +122,14 @@ class AgentStepResultService(
     @Transactional
     fun submitTrusted(
         scope: TenantScope,
-        attempt: io.whozoss.factory.agentattempt.domain.DurableAgentAttempt,
+        attempt: DurableAgentAttempt,
         business: JsonNode?,
         agentName: String?,
         idempotencyKey: String?,
         now: Instant = Instant.now(),
     ): AgentStepResultSubmission {
         val token = attempt.capabilityToken?.takeIf { it.isNotBlank() }
-            ?: throw io.whozoss.factory.agentattempt.domain.ResultCapabilityInvalidException(
+            ?: throw ResultCapabilityInvalidException(
                 "The active attempt has no result submission capability",
             )
         return submit(
@@ -170,7 +179,7 @@ class AgentStepResultService(
                 }
                 val incomingStatus = business?.path("status")?.asText()
                 val resolvesNeedsResearch =
-                    currentResult?.status == io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH &&
+                    currentResult?.status == AgentStepResultStatus.NEEDS_RESEARCH &&
                         (incomingStatus == "PASS" || incomingStatus == "FAIL")
                 if (!resolvesNeedsResearch) {
                     throw IdempotencyKeyCollisionException()
@@ -183,12 +192,44 @@ class AgentStepResultService(
             throw ResultSchemaInvalidException(details = mapOf("violations" to violations))
         }
 
-        val outcome = results.submit(scope, token, business!!, observed, now)
+        val capability = results.findByToken(scope, token) ?: throw ResultCapabilityInvalidException()
+        if (observed.attemptId != capability.attemptId || observed.caseId != capability.caseId ||
+            observed.agentName != capability.agentName ||
+            (observed.namespaceId != null && observed.namespaceId != capability.namespaceId)
+        ) throw ResultIdentityMismatchException()
+        validateRouting(scope, capability, business!!)
+        val outcome = results.submit(scope, token, business, observed, now)
         val submission = outcome.toSubmission()
         if (idempotencyKey != null) {
             idempotency.save(scope, idempotencyKey, requestHash!!, cachedPayload(submission))
         }
         return submission
+    }
+
+    /** Business routing constraints belong to the application service, not the result store. */
+    private fun validateRouting(scope: TenantScope, capability: AgentStepResultCapability, business: JsonNode) {
+        val workflows = workflowRepository ?: return
+        val workflow = workflows.findInstance(scope, capability.namespaceId, capability.workflowId)
+        val definition = workflow?.instance?.let { instance ->
+            val type = instance["workflowType"] as? String
+            val version = instance["definitionVersion"] as? String
+            if (type != null && version != null) workflows.findDefinition(scope, type, version) else null
+        }
+        val declared = (definition?.definition?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()
+            ?.find { it["id"] == capability.stepId }
+        val decision = WorkflowDecision.parse(declared?.get("decision"))
+        if (declared?.containsKey("decision") == true && decision == null) {
+            throw ResultSchemaInvalidException("Persisted decision contract is invalid")
+        }
+        val prior = (workflow?.projection?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()
+            ?.find { it["id"] == capability.stepId }?.get("routeDecision") as? Map<*, *>
+        if (prior != null && (prior["attemptId"] != capability.attemptId || prior["resultHash"] != CanonicalJsonHash.hash(business))) {
+            throw ResultSemanticCollisionException("Accepted routing cannot be replaced by a later attempt or result")
+        }
+        val parsed = AgentStepResultValidation.parseBusiness(business)
+        if ((decision != null && parsed.status == AgentStepResultStatus.PASS && !decision.accepts(parsed.selectedRoutes)) ||
+            (decision == null && parsed.selectedRoutes != null)
+        ) throw ResultSchemaInvalidException("Missing, unknown or out-of-mode route selection")
     }
 
     private fun SubmitOutcome.toSubmission(): AgentStepResultSubmission =

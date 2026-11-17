@@ -34,7 +34,7 @@
   height: auto;
   overflow-y: auto;
   align-items: center;
-  justify-content: center;
+  // Auto margins center short content without making the top of tall content unreachable.
   // Anchor for the drag & drop overlay.
   position: relative;
 
@@ -44,6 +44,7 @@
     gap: 24px;
     padding: 0 24px;
     flex: none;
+    margin-block: auto;
     max-width: 720px;
     width: 100%;
   }
@@ -137,7 +138,9 @@
     line-height: 1.55;
     outline: none;
     box-sizing: border-box;
-    overflow-y: hidden;
+    // Reserve room for the headline and actions where possible; extra content can scroll the page.
+    max-height: min(65vh, max(6.5rem, calc(100vh - 11.25rem)));
+    overflow-y: auto;
 
     &::placeholder {
       color: var(--color-neutral-500);

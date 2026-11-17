@@ -2133,7 +2133,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created in either user scope (403).
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`, `BASH`) cannot be created in either user scope (403).
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -4863,9 +4863,11 @@ components:
           type: number
           format: double
           description: "Per-case override of the run cost threshold, in the platform\
-            \ currency unit. Null means inherit from the namespace or platform default\
-            \ (never \"no limit\" or \"zero\"). Set upfront for costly runs, or written\
-            \ by the enforcement mechanism on continuation."
+            \ currency unit. On a root case, null means inherit from the namespace\
+            \ or platform default (never \"no limit\" or \"zero\"). A sub-case does\
+            \ not inherit: its root case's threshold covers the whole tree, and null\
+            \ means it has no threshold of its own. Set upfront for costly runs, or\
+            \ written by the enforcement mechanism on continuation."
           minimum: 0
         scheduledPromptId:
           type: string
@@ -6060,8 +6062,8 @@ components:
           format: double
           description: "Namespace-level default for the run cost threshold, in the\
             \ platform currency unit. Null means inherit from the platform default.\
-            \ Applies to all cases in this namespace that do not declare their own\
-            \ threshold."
+            \ Applies to all root cases in this namespace that do not declare their\
+            \ own threshold; a root case's threshold covers its sub-cases."
           minimum: 0
         sharedExchangePath:
           type: string
