@@ -43,5 +43,5 @@ interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
      */
     fun disable(id: UUID): ScheduledPromptDto
 
-    suspend fun generate(request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult
+    fun generate(request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult
 }

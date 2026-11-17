@@ -20,6 +20,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
+import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -269,7 +270,7 @@ class ScheduledPromptController(
     )
     @PostMapping("/generate", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
-    override suspend fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
+    override fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
         val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
             pluralLabel = "scheduled prompts",
             namespaceId = request.namespaceId,
@@ -286,7 +287,7 @@ class ScheduledPromptController(
             "[ScheduledPrompt] Generating a scheduled prompt proposal in namespace $namespaceId (user=$callerId, " +
                     "base=${request.baseFlowConfiguration != null})"
         }
-        return scheduledPromptGenerationService.generate(namespaceId, callerId, request)
+        return runBlocking { scheduledPromptGenerationService.generate(namespaceId, callerId, request) }
     }
 
     // -------------------------------------------------------------------------
