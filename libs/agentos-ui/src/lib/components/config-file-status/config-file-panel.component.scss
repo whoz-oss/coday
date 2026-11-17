@@ -1,0 +1,22 @@
+// The notice and the card take their place among the blocks of the page, with its spacing.
+:host {
+  display: contents;
+}
+
+.config-file-panel__row {
+  display: block;
+}
+
+.config-file-panel__row--removed {
+  background: color-mix(in srgb, var(--color-error, #ec3013) 8%, transparent);
+  color: var(--color-error, #ec3013);
+}
+
+.config-file-panel__row--added {
+  background: color-mix(in srgb, var(--color-success, #34c759) 10%, transparent);
+  color: var(--color-success, #34c759);
+}
+
+.config-file-panel__row--skipped {
+  color: var(--color-text-secondary, #5c5c5f);
+}

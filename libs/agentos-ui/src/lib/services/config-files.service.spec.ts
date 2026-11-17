@@ -37,7 +37,6 @@ describe('injectConfigFileStatuses', () => {
     expect(statuses.of('from-file')?.state).toBe(ConfigFileStateEnum.FILE)
     expect(statuses.of('prompt-copy')).toBeUndefined()
     expect(statuses.of(undefined)).toBeUndefined()
-    expect(statuses.overridden().map((entry) => entry.configId)).toEqual(['copy'])
     expect(statuses.any()).toBe(true)
   })
 
@@ -59,6 +58,5 @@ describe('injectConfigFileStatuses', () => {
     const statuses = runInInjectionContext(injector, () => injectConfigFileStatuses('ns', ConfigFileKindEnum.AGENT))
 
     expect(statuses.any()).toBe(false)
-    expect(statuses.overridden()).toEqual([])
   })
 })

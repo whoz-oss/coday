@@ -1,0 +1,98 @@
+@if (file(); as entry) {
+  @if (entry.state === fileState) {
+    @if (savingCreatesCopy()) {
+      <ds-notice tone="neutral">
+        This {{ noun() }} is read from <span class="ds-mono">{{ entry.path }}</span
+        >. Saving it here stores a database copy that masks the file.
+      </ds-notice>
+    }
+  } @else {
+    <ds-notice tone="warning">
+      AgentOS uses this database copy and ignores <span class="ds-mono">{{ entry.path }}</span
+      >.
+    </ds-notice>
+
+    <ds-card [heading]="'File ' + entry.path">
+      @if (loading()) {
+        <p class="ds-hint" role="status">Loading the differences&hellip;</p>
+      } @else if (loadError()) {
+        <ds-notice>Couldn't load the differences with the file.</ds-notice>
+      } @else if (diff(); as result) {
+        @if (result.modified) {
+          @for (view of views(); track view.path) {
+            <ds-disclosure
+              mono
+              [bordered]="views().length > 1"
+              [heading]="view.heading"
+              [open]="isOpen(view.path)"
+              (toggled)="toggle(view.path)"
+            >
+              <pre
+                class="ds-pre config-file-panel__diff"
+              >@for (row of view.rows; track $index) {<span [class]="'config-file-panel__row config-file-panel__row--' + row.kind">{{ prefix(row) }}{{ row.text }}</span>}</pre>
+            </ds-disclosure>
+          }
+          <p class="ds-hint">Lines marked − are in the file, lines marked + in this copy.</p>
+        } @else {
+          <p class="ds-hint">This copy says the same as the file.</p>
+        }
+
+        @for (reason of result.cannotWrite; track reason) {
+          <p class="ds-hint ds-hint--warning">{{ reason }}</p>
+        }
+        @if (result.alsoReadBy.length > 0) {
+          <p class="ds-hint">
+            The namespaces {{ result.alsoReadBy.join(', ') }} read the same folder: writing the file changes them too.
+          </p>
+        }
+        @if (actionError(); as message) {
+          <ds-notice>{{ message }} You can download the file and put it in place yourself.</ds-notice>
+        }
+
+        <ds-form-actions>
+          @if (result.modified) {
+            <button
+              dsButton
+              variant="primary"
+              type="button"
+              [disabled]="busy() || !canWrite()"
+              (click)="pending.set('write')"
+            >
+              Write to file
+            </button>
+            <button dsButton type="button" [disabled]="busy()" (click)="download()">Download file</button>
+            <button
+              dsButton
+              variant="danger"
+              type="button"
+              [disabled]="busy() || !canDiscard()"
+              (click)="pending.set('discard')"
+            >
+              Discard this copy
+            </button>
+          } @else {
+            <button
+              dsButton
+              variant="primary"
+              type="button"
+              [disabled]="busy() || !canDiscard()"
+              (click)="pending.set('discard')"
+            >
+              Use the file again
+            </button>
+          }
+        </ds-form-actions>
+      }
+    </ds-card>
+
+    <ds-confirm-dialog
+      [open]="pending() !== null"
+      [title]="confirmation().title"
+      [message]="confirmation().message"
+      [confirmLabel]="confirmation().label"
+      cancelLabel="Cancel"
+      (confirmed)="run()"
+      (cancelled)="pending.set(null)"
+    />
+  }
+}

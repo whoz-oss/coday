@@ -3,25 +3,34 @@ import { ConfigFile, ConfigFileStateEnum } from '@whoz-oss/agentos-api-client'
 import { TagComponent } from '@whoz-oss/design-system'
 
 /**
- * Where a config of a namespace comes from: its file, a database copy that masks its file, or the
- * database alone. The last one is only said when the namespace has config files, so a namespace
- * without any keeps its lists as they were.
+ * Where a config of a namespace comes from, in short tags next to its scope:
+ * - its file: `YAML` (or `SKILL.md`);
+ * - a database copy that masks its file: the file's tag, then `Out of sync` when the copy differs from the
+ *   file, or `Overridden` when both say the same;
+ * - the database alone: `Database`, only said when the namespace has config files.
  */
 @Component({
   selector: 'agentos-config-file-tag',
   imports: [TagComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: `
+    :host {
+      display: contents;
+    }
+  `,
   template: `
     @if (file(); as entry) {
-      @if (entry.state === fileState) {
-        <ds-tag variant="neutral" [attr.title]="'Read from ' + entry.path">{{ fileLabel() }}</ds-tag>
-      } @else {
-        <ds-tag
-          variant="outline"
-          [attr.title]="'This database copy masks ' + entry.path + ': AgentOS uses the copy and ignores the file'"
-        >
-          Overrides {{ fileLabel() }} · {{ entry.modified ? 'modified' : 'identical' }}
-        </ds-tag>
+      <ds-tag variant="neutral" [attr.title]="entry.path">{{ fileLabel() }}</ds-tag>
+      @if (entry.state !== fileState) {
+        @if (entry.modified) {
+          <ds-tag variant="warning" [attr.title]="'This database copy differs from ' + entry.path + ' and masks it'">
+            Out of sync
+          </ds-tag>
+        } @else {
+          <ds-tag variant="outline" [attr.title]="'This database copy masks ' + entry.path + ', which says the same'">
+            Overridden
+          </ds-tag>
+        }
       }
     } @else if (showDatabase()) {
       <ds-tag variant="outline" title="Stored in the database only: no file of this namespace defines it">

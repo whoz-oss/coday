@@ -24,9 +24,18 @@ describe('ConfigFileTagComponent', () => {
     expect(render({ file: entry(ConfigFileStateEnum.FILE), fileLabel: 'SKILL.md' })).toBe('SKILL.md')
   })
 
-  it('says when a database copy masks its file, and whether it differs from it', () => {
-    expect(render({ file: entry(ConfigFileStateEnum.OVERRIDDEN, true) })).toBe('Overrides YAML · modified')
-    expect(render({ file: entry(ConfigFileStateEnum.OVERRIDDEN, false) })).toBe('Overrides YAML · identical')
+  it('adds Out of sync to a database copy that differs from its file, Overridden to one that does not', () => {
+    expect(render({ file: entry(ConfigFileStateEnum.OVERRIDDEN, true) })).toBe('YAML Out of sync')
+    expect(render({ file: entry(ConfigFileStateEnum.OVERRIDDEN, false) })).toBe('YAML Overridden')
+  })
+
+  it('marks an out of sync copy with the warning tag', () => {
+    const fixture = TestBed.createComponent(ConfigFileTagComponent)
+    fixture.componentRef.setInput('file', entry(ConfigFileStateEnum.OVERRIDDEN, true))
+    fixture.detectChanges()
+
+    const tags = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('ds-tag'))
+    expect(tags.map((tag) => tag.className)).toEqual(['tag tag--neutral', 'tag tag--warning'])
   })
 
   it('says Database only for a namespace that has config files', () => {

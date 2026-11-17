@@ -21,7 +21,9 @@ import {
 import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { catchError, of } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
-import { ConfigFileBannerComponent } from '../config-file-status/config-file-banner.component'
+import { injectConfigFile } from '../../services/config-files.service'
+import { ConfigFilePanelComponent } from '../config-file-status/config-file-panel.component'
+import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 
 /**
  * PromptFormComponent — full-page create / edit form for a prompt.
@@ -57,7 +59,7 @@ import { ConfigFileBannerComponent } from '../config-file-status/config-file-ban
  */
 @Component({
   selector: 'agentos-prompt-form',
-  imports: [ConfigFileBannerComponent, ReactiveFormsModule, DS_PAGE_KIT],
+  imports: [ConfigFilePanelComponent, ConfigFileTagComponent, ReactiveFormsModule, DS_PAGE_KIT],
   templateUrl: './prompt-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -69,9 +71,12 @@ export class PromptFormComponent implements OnInit {
   private readonly agentConfigController = inject(AgentConfigControllerService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
-  /** The config this form edits, for the banner that says when it masks a file of the namespace. */
-  protected readonly configFileKind = ConfigFileKindEnum.PROMPT
-  protected readonly configFileId = this.route.snapshot.paramMap.get('promptId') ?? undefined
+  /** Where the edited config comes from: its file, a database copy that masks its file, or neither. */
+  protected readonly configFile = injectConfigFile(
+    this.namespaceId,
+    ConfigFileKindEnum.PROMPT,
+    this.route.snapshot.paramMap.get('promptId') ?? undefined
+  )
   /** True when loaded from /admin/prompts — platform scope, no namespaceId in route. */
   protected readonly isPlatformMode = !this.namespaceId
 

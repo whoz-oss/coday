@@ -9,14 +9,12 @@
     @if (isPlatformMode) {
       <ds-tag headerMeta variant="outline">Platform level</ds-tag>
     }
+    @if (configFile()) {
+      <agentos-config-file-tag headerMeta [file]="configFile()" />
+    }
   </ds-section-header>
-  @if (isEditMode() && namespaceId) {
-    <agentos-config-file-banner
-      [kind]="configFileKind"
-      noun="agent config"
-      [namespaceId]="namespaceId"
-      [configId]="configFileId"
-    />
+  @if (configFile()) {
+    <agentos-config-file-panel [file]="configFile()" noun="agent config" savingCreatesCopy (settled)="cancel()" />
   }
 
   @if (isLoading()) {

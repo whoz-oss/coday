@@ -5,7 +5,9 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { ConfigFileKindEnum, Skill } from '@whoz-oss/agentos-api-client'
 import { DS_PAGE_KIT, TagComponent } from '@whoz-oss/design-system'
 import { SkillStateService } from '../../services/skill-state.service'
-import { ConfigFileBannerComponent } from '../config-file-status/config-file-banner.component'
+import { injectConfigFile } from '../../services/config-files.service'
+import { ConfigFilePanelComponent } from '../config-file-status/config-file-panel.component'
+import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 
 /** One editable resource file: a relative path and its text content. */
 interface ResourceRow {
@@ -26,7 +28,14 @@ interface ResourceRow {
  */
 @Component({
   selector: 'agentos-skill-form',
-  imports: [ConfigFileBannerComponent, ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
+  imports: [
+    ConfigFilePanelComponent,
+    ConfigFileTagComponent,
+    ReactiveFormsModule,
+    RouterLink,
+    DS_PAGE_KIT,
+    TagComponent,
+  ],
   templateUrl: './skill-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -37,9 +46,12 @@ export class SkillFormComponent implements OnInit {
   private readonly skillState = inject(SkillStateService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
-  /** The config this form edits, for the banner that says when it masks a file of the namespace. */
-  protected readonly configFileKind = ConfigFileKindEnum.SKILL
-  protected readonly configFileId = this.route.snapshot.paramMap.get('skillId') ?? undefined
+  /** Where the edited config comes from: its file, a database copy that masks its file, or neither. */
+  protected readonly configFile = injectConfigFile(
+    this.namespaceId,
+    ConfigFileKindEnum.SKILL,
+    this.route.snapshot.paramMap.get('skillId') ?? undefined
+  )
 
   /** True when editing a platform-level skill (no namespaceId in route). */
   protected readonly isPlatformMode = !this.namespaceId

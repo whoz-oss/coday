@@ -14,9 +14,25 @@ import { ConfigFileDiffEntry } from './config-file-diff-entry'
  */
 export interface ConfigFileDiff {
   /**
+   * Names of the other namespaces that read the same configPath: writing the file changes them too.
+   */
+  alsoReadBy: Array<string>
+  /**
+   * Why the copy cannot be discarded now: what deleting it would delete with it. Empty when it can.
+   */
+  cannotDiscard: Array<string>
+  /**
+   * Why the copy cannot be written to its file now, in words for the user: the notes, a credential in clear, and what deleting the copy would delete with it. Empty when write-to-file is possible.
+   */
+  cannotWrite: Array<string>
+  /**
    * Id of the database copy.
    */
   configId: string
+  /**
+   * Hash of the files as AgentOS read them, to send back with write-to-file.
+   */
+  fileHash: string
   /**
    * One entry per file: the file itself, plus the resources of a skill.
    */

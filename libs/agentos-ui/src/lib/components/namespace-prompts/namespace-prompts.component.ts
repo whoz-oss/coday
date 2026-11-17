@@ -10,7 +10,6 @@ import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
 import { injectConfigFileStatuses } from '../../services/config-files.service'
-import { ConfigFileOverridesNoticeComponent } from '../config-file-status/config-file-overrides-notice.component'
 import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 interface PromptRow {
   key: string
@@ -27,7 +26,6 @@ interface PromptRow {
     TableFilterComponent,
     RowDeleteActionComponent,
     ConfigFileTagComponent,
-    ConfigFileOverridesNoticeComponent,
   ],
   templateUrl: './namespace-prompts.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

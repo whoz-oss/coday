@@ -7,14 +7,12 @@
     @if (isPlatformMode) {
       <ds-tag headerMeta variant="outline">Platform level</ds-tag>
     }
+    @if (configFile()) {
+      <agentos-config-file-tag headerMeta [file]="configFile()" fileLabel="SKILL.md" />
+    }
   </ds-section-header>
-  @if (isEditMode() && namespaceId) {
-    <agentos-config-file-banner
-      [kind]="configFileKind"
-      noun="skill"
-      [namespaceId]="namespaceId"
-      [configId]="configFileId"
-    />
+  @if (configFile()) {
+    <agentos-config-file-panel [file]="configFile()" noun="skill" (settled)="cancel()" />
   }
 
   @if (isLoading()) {

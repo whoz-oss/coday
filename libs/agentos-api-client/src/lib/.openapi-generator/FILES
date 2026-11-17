@@ -75,6 +75,8 @@ model/config-change-view-dto.ts
 model/config-field-change-dto.ts
 model/config-file-diff-entry.ts
 model/config-file-diff.ts
+model/config-file-write-request.ts
+model/config-file-write-result.ts
 model/config-file.ts
 model/config-operation-result-dto.ts
 model/config-operation-view-dto.ts
