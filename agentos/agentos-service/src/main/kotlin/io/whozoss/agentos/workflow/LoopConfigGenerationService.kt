@@ -106,6 +106,10 @@ class LoopConfigGenerationService(
         return when {
             tool != null -> {
                 val userMessage = userMessage(schemaBlock(tool), description, context, baseParams)
+                logger.debug {
+                    "[LoopConfigGeneration] Generating params for tool '${tool.name}' (agent='${definition.name}', " +
+                        "base params=${baseParams != null}, message length=${userMessage.length})"
+                }
                 val llmResult =
                     structuredLlmClient.call(
                         model = definition.resolvedModel,

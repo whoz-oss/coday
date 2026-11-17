@@ -406,6 +406,30 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // POST /generate — Namespace WRITE required, checked before any generation
+        // -------------------------------------------------------------------------
+
+        "POST /generate returns 403 for a namespace MEMBER (READ only) and for a user with no namespace permission" {
+            val body = """{"namespaceId": "${namespace.id}", "description": "weekly check"}"""
+
+            // no permission at all: refused by the READ check that resolves the namespace
+            mockMvc.perform(
+                post("/api/scheduled-prompts/generate").contentType(MediaType.APPLICATION_JSON).content(body),
+            ).andExpect(status().isForbidden)
+
+            // MEMBER: READ passes, WRITE is refused
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+            mockMvc.perform(
+                post("/api/scheduled-prompts/generate").contentType(MediaType.APPLICATION_JSON).content(body),
+            ).andExpect(status().isForbidden)
+        }
+
+        // -------------------------------------------------------------------------
         // POST /generate — request validation runs before the method (and before any LLM call)
         // -------------------------------------------------------------------------
 

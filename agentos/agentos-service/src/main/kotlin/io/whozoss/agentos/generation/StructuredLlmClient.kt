@@ -13,7 +13,6 @@ import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 /**
@@ -45,7 +44,7 @@ data class StructuredLlmResult(
  * dispatcher ([GenerationConfiguration]), so a caller in a coroutine (the `suspend` controller endpoints) never
  * blocks its own thread, and generation can never occupy more than a fixed number of IO threads.
  *
- * The call is bounded by [timeoutSeconds] (`agentos.generation.timeout-seconds`): past it, the request fails with
+ * The call is bounded by [GenerationConfigProperties.timeoutSeconds]: past it, the request fails with
  * [GenerationTimeoutException] (HTTP 504). The underlying HTTP call is not interrupted (Spring AI's blocking call
  * ignores coroutine cancellation): it runs to completion on its generation thread, which is why that pool is bounded.
  *
@@ -70,8 +69,7 @@ class StructuredLlmClient(
     private val chatClientProvider: ChatClientProvider,
     private val objectMapper: ObjectMapper,
     @Qualifier(GenerationConfiguration.GENERATION_DISPATCHER) private val dispatcher: CoroutineDispatcher,
-    @Value("\${agentos.generation.timeout-seconds:${GenerationConfiguration.DEFAULT_TIMEOUT_SECONDS}}")
-    private val timeoutSeconds: Long = GenerationConfiguration.DEFAULT_TIMEOUT_SECONDS,
+    private val properties: GenerationConfigProperties = GenerationConfigProperties(),
 ) {
     suspend fun call(
         model: AiModel,
@@ -104,7 +102,7 @@ class StructuredLlmClient(
         return content
     }
 
-    /** The blocking LLM call, on the generation dispatcher and bounded by [timeoutSeconds]. */
+    /** The blocking LLM call, on the generation dispatcher and bounded by [GenerationConfigProperties.timeoutSeconds]. */
     private suspend fun complete(
         model: AiModel,
         provider: AiProvider,
@@ -112,7 +110,7 @@ class StructuredLlmClient(
         userMessage: String,
     ): String? {
         val answer =
-            withTimeoutOrNull(timeoutSeconds * 1_000) {
+            withTimeoutOrNull(properties.timeoutSeconds * 1_000) {
                 withContext(dispatcher) {
                     Answer(
                         chatClientProvider
@@ -122,7 +120,9 @@ class StructuredLlmClient(
                             .content(),
                     )
                 }
-            } ?: throw GenerationTimeoutException("The LLM (${model.apiModelName}) did not answer within ${timeoutSeconds}s.")
+            } ?: throw GenerationTimeoutException(
+                "The LLM (${model.apiModelName}) did not answer within ${properties.timeoutSeconds}s.",
+            )
         return answer.content
     }
 

@@ -60,7 +60,7 @@ class ModelResolver(
                 null -> baseProvider
                 else -> aiProviderService.resolveProvider(namespaceId, userId, baseProvider.name)
             }
-        logger.info {
+        logger.debug {
             "Resolved model '${model.alias ?: model.apiModelName}' " +
                 "-> apiName='${model.apiModelName}' (priority=${model.priority}, " +
                 "provider='${provider.name}', userId=$userId)"

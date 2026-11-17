@@ -275,6 +275,10 @@ class ScheduledPromptController(
             requestedNamespaceId = namespaceId,
             requestedUserId = null,
         )
+        logger.info {
+            "[ScheduledPrompt] Generating a scheduled prompt proposal in namespace $namespaceId (user=$callerId, " +
+                "base=${request.baseFlowConfiguration != null})"
+        }
         return scheduledPromptGenerationService.generate(namespaceId, callerId, request)
     }
 
