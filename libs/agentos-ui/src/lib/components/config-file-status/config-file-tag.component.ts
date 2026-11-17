@@ -23,7 +23,12 @@ import { TagComponent } from '@whoz-oss/design-system'
       <ds-tag variant="neutral" [attr.title]="entry.path">{{ fileLabel() }}</ds-tag>
       @if (entry.state !== fileState) {
         @if (entry.modified) {
-          <ds-tag variant="warning" [attr.title]="'This database copy differs from ' + entry.path + ' and masks it'">
+          <ds-tag
+            variant="warning"
+            [attr.title]="
+              'This database copy differs from ' + entry.path + ' and masks it. Edit it to see the differences.'
+            "
+          >
             Out of sync
           </ds-tag>
         } @else {
