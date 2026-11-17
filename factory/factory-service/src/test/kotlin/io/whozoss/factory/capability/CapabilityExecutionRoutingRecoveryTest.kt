@@ -107,8 +107,7 @@ class CapabilityExecutionRoutingRecoveryTest {
             ))))
         every { results.acceptedResult(scope, "ns", "wf", "work", "attempt") } returns AgentStepResultSubmitted(
             "result-submitted", "result", "attempt", "wf", "work", "ns", "case", "Dev", "hash",
-            AgentStepResultStatus.PASS, "resolved", emptyList(), AgentStepResultClaim(emptyList()), emptyList(), "2026-01-01T00:00:00Z", "hash",
-            outputs = mapOf("run_brief" to "pinned brief"))
+            AgentStepResultStatus.PASS, "resolved", emptyList(), AgentStepResultClaim(emptyList()), emptyList(), "2026-01-01T00:00:00Z", "hash")
         val recorded = mutableListOf<WorkflowEvidenceItem>()
         every { evidence.append(scope, "ns", "wf", capture(recorded)) } returns mockk(relaxed = true)
         every { evidence.list(scope, "ns", "wf", "work") } answers { recorded.toList() }
@@ -123,10 +122,6 @@ class CapabilityExecutionRoutingRecoveryTest {
             verify(exactly = 0) { results.acceptedResult(any(), any(), any(), any(), any()) }
         } else {
             assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
-            @Suppress("UNCHECKED_CAST")
-            val report = (execution.outcome as CapabilityOutcome.AgentCompleted).facts["outputs"] as Map<String, Any?>
-            assertThat(report["outputs"])
-                .isEqualTo(mapOf("run_brief" to "pinned brief"))
             assertThat(recorded.single().outcome).isEqualTo("pass")
             assertThat(recorded.single().facts["validatorsAccepted"]).isEqualTo(false)
             assertThat(recorded.single().facts["validationSource"]).isEqualTo("accepted-late-result-compatibility")

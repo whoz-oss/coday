@@ -1,5 +1,6 @@
 package io.whozoss.factory.forge.bmad
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
 import io.whozoss.factory.sdk.spi.FindingResolution
 import io.whozoss.factory.sdk.spi.FindingSeverity
@@ -37,10 +38,24 @@ import org.pf4j.Extension
 @Extension
 class ForgeBmadStepResultValidator : FactoryStepResultValidator {
 
+    private val mapper = ObjectMapper()
+
     override fun supports(flowType: String, stepId: String, agentName: String): Boolean =
         flowType.startsWith("forge.")
 
     override fun validate(context: StepValidationContext): StepValidationVerdict {
+        val businessOutput = ForgeBusinessOutputArtifact.read(context.report)
+        if (businessOutput is ForgeBusinessOutputArtifact.ReadResult.Invalid) {
+            return StepValidationVerdict.Rejected(
+                reasonCode = "INVALID_FORGE_OUTPUT_ARTIFACT",
+                findings = listOf(NewFinding(
+                    code = "INVALID_FORGE_OUTPUT_ARTIFACT",
+                    severity = FindingSeverity.CRITICAL,
+                    message = businessOutput.reason,
+                    stepId = context.stepId,
+                )),
+            )
+        }
         val role = context.agentName
         val domainState = context.run.domainState
         val specPath = (domainState["spec_path"] as? String)
@@ -144,8 +159,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 // Validate structured delivery_plan.steps[] (D8)
                 val outputs = extractOutputs(context.report)
                 @Suppress("UNCHECKED_CAST")
-                val deliveryPlan = (outputs["delivery_plan"] as? Map<String, Any?>)
-                    ?: (context.report["delivery_plan"] as? Map<String, Any?>)
+                val deliveryPlan = outputs["delivery_plan"] as? Map<String, Any?>
                 val steps = (deliveryPlan?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
                 if (steps.isEmpty()) {
                     return StepValidationVerdict.Rejected(
@@ -380,30 +394,32 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         return null
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun extractOutputs(report: Map<String, Any?>): Map<String, Any?> =
-        (report["outputs"] as? Map<String, Any?>) ?: report
+        ForgeBusinessOutputArtifact.values(report)
 
     private fun extractReportedFindings(context: StepValidationContext): List<NewFinding> {
-        val outputs = extractOutputs(context.report)
-        val rawFindings = (outputs["findings"] as? List<*>)
-            ?: (context.report["findings"] as? List<*>)
-            ?: return emptyList()
+        val rawFindings = context.report["findings"] as? List<*> ?: return emptyList()
         return rawFindings.mapNotNull { entry ->
-            val map = entry as? Map<*, *> ?: return@mapNotNull null
+            val map = runCatching { mapper.convertValue(entry, Map::class.java) }.getOrNull()
+                ?: return@mapNotNull null
             val code = (map["code"] as? String)?.takeIf { it.isNotBlank() } ?: "REVIEW_FINDING"
             val message = (map["message"] as? String)?.takeIf { it.isNotBlank() }
                 ?: (map["summary"] as? String)?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
-            val rawSev = (map["severity"] as? String)?.uppercase() ?: "MAJOR"
-            val severity = runCatching { FindingSeverity.valueOf(rawSev) }.getOrDefault(FindingSeverity.MAJOR)
+            val severity = when ((map["severity"] as? String)?.uppercase()) {
+                "BLOCKING", "CRITICAL" -> FindingSeverity.CRITICAL
+                "ERROR", "MAJOR" -> FindingSeverity.MAJOR
+                "WARNING", "MINOR" -> FindingSeverity.MINOR
+                "INFO" -> FindingSeverity.INFO
+                else -> FindingSeverity.MAJOR
+            }
             NewFinding(
                 id = map["id"] as? String,
                 code = code,
                 severity = severity,
                 message = message,
                 stepId = context.stepId,
-                filePath = map["filePath"] as? String,
+                filePath = (map["file"] ?: map["filePath"]) as? String,
             )
         }
     }

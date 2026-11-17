@@ -31,6 +31,9 @@ import org.junit.jupiter.api.Test
  */
 class ForgeBmadFlowAndValidatorTest {
 
+    private data class StoredArtifact(val kind: String, val encoding: String, val content: String)
+    private data class StoredFinding(val severity: String, val code: String, val summary: String, val file: String)
+
     private val mapper = ObjectMapper()
     private val catalog = ForgeBmadCatalogContributor()
     private val briefContributor = ForgeBmadBriefContributor()
@@ -38,13 +41,21 @@ class ForgeBmadFlowAndValidatorTest {
     private val selector = ForgeBmadFlowSelector()
     private val observer = ForgeBmadLifecycleObserver()
 
+    private fun businessReport(values: Map<String, Any?>): Map<String, Any?> = mapOf(
+        "artifacts" to listOf(mapOf(
+            "kind" to ForgeBusinessOutputArtifact.KIND,
+            "encoding" to "markdown",
+            "content" to mapper.writeValueAsString(values),
+        )),
+    )
+
     @Test
     fun `catalog contributes explicit Factory contracts`() {
         val flows = catalog.flows()
         assertThat(flows).hasSize(10)
 
         val parsed = flows.map { mapper.readValue(it, Map::class.java) }
-        val current = parsed.filter { it["version"] == "1.1.0" }
+        val current = parsed.filter { it["version"] == "1.2.0" }
         assertThat(current).hasSize(10)
         val flowTypes = current.map { it["workflowType"] as String }
         assertThat(flowTypes).containsExactly(
@@ -197,18 +208,19 @@ class ForgeBmadFlowAndValidatorTest {
                 flowType = "forge.assessment",
                 status = "completed",
                 stepOutcomes = listOf(
-                    StepOutcomeView("ux-assessment", "agent", "completed", report = mapOf("ux_applicable" to false)),
+                    StepOutcomeView("ux-assessment", "agent", "completed", report = businessReport(mapOf("ux_applicable" to false))),
                     StepOutcomeView(
                         "technical-assessment",
                         "agent",
                         "completed",
-                        report = mapOf(
+                        report = businessReport(mapOf(
+                            "tech_spec_applicable" to false,
                             "trivial" to true,
                             "trivial_scope" to mapOf(
                                 "file_paths" to listOf("apps/client/src/button.ts"),
                                 "verification" to "front-verify",
                             ),
-                        ),
+                        )),
                     ),
                 ),
             ),
@@ -252,7 +264,7 @@ class ForgeBmadFlowAndValidatorTest {
                         "technical-design",
                         "agent",
                         "completed",
-                        report = mapOf("delivery_plan" to mapOf("steps" to multiSteps)),
+                        report = businessReport(mapOf("delivery_plan" to mapOf("steps" to multiSteps))),
                     ),
                 ),
             ),
@@ -647,7 +659,7 @@ class ForgeBmadFlowAndValidatorTest {
 
         val accepted = validator.validate(StepValidationContext(
             run = run, flowType = "forge.assessment", stepId = "ux-assessment",
-            agentName = "ForgeUXDesigner", report = mapOf("outputs" to mapOf("ux_applicable" to true)),
+            agentName = "ForgeUXDesigner", report = businessReport(mapOf("ux_applicable" to true)),
             workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
         ))
         assertThat((accepted as StepValidationVerdict.Accepted).newDomainState).containsEntry("ux_applicable", true)
@@ -655,6 +667,76 @@ class ForgeBmadFlowAndValidatorTest {
             run = run, flowType = "forge.assessment", stepId = "ux-assessment", agentName = "ForgeUXDesigner",
         ))
         assertThat(brief.sections.joinToString("\n")).contains("Objective: deliver the approved feature")
+    }
+
+    @Test
+    fun `Forge business artifact is validated before it can steer a run`() {
+        val run = RunView(runId = "r-artifact", runType = "forge-bmad")
+        fun assessment(report: Map<String, Any?>) = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment",
+            agentName = "ForgeUXDesigner", report = report,
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        ))
+
+        val unsupportedField = assessment(mapOf("outputs" to mapOf("ux_applicable" to true)))
+        assertThat((unsupportedField as StepValidationVerdict.Rejected).reasonCode).isEqualTo("MISSING_ASSESSMENT_OUTPUT")
+        val malformed = assessment(mapOf("artifacts" to listOf(mapOf(
+            "kind" to ForgeBusinessOutputArtifact.KIND, "encoding" to "markdown", "content" to "{invalid",
+        ))))
+        assertThat((malformed as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_FORGE_OUTPUT_ARTIFACT")
+        val duplicate = assessment(mapOf("artifacts" to listOf(
+            mapOf("kind" to ForgeBusinessOutputArtifact.KIND, "encoding" to "markdown", "content" to "{}"),
+            mapOf("kind" to ForgeBusinessOutputArtifact.KIND, "encoding" to "markdown", "content" to "{}"),
+        )))
+        assertThat((duplicate as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_FORGE_OUTPUT_ARTIFACT")
+
+        val storedArtifact = StoredArtifact(
+            ForgeBusinessOutputArtifact.KIND, "markdown", "{\"ux_applicable\":true}",
+        )
+        val accepted = assessment(mapOf("artifacts" to listOf(storedArtifact))) as StepValidationVerdict.Accepted
+        assertThat(accepted.newDomainState).containsEntry("ux_applicable", true)
+    }
+
+    @Test
+    fun `Forge artifact preserves run brief and delivery plan in durable state`() {
+        val delta = WorkspaceDelta(
+            captureStatus = WorkspaceCaptureStatus.COMPLETE,
+            watchedFiles = mapOf(
+                "SPEC.md" to WatchedFileSnapshot("SPEC.md", true, "before", true, "after"),
+                ".memlog.md" to WatchedFileSnapshot(".memlog.md", true, "before", true, "after"),
+            ),
+        )
+        val run = RunView(runId = "r-handoff", runType = "forge-bmad")
+        val product = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.product-spec", stepId = "product-specification",
+            agentName = "ForgeProductWorker", report = businessReport(mapOf("run_brief" to "Objective: deliver")),
+            workspaceDelta = delta,
+        )) as StepValidationVerdict.Accepted
+        assertThat(product.newDomainState).containsEntry("run_brief", "Objective: deliver")
+
+        val plan = mapOf("steps" to listOf(mapOf(
+            "id" to "s1", "title" to "Implement", "file_paths" to listOf("src/Main.kt"),
+            "verification" to "./gradlew test",
+        )))
+        val technical = validator.validate(StepValidationContext(
+            run = run.copy(domainState = product.newDomainState!!),
+            flowType = "forge.tech-design", stepId = "technical-design",
+            agentName = "ForgeTechDesigner", report = businessReport(mapOf("delivery_plan" to plan)),
+            workspaceDelta = delta,
+        )) as StepValidationVerdict.Accepted
+        assertThat(technical.newDomainState).containsEntry("delivery_plan", plan)
+    }
+
+    @Test
+    fun `reviewer findings in Factory 249 standard result shape become Forge findings`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "r-review", runType = "forge-bmad"),
+            flowType = "forge.code-review", stepId = "code-review", agentName = "ForgeReviewer",
+            report = mapOf("findings" to listOf(StoredFinding("blocking", "AUTH_BYPASS", "Guard is missing", "src/Auth.kt"))),
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        )) as StepValidationVerdict.Accepted
+        assertThat(verdict.addedFindings.single().severity).isEqualTo(FindingSeverity.CRITICAL)
+        assertThat(verdict.addedFindings.single().filePath).isEqualTo("src/Auth.kt")
     }
 
     @Test

@@ -270,7 +270,7 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
         private fun factoryContractVersion(raw: String): String {
             val definition = mapper.readTree(raw) as ObjectNode
             val flowType = definition.path("workflowType").asText()
-            definition.put("version", "1.1.0")
+            definition.put("version", "1.2.0")
             definition.path("steps").forEach { stepNode ->
                 val step = stepNode as ObjectNode
                 val stepId = step.path("id").asText()
@@ -287,12 +287,12 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
             val runBrief = "Read the durable run-brief and preserve its objective, scope, acceptance criteria, constraints and open questions."
             val spec = "Read the approved specification and its revision from the active case checkout or pinned case artifact; do not infer it from CONFIG_PATH."
             val code = "Use the active case checkout and its verified diff base; do not edit approved specification artifacts."
-            val result = "Submit one Factory result with evidence, findings and step-specific structured outputs; claims.modifiedFiles are declarations, not diff proof."
+            val result = "Submit one Factory result with evidence and findings. Put step-specific structured values in one artifact with kind forge.business-outputs.v1, encoding markdown and JSON object content; claims.modifiedFiles are declarations, not diff proof."
             return when (flow to step) {
                 FLOW_PRODUCT_SPEC to "product-specification" -> Triple(
                     listOf("Read the original request, ticket evidence and active case checkout."),
                     "Create the run-brief and apply the product intent and acceptance-criteria amendment through bmad-spec in the active Whoz checkout.",
-                    listOf("Provide a bounded run_brief string in result.outputs with objective, scope, acceptance criteria, constraints and open questions; Factory persists it for later fragments.", "Provide the product specification revision and amendment provenance.", result),
+                    listOf("Provide a bounded run_brief string in the Forge business-output artifact with objective, scope, acceptance criteria, constraints and open questions; the plugin preserves it for later fragments.", "Provide the product specification revision and amendment provenance.", result),
                 )
                 FLOW_PRODUCT_APPROVAL to "product-grooming" -> Triple(
                     listOf(runBrief, "Read recorded grooming decisions and the product spec revision."),

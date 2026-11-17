@@ -27,8 +27,6 @@ Follow the step-specific brief for the business information required. Keep the s
 
 Use artifacts for substantive deliverables the brief requires and findings for actionable observations, using the tool's supported fields, encodings and severities. Do not invent fields for evidence: place it in the supported summary, artifact or finding content. Do not include secrets or credentials.
 
-When the step contract requires machine-readable business values, put them in `result.outputs` using the field names specified by that contract. Factory persists and hands these values to the workflow plugin; the plugin must validate them before they can steer a run. Keep `claims.modifiedFiles` separate from verified diff evidence.
-
 ## Submit the result
 
 1. Confirm the work is ready for a verdict and inspect the submission tool's current schema, including nested required fields.
