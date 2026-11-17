@@ -21,7 +21,8 @@ import java.util.UUID
  *   @mention will produce an explicit error.
  * @property runCostThreshold Namespace-level default for the run cost threshold. Null means
  *   "inherit from the platform default", never "no limit" or "zero". When set, applies to
- *   all cases in this namespace that do not declare their own threshold.
+ *   all root cases in this namespace that do not declare their own threshold; a root case's
+ *   threshold covers its sub-cases.
  * @property sharedExchangePath Optional absolute path on the server host that replaces the default
  *   directory of the namespace-shared file exchange (`<mountRoot>/<namespaceId>/shared`). Only a
  *   super-admin may set or change it; for anyone else an omitted value on update means "keep".
@@ -56,8 +57,8 @@ data class NamespaceDto(
     @field:Schema(
         description =
             "Namespace-level default for the run cost threshold, in the platform currency unit. " +
-                "Null means inherit from the platform default. Applies to all cases in this namespace " +
-                "that do not declare their own threshold.",
+                "Null means inherit from the platform default. Applies to all root cases in this namespace " +
+                "that do not declare their own threshold; a root case's threshold covers its sub-cases.",
     )
     @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,

@@ -34,7 +34,7 @@ export interface Namespace {
   maxToolRounds?: number
   name: string
   /**
-   * Namespace-level default for the run cost threshold, in the platform currency unit. Null means inherit from the platform default. Applies to all cases in this namespace that do not declare their own threshold.
+   * Namespace-level default for the run cost threshold, in the platform currency unit. Null means inherit from the platform default. Applies to all root cases in this namespace that do not declare their own threshold; a root case\'s threshold covers its sub-cases.
    */
   runCostThreshold?: number
   /**

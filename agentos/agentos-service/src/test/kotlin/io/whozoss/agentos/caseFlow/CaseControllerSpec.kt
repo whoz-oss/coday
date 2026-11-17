@@ -208,15 +208,14 @@ class CaseControllerSpec :
             verify(exactly = 1) { caseService.create(any(), any()) }
         }
 
-        "create uses namespace runCostThreshold when none is provided in the request" {
-            val namespaceThreshold = 10.0
+        "create leaves an unset runCostThreshold to the service, which materialises the inherited one" {
             val r = caseResource(id = null) // runCostThreshold is null
             val saved = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every { namespaceService.resolveRunCostThreshold(namespaceId) } returns namespaceThreshold
+            every { namespaceService.resolveRunCostThreshold(namespaceId) } returns 10.0
             every { caseService.create(any(), any()) } answers {
                 val arg = firstArg<Case>()
-                arg.runCostThreshold shouldBe namespaceThreshold
+                arg.runCostThreshold shouldBe null
                 saved
             }
             every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
@@ -224,7 +223,7 @@ class CaseControllerSpec :
             controller.create(r)
 
             verify(exactly = 1) { caseService.create(any(), any()) }
-            verify(exactly = 1) { namespaceService.resolveRunCostThreshold(namespaceId) }
+            verify(exactly = 0) { namespaceService.resolveRunCostThreshold(any()) }
         }
 
         "create passes null runCostThreshold to the service when neither request nor namespace defines one" {

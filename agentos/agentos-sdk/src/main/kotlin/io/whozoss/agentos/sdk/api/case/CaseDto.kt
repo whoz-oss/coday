@@ -36,10 +36,11 @@ import java.util.UUID
  * @property scheduledPromptId Id of the ScheduledPrompt that triggered this case, or null when the
  *   case was started by a human user or a delegation tool.
  * @property runCostThreshold Per-case override of the run cost threshold, in the platform currency
- *   unit. Null means "inherit from the namespace or platform default", never "no limit" or "zero".
- *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement
- *   mechanism when the user chooses to continue after a breach. A stored value is always absolute
- *   and independent of platform or namespace config changes.
+ *   unit. On a root case, null means "inherit from the namespace or platform default", never "no limit" or
+ *   "zero". A sub-case does not inherit: its root case's threshold covers the whole tree, and null means it
+ *   has no threshold of its own. Can be set upfront when the caller anticipates a costly run, or written
+ *   by the cost-enforcement mechanism when the user chooses to continue after a breach. A stored value is
+ *   always absolute and independent of platform or namespace config changes.
  * @property worktree Create only, null in responses. Whether a new top-level case gets the worktree its
  *   namespace creates for every case: null leaves it to the namespace's settings, false creates an ordinary
  *   case, true requires it and refuses the creation when the namespace does not create one or cannot. Must be
@@ -58,7 +59,9 @@ data class CaseDto(
     @field:Schema(
         description =
             "Per-case override of the run cost threshold, in the platform currency unit. " +
-                "Null means inherit from the namespace or platform default (never \"no limit\" or \"zero\"). " +
+                "On a root case, null means inherit from the namespace or platform default (never \"no limit\" or " +
+                "\"zero\"). A sub-case does not inherit: its root case's threshold covers the whole tree, and null " +
+                "means it has no threshold of its own. " +
                 "Set upfront for costly runs, or written by the enforcement mechanism on continuation.",
     )
     @field:Min(value = 0, message = "runCostThreshold must be zero or positive")

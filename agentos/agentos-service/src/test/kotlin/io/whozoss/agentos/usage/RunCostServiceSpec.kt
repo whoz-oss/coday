@@ -36,6 +36,22 @@ class RunCostServiceSpec :
             return Triple(RunCostService(repo, events, namespaces, records, UsageConfigProperties(enabled = true)), case, saved)
         }
 
+        fun runCostService(
+            saved: MutableMap<UUID, Case>,
+            namespaceThreshold: Double?,
+        ): RunCostService {
+            val repo = mockk<CaseRepository>()
+            every { repo.findById(any()) } answers { saved[firstArg()] }
+            every { repo.save(any()) } answers { firstArg<Case>().also { saved[it.id] = it } }
+            val events = mockk<CaseEventService>()
+            every { events.findByParent(any()) } returns emptyList()
+            val namespaces = mockk<NamespaceService>()
+            every { namespaces.resolveRunCostThreshold(any()) } returns namespaceThreshold
+            val records = mockk<UsageRecordService>()
+            every { records.sumCostByCaseTreeSince(any(), any()) } returns null
+            return RunCostService(repo, events, namespaces, records, UsageConfigProperties(enabled = true))
+        }
+
         "usage is disabled by default before any data access or registration" {
             val cases = mockk<CaseRepository>()
             val events = mockk<CaseEventService>()
@@ -318,5 +334,29 @@ class RunCostServiceSpec :
             usage.total.estimatedCostUsd shouldBe 2.0
             shouldThrow<CompletionException> { usage.beforeCall().join() }
             registration.finish {}
+        }
+
+        "a sub-case without its own threshold is covered by its root case's threshold, not by the namespace default" {
+            val root = Case(namespaceId = UUID.randomUUID(), runCostThreshold = 10.0)
+            val child = Case(namespaceId = root.namespaceId, parentCaseId = root.id)
+            val service = runCostService(mutableMapOf(root.id to root, child.id to child), namespaceThreshold = 1.0)
+            val usage = UsageAccumulator()
+            val registration = service.register(child.id, usage)
+            try {
+                usage.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 2.0))
+                // Above the namespace default, below the root's threshold: the delegated run goes on.
+                usage.beforeCall().isDone shouldBe true
+                service.state(child.id).runCostThreshold shouldBe null
+                usage.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 10.0))
+                val pending = usage.beforeCall()
+                pending.isDone shouldBe false
+                service.state(root.id).pausedCases.map { it.caseId } shouldBe listOf(root.id)
+                // One confirmation, on the root, releases the whole tree.
+                service.continueRun(root.id, 10.0)
+                pending.isDone shouldBe true
+            } finally {
+                service.stop(root.id)
+                registration.finish {}
+            }
         }
     })
