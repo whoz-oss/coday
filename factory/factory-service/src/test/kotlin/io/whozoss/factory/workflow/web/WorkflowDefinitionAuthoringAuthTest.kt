@@ -5,6 +5,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.factory.config.FactoryProperties
+import io.whozoss.factory.error.FactoryExceptionHandler
 import io.whozoss.factory.persistence.OrganizationScope
 import io.whozoss.factory.web.AuthenticatedUserArgumentResolver
 import io.whozoss.factory.web.AuthenticationFilter
@@ -17,6 +18,7 @@ import io.whozoss.factory.workflow.service.WorkflowService
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -38,6 +40,7 @@ class WorkflowDefinitionAuthoringAuthTest {
         membership,
     )
     private val mvc = MockMvcBuilders.standaloneSetup(WorkflowDefinitionController(service, mapper, creator))
+        .setControllerAdvice(FactoryExceptionHandler())
         .setCustomArgumentResolvers(AuthenticatedUserArgumentResolver())
         .addFilters<StandaloneMockMvcBuilder>(filter)
         .build()
@@ -75,5 +78,22 @@ class WorkflowDefinitionAuthoringAuthTest {
             verify(exactly = 1) { creator.createIfAbsent(OrganizationScope("org-$user"), any()) }
         }
         verify(exactly = 0) { creator.createIfAbsent(OrganizationScope("org-victim"), any()) }
+    }
+
+    @Test
+    fun `Forge plugin definitions are readable but cannot be registered or deleted through the authoring API`() {
+        val token = FakeIdp.issueJwt(mapOf("sub" to "alice"), secret)
+        val forgeDefinition = definition.replace("auth-test", "forge.product-spec")
+        mvc.perform(
+            post("/api/factory/workflow-definitions")
+                .header("Authorization", "Bearer $token")
+                .contentType(MediaType.APPLICATION_JSON).content(forgeDefinition),
+        ).andExpect(status().isForbidden)
+        mvc.perform(
+            delete("/api/factory/workflow-definitions/forge.product-spec/1.1.0")
+                .header("Authorization", "Bearer $token"),
+        ).andExpect(status().isForbidden)
+        verify(exactly = 0) { creator.createIfAbsent(any(), any()) }
+        verify(exactly = 0) { service.deleteDefinition(any<OrganizationScope>(), any(), any()) }
     }
 }

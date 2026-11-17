@@ -979,7 +979,7 @@ class CapabilityExecutionService(
     private fun resultSubmissionInstruction(): String =
         "- Call FACTORY_WORKER__submitStepResult only when the work is complete. " +
             "Use Factory attemptId '{{FACTORY_ATTEMPT_ID}}' and Idempotency-Key '{{FACTORY_SUBMISSION_ID}}'. " +
-            "Provide status, a concise business summary, claims.modifiedFiles, and only the relevant findings/artifacts; " +
+            "Provide status, a concise business summary, claims.modifiedFiles, and relevant outputs/findings/artifacts; " +
             "the tool schema is authoritative for field constraints."
 
     /**

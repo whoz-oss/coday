@@ -250,6 +250,7 @@ class Neo4jAgentStepResultRepository(
             artifacts = parsed.artifacts,
             claims = parsed.claims,
             findings = parsed.findings,
+            outputs = parsed.outputs,
             submittedAt = now.toString(),
             resultHash = resultHash,
             expectedAmendmentSeq = parsed.expectedAmendmentSeq,

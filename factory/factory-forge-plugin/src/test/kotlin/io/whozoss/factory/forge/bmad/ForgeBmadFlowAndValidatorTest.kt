@@ -39,12 +39,14 @@ class ForgeBmadFlowAndValidatorTest {
     private val observer = ForgeBmadLifecycleObserver()
 
     @Test
-    fun `catalog contributes all 10 valid static JSON flow definitions using unified ForgeBuilder`() {
+    fun `catalog contributes explicit Factory contracts`() {
         val flows = catalog.flows()
         assertThat(flows).hasSize(10)
 
         val parsed = flows.map { mapper.readValue(it, Map::class.java) }
-        val flowTypes = parsed.map { it["workflowType"] as String }
+        val current = parsed.filter { it["version"] == "1.1.0" }
+        assertThat(current).hasSize(10)
+        val flowTypes = current.map { it["workflowType"] as String }
         assertThat(flowTypes).containsExactly(
             "forge.product-spec",
             "forge.product-approval",
@@ -58,10 +60,17 @@ class ForgeBmadFlowAndValidatorTest {
             "forge.acceptance",
         )
 
-        val implementStep = parsed.single { it["workflowType"] == "forge.implement-step" }
+        val implementStep = current.single { it["workflowType"] == "forge.implement-step" }
         val steps = (implementStep["steps"] as List<*>).filterIsInstance<Map<*, *>>()
         val builderResp = steps.first { it["id"] == "step-implementation" }["responsibility"] as Map<*, *>
-        assertThat(builderResp["name"]).isEqualTo("ForgeBuilder")
+        assertThat(builderResp["name"]).isEqualTo("ForgeBuilderFactory")
+        for (flow in current) {
+            for (step in (flow["steps"] as List<*>).filterIsInstance<Map<*, *>>()) {
+                assertThat(step["entry"] as List<*>).isNotEmpty
+                assertThat(step["mission"] as String).isNotBlank
+                assertThat(step["exit"] as List<*>).isNotEmpty
+            }
+        }
     }
 
     @Test
@@ -621,6 +630,31 @@ class ForgeBmadFlowAndValidatorTest {
         assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
         assertThat((verdict as StepValidationVerdict.Rejected).reasonCode)
             .isEqualTo("READ_ONLY_WORKSPACE_VIOLATION")
+    }
+
+    @Test
+    fun `assessment requires structured output and downstream brief receives durable run brief`() {
+        val run = RunView(
+            runId = "r-assessment", runType = "forge-bmad",
+            domainState = mapOf("run_brief" to "Objective: deliver the approved feature"),
+        )
+        val missing = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment",
+            agentName = "ForgeUXDesigner",
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        ))
+        assertThat((missing as StepValidationVerdict.Rejected).reasonCode).isEqualTo("MISSING_ASSESSMENT_OUTPUT")
+
+        val accepted = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment",
+            agentName = "ForgeUXDesigner", report = mapOf("outputs" to mapOf("ux_applicable" to true)),
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        ))
+        assertThat((accepted as StepValidationVerdict.Accepted).newDomainState).containsEntry("ux_applicable", true)
+        val brief = briefContributor.contribute(BriefContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment", agentName = "ForgeUXDesigner",
+        ))
+        assertThat(brief.sections.joinToString("\n")).contains("Objective: deliver the approved feature")
     }
 
     @Test

@@ -12,7 +12,7 @@ import io.whozoss.factory.sdk.spi.RunView
 import org.pf4j.Extension
 
 /**
- * Deterministic 2-phase (`reduce` + `next`) selector driving `forge-controller-v1`
+ * Deterministic 2-phase (`reduce` + `next`) selector driving `forge-bmad`
  * runs across the 10 static BMAD flow fragments (Lot 4, §4 & §7.2).
  *
  * Enforces:
@@ -685,8 +685,8 @@ class ForgeBmadFlowSelector : FactoryFlowSelector {
         extractOutputs(step.report)
 
     companion object {
-        const val SELECTOR_VERSION = "1.0.0"
-        val SUPPORTED_RUN_TYPES = setOf("forge-controller-v1", "forge-bmad")
+        const val SELECTOR_VERSION = "1.1.0"
+        val SUPPORTED_RUN_TYPES = setOf("forge-bmad")
         private const val STATUS_COMPLETED = "completed"
         private const val STATUS_FAILED = "failed"
         private const val STATUS_ESCALATION_RESOLVED = "ESCALATION_RESOLVED"

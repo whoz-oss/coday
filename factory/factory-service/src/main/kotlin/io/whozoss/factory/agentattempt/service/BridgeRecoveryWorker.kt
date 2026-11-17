@@ -592,6 +592,7 @@ class BridgeRecoveryWorker(
                 outputs = mapOf(
                     "summary" to accepted.summary, "claims" to accepted.claims,
                     "findings" to accepted.findings, "artifacts" to accepted.artifacts,
+                    "outputs" to accepted.outputs,
                 ).let { outputs -> accepted.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                 evidence = evidence + if (accepted.status == AgentStepResultStatus.NEEDS_RESEARCH) {
                     mapOf("status" to "NEEDS_RESEARCH")

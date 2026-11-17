@@ -28,6 +28,10 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
         val sections = mutableListOf<String>()
         val watched = linkedSetOf(specPath, memlogPath)
 
+        (domainState["run_brief"] as? String)?.let { brief ->
+            sections += "## Durable Forge run brief\n$brief"
+        }
+
         when (context.flowType) {
             ForgeBmadCatalogContributor.FLOW_PRODUCT_SPEC -> {
                 sections += """
@@ -84,7 +88,7 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
                 @Suppress("UNCHECKED_CAST")
                 val planStep = context.fragmentInputs["step"] as? Map<String, Any?>
                 val allowedFiles = (planStep?.get("file_paths") as? List<*>)?.filterIsInstance<String>().orEmpty()
-                if (context.agentName == "ForgeBuilder") {
+                if (context.agentName.removeSuffix("Factory") == "ForgeBuilder") {
                     sections += buildString {
                         appendLine("## Forge BMAD — Unified Builder Contract (Step #$stepIndex)")
                         appendLine("- Use the appropriate `front` or `back` skill according to the target files.")
