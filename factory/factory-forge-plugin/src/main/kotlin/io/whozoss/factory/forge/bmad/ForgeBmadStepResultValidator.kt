@@ -41,7 +41,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         flowType.startsWith("forge.")
 
     override fun validate(context: StepValidationContext): StepValidationVerdict {
-        val role = context.agentName.removeSuffix("Factory")
+        val role = context.agentName
         val domainState = context.run.domainState
         val specPath = (domainState["spec_path"] as? String)
             ?: (context.fragmentInputs["spec_path"] as? String)

@@ -275,10 +275,6 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
                 val step = stepNode as ObjectNode
                 val stepId = step.path("id").asText()
                 val responsibility = step.path("responsibility") as ObjectNode
-                if (responsibility.path("kind").asText() == "agent") {
-                    val name = responsibility.path("name").asText()
-                    if (name.startsWith("Forge")) responsibility.put("name", "${name}Factory")
-                }
                 val contract = stepContract(flowType, stepId)
                 step.set<com.fasterxml.jackson.databind.JsonNode>("entry", mapper.valueToTree(contract.first))
                 step.put("mission", contract.second)
@@ -289,13 +285,13 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
 
         private fun stepContract(flow: String, step: String): Triple<List<String>, String, List<String>> {
             val runBrief = "Read the durable run-brief and preserve its objective, scope, acceptance criteria, constraints and open questions."
-            val spec = "Read the approved Whoz specification and its revision from the spec workspace; do not infer it from CONFIG_PATH."
-            val code = "Use the code workspace binding and its verified diff base; do not edit the spec workspace."
+            val spec = "Read the approved specification and its revision from the active case checkout or pinned case artifact; do not infer it from CONFIG_PATH."
+            val code = "Use the active case checkout and its verified diff base; do not edit approved specification artifacts."
             val result = "Submit one Factory result with evidence, findings and step-specific structured outputs; claims.modifiedFiles are declarations, not diff proof."
             return when (flow to step) {
                 FLOW_PRODUCT_SPEC to "product-specification" -> Triple(
-                    listOf("Read the original request, ticket evidence and both workspace bindings."),
-                    "Create the run-brief and apply the product intent and acceptance-criteria amendment through bmad-spec in the Whoz spec workspace.",
+                    listOf("Read the original request, ticket evidence and active case checkout."),
+                    "Create the run-brief and apply the product intent and acceptance-criteria amendment through bmad-spec in the active Whoz checkout.",
                     listOf("Provide a bounded run_brief string in result.outputs with objective, scope, acceptance criteria, constraints and open questions; Factory persists it for later fragments.", "Provide the product specification revision and amendment provenance.", result),
                 )
                 FLOW_PRODUCT_APPROVAL to "product-grooming" -> Triple(
@@ -318,12 +314,12 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
                 )
                 FLOW_UX_DESIGN to "ux-design" -> Triple(
                     listOf(runBrief, spec, "Read the accepted UX assessment."),
-                    "Apply the UX contract amendment through bmad-spec in the Whoz spec workspace.",
+                    "Apply the UX contract amendment through bmad-spec in the active Whoz checkout.",
                     listOf("Provide the new UX spec revision, provenance and any unresolved findings.", result),
                 )
                 FLOW_TECH_DESIGN to "codebase-research" -> Triple(
                     listOf(runBrief, spec, code), "Research the selected codebase for the technical design.",
-                    listOf("Provide evidence-backed codebase findings without changing either repository.", result),
+                    listOf("Provide evidence-backed codebase findings without changing the checkout.", result),
                 )
                 FLOW_TECH_DESIGN to "technical-design" -> Triple(
                     listOf(runBrief, spec, "Read codebase research and accepted assessment."),
@@ -337,12 +333,12 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
                 )
                 FLOW_IMPLEMENT_STEP to "step-implementation", FLOW_CORRECTION to "step-correction" -> Triple(
                     listOf(runBrief, spec, code, "Read the current delivery step and, for corrections, the accepted findings."),
-                    "Implement only the current delivery step in the code workspace; resolve correction findings when present.",
+                    "Implement only the current delivery step in the active case checkout; resolve correction findings when present.",
                     listOf("Provide changed-file claims, implementation evidence and remaining findings.", result),
                 )
                 FLOW_IMPLEMENT_STEP to "step-build-test", FLOW_CORRECTION to "step-build-test" -> Triple(
-                    listOf("Read the current delivery step, code workspace binding and repository-specific verification commands."),
-                    "Run the declared build and tests in the code workspace.",
+                    listOf("Read the current delivery step, active case checkout and repository-specific verification commands."),
+                    "Run the declared build and tests in the active case checkout.",
                     listOf("Persist command, exit status and output as verification evidence."),
                 )
                 FLOW_IMPLEMENT_STEP to "step-verification", FLOW_CORRECTION to "step-verification" -> Triple(
