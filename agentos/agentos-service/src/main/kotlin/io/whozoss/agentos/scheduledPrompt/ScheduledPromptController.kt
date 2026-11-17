@@ -1,7 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
-import io.swagger.v3.oas.annotations.Operation
 import com.fasterxml.jackson.databind.JsonNode
+import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -100,7 +100,10 @@ class ScheduledPromptController(
             entityType = EntityType.SCHEDULED_PROMPT,
             toResource = { entity ->
                 val scheduledPrompt = entity as ScheduledPrompt
-                val (_, promptContent) = scheduledPromptService.findByIdWithContent(scheduledPrompt.id, withRemoved = true)
+                val (_, promptContent) = scheduledPromptService.findByIdWithContent(
+                    scheduledPrompt.id,
+                    withRemoved = true
+                )
                     ?: (scheduledPrompt to "")
                 toDto(scheduledPrompt, promptContent)
             },
@@ -115,7 +118,11 @@ class ScheduledPromptController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): ScheduledPromptDto = crud.getById(id)
 
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PostMapping(
+        "/by-ids",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE]
+    )
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(@RequestBody request: SdkGetByIdsRequest): List<ScheduledPromptDto> =
         crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
@@ -256,13 +263,13 @@ class ScheduledPromptController(
     @Operation(
         summary = "Propose a scheduled prompt driving a LOOP agent from a natural-language description",
         description = "Returns a proposal, nothing is persisted. Every field but the description is optional: " +
-            "missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. " +
-            "The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. " +
-            "Requires WRITE on the namespace.",
+                "missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. " +
+                "The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. " +
+                "Requires WRITE on the namespace.",
     )
     @PostMapping("/generate", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
-    suspend fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
+    override suspend fun generate(@Valid @RequestBody request: ScheduledPromptGenerationRequest): ScheduledPromptGenerationResult {
         val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
             pluralLabel = "scheduled prompts",
             namespaceId = request.namespaceId,
@@ -277,7 +284,7 @@ class ScheduledPromptController(
         )
         logger.info {
             "[ScheduledPrompt] Generating a scheduled prompt proposal in namespace $namespaceId (user=$callerId, " +
-                "base=${request.baseFlowConfiguration != null})"
+                    "base=${request.baseFlowConfiguration != null})"
         }
         return scheduledPromptGenerationService.generate(namespaceId, callerId, request)
     }
