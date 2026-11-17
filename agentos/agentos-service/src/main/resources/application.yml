@@ -317,6 +317,20 @@ agentos:
       # back to false later does NOT delete an already-created agent; disable or delete it through the API.
       # Override with env var: AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED
       enabled: ${AGENTOS_DEFAULTS_CODAY_AGENT_ENABLED:true}
+    searcher-agent:
+      # Declare that every personal namespace should own a read-only agent named 'Searcher', the sub-agent
+      # that 'Coday' delegates its wide searches to, so the reading and the dead ends stay out of the
+      # conversation of the agent that delegated and only a compact report comes back. When true (shipped
+      # default), SearcherAgentSeeder creates it, as a namespace-scoped agent on the model alias BIG,
+      # when the namespace is provisioned and owns none, and the provisioner deploys it. Its integrations
+      # only list the tools that read and search the files of the conversation and the shared folder of
+      # the namespace, plus AGENTOS_CONFIG limited to 'read': it cannot change anything.
+      #
+      # Same semantics as coday-agent: EXISTENCE, not content (an agent named 'Searcher' that the
+      # namespace already owns is never rewritten) and create-only (setting this back to false does NOT
+      # delete an already-created agent).
+      # Override with env var: AGENTOS_DEFAULTS_SEARCHER_AGENT_ENABLED
+      enabled: ${AGENTOS_DEFAULTS_SEARCHER_AGENT_ENABLED:true}
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
   # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
