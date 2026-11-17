@@ -88,7 +88,7 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
                 @Suppress("UNCHECKED_CAST")
                 val planStep = context.fragmentInputs["step"] as? Map<String, Any?>
                 val allowedFiles = (planStep?.get("file_paths") as? List<*>)?.filterIsInstance<String>().orEmpty()
-                if (context.agentName.removeSuffix("Factory") == "ForgeBuilder") {
+                if (context.agentName == "ForgeBuilder") {
                     sections += buildString {
                         appendLine("## Forge BMAD — Unified Builder Contract (Step #$stepIndex)")
                         appendLine("- Use the appropriate `front` or `back` skill according to the target files.")

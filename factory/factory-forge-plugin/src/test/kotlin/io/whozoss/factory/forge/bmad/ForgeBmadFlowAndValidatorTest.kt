@@ -63,7 +63,7 @@ class ForgeBmadFlowAndValidatorTest {
         val implementStep = current.single { it["workflowType"] == "forge.implement-step" }
         val steps = (implementStep["steps"] as List<*>).filterIsInstance<Map<*, *>>()
         val builderResp = steps.first { it["id"] == "step-implementation" }["responsibility"] as Map<*, *>
-        assertThat(builderResp["name"]).isEqualTo("ForgeBuilderFactory")
+        assertThat(builderResp["name"]).isEqualTo("ForgeBuilder")
         for (flow in current) {
             for (step in (flow["steps"] as List<*>).filterIsInstance<Map<*, *>>()) {
                 assertThat(step["entry"] as List<*>).isNotEmpty

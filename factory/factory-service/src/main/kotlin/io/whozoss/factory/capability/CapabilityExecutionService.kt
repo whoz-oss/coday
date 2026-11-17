@@ -1759,6 +1759,7 @@ class CapabilityExecutionService(
                                 "claims" to accepted.claims,
                                 "findings" to accepted.findings,
                                 "artifacts" to accepted.artifacts,
+                                "outputs" to accepted.outputs,
                             ).let { outputs -> accepted.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                         )
                     } else {
@@ -1796,6 +1797,7 @@ class CapabilityExecutionService(
                                     "claims" to accepted.claims,
                                     "findings" to accepted.findings,
                                     "artifacts" to accepted.artifacts,
+                                    "outputs" to accepted.outputs,
                                     "selectedRoutes" to accepted.selectedRoutes,
                                 ),
                                 "attemptId" to attemptId,
@@ -2121,6 +2123,7 @@ class CapabilityExecutionService(
                             "claims" to acceptedResult.claims,
                             "findings" to acceptedResult.findings,
                             "artifacts" to acceptedResult.artifacts,
+                            "outputs" to acceptedResult.outputs,
                         ).let { outputs -> acceptedResult.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
                         evidence = mapOf("resultId" to acceptedResult.resultId, "source" to "factory-step-result"),
                     )
@@ -2142,6 +2145,7 @@ class CapabilityExecutionService(
                             "claims" to acceptedResult.claims,
                             "findings" to acceptedResult.findings,
                             "artifacts" to acceptedResult.artifacts,
+                            "outputs" to acceptedResult.outputs,
                         ),
                         evidence = mapOf(
                             "resultId" to acceptedResult.resultId,
