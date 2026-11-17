@@ -82,13 +82,15 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
         val params = input ?: return missingTimeoutResult()
         val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
         val dependency = params.dependency ?: return "ERROR: 'dependency' must not be blank.".toToolExecutionResult()
-        return dependencyInsight(
-            dependency = dependency,
-            subproject = params.subproject,
-            configuration = params.configuration,
-            gradlewPath = params.gradlewPath,
-            timeoutSeconds = timeoutSeconds,
-        ).toToolExecutionResult()
+        return runInterruptibleTool {
+            dependencyInsight(
+                dependency = dependency,
+                subproject = params.subproject,
+                configuration = params.configuration,
+                gradlewPath = params.gradlewPath,
+                timeoutSeconds = timeoutSeconds,
+            )
+        }
     }
 
     fun dependencyInsight(
@@ -124,6 +126,10 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
             }
             val report = condense(result.rawOutput)
             if (result.exitCode == 0) report else "FAILURE (exit ${result.exitCode})\n$report"
+        } catch (e: InterruptedException) {
+            // GradleRunner already killed the process tree and re-set the interrupt flag
+            logger.warn { "[GradleDependencyInsightTool] interrupted" }
+            "ERROR: dependencyInsight interrupted."
         } catch (e: Exception) {
             logger.error(e) { "Failed to run dependencyInsight" }
             "ERROR: ${e.message}"

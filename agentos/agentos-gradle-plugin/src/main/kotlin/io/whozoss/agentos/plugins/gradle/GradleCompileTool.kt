@@ -92,12 +92,14 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
     ): ToolExecutionResult {
         val params = input ?: return missingTimeoutResult()
         val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
-        return compile(
-            subproject = params.subproject,
-            file = params.file,
-            gradlewPath = params.gradlewPath,
-            timeoutSeconds = timeoutSeconds,
-        ).toToolExecutionResult()
+        return runInterruptibleTool {
+            compile(
+                subproject = params.subproject,
+                file = params.file,
+                gradlewPath = params.gradlewPath,
+                timeoutSeconds = timeoutSeconds,
+            )
+        }
     }
 
     fun compile(
@@ -137,6 +139,10 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             }
             val diagnostics = diagnosticParser.parse(result.rawOutput)
             diagnosticParser.buildSummary(result.exitCode, diagnostics, result.rawOutput, fileFilter)
+        } catch (e: InterruptedException) {
+            // GradleRunner already killed the process tree and re-set the interrupt flag
+            logger.warn { "[GradleCompileTool] interrupted" }
+            "ERROR: Compilation interrupted."
         } catch (e: Exception) {
             logger.error(e) { "Failed to compile" }
             "ERROR: ${e.message}"
