@@ -85,9 +85,12 @@ trusted Git-read boundary still require a concrete design and tests.
 - **CE06:** standard workers receive bounded Build scopes; approved packet
   identity and current Git availability guard Build. Independent verification
   and scoped workspace deltas survive retries and late results.
-- **CE07:** trusted Git, CI and deployment observations seal one candidate;
-  authorized technical and functional decisions bind its same generation.
-  Changed evidence invalidates both, and stale replies cannot complete.
+- **CE07:** trusted Git and CI observations establish that a successful
+  integration deployment tag contains this Run's work commit. The human sees
+  that tag as a reference, and both authorized decisions bind to the presented
+  Run generation. A later tag for unrelated work does not revoke the gate or
+  claim that the human tested an exact image. A changed work head or packet for
+  this Run requires a new assessment; stale replies cannot complete.
 
 The generic human-reply path still needs the transactional gate policy
 characterized by Lot 4. The official workflow remains unpublished until the
