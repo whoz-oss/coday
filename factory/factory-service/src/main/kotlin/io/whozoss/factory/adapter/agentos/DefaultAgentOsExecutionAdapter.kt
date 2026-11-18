@@ -96,8 +96,7 @@ class DefaultAgentOsExecutionAdapter(
         adoptRemoteCaseIfCompatible(binding)?.let { return it }
         val body = LinkedHashMap<String, Any?>()
         body["namespaceId"] = binding.namespaceId
-        body["title"] = binding.title?.takeIf { it.isNotBlank() }
-            ?: "Factory session $workflowId · step $stepId"
+        binding.title?.takeIf { it.isNotBlank() }?.let { body["title"] = it }
         body["id"] = binding.caseId
         if (!binding.parentCaseId.isNullOrBlank()) body["parentCaseId"] = binding.parentCaseId
         val spec = client.post()

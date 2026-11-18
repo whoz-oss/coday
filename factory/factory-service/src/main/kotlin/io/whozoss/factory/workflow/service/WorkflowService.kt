@@ -427,7 +427,13 @@ class WorkflowService(
         )
         if (existing != null) {
             if (existing.status != "active") throw workflowException(WorkflowErrorCodes.WORKFLOW_REMOVED)
-            val hash = CanonicalHash.workflowStartCommandHash(command, definitionInput)
+            // Historical instances have no explicit-title marker in their stored hash.
+            val replayCommand = if (!existing.instance.containsKey("caseTitleExplicit")) {
+                command.copy(caseTitleExplicit = null)
+            } else {
+                command
+            }
+            val hash = CanonicalHash.workflowStartCommandHash(replayCommand, definitionInput)
             if (existing.creationCommandHash != hash) {
                 throw workflowException(WorkflowErrorCodes.WORKFLOW_IDENTITY_CONFLICT)
             }

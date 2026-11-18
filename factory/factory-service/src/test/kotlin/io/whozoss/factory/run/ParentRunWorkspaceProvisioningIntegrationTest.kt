@@ -140,6 +140,67 @@ class ParentRunWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTest
     }
 
     @Test
+    fun `legacy provisioning intent accepts replay with explicit title marker`() {
+        //given
+        val proxy = mockk<AgentOsProxyClient>(relaxed = true)
+        val command = RunStartCommand("legacy-title-intent", "test", "Legacy title")
+        val run = RunRecord("ns", command.runId, command.runType, "1", command.title, rootCaseId = java.util.UUID.randomUUID().toString())
+        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
+        val service = ParentRunWorkspaceProvisioningService(runs, environments, intents, proxy, mapper, transactions)
+        service.ensureReady(scope, run, command, null, "alice")
+
+        //when
+        val replay = service.ensureReady(scope, run, command.copy(caseTitleExplicit = true), null, "alice")
+
+        //then
+        assertThat(replay.rootCaseId).isEqualTo(run.rootCaseId)
+        assertThat(environments.findLatestByWorkflowId(scope, command.runId)!!.revision).isEqualTo(2)
+        assertThatThrownBy { service.ensureReady(scope, run, command.copy(caseTitleExplicit = true, initialRequest = "new request"), null, "alice") }
+            .hasMessageContaining("identity")
+    }
+
+    @Test
+    fun `root title prefixes the explicit run title with the Jira key`() {
+        val proxy = mockk<AgentOsProxyClient>()
+        val command = RunStartCommand("jira-run", "test", "Short title", ticket = "https://whoz.atlassian.net/browse/WZ-35428")
+        val run = RunRecord("ns", command.runId, command.runType, "1", command.title, ticket = command.ticket, rootCaseId = java.util.UUID.randomUUID().toString())
+        every { proxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit
+        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
+
+        ParentRunWorkspaceProvisioningService(runs, environments, intents, proxy, mapper, transactions)
+            .ensureReady(scope, run, command, null, "alice")
+
+        verify(exactly = 1) { proxy.ensureRunRootCase(run.rootCaseId!!, "ns", "WZ-35428 Short title", "alice") }
+    }
+
+    @Test
+    fun `root without an explicit title uses an instruction excerpt or AgentOS default`() {
+        val proxy = mockk<AgentOsProxyClient>()
+        every { proxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit
+        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
+        val service = ParentRunWorkspaceProvisioningService(runs, environments, intents, proxy, mapper, transactions)
+
+        listOf(
+            Triple("WZ-35428", "Analyze login failures", "WZ-35428 Analyze login failures"),
+            Triple(null, "Analyze login failures", "Analyze login failures"),
+            Triple("WZ-35428", null, "WZ-35428"),
+        ).forEachIndexed { index, (ticket, instructions, expectedTitle) ->
+            val command = RunStartCommand("untitled-$index", "test", "test (untitled-$index)", ticket = ticket,
+                caseTitleExplicit = false, initialRequest = instructions)
+            val run = RunRecord("ns", command.runId, command.runType, "1", command.title, ticket = ticket,
+                rootCaseId = java.util.UUID.randomUUID().toString())
+            service.ensureReady(scope, run, command, null, "alice")
+            verify(exactly = 1) { proxy.ensureRunRootCase(run.rootCaseId!!, "ns", expectedTitle, "alice") }
+        }
+
+        val command = RunStartCommand("untitled-empty", "test", "test (untitled-empty)", caseTitleExplicit = false)
+        val run = RunRecord("ns", command.runId, command.runType, "1", command.title,
+            rootCaseId = java.util.UUID.randomUUID().toString())
+        service.ensureReady(scope, run, command, null, "alice")
+        verify(exactly = 1) { proxy.ensureRunRootCase(run.rootCaseId!!, "ns", "Case ${run.rootCaseId}", "alice") }
+    }
+
+    @Test
     fun `concurrent reservation never overwrites winning authenticated attribution`() {
         val proxy = mockk<AgentOsProxyClient>()
         every { proxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit

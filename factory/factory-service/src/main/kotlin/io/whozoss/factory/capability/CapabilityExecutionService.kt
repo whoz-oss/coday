@@ -5,6 +5,8 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.ObservationEscalationPolicy
 import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
+import io.whozoss.factory.adapter.agentos.stepCaseTitle
+import io.whozoss.factory.adapter.agentos.rootCaseTitle
 import io.whozoss.factory.adapter.agentos.TurnToken
 import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
 import io.whozoss.factory.adapter.agentos.VerdictDeriver
@@ -1857,21 +1859,17 @@ class CapabilityExecutionService(
             caseId = reservation.caseId,
             namespaceId = namespaceId,
             parentCaseId = reservation.parentCaseId,
-            // The unique entry-agent/root case uses Factory's exact persisted
-            // run title. Every other agent-step case uses its configured agent
-            // name. Missing/blank values let the adapter keep its historical
-            // generated fallback; recovered cases are never updated.
+            // The entry-agent/root case retains its workflow title. Child cases
+            // use the step label and persisted attempt number; recovery never
+            // updates an existing AgentOS case.
             title = if (reservation.parentCaseId == null && step.id == requireSingleEntryAgentStep(
                     scope, namespaceId, workflowId,
                 )?.id
             ) {
-                workflowRepository.findInstance(scope, namespaceId, workflowId)
-                    ?.instance
-                    ?.get("title")
-                    .let { it as? String }
-                    ?.takeIf { it.isNotBlank() }
+                val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)?.instance
+                instance?.let { rootCaseTitle(it) }
             } else {
-                step.responsibility.name?.takeIf { it.isNotBlank() }
+                stepCaseTitle(stepLabel = step.name, attemptNumber = persistedAttempt.attemptNumber)
             },
             attemptId = reservation.attemptId,
             capabilityToken = reservation.capabilityToken,

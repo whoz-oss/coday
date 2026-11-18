@@ -268,14 +268,14 @@ class WorkflowController(
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
         if (request.keys.any { it !in setOf("workflow", "execution", "controllerRequest") }) {
-            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain workflow, execution and controllerRequest.")
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain workflow and execution.")
         }
         val workflow = (request["workflow"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         if (workflow.keys.any { it !in setOf("workflowId", "workflowType", "title", "relations", "ticket") } ||
             workflow["workflowId"] != workflowId ||
             workflow["workflowType"] !is String ||
-            (workflow["title"] as? String).isNullOrBlank()
+            (workflow.containsKey("title") && workflow["title"] != null && workflow["title"] !is String)
         ) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         }
@@ -292,19 +292,16 @@ class WorkflowController(
             ticket != null -> mapOf("rootWorkflowId" to workflowId, "ticket" to ticket)
             else -> null
         }
-        val requestText = (request["controllerRequest"] as? String)?.trim()
-            ?: if (isFactoryCockpitExecution(execution)) {
-                throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "controllerRequest is required.")
-            } else {
-                null
-            }
-        if (requestText != null && (requestText.isEmpty() || requestText.length > CONTROLLER_REQUEST_MAX)) {
+        val requestText = (request["controllerRequest"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
+        if (requestText != null && requestText.length > CONTROLLER_REQUEST_MAX) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "controllerRequest must contain 1 to $CONTROLLER_REQUEST_MAX characters.")
         }
         val command = WorkflowStartCommand(
             workflowId = workflowId,
             workflowType = workflow["workflowType"] as String,
-            title = workflow["title"] as String,
+            title = (workflow["title"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
+                ?: (workflow["workflowType"] as String).replace('-', ' ').replace('_', ' ').replaceFirstChar { it.uppercase() },
+            caseTitleExplicit = !(workflow["title"] as? String).isNullOrBlank(),
             relations = relations,
             ticket = ticket,
             controllerRequest = requestText?.let {
@@ -1111,9 +1108,6 @@ class WorkflowController(
             createdAt = null,
         )
     }
-
-    private fun isFactoryCockpitExecution(execution: ControllerExecutionInput): Boolean =
-        execution.runtimeId == "factory-dashboard" && execution.agentId == "factory-agent"
 
     private fun respond(result: WorkflowHttpResult): ResponseEntity<WorkflowDataEnvelope<Any?>> =
         ResponseEntity.status(result.status).body(WorkflowDataEnvelope(result.data))

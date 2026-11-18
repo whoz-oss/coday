@@ -12,6 +12,7 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseHandle
 import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.adapter.agentos.TurnToken
+import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
 import io.whozoss.factory.adapter.agentos.VerdictDeriver
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
@@ -56,6 +57,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         val caseId: String,
         val attemptId: String,
         val parentCaseId: String?,
+        val title: String? = null,
     )
 
     private class FakeAdapter(
@@ -70,6 +72,12 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         val reconcileCalls = AtomicInteger()
         val observeCalls = AtomicInteger()
         val createCallCount = AtomicInteger()
+
+        override fun createOrRecoverExecution(binding: TrustedCaseBinding, workflowId: String, stepId: String): CaseHandle {
+            createCallCount.incrementAndGet()
+            createCalls.add(CreateCall(binding.caseId, binding.attemptId, binding.parentCaseId, binding.title))
+            return CaseHandle(binding.caseId, binding.namespaceId, false)
+        }
 
         override fun createOrRecoverExecution(
             namespaceId: String,
@@ -298,7 +306,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
     fun `a re-driven turn preserves the case-family parentCaseId`() {
         val root = caseIdFor("root-attempt")
         insertAutonomousWorkflow()
-        attempts.register(scope, attempt("attempt-redrive-child", brief = "recover me", parentCaseId = root))
+        attempts.register(scope, attempt("attempt-redrive-child", brief = "recover me", parentCaseId = root).copy(attemptNumber = 2))
         val adapter = FakeAdapter(
             reconcileVerdict = { AgentOsExecutionVerdict.Indeterminate("no events yet") },
             observeVerdict = { AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "ok")) },
@@ -311,6 +319,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         assertThat(create.caseId).isEqualTo(caseIdFor("attempt-redrive-child"))
         assertThat(create.attemptId).isEqualTo("attempt-redrive-child")
         assertThat(create.parentCaseId).isEqualTo(root)
+        assertThat(create.title).isEqualTo("Technical assessment #2")
     }
 
     private fun insertAutonomousWorkflow() {
@@ -323,7 +332,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
                 status = "active",
                 creationCommandHash = "recovery-autonomous",
                 instance = mapOf("workflowId" to "wf-recovery", "workflowType" to "recovery-test"),
-                projection = emptyMap(),
+                projection = mapOf("steps" to listOf(mapOf("id" to "step-1", "name" to "Technical assessment"))),
             ),
         )
     }

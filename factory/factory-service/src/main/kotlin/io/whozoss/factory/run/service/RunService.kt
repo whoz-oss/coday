@@ -60,6 +60,8 @@ data class RunStartCommand(
     val ticket: String? = null,
     val initialDomainState: Map<String, Any?> = emptyMap(),
     val maxTotalFragments: Int = RunRecord.DEFAULT_MAX_TOTAL_FRAGMENTS,
+    val caseTitleExplicit: Boolean? = null,
+    val initialRequest: String? = null,
 )
 
 /**

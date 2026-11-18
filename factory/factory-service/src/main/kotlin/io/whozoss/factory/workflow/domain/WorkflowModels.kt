@@ -209,6 +209,8 @@ data class WorkflowStartCommand(
     /** Explicit registry selection. Both fields are required together; never resolve latest. */
     val definitionVersion: String? = null,
     val definitionHash: String? = null,
+    /** Null denotes a workflow created before explicit title tracking. */
+    val caseTitleExplicit: Boolean? = null,
 )
 
 /** The trusted controlling runtime of a governed workflow. */

@@ -2,6 +2,7 @@ package io.whozoss.factory.run.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
+import io.whozoss.factory.adapter.agentos.rootCaseTitle
 import org.springframework.stereotype.Component
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.transaction.TransactionDefinition
@@ -61,15 +62,17 @@ class ParentRunWorkspaceProvisioningService(
         require(actorId.isNotBlank()) { "Authenticated provisioning identity is required" }
         val key = mapper.writeValueAsString(listOf(scope.organizationId, scope.workstreamId, proposed.namespaceId, proposed.runId))
         require(proposed.runId == command.runId && proposed.runType == command.runType && proposed.namespaceId.isNotBlank()) { "Run command identity mismatch" }
-        val hash = CanonicalJsonHash.hash(mapper.valueToTree(
-            listOf(command.runType, command.title, command.ticket, command.initialDomainState, command.maxTotalFragments, repoRoot),
-        ))
+        val legacyIdentity = listOf(command.runType, command.title, command.ticket, command.initialDomainState, command.maxTotalFragments, repoRoot)
+        val legacyHash = CanonicalJsonHash.hash(mapper.valueToTree(legacyIdentity))
+        val hash = if (command.caseTitleExplicit == null && command.initialRequest == null) legacyHash else
+            CanonicalJsonHash.hash(mapper.valueToTree(legacyIdentity + listOf(command.caseTitleExplicit, command.initialRequest)))
         val root = requireNotNull(proposed.rootCaseId) { "Run has no persisted root case identity" }
         val environmentId = "run-workspace:" + UUID.nameUUIDFromBytes(key.toByteArray(Charsets.UTF_8))
         val run = transaction.execute {
             val intent = intents.findById(key).orElse(null)
             if (intent != null) {
-                check(intent.actorId == actorId && intent.commandHash == hash && intent.rootCaseId == root) { "Run launch identity differs from persisted intent" }
+                val compatibleHash = intent.commandHash == hash || (command.initialRequest == null && intent.commandHash == legacyHash)
+                check(intent.actorId == actorId && compatibleHash && intent.rootCaseId == root) { "Run launch identity differs from persisted intent" }
             } else {
                 // Legacy Runs require an explicit migration, never silently invented attribution.
                 check(runs.find(scope, proposed.namespaceId, proposed.runId) == null) { "Existing Run has no authenticated provisioning intent; explicit migration required" }
@@ -89,7 +92,10 @@ class ParentRunWorkspaceProvisioningService(
             } else check(existing.namespaceId == saved.namespaceId && existing.parentCaseId == root && existing.workflowId == saved.runId) { "Run environment identity mismatch" }
             saved
         }!!
-        proxy.ensureRunRootCase(root, run.namespaceId, run.title, actorId)
+        val caseTitle = if (command.caseTitleExplicit == null) rootCaseTitle(command.ticket, command.title) ?: run.title
+            else rootCaseTitle(command.ticket, command.title.takeIf { command.caseTitleExplicit }, command.initialRequest)
+                ?: "Case $root"
+        proxy.ensureRunRootCase(root, run.namespaceId, caseTitle, actorId)
         val started = timing.nanoTime()
         while (true) {
             if (Thread.currentThread().isInterrupted) throw InterruptedException("Run provisioning interrupted; intent retained")

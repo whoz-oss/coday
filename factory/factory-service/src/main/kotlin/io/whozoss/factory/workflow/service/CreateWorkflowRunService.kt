@@ -84,6 +84,7 @@ class CreateWorkflowRunService(
                 expectedAmendmentSeq = command.expectedAmendmentSeq,
                 definitionVersion = command.definitionVersion,
                 definitionHash = command.definitionHash,
+                caseTitleExplicit = !command.title.isNullOrBlank(),
             ),
             ControllerExecutionInput(
                 runtimeId = "factory-control-plane",

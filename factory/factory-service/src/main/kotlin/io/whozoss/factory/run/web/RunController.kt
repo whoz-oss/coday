@@ -41,12 +41,20 @@ class RunController(
         servletRequest: HttpServletRequest,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
         val payload = body ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "Request body is required.")
+        for (field in listOf("title", "ticket", "initialRequest")) {
+            if (payload[field] != null && payload[field] !is String) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "$field must be a string.")
+        }
         val namespaceId = payload["namespaceId"] as? String
         val caller = resolveWorkflowCaller(servletRequest.authenticatedUser(), namespaceId, workstreamService = workstreamService)
         val runId = (payload["runId"] as? String)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
         val runType = (payload["runType"] as? String)?.takeIf { it.isNotBlank() }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "runType is required.")
-        val title = (payload["title"] as? String)?.takeIf { it.isNotBlank() } ?: "$runType ($runId)"
+        val explicitTitle = (payload["title"] as? String)?.trim()?.takeIf { it.isNotBlank() }
+        val title = explicitTitle ?: "$runType ($runId)"
+        val initialRequest = (payload["initialRequest"] as? String)?.trim()?.takeIf { it.isNotBlank() }
+        if (initialRequest != null && initialRequest.length > 4000) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "initialRequest must not exceed 4000 characters.")
+        }
         val ticket = (payload["ticket"] as? String)?.takeIf { it.isNotBlank() }
         @Suppress("UNCHECKED_CAST")
         val initialDomainState = (payload["initialDomainState"] as? Map<String, Any?>).orEmpty()
@@ -61,6 +69,8 @@ class RunController(
                 title = title,
                 ticket = ticket,
                 initialDomainState = initialDomainState,
+                caseTitleExplicit = explicitTitle != null,
+                initialRequest = initialRequest,
             ),
             repoRoot = repoRoot,
             actorId = caller.actorId,
