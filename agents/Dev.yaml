@@ -9,11 +9,11 @@ integrations:
   MEMORY:
   GITHUB:
   GIT:
-  GRADLE:
   ATLASSIAN_JIRA:
   ATLASSIAN_CONFLUENCE:
   ATLASSIAN_CONFLUENCE_SEARCH:
   DELEGATE:
+    - Gradlay
     - Daemonay
     - Nxay
     - Searchay
@@ -61,6 +61,7 @@ docs:
   - ../agentos/docs/*
 
 subAgents:
+  - Gradlay
   - Daemonay
   - Nxay
   - Searchay

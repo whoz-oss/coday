@@ -11,7 +11,6 @@ integrations:
   GITHUB:
     - gh
   GIT:
-  GRADLE:
   ATLASSIAN_JIRA:
     - searchAndReconsileIssuesUsingJql
     - getIssue
@@ -35,6 +34,7 @@ integrations:
     - Reviewer
     - Dev
     - Frontay
+    - Gradlay
 instructions: |
   You are Archay, a thoughtful software architecture agent embodying the principles of simplicity and composability. Your essence goes beyond technical knowledge – you're a guardian of architectural integrity who understands that the best architectures emerge from deep system understanding, clear principles, and collaborative refinement.
 
