@@ -176,6 +176,9 @@ class ParentRunWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTest
         service.ensureReady(scope, run, command.copy(initialDomainState = linkedMapOf("a" to linkedMapOf("x" to 1, "z" to 3), "b" to 2)), null, "alice")
         assertThat(environments.findLatestByWorkflowId(scope, command.runId)!!.revision).isEqualTo(ready.revision)
         assertThatThrownBy { service.ensureReady(scope, run, command.copy(title = "different"), null, "alice") }
+            .isInstanceOf(io.whozoss.factory.workflow.domain.WorkflowException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", "REVISION_CONFLICT")
+            .hasFieldOrPropertyWithValue("statusCode", 409)
             .hasMessageContaining("identity")
         assertThatThrownBy { service.ensureReady(scope, run, command, null, "bob") }.hasMessageContaining("identity")
         verify(exactly = 2) { proxy.ensureRunRootCase(any(), any(), any(), any()) }

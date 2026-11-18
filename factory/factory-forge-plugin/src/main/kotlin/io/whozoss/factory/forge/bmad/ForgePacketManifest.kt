@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import java.security.MessageDigest
 import java.util.Locale
 
-/** Pure CE05 packet check; publication, retention and human authority remain Factory service work. */
+/** Pure CE05 packet check; Git provenance and human authority require separate trusted boundaries. */
 internal object ForgePacketManifest {
     private val mapper = ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
     private val sha256 = Regex("^[0-9a-f]{64}$")
@@ -21,7 +21,7 @@ internal object ForgePacketManifest {
         data class Invalid(val code: String) : Result
     }
 
-    /** Return bytes that must be stored unchanged; every digest refers to these exact bytes. */
+    /** Return canonical manifest bytes for a Run-bound identity; document bytes remain in Git. */
     fun validate(rawBytes: ByteArray, documentBytes: Map<String, ByteArray>): Result {
         val root = try { mapper.readTree(rawBytes) } catch (_: Exception) { return Result.Invalid("INVALID_JSON") }
         if (!root.isObject || !hasFields(root, setOf("schemaVersion", "source", "applicability", "entries")) ||

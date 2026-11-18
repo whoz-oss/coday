@@ -429,7 +429,9 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 )),
             )
         }
-        return StepValidationVerdict.Accepted()
+        val nextState = LinkedHashMap(context.run.domainState)
+        nextState["applicability"] = decisions
+        return StepValidationVerdict.Accepted(newDomainState = nextState)
     }
 
     private fun validateDeliveryImplementationPlan(context: StepValidationContext): StepValidationVerdict {
@@ -448,13 +450,18 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 !paths.isNullOrEmpty() && paths.all { it is String && safeRelativePath(it) } &&
                 paths.size == paths.distinct().size
         }
-        return if (valid) StepValidationVerdict.Accepted()
+        return if (valid) StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+            put("delivery_plan", plan)
+        })
         else rejectDeliveryPlan(context, "INVALID_DELIVERY_PLAN_STEP")
     }
 
     private fun validateDeliveryVerificationPlan(context: StepValidationContext): StepValidationVerdict {
         val content = extractOutputs(context.report)["verification_plan"] as? String
-        return if (content != null && content.isNotBlank() && content.length <= 32_000) StepValidationVerdict.Accepted()
+        return if (content != null && content.isNotBlank() && content.length <= 32_000)
+            StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+                put("verification_plan", content)
+            })
         else rejectDeliveryPlan(context, "EMPTY_VERIFICATION_PLAN")
     }
 

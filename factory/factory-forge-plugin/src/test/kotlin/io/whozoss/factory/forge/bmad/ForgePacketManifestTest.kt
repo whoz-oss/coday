@@ -49,7 +49,7 @@ class ForgePacketManifestTest {
         ForgePacketManifest.validate(mapper.writeValueAsBytes(manifest), content)
 
     @Test
-    fun `valid packet returns canonical stored bytes and a digest of those exact bytes`() {
+    fun `valid packet returns canonical manifest bytes and their digest`() {
         val first = validate(manifest()) as ForgePacketManifest.Result.Valid
         val reordered = manifest().toSortedMap(reverseOrder())
         val second = validate(reordered) as ForgePacketManifest.Result.Valid

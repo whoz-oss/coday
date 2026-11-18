@@ -83,6 +83,7 @@ Worker PASS results of decisions require `selectedRoutes`, e.g. `["frontend"]`, 
 | `get_blockers` | `FACTORY_WORKSTREAM__get_blockers` | `GET .../workflows/{workflowId}/blockers` |
 | `get_required_human_actions` | `FACTORY_WORKSTREAM__get_required_human_actions` | `GET .../workflows/{workflowId}/human-actions` |
 | `start_workflow` | `FACTORY_WORKSTREAM__start_workflow` | `POST .../workflows` |
+| `start_parent_run` | `FACTORY_WORKSTREAM__start_parent_run` | `POST .../parent-runs` |
 | `request_agent_retry` | `FACTORY_WORKSTREAM__request_agent_retry` | `POST .../workflows/{workflowId}/retries` |
 
 The OpenAPI document is `factory/factory-service/openapi/factory-workstream-http-api.yaml`.
@@ -92,6 +93,7 @@ The OpenAPI document is `factory/factory-service/openapi/factory-workstream-http
 - **Every operation requires an explicit `namespaceId` UUID query parameter** from the assignment. Factory resolves its existing workstream inside the authenticated organization; reads never initialize a mapping. A missing mapping returns `WORKFLOW_NOT_FOUND`; an inactive mapping is refused. `get_workstream` additionally checks that the path workstream matches this mapping.
 - **`start_workflow`** creates a normal Factory run. It is not attributed to an AgentOS case. The caller supplies
   an `Idempotency-Key`; Factory namespaces it by the user.
+- **`start_parent_run`** starts a selector-owned parent Run with an AgentOS root Case and worktree. A repeated key from the same caller replays that Run; a new key may start another Run on the same ticket. The response can include other active Runs in the caller's workstream as a nonblocking warning. `forge.delivery` remains unavailable until its complete definition and selector are published.
 - **`request_agent_retry`** opens at most one retry request per step: a repeated call returns the existing one
   (`200`, `idempotent: true`).
 - **`get_required_human_actions`** is information only (`answerableFromThisChannel: false`). Human validations
@@ -124,7 +126,7 @@ In the AgentOS UI:
 3. Configure `FACTORY_WORKER` the same way with Document URL
    `http://127.0.0.1:8141/api/factory/openapi/factory-worker.yaml` and Base URL `http://127.0.0.1:8141`.
 4. **Agents**: add `FACTORY_WORKSTREAM` explicitly to the steering agents only. Expected log:
-   `HTTP_API integration 'FACTORY_WORKSTREAM': providing 8 tool(s)`.
+   `HTTP_API integration 'FACTORY_WORKSTREAM': providing 9 tool(s)`.
 
 ## Authoring installation (existing users must opt in)
 
