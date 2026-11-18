@@ -55,6 +55,26 @@ draft's schema test is not a launch or retry integration proof.
 
 ## Focused Factory evidence
 
+### CE05 packet contract (T07)
+
+`ForgePacketManifest` now provides a pure validation boundary for the design
+packet. Its `packet-manifest.v1` input identifies the source repository and
+pinned commit, records an explicit applicability decision for source, detailed,
+technical, UX and QA specifications and both plans, and lists every applicable
+document with a normalized relative path, locator, revision, size and SHA-256.
+The source specification, implementation plan and verification plan are always
+required. Every listed revision must match the pinned source commit. The
+validator compares the manifest to the actual document bytes, rejects
+missing/extra documents, duplicate or unsafe paths, contradictory applicability,
+revision/hash mismatches and blank plans, then returns canonical manifest bytes
+and their digest. The caller must persist those exact bytes before presenting
+the packet to a human gate.
+
+This establishes the local T07 shape and rejection cases only. The current
+test uses in-memory fixture bytes; it does not prove a Whoz Git snapshot,
+ArtifactStore publication, a packet ID bound to a human decision, or restart
+behavior. Those require the remaining CE05/CE07 integration seams.
+
 | Contract | Observed result | Remaining proof |
 | --- | --- | --- |
 | Tenant artifact bytes (CE05, T08/T09) | `Neo4jArtifactStoreIntegrationTest` passes put/open/hash, tenant metadata, retention and legal-hold cases. `ArtifactStore` accepts bytes with `TenantScope` and returns ID and hash. | Publish a pinned Whoz Git snapshot, attach its IDs to the parent Run, and verify stored bytes/provenance on resume. No plugin-facing publication port was found. |
@@ -67,9 +87,10 @@ Focused Gradle commands:
 ```text
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.artifact.infrastructure.persistence.Neo4jArtifactStoreIntegrationTest' --tests 'io.whozoss.factory.workflow.domain.WorkflowRoutingTest' :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeBmadFlowAndValidatorTest' --no-daemon
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest' --no-daemon
+./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgePacketManifestTest' --no-daemon
 ```
 
-Both commands passed. The JSON draft passes Factory's authoritative definition
+All three commands passed. The JSON draft passes Factory's authoritative definition
 validator. The earlier Kotlin preflight suite was removed with its
 implementation; the draft is not a registered or executable delivery workflow.
 
