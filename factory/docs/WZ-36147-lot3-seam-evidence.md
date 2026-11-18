@@ -642,3 +642,11 @@ interrupted after the service test task produced no further output for several
 minutes; its initial plugin failure was a stale test expectation for the old
 `forge-controller-v1` run type and was corrected and rechecked by the focused
 command. This remains test evidence, not a live Forge delivery run.
+
+The session recovery check was strengthened by reconstructing the execution
+service after each human reply while retaining the persisted workflow,
+interaction and evidence repositories.
+`./gradlew :factory-service:test --tests io.whozoss.factory.workflow.SessionDefinitionImportIntegrationTest` passed
+(`BUILD SUCCESSFUL in 59s`): the independent gate stays open after the first
+reply and the final join completes after the second. This does not exercise a
+full process restart or hosted AgentOS execution.
