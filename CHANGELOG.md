@@ -1,3 +1,13 @@
+## 3.48.0 (2026-11-18)
+
+### 🚀 Features
+
+- **agentos-service:** #35375 improve LoopConfigGenerationService ([#1678](https://github.com/whoz-oss/coday/pull/1678), [#35375](https://github.com/whoz-oss/coday/issues/35375))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.47.0 (2026-11-17)
 
 ### 🚀 Features
