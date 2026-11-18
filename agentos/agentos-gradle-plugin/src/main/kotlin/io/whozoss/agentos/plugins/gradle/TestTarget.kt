@@ -15,7 +15,7 @@ data class TestTarget(
  * One Gradle `test` task to run, resolved from either the legacy params or [TestTarget]s.
  *
  * @property subproject null runs the plain `test` task (all modules).
- * @property filters raw filters, blank-free; standard and testBalloon syntaxes may be mixed.
+ * @property filters raw filters, blank-free, in the Gradle `--tests` syntax.
  */
 internal data class TestTask(
     val subproject: String?,

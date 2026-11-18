@@ -12,8 +12,8 @@ import kotlin.time.Duration.Companion.seconds
  * The raw Gradle report is condensed ([condense]) to the resolved version, the selection reasons and a single
  * path from the configuration to the dependency, so the agent never receives the whole dependency graph.
  *
- * The business logic ([dependencyInsight]) is blocking and returns a String starting with `ERROR` / `FAILURE` on
- * problems; [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
+ * The business logic ([dependencyInsight]) is blocking and returns a [GradleToolResult];
+ * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
  */
 class GradleDependencyInsightTool(
     private val runner: GradleRunner,
@@ -78,7 +78,7 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
     ): ToolExecutionResult {
         val params = input ?: return missingTimeoutResult()
         val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
-        val dependency = params.dependency ?: return "ERROR: 'dependency' must not be blank.".toToolExecutionResult()
+        val dependency = params.dependency ?: return GradleToolResult.Error(BLANK_DEPENDENCY).toToolExecutionResult()
         return runInterruptibleTool {
             dependencyInsight(
                 dependency = dependency,
@@ -94,15 +94,15 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
         subproject: String? = null,
         configuration: String? = null,
         timeoutSeconds: Int,
-    ): String {
-        ToolTimeout.validate(timeoutSeconds)?.let { return "ERROR: $it" }
-        if (dependency.isBlank()) return "ERROR: 'dependency' must not be blank."
+    ): GradleToolResult {
+        ToolTimeout.validate(timeoutSeconds)?.let { return GradleToolResult.Error(it) }
+        if (dependency.isBlank()) return GradleToolResult.Error(BLANK_DEPENDENCY)
 
         val gradlew =
             try {
                 runner.resolveGradlew()
             } catch (e: GradlewNotFoundException) {
-                return "ERROR: ${e.message}"
+                return GradleToolResult.Error("${e.message}")
             }
         val command =
             buildCommand(
@@ -116,23 +116,25 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
         return try {
             val result = runner.run(command, workDir = runner.workDirFor(gradlew), timeout = timeoutSeconds.seconds)
             if (result.timedOut) {
-                return "ERROR: dependencyInsight timed out after $timeoutSeconds seconds. " +
-                    "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}).\n\n${condense(result.rawOutput)}"
+                return GradleToolResult.Error(
+                    "dependencyInsight timed out after $timeoutSeconds seconds. " +
+                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}).\n\n${condense(result.rawOutput)}",
+                )
             }
             val report = condense(result.rawOutput)
             if (result.exitCode == 0) {
-                report
+                GradleToolResult.Success(report)
             } else {
                 val hint = runner.compositeBuildHint(result.exitCode, !subproject.isNullOrBlank(), gradlew)
-                "FAILURE (exit ${result.exitCode})\n$report" + (hint?.let { "\n\n$it" } ?: "")
+                GradleToolResult.Failure("FAILURE (exit ${result.exitCode})\n$report" + (hint?.let { "\n\n$it" } ?: ""))
             }
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
             logger.warn { "[GradleDependencyInsightTool] interrupted" }
-            "ERROR: dependencyInsight interrupted."
+            GradleToolResult.Error("dependencyInsight interrupted.")
         } catch (e: Exception) {
             logger.error(e) { "Failed to run dependencyInsight" }
-            "ERROR: ${e.message}"
+            GradleToolResult.Error("${e.message}")
         }
     }
 
@@ -173,6 +175,7 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
         const val TOOL_NAME = "gradle_dependency_insight"
         private const val DEFAULT_CONFIGURATION = "runtimeClasspath"
         private const val MAX_LINES = 60
+        private const val BLANK_DEPENDENCY = "'dependency' must not be blank."
         private const val SCAN_ADVERT = "A web-based, searchable dependency report"
         private val VARIANT_LINE = Regex("""^\s*Variant .*:$""")
         private val TABLE_ROW = Regex("""^\s*\|.*""")

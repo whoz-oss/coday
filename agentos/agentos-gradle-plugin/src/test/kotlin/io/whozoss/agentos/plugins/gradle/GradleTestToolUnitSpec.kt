@@ -69,7 +69,6 @@ class GradleTestToolUnitSpec :
 
             cmd shouldContainInOrder listOf("/fake/gradlew", "test")
             cmd.none { it.startsWith("--tests") } shouldBe true
-            cmd shouldContainInOrder listOf("-PtestBalloon.jvmTestBalloonTestsOnly=true")
         }
 
         "buildCommand with subproject targets subproject test task" {
@@ -77,7 +76,6 @@ class GradleTestToolUnitSpec :
 
             cmd shouldContainInOrder listOf("/fake/gradlew", ":cli:test")
             cmd shouldNotContain "test" // bare 'test' task must not appear
-            cmd shouldContainInOrder listOf("-PtestBalloon.jvmTestBalloonTestsOnly=true")
         }
 
         "buildCommand with leading-colon subproject strips and re-adds colon" {
@@ -96,7 +94,6 @@ class GradleTestToolUnitSpec :
                             TestTask("a", listOf("pkg.A*", "pkg.B*")),
                             TestTask(":b", listOf("pkg.C*")),
                         ),
-                    testBalloonActive = false,
                 )
 
             cmd shouldContainExactly
@@ -139,23 +136,22 @@ class GradleTestToolUnitSpec :
                     gradlew = "/fake/gradlew",
                     initScript = INIT_SCRIPT,
                     tasks = listOf(TestTask("a", listOf("pkg.A*")), TestTask("b")),
-                    testBalloonActive = false,
                 )
 
             cmd shouldContainInOrder listOf(":a:test", "--tests=pkg.A*", ":b:test")
             cmd.last() shouldBe ":b:test"
         }
 
-        "buildCommand ignores testBalloon filters when binding --tests" {
+        "buildCommand glues a filter starting with a dash to --tests so Gradle cannot read it as an option" {
             val cmd =
                 tool.buildCommand(
                     gradlew = "/fake/gradlew",
                     initScript = INIT_SCRIPT,
-                    tasks = listOf(TestTask("a", listOf("pkg.suite↘*", "pkg.A*"))),
+                    tasks = listOf(TestTask("a", listOf("-Dweird"))),
                 )
 
-            cmd shouldContainInOrder listOf(":a:test", "--tests=pkg.A*")
-            cmd shouldNotContain "pkg.suite↘*"
+            cmd shouldContainInOrder listOf(":a:test", "--tests=-Dweird")
+            cmd.none { it == "-Dweird" } shouldBe true
         }
 
         // --- resolveTasks ---
@@ -203,48 +199,11 @@ class GradleTestToolUnitSpec :
             tool.resolveTasks(listOf("pkg.A*"), "cli", emptyList()) shouldBe listOf(TestTask("cli", listOf("pkg.A*")))
         }
 
-        // --- buildIncludePatterns ---
-
-        "buildIncludePatterns with empty list returns null" {
-            tool.buildIncludePatterns(emptyList()) shouldBe null
-        }
-
-        "buildIncludePatterns with single filter returns it as-is" {
-            tool.buildIncludePatterns(listOf("fr.tokazio.okia.cli.TerminalOperationsTests")) shouldBe
-                "fr.tokazio.okia.cli.TerminalOperationsTests"
-        }
-
-        "buildIncludePatterns with multiple filters joins with the testBalloon pattern separator" {
-            tool.buildIncludePatterns(
-                listOf("fr.tokazio.okia.cli.TerminalOperationsTests", "fr.tokazio.okia.engine.MyTests"),
-            ) shouldBe "fr.tokazio.okia.cli.TerminalOperationsTests⬥fr.tokazio.okia.engine.MyTests"
-        }
-
-        "buildIncludePatterns strips blank entries" {
-            tool.buildIncludePatterns(listOf("", "  ", "fr.tokazio.okia.cli.TerminalOperationsTests")) shouldBe
-                "fr.tokazio.okia.cli.TerminalOperationsTests"
-        }
-
-        "buildIncludePatterns with only blanks returns null" {
-            tool.buildIncludePatterns(listOf("", "  ")) shouldBe null
-        }
-
-        "buildIncludePatterns merges testBalloon filters of several tasks" {
-            val tasks =
-                listOf(
-                    TestTask("a", listOf("pkg.a.suiteA↘*", "pkg.A*")),
-                    TestTask("b", listOf("pkg.b.suiteB↘*")),
-                )
-
-            tool.buildIncludePatterns(tool.testBalloonFiltersOf(tasks)) shouldBe "pkg.a.suiteA↘*⬥pkg.b.suiteB↘*"
-        }
-
         // --- tool contract ---
 
         "runTests returns ERROR mentioning targets when mixed with legacy params" {
-            val result = tool.runTests(listOf("pkg.A*"), null, listOf(TestTarget("a")), timeoutSeconds = 60)
+            val result = tool.runTests(listOf("pkg.A*"), null, listOf(TestTarget("a")), timeoutSeconds = 60).errorText()
 
-            result shouldStartWith "ERROR"
             result shouldContain "targets"
         }
 
@@ -296,9 +255,8 @@ class GradleTestToolUnitSpec :
                     setExecutable(true)
                 }
 
-                val result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 1)
+                val result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 1).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "timed out after 1 seconds"
                 result shouldContain "partial output"
             } finally {
@@ -309,9 +267,8 @@ class GradleTestToolUnitSpec :
         "runTests rejects a timeoutSeconds outside 1..300 before doing anything else" {
             listOf(0, -5, 301).forEach { timeoutSeconds ->
                 // /fake has no gradlew: only the timeout check can produce a message naming timeoutSeconds
-                val result = tool.runTests(null, timeoutSeconds = timeoutSeconds)
+                val result = tool.runTests(null, timeoutSeconds = timeoutSeconds).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "timeoutSeconds"
                 result shouldContain "300"
             }
@@ -325,7 +282,7 @@ class GradleTestToolUnitSpec :
                     setExecutable(true)
                 }
 
-                GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 300) shouldStartWith "SUCCESS"
+                GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 300).successText()
             } finally {
                 root.deleteRecursively()
             }
@@ -340,7 +297,7 @@ class GradleTestToolUnitSpec :
                     writeText("#!/bin/sh\nsleep 60\n")
                     setExecutable(true)
                 }
-                var result: String? = null
+                var result: GradleToolResult? = null
                 val thread = Thread.ofPlatform().start { result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 60) }
                 Thread.sleep(500)
 
@@ -348,8 +305,7 @@ class GradleTestToolUnitSpec :
                 thread.join(5_000)
 
                 thread.isAlive shouldBe false
-                result!! shouldStartWith "ERROR"
-                result!! shouldContain "interrupted"
+                result!!.errorText() shouldContain "interrupted"
             } finally {
                 root.deleteRecursively()
             }
@@ -391,7 +347,7 @@ class GradleTestToolUnitSpec :
             withDirs { root, reportsDir ->
                 fakeGradlew(root, writesReport(reportsDir))
 
-                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
 
                 result shouldContain "Tests: 1"
             }
@@ -402,7 +358,7 @@ class GradleTestToolUnitSpec :
                 // the reports dir is not under root, as the dir of an included build (includeBuild("../lib")) is not
                 fakeGradlew(root, writesReport(reportsDir, module = "lib-9f8e") + "\n" + writesReport(reportsDir, module = "root-1a2b"))
 
-                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
 
                 result shouldContain "Tests: 2"
             }
@@ -422,7 +378,7 @@ class GradleTestToolUnitSpec :
             withDirs { root, reportsDir ->
                 fakeGradlew(root, "mkdir -p '${root.path}/build/test-results/test'\necho '$REPORT_XML' > '${root.path}/build/test-results/test/TEST-old.xml'")
 
-                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
 
                 result shouldContain "no test reports found"
                 result shouldNotContain "Tests: 1"
@@ -433,9 +389,8 @@ class GradleTestToolUnitSpec :
             withDirs { root, reportsDir ->
                 fakeGradlew(root, "exit 0")
 
-                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
 
-                result shouldStartWith "SUCCESS"
                 result shouldContain "no test reports found"
             }
         }
@@ -444,7 +399,7 @@ class GradleTestToolUnitSpec :
             withDirs { root, reportsDir ->
                 fakeGradlew(root, "echo compilation exploded\nexit 1")
 
-                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).failureText()
 
                 result shouldContain "FAILURE"
                 result shouldContain "no test reports found"
@@ -458,7 +413,7 @@ class GradleTestToolUnitSpec :
             withDirs { root, reportsDir ->
                 fakeGradlew(root, writesReport(reportsDir) + "\necho 'No tests found for given includes'\nexit 1")
 
-                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).failureText()
 
                 result shouldStartWith "FAILURE"
                 result shouldContain "Tests: 1"
@@ -479,7 +434,7 @@ class GradleTestToolUnitSpec :
                         testFilter = null,
                         targets = listOf(TestTarget("a"), TestTarget("b", listOf("pkg.Nothing*"))),
                         timeoutSeconds = 60,
-                    )
+                    ).failureText()
 
                 result shouldContain "Tests: 1"
                 result shouldContain "No tests found for given includes"
@@ -490,7 +445,7 @@ class GradleTestToolUnitSpec :
             withDirs { root, reportsDir ->
                 fakeGradlew(root, writesReport(reportsDir) + "\necho some gradle noise")
 
-                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60) shouldNotContain "some gradle noise"
+                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText() shouldNotContain "some gradle noise"
             }
         }
 
@@ -498,7 +453,7 @@ class GradleTestToolUnitSpec :
             withDirs { root, reportsDir ->
                 fakeGradlew(root, writesReport(reportsDir) + "\nsleep 60")
 
-                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 1) shouldStartWith "ERROR"
+                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 1).errorText()
 
                 reportsDir.exists() shouldBe false
             }
@@ -509,9 +464,8 @@ class GradleTestToolUnitSpec :
         "runTests returns an actionable ERROR when no gradlew can be found" {
             val root = Files.createTempDirectory("agentos-test-no-gradlew").toFile()
             try {
-                val result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 60)
+                val result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 60).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "gradlewDirectory"
             } finally {
                 root.deleteRecursively()
