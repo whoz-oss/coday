@@ -47,6 +47,15 @@ identity, while `CapabilityExecutionService` applies those updates only when
 a parent Run ID exists. Direct workflow evidence must therefore be persisted
 and read through the workflow instance and its own trusted Case/worktree
 binding; changing only the observer's ID comparison would leave both holes.
+AgentOS exposes the Case workspace status and path through
+`GET /api/cases/{caseId}/workspace/changes`, which Factory already reads for
+workspace deltas. That response is not a pinned Git-object read: the available
+`workspace/diff` endpoint returns changes for one file, not committed bytes at
+a named SHA. Factory's current `ForgeGitPacketSnapshot` uses local `git
+cat-file` and requires the Factory process to access the Case worktree's
+filesystem. The direct-run binding must select a trusted Git-read location
+explicitly; an AgentOS path string is not automatically a local Factory path
+when the two services run on different hosts.
 The targeted HTTP test `WorkflowControllerHttpTest.delivery draft direct
 launch...` passed (`BUILD SUCCESSFUL in 2m 29s`): with the draft step graph
 registered in the isolated fixture, two idempotency keys for WZ-36147
