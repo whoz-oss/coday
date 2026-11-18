@@ -2,6 +2,9 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -45,6 +48,7 @@ class CaseMembershipMvcIntegrationSpec : SuperAdminCallerSpec() {
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
     @Autowired lateinit var userService: UserService
+    @Autowired lateinit var permissionService: PermissionService
 
     init {
 
