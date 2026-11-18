@@ -16,11 +16,12 @@ but must be proved through the direct `start_workflow` path.
 
 The requester approved a narrow domain-neutral external-evidence observation
 extension on 2026-11-18. It lets the Forge plugin read a pinned Git packet
-outside the finalization transaction. Its current worktree lookup and receipt
-binding still depend on a parent Run and must be adapted to the direct workflow
-instance. The complete human gate, Git recheck on later resume/Build and
-observed CI/deployment candidate remain pending; this approval does not
-publish the draft delivery definition.
+outside the finalization transaction. The direct workflow path can now pass a
+locally accessible root Case worktree to that observer and retain its facts as
+workflow evidence. Promotion of the approved packet identity to durable gate
+state, remote-host Git reads, the complete human gate, Git recheck on later
+resume/Build and the observed CI/deployment candidate remain pending. This
+approval does not publish the draft delivery definition.
 
 ## CE04 — concurrent deliveries are allowed
 

@@ -29,33 +29,40 @@ publication; it is not a reason to silently switch back to parent fragments.
 
 Some prior evidence below characterizes the parent-Run route and remains a
 historical test result, not evidence for the now-required delivery launch.
-In particular, the Git packet observer currently requires a parent Run's
-persisted work environment and cannot yet observe a direct workflow Run.
-Its Git manifest validation is reusable, but the trusted worktree binding,
-evidence persistence and technical-pause recovery must be adapted to the
-single `workflowId` before the packet gate is wired.
+The Git packet observer can now receive the root Case worktree of a direct
+workflow when AgentOS reports it READY and the path resolves locally in
+Factory. Its observed facts are stored in the workflow's agent-result evidence.
+The recovery path invokes the same observation method, but its direct-workflow
+case has not yet been exercised by an integration test. This is a
+local/shared-filesystem seam, not a remote Git-object read or an approved-packet gate.
 
-The direct-launch inspection locates the precise mismatch. A regular
+The direct-launch inspection located the precise mismatch. A regular
 `CreateWorkflowRunService.create()` stores a workflow instance and submits its
-Run, but does not provision a `WorkEnvironment`. The existing packet observer
-requires an occupied `WorkEnvironment` owned by `parentRunIdOf(instance)`;
-`acquireAgentWorktree()` returns without an occupation when that parent ID is
-absent. Thus the first direct `forge.delivery` packet submission reaches
-`WORKTREE_UNAVAILABLE`, even if AgentOS created a Case worktree. The Forge
-validator also returns `newDomainState` for applicability, plans and packet
+Run, but does not provision a `WorkEnvironment`. The earlier packet observer
+required an occupied `WorkEnvironment` owned by `parentRunIdOf(instance)`;
+`acquireAgentWorktree()` still returns without an occupation when that parent
+ID is absent. Direct observation now uses the workflow's persisted root Case
+ID and an AgentOS READY workspace snapshot, and refuses a missing, mismatched
+or non-local worktree. The Forge validator also returns `newDomainState` for
+applicability, plans and packet
 identity, while `CapabilityExecutionService` applies those updates only when
-a parent Run ID exists. Direct workflow evidence must therefore be persisted
-and read through the workflow instance and its own trusted Case/worktree
-binding; changing only the observer's ID comparison would leave both holes.
+a parent Run ID exists. The accepted direct step retains observer facts as
+append-only workflow evidence, but the packet identity is not yet promoted to
+the durable gate state read by later steps.
 AgentOS exposes the Case workspace status and path through
 `GET /api/cases/{caseId}/workspace/changes`, which Factory already reads for
 workspace deltas. That response is not a pinned Git-object read: the available
 `workspace/diff` endpoint returns changes for one file, not committed bytes at
 a named SHA. Factory's current `ForgeGitPacketSnapshot` uses local `git
 cat-file` and requires the Factory process to access the Case worktree's
-filesystem. The direct-run binding must select a trusted Git-read location
-explicitly; an AgentOS path string is not automatically a local Factory path
-when the two services run on different hosts.
+filesystem. A remote-host deployment still needs a trusted Git-object read
+near AgentOS or an explicitly provisioned Factory checkout; the direct path
+fails closed when the AgentOS path cannot be resolved locally.
+The focused direct-observation integration test passed with `BUILD SUCCESSFUL
+in 1m 25s`: it recorded observed facts in the direct workflow's agent-result
+evidence without a parent Run or `WorkEnvironment`. It uses a local test
+worktree and a stub observer, so it does not prove a remote-host read, real
+Git packet or human gate.
 The targeted HTTP test `WorkflowControllerHttpTest.delivery draft direct
 launch...` passed (`BUILD SUCCESSFUL in 2m 29s`): with the draft step graph
 registered in the isolated fixture, two idempotency keys for WZ-36147
@@ -319,7 +326,7 @@ from the committed documents. The required trusted sequence is: commit the
 documents, observe that commit and its bytes outside a DB transaction, then
 atomically bind the verified manifest identity to the parent Run and gate.
 
-### Narrow core extension — approved and implemented as an unpublished seam
+### Parent Run observation seam — historical, unpublished
 
 Scenario: ProductEngineer finishes `packet-assembly` and submits a manifest.
 Before asking a human to approve it, Factory resolves the worktree already
