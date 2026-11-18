@@ -12,6 +12,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.generation.StructuredLlmClient
 import io.whozoss.agentos.generation.StructuredLlmResult
 import io.whozoss.agentos.scheduledPrompt.FlowConfigurationPresetSelector.PresetOutcome
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationPreset
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedField
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedFieldDecision
@@ -42,31 +43,34 @@ import java.util.UUID
  *
  * ## Pipeline (at most four LLM calls)
  *
- * 0. [preset], only when the request has presets and no base flow configuration: [FlowConfigurationPresetSelector]
- *    chooses one preset from the description (no LLM call when there is a single one), whose flow configuration is
- *    then the base flow configuration of the following steps. No usable choice is a warning, and the generation goes
- *    on without a base.
- * 1. [candidates], no LLM: the agents of the **namespace**, not the ones deployed to the caller. Generating is a
+ * Every deterministic check (agents, presets, base flow configuration) runs before the first LLM call: a request
+ * bound to fail never pays for one.
+ *
+ * 1. [agents], no LLM: the agents of the **namespace**, not the ones deployed to the caller. Generating is a
  *    design act, authorized by Namespace WRITE (checked by the controller); the scheduled prompt then runs for the
  *    user the loop agent is deployed to, not for the designer. The namespace must hold exactly one LOOP agent
  *    (persisted ones only: a filesystem agent cannot back a scheduled prompt), which is the loop agent. The target
  *    agents are the other published agents of the namespace and of the platform, a namespace agent shadowing a
- *    platform one of the same name. A provided name that is not a candidate is a 400. No LOOP agent, several LOOP
- *    agents, or no target agent is a 422.
- * 2. [plan]: with the namespace default model ([ModelResolver]), the LLM proposes what is missing among the loop
+ *    platform one of the same name. A requested loop or target agent that is not a candidate is a 400. No LOOP
+ *    agent, several LOOP agents, or no target agent is a 422.
+ * 2. [preset], only when the request has presets and no base flow configuration: [FlowConfigurationPresetSelector]
+ *    chooses one preset from the description (no LLM call when there is a single one), whose flow configuration is
+ *    then the base flow configuration of the following steps. No usable choice is a warning, and the generation goes
+ *    on without a base. Then [candidates] completes the agents with the target agent of the inputs.
+ * 3. [plan]: with the namespace default model ([ModelResolver]), the LLM proposes what is missing among the loop
  *    agent, the target agent, the prompt, the name, the recurrence and the planning. Skipped when nothing is missing
  *    but the name, which is then derived from the description.
- * 3. [resolveFields]: each field is resolved on its own, by the same rule: provided, else obvious (a single LOOP
+ * 4. [resolveFields]: each field is resolved on its own, by the same rule: provided, else obvious (a single LOOP
  *    candidate), else the LLM's answer, checked against the candidates or by Bean Validation, else, for the planning
  *    only, a default ("from today, never ends").
- * 4. [search], only when every field is resolved: [LoopConfigGenerationService] generates the search block with the
+ * 5. [search], only when every field is resolved: [LoopConfigGenerationService] generates the search block with the
  *    loop agent's own tools and model, given the target agent's name and id as context.
- * 5. [assemble]: `flowConfiguration = { search, act: { agentName } }`, without `act.prompt`, which the scheduler sets
+ * 6. [assemble]: `flowConfiguration = { search, act: { agentName } }`, without `act.prompt`, which the scheduler sets
  *    from `promptContent` at run time. The whole [ScheduledPromptDto] goes through Bean Validation, and the
  *    `flowConfiguration` is checked to parse as an [AgentLoopPayload] once that prompt is set. A name already taken
  *    by a namespace-shared scheduled prompt ([ScheduledPromptService.isNameTaken]) is a warning:
  *    `POST /api/scheduled-prompts` would answer 409 until it is renamed.
- * 6. [summary], only when there is a proposal: [ScheduledPromptSummaryService] writes the end-user summary from the
+ * 7. [summary], only when there is a proposal: [ScheduledPromptSummaryService] writes the end-user summary from the
  *    final values, in the caller's preferred language. A failed summary keeps the proposal, with a warning.
  *
  * Each step returns a value describing its outcome (warnings included) rather than stopping the method: a part that
@@ -88,9 +92,13 @@ import java.util.UUID
  *
  * [ScheduledPromptGenerationRequest.flowConfigurationPresets] are alternative base flow configurations. They are used
  * only when the request has no base flow configuration: the chosen preset's configuration then **is** the base flow
- * configuration, with the same rules (see above), and the chosen name is returned as `chosenPreset`. Every preset is
- * structurally checked first, before any LLM call, with the rules of the base flow configuration: a malformed preset
- * is a 400 whichever one the LLM would pick, and even when the presets end up ignored.
+ * configuration, with the same rules (see above), and the chosen name is returned as `chosenPreset`.
+ *
+ * The outcome must not depend on the LLM's pick, so every preset is checked before the LLM call:
+ * - structurally, with the rules of the base flow configuration, even when the presets end up ignored;
+ * - its `act.agentName`, when the presets are used and the request names no target agent, must be a target candidate.
+ *
+ * Either failure is a 400 naming the preset.
  *
  * ## rawResponse
  *
@@ -128,10 +136,11 @@ class ScheduledPromptGenerationService(
         userId: UUID,
         request: ScheduledPromptGenerationRequest,
     ): ScheduledPromptGenerationResult {
-        val preset = preset(namespaceId, userId, request)
+        val agents = agents(namespaceId, request)
+        val preset = preset(namespaceId, userId, request, agents)
         val base = request.baseFlowConfiguration?.takeUnless { it.isNull } ?: preset.preset?.baseFlowConfiguration
         val inputs = inputs(request, base)
-        val candidates = candidates(namespaceId, request, inputs)
+        val candidates = candidates(agents, inputs)
         val plan = plan(namespaceId, userId, request, inputs, candidates)
         val fields = resolveFields(request, inputs, candidates, plan)
         val complete = fields.complete()
@@ -171,28 +180,43 @@ class ScheduledPromptGenerationService(
     }
 
     // -------------------------------------------------------------------------
-    // 0. Preset: the base flow configuration, when the request has none
+    // 2. Preset: the base flow configuration, when the request has none
     // -------------------------------------------------------------------------
 
     /**
      * The preset to use as the base flow configuration: none (an empty outcome) when the request has a base flow
-     * configuration or no presets. Every preset is checked first, so that a malformed one is a 400 before any LLM call.
+     * configuration or no presets. Every preset is checked before the LLM call (see "Presets" in the class KDoc), so
+     * that the outcome does not depend on the LLM's pick.
      */
     private suspend fun preset(
         namespaceId: UUID,
         userId: UUID,
         request: ScheduledPromptGenerationRequest,
+        agents: Agents,
     ): PresetOutcome {
         val presets = request.flowConfigurationPresets.orEmpty()
-        presets.forEach {
-            parseBase(
-                it.baseFlowConfiguration,
-                "flowConfigurationPresets['${it.name}'].baseFlowConfiguration",
-            )
+        val parsed = presets.map { it to parseBase(it.baseFlowConfiguration, presetLabel(it)) }
+        val used = presets.isNotEmpty() && request.baseFlowConfiguration?.takeUnless { it.isNull } == null
+        if (used && request.targetAgentName.isNullOrBlank()) {
+            parsed.forEach { (preset, base) -> base.agentName?.let { checkPresetTarget(preset, it, agents.targets) } }
         }
         return when {
-            presets.isEmpty() || request.baseFlowConfiguration?.isNull == false -> PresetOutcome()
-            else -> presetSelector.choose(namespaceId, userId, request.description, presets)
+            used -> presetSelector.choose(namespaceId, userId, request.description, presets)
+            else -> PresetOutcome()
+        }
+    }
+
+    private fun presetLabel(preset: FlowConfigurationPreset) = "flowConfigurationPresets['${preset.name}'].baseFlowConfiguration"
+
+    private fun checkPresetTarget(
+        preset: FlowConfigurationPreset,
+        agentName: String,
+        targets: List<AgentConfig>,
+    ) {
+        if (targets.none { it.name.equals(agentName, ignoreCase = true) }) {
+            throw BadRequestException(
+                "Unknown target agent '$agentName' in ${presetLabel(preset)}.act.agentName. Available: ${targets.map { it.name }}",
+            )
         }
     }
 
@@ -276,8 +300,15 @@ class ScheduledPromptGenerationService(
     }
 
     // -------------------------------------------------------------------------
-    // 1. Candidates
+    // 1. Agents, and the candidates once the inputs are known
     // -------------------------------------------------------------------------
+
+    /** The agents of the namespace, before the inputs are known: they do not depend on the preset. */
+    private data class Agents(
+        val loops: List<AgentConfig>,
+        val targets: List<AgentConfig>,
+        val providedLoop: AgentConfig?,
+    )
 
     private data class Candidates(
         val loops: List<AgentConfig>,
@@ -293,13 +324,12 @@ class ScheduledPromptGenerationService(
      * The agents of the namespace, whatever is deployed to the caller: see step 1 of the class KDoc.
      *
      * Throws [UnprocessableEntityException] (422) when the namespace has no LOOP agent, several, or no target agent,
-     * [BadRequestException] (400) on an unknown name.
+     * [BadRequestException] (400) when the request names a loop or target agent that is not a candidate.
      */
-    private fun candidates(
+    private fun agents(
         namespaceId: UUID,
         request: ScheduledPromptGenerationRequest,
-        inputs: Inputs,
-    ): Candidates {
+    ): Agents {
         val namespaceAgents = agentConfigService.findByNamespace(namespaceId, withDisabled = false)
         val platformAgents = agentConfigService.findByNamespace(null, withDisabled = false)
         val loops = namespaceAgents.filter { it.resolvedExecutionMode == ExecutionMode.LOOP && !it.isFilesystemOnly }
@@ -312,13 +342,25 @@ class ScheduledPromptGenerationService(
             )
             targets.isEmpty() -> throw UnprocessableEntityException("No agent in this namespace to start for each search result.")
         }
-        return Candidates(
+        // Checked here, before any LLM call; resolved again by candidates(), which also sees the base's target.
+        request.targetAgentName?.takeIf { it.isNotBlank() }?.let { pick(targets, it, "target agent") }
+        return Agents(
             loops = loops,
             targets = targets,
             providedLoop = request.loopAgentName?.let { pick(loops, it, "LOOP agent") },
-            providedTarget = inputs.targetAgentName?.let { pick(targets, it, "target agent") },
         )
     }
+
+    /** [agents] completed by the target agent of the [inputs]: a 400 when it is not a candidate. */
+    private fun candidates(
+        agents: Agents,
+        inputs: Inputs,
+    ) = Candidates(
+        loops = agents.loops,
+        targets = agents.targets,
+        providedLoop = agents.providedLoop,
+        providedTarget = inputs.targetAgentName?.let { pick(agents.targets, it, "target agent") },
+    )
 
     /** Namespace-scoped agents shadow platform agents of the same name, as in `AgentServiceImpl`. */
     private fun withShadowing(agents: List<AgentConfig>): List<AgentConfig> =
@@ -387,16 +429,7 @@ class ScheduledPromptGenerationService(
     }
 
     private fun planOutcome(llm: StructuredLlmResult): PlanOutcome =
-        PlanOutcome(
-            json = llm.json,
-            rawText = llm.rawText,
-            warnings =
-                listOfNotNull(
-                    "The LLM returned no content.".takeIf { llm.returnedNothing },
-                    "The LLM response could not be parsed as a JSON object.".takeIf { llm.json == null && !llm.returnedNothing },
-                    "JSON was extracted from a markdown code fence in the LLM response.".takeIf { llm.usedCodeFence },
-                ),
-        )
+        PlanOutcome(json = llm.json, rawText = llm.rawText, warnings = llm.warnings)
 
     private suspend fun callPlanner(
         namespaceId: UUID,

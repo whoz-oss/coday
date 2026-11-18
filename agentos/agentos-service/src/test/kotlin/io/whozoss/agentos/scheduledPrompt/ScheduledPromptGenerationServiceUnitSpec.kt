@@ -19,7 +19,6 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import io.mockk.spyk
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.agentConfig.AgentConfig
@@ -35,6 +34,7 @@ import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.agentConfig.LoopConfigGenerationResult
 import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationPreset
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedField
+import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedFieldDecision
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedFieldSource
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
@@ -57,8 +57,7 @@ import java.util.UUID
 /**
  * Unit tests for [ScheduledPromptGenerationService]. The LLM calls are mocked at their seams: the planning call
  * through [StructuredLlmClient], the search call through [LoopConfigGenerationService], the summary through
- * [ScheduledPromptSummaryService]. The preset choice goes through a spy of the real [FlowConfigurationPresetSelector],
- * whose own LLM call is mocked at [StructuredLlmClient] too (told apart by its system prompt).
+ * [ScheduledPromptSummaryService]. The preset choice is mocked at [FlowConfigurationPresetSelector], tested on its own.
  */
 class ScheduledPromptGenerationServiceUnitSpec :
     StringSpec({
@@ -97,7 +96,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
         val scheduledPromptService = mockk<ScheduledPromptService>()
         val summaryService = mockk<ScheduledPromptSummaryService>()
         val userService = mockk<UserService>()
-        val presetSelector = spyk(FlowConfigurationPresetSelector(modelResolver, structuredLlmClient))
+        val presetSelector = mockk<FlowConfigurationPresetSelector>()
         val service =
             ScheduledPromptGenerationService(
                 agentConfigService = agentConfigService,
@@ -535,12 +534,22 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 json("""{"search": {"tool": "searchBench", "params": {"scope": "bench"}}, "act": {"agentName": "Mario"}}"""),
             )
 
-        fun presetAnswer(text: String) = StructuredLlmResult(json = objectMapper.readTree(text), rawText = text)
-
-        fun answerPresetChoice(result: StructuredLlmResult) {
-            coEvery {
-                structuredLlmClient.call(any(), any(), eq(FlowConfigurationPresetSelector.SYSTEM_PROMPT), any())
-            } returns result
+        fun presetChosen(
+            preset: FlowConfigurationPreset?,
+            rationale: String? = null,
+            warnings: List<String> = emptyList(),
+            unusableRawText: String? = null,
+        ) {
+            coEvery { presetSelector.choose(namespaceId, userId, any(), any()) } returns
+                FlowConfigurationPresetSelector.PresetOutcome(
+                    preset = preset,
+                    decision =
+                        preset?.let {
+                            GeneratedFieldDecision(GeneratedField.PRESET, GeneratedFieldSource.INFERRED, it.name, rationale)
+                        },
+                    warnings = warnings,
+                    unusableRawText = unusableRawText,
+                )
         }
 
         "a base flow configuration wins: the presets are ignored, no preset is chosen" {
@@ -564,17 +573,17 @@ class ScheduledPromptGenerationServiceUnitSpec :
             coVerify(exactly = 0) { presetSelector.choose(any(), any(), any(), any()) }
         }
 
-        "a single preset is chosen without an LLM call, and acts as the base flow configuration" {
-            val result = service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories)))
+        "the chosen preset acts as the base flow configuration, and is reported" {
+            presetChosen(stories, rationale = "stories")
 
-            coVerify(exactly = 0) {
-                structuredLlmClient.call(any(), any(), eq(FlowConfigurationPresetSelector.SYSTEM_PROMPT), any())
-            }
+            val result = service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories, bench)))
+
+            coVerify { presetSelector.choose(namespaceId, userId, any(), listOf(stories, bench)) }
             result.chosenPreset shouldBe "Stories"
-            result.decisions.first { it.field == GeneratedField.PRESET }.let {
-                it.source shouldBe GeneratedFieldSource.INFERRED
+            result.decisions.first().let {
+                it.field shouldBe GeneratedField.PRESET
                 it.value shouldBe "Stories"
-                it.rationale shouldBe "only preset available"
+                it.rationale shouldBe "stories"
             }
             // the preset's search.tool and params, and act.agentName, as with a base flow configuration
             coVerify {
@@ -585,21 +594,19 @@ class ScheduledPromptGenerationServiceUnitSpec :
             result.scheduledPrompt.shouldNotBeNull().flowConfiguration!!["act"]["agentName"].asText() shouldBe "Luigi"
         }
 
-        "with several presets, the LLM's choice is matched case-insensitively and its configuration is the base" {
-            answerPresetChoice(presetAnswer("""{"presetName": "bENCH", "rationale": "it is about the bench"}"""))
+        "another chosen preset gives another base" {
+            presetChosen(bench)
 
             val result = service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories, bench)))
 
             result.chosenPreset shouldBe "Bench"
-            result.decisions.first { it.field == GeneratedField.PRESET }.let {
-                it.value shouldBe "Bench"
-                it.rationale shouldBe "it is about the bench"
-            }
             coVerify { loopConfigGenerationService.generate(any(), "searchBench", any(), any(), bench.baseFlowConfiguration["search"]["params"]) }
             result.scheduledPrompt.shouldNotBeNull().flowConfiguration!!["act"]["agentName"].asText() shouldBe "Mario"
         }
 
         "the request's searchToolName wins over the chosen preset's search.tool" {
+            presetChosen(stories)
+
             service.generate(
                 namespaceId,
                 userId,
@@ -609,30 +616,70 @@ class ScheduledPromptGenerationServiceUnitSpec :
             coVerify { loopConfigGenerationService.generate(any(), "otherTool", any(), any(), stories.baseFlowConfiguration["search"]["params"]) }
         }
 
-        "a preset the LLM invented is a warning: no preset, and the generation goes on without a base" {
-            answerPresetChoice(presetAnswer("""{"presetName": "Ghost", "rationale": "x"}"""))
+        "no usable preset choice: its warnings, no preset, and the generation goes on without a base" {
+            presetChosen(null, warnings = listOf("The LLM chose preset 'Ghost'.", "Continuing without a preset."))
 
             val result = service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories, bench)))
 
             result.chosenPreset.shouldBeNull()
             result.decisions.none { it.field == GeneratedField.PRESET } shouldBe true
-            result.warnings.joinToString() shouldContain "Ghost"
-            result.warnings.joinToString() shouldContain "Continuing without a preset."
+            result.warnings.take(2) shouldContainExactly listOf("The LLM chose preset 'Ghost'.", "Continuing without a preset.")
             result.scheduledPrompt.shouldNotBeNull()
             coVerify { loopConfigGenerationService.generate(any(), null, any(), any(), isNull()) }
         }
 
         "an unusable preset answer is the raw response when there is no proposal, never with one" {
-            answerPresetChoice(StructuredLlmResult(json = null, rawText = "preset raw"))
+            presetChosen(null, unusableRawText = "preset raw")
             service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories, bench))).rawResponse.shouldBeNull()
 
-            coEvery {
-                structuredLlmClient.call(any(), any(), neq(FlowConfigurationPresetSelector.SYSTEM_PROMPT), any())
-            } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
-            val noProposal =
-                service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories, bench)))
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns planAnswer(mapOf("targetAgentName" to "Ghost"))
+            val noProposal = service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories, bench)))
             noProposal.scheduledPrompt.shouldBeNull()
             noProposal.rawResponse shouldBe "preset raw"
+        }
+
+        "a preset naming an unavailable target agent is a 400 naming the preset, before any LLM call, whichever the LLM would pick" {
+            val ghost = FlowConfigurationPreset("Ghostly", json("""{"act": {"agentName": "Ghost"}}"""))
+
+            val message =
+                shouldThrow<BadRequestException> {
+                    service.generate(namespaceId, userId, request(flowConfigurationPresets = listOf(stories, ghost)))
+                }.message
+
+            message shouldContain "Ghost"
+            message shouldContain "flowConfigurationPresets['Ghostly'].baseFlowConfiguration.act.agentName"
+            message shouldContain "Luigi"
+            coVerify(exactly = 0) { presetSelector.choose(any(), any(), any(), any()) }
+            coVerify(exactly = 0) { structuredLlmClient.call(any(), any(), any(), any()) }
+        }
+
+        "a preset's target agent is not checked when the request names the target agent, which wins over it" {
+            val ghost = FlowConfigurationPreset("Ghostly", json("""{"act": {"agentName": "Ghost"}}"""))
+            presetChosen(ghost)
+
+            val result =
+                service.generate(namespaceId, userId, request(targetAgentName = "Mario", flowConfigurationPresets = listOf(stories, ghost)))
+
+            result.scheduledPrompt.shouldNotBeNull().flowConfiguration!!["act"]["agentName"].asText() shouldBe "Mario"
+        }
+
+        "a preset's target agent is not checked when a base flow configuration makes the presets useless" {
+            val ghost = FlowConfigurationPreset("Ghostly", json("""{"act": {"agentName": "Ghost"}}"""))
+
+            service.generate(namespaceId, userId, request(baseFlowConfiguration = base, flowConfigurationPresets = listOf(ghost)))
+                .scheduledPrompt.shouldNotBeNull()
+        }
+
+        "a namespace that cannot host a loop, or an unknown requested agent, fails before the preset LLM call" {
+            forAll(
+                row(listOf(luigi, mario), request(flowConfigurationPresets = listOf(stories, bench))),
+                row(listOf(loopB, luigi), request(loopAgentName = "Ghost", flowConfigurationPresets = listOf(stories, bench))),
+                row(listOf(loopB, luigi), request(targetAgentName = "Ghost", flowConfigurationPresets = listOf(stories, bench))),
+            ) { agents, req ->
+                every { agentConfigService.findByNamespace(namespaceId, false) } returns agents
+                runCatching { service.generate(namespaceId, userId, req) }.isFailure shouldBe true
+            }
+            coVerify(exactly = 0) { presetSelector.choose(any(), any(), any(), any()) }
         }
 
         "a malformed preset is a 400 naming it, before any LLM call, whichever the LLM would pick" {
@@ -665,6 +712,11 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 "at most ${ScheduledPromptGenerationRequest.MAX_PRESETS} presets"
             violations(listOf(FlowConfigurationPreset("Array", json("[1, 2]")))) shouldContain "must be a JSON object"
             violations(listOf(FlowConfigurationPreset(" ", stories.baseFlowConfiguration))) shouldContain "name must not be blank"
+            // a null element: a violation, not an exception
+            @Suppress("UNCHECKED_CAST")
+            violations(listOf(stories, null) as List<FlowConfigurationPreset>) shouldContain "no null element"
+            // names that differ only by case are duplicates, whatever the default locale
+            violations(listOf(stories.copy(name = "title"), stories.copy(name = "TITLE"))) shouldContain "unique names"
             // each one within its own bound, too heavy together
             val heavy =
                 List(4) {

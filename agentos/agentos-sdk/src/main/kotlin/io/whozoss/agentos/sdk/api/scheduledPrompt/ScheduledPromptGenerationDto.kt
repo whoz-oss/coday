@@ -114,21 +114,27 @@ data class ScheduledPromptGenerationRequest(
                 (baseFlowConfiguration.isObject && baseFlowConfiguration.toString().length <= MAX_BASE_FLOW_CONFIGURATION_LENGTH)
 
     /**
-     * Preset names are unique (case-insensitively, the LLM's answer is matched that way), and the presets are bounded
-     * as a whole: they are injected into an LLM prompt.
+     * No null element, preset names unique as the selector matches them (`equals(ignoreCase = true)`, not a
+     * locale-sensitive `lowercase()`), and the presets bounded as a whole: they are injected into an LLM prompt.
+     *
+     * Bean Validation runs this getter even when an element is itself invalid, so it must not assume more than Jackson
+     * guarantees: the Kotlin module rejects a missing `name`, and a JSON null `baseFlowConfiguration` is a `NullNode`,
+     * but a null **element** of the list goes through.
      */
     @get:AssertTrue(
         message =
-            "flowConfigurationPresets must have unique names (case-insensitive) and weigh at most " +
-                "$MAX_PRESETS_TOTAL_LENGTH characters in total",
+            "flowConfigurationPresets must hold no null element, have unique names (case-insensitive) and weigh at " +
+                "most $MAX_PRESETS_TOTAL_LENGTH characters in total",
     )
     @get:JsonIgnore
     val isFlowConfigurationPresetsValid: Boolean
         get() {
-            val presets = flowConfigurationPresets.orEmpty()
-            val names = presets.map { it.name.lowercase() }
-            return names.size == names.toSet().size &&
-                presets.sumOf { it.name.length + it.baseFlowConfiguration.toString().length } <= MAX_PRESETS_TOTAL_LENGTH
+            val all = flowConfigurationPresets.orEmpty()
+            val presets = all.filterNotNull()
+            val names = presets.map { it.name }
+            val unique = names.indices.none { i -> (i + 1 until names.size).any { j -> names[i].equals(names[j], ignoreCase = true) } }
+            val weight = presets.sumOf { it.name.length + it.baseFlowConfiguration.toString().length }
+            return presets.size == all.size && unique && weight <= MAX_PRESETS_TOTAL_LENGTH
         }
 
     companion object {
