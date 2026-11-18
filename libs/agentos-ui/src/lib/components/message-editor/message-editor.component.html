@@ -1,0 +1,15 @@
+<textarea
+  #field
+  class="message-editor__input"
+  rows="3"
+  aria-label="Edit message"
+  [value]="draft()"
+  (input)="onInput($event)"
+  (keydown)="onKeydown($event)"
+></textarea>
+<div class="message-editor__actions">
+  <button dsButton type="button" (click)="cancelled.emit()">Cancel</button>
+  <button dsButton variant="primary" type="button" [disabled]="!canRerun()" (click)="submit()">
+    {{ rerunLabel() }}
+  </button>
+</div>

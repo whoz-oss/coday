@@ -1,0 +1,4 @@
+<ds-copy-button [text]="text()" title="Copy message" />
+@if (editable()) {
+  <ds-icon-button icon="edit" inputTrack="CaseChat-editMessage" [title]="editTooltip" (action)="editRequested.emit()" />
+}

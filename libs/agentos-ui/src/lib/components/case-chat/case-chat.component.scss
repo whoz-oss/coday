@@ -364,6 +364,12 @@
     &--streaming {
       opacity: 0.95;
     }
+
+    // A message being re-run: its new text is shown, discreetly, until the server's own message replaces it.
+    &--pending {
+      opacity: 0.6;
+      transition: opacity 0.15s ease;
+    }
   }
 
   // Role label
@@ -407,19 +413,19 @@
     width: 100%;
     min-width: 0;
     max-width: 100%;
-
-    &:hover .case-chat__bubble-copy {
-      opacity: 1;
-    }
   }
 
-  &__bubble-copy {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    z-index: 1;
+  // The actions under a bubble: always visible, on the side the bubble speaks from (the turn aligns them).
+  &__message-actions {
+    flex: none;
+  }
+
+  // Why a re-run was refused, under the message it concerns.
+  &__rerun-error {
+    margin: 0;
+    color: var(--color-error);
+    font-size: 12px;
+    line-height: 1.3;
   }
 
   &__message-time {
@@ -550,6 +556,15 @@
       align-items: stretch;
       gap: 0.5rem;
     }
+  }
+
+  // The bubble of a message being edited: the editor takes its place, on a neutral ground so the text field reads
+  // as one. Scoped under the turn to win over the user-bubble colours above, which have the same specificity.
+  .case-chat__turn &__bubble--editing {
+    padding: 8px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-divider);
   }
 
   // Transcript of a voice message: plain spoken text, left-aligned with the player, no markdown margins or
