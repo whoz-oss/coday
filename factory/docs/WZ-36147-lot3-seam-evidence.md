@@ -11,9 +11,11 @@ unversioned term “Factory” on 2026-11-18. This validates the entry contract,
 not publication of the draft or the downstream Build gates.
 
 The workflow for bringing a ticket to `Ready` is a separate, potentially more
-interactive Run. This Lot implements only the **delivery** Run. The two Runs
-may refer to the same Jira ticket; duplicate protection must be scoped to an
-active delivery Run, not to every Run carrying that ticket key.
+interactive Run. This Lot implements only the **delivery** Run. Multiple
+delivery Runs may also target the same Jira ticket, even with the same
+definition; each has its own identity and worktree. The 2026-11-18 product
+clarification permits this concurrency. A detected overlap may produce a
+nonblocking, permission-filtered warning.
 
 The delivery Run may be created with a ticket that is not yet `Ready`. Its
 **first executable step** is a read-only ProductEngineer preflight. The
@@ -73,7 +75,7 @@ missing verification commands. The `qa-design` step requires nonempty
 `verification_plan` Markdown. Both use the existing Forge business-output
 artifact. These are result guards for every route, including trivial work;
 they do not prove that the corresponding plan files were committed or copied
-into `ArtifactStore`. The manifest's byte check remains required before the
+into Factory storage. The manifest's byte check remains required before the
 human gate.
 
 ## Focused Factory evidence
@@ -114,10 +116,10 @@ Run is executable.
 
 | Contract | Observed result | Remaining proof |
 | --- | --- | --- |
-| Tenant artifact bytes (CE05, T08/T09) | `Neo4jArtifactStoreIntegrationTest` passes put/open/hash, tenant metadata, retention and legal-hold cases. `ArtifactStore` accepts bytes with `TenantScope` and returns ID and hash. | Publish a pinned Whoz Git snapshot, attach its IDs to the parent Run, and verify stored bytes/provenance on resume. No plugin-facing publication port was found. |
+| Tenant artifact bytes (CE05, T08/T09) | `Neo4jArtifactStoreIntegrationTest` passes put/open/hash, tenant metadata, retention and legal-hold cases. `ArtifactStore` is Factory-owned; Neo4j holds metadata and object storage holds bytes. Default retention is 90 days and the default blob backend is in-memory. | These tests do not require or prove a Factory blob copy for Forge. Pin the Whoz Git commit and manifest identity, bind the gate to them, and verify source Git availability/content on resume. |
 | Official catalog (CE04/09, T22/T23) | `WorkflowDefinitionSeeder.seed()` skips an existing type/version; the authoring controller accepts user registration/upload. | Protect an official Forge type/version against tenant shadowing and pin its package provenance. |
 | Two human branches (CE07/08, T14/T20/T21) | `WorkflowRoutingTest` passes generic AND-join readiness and shows human waiting is not success. | Bind both authorized replies to one current packet/candidate generation, re-read observed deployment, invalidate both on change, and prove restart/races through the API. |
-| Parent launch (CE04, T11/T12/T17) | `RunService.startRun()` pins a selector, persists one parent `RunRecord`, uses a deterministic root Case ID and replays an identical `runId` with a persisted provisioning intent. The new integration characterization passes with **two** active `forge.delivery` parent Runs, distinct Case IDs and fragments for the same ticket when callers choose different `runId`s. `FACTORY_WORKSTREAM.start_workflow` calls `CreateWorkflowRunService`, which creates a direct workflow rather than a parent Run. | Supply a governed delivery entry that creates the parent Run, enforces atomic active-ticket uniqueness and keeps ProductEngineer as the configurable first step. Prove negative preflight retry/recovery; reject a separate direct-workflow launch of the official type. |
+| Parent launch (CE04, T11/T12/T17) | `RunService.startRun()` pins a selector, persists one parent `RunRecord`, uses a deterministic root Case ID and replays an identical `runId` with a persisted provisioning intent. The integration characterization passes with **two** active `forge.delivery` parent Runs, distinct Case IDs and fragments for the same ticket when callers choose different `runId`s. `FACTORY_WORKSTREAM.start_workflow` calls `CreateWorkflowRunService`, which creates a direct workflow rather than a parent Run. | Supply the official parent-Run entry, preserve distinct-request concurrency and same-request replay, and prove isolated worktrees and negative preflight retry/recovery. Any overlap warning must not block launch. |
 
 Focused Gradle commands:
 
@@ -135,8 +137,14 @@ combined command passed on the updated files: 8 step-role cases, 18 existing
 Forge scenarios and 1 Factory definition case, all with zero failures. Gradle
 executed the definition test after the JSON draft was declared as a test input.
 The CE04 characterization command passed 9 integration tests, including the
-two-Run same-ticket case; it demonstrates a missing uniqueness fence, not an
-accepted delivery launch.
+two-Run same-ticket case; it demonstrates permitted Run identity behavior,
+but not yet isolated worktrees or an accepted official delivery launch.
+AgentOS `CaseWorktreeProvisioner.worktreePath()` resolves each checkout below
+its root Case exchange directory, and `CaseWorktreeProvisionerSpec` contains a
+two-root-Case isolation scenario. Those are code and existing-test evidence;
+the Factory characterization uses a mocked AgentOS provisioner and does not
+exercise both services together. The clarified product contract permits these
+parallel Runs and allows only a nonblocking overlap warning.
 The earlier Kotlin preflight suite was removed with its implementation; the
 draft is not a registered or executable delivery workflow.
 
@@ -151,17 +159,16 @@ checks did not run a pilot, create a Jira subtask, merge or deploy anything.
 
 ## Remaining architecture work
 
-No pre-provisioning Jira-specific core hook is needed for the revised entry
-contract. The same-ticket integration test proves that a generic server
-decision is required for atomic active-Run uniqueness by `(tenant, workstream,
-run type, ticket)`; existing `runId` replay is insufficient. The Forge plugin
-compiles against `factory-sdk` alone, and that SDK exposes no scoped
-`ArtifactStore` publication port. `ArtifactService` exists only in
-`factory-service`; injecting it by implementation class would break the plugin
-boundary. `FACTORY_WORKSTREAM.start_workflow` cannot launch the required parent
-Run on its current path. The generic human reply path does not bind an
-authorized decision to a stored packet/candidate identity, as the Lot 4
-characterization records. The concrete decision request is in
+No pre-provisioning Jira-specific core hook or active-ticket uniqueness fence
+is needed. Existing `runId` replay covers repeated requests with the same
+identity; different requests for one ticket are allowed. `FACTORY_WORKSTREAM.start_workflow`
+still cannot launch the required parent Run on its current path. Factory's
+`ArtifactStore` is separate from AgentOS exchanges, and its blob publication
+port is not a Forge prerequisite under the clarified Git-first packet rule.
+The manifest/decision identity and trusted Git-read boundary still need a
+concrete persistence path. The generic human reply path does not bind an
+authorized decision to that packet/candidate identity, as the Lot 4
+characterization records. The updated product rule and remaining proof are in
 `WZ-36147-lot3-core-seams-decision.draft.md`. Preserve Factory's domain-neutral
 boundary and do not claim Lot 3 PASS until CE04–07 execute through those
 contracts with persistence, retry and restart proof.
