@@ -1,77 +1,79 @@
-# WZ-36147 Lot 3 — Factory seam decision (draft)
+# WZ-36147 Lot 3 — delivery decisions and remaining seams
 
-Status: **architecture decision required before generic runtime changes**.
-This is a reviewable proposal, not permission to change Factory core or to
-publish `forge.delivery`. It complements the separate Lot 4 human/catalog
-decision draft. The Ready judgment remains the first configurable
-ProductEngineer step; no Jira rule belongs in Factory core.
+Status: **CE04/CE05 product behavior clarified; runtime implementation and proof pending**.
+This records the requester's 2026-11-18 correction to the earlier technical
+proposal. It is not permission to publish the incomplete `forge.delivery`
+definition. The Ready judgment remains the first configurable ProductEngineer
+step; Factory core does not interpret Jira status.
 
-## Demonstrated boundaries
+## CE04 — concurrent deliveries are allowed
 
-| CE | Current proof | Required behavior not provided by that path |
-| --- | --- | --- |
-| CE04 parent launch | `ParentRunWorkspaceProvisioningIntegrationTest` passes with two active `forge.delivery` parent Runs, distinct root Case IDs and fragments for one ticket when callers choose different `runId`s. `RunService` locks/replays by `runId`. `FACTORY_WORKSTREAM.start_workflow` calls `CreateWorkflowRunService` and creates a direct workflow. | One manual parent-Run launch per active `(tenant, workstream, delivery run type, ticket)` and no direct-workflow bypass for the official type. ProductEngineer must recheck Ready in its first step after launch. |
-| CE05 packet publication | `ForgePacketManifest` validates actual document bytes and returns canonical manifest bytes/hash. `ArtifactStore.putArtifact` persists tenant-scoped bytes in `factory-service`. The Forge plugin compiles only against `factory-sdk`, which has no artifact publication/open port. | Copy pinned Whoz Git bytes into Factory storage, record immutable artifact IDs/hashes/source commit on the parent Run, verify them on resume and present the stored manifest ID/hash to the gate. |
-| CE06 Build guard | The plugin checks step scope, read-only steps, applicability and nonempty implementation/verification plan outputs. The draft is not published. | Route standard workers through bounded fragments and keep Build locked until the exact current packet has a positive human decision. |
-| CE07 candidate | `ForgeHumanAuthority` models pure packet/candidate decisions. Generic human replies have no gate-specific authorization or packet/candidate identity check in their transactional path (Lot 4 characterization). No service-side CI/deployment receipt source is present in the inspected Factory service/SDK. | Seal a candidate from trusted Git/CI/deployment observations; re-read deployment and bind both authorized decisions to one current generation before the joint. |
+Two different delivery Runs may target the same ticket, including the same
+workflow definition, at the same time. Each has its own identity and isolated
+worktree. A repeated request with the **same** request identity replays its Run;
+a new request identity creates a new Run. The ticket is not a uniqueness key.
+The launch surface may show a nonblocking warning with existing Run/workstream
+links when the caller has access. A warning cannot be a launch prerequisite:
+the user may deliberately compare approaches or retry after an unproductive
+Case. No Jira status transition starts a delivery Run automatically.
 
-## Proposed domain-neutral seams
+The existing integration characterization with two active parent Runs on one
+ticket is therefore an allowed scenario, not a missing uniqueness fence.
+Still unproved: the official entry creates a parent Run rather than a direct
+workflow, AgentOS provisions distinct worktrees for concurrent Runs, and a
+warning can be computed without leaking inaccessible workstream details.
+The first ProductEngineer step rechecks Ready and source sufficiency for each
+Run independently. Internal fragments are not manually launched.
 
-1. **Owned parent-Run launch.** Let a plugin declare an owned parent run type and
-   validate its launch context before workspace provisioning. Factory performs
-   a single atomic reservation of an active key supplied by that policy, scoped
-   to tenant/workstream/run type/ticket. Same-key replay returns the original
-   Run; a different request for the same active ticket conflicts. The generic
-   `start_workflow` operation must route owned parent types to this use case or
-   reject them, while a dedicated parent launch operation can be exposed to
-   ForgeSupervisor. The plugin checks ticket shape and workstream binding;
-   ProductEngineer alone judges current Jira Ready/source sufficiency in the
-   first workflow step. The host does not interpret Jira status.
-2. **Scoped artifact publication.** Add an SDK port for a plugin to submit
-   canonical bytes under a host-resolved Run/tenant scope and to reopen the
-   immutable artifact by ID. The host delegates to `ArtifactStore`, returns
-   ID, SHA-256 of the stored bytes and availability, and persists the accepted
-   artifact reference with source Git repository/commit/tree provenance on the
-   parent Run. A failed state update leaves an identifiable orphan for existing
-   artifact GC; it must not make a packet approvable. On resume, missing bytes,
-   changed digest or source mismatch stop before Build. This port does not
-   expose `factory-service` implementation classes to the plugin.
-3. **Transactional human checkpoint policy.** Use the Lot 4 draft's generic
-   plugin policy at open/reply/joint in the existing human-step transaction.
-   It binds the packet interaction to the stored manifest artifact ID/digest,
-   checks trusted actor entitlement and generation, then records or rejects
-   the decision atomically with the step transition. Later it binds both
-   technical and functional decisions to the same sealed candidate and
-   rechecks observed deployment. A Forge-only endpoint cannot close the
-   generic reply bypass.
+## CE05 — pin the Git packet; do not require a blob copy for Forge
 
-These are proposed interfaces and transaction boundaries, not code already in
-Factory. The exact port signatures, authoritative persisted record and recovery
-protocol need architecture review before implementation. In particular, a
-plugin-only check after `RunService.startRun` cannot prevent a second parent
-from being provisioned, and a selector's in-memory state cannot authorize a
-generic human reply.
+The design agents write the packet to the Whoz repository. Before the human
+gate, they publish a reachable commit and one canonical `packet-manifest.v1`
+identifying that repository, commit, paths, applicability decisions, sizes and
+SHA-256 digests. Factory persists the manifest identity and the human decision
+against that exact Git revision. Before Build, review and any resume, the
+trusted runtime must re-read the pinned Git objects and verify the expected
+content and provenance. A moved branch is irrelevant; an unavailable or
+mismatched commit is a technical stop with a visible reason and an operational
+recovery path. A stored blob must not let a Forge Run continue while its
+required source Git repository is unavailable.
 
-## Required proof after the decision
+The current Factory `ArtifactStore` is a Factory-owned abstraction, separate
+from AgentOS Case/Namespace exchanges. Its Neo4j nodes store metadata, while
+payload bytes live in object storage (`in-memory` by default, optionally
+S3/MinIO). Its default retention window is 90 days. Neither that default nor
+the in-memory backend proves durable packet retention. Forge does not need a
+new plugin-facing blob publication port for the Git-backed packet. A future
+workflow without Git may motivate a different artifact backend or a blob
+publication path; that is outside this delivery requirement.
 
-- CE04/T11–T12/T17: same ticket and run type permit one active parent across
-  different callers/IDs and restart; an upstream readiness Run on that ticket
-  remains possible; negative ProductEngineer evidence blocks design and a
-  human retry starts a fresh attempt. A Jira status transition alone starts no
-  Run. Internal fragments have no independent launch route.
-- CE05/T07–T10: pinned Whoz commit bytes, manifest canonical stored bytes,
-  artifact ID/hash and parent state agree across restart and lease transfer;
-  changed/unavailable bytes fail closed. Packet rejection/change creates a new
-  generation and no old approval opens Build.
-- CE06/T13–T18: Backend/Frontend routing, bounded steps, scoped Git delta,
-  approved commands and independent read-only verification survive duplicate,
-  late and retry submissions.
-- CE07/T19–T21: trusted Git, CI build and observed deployment attest one exact
-  candidate; dirty/colliding or mismatched evidence cannot seal. Both human
-  approvals are current, authorized and bound to one generation; replacement
-  invalidates both atomically and a stale reply cannot complete the Run.
+The prior Whoz architecture spine AD-2/AD-3/AD-4 says conflicting active
+delivery requests stop and approved document bytes are copied to Factory.
+Those clauses conflict with the clarified product behavior and need an
+explicit architecture update in their owning source. This document does not
+silently rewrite that source. The minimum manifest/decision record and the
+trusted Git-read boundary still require a concrete design and tests.
 
-The next human input is an architecture decision on these generic seams or a
-specific existing port/transaction path that provides the same guarantees.
-No official definition should be seeded until the full delivery path passes
-these tests.
+## Other seams and required proof
+
+- **CE04:** two different requests for the same ticket and definition create
+  independent parent Runs and worktrees; exact-request replay remains
+  idempotent. A duplicate warning, if implemented, is nonblocking and
+  permission-filtered. Negative ProductEngineer evidence stops only its Run;
+  a human retry starts a fresh preflight attempt.
+- **CE05:** manifest bytes/hash, repository, pinned commit and document digests
+  agree before the gate and on resume. Approval binds that identity. Missing
+  Git access or changed/missing objects stops the Run as a technical error.
+  Rejection or a new packet generation invalidates the earlier approval.
+- **CE06:** standard workers receive bounded Build scopes; approved packet
+  identity and current Git availability guard Build. Independent verification
+  and scoped workspace deltas survive retries and late results.
+- **CE07:** trusted Git, CI and deployment observations seal one candidate;
+  authorized technical and functional decisions bind its same generation.
+  Changed evidence invalidates both, and stale replies cannot complete.
+
+The generic human-reply path still needs the transactional gate policy
+characterized by Lot 4. The official workflow remains unpublished until the
+complete delivery path has API, persistence, restart, race and integration
+proof. No further product decision about duplicate blocking or mandatory
+Factory blob storage is required to proceed with those tests.

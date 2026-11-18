@@ -113,7 +113,7 @@
         "Read the pinned source specification, every produced design and plan, and all applicability decisions."
       ],
       "exit": [
-        "Return canonical manifest bytes, their SHA-256 and the exact stored Factory artifact ID after publication; stop on unavailable or mismatched evidence."
+        "Commit the complete packet to the source Git repository. Return the canonical manifest bytes and SHA-256, pinned repository and commit, and verified paths and document digests; stop if Git or any committed object is unavailable or mismatched."
       ],
       "id": "packet-assembly",
       "mission": "Assemble one packet-manifest.v1 with every applicable document and produced plan. Validate paths, revisions, hashes and applicability against actual document bytes.",
@@ -126,10 +126,10 @@
     {
       "dependsOn": ["packet-assembly"],
       "entry": [
-        "Present the complete canonical packet from its stored Factory artifact ID and SHA-256, including every applicability decision."
+        "Present the complete packet at its pinned source Git commit and canonical manifest SHA-256, including every applicability decision. Stop if the source repository or committed objects are unavailable or mismatched."
       ],
       "exit": [
-        "Record the authenticated human decision against the same stored artifact ID and SHA-256; a changed packet requires a new decision."
+        "Record the authenticated human decision against the same pinned repository, commit and canonical manifest SHA-256; a changed packet requires a new decision."
       ],
       "id": "packet-approval",
       "mission": "Approve or reject this exact packet revision before any Build step.",
