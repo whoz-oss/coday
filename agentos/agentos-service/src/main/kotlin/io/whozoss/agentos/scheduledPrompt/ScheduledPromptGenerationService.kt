@@ -11,6 +11,7 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.generation.StructuredLlmClient
 import io.whozoss.agentos.generation.StructuredLlmResult
+import io.whozoss.agentos.scheduledPrompt.FlowConfigurationPresetSelector.PresetOutcome
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedField
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedFieldDecision
@@ -39,8 +40,12 @@ import java.util.UUID
  * Every field of [ScheduledPromptGenerationRequest] but the description is optional. A provided field always wins;
  * a missing one is decided by an LLM.
  *
- * ## Pipeline (at most three LLM calls)
+ * ## Pipeline (at most four LLM calls)
  *
+ * 0. [preset], only when the request has presets and no base flow configuration: [FlowConfigurationPresetSelector]
+ *    chooses one preset from the description (no LLM call when there is a single one), whose flow configuration is
+ *    then the base flow configuration of the following steps. No usable choice is a warning, and the generation goes
+ *    on without a base.
  * 1. [candidates], no LLM: the agents deployed to the caller, split into LOOP agents (persisted ones only: a
  *    filesystem agent cannot back a scheduled prompt) and target agents (every non-LOOP agent). A provided name that
  *    is not a candidate is a 400. No LOOP or no target candidate is a 422.
@@ -75,11 +80,19 @@ import java.util.UUID
  *
  * A part of the wrong type is a 400, as is a target agent that is not available.
  *
+ * ## Presets
+ *
+ * [ScheduledPromptGenerationRequest.flowConfigurationPresets] are alternative base flow configurations. They are used
+ * only when the request has no base flow configuration: the chosen preset's configuration then **is** the base flow
+ * configuration, with the same rules (see above), and the chosen name is returned as `chosenPreset`. Every preset is
+ * structurally checked first, before any LLM call, with the rules of the base flow configuration: a malformed preset
+ * is a 400 whichever one the LLM would pick, and even when the presets end up ignored.
+ *
  * ## rawResponse
  *
  * The raw text of an LLM answer is returned only when there is no proposal, and only the one of the step that could
- * not be used: the search answer when it was unusable, else the planning answer when it was unusable. A returned
- * proposal never comes with a raw response.
+ * not be used: the search answer when it was unusable, else the planning answer when it was unusable, else the preset
+ * answer when it was unusable. A returned proposal never comes with a raw response.
  *
  * ## Known limitation
  *
@@ -94,6 +107,7 @@ class ScheduledPromptGenerationService(
     private val agentService: AgentService,
     private val modelResolver: ModelResolver,
     private val structuredLlmClient: StructuredLlmClient,
+    private val presetSelector: FlowConfigurationPresetSelector,
     private val loopConfigGenerationService: LoopConfigGenerationService,
     private val scheduledPromptService: ScheduledPromptService,
     private val summaryService: ScheduledPromptSummaryService,
@@ -107,14 +121,42 @@ class ScheduledPromptGenerationService(
         userId: UUID,
         request: ScheduledPromptGenerationRequest,
     ): ScheduledPromptGenerationResult {
-        val inputs = inputs(request)
+        val preset = preset(namespaceId, userId, request)
+        val base = request.baseFlowConfiguration?.takeUnless { it.isNull } ?: preset.preset?.baseFlowConfiguration
+        val inputs = inputs(request, base)
         val candidates = candidates(namespaceId, userId, request, inputs)
         val plan = plan(namespaceId, userId, request, inputs, candidates)
         val fields = resolveFields(request, inputs, candidates, plan)
         val complete = fields.complete()
-        val search = complete?.let { search(it, namespaceId, userId, request, inputs) }
-        val assembled = assemble(namespaceId, request, plan, fields, complete, search)
-        val summary = summary(namespaceId, userId, request, assembled, complete, search)
+        val search =
+            complete?.let {
+                search(
+                    fields = it,
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    request = request,
+                    inputs = inputs,
+                )
+            }
+        val assembled =
+            assemble(
+                namespaceId = namespaceId,
+                request = request,
+                preset = preset,
+                plan = plan,
+                fields = fields,
+                complete = complete,
+                search = search,
+            )
+        val summary =
+            summary(
+                namespaceId = namespaceId,
+                userId = userId,
+                request = request,
+                result = assembled,
+                complete = complete,
+                search = search,
+            )
         return assembled.copy(
             summary = summary?.summary,
             warnings = assembled.warnings + listOfNotNull(summary?.warning),
@@ -122,7 +164,33 @@ class ScheduledPromptGenerationService(
     }
 
     // -------------------------------------------------------------------------
-    // 0. Inputs: the request, completed by its base flow configuration
+    // 0. Preset: the base flow configuration, when the request has none
+    // -------------------------------------------------------------------------
+
+    /**
+     * The preset to use as the base flow configuration: none (an empty outcome) when the request has a base flow
+     * configuration or no presets. Every preset is checked first, so that a malformed one is a 400 before any LLM call.
+     */
+    private suspend fun preset(
+        namespaceId: UUID,
+        userId: UUID,
+        request: ScheduledPromptGenerationRequest,
+    ): PresetOutcome {
+        val presets = request.flowConfigurationPresets.orEmpty()
+        presets.forEach {
+            parseBase(
+                it.baseFlowConfiguration,
+                "flowConfigurationPresets['${it.name}'].baseFlowConfiguration",
+            )
+        }
+        return when {
+            presets.isEmpty() || request.baseFlowConfiguration?.isNull == false -> PresetOutcome()
+            else -> presetSelector.choose(namespaceId, userId, request.description, presets)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Inputs: the request, completed by its base flow configuration
     // -------------------------------------------------------------------------
 
     /** What the request provides, each explicit field winning over its counterpart in the base flow configuration. */
@@ -133,24 +201,48 @@ class ScheduledPromptGenerationService(
         val baseParams: JsonNode?,
     )
 
-    /** Reads every part of the base flow configuration first, so that a malformed one is a 400 even when overridden. */
-    private fun inputs(request: ScheduledPromptGenerationRequest): Inputs {
-        val base = request.baseFlowConfiguration?.takeUnless { it.isNull }
-        val search = base?.get("search")
-        val act = base?.get("act")
-        val baseTool = baseText(search, "tool", "search.tool")
-        val baseParams = baseParams(search)
-        val baseAgent = baseText(act, "agentName", "act.agentName")
-        val basePrompt = baseText(act, "prompt", "act.prompt")
+    /** The parts of a base flow configuration. */
+    private data class ParsedBase(
+        val tool: String?,
+        val params: JsonNode?,
+        val agentName: String?,
+        val prompt: String?,
+    )
+
+    /**
+     * [base] is the request's base flow configuration, or the chosen preset's (already checked by [preset]). Every
+     * part of it is read first, so that a malformed one is a 400 even when overridden by a request field.
+     */
+    private fun inputs(
+        request: ScheduledPromptGenerationRequest,
+        base: JsonNode?,
+    ): Inputs {
+        val parsed = parseBase(base, "baseFlowConfiguration")
         return Inputs(
-            targetAgentName = request.targetAgentName?.takeIf { it.isNotBlank() } ?: baseAgent,
-            prompt = request.prompt?.takeIf { it.isNotBlank() } ?: basePrompt,
-            searchToolName = request.searchToolName?.takeIf { it.isNotBlank() } ?: baseTool,
-            baseParams = baseParams,
+            targetAgentName = request.targetAgentName?.takeIf { it.isNotBlank() } ?: parsed.agentName,
+            prompt = request.prompt?.takeIf { it.isNotBlank() } ?: parsed.prompt,
+            searchToolName = request.searchToolName?.takeIf { it.isNotBlank() } ?: parsed.tool,
+            baseParams = parsed.params,
         )
     }
 
-    /** A string of the base flow configuration: null when absent or blank, a 400 when of another type. */
+    /** Reads [base] (null or JSON null: nothing); a part of the wrong type is a 400 naming [label]. */
+    private fun parseBase(
+        base: JsonNode?,
+        label: String,
+    ): ParsedBase {
+        val node = base?.takeUnless { it.isNull }
+        val search = node?.get("search")
+        val act = node?.get("act")
+        return ParsedBase(
+            tool = baseText(node = search, field = "tool", path = "$label.search.tool"),
+            params = baseParams(search = search, path = "$label.search.params"),
+            agentName = baseText(node = act, field = "agentName", path = "$label.act.agentName"),
+            prompt = baseText(node = act, field = "prompt", path = "$label.act.prompt"),
+        )
+    }
+
+    /** A string of a base flow configuration: null when absent or blank, a 400 when of another type. */
     private fun baseText(
         node: JsonNode?,
         field: String,
@@ -160,16 +252,19 @@ class ScheduledPromptGenerationService(
         return when {
             value == null -> null
             value.isTextual -> value.asText().takeIf { it.isNotBlank() }
-            else -> throw BadRequestException("baseFlowConfiguration.$path must be a string")
+            else -> throw BadRequestException("$path must be a string")
         }
     }
 
-    /** `search.params` of the base flow configuration: null when absent, a 400 when not a JSON object. */
-    private fun baseParams(search: JsonNode?): JsonNode? {
+    /** `search.params` of a base flow configuration: null when absent, a 400 when not a JSON object. */
+    private fun baseParams(
+        search: JsonNode?,
+        path: String,
+    ): JsonNode? {
         val params = search?.get("params")?.takeUnless { it.isNull }
         return when {
             params == null || params.isObject -> params
-            else -> throw BadRequestException("baseFlowConfiguration.search.params must be a JSON object")
+            else -> throw BadRequestException("$path must be a JSON object")
         }
     }
 
@@ -199,8 +294,13 @@ class ScheduledPromptGenerationService(
         val loops = accessible.filter { it.resolvedExecutionMode == ExecutionMode.LOOP && !it.isFilesystemOnly }
         val targets = accessible.filter { it.resolvedExecutionMode != ExecutionMode.LOOP }
         when {
-            loops.isEmpty() -> throw UnprocessableEntityException("No LOOP agent available to you in this namespace: a scheduled loop needs one.")
-            targets.isEmpty() -> throw UnprocessableEntityException("No agent available to you in this namespace to start for each search result.")
+            loops.isEmpty() -> throw UnprocessableEntityException(
+                "No LOOP agent available to you in this namespace: a scheduled loop needs one.",
+            )
+
+            targets.isEmpty() -> throw UnprocessableEntityException(
+                "No agent available to you in this namespace to start for each search result.",
+            )
         }
         return Candidates(
             loops = loops,
@@ -241,7 +341,12 @@ class ScheduledPromptGenerationService(
         /** The raw text of the answer, when it could not be used; null otherwise. */
         val unusableRawText: String? get() = rawText.takeIf { unusable }
 
-        fun text(key: String): String? = json?.get(key)?.takeIf { it.isTextual }?.asText()?.takeIf { it.isNotBlank() }
+        fun text(key: String): String? =
+            json
+                ?.get(key)
+                ?.takeIf { it.isTextual }
+                ?.asText()
+                ?.takeIf { it.isNotBlank() }
 
         fun rationale(field: GeneratedField): String? =
             json
@@ -261,10 +366,10 @@ class ScheduledPromptGenerationService(
     ): PlanOutcome {
         val needed =
             candidates.obviousLoop == null ||
-                    candidates.providedTarget == null ||
-                    inputs.prompt == null ||
-                    request.recurrence == null ||
-                    request.planning == null
+                candidates.providedTarget == null ||
+                inputs.prompt == null ||
+                request.recurrence == null ||
+                request.planning == null
         return when {
             needed -> planOutcome(callPlanner(namespaceId, userId, request, inputs, candidates))
             else -> PlanOutcome(skipped = true)
@@ -293,7 +398,12 @@ class ScheduledPromptGenerationService(
         val (model, provider) =
             modelResolver.resolve(namespaceId, userId)
                 ?: throw UnprocessableEntityException("No AI model is configured for namespace $namespaceId.")
-        return structuredLlmClient.call(model, provider, PLANNING_SYSTEM_PROMPT, plannerMessage(request, inputs, candidates))
+        return structuredLlmClient.call(
+            model,
+            provider,
+            PLANNING_SYSTEM_PROMPT,
+            plannerMessage(request, inputs, candidates),
+        )
     }
 
     private fun plannerMessage(
@@ -348,14 +458,15 @@ class ScheduledPromptGenerationService(
         val planning: FieldOutcome<PlanningDto>,
     ) {
         private val all: List<FieldOutcome<*>>
-            get() = listOf(
-                loopAgent,
-                targetAgent,
-                prompt,
-                name,
-                recurrence,
-                planning
-            )
+            get() =
+                listOf(
+                    loopAgent,
+                    targetAgent,
+                    prompt,
+                    name,
+                    recurrence,
+                    planning,
+                )
         val decisions: List<GeneratedFieldDecision> get() = all.mapNotNull { it.decision }
         val warnings: List<String> get() = all.mapNotNull { it.warning }
 
@@ -369,7 +480,7 @@ class ScheduledPromptGenerationService(
             val planningValue = planning.value
             return when {
                 loop == null || target == null || promptValue == null || nameValue == null ||
-                        recurrenceValue == null || planningValue == null -> null
+                    recurrenceValue == null || planningValue == null -> null
 
                 else -> CompleteFields(loop, target, promptValue, nameValue, recurrenceValue, planningValue)
             }
@@ -398,16 +509,17 @@ class ScheduledPromptGenerationService(
                 candidates.loops.singleOrNull(),
                 plan,
                 "loopAgentName",
-                candidates.loops
+                candidates.loops,
             ),
-        targetAgent = resolveAgent(
-            GeneratedField.TARGET_AGENT,
-            candidates.providedTarget,
-            null,
-            plan,
-            "targetAgentName",
-            candidates.targets
-        ),
+        targetAgent =
+            resolveAgent(
+                GeneratedField.TARGET_AGENT,
+                candidates.providedTarget,
+                null,
+                plan,
+                "targetAgentName",
+                candidates.targets,
+            ),
         prompt = resolvePrompt(inputs.prompt, plan),
         name = resolveName(request.description, plan),
         recurrence = resolveRecurrence(request.recurrence, plan),
@@ -429,15 +541,31 @@ class ScheduledPromptGenerationService(
         val chosenName = plan.text(planKey)
         val chosen = chosenName?.let { name -> candidates.firstOrNull { it.name.equals(name, ignoreCase = true) } }
         return when {
-            provided != null -> FieldOutcome(provided, providedDecision(field, provided.name))
-            obvious != null -> FieldOutcome(obvious, inferredDecision(field, obvious.name, ONLY_CANDIDATE_RATIONALE))
-            chosen != null -> FieldOutcome(chosen, inferredDecision(field, chosen.name, plan.rationale(field)))
-            chosenName != null ->
-                undetermined<AgentConfig>(
-                    "The LLM chose '$chosenName' as ${label(field)}, which is not among the available agents ${candidates.map { it.name }}.",
-                )
+            provided != null -> {
+                FieldOutcome(provided, providedDecision(field, provided.name))
+            }
 
-            else -> undetermined<AgentConfig>("The LLM did not choose a ${label(field)}.".takeUnless { plan.unusable })
+            obvious != null -> {
+                FieldOutcome(obvious, inferredDecision(field, obvious.name, ONLY_CANDIDATE_RATIONALE))
+            }
+
+            chosen != null -> {
+                FieldOutcome(chosen, inferredDecision(field, chosen.name, plan.rationale(field)))
+            }
+
+            chosenName != null -> {
+                undetermined<AgentConfig>(
+                    "The LLM chose '$chosenName' as ${
+                        label(
+                            field,
+                        )
+                    }, which is not among the available agents ${candidates.map { it.name }}.",
+                )
+            }
+
+            else -> {
+                undetermined<AgentConfig>("The LLM did not choose a ${label(field)}.".takeUnless { plan.unusable })
+            }
         }
     }
 
@@ -447,13 +575,20 @@ class ScheduledPromptGenerationService(
     ): FieldOutcome<String> {
         val proposed = plan.text("prompt")
         return when {
-            !provided.isNullOrBlank() -> FieldOutcome(provided, providedDecision(GeneratedField.PROMPT, null))
-            proposed != null -> FieldOutcome(
-                proposed,
-                inferredDecision(GeneratedField.PROMPT, null, plan.rationale(GeneratedField.PROMPT))
-            )
+            !provided.isNullOrBlank() -> {
+                FieldOutcome(provided, providedDecision(GeneratedField.PROMPT, null))
+            }
 
-            else -> undetermined<String>("The LLM did not propose a prompt for the started cases.".takeUnless { plan.unusable })
+            proposed != null -> {
+                FieldOutcome(
+                    proposed,
+                    inferredDecision(GeneratedField.PROMPT, null, plan.rationale(GeneratedField.PROMPT)),
+                )
+            }
+
+            else -> {
+                undetermined<String>("The LLM did not propose a prompt for the started cases.".takeUnless { plan.unusable })
+            }
         }
     }
 
@@ -465,14 +600,21 @@ class ScheduledPromptGenerationService(
         val proposed = plan.text("name")?.take(MAX_GENERATED_NAME_LENGTH)
         return when (proposed) {
             null -> {
-                val derived = description.trim().lineSequence().first().take(MAX_GENERATED_NAME_LENGTH)
+                val derived =
+                    description
+                        .trim()
+                        .lineSequence()
+                        .first()
+                        .take(MAX_GENERATED_NAME_LENGTH)
                 FieldOutcome(derived, inferredDecision(GeneratedField.NAME, derived, "derived from the description"))
             }
 
-            else -> FieldOutcome(
-                proposed,
-                inferredDecision(GeneratedField.NAME, proposed, plan.rationale(GeneratedField.NAME))
-            )
+            else -> {
+                FieldOutcome(
+                    proposed,
+                    inferredDecision(GeneratedField.NAME, proposed, plan.rationale(GeneratedField.NAME)),
+                )
+            }
         }
     }
 
@@ -482,15 +624,24 @@ class ScheduledPromptGenerationService(
     ): FieldOutcome<RecurrenceDto> {
         val (proposed, problem) = parseValid(plan.json?.get("recurrence"), RecurrenceDto::class.java)
         return when {
-            provided != null -> FieldOutcome(provided, providedDecision(GeneratedField.RECURRENCE, null))
-            proposed != null ->
+            provided != null -> {
+                FieldOutcome(provided, providedDecision(GeneratedField.RECURRENCE, null))
+            }
+
+            proposed != null -> {
                 FieldOutcome(
                     proposed,
-                    inferredDecision(GeneratedField.RECURRENCE, null, plan.rationale(GeneratedField.RECURRENCE))
+                    inferredDecision(GeneratedField.RECURRENCE, null, plan.rationale(GeneratedField.RECURRENCE)),
                 )
+            }
 
-            else -> undetermined<RecurrenceDto>(problem?.let { "The recurrence proposed by the LLM $it." }
-                .takeUnless { plan.unusable })
+            else -> {
+                undetermined<RecurrenceDto>(
+                    problem
+                        ?.let { "The recurrence proposed by the LLM $it." }
+                        .takeUnless { plan.unusable },
+                )
+            }
         }
     }
 
@@ -500,23 +651,27 @@ class ScheduledPromptGenerationService(
     ): FieldOutcome<PlanningDto> {
         val (proposed, problem) = parseValid(plan.json?.get("planning"), PlanningDto::class.java)
         return when {
-            provided != null -> FieldOutcome(provided, providedDecision(GeneratedField.PLANNING, null))
-            proposed != null ->
+            provided != null -> {
+                FieldOutcome(provided, providedDecision(GeneratedField.PLANNING, null))
+            }
+
+            proposed != null -> {
                 FieldOutcome(
                     proposed,
-                    inferredDecision(GeneratedField.PLANNING, null, plan.rationale(GeneratedField.PLANNING))
+                    inferredDecision(GeneratedField.PLANNING, null, plan.rationale(GeneratedField.PLANNING)),
                 )
+            }
 
-            else ->
+            else -> {
                 FieldOutcome(
                     PlanningDto(startDate = LocalDate.now(clock), endType = SchedulerEndType.NEVER),
                     inferredDecision(GeneratedField.PLANNING, null, "default"),
                     listOfNotNull(
                         "The planning proposed by the LLM ${problem ?: "is missing"}.",
-                        "Planning defaulted to: from today, never ends."
-                    )
-                        .joinToString(" "),
+                        "Planning defaulted to: from today, never ends.",
+                    ).joinToString(" "),
                 )
+            }
         }
     }
 
@@ -539,8 +694,7 @@ class ScheduledPromptGenerationService(
         }
     }
 
-    private fun <T : Any> undetermined(warning: String?) =
-        FieldOutcome<T>(value = null, decision = null, warning = warning)
+    private fun <T : Any> undetermined(warning: String?) = FieldOutcome<T>(value = null, decision = null, warning = warning)
 
     private fun providedDecision(
         field: GeneratedField,
@@ -555,7 +709,7 @@ class ScheduledPromptGenerationService(
         field = field,
         source = GeneratedFieldSource.INFERRED,
         value = value,
-        rationale = rationale
+        rationale = rationale,
     )
 
     private fun label(field: GeneratedField): String =
@@ -594,7 +748,7 @@ class ScheduledPromptGenerationService(
                 description = request.description,
                 context =
                     "Target agent: ${fields.targetAgent.name} (agentConfigId=${fields.targetAgent.metadata.id}), " +
-                            "the agent started for each search result.",
+                        "the agent started for each search result.",
                 baseParams = inputs.baseParams,
             )
         val block = result.loopConfig?.get("search")
@@ -603,17 +757,20 @@ class ScheduledPromptGenerationService(
             if (inputs.searchToolName != null) GeneratedFieldSource.PROVIDED else GeneratedFieldSource.INFERRED
         return SearchOutcome(
             block = block,
-            decision = block?.let {
-                GeneratedFieldDecision(
-                    field = GeneratedField.SEARCH,
-                    source = source,
-                    value = it.get("tool")?.asText()
-                )
-            },
+            decision =
+                block?.let {
+                    GeneratedFieldDecision(
+                        field = GeneratedField.SEARCH,
+                        source = source,
+                        value = it.get("tool")?.asText(),
+                    )
+                },
             warning = result.warning,
             unusableRawText = result.rawResponse,
             toolDescription =
-                block?.get("tool")?.asText()
+                block
+                    ?.get("tool")
+                    ?.asText()
                     ?.let { tool -> definition.tools.firstOrNull { it.name == tool }?.description },
         )
     }
@@ -666,6 +823,7 @@ class ScheduledPromptGenerationService(
     private fun assemble(
         namespaceId: UUID,
         request: ScheduledPromptGenerationRequest,
+        preset: PresetOutcome,
         plan: PlanOutcome,
         fields: ResolvedFields,
         complete: CompleteFields?,
@@ -687,16 +845,19 @@ class ScheduledPromptGenerationService(
         if (valid != null && complete != null) {
             logger.info {
                 "[ScheduledPromptGeneration] Proposal for namespace=$namespaceId: loop='${complete.loopAgent.name}', " +
-                        "target='${complete.targetAgent.name}', tool=${searchBlock?.get("tool")?.asText()}"
+                    "target='${complete.targetAgent.name}', tool=${searchBlock?.get("tool")?.asText()}"
             }
         }
         return ScheduledPromptGenerationResult(
             scheduledPrompt = valid,
-            decisions = fields.decisions + listOfNotNull(search?.decision),
-            warnings = plan.warnings + fields.warnings + listOfNotNull(search?.warning) + problems.map { it.message },
+            decisions = listOfNotNull(preset.decision) + fields.decisions + listOfNotNull(search?.decision),
+            warnings =
+                preset.warnings + plan.warnings + fields.warnings + listOfNotNull(search?.warning) +
+                    problems.map { it.message },
+            chosenPreset = preset.preset?.name,
             rawResponse =
                 when (valid) {
-                    null -> search?.unusableRawText ?: plan.unusableRawText
+                    null -> search?.unusableRawText ?: plan.unusableRawText ?: preset.unusableRawText
                     else -> null
                 },
         )
@@ -762,7 +923,7 @@ class ScheduledPromptGenerationService(
                 ?.let {
                     ValidationProblem(
                         "The generated flowConfiguration will not run as a loop payload: ${it.message}",
-                        blocking = false
+                        blocking = false,
                     )
                 }
         val nameTaken =
@@ -779,7 +940,7 @@ class ScheduledPromptGenerationService(
 
         private const val ONLY_CANDIDATE_RATIONALE = "only LOOP agent available"
 
-        /** Keys of the planning answer's `rationale` object, per field. */
+        /** Keys of the planning answer's `rationale` object, per field. The preset is chosen by its own call, so it has none. */
         private val RATIONALE_KEYS =
             mapOf(
                 GeneratedField.LOOP_AGENT to "loopAgent",

@@ -266,6 +266,9 @@ class ScheduledPromptController(
         description = "Returns a proposal, nothing is persisted. Every field but the description is optional: " +
                 "missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. " +
                 "The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. " +
+                "When no baseFlowConfiguration is given, flowConfigurationPresets (named base flow configurations) can be " +
+                "provided: the LLM chooses one from the description, which is then used as the base, and its name is " +
+                "returned as chosenPreset. " +
                 "Requires WRITE on the namespace.",
     )
     @PostMapping("/generate", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -285,7 +288,7 @@ class ScheduledPromptController(
         )
         logger.info {
             "[ScheduledPrompt] Generating a scheduled prompt proposal in namespace $namespaceId (user=$callerId, " +
-                    "base=${request.baseFlowConfiguration != null})"
+                    "base=${request.baseFlowConfiguration != null}, presets=${request.flowConfigurationPresets?.size ?: 0})"
         }
         return runBlocking { scheduledPromptGenerationService.generate(namespaceId, callerId, request) }
     }
