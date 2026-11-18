@@ -150,7 +150,9 @@ class LoopConfigGenerationService(
     ): LoopConfigGenerationResult {
         val generated = llmResult.json
         return when (generated) {
-            null -> unusable(llmResult)
+            null -> {
+                unusable(llmResult)
+            }
 
             else -> {
                 val params = enrich(baseParams, generated)
@@ -180,7 +182,7 @@ class LoopConfigGenerationService(
                 logger.warn { "[LoopConfigGeneration] No search tool available for agent '${definition.name}' (auto-select mode)" }
                 LoopConfigGenerationResult(
                     loopConfig = null,
-                    warning = "No search tools are available to agent '${definition.name}'."
+                    warning = "No search tools are available to agent '${definition.name}'.",
                 )
             }
 
@@ -192,8 +194,8 @@ class LoopConfigGenerationService(
                     structuredLlmClient.call(
                         definition.resolvedModel,
                         definition.resolvedProvider,
-                        AUTO_SELECT_SYSTEM_PROMPT,
-                        userMessage
+                        "${definition.systemPrompt}\n${AUTO_SELECT_SYSTEM_PROMPT}\nCAUTION: you have to provide in all cases the resolveTargets which is absolutely needed by the search in all case\n",
+                        userMessage,
                     )
                 autoSelectResult(llmResult, tools.map { it.name }, baseParams)
             }
@@ -254,7 +256,7 @@ class LoopConfigGenerationService(
         definition.tools.filterNot { tool -> NON_SEARCH_TOOLS.any { lookupTool(listOf(tool), it).isNotEmpty() } }
 
     private fun schemaBlock(tool: StandardTool<*>): String =
-        "Tool name: ${tool.name}\nTool input schema:\n${tool.inputSchema}"
+        "Tool name: ${tool.name}\nTool input schema:\n${tool.inputSchema}\nTool description:\n```\n${tool.description}\n```"
 
     /**
      * The user message: [header], the description, the "Base parameters" block when there are [baseParams], and the
