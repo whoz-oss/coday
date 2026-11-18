@@ -48,7 +48,7 @@ class ForgeDeliveryDraftDefinitionTest {
             .allMatch { it.responsibility.kind == ResponsibilityKind.AGENT }
         assertThat(steps.filter { it.responsibility.kind == ResponsibilityKind.HUMAN }.map { it.id })
             .containsExactly("packet-approval", "technical-validation", "functional-validation")
-        assertThat(steps.single { it.id == "implementation-build" }.responsibility.name).isEqualTo("ForgeBuilder")
+        assertThat(steps.single { it.id == "implementation-build" }.responsibility.name).isEqualTo("ForgeDeveloper")
         assertThat(steps.single { it.id == "implementation-verification" }.responsibility.name).isEqualTo("ForgeVerifier")
         assertThat(steps.single { it.id == "implementation-review" }.responsibility.name).isEqualTo("ForgeReviewer")
         assertThat(steps.single { it.id == "integration-observation" }.responsibility.name).isEqualTo("ForgeDeploymentObserver")

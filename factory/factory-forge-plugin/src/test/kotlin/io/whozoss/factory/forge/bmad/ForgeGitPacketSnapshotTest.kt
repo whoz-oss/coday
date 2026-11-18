@@ -183,7 +183,7 @@ class ForgeGitPacketSnapshotTest {
         }
         val context = observationContext(manifest).copy(
             run = RunView("run-1", "forge.delivery", domainState = mapOf("approvedPacketCandidate" to packet)),
-            stepId = "implementation-build", agentName = "ForgeBuilder",
+            stepId = "implementation-build", agentName = "ForgeDeveloper",
             worktreePath = repo.resolve("not-mounted-in-factory").toString(), gitObjects = remote,
         )
         assertThat(ForgeBuildPacketEvidenceObserver().observe(context))

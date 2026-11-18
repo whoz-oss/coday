@@ -177,7 +177,7 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
                 {
                   "id": "builder",
                   "name": "Builder Step",
-                  "responsibility": { "kind": "agent", "name": "ForgeBuilder" },
+                  "responsibility": { "kind": "agent", "name": "ForgeDeveloper" },
                   "dependsOn": []
                 },
                 {

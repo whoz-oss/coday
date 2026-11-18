@@ -161,7 +161,7 @@ class ForgeStepRoleGuardTest {
                 "changed_files" to listOf("ui/view.ts"), "summary" to "Implemented view"),
         )
         val report = mapOf("manifest_sha256" to manifest, "work_commit" to "a".repeat(40), "items" to items)
-        fun verdict(value: Map<String, Any?>, delta: WorkspaceDelta = WorkspaceDelta(), agent: String = "ForgeBuilder") =
+        fun verdict(value: Map<String, Any?>, delta: WorkspaceDelta = WorkspaceDelta(), agent: String = "ForgeDeveloper") =
             validator.validate(StepValidationContext(run = run, flowType = "forge.delivery",
                 stepId = "implementation-build", agentName = agent,
                 report = businessReport(mapOf("build_report" to value)), workspaceDelta = delta,
@@ -186,7 +186,7 @@ class ForgeStepRoleGuardTest {
         assertThat((verdict(report, agent = "BmadBuilder") as StepValidationVerdict.Rejected).reasonCode)
             .isEqualTo("INVALID_BUILD_COORDINATOR")
         val unapproved = validator.validate(StepValidationContext(run = run.copy(humanDecisions = emptyList()),
-            flowType = "forge.delivery", stepId = "implementation-build", agentName = "ForgeBuilder",
+            flowType = "forge.delivery", stepId = "implementation-build", agentName = "ForgeDeveloper",
             report = businessReport(mapOf("build_report" to report)), externalEvidence = packet))
         assertThat((unapproved as StepValidationVerdict.Rejected).reasonCode)
             .isEqualTo("PACKET_APPROVAL_MISSING_OR_STALE")
@@ -415,7 +415,7 @@ class ForgeStepRoleGuardTest {
             run = run,
             flowType = "forge.implement-step",
             stepId = "step-implementation",
-            agentName = "ForgeBuilder",
+            agentName = "ForgeDeveloper",
             workspaceDelta = WorkspaceDelta(watchedFiles = unchangedSpec),
         ))
         assertThat(legacyWithoutScope).isInstanceOf(StepValidationVerdict.Accepted::class.java)

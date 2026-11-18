@@ -32,7 +32,7 @@ status or retry. The existing Backend/Frontend Factory skill accepts one
 approved work item per attempt, and the strict Forge workers each execute one
 item; none can receive the whole mixed-stack plan unchanged. AgentOS now has
 `DELEGATE__delegate` and resumable sub-cases sharing an equipped root Case
-worktree, so the dedicated ForgeBuilder can dispatch those items
+worktree, so the dedicated ForgeDeveloper can dispatch those items
 sequentially inside the one Build step. Its agent definition and item-level
 receipt validation exist on the two PR branches but lack an AgentOS pilot.
 The old ForgeController cannot simply
@@ -164,8 +164,11 @@ accepted evidence. An opt-in checkpoint policy now stores that packet's
 repository, commit and manifest digest with the interaction, refuses a stale
 reply, and audits the authenticated actor and server decision time. This has
 focused tests, not a full direct-workflow gate proof. The user chose a dedicated
-`ForgeBuilder`: the existing `BmadBuilder`
+`ForgeDeveloper`: the existing `BmadBuilder`
 owns an older BMAD lifecycle and is not the Forge delivery coordinator. The
+`Forge` prefix is intentional: this agent requires a Factory-assigned Build
+attempt, approved Forge packet and ordered plan, so it cannot be invoked as a
+general-purpose Developer outside that workflow. The
 new agent must receive a bounded plan, delegate implementation by stack and
 submit one Factory result; its configuration is now a local change on the
 Whoz agent-fleet branch and has not been deployed. The definition is
@@ -196,14 +199,14 @@ they do not prove that the corresponding plan files were committed or copied
 into a Git commit. The manifest's byte check remains required before the
 human gate.
 
-The draft's single `implementation-build` step assigns `ForgeBuilder` as the
+The draft's single `implementation-build` step assigns `ForgeDeveloper` as the
 full-stack coordinator. Its validator checks one ordered PASS receipt per
 approved plan item, matching stack and manifest digest, a well-formed claimed
 work commit, and each reported/observed changed file against the plan's file
 scope. It rejects missing, reordered or extra receipts and out-of-scope
 changes. The claimed work commit is not independently verified at Build
 finalization; the later hosted observation checks its GitHub ancestry before
-allowing integration evidence. The ForgeBuilder configuration has only static
+allowing integration evidence. The ForgeDeveloper configuration has only static
 YAML and scope checks, not an AgentOS runtime proof.
 The separate `implementation-verification` step assigns `ForgeVerifier`, which
 delegates the plan's commands in order to the existing Backend and Frontend
@@ -264,7 +267,7 @@ check; it does not address the remote-host read gap above.
 
 The Forge brief and result validator now select implementation, correction,
 verification and codebase-research obligations by flow/step identity rather
-than `ForgeBuilder`, `ForgeVerifier` or `Searcher` agent names. Backend and
+than `ForgeDeveloper`, `ForgeVerifier` or `Searcher` agent names. Backend and
 Frontend therefore receive the declared file scope and cannot pass an
 out-of-scope edit by using a different agent name. Verification and research
 remain read-only for renamed agents. A `forge.delivery` implementation or

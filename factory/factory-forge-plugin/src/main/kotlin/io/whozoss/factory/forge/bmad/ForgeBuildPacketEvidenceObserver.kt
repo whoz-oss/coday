@@ -10,7 +10,7 @@ import java.nio.file.Path
 @Extension
 class ForgeBuildPacketEvidenceObserver : FactoryStepEvidenceObserver {
     override fun supports(flowType: String, stepId: String, agentName: String): Boolean =
-        flowType == "forge.delivery" && stepId == "implementation-build" && agentName == "ForgeBuilder"
+        flowType == "forge.delivery" && stepId == "implementation-build" && agentName == "ForgeDeveloper"
 
     override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation {
         val packet = context.run.domainState["approvedPacketCandidate"] as? Map<*, *>
