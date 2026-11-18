@@ -10,6 +10,12 @@
     <p class="case-members__loading">Loading&hellip;</p>
   } @else {
     <div class="case-members__body">
+      @if (!isSuperAdmin()) {
+        <p class="case-members__hint">
+          You can change roles or remove existing members. Only a platform super-admin can add a new user to this case.
+        </p>
+      }
+
       <fieldset class="case-members__section">
         <legend class="case-members__label">
           Members
@@ -61,11 +67,13 @@
           <p class="case-members__warning">At least one ADMIN must remain on the case.</p>
         }
 
-        <ds-autocomplete-input
-          [dataSource]="memberDataSource"
-          placeholder="Add a member…"
-          (itemSelected)="onMemberSelected($event)"
-        />
+        @if (isSuperAdmin()) {
+          <ds-autocomplete-input
+            [dataSource]="memberDataSource"
+            placeholder="Add a member…"
+            (itemSelected)="onMemberSelected($event)"
+          />
+        }
       </fieldset>
 
       @if (errorMessage()) {
