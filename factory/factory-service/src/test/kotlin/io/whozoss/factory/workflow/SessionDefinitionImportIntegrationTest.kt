@@ -333,7 +333,7 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `independent human gates can both open and their join waits for both replies`() {
+    fun `independent human gates resume from persisted state and join after both replies`() {
         writeScript("pass-both", "exit 0")
         writeManifest("check-both" to "./factory/verification/pass-both")
         val workflowId = "wf-parallel-human-gates"
@@ -352,12 +352,14 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.PENDING)
 
         answerHuman(workflowId, "technical", "approve")
-        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status)
+        val recoveredAfterTechnicalReply = agentSessionService(AgentTurnResult.Completed("PASS", mapOf("caseStatus" to "IDLE")))
+        assertThat(recoveredAfterTechnicalReply.runSession(scope, namespace, workflowId, repoRoot).status)
             .isEqualTo(WorkflowStatuses.WAITING_HUMAN)
         assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.PENDING)
 
         answerHuman(workflowId, "functional", "approve")
-        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status)
+        val recoveredAfterFunctionalReply = agentSessionService(AgentTurnResult.Completed("PASS", mapOf("caseStatus" to "IDLE")))
+        assertThat(recoveredAfterFunctionalReply.runSession(scope, namespace, workflowId, repoRoot).status)
             .isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
     }
