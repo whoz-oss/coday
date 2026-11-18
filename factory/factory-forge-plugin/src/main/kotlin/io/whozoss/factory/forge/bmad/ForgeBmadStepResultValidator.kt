@@ -444,8 +444,14 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
             val step = raw as? Map<*, *> ?: return@all false
             val id = step["id"] as? String
             val paths = step["file_paths"] as? List<*>
-            val validId = !id.isNullOrBlank() && ids.add(id)
+            val dependency = step["depends_on"]
+            val validDependency = step.containsKey("depends_on") &&
+                (dependency == null || dependency is String && dependency in ids)
+            val validId = !id.isNullOrBlank() && id.length <= 64 && id.matches(Regex("[A-Za-z][A-Za-z0-9_-]*")) &&
+                id !in ids
+            if (validId) ids.add(id)
             validId &&
+                step["stack"] in setOf("frontend", "backend") && validDependency &&
                 !(step["title"] as? String).isNullOrBlank() &&
                 !(step["verification"] as? String).isNullOrBlank() &&
                 !paths.isNullOrEmpty() && paths.all { it is String && safeRelativePath(it) } &&

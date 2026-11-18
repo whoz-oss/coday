@@ -81,10 +81,10 @@
       "dependsOn": ["technical-design"],
       "entry": ["Read every applicable design, its pinned revision and all not-applicable decisions."],
       "exit": [
-        "Return a forge.business-outputs.v1 artifact with nonempty delivery_plan.steps. Every step needs a distinct id, title, safe relative file_paths and verification command, including for a trivial change. Also return the plan document path, locator, revision and content digest."
+        "Return a forge.business-outputs.v1 artifact with nonempty delivery_plan.steps. Every ordered item needs a distinct id, title, stack (frontend or backend), safe relative file_paths, verification command and depends_on (null or the id of an earlier item), including for a trivial change. Also return the plan document path, locator, revision and content digest."
       ],
       "id": "implementation-planning",
-      "mission": "Produce a nonempty implementation plan with ordered, bounded code steps and file scopes, including for a trivial change.",
+      "mission": "Produce a nonempty implementation plan with ordered, bounded code items, stack, dependencies and file scopes, including for a trivial change.",
       "name": "Prepare implementation plan",
       "responsibility": {
         "kind": "agent",

@@ -23,14 +23,20 @@ waits and step retry. It does not currently express an arbitrary number of
 planned implementation steps or a cyclic correction path as distinct dynamic
 nodes in the same definition. The requester clarified that the immediate aim
 is adapting the Forge agents, not extending the Factory engine for dynamic
-workflow nodes. This delivery therefore keeps fixed workflow phases: one
-Build step processes the ordered plan items and records item-level progress
-and evidence in the same Run; independent verification, review, integration
+workflow nodes. The target therefore has fixed workflow phases: one Build
+step would process the ordered plan items and record item-level progress and
+evidence in the same Run; independent verification, review, integration
 observation and human decisions remain separate fixed phases. Item rows in a
 Build report are not separate workflow steps and have no independent engine
-status or retry. The Build/verification correction and resume contract must
-still satisfy CE06/CE07 before publication; the single-workflow requirement
-does not justify switching back to parent fragments.
+status or retry. The existing Backend/Frontend Factory skill accepts one
+approved work item per attempt, and the strict Forge workers each execute one
+item; none can receive the whole mixed-stack plan unchanged. AgentOS now has
+`DELEGATE__delegate` and resumable sub-cases sharing an equipped root Case
+worktree, so a narrow Build coordinator agent could dispatch those items
+sequentially inside the one Build step. That coordinator and its item-level
+receipt validation do not yet exist. The old ForgeController cannot simply
+fill this role: it runs its own full lifecycle and gates. The Build/verification
+correction and resume contract must still satisfy CE06/CE07 before publication.
 
 Some prior evidence below characterizes the parent-Run route and remains a
 historical test result, not evidence for the now-required delivery launch.
@@ -132,7 +138,11 @@ implementation planning, QA and verification planning, packet assembly, then
 the human packet gate. Optional design disciplines still get an explicit
 assessment step and either a document or a reasoned not-applicable decision;
 the implementation and verification plans are required on every route. The
-definition is deliberately outside the published catalog: it would complete
+implementation plan now requires a `frontend` or `backend` stack and an
+explicit dependency on an earlier item (or `null`) for each ordered item.
+This validates the proposed routing data; it does not assign an agent or
+persist an approved plan into direct workflow gate state. The definition is
+deliberately outside the published catalog: it would complete
 after packet approval and has no safe Build or final joint. Packet assembly
 also lacks the Run-bound Git identity needed by the human gate. The current legacy selector still starts
 `forge.product-spec` and contains a trivial path to Build without the complete

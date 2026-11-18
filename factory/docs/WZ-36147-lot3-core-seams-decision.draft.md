@@ -83,13 +83,15 @@ trusted Git-read boundary still require a concrete design and tests.
   agree before the gate and on resume. Approval binds that identity. Missing
   Git access or changed/missing objects pauses the Run as a technical error.
   Rejection or a new packet generation invalidates the earlier approval.
-- **CE06:** one fixed Build phase in the delivery workflow gives its assigned
-  worker the ordered plan items and their bounded file scopes. The agent
-  reports progress and evidence for each item inside that phase; those items
-  are not dynamically created workflow steps. Approved packet identity and
-  current Git availability guard Build. Independent verification follows as
-  another fixed phase. The retry and correction contract still needs runtime
-  proof before publication.
+- **CE06:** one fixed Build phase in the delivery workflow needs a narrowly
+  scoped coordinator agent to dispatch the ordered, bounded plan items to
+  Backend/Frontend agents and report each item's evidence. The existing agents
+  accept one item at a time, and the legacy ForgeController owns a different
+  full lifecycle, so neither can receive the whole plan unchanged. These
+  items are not dynamically created workflow steps. Approved packet identity
+  and current Git availability must guard Build. Independent verification
+  follows as another fixed phase. The coordinator, item receipts, retry and
+  correction contract still need implementation and runtime proof.
 - **CE07:** trusted Git and CI observations establish that a successful
   integration deployment tag contains this Run's work commit. The human sees
   that tag as a reference, and both authorized decisions bind to the presented
