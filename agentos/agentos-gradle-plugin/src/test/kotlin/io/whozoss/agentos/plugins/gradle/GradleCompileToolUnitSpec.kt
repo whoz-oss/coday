@@ -280,9 +280,8 @@ class GradleCompileToolUnitSpec :
                     }
 
                 val tool = GradleCompileTool(GradleRunner(root))
-                val result = tool.compile(subproject = null, file = orphan.absolutePath, timeoutSeconds = 60)
+                val result = tool.compile(subproject = null, file = orphan.absolutePath, timeoutSeconds = 60).errorText()
 
-                result shouldContain "ERROR"
                 result shouldContain "Could not locate a Gradle module"
             } finally {
                 root.deleteRecursively()
@@ -292,9 +291,8 @@ class GradleCompileToolUnitSpec :
         "compile returns an actionable ERROR when no gradlew can be found" {
             val root = Files.createTempDirectory("agentos-compile-no-gradlew").toFile()
             try {
-                val result = GradleCompileTool(GradleRunner(root)).compile(subproject = null, file = null, timeoutSeconds = 60)
+                val result = GradleCompileTool(GradleRunner(root)).compile(subproject = null, file = null, timeoutSeconds = 60).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "gradlewDirectory"
             } finally {
                 root.deleteRecursively()
@@ -318,9 +316,8 @@ class GradleCompileToolUnitSpec :
                     setExecutable(true)
                 }
 
-                val result = GradleCompileTool(GradleRunner(root)).compile(subproject = null, file = null, timeoutSeconds = 1)
+                val result = GradleCompileTool(GradleRunner(root)).compile(subproject = null, file = null, timeoutSeconds = 1).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "timed out after 1 seconds"
                 result shouldContain "partial output"
             } finally {
@@ -331,9 +328,8 @@ class GradleCompileToolUnitSpec :
         "compile rejects a timeoutSeconds outside 1..300 before doing anything else" {
             val tool = GradleCompileTool(GradleRunner(File("/fake")))
             listOf(0, -5, 301).forEach { timeoutSeconds ->
-                val result = tool.compile(subproject = null, file = null, timeoutSeconds = timeoutSeconds)
+                val result = tool.compile(subproject = null, file = null, timeoutSeconds = timeoutSeconds).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "timeoutSeconds"
                 result shouldContain "300"
             }

@@ -35,13 +35,16 @@ class GradleToolBuildLocationUnitSpec :
         val calls =
             listOf(
                 Call("gradle_compile") { runner, subproject ->
-                    GradleCompileTool(runner).compile(subproject = subproject, timeoutSeconds = 60)
+                    GradleCompileTool(runner).compile(subproject = subproject, timeoutSeconds = 60).toToolExecutionResult().output
                 },
                 Call("gradle_tests") { runner, subproject ->
-                    GradleTestTool(runner).runTests(testFilter = null, subproject = subproject, timeoutSeconds = 60)
+                    GradleTestTool(runner).runTests(testFilter = null, subproject = subproject, timeoutSeconds = 60).toToolExecutionResult().output
                 },
                 Call("gradle_dependency_insight") { runner, subproject ->
-                    GradleDependencyInsightTool(runner).dependencyInsight(dependency = "x", subproject = subproject, timeoutSeconds = 60)
+                    GradleDependencyInsightTool(runner)
+                        .dependencyInsight(dependency = "x", subproject = subproject, timeoutSeconds = 60)
+                        .toToolExecutionResult()
+                        .output
                 },
             )
 

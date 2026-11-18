@@ -15,7 +15,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Process execution is delegated to [GradleRunner].
  *
- * The business logic ([runTests]) is blocking and returns a String starting with `ERROR` / `FAILURE` on problems;
+ * The business logic ([runTests]) is blocking and returns a [GradleToolResult];
  * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
  */
 class GradleTestTool(
@@ -36,32 +36,21 @@ class GradleTestTool(
     override val name: String = prefixedToolName(configName, TOOL_NAME)
 
     override val description: String =
-        """Run tests in the project using Gradle. Supports multiple test frameworks.
+        """Run tests in the project using Gradle (JUnit 5, Kotest, etc.).
 Pass an optional Gradle subproject to narrow execution to a single module (avoids running all modules). Without it the root build runs; on a composite build (includeBuild), pass 'subproject' to target one of its included builds.
 ${GradleRunner.SUBPROJECT_NAME_HINT}
 'timeoutSeconds' is mandatory (1 to ${ToolTimeout.MAX_SECONDS}): the run is killed when it is exceeded.
-Pass an optional list of test filters; the tool auto-detects the framework from the filter syntax.
+Pass an optional list of test filters.
 To test several modules in ONE Gradle invocation (configuration paid once), pass 'targets' instead of
 'testFilter'/'subproject': each target is {subproject, testFilter} and its filters apply to its module only.
 'targets' cannot be combined with 'testFilter' or 'subproject'.
-With testBalloon filters, use fully-qualified suite names so they only match in their own module.
 
-Standard filter syntax (JUnit5, Kotest, etc.):
+Filter syntax:
   - Use fully-qualified class name: 'fr.tokazio.okia.cli.TerminalOperationsTests'
   - Use wildcard pattern:           'fr.tokazio.okia.cli.*' or '*ControllerSpec' (ONE wildcard filter, not one filter per class)
   - Leave testFilter null to run all tests.
   These filters are passed as Gradle '--tests' arguments.
 
-testBalloon filter syntax (only for testBalloon suites, detected by '↘' separator):
-  - The suite name is the Kotlin 'val' property name, which starts with a LOWERCASE letter.
-    Example: a file 'TerminalOperationsTests.kt' with 'val terminalOperationsTests = ...' → suite name is 'terminalOperationsTests'.
-  - Tests within a suite are separated from the suite name by '↘' (U+2198, SOUTH EAST ARROW).
-  - To run all tests in a suite : 'fr.tokazio.okia.cli.terminalOperationsTests↘*'
-  - To run a specific test      : 'fr.tokazio.okia.cli.terminalOperationsTests↘my test name'
-  IMPORTANT: do NOT add a 'Kt' suffix. Use 'terminalOperationsTests' not 'TerminalOperationsTests' or 'TerminalOperationsTestsKt'.
-  These filters are passed via TESTBALLOON_INCLUDE_PATTERNS env var.
-
-You may mix both syntaxes in the same testFilter list.
 Returns a structured summary: total/passed/failed counts,
 and for each failure: class, method, exception type, message, relevant stacktrace frames and the root cause
 (the last 'Caused by:' with its frames). Nothing more exists to find: no hidden detail in build/ files.
@@ -80,12 +69,9 @@ To check again, re-run this tool."""
                 mapOf(
                     "testFilter" to
                         ToolSchema.stringArray(
-                            "Optional test filters. Framework is auto-detected from syntax. " +
-                                "Standard (JUnit5/Kotest): fully-qualified class name or wildcard, " +
-                                "e.g. 'fr.tokazio.okia.cli.TerminalOperationsTests'. " +
-                                "testBalloon: suite name (lowercase Kotlin val) + '↘' separator + test name or '*', " +
-                                "e.g. 'fr.tokazio.okia.cli.terminalOperationsTests↘*'. " +
-                                "Do NOT use 'Kt' suffix for testBalloon suites. Leave null to run all tests.",
+                            "Optional test filters (Gradle '--tests' syntax): fully-qualified class name or wildcard, " +
+                                "e.g. 'fr.tokazio.okia.cli.TerminalOperationsTests' or 'fr.tokazio.okia.cli.*'. " +
+                                "Leave null to run all tests.",
                         ),
                     "subproject" to
                         ToolSchema.string(
@@ -144,79 +130,59 @@ To check again, re-run this tool."""
         subproject: String? = null,
         targets: List<TestTarget>? = null,
         timeoutSeconds: Int,
-    ): String {
-        ToolTimeout.validate(timeoutSeconds)?.let { return "ERROR: $it" }
+    ): GradleToolResult {
+        ToolTimeout.validate(timeoutSeconds)?.let { return GradleToolResult.Error(it) }
         val tasks =
             try {
                 resolveTasks(testFilter, subproject, targets)
             } catch (e: IllegalArgumentException) {
-                return "ERROR: ${e.message}"
+                return GradleToolResult.Error("${e.message}")
             }
         val gradlew =
             try {
                 runner.resolveGradlew()
             } catch (e: GradlewNotFoundException) {
-                return "ERROR: ${e.message}"
+                return GradleToolResult.Error("${e.message}")
             }
-        val testBalloonFilters = testBalloonFiltersOf(tasks)
         val reportsDir = newReportsDir()
         val initScript = TestReportsInitScript.create(reportsDir)
-        val command = buildCommand(gradlew, initScript.absolutePath, tasks, testBalloonActive = testBalloonFilters.isNotEmpty())
-        val includePatterns = buildIncludePatterns(testBalloonFilters)
+        val command = buildCommand(gradlew, initScript.absolutePath, tasks)
         logger.info {
             "[GradleTestTool] projectDir='${runner.projectDir}' " +
                 "tasks='${tasks.joinToString { "${it.subproject ?: "<all>"}${it.filters}" }}' " +
-                "testBalloonFilters='${testBalloonFilters.ifEmpty { listOf("<none>") }}' " +
-                "TESTBALLOON_INCLUDE_PATTERNS='${includePatterns ?: "<unset>"}' " +
                 "command='${command.joinToString(" ")}'"
         }
 
         return try {
-            val result =
-                runner.run(
-                    command,
-                    workDir = runner.workDirFor(gradlew),
-                    timeout = timeoutSeconds.seconds,
-                    extraEnv =
-                        buildMap {
-                            if (includePatterns != null) {
-                                put(
-                                    "TESTBALLOON_INCLUDE_PATTERNS",
-                                    includePatterns,
-                                )
-                            }
-                        },
-                )
+            val result = runner.run(command, workDir = runner.workDirFor(gradlew), timeout = timeoutSeconds.seconds)
 
             if (result.timedOut) {
-                return "ERROR: Test execution timed out after $timeoutSeconds seconds. " +
-                    "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}"
+                return GradleToolResult.Error(
+                    "Test execution timed out after $timeoutSeconds seconds. " +
+                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}",
+                )
             }
 
+            val hint = runner.compositeBuildHint(result.exitCode, tasks.any { it.subproject != null }, gradlew)
             val xmlReports = parser.collect(reportsDir)
             logger.info { "[GradleTestTool] xml reports found: ${xmlReports.size}" }
 
-            if (xmlReports.isEmpty()) {
-                logger.warn { "[GradleTestTool] no xml reports generated — exit=${result.exitCode}" }
-                return if (result.exitCode == 0) {
-                    "SUCCESS (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput}"
+            val text =
+                if (xmlReports.isEmpty()) {
+                    logger.warn { "[GradleTestTool] no xml reports generated — exit=${result.exitCode}" }
+                    val status = if (result.exitCode == 0) "SUCCESS" else "FAILURE"
+                    "$status (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput}"
                 } else {
-                    val hint = runner.compositeBuildHint(result.exitCode, tasks.any { it.subproject != null }, gradlew)
-                    "FAILURE (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput}" +
-                        (hint?.let { "\n\n$it" } ?: "")
+                    parser.buildSummary(result.exitCode, xmlReports, result.rawOutput)
                 }
-            }
-
-            val summary = parser.buildSummary(result.exitCode, xmlReports, result.rawOutput)
-            val hint = runner.compositeBuildHint(result.exitCode, tasks.any { it.subproject != null }, gradlew)
-            if (hint == null) summary else "$summary\n\n$hint"
+            GradleToolResult.ofExit(result.exitCode, if (hint == null) text else "$text\n\n$hint")
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
             logger.warn { "[GradleTestTool] interrupted" }
-            "ERROR: Test execution interrupted."
+            GradleToolResult.Error("Test execution interrupted.")
         } catch (e: Exception) {
             logger.error(e) { "Failed to run tests" }
-            "ERROR: ${e.message}"
+            GradleToolResult.Error("${e.message}")
         } finally {
             initScript.delete()
             parser.delete(reportsDir)
@@ -254,34 +220,18 @@ To check again, re-run this tool."""
         gradlew: String,
         initScript: String,
         tasks: List<TestTask>,
-        testBalloonActive: Boolean = true,
     ): List<String> {
         val command = mutableListOf(gradlew, "-I", initScript, "--continue", "--quiet", "--console=plain")
-        if (testBalloonActive) {
-            command += "-PtestBalloon.jvmTestBalloonTestsOnly=true"
-        }
         tasks.forEach { task ->
             command += task.subproject?.let { ":${it.trimStart(':')}:test" } ?: "test"
-            task.filters.filterNot(::isTestBalloonFilter).forEach { command += "--tests=$it" }
+            task.filters.forEach { command += "--tests=$it" }
         }
         return command
     }
 
-    /** testBalloon reads one env var for the whole Gradle process, so patterns of all tasks are merged. */
-    internal fun testBalloonFiltersOf(tasks: List<TestTask>): List<String> = tasks.flatMap { it.filters }.filter(::isTestBalloonFilter)
-
-    private fun isTestBalloonFilter(filter: String): Boolean = filter.contains('↘')
-
     private fun nonBlank(filters: List<String>?): List<String> = filters.orEmpty().filter { it.isNotBlank() }
-
-    /** testBalloon splits `TESTBALLOON_INCLUDE_PATTERNS` on [TESTBALLOON_PATTERN_SEPARATOR]; a newline is read as part of a pattern. */
-    internal fun buildIncludePatterns(filters: List<String>): String? =
-        filters.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }?.joinToString(TESTBALLOON_PATTERN_SEPARATOR.toString())
 
     companion object : KLogging() {
         const val TOOL_NAME = "gradle_tests"
-
-        /** testBalloon `Constants.INTERNAL_PATH_PATTERN_SEPARATOR` (U+2B25). */
-        private const val TESTBALLOON_PATTERN_SEPARATOR = '⬥'
     }
 }

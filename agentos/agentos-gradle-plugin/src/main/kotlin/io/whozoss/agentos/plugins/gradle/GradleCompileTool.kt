@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.seconds
  *   derived from that directory's name relative to the project root.
  *   If neither file nor subproject is given, the root build is compiled.
  *
- * The business logic ([compile]) is blocking and returns a String starting with `ERROR` / `FAILURE` on problems;
+ * The business logic ([compile]) is blocking and returns a [GradleToolResult];
  * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
  */
 class GradleCompileTool(
@@ -103,21 +103,23 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
         subproject: String? = null,
         file: String? = null,
         timeoutSeconds: Int,
-    ): String {
-        ToolTimeout.validate(timeoutSeconds)?.let { return "ERROR: $it" }
+    ): GradleToolResult {
+        ToolTimeout.validate(timeoutSeconds)?.let { return GradleToolResult.Error(it) }
         val resolvedSubproject = subproject?.takeIf { it.isNotBlank() }
         val resolvedFile = file?.takeIf { it.isNotBlank() }
 
         val (effectiveSubproject, fileFilter) =
             resolveTargets(resolvedSubproject, resolvedFile)
-                ?: return "ERROR: Could not locate a Gradle module for file '$resolvedFile'. " +
-                    "Ensure the file path is inside the project and belongs to a Gradle subproject."
+                ?: return GradleToolResult.Error(
+                    "Could not locate a Gradle module for file '$resolvedFile'. " +
+                        "Ensure the file path is inside the project and belongs to a Gradle subproject.",
+                )
 
         val gradlew =
             try {
                 runner.resolveGradlew()
             } catch (e: GradlewNotFoundException) {
-                return "ERROR: ${e.message}"
+                return GradleToolResult.Error("${e.message}")
             }
         val command = buildCommand(gradlew, effectiveSubproject)
 
@@ -130,20 +132,22 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
         return try {
             val result = runner.run(command, workDir = runner.workDirFor(gradlew), timeout = timeoutSeconds.seconds)
             if (result.timedOut) {
-                return "ERROR: Compilation timed out after $timeoutSeconds seconds. " +
-                    "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}"
+                return GradleToolResult.Error(
+                    "Compilation timed out after $timeoutSeconds seconds. " +
+                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}",
+                )
             }
             val diagnostics = diagnosticParser.parse(result.rawOutput)
             val summary = diagnosticParser.buildSummary(result.exitCode, diagnostics, result.rawOutput, fileFilter)
             val hint = runner.compositeBuildHint(result.exitCode, effectiveSubproject != null, gradlew)
-            if (hint == null) summary else "$summary\n\n$hint"
+            GradleToolResult.ofExit(result.exitCode, if (hint == null) summary else "$summary\n\n$hint")
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
             logger.warn { "[GradleCompileTool] interrupted" }
-            "ERROR: Compilation interrupted."
+            GradleToolResult.Error("Compilation interrupted.")
         } catch (e: Exception) {
             logger.error(e) { "Failed to compile" }
-            "ERROR: ${e.message}"
+            GradleToolResult.Error("${e.message}")
         }
     }
 

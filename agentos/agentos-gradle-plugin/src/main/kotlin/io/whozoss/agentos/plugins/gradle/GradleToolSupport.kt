@@ -8,18 +8,46 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 
 /**
- * Maps the String answer of a Gradle tool business method to a [ToolExecutionResult]:
- * `ERROR...` -> `GRADLE_ERROR`, `FAILURE...` -> `GRADLE_FAILURE`, anything else is a success.
+ * Outcome of a Gradle tool call, decided where it is known and never guessed back from the text.
+ *
+ * - [Success]: Gradle ran and succeeded.
+ * - [Failure]: Gradle ran and failed (build, compilation or tests): [text] is its report, the answer the agent needs.
+ * - [Error]: the tool could not do its job (bad input, no `gradlew`, timeout, interruption): [text] says why.
  */
-internal fun String.toToolExecutionResult(): ToolExecutionResult =
-    when {
-        startsWith("ERROR") -> ToolExecutionResult.error(this, errorType = "GRADLE_ERROR")
-        startsWith("FAILURE") -> ToolExecutionResult.error(this, errorType = "GRADLE_FAILURE")
-        else -> ToolExecutionResult.success(this)
+sealed interface GradleToolResult {
+    val text: String
+
+    data class Success(
+        override val text: String,
+    ) : GradleToolResult
+
+    data class Failure(
+        override val text: String,
+    ) : GradleToolResult
+
+    data class Error(
+        override val text: String,
+    ) : GradleToolResult
+
+    companion object {
+        /** [Success] when Gradle exited with 0, [Failure] otherwise. */
+        fun ofExit(
+            exitCode: Int,
+            text: String,
+        ): GradleToolResult = if (exitCode == 0) Success(text) else Failure(text)
+    }
+}
+
+/** `Success` -> success, `Failure` -> `GRADLE_FAILURE`, `Error` -> `GRADLE_ERROR` (its text is prefixed with `ERROR: `). */
+internal fun GradleToolResult.toToolExecutionResult(): ToolExecutionResult =
+    when (this) {
+        is GradleToolResult.Success -> ToolExecutionResult.success(text)
+        is GradleToolResult.Failure -> ToolExecutionResult.error(text, errorType = "GRADLE_FAILURE")
+        is GradleToolResult.Error -> ToolExecutionResult.error("ERROR: $text", errorType = "GRADLE_ERROR")
     }
 
 /** The agent did not provide the mandatory `timeoutSeconds`: nothing is run, the answer names the parameter. */
-internal fun missingTimeoutResult(): ToolExecutionResult = "ERROR: ${ToolTimeout.MISSING_MESSAGE}".toToolExecutionResult()
+internal fun missingTimeoutResult(): ToolExecutionResult = GradleToolResult.Error(ToolTimeout.MISSING_MESSAGE).toToolExecutionResult()
 
 /**
  * Runs the blocking body of a Gradle tool on the IO dispatcher, interruptibly, and maps its answer with
@@ -31,7 +59,7 @@ internal fun missingTimeoutResult(): ToolExecutionResult = "ERROR: ${ToolTimeout
  * interrupts the waiting thread, [ProcessLauncher] kills the whole process tree, and the cancellation reaches the
  * caller, whatever the body answers once interrupted.
  */
-internal suspend fun runInterruptibleTool(body: () -> String): ToolExecutionResult =
+internal suspend fun runInterruptibleTool(body: () -> GradleToolResult): ToolExecutionResult =
     runInterruptible(Dispatchers.IO, body).toToolExecutionResult()
 
 /** Tool name, prefixed with `<configName>__` when the integration config has a name (same rule as the other plugins). */
