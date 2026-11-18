@@ -1,5 +1,7 @@
 package io.whozoss.factory.workflow
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
@@ -24,6 +26,8 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * HTTP integration tests of the workflow REST surface against the embedded Neo4j
@@ -345,6 +349,42 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(attribution["actorId"]).isEqualTo(TEST_USER_ID)
         assertThat(attribution["text"]).isEqualTo("")
         assertThat(data(created.body)["title"]).isEqualTo("Wf http")
+    }
+
+    @Test
+    fun `delivery draft direct launch allows two independent requests for one ticket and replays one request`() {
+        val draft = Files.newInputStream(Path.of("..", "docs", "WZ-36147-delivery-workflow.draft.json")).use {
+            ObjectMapper().readValue(it, object : TypeReference<Map<String, Any?>>() {})
+        }
+        // The HTTP fixture has no PF4J Forge plugin installed; exercise direct
+        // launch identity with the draft graph, without claiming plugin activation.
+        val validated = WorkflowDefinitionValidator.validate(draft - "execution") as WorkflowDefinitionValidation.Valid
+        service.registerDefinition(scope, WorkflowDefinitionRecord(
+            workflowType = "forge.delivery",
+            version = "0.2.0",
+            definitionHash = hashWorkflowDefinition(validated.definition),
+            definition = validated.definition,
+        ))
+        registerWorkstream()
+        val request = mapOf(
+            "namespaceId" to namespace,
+            "workflowType" to "forge.delivery",
+            "parameters" to mapOf("ticket" to "WZ-36147"),
+        )
+
+        val first = createRun(request, "delivery-attempt-a")
+        val second = createRun(request, "delivery-attempt-b")
+        val replay = createRun(request, "delivery-attempt-a")
+
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(second.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
+        val firstId = data(first.body)["workflowId"] as String
+        val secondId = data(second.body)["workflowId"] as String
+        assertThat(firstId).isNotEqualTo(secondId)
+        assertThat(data(replay.body)["workflowId"]).isEqualTo(firstId)
+        assertThat(service.getProjection(scope, namespace, firstId)["state"]).isNotEqualTo("absent")
+        assertThat(service.getProjection(scope, namespace, secondId)["state"]).isNotEqualTo("absent")
     }
 
     @Test

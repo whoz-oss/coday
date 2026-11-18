@@ -35,6 +35,26 @@ Its Git manifest validation is reusable, but the trusted worktree binding,
 evidence persistence and technical-pause recovery must be adapted to the
 single `workflowId` before the packet gate is wired.
 
+The direct-launch inspection locates the precise mismatch. A regular
+`CreateWorkflowRunService.create()` stores a workflow instance and submits its
+Run, but does not provision a `WorkEnvironment`. The existing packet observer
+requires an occupied `WorkEnvironment` owned by `parentRunIdOf(instance)`;
+`acquireAgentWorktree()` returns without an occupation when that parent ID is
+absent. Thus the first direct `forge.delivery` packet submission reaches
+`WORKTREE_UNAVAILABLE`, even if AgentOS created a Case worktree. The Forge
+validator also returns `newDomainState` for applicability, plans and packet
+identity, while `CapabilityExecutionService` applies those updates only when
+a parent Run ID exists. Direct workflow evidence must therefore be persisted
+and read through the workflow instance and its own trusted Case/worktree
+binding; changing only the observer's ID comparison would leave both holes.
+The targeted HTTP test `WorkflowControllerHttpTest.delivery draft direct
+launch...` passed (`BUILD SUCCESSFUL in 2m 29s`): with the draft step graph
+registered in the isolated fixture, two idempotency keys for WZ-36147
+created distinct direct workflow IDs and replay of the first key returned its
+original ID. The fixture omits `execution.plugin=forge` because PF4J is not
+installed in that HTTP test; this proves CE04 launch identity only, not plugin
+activation, Case/worktree isolation or end-to-end delivery.
+
 Correction verification: `./gradlew :factory-service:test --tests
 'io.whozoss.factory.workstreamservice.WorkstreamServiceControllerHttpTest'
 --tests 'io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest'
@@ -373,6 +393,49 @@ was requested; a successful job alone does not prove the target still runs
 that release when a human later validates it. The current dynamic properties
 expose the tag, but no observed image-digest manifest or Factory reader was
 found. This is the concrete missing receipt for T19/T24.
+
+#### Observed #8488 chain after conflict resolution (2026-11-18)
+
+The failed `Push Work to Integration` attempt returned HTTP 409 (`Merge
+conflict`), so it was correctly insufficient to open functional validation.
+After the work branch was repaired, the [successful push job](https://github.com/biznet-io/whoz/actions/runs/44362869370/job/135032454278)
+merged `work/talent-portal/WZ-35341_no_npx` at `cbf17264d4dbbb58cc63cadfdfe92ea63d8c8977`
+into `integration/talent-portal`. The resulting integration commit is
+`1bfdb5f8dfa89880fa61675092fc7e1498a13e23`, with that work SHA as its
+second parent. Read-only Git ancestry verification succeeded. The tag
+`integration-talent-portal_rc100` resolves to the same integration commit.
+
+The [integration Build run #11054](https://github.com/biznet-io/whoz/actions/runs/44369638977)
+completed successfully at that commit. Its `promote-tags` and
+`dispatch-integration-deployment` jobs succeeded, and the dispatch summary
+named target `forge-talent-portal` and exact tag `integration-talent-portal_rc100`.
+The dispatch was **not** treated as the deployment receipt. The separate
+[Deploy run #7089](https://github.com/biznet-io/whoz/actions/runs/44371473992)
+completed successfully at the same commit; its `deploy to workstream` job
+reported target `forge-talent-portal`, release tag
+`integration-talent-portal_rc100` and successful completion at
+`2026-11-18 18:44:23 UTC`. This is a concrete, machine-addressable CI chain
+that can establish *historical deployment success* for the integration commit.
+
+Build #11054 skipped `backend-build` and `docker-build-and-push` while
+`promote-tags` succeeded. The inspected promotion executor explicitly falls
+back to `currentVersion` artifacts for unaffected services. Therefore the
+integration Git SHA and RC tag do **not** by themselves identify the image
+bytes that were deployed. A candidate receipt needs the per-service promoted
+artifact digests (or a digest of an immutable manifest containing them), plus
+a post-deploy target readback. The GitHub success summary does not prove that
+the target still runs rc100 at a later human decision. The Factory has no
+reader for that live version or image identity in this checkout.
+
+The first automatic gate check can follow this chain: current work SHA is
+contained in the integration commit; the successful Build run is for that
+exact commit; its RC tag resolves to that commit; a successful **Deploy** run
+names that tag and the authorized target. It must then compare a fresh target
+readback with the tag and built/promoted artifact manifest before opening the
+functional human request, and recheck before accepting the decision. A newer
+deployment or changed work head starts a new candidate generation. The #8488
+example proves the CI correlation path exists; it does not satisfy the missing
+live readback or candidate seal.
 
 #### First-version environment-independent contract
 
