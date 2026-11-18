@@ -284,3 +284,11 @@ but the dispatch, successful command and tag alone do not supply Factory with
 a receipt binding the observed target to the exact code commit and built image
 digests. No reader for that receipt was found in the inspected Coday modules,
 so the CE07 pure seal cannot yet attest a live candidate.
+The existing Factory `DeliveryOperationService` is not that reader: its
+documented current path uses stub adapters and immediately reconciles a new
+deployment operation to `succeeded` with only adapter id/state. Its
+`sourceCommit` and `artifactDigest` fields validate request consistency, but
+the service does not inspect the running integration target or a built image.
+Using its success flag as a Forge deployment receipt would therefore be a
+false positive. The Whoz test design requires CI provenance and an observed
+deployment receipt for the exact integrated SHA and build digest (T19/T24).
