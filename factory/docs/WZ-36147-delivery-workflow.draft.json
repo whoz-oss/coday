@@ -152,7 +152,7 @@
       "name": "Build planned implementation",
       "responsibility": {
         "kind": "agent",
-        "name": "BmadBuilder"
+        "name": "ForgeBuilder"
       }
     }
   ],

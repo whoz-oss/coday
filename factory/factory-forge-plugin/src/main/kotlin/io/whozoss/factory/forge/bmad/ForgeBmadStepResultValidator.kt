@@ -501,6 +501,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
     }
 
     private fun validateDeliveryBuild(context: StepValidationContext): StepValidationVerdict {
+        if (context.agentName != "ForgeBuilder") return StepValidationVerdict.Rejected("INVALID_BUILD_COORDINATOR")
         val plan = context.run.domainState["delivery_plan"] as? Map<*, *>
         val planned = plan?.get("steps") as? List<*>
         val packet = context.run.domainState["approvedPacketCandidate"] as? Map<*, *>

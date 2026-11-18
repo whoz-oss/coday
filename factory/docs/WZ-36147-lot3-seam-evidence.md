@@ -156,9 +156,10 @@ explicit dependency on an earlier item (or `null`) for each ordered item.
 This validates the proposed routing data and a structured Build receipt.
 The direct workflow now persists the plan and pinned packet candidate in its
 accepted evidence, but the human gate does not yet bind its decision to that
-identity. `BmadBuilder` already delegates Backend and Frontend work, but its
-current Whoz configuration has no Factory worker tool or Forge-specific bounded
-plan contract; the draft role is not deployable unchanged. The definition is
+identity. The user chose a dedicated `ForgeBuilder`: the existing `BmadBuilder`
+owns an older BMAD lifecycle and is not the Forge delivery coordinator. The
+new agent must receive a bounded plan, delegate implementation by stack and
+submit one Factory result; its configuration is not yet installed. The definition is
 deliberately outside the published catalog: it would complete after Build and
 still lacks verification, integration observation and the final human joint.
 The current legacy selector still starts
@@ -186,14 +187,19 @@ they do not prove that the corresponding plan files were committed or copied
 into a Git commit. The manifest's byte check remains required before the
 human gate.
 
-The draft's single `implementation-build` step assigns `BmadBuilder` as the
+The draft's single `implementation-build` step assigns `ForgeBuilder` as the
 full-stack coordinator. Its validator checks one ordered PASS receipt per
 approved plan item, matching stack and manifest digest, a well-formed claimed
 work commit, and each reported/observed changed file against the plan's file
 scope. It rejects missing, reordered or extra receipts and out-of-scope
 changes. The claimed work commit is not yet independently verified against
-Git, and the current Whoz `BmadBuilder` has no Factory worker integration or
-bounded Forge mode. This is a validated result shape, not a runnable Build.
+Git, and `ForgeBuilder` has not yet been configured in the Whoz agent fleet.
+This is a validated result shape, not a runnable Build. The existing
+ForgeController source confirms the delegation rule: it persists the ordered
+plan and active item, sends `frontend` items to `ForgeFrontendWorker` and
+`backend` items to `ForgeBackendWorker`, then advances only after item
+verification. The new coordinator may retain that bounded item discipline,
+but must not own workflow gates, whole-run review or completion.
 
 ## Focused Factory evidence
 
