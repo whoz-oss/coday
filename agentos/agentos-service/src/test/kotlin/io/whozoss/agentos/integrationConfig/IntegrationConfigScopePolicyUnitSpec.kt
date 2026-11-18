@@ -14,10 +14,10 @@ class IntegrationConfigScopePolicyUnitSpec : StringSpec({
 
     "the default denied list covers every network-reaching or command-running integration type" {
         IntegrationsProperties().userScopeDeniedTypes shouldContainExactly
-            listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH")
+            listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH", "GRADLE")
     }
 
-    listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH").forEach { type ->
+    listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH", "GRADLE").forEach { type ->
         "a user-scoped $type config is denied with an AccessDeniedException naming the type" {
             val exception =
                 shouldThrow<AccessDeniedException> {
@@ -29,6 +29,10 @@ class IntegrationConfigScopePolicyUnitSpec : StringSpec({
 
     "a shared (non user-scoped) config of a denied type is allowed" {
         shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = null, integrationType = "MCP_HTTP") }
+    }
+
+    "a shared (non user-scoped) GRADLE config is allowed" {
+        shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = null, integrationType = "GRADLE") }
     }
 
     "a shared (non user-scoped) BASH config is allowed" {

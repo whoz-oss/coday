@@ -5,9 +5,13 @@ package io.whozoss.agentos.plugins.gradle
  *
  * Supported formats:
  *
- * Kotlin (kotlinc):
+ * Kotlin (kotlinc 1.x):
  *   `e: /abs/path/to/File.kt:12:5: error message`
  *   `w: /abs/path/to/File.kt:12:5: warning message`
+ *
+ * Kotlin (kotlinc 2.x): `file://` prefix, no colon after the column:
+ *   `e: file:///abs/path/to/File.kt:12:5 error message`
+ *   `w: file:///abs/path/to/File.kt:12:5 warning message`
  *
  * Java (javac via Gradle):
  *   `/abs/path/to/File.java:12: error: message`
@@ -16,9 +20,9 @@ package io.whozoss.agentos.plugins.gradle
  * Lines that match neither pattern are captured as raw lines for fallback display.
  */
 internal class CompilerDiagnosticParser {
-    // Kotlin: "e: /path:line:col: message"  or  "w: /path:line:col: message"
+    // Kotlin: "e: /path:line:col: message" (1.x) or "e: file:///path:line:col message" (2.x), same for "w:"
     private val kotlinPattern =
-        Regex("""^([ew]):\s+(.+\.(?:kt|kts)):(\d+):(\d+):\s+(.+)$""")
+        Regex("""^([ew]):\s+(?:file://)?(.+\.(?:kt|kts)):(\d+):(\d+):?\s+(.+)$""")
 
     // Java: "/path.java:line: error|warning: message"
     private val javaPattern =
@@ -99,14 +103,23 @@ internal class CompilerDiagnosticParser {
 
             appendLine()
             appendLine("── Diagnostics ───────────────────────────────────────")
-            primary.forEach { d -> appendLine(d.format()) }
+            // The counts above are exact; the list is bounded so a broken build cannot flood the agent context.
+            val primaryShown = primary.take(MAX_LISTED_DIAGNOSTICS)
+            val secondaryShown = secondary.take(MAX_LISTED_DIAGNOSTICS - primaryShown.size)
+            primaryShown.forEach { d -> appendLine(d.format()) }
 
             if (secondary.isNotEmpty()) {
                 val otherErrors = secondary.count { it.severity == Severity.ERROR }
                 val otherWarnings = secondary.count { it.severity == Severity.WARNING }
                 appendLine()
                 appendLine("── Other files: $otherErrors error(s), $otherWarnings warning(s) ──")
-                secondary.forEach { d -> appendLine(d.format()) }
+                secondaryShown.forEach { d -> appendLine(d.format()) }
+            }
+
+            val hidden = primary.size + secondary.size - primaryShown.size - secondaryShown.size
+            if (hidden > 0) {
+                appendLine()
+                appendLine("… $hidden more diagnostic(s) not shown (listed: $MAX_LISTED_DIAGNOSTICS)")
             }
         }.trimEnd()
     }
@@ -134,5 +147,10 @@ internal class CompilerDiagnosticParser {
     ) {
         ERROR("ERROR"),
         WARNING("WARN"),
+    }
+
+    private companion object {
+        /** Max diagnostics listed in a summary, whatever their number. */
+        const val MAX_LISTED_DIAGNOSTICS = 100
     }
 }

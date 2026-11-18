@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.seconds
  *   derived from that directory's name relative to the project root.
  *   If neither file nor subproject is given, the root build is compiled.
  *
- * The business logic ([compile]) is blocking and returns a String starting with `ERROR` / `FAILURE` on problems;
+ * The business logic ([compile]) is blocking and returns a [GradleToolResult];
  * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
  */
 class GradleCompileTool(
@@ -103,21 +103,23 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
         subproject: String? = null,
         file: String? = null,
         timeoutSeconds: Int,
-    ): String {
-        ToolTimeout.validate(timeoutSeconds)?.let { return "ERROR: $it" }
+    ): GradleToolResult {
+        ToolTimeout.validate(timeoutSeconds)?.let { return GradleToolResult.Error(it) }
         val resolvedSubproject = subproject?.takeIf { it.isNotBlank() }
         val resolvedFile = file?.takeIf { it.isNotBlank() }
 
         val (effectiveSubproject, fileFilter) =
             resolveTargets(resolvedSubproject, resolvedFile)
-                ?: return "ERROR: Could not locate a Gradle module for file '$resolvedFile'. " +
-                    "Ensure the file path is inside the project and belongs to a Gradle subproject."
+                ?: return GradleToolResult.Error(
+                    "Could not locate a Gradle module for file '$resolvedFile'. " +
+                        "Ensure the file path is inside the project and belongs to a Gradle subproject.",
+                )
 
         val gradlew =
             try {
                 runner.resolveGradlew()
             } catch (e: GradlewNotFoundException) {
-                return "ERROR: ${e.message}"
+                return GradleToolResult.Error("${e.message}")
             }
         val command = buildCommand(gradlew, effectiveSubproject)
 
@@ -130,20 +132,22 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
         return try {
             val result = runner.run(command, workDir = runner.workDirFor(gradlew), timeout = timeoutSeconds.seconds)
             if (result.timedOut) {
-                return "ERROR: Compilation timed out after $timeoutSeconds seconds. " +
-                    "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}"
+                return GradleToolResult.Error(
+                    "Compilation timed out after $timeoutSeconds seconds. " +
+                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}",
+                )
             }
             val diagnostics = diagnosticParser.parse(result.rawOutput)
             val summary = diagnosticParser.buildSummary(result.exitCode, diagnostics, result.rawOutput, fileFilter)
-            val hint = runner.compositeBuildHint(result.exitCode, effectiveSubproject != null, gradlew)
-            if (hint == null) summary else "$summary\n\n$hint"
+            val hint = runner.compositeBuildHint(result.exitCode, effectiveSubproject != null, gradlew, result.rawOutput)
+            GradleToolResult.ofExit(result.exitCode, if (hint == null) summary else "$summary\n\n$hint")
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
             logger.warn { "[GradleCompileTool] interrupted" }
-            "ERROR: Compilation interrupted."
+            GradleToolResult.Error("Compilation interrupted.")
         } catch (e: Exception) {
             logger.error(e) { "Failed to compile" }
-            "ERROR: ${e.message}"
+            GradleToolResult.Error("${e.message}")
         }
     }
 
@@ -152,6 +156,7 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
      *
      * Returns null if [resolvedFile] is given but no Gradle module can be found for it.
      * Returns (null, null) when both inputs are null (whole-project compile).
+     * A file of the root project gives (null, file): the root is compiled and the file filters the diagnostics.
      */
     internal fun resolveTargets(
         resolvedSubproject: String?,
@@ -171,17 +176,33 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
                 if (it.isAbsolute) it else runner.projectDir.resolve(it)
             }
         val module = detectModule(fileObj) ?: return null
-        return module to resolvedFile
+        return when (module) {
+            is OwningModule.Root -> null to resolvedFile
+            is OwningModule.Module -> module.path to resolvedFile
+        }
+    }
+
+    /** The Gradle project that owns a source file. */
+    internal sealed interface OwningModule {
+        /** The file belongs to the root project of the build: it has no module path. */
+        data object Root : OwningModule
+
+        /** The file belongs to the module [path] (`name`, or `feature:core` when nested). */
+        data class Module(
+            val path: String,
+        ) : OwningModule
     }
 
     /**
      * Walks up from [file]'s directory looking for the nearest `build.gradle.kts` or `build.gradle`.
-     * Returns the Gradle module name (`:name`) or null when no build script is found before the build root.
+     * Returns [OwningModule.Module] with the Gradle path of the module (`name`), [OwningModule.Root] when the nearest
+     * build script is the one of the build directory itself, or null when no build script is found before the build
+     * root.
      *
      * The build root is the directory of the integration that contains `gradlew` and `settings.gradle(.kts)`
      * ([resolveProjectRoot]). A [file] outside it, symbolic links resolved, is refused: the walk never leaves the build.
      */
-    internal fun detectModule(file: File): String? {
+    internal fun detectModule(file: File): OwningModule? {
         val projectRoot = resolveProjectRoot() ?: return null
         if (!isInsideBuild(file)) return null
         var dir: File? = if (file.isDirectory) file else file.parentFile
@@ -189,10 +210,10 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             val hasBuild =
                 dir.resolve("build.gradle.kts").isFile ||
                     dir.resolve("build.gradle").isFile
-            if (hasBuild && dir != projectRoot) {
+            if (hasBuild) {
+                if (dir == projectRoot) return OwningModule.Root
                 // Build the Gradle path relative to the project root.
-                val rel = dir.relativeTo(projectRoot).path.replace(File.separatorChar, ':')
-                return if (rel.isBlank()) null else rel
+                return OwningModule.Module(dir.relativeTo(projectRoot).path.replace(File.separatorChar, ':'))
             }
             dir = dir.parentFile
         }
@@ -225,7 +246,8 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             } else {
                 "testClasses"
             }
-        return listOf(gradlew, task, "--continue", "--quiet", "--console=plain")
+        // No --quiet: the Kotlin and javac warnings are logged at WARN level, which --quiet hides.
+        return listOf(gradlew, task, "--continue", "--console=plain")
     }
 
     companion object : KLogging() {

@@ -276,7 +276,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
         // -------------------------------------------------------------------------
         // POST / PUT — user scope denied for network-reaching integration types
-        // (agentos.integrations.user-scope-denied-types, default HTTP_API, MCP_STDIO, MCP_HTTP, GIT, BASH)
+        // (agentos.integrations.user-scope-denied-types, default HTTP_API, MCP_STDIO, MCP_HTTP, GIT, BASH, GRADLE)
         // -------------------------------------------------------------------------
 
         "POST user-global config of a denied type (MCP_HTTP) returns 403" {
@@ -342,6 +342,41 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                               "userId": "$aliceId",
                               "name": "DENIED_${UUID.randomUUID()}",
                               "integrationType": "BASH"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isForbidden)
+        }
+
+        "POST user-global config of a denied type (GRADLE) returns 403" {
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "userId": "$aliceId",
+                              "name": "DENIED_${UUID.randomUUID()}",
+                              "integrationType": "GRADLE"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isForbidden)
+        }
+
+        "POST user-namespace config of a denied type (GRADLE) returns 403" {
+            mockMvc
+                .perform(
+                    post("/api/integration-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                              "namespaceId": "$namespaceId",
+                              "userId": "$aliceId",
+                              "name": "DENIED_${UUID.randomUUID()}",
+                              "integrationType": "GRADLE"
                             }
                             """.trimIndent(),
                         ),

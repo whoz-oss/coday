@@ -20,23 +20,46 @@ private const val REPORT_XML =
 
 private const val INIT_SCRIPT = "/fake/init.gradle"
 
-private const val RUN_ID = "run-1"
-
-private fun toolIn(root: File) = GradleTestTool(GradleRunner(root), newRunId = { RUN_ID })
-
-private fun writeReport(
+/** A tool whose reports directory is [reportsDir], so that a fake `gradlew` knows where to write its reports. */
+private fun toolIn(
     root: File,
-    runId: String,
-    name: String = "TEST-old.xml",
+    reportsDir: File,
+) = GradleTestTool(GradleRunner(root), newReportsDir = { reportsDir })
+
+/** Writes an executable fake `gradlew` running [body] into [root]. */
+private fun fakeGradlew(
+    root: File,
+    body: String,
 ) {
-    root.resolve("build/agentos-test-results/$runId/test").mkdirs()
-    root.resolve("build/agentos-test-results/$runId/test/$name").writeText(REPORT_XML)
+    root.resolve("gradlew").apply {
+        writeText("#!/bin/sh\n$body\n")
+        setExecutable(true)
+    }
+}
+
+/** Shell snippet writing [REPORT_XML] as a report of [module] under [reportsDir], as the init script would. */
+private fun writesReport(
+    reportsDir: File,
+    module: String = "root-1a2b",
+) = "mkdir -p '${reportsDir.path}/$module/test'\n" +
+    "cat > '${reportsDir.path}/$module/test/TEST-fresh.xml' <<'EOF'\n$REPORT_XML\nEOF"
+
+/** Runs [block] with a project root and a separate reports directory, both deleted afterwards. */
+private fun withDirs(block: (root: File, reportsDir: File) -> Unit) {
+    val root = Files.createTempDirectory("agentos-test-root").toFile()
+    val reportsDir = Files.createTempDirectory("agentos-test-reports").toFile()
+    try {
+        block(root, reportsDir)
+    } finally {
+        root.deleteRecursively()
+        reportsDir.deleteRecursively()
+    }
 }
 
 class GradleTestToolUnitSpec :
     StringSpec({
 
-        val tool = GradleTestTool(File("/fake"))
+        val tool = GradleTestTool(GradleRunner(File("/fake")))
         val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
         // --- buildCommand ---
@@ -45,8 +68,7 @@ class GradleTestToolUnitSpec :
             val cmd = tool.buildCommand(gradlew = "/fake/gradlew", initScript = INIT_SCRIPT, tasks = listOf(TestTask(subproject = null)))
 
             cmd shouldContainInOrder listOf("/fake/gradlew", "test")
-            cmd shouldNotContain "--tests"
-            cmd shouldContainInOrder listOf("-PtestBalloon.jvmTestBalloonTestsOnly=true")
+            cmd.none { it.startsWith("--tests") } shouldBe true
         }
 
         "buildCommand with subproject targets subproject test task" {
@@ -54,7 +76,6 @@ class GradleTestToolUnitSpec :
 
             cmd shouldContainInOrder listOf("/fake/gradlew", ":cli:test")
             cmd shouldNotContain "test" // bare 'test' task must not appear
-            cmd shouldContainInOrder listOf("-PtestBalloon.jvmTestBalloonTestsOnly=true")
         }
 
         "buildCommand with leading-colon subproject strips and re-adds colon" {
@@ -73,7 +94,6 @@ class GradleTestToolUnitSpec :
                             TestTask("a", listOf("pkg.A*", "pkg.B*")),
                             TestTask(":b", listOf("pkg.C*")),
                         ),
-                    testBalloonActive = false,
                 )
 
             cmd shouldContainExactly
@@ -85,13 +105,10 @@ class GradleTestToolUnitSpec :
                     "--quiet",
                     "--console=plain",
                     ":a:test",
-                    "--tests",
-                    "pkg.A*",
-                    "--tests",
-                    "pkg.B*",
+                    "--tests=pkg.A*",
+                    "--tests=pkg.B*",
                     ":b:test",
-                    "--tests",
-                    "pkg.C*",
+                    "--tests=pkg.C*",
                 )
         }
 
@@ -119,23 +136,22 @@ class GradleTestToolUnitSpec :
                     gradlew = "/fake/gradlew",
                     initScript = INIT_SCRIPT,
                     tasks = listOf(TestTask("a", listOf("pkg.A*")), TestTask("b")),
-                    testBalloonActive = false,
                 )
 
-            cmd shouldContainInOrder listOf(":a:test", "--tests", "pkg.A*", ":b:test")
+            cmd shouldContainInOrder listOf(":a:test", "--tests=pkg.A*", ":b:test")
             cmd.last() shouldBe ":b:test"
         }
 
-        "buildCommand ignores testBalloon filters when binding --tests" {
+        "buildCommand glues a filter starting with a dash to --tests so Gradle cannot read it as an option" {
             val cmd =
                 tool.buildCommand(
                     gradlew = "/fake/gradlew",
                     initScript = INIT_SCRIPT,
-                    tasks = listOf(TestTask("a", listOf("pkg.suite↘*", "pkg.A*"))),
+                    tasks = listOf(TestTask("a", listOf("-Dweird"))),
                 )
 
-            cmd shouldContainInOrder listOf(":a:test", "--tests", "pkg.A*")
-            cmd shouldNotContain "pkg.suite↘*"
+            cmd shouldContainInOrder listOf(":a:test", "--tests=-Dweird")
+            cmd.none { it == "-Dweird" } shouldBe true
         }
 
         // --- resolveTasks ---
@@ -183,48 +199,11 @@ class GradleTestToolUnitSpec :
             tool.resolveTasks(listOf("pkg.A*"), "cli", emptyList()) shouldBe listOf(TestTask("cli", listOf("pkg.A*")))
         }
 
-        // --- buildIncludePatterns ---
-
-        "buildIncludePatterns with empty list returns null" {
-            tool.buildIncludePatterns(emptyList()) shouldBe null
-        }
-
-        "buildIncludePatterns with single filter returns it as-is" {
-            tool.buildIncludePatterns(listOf("fr.tokazio.okia.cli.TerminalOperationsTests")) shouldBe
-                "fr.tokazio.okia.cli.TerminalOperationsTests"
-        }
-
-        "buildIncludePatterns with multiple filters joins with the testBalloon pattern separator" {
-            tool.buildIncludePatterns(
-                listOf("fr.tokazio.okia.cli.TerminalOperationsTests", "fr.tokazio.okia.engine.MyTests"),
-            ) shouldBe "fr.tokazio.okia.cli.TerminalOperationsTests⬥fr.tokazio.okia.engine.MyTests"
-        }
-
-        "buildIncludePatterns strips blank entries" {
-            tool.buildIncludePatterns(listOf("", "  ", "fr.tokazio.okia.cli.TerminalOperationsTests")) shouldBe
-                "fr.tokazio.okia.cli.TerminalOperationsTests"
-        }
-
-        "buildIncludePatterns with only blanks returns null" {
-            tool.buildIncludePatterns(listOf("", "  ")) shouldBe null
-        }
-
-        "buildIncludePatterns merges testBalloon filters of several tasks" {
-            val tasks =
-                listOf(
-                    TestTask("a", listOf("pkg.a.suiteA↘*", "pkg.A*")),
-                    TestTask("b", listOf("pkg.b.suiteB↘*")),
-                )
-
-            tool.buildIncludePatterns(tool.testBalloonFiltersOf(tasks)) shouldBe "pkg.a.suiteA↘*⬥pkg.b.suiteB↘*"
-        }
-
         // --- tool contract ---
 
         "runTests returns ERROR mentioning targets when mixed with legacy params" {
-            val result = tool.runTests(listOf("pkg.A*"), null, listOf(TestTarget("a")), timeoutSeconds = 60)
+            val result = tool.runTests(listOf("pkg.A*"), null, listOf(TestTarget("a")), timeoutSeconds = 60).errorText()
 
-            result shouldStartWith "ERROR"
             result shouldContain "targets"
         }
 
@@ -276,9 +255,8 @@ class GradleTestToolUnitSpec :
                     setExecutable(true)
                 }
 
-                val result = toolIn(root).runTests(null, timeoutSeconds = 1)
+                val result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 1).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "timed out after 1 seconds"
                 result shouldContain "partial output"
             } finally {
@@ -286,18 +264,17 @@ class GradleTestToolUnitSpec :
             }
         }
 
-        "runTests rejects a timeoutSeconds outside 1..300 before doing anything else" {
-            listOf(0, -5, 301).forEach { timeoutSeconds ->
+        "runTests rejects a timeoutSeconds outside 1..240 before doing anything else" {
+            listOf(0, -5, 241).forEach { timeoutSeconds ->
                 // /fake has no gradlew: only the timeout check can produce a message naming timeoutSeconds
-                val result = tool.runTests(null, timeoutSeconds = timeoutSeconds)
+                val result = tool.runTests(null, timeoutSeconds = timeoutSeconds).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "timeoutSeconds"
-                result shouldContain "300"
+                result shouldContain "240"
             }
         }
 
-        "runTests accepts the maximum timeoutSeconds of 300" {
+        "runTests accepts the maximum timeoutSeconds of 240" {
             val root = Files.createTempDirectory("agentos-test-max-timeout").toFile()
             try {
                 root.resolve("gradlew").apply {
@@ -305,7 +282,7 @@ class GradleTestToolUnitSpec :
                     setExecutable(true)
                 }
 
-                toolIn(root).runTests(null, timeoutSeconds = 300) shouldStartWith "SUCCESS"
+                GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 240).successText()
             } finally {
                 root.deleteRecursively()
             }
@@ -320,16 +297,15 @@ class GradleTestToolUnitSpec :
                     writeText("#!/bin/sh\nsleep 60\n")
                     setExecutable(true)
                 }
-                var result: String? = null
-                val thread = Thread.ofPlatform().start { result = GradleTestTool(root).runTests(null, timeoutSeconds = 60) }
+                var result: GradleToolResult? = null
+                val thread = Thread.ofPlatform().start { result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 60) }
                 Thread.sleep(500)
 
                 thread.interrupt()
                 thread.join(5_000)
 
                 thread.isAlive shouldBe false
-                result!! shouldStartWith "ERROR"
-                result!! shouldContain "interrupted"
+                result!!.errorText() shouldContain "interrupted"
             } finally {
                 root.deleteRecursively()
             }
@@ -337,119 +313,149 @@ class GradleTestToolUnitSpec :
 
         // --- init script: forces JUnit XML into the tool-owned dir without touching the project ---
 
-        "runTests gives gradle an init script forcing junit xml, then deletes it" {
-            val root = Files.createTempDirectory("agentos-test-init-script").toFile()
-            try {
-                root.resolve("gradlew").apply {
-                    writeText(
-                        "#!/bin/sh\nif [ \"\$1\" != \"-I\" ]; then exit 3; fi\n" +
-                            "echo \"\$2\" > '${root.path}/init-path'\ncp \"\$2\" '${root.path}/init-copy'\n",
-                    )
-                    setExecutable(true)
-                }
+        "runTests gives gradle an init script forcing junit xml into the reports dir, then deletes it" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(
+                    root,
+                    "if [ \"\$1\" != \"-I\" ]; then exit 3; fi\n" +
+                        "echo \"\$2\" > '${root.path}/init-path'\ncp \"\$2\" '${root.path}/init-copy'",
+                )
 
-                toolIn(root).runTests(null, timeoutSeconds = 60)
+                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
 
                 val content = root.resolve("init-copy").readText()
                 content shouldContain "junitXml.required.set(true)"
-                content shouldContain "agentos-test-results/$RUN_ID"
+                content shouldContain reportsDir.absolutePath
                 File(root.resolve("init-path").readText().trim()).exists() shouldBe false
-            } finally {
-                root.deleteRecursively()
             }
         }
 
-        // --- each call reads only its own report dir ---
-
-        "runTests reads the reports of its own run and ignores those of another run" {
-            val root = Files.createTempDirectory("agentos-test-own-run").toFile()
+        "the init script escapes a quote or a backslash of the reports dir path" {
+            val dir = Files.createTempDirectory("agentos-init-escape").toFile()
+            val script = TestReportsInitScript.create(dir.resolve("it's a \\dir"))
             try {
-                root.resolve("gradlew").apply {
-                    writeText(
-                        "#!/bin/sh\nmkdir -p '${root.path}/build/agentos-test-results/$RUN_ID/test'\n" +
-                            "cat > '${root.path}/build/agentos-test-results/$RUN_ID/test/TEST-fresh.xml' <<'EOF'\n$REPORT_XML\nEOF\n",
-                    )
-                    setExecutable(true)
-                }
-                writeReport(root, runId = "other-run")
+                script.readText() shouldContain "new File('${dir.absolutePath.replace("\\", "\\\\")}/it\\'s a \\\\dir'"
+            } finally {
+                script.delete()
+                dir.deleteRecursively()
+            }
+        }
 
-                val result = toolIn(root).runTests(null, timeoutSeconds = 60)
+        // --- each call reads only its own reports dir, wherever the build lives ---
+
+        "runTests reads the reports of its own reports dir" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, writesReport(reportsDir))
+
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
 
                 result shouldContain "Tests: 1"
-                root.resolve("build/agentos-test-results/other-run").exists() shouldBe true
-            } finally {
-                root.deleteRecursively()
             }
         }
 
-        "runTests deletes its report dir once the summary is built" {
-            val root = Files.createTempDirectory("agentos-test-cleanup").toFile()
-            try {
-                root.resolve("gradlew").apply {
-                    writeText(
-                        "#!/bin/sh\nmkdir -p '${root.path}/build/agentos-test-results/$RUN_ID/test'\n" +
-                            "cat > '${root.path}/build/agentos-test-results/$RUN_ID/test/TEST-fresh.xml' <<'EOF'\n$REPORT_XML\nEOF\n",
-                    )
-                    setExecutable(true)
-                }
+        "runTests reads the reports of an included build living outside the project directory" {
+            withDirs { root, reportsDir ->
+                // the reports dir is not under root, as the dir of an included build (includeBuild("../lib")) is not
+                fakeGradlew(root, writesReport(reportsDir, module = "lib-9f8e") + "\n" + writesReport(reportsDir, module = "root-1a2b"))
 
-                toolIn(root).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
 
-                root.resolve("build/agentos-test-results/$RUN_ID").exists() shouldBe false
-            } finally {
-                root.deleteRecursively()
+                result shouldContain "Tests: 2"
             }
         }
 
-        "runTests says no test reports found when gradle succeeds and wrote none, even if another run left some" {
-            val root = Files.createTempDirectory("agentos-test-none").toFile()
-            try {
-                root.resolve("gradlew").apply {
-                    writeText("#!/bin/sh\nexit 0\n")
-                    setExecutable(true)
-                }
-                writeReport(root, runId = "other-run")
+        "runTests deletes its reports dir once the summary is built" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, writesReport(reportsDir))
 
-                val result = toolIn(root).runTests(null, timeoutSeconds = 60)
+                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60)
+
+                reportsDir.exists() shouldBe false
+            }
+        }
+
+        "runTests ignores the project own reports of build/test-results" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, "mkdir -p '${root.path}/build/test-results/test'\necho '$REPORT_XML' > '${root.path}/build/test-results/test/TEST-old.xml'")
+
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
 
                 result shouldContain "no test reports found"
                 result shouldNotContain "Tests: 1"
-            } finally {
-                root.deleteRecursively()
             }
         }
 
-        "runTests does not show another run's reports when gradle fails" {
-            val root = Files.createTempDirectory("agentos-test-stale-fail").toFile()
-            try {
-                root.resolve("gradlew").apply {
-                    writeText("#!/bin/sh\nexit 1\n")
-                    setExecutable(true)
-                }
-                writeReport(root, runId = "other-run")
+        "runTests says no test reports found when gradle succeeds and wrote none" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, "exit 0")
 
-                val result = toolIn(root).runTests(null, timeoutSeconds = 60)
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText()
+
+                result shouldContain "no test reports found"
+            }
+        }
+
+        "runTests says no test reports found when gradle fails and wrote none" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, "echo compilation exploded\nexit 1")
+
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).failureText()
 
                 result shouldContain "FAILURE"
                 result shouldContain "no test reports found"
-            } finally {
-                root.deleteRecursively()
+                result shouldContain "compilation exploded"
             }
         }
 
-        "runTests deletes its report dir even when gradle times out" {
-            val root = Files.createTempDirectory("agentos-test-cleanup-timeout").toFile()
-            try {
-                root.resolve("gradlew").apply {
-                    writeText("#!/bin/sh\nmkdir -p '${root.path}/build/agentos-test-results/$RUN_ID/test'\nsleep 60\n")
-                    setExecutable(true)
-                }
+        // --- a failed build always says why ---
 
-                toolIn(root).runTests(null, timeoutSeconds = 1) shouldStartWith "ERROR"
+        "runTests gives the gradle output when the build fails while the reports hold no failed test" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, writesReport(reportsDir) + "\necho 'No tests found for given includes'\nexit 1")
 
-                root.resolve("build/agentos-test-results/$RUN_ID").exists() shouldBe false
-            } finally {
-                root.deleteRecursively()
+                val result = toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).failureText()
+
+                result shouldStartWith "FAILURE"
+                result shouldContain "Tests: 1"
+                result shouldContain "No tests found for given includes"
+            }
+        }
+
+        "runTests with targets gives the gradle output of the module that matched no test, next to the reports of the other" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(
+                    root,
+                    writesReport(reportsDir, module = "a-1111") +
+                        "\necho \"Execution failed for task ':b:test'. No tests found for given includes\"\nexit 1",
+                )
+
+                val result =
+                    toolIn(root, reportsDir).runTests(
+                        testFilter = null,
+                        targets = listOf(TestTarget("a"), TestTarget("b", listOf("pkg.Nothing*"))),
+                        timeoutSeconds = 60,
+                    ).failureText()
+
+                result shouldContain "Tests: 1"
+                result shouldContain "No tests found for given includes"
+            }
+        }
+
+        "runTests does not repeat the gradle output when the build succeeds" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, writesReport(reportsDir) + "\necho some gradle noise")
+
+                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 60).successText() shouldNotContain "some gradle noise"
+            }
+        }
+
+        "runTests deletes its reports dir even when gradle times out" {
+            withDirs { root, reportsDir ->
+                fakeGradlew(root, writesReport(reportsDir) + "\nsleep 60")
+
+                toolIn(root, reportsDir).runTests(null, timeoutSeconds = 1).errorText()
+
+                reportsDir.exists() shouldBe false
             }
         }
 
@@ -458,9 +464,8 @@ class GradleTestToolUnitSpec :
         "runTests returns an actionable ERROR when no gradlew can be found" {
             val root = Files.createTempDirectory("agentos-test-no-gradlew").toFile()
             try {
-                val result = GradleTestTool(root).runTests(null, timeoutSeconds = 60)
+                val result = GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 60).errorText()
 
-                result shouldStartWith "ERROR"
                 result shouldContain "gradlewDirectory"
             } finally {
                 root.deleteRecursively()

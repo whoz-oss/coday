@@ -5,7 +5,8 @@ package io.whozoss.agentos.plugins.gradle
  * [1, [MAX_SECONDS]]. The run is killed when it is exceeded.
  */
 internal object ToolTimeout {
-    const val MAX_SECONDS = 300
+    /** Kept under the 5 minutes of the context cache: a call that outlives it makes the next turn pay the cache again. */
+    const val MAX_SECONDS = 240
 
     /** Start of the `timeoutSeconds` param description; each tool appends its own sizing advice. */
     const val PARAM_DESCRIPTION =

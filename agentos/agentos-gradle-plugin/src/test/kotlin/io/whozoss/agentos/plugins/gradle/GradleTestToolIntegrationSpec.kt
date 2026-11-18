@@ -132,7 +132,7 @@ class GradleTestToolIntegrationSpec :
             val dir = Files.createTempDirectory("agentos-gradle-it-pass").toFile()
             try {
                 scaffoldGradleProject(dir, allPassSource())
-                val result = GradleTestTool(dir).runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS)
+                val result = GradleTestTool(GradleRunner(dir)).runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS).successText()
 
                 result shouldContain "SUCCESS"
                 result shouldContain "Tests: 3"
@@ -147,7 +147,7 @@ class GradleTestToolIntegrationSpec :
             val dir = Files.createTempDirectory("agentos-gradle-it-fail").toFile()
             try {
                 scaffoldGradleProject(dir, oneFailSource())
-                val result = GradleTestTool(dir).runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS)
+                val result = GradleTestTool(GradleRunner(dir)).runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS).failureText()
 
                 result shouldContain "FAILURE"
                 result shouldContain "Failed: 1"
@@ -164,7 +164,7 @@ class GradleTestToolIntegrationSpec :
             try {
                 scaffoldGradleProject(dir, allPassSource(), testTaskConfig = "reports.junitXml.required.set(false)")
 
-                val result = GradleTestTool(dir).runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS)
+                val result = GradleTestTool(GradleRunner(dir)).runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS).successText()
 
                 result shouldContain "SUCCESS"
                 result shouldContain "Tests: 3"
@@ -177,10 +177,10 @@ class GradleTestToolIntegrationSpec :
             val dir = Files.createTempDirectory("agentos-gradle-it-twice").toFile()
             try {
                 scaffoldGradleProject(dir, allPassSource())
-                val tool = GradleTestTool(dir)
+                val tool = GradleTestTool(GradleRunner(dir))
                 tool.runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS)
 
-                val second = tool.runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS)
+                val second = tool.runTests(null, timeoutSeconds = MAX_TIMEOUT_SECONDS).successText()
 
                 second shouldContain "SUCCESS"
                 second shouldContain "Tests: 3"
@@ -194,7 +194,7 @@ class GradleTestToolIntegrationSpec :
             try {
                 scaffoldGradleProject(dir, oneFailSource())
                 // filter to passing test only — should succeed even though failing() exists
-                val result = GradleTestTool(dir).runTests(listOf("it.SampleTest.passing"), timeoutSeconds = MAX_TIMEOUT_SECONDS)
+                val result = GradleTestTool(GradleRunner(dir)).runTests(listOf("it.SampleTest.passing"), timeoutSeconds = MAX_TIMEOUT_SECONDS).successText()
 
                 result shouldContain "SUCCESS"
                 result shouldContain "Passed: 1"

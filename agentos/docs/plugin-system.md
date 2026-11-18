@@ -43,8 +43,8 @@ deploys the plugins and then boots `agentos-service`.
 
 The `GRADLE` integration exposes three tools, named `<configName>__<tool>` like the other plugins:
 `gradle_compile` (main and test sources, compiler diagnostics parsed), `gradle_tests` (results read from the
-JUnit XML reports, with `--tests` and testBalloon filters) and `gradle_dependency_insight`. Each call must give
-a `timeoutSeconds` (1 to 300): the run is killed beyond it, and cancelling the case kills the whole Gradle
+JUnit XML reports, with `--tests` filters) and `gradle_dependency_insight`. Each call must give
+a `timeoutSeconds` (1 to 240, kept under the 5 minutes of the context cache): the run is killed beyond it, and cancelling the case kills the whole Gradle
 process tree.
 
 ```yaml
@@ -225,7 +225,7 @@ can still encode the value, so do not bind a secret to a BASH integration whose 
 to read it. Like the other plugins, this works per user only for settings where each user holds their own
 credential.
 
-BASH integrations can only be created at platform or namespace-shared scope (`BASH` is in
+BASH and GRADLE integrations can only be created at platform or namespace-shared scope (`BASH` and `GRADLE` are in
 `agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
 to their own commands.
 
@@ -234,12 +234,12 @@ to their own commands.
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is
 deep-merged over it and inherits its `authSettingName`. For types whose parameters name a network
 endpoint or a command, that overlay would let any authenticated user point a shared credential at a
-host they control (or, for `BASH`, run a command that reads it), so those types are refused in both user scopes at the API edge (`POST` -> 403,
+host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 
 ## Tool Registration
 

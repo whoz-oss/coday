@@ -35,13 +35,16 @@ class GradleToolBuildLocationUnitSpec :
         val calls =
             listOf(
                 Call("gradle_compile") { runner, subproject ->
-                    GradleCompileTool(runner).compile(subproject = subproject, timeoutSeconds = 60)
+                    GradleCompileTool(runner).compile(subproject = subproject, timeoutSeconds = 60).toToolExecutionResult().output
                 },
                 Call("gradle_tests") { runner, subproject ->
-                    GradleTestTool(runner, newRunId = { "run-1" }).runTests(testFilter = null, subproject = subproject, timeoutSeconds = 60)
+                    GradleTestTool(runner).runTests(testFilter = null, subproject = subproject, timeoutSeconds = 60).toToolExecutionResult().output
                 },
                 Call("gradle_dependency_insight") { runner, subproject ->
-                    GradleDependencyInsightTool(runner).dependencyInsight(dependency = "x", subproject = subproject, timeoutSeconds = 60)
+                    GradleDependencyInsightTool(runner)
+                        .dependencyInsight(dependency = "x", subproject = subproject, timeoutSeconds = 60)
+                        .toToolExecutionResult()
+                        .output
                 },
             )
 
@@ -78,16 +81,30 @@ class GradleToolBuildLocationUnitSpec :
                 }
             }
 
-            "${call.label} adds the composite build hint when a run without subproject fails" {
+            "${call.label} adds the composite build hint when a run without subproject fails on a missing task" {
                 val root = Files.createTempDirectory("agentos-composite-fail").toFile()
                 try {
                     root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
-                    fakeGradlew(root, "exit 1")
+                    fakeGradlew(root, "echo \"Task 'x' not found in root project 'agentos'.\"\nexit 1")
 
                     val result = call.run(GradleRunner(root), null)
 
                     result shouldContain "agentos-sdk"
                     result shouldContain "retry with 'subproject'"
+                } finally {
+                    root.deleteRecursively()
+                }
+            }
+
+            "${call.label} adds no composite build hint when a run without subproject fails for another reason" {
+                val root = Files.createTempDirectory("agentos-composite-other-fail").toFile()
+                try {
+                    root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
+                    fakeGradlew(root, "echo \"Execution failed for task ':compileKotlin'.\"\nexit 1")
+
+                    val result = call.run(GradleRunner(root), null)
+
+                    result shouldNotContain "includes other builds"
                 } finally {
                     root.deleteRecursively()
                 }
