@@ -62,6 +62,7 @@ import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workspace.WorkspaceDeltaCollector
+import io.whozoss.factory.workspace.WorkspaceTurnSnapshot
 import io.whozoss.factory.worktree.AgentOsWorkspaceIdentityValidator
 import io.whozoss.factory.worktree.ParentRunWorkspacePreflight
 import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
@@ -698,6 +699,7 @@ class CapabilityExecutionService(
         agentName: String,
         reservation: AgentReservation,
         report: Map<String, Any?>,
+        workspaceSnapshot: WorkspaceTurnSnapshot? = null,
     ): StepEvidenceObservation? {
         val flowType = (workflowInstance?.instance?.get("workflowType") as? String).orEmpty()
         val matching = allStepEvidenceObservers().filter {
@@ -707,20 +709,42 @@ class CapabilityExecutionService(
         if (matching.size != 1) return StepEvidenceObservation.Unavailable(
             "EVIDENCE_OBSERVER_AMBIGUOUS", "More than one observer owns this step.",
         )
-        val environmentId = reservation.occupancy?.environmentId
-            ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "No Run-bound worktree occupation exists.")
-        val environment = workEnvironmentRepository?.findByEnvironmentId(scope, environmentId)
-            ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree is unavailable.")
         val parentRunId = parentRunIdOf(workflowInstance)
-        if (environment.lifecycleState != WorkEnvironmentState.READY || environment.namespaceId != namespaceId ||
-            environment.workflowId != parentRunId || environment.worktreePath.isBlank()
-        ) return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree is not READY.")
-        val worktree = runCatching { Path.of(environment.worktreePath) }.getOrNull()
-            ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree path is invalid.")
-        val identity = runCatching { LocalWorktreeResourceIdentityResolver().resolve(worktree) }.getOrNull()
-        if (identity == null || identity != reservation.occupancy.resourceIdentity) return StepEvidenceObservation.Unavailable(
-            "WORKTREE_IDENTITY_CHANGED", "The Run-bound worktree identity changed.",
-        )
+        val worktree = if (parentRunId != null) {
+            val environmentId = reservation.occupancy?.environmentId
+                ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "No Run-bound worktree occupation exists.")
+            val environment = workEnvironmentRepository?.findByEnvironmentId(scope, environmentId)
+                ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree is unavailable.")
+            if (environment.lifecycleState != WorkEnvironmentState.READY || environment.namespaceId != namespaceId ||
+                environment.workflowId != parentRunId || environment.worktreePath.isBlank()
+            ) return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree is not READY.")
+            val path = runCatching { Path.of(environment.worktreePath) }.getOrNull()
+                ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree path is invalid.")
+            val identity = runCatching { LocalWorktreeResourceIdentityResolver().resolve(path) }.getOrNull()
+            if (identity == null || identity != reservation.occupancy.resourceIdentity) return StepEvidenceObservation.Unavailable(
+                "WORKTREE_IDENTITY_CHANGED", "The Run-bound worktree identity changed.",
+            )
+            path
+        } else {
+            // Direct workflows own one root Case. AgentOS identifies its workspace;
+            // only a locally resolvable path may be passed to a Git-reading plugin.
+            val caseId = reservation.parentCaseId ?: reservation.caseId
+            if (workflowInstance?.rootCaseId != caseId) return StepEvidenceObservation.Unavailable(
+                "WORKTREE_UNAVAILABLE", "The workflow root Case does not match the observed worktree.",
+            )
+            val snapshot = workspaceSnapshot ?: workspaceDeltaCollector?.captureSnapshot(
+                caseId, externalUserId = resolveExternalUserId(scope, workflowInstance),
+            )
+            if (snapshot?.captureStatus != WorkspaceCaptureStatus.COMPLETE || snapshot.worktreePath.isNullOrBlank()) {
+                return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The root Case worktree is not locally observable.")
+            }
+            val path = runCatching { Path.of(snapshot.worktreePath) }.getOrNull()
+                ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The root Case worktree path is invalid.")
+            if (runCatching { LocalWorktreeResourceIdentityResolver().resolve(path) }.getOrNull() == null) {
+                return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The root Case worktree cannot be resolved locally.")
+            }
+            path
+        }
         val context = StepEvidenceObservationContext(
             run = resolveRunView(scope, namespaceId, workflowInstance),
             flowType = flowType,
@@ -1464,7 +1488,7 @@ class CapabilityExecutionService(
         // External IO is deliberately completed before the finalization transaction.
         val externalObservation = (observation.verdict as? AgentOsExecutionVerdict.Succeeded)
             ?.takeUnless { it.evidence["status"] == NEEDS_RESEARCH_MARKER }
-            ?.let { observeStepEvidence(scope, namespaceId, workflowInstance, step, agentId, occupiedReservation, it.outputs) }
+            ?.let { observeStepEvidence(scope, namespaceId, workflowInstance, step, agentId, occupiedReservation, it.outputs, afterSnapshot) }
 
         // Phase 3 - one short transaction for validator Run updates, evidence and attempt finalization.
         val parentRunId = parentRunIdOf(workflowInstance)

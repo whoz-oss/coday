@@ -24,6 +24,7 @@ import io.whozoss.factory.environment.domain.WorkEnvironmentState
 import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.worktree.AgentOsWorkspaceIdentityValidator
+import io.whozoss.factory.workspace.WorkspaceDeltaCollector
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import io.whozoss.factory.run.persistence.RunRepository
@@ -72,6 +73,76 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
     private val runId = "run-finalization-rollback"
     private val workflowId = "fragment-finalization-rollback"
     private val step = WorkflowStepDefinition("write", "Write", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Writer"), emptyList())
+
+    @Test
+    fun `direct workflow observes its root Case worktree without a parent Run environment`() {
+        Files.createDirectories(worktreeRoot)
+        val directWorkflowId = "direct-git-observation"
+        val rootCaseId = CapabilityExecutionService.stableCaseId(directWorkflowId, step.id)
+        workflowRepository.insertInstance(
+            scope,
+            WorkflowInstanceRecord(
+                namespaceId = namespace,
+                workflowId = directWorkflowId,
+                revision = 1,
+                status = "active",
+                creationCommandHash = "direct-observation-hash",
+                instance = mapOf("workflowId" to directWorkflowId, "workflowType" to "test.direct"),
+                projection = mapOf("steps" to listOf(mapOf(
+                    "id" to step.id,
+                    "name" to step.name,
+                    "responsibility" to mapOf("kind" to "agent", "name" to "Writer"),
+                    "dependsOn" to emptyList<String>(),
+                ))),
+                rootCaseId = rootCaseId,
+            ),
+        )
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+            val binding = firstArg<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>()
+            CaseHandle(binding.caseId, binding.namespaceId, false)
+        }
+        val runtimeProof = io.whozoss.factory.adapter.agentos.VerdictDeriver.RuntimeCaseTerminationProof(
+            caseId = rootCaseId, attemptId = CapabilityExecutionService.stableAttemptId(directWorkflowId, step.id),
+            eventId = "direct-idle", status = "IDLE",
+        )
+        every { adapter.observeTurnResult(any(), any(), any(), any()) } returns
+            io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+                AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "packet")), runtimeProof,
+            )
+        val workspaceProxy = mockk<AgentOsProxyClient>(relaxed = true)
+        every { workspaceProxy.fetchWorkspaceChanges(rootCaseId, any()) } returns mapOf(
+            "equipped" to true, "status" to "READY", "path" to worktreeRoot.toString(),
+            "changes" to mapOf("files" to emptyList<Any>()),
+        )
+        val observed = AtomicInteger()
+        val observer = object : FactoryStepEvidenceObserver {
+            override fun supports(flowType: String, stepId: String, agentName: String) = flowType == "test.direct"
+            override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation {
+                assertThat(context.run.runId).isEqualTo(directWorkflowId)
+                assertThat(context.worktreePath).isEqualTo(worktreeRoot.toString())
+                observed.incrementAndGet()
+                return StepEvidenceObservation.Observed(mapOf("verifiedCommit" to "a".repeat(40)))
+            }
+        }
+        val capability = CapabilityExecutionService(
+            resolver = CapabilityResolver(), workflowRepository = workflowRepository,
+            evidenceRepository = evidenceRepository, interactionRepository = interactionRepository,
+            attemptRepository = attemptRepository, durableAgentAttemptService = DurableAgentAttemptService(realAttemptRepository),
+            agentOsExecutionAdapter = adapter, transactionManager = transactionManager,
+            registeredStepEvidenceObservers = listOf(observer),
+            workspaceDeltaCollector = WorkspaceDeltaCollector(workspaceProxy),
+        )
+
+        capability.resolveAndRecord(scope, namespace, directWorkflowId, step, Path.of("."))
+
+        assertThat(observed.get()).isEqualTo(1)
+        val accepted = evidenceRepository.list(scope, namespace, directWorkflowId)
+            .single { it.kind == "agent-result" && it.outcome == "pass" }
+        assertThat((accepted.facts["externalEvidence"] as Map<*, *>)["verifiedCommit"])
+            .isEqualTo("a".repeat(40))
+        assertThat(workEnvironmentRepository.findLatestByWorkflowId(scope, directWorkflowId)).isNull()
+    }
 
     @Test
     fun `Git outage defers advancement then recovery reobserves after rollback and commits once`() {
