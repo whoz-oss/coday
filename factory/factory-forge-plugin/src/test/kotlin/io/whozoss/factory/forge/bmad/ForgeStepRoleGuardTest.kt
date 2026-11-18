@@ -1,5 +1,6 @@
 package io.whozoss.factory.forge.bmad
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.sdk.spi.BriefContext
 import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.sdk.spi.StepValidationContext
@@ -11,11 +12,70 @@ import org.junit.jupiter.api.Test
 
 class ForgeStepRoleGuardTest {
     private val run = RunView(runId = "role-guards", runType = "forge-bmad")
+    private val mapper = ObjectMapper()
     private val validator = ForgeBmadStepResultValidator()
     private val briefs = ForgeBmadBriefContributor()
     private val unchangedSpec = mapOf(
         "SPEC.md" to WatchedFileSnapshot("SPEC.md", true, "before", true, "before"),
     )
+
+    private fun applicabilityReport(decisions: Map<String, Any?>): Map<String, Any?> = mapOf(
+        "artifacts" to listOf(mapOf(
+            "kind" to ForgeBusinessOutputArtifact.KIND,
+            "encoding" to "markdown",
+            "content" to mapper.writeValueAsString(mapOf("applicability" to decisions)),
+        )),
+    )
+
+    @Test
+    fun `delivery assessment requires all four evidenced applicability decisions`() {
+        val decisions: Map<String, Any?> = mapOf(
+            "detailed_spec" to mapOf("applicable" to true, "reason" to "Complex product rules"),
+            "ux_spec" to mapOf("applicable" to false, "reason" to "No user interface change"),
+            "technical_spec" to mapOf("applicable" to true, "reason" to "New integration"),
+            "qa_spec" to mapOf("applicable" to false, "reason" to "Verification plan covers it"),
+        )
+        fun verdict(report: Map<String, Any?>, delta: WorkspaceDelta = WorkspaceDelta()) =
+            validator.validate(StepValidationContext(
+                run = run.copy(runType = "forge.delivery"),
+                flowType = "forge.delivery",
+                stepId = "design-assessment",
+                agentName = "ProductEngineer",
+                report = report,
+                workspaceDelta = delta,
+            ))
+
+        assertThat(verdict(applicabilityReport(decisions)))
+            .isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        for (bad in listOf(
+            decisions - "qa_spec",
+            decisions + ("ux_spec" to mapOf("applicable" to false, "reason" to "")),
+            decisions + ("technical_spec" to mapOf("applicable" to "yes", "reason" to "New integration")),
+        )) {
+            val rejected = verdict(applicabilityReport(bad)) as StepValidationVerdict.Rejected
+            assertThat(rejected.reasonCode).isEqualTo("INVALID_DESIGN_APPLICABILITY")
+        }
+        assertThat((verdict(emptyMap()) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("INVALID_DESIGN_APPLICABILITY")
+        assertThat((verdict(
+            applicabilityReport(decisions),
+            WorkspaceDelta(changedFilesDuringTurn = mapOf("SPEC.md" to "MODIFIED")),
+        ) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("READ_ONLY_WORKSPACE_VIOLATION")
+    }
+
+    @Test
+    fun `delivery preflight is read only regardless of ProductEngineer result`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = run.copy(runType = "forge.delivery"),
+            flowType = "forge.delivery",
+            stepId = "delivery-preflight",
+            agentName = "ProductEngineer",
+            workspaceDelta = WorkspaceDelta(changedFilesDuringTurn = mapOf("SPEC.md" to "MODIFIED")),
+        ))
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("READ_ONLY_WORKSPACE_VIOLATION")
+    }
 
     @Test
     fun `implementation scope applies to standard workers on both delivery and correction`() {

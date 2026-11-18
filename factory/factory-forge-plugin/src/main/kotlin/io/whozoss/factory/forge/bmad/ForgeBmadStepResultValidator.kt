@@ -67,6 +67,12 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         val watched = context.workspaceDelta.watchedFiles
 
         return when (context.flowType) {
+            "forge.delivery" -> when (context.stepId) {
+                "delivery-preflight" -> checkReadOnlyWorkspace(context) ?: StepValidationVerdict.Accepted()
+                "design-assessment" -> validateDeliveryAssessment(context)
+                else -> StepValidationVerdict.Accepted()
+            }
+
             ForgeBmadCatalogContributor.FLOW_PRODUCT_SPEC ->
                 validateSpecAmendment(
                     context = context,
@@ -396,6 +402,32 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 ),
             ),
         )
+    }
+
+    private fun validateDeliveryAssessment(context: StepValidationContext): StepValidationVerdict {
+        checkReadOnlyWorkspace(context)?.let { return it }
+        val outputs = (ForgeBusinessOutputArtifact.read(context.report) as? ForgeBusinessOutputArtifact.ReadResult.Valid)
+            ?.values
+        val decisions = outputs?.get("applicability") as? Map<*, *>
+        val kinds = setOf("detailed_spec", "ux_spec", "technical_spec", "qa_spec")
+        val valid = decisions != null && decisions.keys == kinds && decisions.values.all { value ->
+            val decision = value as? Map<*, *>
+            decision?.keys == setOf("applicable", "reason") &&
+                decision["applicable"] is Boolean &&
+                (decision["reason"] as? String)?.let { it.isNotBlank() && it.length <= 4_000 } == true
+        }
+        if (valid != true) {
+            return StepValidationVerdict.Rejected(
+                reasonCode = "INVALID_DESIGN_APPLICABILITY",
+                findings = listOf(NewFinding(
+                    code = "INVALID_DESIGN_APPLICABILITY",
+                    severity = FindingSeverity.CRITICAL,
+                    message = "Design assessment requires explicit applicable and reason values for detailed, UX, technical and QA specifications in one Forge business-output artifact.",
+                    stepId = context.stepId,
+                )),
+            )
+        }
+        return StepValidationVerdict.Accepted()
     }
 
     private fun safeRelativePath(path: String): Boolean = path.isNotBlank() && path == path.trim() &&

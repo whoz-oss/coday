@@ -1,6 +1,6 @@
 # WZ-36147 Lot 3 — delivery entry and Factory seam evidence
 
-Status: **CE04 first-step draft prepared; CE04–07 are not execution ready**. This is a
+Status: **CE04 pre-Build draft prepared; CE04–07 are not execution ready**. This is a
 review artifact, not a Factory Run or a Jira decision. The Coday branch was
 merged with the refreshed `origin/workstream/forge/master` before inspection.
 
@@ -8,7 +8,7 @@ merged with the refreshed `origin/workstream/forge/master` before inspection.
 
 The requester confirmed the configurable first-step approach and the
 unversioned term “Factory” on 2026-11-18. This validates the entry contract,
-not publication of the one-step draft or the downstream design/Build gates.
+not publication of the draft or the downstream Build gates.
 
 The workflow for bringing a ticket to `Ready` is a separate, potentially more
 interactive Run. This Lot implements only the **delivery** Run. The two Runs
@@ -44,14 +44,28 @@ required Factory output.
 | Exit when not ready | Submit an evidenced non-PASS result. The selector opens a durable `retry`/`abort` wait. No design, packet, Build or integration fragment is scheduled. |
 | Retry | Re-run ProductEngineer with a fresh attempt and current evidence. The prior negative result remains in the Run trace. |
 
-The first step is now in `WZ-36147-delivery-workflow.draft.json`, using the
-ordinary configurable Factory workflow schema. It is deliberately outside
-the published catalog: a one-step workflow would otherwise complete after
-preflight. Extend and version this definition with assessment, packet, Build
-and final joint before publication. The current legacy selector still starts
+The version `0.2.0` draft in `WZ-36147-delivery-workflow.draft.json` uses the
+ordinary configurable Factory workflow schema. It defines nine ordered steps:
+readiness, applicability assessment, product/UX/technical design,
+implementation planning, QA and verification planning, packet assembly, then
+the human packet gate. Optional design disciplines still get an explicit
+assessment step and either a document or a reasoned not-applicable decision;
+the implementation and verification plans are required on every route. The
+definition is deliberately outside the published catalog: it would complete
+after packet approval and has no safe Build or final joint. Packet assembly
+also lacks the publication seam needed to supply a trusted stored artifact ID
+to the human gate. The current legacy selector still starts
 `forge.product-spec` and contains a trivial path to Build without the complete
 packet gate. Existing pinned legacy Runs must retain their behavior. The
-draft's schema test is not a launch or retry integration proof.
+draft's graph test is not a launch, packet approval or retry integration proof.
+
+The plugin now rejects repository writes during `delivery-preflight` and
+`design-assessment`. The latter step must submit one `forge.business-outputs.v1`
+artifact with an `applicability` decision for detailed, UX, technical and QA
+specifications; each decision has a Boolean `applicable` and a nonempty reason.
+Missing or malformed decisions fail the step. These checks validate the
+agent's result shape and observed workspace delta; they do not verify Jira
+readiness or publish the design documents.
 
 ## Focused Factory evidence
 
@@ -103,13 +117,15 @@ Focused Gradle commands:
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest' --no-daemon
 ./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgePacketManifestTest' --no-daemon
 ./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeStepRoleGuardTest' --tests 'io.whozoss.factory.forge.bmad.ForgeBmadFlowAndValidatorTest' --no-daemon
+./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeStepRoleGuardTest' --tests 'io.whozoss.factory.forge.bmad.ForgeBmadFlowAndValidatorTest' :factory-service:test --tests 'io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest' --no-daemon
 ```
 
-All four commands passed. The guard command exercised 4 new step-role cases
-and 18 existing Forge scenario cases. The JSON draft passes Factory's
-authoritative definition validator. The earlier Kotlin preflight suite was
-removed with its implementation; the draft is not a registered or executable
-delivery workflow.
+The first four commands passed before the `0.2.0` draft change. The latest
+combined command passed on the updated files: 6 step-role cases, 18 existing
+Forge scenarios and 1 Factory definition case, all with zero failures. Gradle
+executed the definition test after the JSON draft was declared as a test input.
+The earlier Kotlin preflight suite was removed with its implementation; the
+draft is not a registered or executable delivery workflow.
 
 These results do **not** satisfy T08/T09/T14/T19–T23. They need persisted API,
 race, restart, and integration-receipt proofs on the actual versioned delivery
